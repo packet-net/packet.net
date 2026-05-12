@@ -663,6 +663,55 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — Structured implementation references (schema + worked example)
+
+Schema, runtime, and codegen bumps to support **structured cross-reference
+citations** (option 3 from the post-PR-13 menu, expanded scope: LinBPQ,
+Dire Wolf, Thomas Habets' `rax25`, Linux kernel OOT module
+`linux-netdev/mod-orphan`).
+
+Schema additions (`spec-sdl/schema/sdl-machine.schema.json`):
+
+- **`pinned_refs:`** at page level — map of `source` →
+  `{repo: URL, commit: hash}`. Pinning to specific commits means line
+  numbers in citations stay valid; bumping a pin requires auditing
+  references for drift.
+- **`references:`** per transition — array of citation objects. Each has
+  a `source` (either `spec_prose` for AX.25 prose, or a key that must
+  appear in `pinned_refs`). For `spec_prose`: `cite` (e.g. `§6.3.5 ¶1`)
+  + optional `quote`. For code citations: `path`, `function` (primary
+  durable anchor), optional `line` + `note`.
+
+Runtime: new `ImplementationReference` record + new `References` field
+on `TransitionSpec`. Codegen surfaces references into the emitted
+`.g.cs` so consumers (cross-language ports, redraw tools) can query
+them at runtime.
+
+Codegen lint additions:
+- Every `references[].source` must be `spec_prose` or a key in
+  `pinned_refs`.
+- spec_prose: requires `cite`; rejects path/function/line.
+- Code citations: require `path` + `function`; reject cite/quote.
+- pinned_refs: requires `repo` + `commit`.
+
+Worked example pinned: **t13 (DISC received → DM)**, citations in all
+five sources:
+- spec_prose: §6.3.5 ¶1.
+- linbpq: `L2Code.c::L2FORUS:735` — no-session catch-all branch.
+  Notable divergence flagged in the citation note: LinBPQ only sends DM
+  when the incoming command has P=1, whereas the figure responds
+  unconditionally with F:=P.
+- direwolf: `src/ax25_link.c::disc_frame:4524` — state_0_disconnected
+  case.
+- rax25: `src/state.rs::Disconnected::disc:1164`.
+- linux_oot: `net/ax25/ax25_in.c::ax25_rcv:327` — state-0 catch-all
+  via `ax25_return_dm` when no `ax25_cb` exists and frame isn't
+  SABM/SABME/DM. Noted: same code path handles t05, t10, t13 by
+  exclusion.
+
+Stage 2 (follow-up PR) will pin references for the remaining 16
+transitions using the same format.
+
 ### 2026-05-12 — Cross-check figc4.1 Disconnected against AX.25 spec prose
 
 Validation option (4) from the previous discussion: read AX.25 §6.3.5

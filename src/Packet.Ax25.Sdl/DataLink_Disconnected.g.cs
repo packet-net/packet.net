@@ -25,7 +25,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_DISCONNECT_confirm", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: not in §6.3.5; standard DL primitive behaviour —\nif the upper layer requests disconnect while already disconnected,\nthe data-link immediately confirms back. See §6.3.4 (link\ndisconnection procedure) for the broader context.\n"),
+            Notes: "spec_prose: not in §6.3.5; standard DL primitive behaviour —\nif the upper layer requests disconnect while already disconnected,\nthe data-link immediately confirms back. See §6.3.4 (link\ndisconnection procedure) for the broader context.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t02_dl_unit_data_request",
             From: "Disconnected",
@@ -33,7 +34,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("UI_command", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.5 silent; UI frame handling defined in §4.3.3.6\n(UI frame) and §6.4. Connectionless data path — disconnected\nstate can still send UI frames at the upper layer's request.\n"),
+            Notes: "spec_prose: §6.3.5 silent; UI frame handling defined in §4.3.3.6\n(UI frame) and §6.4. Connectionless data path — disconnected\nstate can still send UI frames at the upper layer's request.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t03_dl_connect_request",
             From: "Disconnected",
@@ -41,7 +43,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("Establish_Data_Link", ActionKind.Subroutine), new ActionStep("set_layer_3_initiated", ActionKind.Processing) },
             Next: "AwaitingConnection",
-            Notes: "spec_prose: §6.3.5 ¶2 (\"a TNC may initiate a link set up as\noutlined in connection establishment\") + §6.3.1 ¶1 (sends a SABM\ncommand frame and starts T1). Establish_Data_Link is the\nsubroutine defined in figc4.7.\n"),
+            Notes: "spec_prose: §6.3.5 ¶2 (\"a TNC may initiate a link set up as\noutlined in connection establishment\") + §6.3.1 ¶1 (sends a SABM\ncommand frame and starts T1). Establish_Data_Link is the\nsubroutine defined in figc4.7.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t04_all_other_primitives_from_lower_layer",
             From: "Disconnected",
@@ -49,7 +52,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] {  },
             Next: "Disconnected",
-            Notes: "spec_prose: catch-all column with no prose backing. Receive any\nunhandled primitive drawn with the \"Signal reception from Lower\nLayer\" shape (d5), stay in Disconnected, do nothing. Standard\nSDL convention for \"everything else from this source class\".\n"),
+            Notes: "spec_prose: catch-all column with no prose backing. Receive any\nunhandled primitive drawn with the \"Signal reception from Lower\nLayer\" shape (d5), stay in Disconnected, do nothing. Standard\nSDL convention for \"everything else from this source class\".\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t05_all_other_commands",
             From: "Disconnected",
@@ -57,7 +61,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.5 ¶3 — \"Any TNC receiving a command frame other\nthan a SABM(E) or UI frame…responds with a DM frame with the F\nbit set to '1'. The offending frame is ignored.\" Catch-all for\nreceived command frames not handled by SABM/SABME/DISC/UI\nexplicitly. F := P sets F to the incoming P bit (typically 1 on a\npolled command frame).\n"),
+            Notes: "spec_prose: §6.3.5 ¶3 — \"Any TNC receiving a command frame other\nthan a SABM(E) or UI frame…responds with a DM frame with the F\nbit set to '1'. The offending frame is ignored.\" Catch-all for\nreceived command frames not handled by SABM/SABME/DISC/UI\nexplicitly. F := P sets F to the incoming P bit (typically 1 on a\npolled command frame).\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t06_all_other_primitives_from_upper_layer",
             From: "Disconnected",
@@ -65,7 +70,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("discard_primitive", ActionKind.Processing) },
             Next: "Disconnected",
-            Notes: "spec_prose: catch-all column with no prose backing. Receive any\nunhandled primitive drawn with the \"Signal reception from upper\nlayer\" shape (d5), discard it, stay in Disconnected.\n"),
+            Notes: "spec_prose: catch-all column with no prose backing. Receive any\nunhandled primitive drawn with the \"Signal reception from upper\nlayer\" shape (d5), discard it, stay in Disconnected.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t07_control_field_error",
             From: "Disconnected",
@@ -73,7 +79,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_L", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: §C \"error indications are discussed in the SDL\nappendices\" — code letter (L) is figure-authoritative.\n"),
+            Notes: "spec_prose: §C \"error indications are discussed in the SDL\nappendices\" — code letter (L) is figure-authoritative.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t08_info_not_permitted_in_frame",
             From: "Disconnected",
@@ -81,7 +88,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_M", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: figure-authoritative (DL-ERROR code M). See t07 note.\n"),
+            Notes: "spec_prose: figure-authoritative (DL-ERROR code M). See t07 note.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t09_u_or_s_frame_length_error",
             From: "Disconnected",
@@ -89,7 +97,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_N", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: figure-authoritative (DL-ERROR code N). See t07 note.\n"),
+            Notes: "spec_prose: figure-authoritative (DL-ERROR code N). See t07 note.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t10_ua_received",
             From: "Disconnected",
@@ -97,7 +106,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_C_D", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: unexpected UA while disconnected (UA is a response;\nwe didn't send a command). Codes C and D are figure-authoritative.\n"),
+            Notes: "spec_prose: unexpected UA while disconnected (UA is a response;\nwe didn't send a command). Codes C and D are figure-authoritative.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t11_ui_received_p_eq_1",
             From: "Disconnected",
@@ -105,7 +115,8 @@ public static class DataLink_Disconnected
             Guard: "P_eq_1",
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine), new ActionStep("F := 1", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.5 ¶3 — \"UI frame with the P bit set to '1'\nresponds with a DM frame with the F bit set to '1'\". Figure\nsets F := 1 explicitly (vs F := P for other command frames in\nt05) — i.e. the spec dictates F=1 specifically for polled UI.\n"),
+            Notes: "spec_prose: §6.3.5 ¶3 — \"UI frame with the P bit set to '1'\nresponds with a DM frame with the F bit set to '1'\". Figure\nsets F := 1 explicitly (vs F := P for other command frames in\nt05) — i.e. the spec dictates F=1 specifically for polled UI.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t12_ui_received_p_eq_0",
             From: "Disconnected",
@@ -113,7 +124,8 @@ public static class DataLink_Disconnected
             Guard: "not P_eq_1",
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.5 ¶3 — UI with P=0 falls under \"the offending\nframe is ignored\" (no DM response). UI_Check subroutine still\nruns to surface the UI payload to upper layer.\n"),
+            Notes: "spec_prose: §6.3.5 ¶3 — UI with P=0 falls under \"the offending\nframe is ignored\" (no DM response). UI_Check subroutine still\nruns to surface the UI payload to upper layer.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t13_disc_received",
             From: "Disconnected",
@@ -121,7 +133,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.5 ¶1 — \"transmits a DM frame in response to a\nDISC command\".\n"),
+            Notes: "spec_prose: §6.3.5 ¶1 — \"transmits a DM frame in response to a\nDISC command\".\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶1", Quote: "transmits a DM frame in response to a DISC command", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 735, Note: "no-session catch-all — sends DM when received command is neither SABM nor XID and has P=1; ignores P=0 (figure responds unconditionally with F:=P)"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "disc_frame", Line: 4524, Note: "state_0_disconnected case sends DM via lm_data_request"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::disc", Line: 1164, Note: "returns Action::SendDm { pf: packet.poll }"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 327, Note: "state-0 catch-all — calls ax25_return_dm when no ax25_cb exists and frame isn't SABM/SABME/DM. Same code path handles t05, t10, t13 by exclusion.") }),
         new TransitionSpec(
             Id: "t14_sabm_received_able",
             From: "Disconnected",
@@ -129,7 +142,8 @@ public static class DataLink_Disconnected
             Guard: "able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("set_version_2_0", ActionKind.Processing), new ActionStep("UA", ActionKind.SignalLower), new ActionStep("Clear_Exception_Conditions", ActionKind.Subroutine), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("DL_CONNECT_indication", ActionKind.SignalUpper), new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("RC := 0", ActionKind.Processing) },
             Next: "Connected",
-            Notes: "spec_prose: §6.3.5 ¶1 + §6.3.1 ¶1 — \"responds with a UA response\nframe and resets all of its internal state variables (V(S), V(A)\nand V(R))\". The figure adds DL_CONNECT_indication (notify upper\nlayer), SRT/T1V init, start_T3, RC := 0 — the Connected-state\nentry housekeeping not detailed in this prose paragraph but\nimplied by §6.7 (timer parameters) and the SDL appendix.\n"),
+            Notes: "spec_prose: §6.3.5 ¶1 + §6.3.1 ¶1 — \"responds with a UA response\nframe and resets all of its internal state variables (V(S), V(A)\nand V(R))\". The figure adds DL_CONNECT_indication (notify upper\nlayer), SRT/T1V init, start_T3, RC := 0 — the Connected-state\nentry housekeeping not detailed in this prose paragraph but\nimplied by §6.7 (timer parameters) and the SDL appendix.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t15_sabm_received_unable",
             From: "Disconnected",
@@ -137,7 +151,8 @@ public static class DataLink_Disconnected
             Guard: "not able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.1 ¶3 — \"If the distant TNC receives a SABM(E)\ncommand and cannot enter the indicated state, it sends a DM frame.\"\n"),
+            Notes: "spec_prose: §6.3.1 ¶3 — \"If the distant TNC receives a SABM(E)\ncommand and cannot enter the indicated state, it sends a DM frame.\"\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t16_sabme_received_able",
             From: "Disconnected",
@@ -145,7 +160,8 @@ public static class DataLink_Disconnected
             Guard: "able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("set_version_2_2", ActionKind.Processing), new ActionStep("UA", ActionKind.SignalLower), new ActionStep("Clear_Exception_Conditions", ActionKind.Subroutine), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("DL_CONNECT_indication", ActionKind.SignalUpper), new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("RC := 0", ActionKind.Processing) },
             Next: "Connected",
-            Notes: "spec_prose: as t14 — §6.3.5 ¶1 + §6.3.1 ¶1. SABME is the v2.2\nvariant of SABM; this column sets Version 2.2 and otherwise\nmirrors t14's chain.\n"),
+            Notes: "spec_prose: as t14 — §6.3.5 ¶1 + §6.3.1 ¶1. SABME is the v2.2\nvariant of SABM; this column sets Version 2.2 and otherwise\nmirrors t14's chain.\n",
+            References: new ImplementationReference[] {  }),
         new TransitionSpec(
             Id: "t17_sabme_received_unable",
             From: "Disconnected",
@@ -153,6 +169,7 @@ public static class DataLink_Disconnected
             Guard: "not able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: as t15 — §6.3.1 ¶3.\n"),
+            Notes: "spec_prose: as t15 — §6.3.1 ¶3.\n",
+            References: new ImplementationReference[] {  }),
     };
 }

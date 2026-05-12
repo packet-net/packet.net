@@ -26,7 +26,8 @@ public static class {{ page.class_name }}
             Guard: {{ t.guard_literal }},
             Actions: new ActionStep[] { {{ t.actions_csv }} },
             Next: "{{ t.next }}",
-            Notes: {{ t.notes_literal }}),
+            Notes: {{ t.notes_literal }},
+            References: new ImplementationReference[] { {{ t.references_csv }} }),
 {{- end }}
     };
 }

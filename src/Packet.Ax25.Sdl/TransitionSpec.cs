@@ -19,7 +19,28 @@ public sealed record TransitionSpec(
     string? Guard,
     IReadOnlyList<ActionStep> Actions,
     string Next,
-    string? Notes);
+    string? Notes,
+    IReadOnlyList<ImplementationReference> References);
+
+/// <summary>
+/// One cross-reference citation for a transition — either a pointer into
+/// the AX.25 specification prose (<see cref="Source"/> = <c>"spec_prose"</c>),
+/// or a pointer to specific code in a pinned implementation repo.
+/// </summary>
+/// <remarks>
+/// For code citations, the page-level <c>pinned_refs:</c> table binds the
+/// <see cref="Source"/> name to a repo URL and a specific commit. Line
+/// numbers in <see cref="Line"/> are valid at that commit; the
+/// <see cref="Function"/> name is the primary durable anchor.
+/// </remarks>
+public sealed record ImplementationReference(
+    string Source,
+    string? Cite,
+    string? Quote,
+    string? Path,
+    string? Function,
+    int? Line,
+    string? Note);
 
 /// <summary>One step in a transition's action chain — a verb + the SDL shape class that produced it.</summary>
 public sealed record ActionStep(string Verb, ActionKind Kind);

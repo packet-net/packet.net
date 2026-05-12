@@ -308,6 +308,60 @@ internal static class Program
 
         LintDecisionBranchCompleteness(page, decisionsById, errors);
         LintGuardOverlap(page, decisionsById, errors);
+        LintReferences(page, errors);
+    }
+
+    /// <summary>
+    /// Validates per-transition references against the page's pinned_refs
+    /// table. Every code citation must have a matching source pinned at
+    /// the page level (with a repo URL and commit hash) so line numbers
+    /// have a stable reference point. spec_prose references are validated
+    /// for shape: cite is required; quote is optional.
+    /// </summary>
+    private static void LintReferences(SdlPage page, List<string> errors)
+    {
+        var pinnedSources = page.PinnedRefs?.Keys.ToHashSet(StringComparer.Ordinal)
+                            ?? new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var pin in page.PinnedRefs ?? new())
+        {
+            if (string.IsNullOrWhiteSpace(pin.Value.Repo))
+                errors.Add($"{page.SourcePath}: pinned_refs[{pin.Key}] missing `repo`.");
+            if (string.IsNullOrWhiteSpace(pin.Value.Commit))
+                errors.Add($"{page.SourcePath}: pinned_refs[{pin.Key}] missing `commit`. Pin to a specific commit hash so line numbers stay valid.");
+        }
+
+        foreach (var t in page.Transitions)
+        {
+            foreach (var (r, i) in (t.References ?? new()).Select((r, i) => (r, i)))
+            {
+                if (string.IsNullOrWhiteSpace(r.Source))
+                {
+                    errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] missing `source`.");
+                    continue;
+                }
+
+                if (r.Source == "spec_prose")
+                {
+                    if (string.IsNullOrWhiteSpace(r.Cite))
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] (spec_prose) missing `cite` (e.g. '§6.3.5 ¶1').");
+                    // path/function/line should not appear on spec_prose
+                    if (!string.IsNullOrWhiteSpace(r.Path) || !string.IsNullOrWhiteSpace(r.Function) || r.Line is not null)
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] (spec_prose) should not have path/function/line — those are for code citations.");
+                }
+                else
+                {
+                    if (!pinnedSources.Contains(r.Source))
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] source `{r.Source}` is not declared in pinned_refs. Add an entry to the page-level pinned_refs table with the repo URL and a pinned commit hash.");
+                    if (string.IsNullOrWhiteSpace(r.Path))
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] (source={r.Source}) missing `path`.");
+                    if (string.IsNullOrWhiteSpace(r.Function))
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] (source={r.Source}) missing `function` (primary anchor; line numbers drift, function names survive refactors).");
+                    if (!string.IsNullOrWhiteSpace(r.Cite) || !string.IsNullOrWhiteSpace(r.Quote))
+                        errors.Add($"{page.SourcePath}: transition `{t.Id}` references[{i}] (source={r.Source}) has cite/quote — those are for spec_prose references.");
+                }
+            }
+        }
     }
 
     // ─── Lints ─────────────────────────────────────────────────────────
@@ -482,6 +536,8 @@ internal sealed class SdlPage
     public SdlSourceYaml? Source { get; set; }
     public List<string>? Variables { get; set; }
     public List<string>? Save { get; set; }
+    [YamlMember(Alias = "pinned_refs", ApplyNamingConventions = false)]
+    public Dictionary<string, SdlPinnedRef>? PinnedRefs { get; set; }
     public List<SdlDecision> Decisions { get; set; } = new();
     public List<SdlTransition> Transitions { get; set; } = new();
     [YamlIgnore] public string SourcePath { get; set; } = "";
@@ -508,6 +564,29 @@ internal sealed class SdlTransition
     public List<SdlPathStep> Path { get; set; } = new();
     public string Next { get; set; } = "";
     public string? Notes { get; set; }
+    public List<SdlReference>? References { get; set; }
+}
+
+/// <summary>
+/// One cross-reference citation. spec_prose entries use Cite + Quote; code
+/// citations use Path, Function, Line, Note. Source must be 'spec_prose' or
+/// a key in the page-level pinned_refs table.
+/// </summary>
+internal sealed class SdlReference
+{
+    public string Source { get; set; } = "";
+    public string? Cite { get; set; }
+    public string? Quote { get; set; }
+    public string? Path { get; set; }
+    public string? Function { get; set; }
+    public int? Line { get; set; }
+    public string? Note { get; set; }
+}
+
+internal sealed class SdlPinnedRef
+{
+    public string Repo { get; set; } = "";
+    public string Commit { get; set; } = "";
 }
 
 /// <summary>
@@ -595,6 +674,7 @@ internal sealed class TransitionModel
     public string NotesLiteral { get; set; } = "null";
     public List<ActionModel> Actions { get; set; } = new();
     public string ActionsCsv { get; set; } = "";
+    public string ReferencesCsv { get; set; } = "";
     public string EdgeLabel { get; set; } = "";
 
     public static TransitionModel From(SdlTransition t, IReadOnlyDictionary<string, SdlDecision> decisionsById)
@@ -621,22 +701,35 @@ internal sealed class TransitionModel
         }
 
         var guard = predicates.Count == 0 ? null : string.Join(" and ", predicates);
+        var refs = (t.References ?? new()).Select(r =>
+            "new ImplementationReference(" +
+            $"Source: {TemplateModel.CSharpStringLiteral(r.Source)}, " +
+            $"Cite: {NullOrLiteral(r.Cite)}, " +
+            $"Quote: {NullOrLiteral(r.Quote)}, " +
+            $"Path: {NullOrLiteral(r.Path)}, " +
+            $"Function: {NullOrLiteral(r.Function)}, " +
+            $"Line: {(r.Line is null ? "null" : r.Line.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))}, " +
+            $"Note: {NullOrLiteral(r.Note)})").ToList();
 
         return new TransitionModel
         {
-            Id           = t.Id,
-            On           = t.On,
-            Guard        = guard,
-            GuardLiteral = guard is null ? "null" : TemplateModel.CSharpStringLiteral(guard),
-            Next         = t.Next,
-            Notes        = t.Notes,
-            NotesLiteral = t.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(t.Notes),
-            Actions      = actions,
-            ActionsCsv   = string.Join(", ", actions.Select(a =>
+            Id            = t.Id,
+            On            = t.On,
+            Guard         = guard,
+            GuardLiteral  = guard is null ? "null" : TemplateModel.CSharpStringLiteral(guard),
+            Next          = t.Next,
+            Notes         = t.Notes,
+            NotesLiteral  = t.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(t.Notes),
+            Actions       = actions,
+            ActionsCsv    = string.Join(", ", actions.Select(a =>
                 $"new ActionStep({TemplateModel.CSharpStringLiteral(a.Verb)}, {TemplateModel.KindEnumLiteral(a.Kind)})")),
-            EdgeLabel    = BuildMermaidEdgeLabel(t.Id, t.On, guard, actions),
+            ReferencesCsv = string.Join(", ", refs),
+            EdgeLabel     = BuildMermaidEdgeLabel(t.Id, t.On, guard, actions),
         };
     }
+
+    private static string NullOrLiteral(string? s) =>
+        s is null ? "null" : TemplateModel.CSharpStringLiteral(s);
 
     private static string BuildMermaidEdgeLabel(string id, string on, string? guard, List<ActionModel> actions)
     {
