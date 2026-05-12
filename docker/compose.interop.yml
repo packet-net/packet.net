@@ -67,7 +67,10 @@ services:
       - "127.0.0.1:8101:8101"   # second KISS port (gfsk9600 backbone)
     command: ["-autostart"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep -q ok"]
+      # The net-sim image has bash but no wget / curl — same constraint as
+      # LinBPQ. We probe the web port via bash's /dev/tcp builtin instead.
+      # The web listener binds early in startup so this goes healthy quickly.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && exec 3<&-"]
       interval: 5s
       timeout: 3s
       retries: 24

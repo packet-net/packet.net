@@ -5,8 +5,8 @@
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
 **As of:** 2026-05-12
-**Current phase:** Phase 1 ✅ closed. Autopilot lap (Mermaid codegen, net-sim interop, mutation-test baseline, NinoTNC catalog port) ✅ also closed. Phase 2 next.
-**Latest amendment:** [§17 entry 2026-05-12 Autopilot lap](#17-amendment-log)
+**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. PR-only workflow + first push to GitHub. Phase 2 next.
+**Latest amendment:** [§17 entry 2026-05-12 PR workflow + CI healthcheck portability](#17-amendment-log)
 
 ---
 
@@ -648,6 +648,23 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-12 — PR-only workflow + CI healthcheck portability
+
+- **Working agreement:** all code changes go through pull requests from this
+  point on. No more direct pushes to `main`. Reflected in [§2.4](#24-default-to-executing-actions-with-care)
+  by extension (merging is a destructive shared-state action).
+- **CI healthchecks** in `docker/compose.interop.yml` rewritten to use bash's
+  `/dev/tcp` builtin instead of `wget` / `curl`, because neither tool is
+  present in the LinBPQ or net-sim base images. (Xrouter has no explicit
+  healthcheck — depends_on `service_started` is sufficient there.) The
+  pattern to follow for any future container we add: probe a TCP port we
+  know the daemon binds, with `["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/PORT && exec 3<&-"]`.
+- **CI artifact uploads** moved to `if: failure()` + `continue-on-error: true`
+  in `ci.yml` so a future GitHub artifact-storage quota issue doesn't mask
+  the actual test outcome on green runs.
+- First push to `origin/main` (`M0LTE/packet.net`) completed at this point:
+  13 commits encompassing Phase 0 + Phase 1 + the autopilot lap.
 
 ### 2026-05-12 — Autopilot lap: Mermaid codegen, net-sim interop, mutation baseline, NinoTNC catalog
 
