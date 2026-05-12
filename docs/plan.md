@@ -662,6 +662,36 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — SDL codegen: Scriban templates + Roslyn parse-back validation
+
+`tools/Packet.Sdl.CodeGen` used to emit C#, Mermaid, and xUnit
+conformance tests via hand-rolled `StringBuilder` concatenation. The
+"newline-in-a-C#-string-literal" bug from a few weeks back exposed how
+brittle that is — escaping rules and template structure were entangled,
+and the only way to find a glitch was to build and watch the compiler
+complain.
+
+Two changes:
+
+1. **Templates moved to Scriban** (`Scriban` 7.1.0, embedded as project
+   resources under `tools/Packet.Sdl.CodeGen/Templates/`). The three
+   templates — `code.scriban-cs`, `tests.scriban-cs`, `mermaid.scriban-mmd`
+   — are now declarative. Per-transition derived values (escaped string
+   literals, joined CSV, Mermaid edge labels) are pre-computed in a
+   `TemplateModel`/`TransitionModel` projection so the templates stay
+   focused on layout.
+
+2. **Parse-back validation** (`Microsoft.CodeAnalysis.CSharp` 4.14.0).
+   Every emitted `.g.cs` and `.g.Tests.cs` is fed through
+   `CSharpSyntaxTree.ParseText()` before being written. Any
+   `DiagnosticSeverity.Error` aborts codegen with file/line/column and a
+   context snippet around the bad line. Future template glitches now fail
+   at codegen-time with a pointer to the offending output, not at build
+   time with a compiler error against a file the user didn't write.
+
+Scriban 6.x had several outstanding GHSA advisories that NuGetAudit
+treats as warning-as-error; 7.1.0 is clean. 175 tests still green.
+
 ### 2026-05-12 — Migrate Shouldly → AwesomeAssertions, drop dual-library convention
 
 §2.8 simplified: AwesomeAssertions is the sole assertion library. The

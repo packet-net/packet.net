@@ -1,0 +1,25 @@
+%% This file was produced by tools/Packet.Sdl.CodeGen from {{ page.source_path }}
+%% Do not edit by hand. Run `dotnet run --project tools/Packet.Sdl.CodeGen` to regenerate.
+%%
+%% Source: {{ page.source_spec }}, figure {{ page.source_figure }}
+{{- if page.source_url }}
+%% URL: {{ page.source_url }}
+{{- end }}
+%% Coverage: {{ page.coverage }}
+%%
+%% Important: this rendering is approximate and intentionally
+%% looks nothing like the original SDL figure. It is a machine-
+%% generated view of the transitions in the .sdl.yaml — useful
+%% for spotting transcription bugs (missing transitions, wrong
+%% destination state) but NOT a substitute for reading the spec
+%% figure itself. See docs/sdl-primer.md.
+
+stateDiagram-v2
+    direction LR
+
+    classDef focal fill:#fff5b1,stroke:#b08800;
+    class {{ page.state }} focal
+
+{{- for t in page.transitions }}
+    {{ page.state }} --> {{ t.next }}: {{ t.edge_label }}
+{{- end }}

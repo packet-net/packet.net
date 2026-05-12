@@ -7,6 +7,14 @@
 
   <ItemGroup>
     <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Scriban" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Scriban templates embedded into the tool, so the executable has
+         zero runtime dependency on its source directory layout. -->
+    <EmbeddedResource Include="Templates\**\*" />
   </ItemGroup>
 
 </Project>
