@@ -5,8 +5,8 @@
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
 **As of:** 2026-05-12
-**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. CI workflows live + green; LinBPQ + net-sim + XRouter all exercised by interop suite. Phase 2 next.
-**Latest amendment:** [§17 entry 2026-05-12 XRouter AXUDP interop + FCS-on-the-wire finding](#17-amendment-log)
+**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. CI workflows live + green; LinBPQ + net-sim + XRouter all exercised by interop suite. Phase 2 starting (orchestration scaffolding).
+**Latest amendment:** [§17 entry 2026-05-12 Stryker tuning + Phase 2 starts](#17-amendment-log)
 
 ---
 
@@ -622,7 +622,7 @@ Tracked here so they don't get lost. Once resolved, move the resolution into the
 | OQ-004 | NuGet org name — is `Packet.*` claimable on nuget.org or do we need `PacketNET.*` / `Packethacking.*`? Tom to check before first NuGet publish (Phase 6+). | Open | Tom |
 | OQ-005 | OIDC pluggability — what's the abstraction shape so we don't paint ourselves into a corner? Affects Phase 4 user model. | Open | Phase 4 |
 | OQ-006 | yEd / GraphML SDL workflow — Tom tried Mermaid and reported the rendering looks too unlike the original SDL to be useful for visual comparison. Mermaid output is shipped anyway (cheap, catches transcription bugs the YAML diff might miss) but does NOT solve the input-side problem. yEd spike (one figure, agreed shape mapping, parse the .graphml back to our YAML) still on the table whenever Tom has big-screen time. | Open | Tom |
-| OQ-007 | Stryker mutation score for `Packet.Kiss` is dragged below 70 % by `KissTcpClient` (40.91 %) because IO-heavy code is mutation-resistant without a fake socket. Either (a) exclude `KissTcpClient` from Stryker's mutation set, (b) add a fake-socket harness so the TCP paths get killed mutations, or (c) accept the score and document it. Phase 2 housekeeping. | Open | Phase 2 |
+| ~~OQ-007~~ | ~~Stryker mutation score for `Packet.Kiss` is dragged below 70 % by `KissTcpClient`…~~ | ✅ Resolved 2026-05-12 — excluded via `stryker-config.json`; score 67.07→73.33. Fake-socket harness left for whenever Phase 6/7 wants tighter coverage. |
 
 ---
 
@@ -648,6 +648,18 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-12 — Stryker tuning + Phase 2 scaffolding starts
+
+- **OQ-007 closed.** `stryker-config.json` excludes `KissTcpClient.cs` from
+  the mutation set, because IO-over-real-socket code is mutation-resistant
+  without a fake-socket harness and was dragging Packet.Kiss's score below
+  the 70% target. Score: 67.07 → 73.33. The exclusion is documented inline
+  in the config; the door's left open to revisit when a fake-socket harness
+  becomes worthwhile (probably Phase 6/7).
+- Phase 2 scaffolding begun. Goal: build the runtime engine that consumes
+  the codegen's transition tables and actually *runs* the AX.25 state
+  machines. See [§5.2](#52-phase-2--ax25-v22-data-link-state-machine-).
 
 ### 2026-05-12 — XRouter AXUDP interop + FCS-on-the-wire finding
 

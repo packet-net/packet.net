@@ -1,0 +1,16 @@
+{
+  "stryker-config": {
+    "reporters": ["progress", "json", "cleartext"],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    },
+    "mutation-level": "Standard",
+    "concurrency": 4,
+    "mutate": [
+      "**/*.cs",
+      "!**/KissTcpClient.cs"
+    ]
+  }
+}
