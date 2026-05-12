@@ -663,6 +663,67 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — Validate figc4.2 — smoke test + spec_prose + 4-codebase references
+
+Combined validation pass for `awaiting_connection.sdl.yaml`: orchestrator
+smoke test (all 24 transitions), spec_prose citations, and structured
+references across the four pinned implementations. Implementation refs
+parallelised via four subagents — output merged into the YAML.
+
+**Triangulated upstream-spec findings** (new ones from figc4.2,
+strengthening the case for a spec-issue tracker):
+
+1. **DL-DISCONNECT "requeue" semantics unclear** — three of four impls
+   (direwolf, rax25, LinBPQ) explicitly question the spec's wording or
+   don't implement save-and-replay at all. direwolf comment: "Erratum:
+   The protocol spec says 'requeue.' If we put disconnect req back…we
+   will probably get it back again here while still in same state."
+   rax25 comment: "1998&2017 bug: It says requeue. What does that even
+   mean?" Captured on the page-level `save:` directive.
+
+2. **The `data_layer_3_initiated` diamond is genuinely ambiguous** —
+   Tom flagged Yes/No labels as "assumed; missing from spec" in the
+   graphml; direwolf author has the same uncertainty with comments at
+   data_request_good_size:1466-1473 and i_frame_pop_off_queue:6555-6558
+   ("seems backwards but I don't understand enough yet..."). direwolf
+   reads the diamond with the **opposite** Yes/No interpretation from
+   this transcription. We now have three independent observations
+   (Tom, direwolf author, structural absence in other impls). The four
+   `verification_pending` transitions (t13-t16) preserve this on the
+   YAML.
+
+3. **t07 (UA F=1, !L3-init, V(s)≠V(a)) chain is buggy in 2017 spec** —
+   rax25 author: "bug in the 2017 spec...start T1, then immediately
+   stop it again". direwolf has the same redundancy comment at
+   ua_frame:4849-4876. Two independent observations.
+
+4. **DL-ERROR code G typo** — rax25 author: "Typo in 1998 spec: G, not
+   g". Captured on t08 references.
+
+5. **figc4.2 v2006 has a SABM/SABME swap bug** — direwolf author at
+   sabm_e_frame:4390-4392: "Erratum! 2006 version shows SABME twice
+   for state 1. First one should be SABM…Original appears to be
+   correct." Direct confirmation that our transcription (using the
+   1998 reading) is right.
+
+**Implementation divergence patterns** captured on per-transition
+notes:
+
+- **LinBPQ and Linux have no `layer_3_initiated` flag** — collapses
+  t05/t06/t07 into a single UA handler.
+- **None of the four implementations implement the page-level save** —
+  all handle DL-DISCONNECT-while-waiting inline rather than queuing
+  for replay.
+- **Linux replies UA to SABME** (not DM) and stays in STATE_1 — no
+  separate 2.2-awaiting state.
+- **LinBPQ rejects SABME globally** — no Mod-128 support.
+- **rax25 deliberately omits many handlers** — only overrides 6 methods
+  on AwaitingConnection; trait defaults log "unexpected X" for the
+  rest. Notable omissions: DISC, DM, UI, connect, data.
+- **DL-ERROR(D/L/M/N) consistently un-emitted** across all four impls.
+
+254 tests now (was 230; +24 smoke tests).
+
 ### 2026-05-12 — Transcribe figc4.2 Data-Link Awaiting Connection state
 
 Second SDL page on the lossless schema. Tom drew

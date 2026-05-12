@@ -26,7 +26,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "AwaitingConnection",
             Notes: "Received DISC while waiting for UA. Respond DM (we're not connected),\nstay in AwaitingConnection waiting for our SABM's UA.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2LINKACTIVE", Line: 1090, Note: "DISC handled unconditionally — sends UA (not DM) and tears link down. Diverges from figure"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "disc_frame", Line: 4530, Note: "state_1 falls through with states 0 and 5 to a single DM(F=p) reply, keep current state"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 54, Note: "sends DM with pf passed through (F:=P implicit)") }),
         new TransitionSpec(
             Id: "t02_dm_received_f_eq_1",
             From: "AwaitingConnection",
@@ -35,7 +35,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("discard_frame_queue", ActionKind.Processing), new ActionStep("DL_DISCONNECT_indication", ActionKind.SignalUpper), new ActionStep("stop_T1", ActionKind.Processing) },
             Next: "Disconnected",
             Notes: "DM with F=1 = peer is refusing the connect. Abandon: discard queue,\ntell upper layer the connect failed, stop T1.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶4", Quote: "When the originating TNC receives a DM response to its SABM(E) frame, it cancels its T1 timer and does not enter the information-transfer state.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2_PROCESS", Line: 2145, Note: "DM in state 2 → CONNECTREFUSED. LinBPQ ignores F bit — treats any DM as connect refused"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "dm_frame", Line: 4656, Note: "state_1 case: if (f==1) discard_i_queue, server_link_terminated, STOP_T1, enter_new_state(0)"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 80, Note: "DM with pf=1 calls ax25_disconnect(ECONNREFUSED) which stops timers and tears socket") }),
         new TransitionSpec(
             Id: "t03_dm_received_not_f_eq_1",
             From: "AwaitingConnection",
@@ -44,7 +44,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] {  },
             Next: "AwaitingConnection",
             Notes: "DM without F=1 isn't a response to our SABM — ignore, keep waiting.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "dm_frame", Line: 4668, Note: "else branch in case state_1: 'keep current state'"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 81, Note: "'if (pf)' guard means DM with F=0 falls through, function returns with no action") }),
         new TransitionSpec(
             Id: "t04_ua_received_not_f_eq_1",
             From: "AwaitingConnection",
@@ -53,7 +53,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_D", ActionKind.SignalUpper) },
             Next: "AwaitingConnection",
             Notes: "UA without F=1 isn't a valid response to our polled SABM —\nDL-ERROR(D), keep waiting.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ua_frame", Line: 4917, Note: "else (f != 1) branch: logs 'Protocol Error D: UA received without F=1 when SABM or DISC was sent P=1', stays"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::ua", Line: 1207, Note: "early return Action::DlError(DlError::D) when !f; matches spec, stays implicitly") }),
         new TransitionSpec(
             Id: "t05_ua_received_f_eq_1_layer_3_initiated",
             From: "AwaitingConnection",
@@ -61,8 +61,8 @@ public static class DataLink_AwaitingConnection
             Guard: "F_eq_1 and layer_3_initiated",
             Actions: new ActionStep[] { new ActionStep("DL_CONNECT_confirm", ActionKind.SignalUpper), new ActionStep("stop_T1", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("Select_T1_Value", ActionKind.Subroutine) },
             Next: "Connected",
-            Notes: "Happy path: UA with F=1 in response to our L3-initiated SABM. Confirm\nto upper layer, run the standard Connected-entry housekeeping.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "Happy path: UA with F=1 in response to our L3-initiated SABM. Confirm\nto upper layer, run the standard Connected-entry housekeeping.\n\nNOTE: LinBPQ and Linux do not track a Layer-3-initiated flag at all,\nso t05/t06/t07 collapse to one handler in those implementations.\nDirewolf and rax25 implement the flag and reproduce the 3-branch\ntree (with their own restructurings).\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶1", Quote: "Reception of the UA response frame by the originating TNC causes it to cancel the T1 timer and set its internal state variables to '0'.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2_PROCESS", Line: 2072, Note: "UA in state 2: clears timer, sets L2STATE=5, calls SENDCONNECTREPLY. Collapses t05/t06/t07 — no L3-init flag"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ua_frame", Line: 4837, Note: "if (f==1) { if (layer_3_initiated) { server_link_established(incoming=0) } else if (vs!=va) {...} } then common cleanup → state_3"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::ua", Line: 1210, Note: "`if data.layer3_initiated { debug!(\"DL-CONNECT CONFIRM\") }`; common tail at 1233. Author flags 2017 vs 1998 spec divergences on T3 timing"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 58, Note: "DIVERGES: collapses all three F=1 branches into one; unconditionally zeros V() and notifies socket → STATE_3. No L3-init concept") }),
         new TransitionSpec(
             Id: "t06_ua_received_f_eq_1_not_layer_3_initiated_vs_eq_va",
             From: "AwaitingConnection",
@@ -71,7 +71,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("stop_T1", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("Select_T1_Value", ActionKind.Subroutine) },
             Next: "Connected",
             Notes: "Connection coming up that we didn't initiate (peer connected to us\nvia SABM and we sent UA back; this branch is reached when local\nsend-variables already align with peer's ack-variables). No\nDL-CONNECT confirm — upper layer wasn't expecting one.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ua_frame", Line: 4878, Note: "fall-through leg: !L3init AND !(vs!=va) means neither inner branch fires; common cleanup without server_link_established"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::ua", Line: 1212, Note: "implicit else when !layer3_initiated && vs==va; no confirm emitted, falls through to common tail at 1233") }),
         new TransitionSpec(
             Id: "t07_ua_received_f_eq_1_not_layer_3_initiated_vs_neq_va",
             From: "AwaitingConnection",
@@ -79,8 +79,8 @@ public static class DataLink_AwaitingConnection
             Guard: "F_eq_1 and not layer_3_initiated and not V_s_eq_V_a",
             Actions: new ActionStep[] { new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("start_T1", ActionKind.Processing), new ActionStep("DL_CONNECT_confirm", ActionKind.SignalUpper), new ActionStep("stop_T1", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("Select_T1_Value", ActionKind.Subroutine) },
             Next: "Connected",
-            Notes: "V(s) ≠ V(a) recovery branch: re-init timer values + restart T1\n*before* the standard housekeeping. (The figure starts T1 here then\nimmediately stops it in the next chain — looks redundant on paper\nbut is what's drawn; trust the figure.)\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "V(s) ≠ V(a) recovery branch: re-init timer values + restart T1\n*before* the standard housekeeping. (The figure starts T1 here then\nimmediately stops it in the next chain — looks redundant on paper\nbut is what's drawn; trust the figure.)\n\nNOTE: rax25 author flags this exact pattern as a spec bug:\n\"bug in the 2017 spec...start T1, then immediately stop it again\"\n(src/state.rs:1226). Direwolf author similarly comments at\nua_frame:4849-4876 that 2006 vs original wording differs.\nIndependent corroboration — candidate upstream spec issue.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ua_frame", Line: 4848, Note: "else if (vs!=va) branch (4848-4877): INIT_T1V_SRT resets SRT/T1V, START_T3 (author notes redundancy), server_link_established(incoming=0). Author flags '2006 vs original wording differs'"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::ua", Line: 1212, Note: "else-if `data.vs != data.va` branch (1212-1232); resets srt, t1v:=2*srt; author comment 'bug in the 2017 spec...start T1, then immediately stop it again'") }),
         new TransitionSpec(
             Id: "t08_t1_expiry_rc_eq_n2",
             From: "AwaitingConnection",
@@ -88,8 +88,8 @@ public static class DataLink_AwaitingConnection
             Guard: "RC_eq_N2",
             Actions: new ActionStep[] { new ActionStep("discard_frame_queue", ActionKind.Processing), new ActionStep("DL_ERROR_indication_G", ActionKind.SignalUpper), new ActionStep("DL_DISCONNECT_indication", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "Reached the retry limit (N2). Give up: discard pending frames,\nDL-ERROR(G), DL-DISCONNECT indication, go to Disconnected.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "Reached the retry limit (N2). Give up: discard pending frames,\nDL-ERROR(G), DL-DISCONNECT indication, go to Disconnected.\n\nNOTE: rax25 author flags spec typo: \"Typo in 1998 spec: G, not g\"\n(src/state.rs:1192). Candidate upstream spec issue.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶2", Quote: "If this happens N2 times, the TNC enters the disconnected state.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2TIMEOUT", Line: 3768, Note: "state-2 retry-exhausted → CONNECTFAILED, CLEAROUTLINK; no explicit DL-ERROR(G)"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "t1_expiry", Line: 5461, Note: "state_1: if (rc==n2_retry) discard_i_queue, 'Failed to connect', server_link_terminated, → state_0. Substitutes user-facing message for DL-ERROR(G)"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::t1", Line: 1189, Note: "if data.rc == data.n2: clears queue, emits DlError::G ('Typo in 1998 spec: G, not g'), transitions to Disconnected. Note: rax25 does NOT emit DL-DISCONNECT indication — divergence"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_timer.c", Function: "ax25_std_t1timer_expiry", Line: 124, Note: "STATE_1 + n2count==n2 + AX25_MODULUS → ax25_disconnect(ETIMEDOUT). Linux first downgrades EMODULUS→MODULUS and retries (not in spec)") }),
         new TransitionSpec(
             Id: "t09_t1_expiry_rc_neq_n2",
             From: "AwaitingConnection",
@@ -98,7 +98,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("RC := RC + 1", ActionKind.Processing), new ActionStep("SABM (P == 1)", ActionKind.SignalLower), new ActionStep("Select_T1_Value", ActionKind.Subroutine), new ActionStep("start_T1", ActionKind.Processing) },
             Next: "AwaitingConnection",
             Notes: "Below retry limit — bump RC, resend SABM with P=1, recalc T1V via\nSelect T1 Value, restart T1.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶2", Quote: "If the distant TNC doesn't respond before T1 times out, the originating TNC resends the SABM frame and starts T1 running again.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2TIMEOUT", Line: 3763, Note: "state-2 timeout, RC<N2: L2RETRIES++, SENDSABM. No 'Select T1' (LinBPQ has no SRT/T1V dynamic update)"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "t1_expiry", Line: 5469, Note: "SET_RC(rc+1), build SABM(P=1) or SABME, lm_data_request, select_t1_value, START_T1, keep state"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::t1", Line: 1196, Note: "rc += 1, select_t1_value(), t1.start(data.srt) — uses srt rather than t1v, possible deviation"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_timer.c", Function: "ax25_std_t1timer_expiry", Line: 134, Note: "increments n2count, retransmits SABM/SABME(P=1), ax25_calculate_t1 + ax25_start_t1timer at function tail (173-174)") }),
         new TransitionSpec(
             Id: "t10_all_other_primitives_from_upper_layer",
             From: "AwaitingConnection",
@@ -116,7 +116,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("discard_queue", ActionKind.Processing), new ActionStep("set_layer_3_initiated", ActionKind.Processing) },
             Next: "AwaitingConnection",
             Notes: "DL-CONNECT while already waiting for connection: discard pending\nqueue and re-mark layer-3-initiated. Stays in AwaitingConnection\n(the existing T1 / RC counters continue).\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "dl_connect_request", Line: 1039, Note: "case state_1 (and state_5): discard_i_queue, layer_3_initiated=1, 'Keep current state'. Matches spec exactly") }),
         new TransitionSpec(
             Id: "t12_dl_unit_data_request",
             From: "AwaitingConnection",
@@ -125,7 +125,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("UI_command", ActionKind.SignalLower) },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/af_ax25.c", Function: "ax25_sendmsg", Line: 1657, Note: "SOCK_DGRAM path builds UI command, ax25_queue_xmit. Works while STATE_1") }),
         new TransitionSpec(
             Id: "t13_dl_data_request_layer_3_initiated",
             From: "AwaitingConnection",
@@ -133,8 +133,8 @@ public static class DataLink_AwaitingConnection
             Guard: "layer_3_initiated",
             Actions: new ActionStep[] { new ActionStep("push_frame_on_queue", ActionKind.InternalOut) },
             Next: "AwaitingConnection",
-            Notes: "verification_pending: the Yes/No branch labels on this diamond are\nnot drawn in the spec PNG — Tom assumed them when transcribing the\ngraphml. Reading: when L3 initiated the connection, we accept\nincoming I-frame payloads onto the queue for delivery once\nConnected. Could be inverted — flag for upstream check.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "verification_pending: the Yes/No branch labels on this diamond are\nnot drawn in the spec PNG — Tom assumed them when transcribing the\ngraphml. Reading: when L3 initiated the connection, we accept\nincoming I-frame payloads onto the queue for delivery once\nConnected. Could be inverted — flag for upstream check.\n\nDIRECTLY CORROBORATED: direwolf author independently flags the\nsame diamond as confusing at src/ax25_link.c:1466-1473: \"The flow\nchart shows 'push on I frame queue' if layer 3 initiated is NOT\nset. This seems backwards but I don't understand enough yet to\nmake a compelling argument that it is wrong. Implemented as in\nflow chart.\" Direwolf reads the figure with the **opposite** Yes/No\ninterpretation from this transcription (direwolf: !L3-init → push,\nL3-init → discard). Verification REALLY pending — there are now\nthree independent observations of confusion on this diamond\n(Tom, direwolf author, broader spec community).\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "data_request_good_size", Line: 1464, Note: "VERIFICATION PENDING: direwolf reads diamond INVERTED — L3-init → cdata_delete (discard), !L3-init → push to queue. Author comment 1466-1473 acknowledges confusion") }),
         new TransitionSpec(
             Id: "t14_dl_data_request_not_layer_3_initiated",
             From: "AwaitingConnection",
@@ -143,7 +143,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] {  },
             Next: "AwaitingConnection",
             Notes: "verification_pending: see t13's note. Reading: peer-initiated\nconnection — drop the data silently rather than queue it.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "data_request_good_size", Line: 1478, Note: "VERIFICATION PENDING: direwolf reads diamond INVERTED — !L3-init falls through to state_3/state_4 block (push to queue), opposite of this transcription") }),
         new TransitionSpec(
             Id: "t15_i_frame_pops_off_queue_layer_3_initiated",
             From: "AwaitingConnection",
@@ -152,7 +152,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("push_frame_on_queue", ActionKind.InternalOut) },
             Next: "AwaitingConnection",
             Notes: "verification_pending: shares the (label-assumed) diamond with t13.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "i_frame_pop_off_queue", Line: 6560, Note: "VERIFICATION PENDING: direwolf reads diamond INVERTED — L3-init → cdata_delete (discard from queue), opposite of this transcription. Author erratum comment at 6555-6558: 'The flow chart seems to be backwards'") }),
         new TransitionSpec(
             Id: "t16_i_frame_pops_off_queue_not_layer_3_initiated",
             From: "AwaitingConnection",
@@ -161,7 +161,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] {  },
             Next: "AwaitingConnection",
             Notes: "verification_pending: shares the (label-assumed) diamond with t14.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "i_frame_pop_off_queue", Line: 6543, Note: "VERIFICATION PENDING: direwolf falls through with no action when !L3-init — opposite of this transcription's reading (we'd push to queue). See t15") }),
         new TransitionSpec(
             Id: "t17_all_other_primitives_from_lower_layer",
             From: "AwaitingConnection",
@@ -170,7 +170,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] {  },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2_PROCESS", Line: 2066, Note: "default case silently releases buffer for unrecognised U-frame responses in states 1/2/4"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 91, Note: "default: break — any frametype not matched silently ignored in state 1") }),
         new TransitionSpec(
             Id: "t18_ui_received_p_eq_1",
             From: "AwaitingConnection",
@@ -179,7 +179,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine), new ActionStep("DM F=1", ActionKind.SignalLower) },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ui_frame", Line: 5115, Note: "if (cr==cmd && pf==1): state_1 falls through with 0/2/5 to DM(F=pf). UI_Check explicitly omitted per header comment 5102-5104: 'UI frames don't go thru here for normal operation'"), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2LINKACTIVE", Line: 1065, Note: "UI dispatched at active-link entry irrespective of state; no DM on P=1, no P-bit branch — divergence"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 229, Note: "DIVERGES: UI handled before state-machine dispatch, uniformly for all states; no DM(F=1) response on UI(P=1)") }),
         new TransitionSpec(
             Id: "t19_ui_received_p_eq_0",
             From: "AwaitingConnection",
@@ -188,7 +188,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine) },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ui_frame", Line: 5110, Note: "P=0 case falls through the cr==cmd&&pf==1 guard, function returns with no action. No UI_Check"), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2LINKACTIVE", Line: 1065, Note: "same path as t18; LinBPQ does not branch on P bit for UI"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 229, Note: "same UI bypass path as t18") }),
         new TransitionSpec(
             Id: "t20_control_field_error",
             From: "AwaitingConnection",
@@ -197,7 +197,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_L", ActionKind.SignalUpper) },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2_PROCESS", Line: 2049, Note: "default case sets SDINVC + SDFRMR (transitions to FRMR state); in states 1/2/4 just discards. Uses FRMR, not DL-ERROR(L)") }),
         new TransitionSpec(
             Id: "t21_info_not_permitted_in_frame",
             From: "AwaitingConnection",
@@ -215,7 +215,7 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_N", ActionKind.SignalUpper) },
             Next: "AwaitingConnection",
             Notes: null,
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2Routine", Line: 210, Note: "gross frame-length check drops short frames at entry; no DL-ERROR(N) per-state") }),
         new TransitionSpec(
             Id: "t23_sabm_received",
             From: "AwaitingConnection",
@@ -223,8 +223,8 @@ public static class DataLink_AwaitingConnection
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("UA", ActionKind.SignalLower) },
             Next: "AwaitingConnection",
-            Notes: null,
-            References: new ImplementationReference[] {  }),
+            Notes: "Collision recovery: SABM from peer while our own SABM is in flight.\nReply UA, stay (our own SABM may still get its UA).\n\nNOTE: direwolf author at src/ax25_link.c:4390-4392 explicitly\nconfirms this reading: \"Erratum! 2006 version shows SABME twice\nfor state 1. First one should be SABM in last page of Figure C4.2.\nOriginal appears to be correct.\" Triangulated upstream-spec\nfinding — the 2006 version of figc4.2 has a SABM/SABME swap bug.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.6", Quote: "Collision Recovery", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2LINKACTIVE", Line: 1243, Note: "SABM in state 1 (XID-sent) calls L2SABM, sends UA via SETUPNEWL2SESSION. State 2 collision falls through; F:=P semantics not modelled — verification pending"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "sabm_e_frame", Line: 4388, Note: "case state_1 !extended: build UA with f=p, stay in state 1. Author erratum comment 4390-4392 confirms original 1998 figure is correct (2006 has SABM/SABME swap bug)"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "AwaitingConnection::sabm", Line: 1250, Note: "returns SendUa{pf: packet.poll}; F:=P implicit via UA's pf field; stays in AwaitingConnection. Matches spec"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_std_in.c", Function: "ax25_std_state1_machine", Line: 42, Note: "sets modulus/window, sends UA with pf passed through (F:=P implicit), stays") }),
         new TransitionSpec(
             Id: "t24_sabme_received",
             From: "AwaitingConnection",
@@ -233,6 +233,6 @@ public static class DataLink_AwaitingConnection
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "AwaitingConnection22",
             Notes: "SABME received while we sent SABM (v2.0). Reply DM and move to\n'Awaiting 2.2 Connection' (state 5 in the figure / figc4.6) — peer\nwants v2.2, we'll handle the next collision step there.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "sabm_e_frame", Line: 4379, Note: "case state_1 extended: build DM with f=p, enter_new_state(state_5_awaiting_v22_connection). Matches spec; direwolf explicitly notes 'Don't combine with state 5. They are slightly different.' at 4377") }),
     };
 }
