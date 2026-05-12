@@ -6,7 +6,7 @@
 
 **As of:** 2026-05-12
 **Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. CI workflows live + green; LinBPQ + net-sim + XRouter all exercised by interop suite. Phase 2 starting (orchestration scaffolding).
-**Latest amendment:** [§17 entry 2026-05-12 Stryker tuning + Phase 2 starts](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-05-12 Pin docker interop image digests](#17-amendment-log)
 
 ---
 
@@ -648,6 +648,21 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-12 — Pin docker interop image digests
+
+`docker/compose.interop.yml` now references `m0lte/linbpq`,
+`ghcr.io/packethacking/xrouter`, and `ghcr.io/packethacking/net-sim` by
+`sha256:` digest rather than floating `latest` / `main` tags.
+
+Why: an upstream rebase or behavioural change would silently alter what
+"interop is green" means for a CI run. Pinning makes the change visible
+(a PR with a digest bump) and lets us roll back trivially when a peer
+change breaks something we depended on.
+
+`docker/README.md` documents the refresh procedure: `docker pull` →
+`docker inspect --format='{{index .RepoDigests 0}}'` → paste new digest,
+open a small PR with notes on what's new upstream.
 
 ### 2026-05-12 — Stryker tuning + Phase 2 scaffolding starts
 

@@ -4,16 +4,25 @@
 # real peers to talk to. The stack exposes well-known ports on the host that
 # Packet.Interop.Tests dials.
 #
-# Note: image tags below should be PINNED to commit SHAs before the v1 cut.
-# For Phase 0 we use the floating tags so the developer experience is "just
-# `docker compose up`" — the interop job in CI overrides these via env vars.
+# Image references are PINNED to sha256 digests for reproducibility — a CI
+# run two months from now sees the same peer behaviour as the one today.
+# When you want to refresh against a newer upstream image:
+#
+#   docker pull m0lte/linbpq:latest
+#   docker inspect --format='{{index .RepoDigests 0}}' m0lte/linbpq:latest
+#   # paste the resulting hash below, commit the change in a small PR
+#
+# Same procedure for the other two images. The PR should mention what
+# changed upstream (release notes, behavioural deltas) so reviewers can
+# weigh whether the bump is safe.
 
 name: packetnet-interop
 
 services:
 
   linbpq:
-    image: m0lte/linbpq:latest
+    # m0lte/linbpq:latest @ 2026-05-12
+    image: m0lte/linbpq@sha256:872343ffb76a52316b1ae42a42d3c0893f545ccd577301ebc7c4455b292a8025
     container_name: pn-linbpq
     restart: unless-stopped
     volumes:
@@ -40,7 +49,8 @@ services:
         ipv4_address: 172.30.0.10
 
   xrouter:
-    image: ghcr.io/packethacking/xrouter:latest
+    # ghcr.io/packethacking/xrouter:latest @ 2026-05-12
+    image: ghcr.io/packethacking/xrouter@sha256:6a885470e19d5c8ee3033d224a30a8675d5b1957428a832aa89746f37ec0b611
     container_name: pn-xrouter
     restart: unless-stopped
     volumes:
@@ -56,7 +66,8 @@ services:
         ipv4_address: 172.30.0.11
 
   netsim:
-    image: ghcr.io/packethacking/net-sim:main
+    # ghcr.io/packethacking/net-sim:main @ 2026-05-12
+    image: ghcr.io/packethacking/net-sim@sha256:71aed5bf5224966a4a640a20bc2bdb8ae5f45f601b0d8e2614c1463504d78417
     container_name: pn-netsim
     restart: unless-stopped
     volumes:

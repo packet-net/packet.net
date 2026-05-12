@@ -17,14 +17,13 @@ Once everything is healthy:
 | LinBPQ web UI | http://localhost:8008 | admin/admin |
 | LinBPQ telnet | localhost:8010 | node prompt (user/pass) |
 | LinBPQ AGW | localhost:8000 | external app socket |
-| LinBPQ KISS-TCP | localhost:8105 | KISS port 1 |
-| LinBPQ AXUDP | localhost:8093/udp | AXUDP port 2 |
+| LinBPQ AXUDP | localhost:8093/udp | AXUDP port (BPQAXIP driver) |
 | Xrouter telnet | localhost:8023 | node prompt |
-| Xrouter JSON API | http://localhost:8086 | `/api/v1/*` |
-| Xrouter AXUDP | localhost:8095/udp | AXUDP listener |
+| Xrouter web UI | http://localhost:8086 | + `/exec?cmd=…` |
+| Xrouter AXUDP | localhost:8095/udp | peer-pair listener (UDPREMOTE=8094) |
 | net-sim web UI | http://localhost:8080 | topology + start/stop |
-| net-sim KISS A | localhost:8100 | afsk1200 town channel |
-| net-sim KISS B | localhost:8101 | gfsk9600 backbone |
+| net-sim KISS A | localhost:8100 | afsk1200 node A |
+| net-sim KISS B | localhost:8101 | afsk1200 node B |
 
 Tear down:
 
@@ -32,11 +31,35 @@ Tear down:
 docker compose -f docker/compose.interop.yml down -v
 ```
 
-## Pinning
+## Image pinning
 
-The image tags here are floating (`latest` / `main`) for dev convenience. CI
-pins them via env vars set in `.github/workflows/interop.yml`. Before tagging
-a v1 release we will pin the tags here too.
+Image references in `compose.interop.yml` are pinned to **sha256 digests**
+rather than floating tags. This makes a CI run two months from now behave
+identically to one today — useful for keeping interop scenarios reproducible
+when an upstream image rebases or changes behaviour.
+
+To refresh against a newer upstream image:
+
+```sh
+# 1. Pull the floating tag locally.
+docker pull m0lte/linbpq:latest
+
+# 2. Read the new digest.
+docker inspect --format='{{index .RepoDigests 0}}' m0lte/linbpq:latest
+
+# 3. Replace the corresponding `image:` line in compose.interop.yml.
+#    The `image:` value should be of the form
+#      <repo>@sha256:<hex>
+#    Keep the comment above it noting the floating tag and the date you
+#    pulled, so future-you can see how stale the pin is.
+
+# 4. Open a small PR. The PR description should call out what changed
+#    upstream (release notes, behavioural deltas) so reviewers can weigh
+#    whether the bump is safe.
+```
+
+Same procedure applies to `ghcr.io/packethacking/xrouter` and
+`ghcr.io/packethacking/net-sim`.
 
 ## Files
 
