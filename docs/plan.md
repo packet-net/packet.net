@@ -663,6 +663,39 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — Cross-check figc4.1 Disconnected against AX.25 spec prose
+
+Validation option (4) from the previous discussion: read AX.25 §6.3.5
+(Disconnected State, 4 paragraphs) and §6.3.1 (Connection Establishment,
+covering SABM(E) handling), and verify each of the 17 transitions in
+`disconnected.sdl.yaml` either has explicit prose backing or is a
+figure-authoritative detail the prose defers to the SDL appendix.
+
+**No discrepancies found.** Every transition either has explicit prose
+backing or is documented as figure-authoritative.
+
+Citations dropped into each transition's `notes:` field, prefixed
+`spec_prose:`. The convention extends the §2.3 "Pin implementation
+evidence" rule to spec-text evidence — the `notes:` field is now the
+durable home for both forms of validation.
+
+Sample citations:
+- t05 (`all_other_commands`) → §6.3.5 ¶3 verbatim.
+- t11 (UI with P=1) → §6.3.5 ¶3, including the figure-only detail that
+  F is explicitly set to 1 (vs. F := P for non-UI commands).
+- t13 (DISC) → §6.3.5 ¶1 ("transmits a DM frame in response to a DISC
+  command").
+- t14/t16 (SABM/SABME accepted) → §6.3.1 ¶1 (UA out, reset V()), with
+  the Connected-entry housekeeping (DL_CONNECT_indication, SRT/T1V
+  init, start_T3, RC := 0) noted as figure-authoritative.
+- Catch-all transitions (t04, t06) and unexpected-frame transitions
+  (t07–t10) flagged as catch-all / figure-only with no prose backing.
+
+Next pass (option 3 — pin implementation evidence) will add citations
+to the same `notes:` field referencing LinBPQ source, especially for
+the t14/t16 long chains where action ordering isn't constrained by the
+prose.
+
 ### 2026-05-12 — Validate figc4.1 Disconnected: orchestrator smoke test + codegen lints
 
 Two pieces of validation against the freshly-transcribed
