@@ -663,6 +663,71 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — Pin implementation references for all 17 figc4.1 transitions
+
+Stage 2 of structured implementation references — citations for the
+remaining 16 transitions in `disconnected.sdl.yaml` (t13 was already
+pinned in the previous PR as the schema worked example). Citations
+across all four pinned sources (LinBPQ, Dire Wolf, Habets' rax25, Linux
+kernel mod-orphan) plus structured `spec_prose` entries where prose
+backing exists.
+
+Work parallelised via four subagents (one per codebase), then merged.
+Each agent returned a `transition_id → {path, function, line, note}`
+table; I merged them into the YAML references[] blocks with cross-
+implementation context.
+
+**Cross-implementation findings durably captured in transition notes**:
+
+- **UA-in-disconnected DL_ERROR(C,D)** flagged as spec quirk by **both
+  direwolf and rax25 authors independently**:
+  - direwolf src/ax25_link.c:4823: "Erratum: flow chart says errors C
+    and D. Neither one really makes sense."
+  - rax25 src/state.rs:1158: "1998 & 2017 bug: C and D make no sense
+    here."
+  Two independent implementers reaching the same conclusion is strong
+  evidence of an upstream spec issue. Recorded in t10's notes as a
+  candidate spec issue worth tracking.
+
+- **Dire Wolf explicitly removes the "Able to Establish?" diamond**
+  (src/ax25_link.c:4337: "We are always willing to accept connections.").
+  t15 and t17 (SABM/SABME refuse paths) have no direwolf equivalent.
+
+- **LinBPQ doesn't support SABME / Mod-128** at all — rejects SABME
+  with FRMR via L2SENDINVALIDCTRL (L2FORUS:693) rather than going
+  through any 'able to establish' branch. t16 has no LinBPQ
+  equivalent; t17 sends FRMR not DM.
+
+- **Linux kernel mod-orphan handles UI uniformly across states**
+  (APRS-style, before the state-0 check). Doesn't implement the spec's
+  "UI with P=1 → DM" response at all. Captured in t11/t12 notes.
+
+- **Linux kernel raises no DL-ERROR indications** for L/M/N codes —
+  silently drops malformed frames. t07/t08/t09 omits.
+
+- **LinBPQ requires P=1 to send DM** on the catch-all command path
+  (L2FORUS:735), where the figure responds unconditionally with F:=P.
+  Confirmed across t05, t11, t13.
+
+- **`DL-UNIT-DATA Request` (t02) bypasses the state machine in all
+  four implementations** — direwolf explicit comment "not implemented.
+  APRS & KISS bypass this"; rax25 has no upper-layer UI send method;
+  LinBPQ uses CommonCode.c::UISend_AX_Datagram outside L2; Linux uses
+  the SOCK_DGRAM sendmsg path independently of LAPB state. Suggests
+  the figure's transition is more service-primitive boilerplate than
+  realised behaviour.
+
+- **rax25 deliberately deviates** from the figure in t14/t16: emits
+  only a `debug!` log instead of `DL_CONNECT_indication` to upper
+  layer when accepting SABM(E). Worth flagging if we use rax25 as
+  reference for our own connect-indication handling.
+
+These findings reinforce the value of the cross-reference exercise:
+two of the four implementations independently flagged the same spec
+issue, and several diverge from the figure in ways that affect
+interop. Every divergence is now durably documented in the YAML's
+references[] notes.
+
 ### 2026-05-12 — Structured implementation references (schema + worked example)
 
 Schema, runtime, and codegen bumps to support **structured cross-reference

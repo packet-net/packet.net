@@ -26,7 +26,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("DL_DISCONNECT_confirm", ActionKind.SignalUpper) },
             Next: "Disconnected",
             Notes: "spec_prose: not in §6.3.5; standard DL primitive behaviour —\nif the upper layer requests disconnect while already disconnected,\nthe data-link immediately confirms back. See §6.3.4 (link\ndisconnection procedure) for the broader context.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.4", Quote: "link disconnection procedure", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "InformPartner", Line: 4125, Note: "upper-layer-initiated disconnect; no DL_DISCONNECT_confirm — closes via CLEAROUTLINK/CloseSessionPartner after DISC handshake"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "dl_disconnect_request", Line: 1100, Note: "state_0 case logs 'Disconnected from' info + calls server_link_terminated; no explicit confirm primitive (rolled into client notification)"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::disconnect", Line: 1126, Note: "logs 'Disconnect while already disconnected' to stderr and returns empty; no confirm emitted (deviation from spec)"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/af_ax25.c", Function: "ax25_release", Line: 1012, Note: "folds DL_DISCONNECT_request into socket release(); state-0 case is a near no-op confirm") }),
         new TransitionSpec(
             Id: "t02_dl_unit_data_request",
             From: "Disconnected",
@@ -35,7 +35,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("UI_command", ActionKind.SignalLower) },
             Next: "Disconnected",
             Notes: "spec_prose: §6.3.5 silent; UI frame handling defined in §4.3.3.6\n(UI frame) and §6.4. Connectionless data path — disconnected\nstate can still send UI frames at the upper layer's request.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.4", Quote: "Unnumbered Information frame handling", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "CommonCode.c", Function: "UISend_AX_Datagram", Line: 4013, Note: "outbound UI send bypasses state machine entirely — no LINK consulted"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/af_ax25.c", Function: "ax25_sendmsg", Line: 1655, Note: "SOCK_DGRAM path builds UI command frame and ax25_queue_xmit's straight out; independent of LAPB state") }),
         new TransitionSpec(
             Id: "t03_dl_connect_request",
             From: "Disconnected",
@@ -44,7 +44,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("Establish_Data_Link", ActionKind.Subroutine), new ActionStep("set_layer_3_initiated", ActionKind.Processing) },
             Next: "AwaitingConnection",
             Notes: "spec_prose: §6.3.5 ¶2 (\"a TNC may initiate a link set up as\noutlined in connection establishment\") + §6.3.1 ¶1 (sends a SABM\ncommand frame and starts T1). Establish_Data_Link is the\nsubroutine defined in figc4.7.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶2 + §6.3.1 ¶1", Quote: "a TNC may initiate a link set up as outlined in connection establishment", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "InternalL2SETUPCROSSLINK", Line: 1858, Note: "L3 crosslink path; sets L2STATE=2 (or 1 for XID-first) then SENDSABM"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "dl_connect_request", Line: 1008, Note: "state_0 case calls INIT_T1V_SRT, set_version_2_0/2_2, establish_data_link, layer_3_initiated=1; chooses state_1 or state_5 based on v2.0/v2.2 preference"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::connect", Line: 1112, Note: "sets modulus/srt/t1v/layer3_initiated, transitions to AwaitingConnection, calls establish_data_link(); author comment 'It says \"SAT\" in the PDF, but surely means SRT?' flags spec typo"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/af_ax25.c", Function: "ax25_connect", Line: 1313, Note: "ax25_std_establish_data_link does SRT/T1V init + SABM(E) send + RC:=0; state:=AX25_STATE_1. set_layer_3_initiated implicit (no explicit flag in Linux)") }),
         new TransitionSpec(
             Id: "t04_all_other_primitives_from_lower_layer",
             From: "Disconnected",
@@ -53,7 +53,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] {  },
             Next: "Disconnected",
             Notes: "spec_prose: catch-all column with no prose backing. Receive any\nunhandled primitive drawn with the \"Signal reception from Lower\nLayer\" shape (d5), stay in Disconnected, do nothing. Standard\nSDL convention for \"everything else from this source class\".\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 330, Note: "catch-all 'goto free' for non-SABM(E) state-0 frames that aren't ours — silently dropped, no action") }),
         new TransitionSpec(
             Id: "t05_all_other_commands",
             From: "Disconnected",
@@ -62,7 +62,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
             Notes: "spec_prose: §6.3.5 ¶3 — \"Any TNC receiving a command frame other\nthan a SABM(E) or UI frame…responds with a DM frame with the F\nbit set to '1'. The offending frame is ignored.\" Catch-all for\nreceived command frames not handled by SABM/SABME/DISC/UI\nexplicitly. F := P sets F to the incoming P bit (typically 1 on a\npolled command frame).\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶3", Quote: "Any TNC receiving a command frame other than a SABM(E) or UI frame with the P bit set to '1' responds with a DM frame with the F bit set to '1'. The offending frame is ignored.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 735, Note: "DM only if CMD+P=1, else releases buffer silently — diverges from figure (figure responds unconditionally on any unhandled command)"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ui_frame", Line: 5114, Note: "split per-frame: only UI command with P=1 sends DM here (SABM/SABME/DISC have own handlers). Unrecognized U frames fall to frame_type_U and are silently dropped — no catch-all DM"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 327, Note: "state-0 non-SABM(E) path: any command frame to us (except DM) gets a DM via ax25_return_dm; F:=P implicit via path reversal") }),
         new TransitionSpec(
             Id: "t06_all_other_primitives_from_upper_layer",
             From: "Disconnected",
@@ -80,7 +80,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_L", ActionKind.SignalUpper) },
             Next: "Disconnected",
             Notes: "spec_prose: §C \"error indications are discussed in the SDL\nappendices\" — code letter (L) is figure-authoritative.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 693, Note: "SABME (and SREJ when no 2.2 support) treated as invalid CTRL — L2SENDINVALIDCTRL sends FRMR rather than DL_ERROR_indication"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 207, Note: "malformed frames silently dropped via ax25_addr_parse() == NULL → goto free; no DL_ERROR(L) raised") }),
         new TransitionSpec(
             Id: "t08_info_not_permitted_in_frame",
             From: "Disconnected",
@@ -98,7 +98,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_N", ActionKind.SignalUpper) },
             Next: "Disconnected",
             Notes: "spec_prose: figure-authoritative (DL-ERROR code N). See t07 note.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2Routine", Line: 210, Note: "min-length check releases buffer; no DL_ERROR raised — just Debugprintf and discard"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/lib.rs", Function: "Packet::parse", Line: 549, Note: "length check returns anyhow::Error 'AX.25 in ext mode, but S/U frame is too short' rather than DlError::N (variant defined at src/state.rs:146 but unused)") }),
         new TransitionSpec(
             Id: "t10_ua_received",
             From: "Disconnected",
@@ -106,8 +106,8 @@ public static class DataLink_Disconnected
             Guard: null,
             Actions: new ActionStep[] { new ActionStep("DL_ERROR_indication_C_D", ActionKind.SignalUpper) },
             Next: "Disconnected",
-            Notes: "spec_prose: unexpected UA while disconnected (UA is a response;\nwe didn't send a command). Codes C and D are figure-authoritative.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "spec_prose: unexpected UA while disconnected (UA is a response;\nwe didn't send a command). Codes C and D are figure-authoritative.\n\nNOTE: Both direwolf and rax25 authors independently flagged C,D\nas a spec quirk in their source comments. direwolf:4823 \"Erratum:\nflow chart says errors C and D. Neither one really makes sense.\";\nrax25:1158 \"1998 & 2017 bug: C and D make no sense here.\" Worth\ntracking as a candidate upstream spec issue.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ua_frame", Line: 4821, Note: "state_0 case logs Protocol Error C; author erratum comment at 4823: 'flow chart says errors C and D. Neither one really makes sense.'"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::ua", Line: 1158, Note: "returns [DlError::C, DlError::D]; author comment '1998 & 2017 bug: C and D make no sense here' — flags same spec issue as direwolf"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 327, Note: "falls into state-0 catch-all; Linux doesn't distinguish UA from any other unexpected command, just DMs — no DL_ERROR(C,D) raised") }),
         new TransitionSpec(
             Id: "t11_ui_received_p_eq_1",
             From: "Disconnected",
@@ -116,7 +116,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine), new ActionStep("F := 1", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
             Notes: "spec_prose: §6.3.5 ¶3 — \"UI frame with the P bit set to '1'\nresponds with a DM frame with the F bit set to '1'\". Figure\nsets F := 1 explicitly (vs F := P for other command frames in\nt05) — i.e. the spec dictates F=1 specifically for polled UI.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶3", Quote: "UI frame with the P bit set to '1' responds with a DM frame with the F bit set to '1'", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 656, Note: "UI handled by PID switch (NetROM/IP/discard); does not send DM on P=1 — diverges from figure"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ui_frame", Line: 5114, Note: "sends DM (F=P) in state_0; no UI_Check subroutine — UI payload routing to upper layer happens elsewhere (APRS/KISS)"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::ui", Line: 1132, Note: "calls ui_check then if packet.push (P=1) pushes SendDm{pf:true}; ui_check at src/state.rs:567 comment '1998 Spec bug: error Q says this is also for UI frames with Poll set' — flags 4.3.3.6 reading vs erratum"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 229, Note: "DIVERGENCE: Linux handles UI before any state-0 check, uniformly for all states (APRS-style); no DM sent on UI P=1 — the spec's F:=1/send-DM behaviour is absent") }),
         new TransitionSpec(
             Id: "t12_ui_received_p_eq_0",
             From: "Disconnected",
@@ -125,7 +125,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine) },
             Next: "Disconnected",
             Notes: "spec_prose: §6.3.5 ¶3 — UI with P=0 falls under \"the offending\nframe is ignored\" (no DM response). UI_Check subroutine still\nruns to surface the UI payload to upper layer.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶3", Quote: "The offending frame is ignored.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 656, Note: "same UI branch handles P=0 and P=1 identically; no UI_Check subroutine"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::ui", Line: 1132, Note: "when packet.push==false, only ui_check result (DL-UNIT_DATA indication or DlError::Q/K) is returned, no DM"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 229, Note: "same UI bypass path as t11; PID switch at line 238 dispatches IP/ARP/text/raw — UI_Check semantics not a discrete subroutine") }),
         new TransitionSpec(
             Id: "t13_disc_received",
             From: "Disconnected",
@@ -143,7 +143,7 @@ public static class DataLink_Disconnected
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("set_version_2_0", ActionKind.Processing), new ActionStep("UA", ActionKind.SignalLower), new ActionStep("Clear_Exception_Conditions", ActionKind.Subroutine), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("DL_CONNECT_indication", ActionKind.SignalUpper), new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("RC := 0", ActionKind.Processing) },
             Next: "Connected",
             Notes: "spec_prose: §6.3.5 ¶1 + §6.3.1 ¶1 — \"responds with a UA response\nframe and resets all of its internal state variables (V(S), V(A)\nand V(R))\". The figure adds DL_CONNECT_indication (notify upper\nlayer), SRT/T1V init, start_T3, RC := 0 — the Connected-state\nentry housekeeping not detailed in this prose paragraph but\nimplied by §6.7 (timer parameters) and the SDL appendix.\n",
-            References: new ImplementationReference[] {  }),
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶1 + §6.3.1 ¶1", Quote: "responds with a UA response frame and resets all of its internal state variables (V(S), V(A) and V(R))", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2SABM", Line: 1292, Note: "SETUPNEWL2SESSION (L2Code.c:1650) resets state and sets L2STATE; UA sent via L2SENDUA at line 1356; no explicit set_version_2_0 (LinBPQ tracks Ver2point2 separately)"), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "sabm_e_frame", Line: 4333, Note: "state_0 case with extended=0; no 'able?' decision — author comment at 4337: 'We are always willing to accept connections.' RC:=0 noted as direwolf enhancement at 4371"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::sabm", Line: 1141, Note: "calls data.set_version_2() then sabm_and_sabme helper (line 1077); NOTE rax25 does NOT emit DL_CONNECT_indication to upper layer (only a debug! log)"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 332, Note: "accept block 332-420: ax25_make_new, modulus=AX25_MODULUS, send UA (404), state:=AX25_STATE_3 (411), start t3+idle. DL_CONNECT_indication implicit via sk_acceptq_added; V(s/a/r):=0 in ax25_create_cb/ax25_fillin_cb") }),
         new TransitionSpec(
             Id: "t15_sabm_received_unable",
             From: "Disconnected",
@@ -151,8 +151,8 @@ public static class DataLink_Disconnected
             Guard: "not able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: §6.3.1 ¶3 — \"If the distant TNC receives a SABM(E)\ncommand and cannot enter the indicated state, it sends a DM frame.\"\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "spec_prose: §6.3.1 ¶3 — \"If the distant TNC receives a SABM(E)\ncommand and cannot enter the indicated state, it sends a DM frame.\"\n\nNOTE: direwolf has no equivalent for this transition — author\ncomment at src/ax25_link.c:4337 reads \"We are always willing to\naccept connections\" and the SABM-refuse branch is unconditionally\nremoved.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶3", Quote: "If the distant TNC receives a SABM(E) command and cannot enter the indicated state, it sends a DM frame.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2SABM", Line: 1310, Note: "multiple unable-paths (no link slot, CLOSING, interlock, SETUPNEWL2SESSION fail, user-limit, KISSHF busy) all call L2SENDDM"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::sabm_and_sabme", Line: 1079, Note: "`if !data.able_to_establish { return vec![Action::SendDm { pf }]; }` — handles unable branch for both SABM and SABME"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 345, Note: "listener present but acceptq full or ax25_make_new failed → ax25_return_dm; no-listener-and-can't-alloc-cb path at line 366 also fits") }),
         new TransitionSpec(
             Id: "t16_sabme_received_able",
             From: "Disconnected",
@@ -160,8 +160,8 @@ public static class DataLink_Disconnected
             Guard: "able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("set_version_2_2", ActionKind.Processing), new ActionStep("UA", ActionKind.SignalLower), new ActionStep("Clear_Exception_Conditions", ActionKind.Subroutine), new ActionStep("V(s) := 0", ActionKind.Processing), new ActionStep("V(a) := 0", ActionKind.Processing), new ActionStep("V(r) := 0", ActionKind.Processing), new ActionStep("DL_CONNECT_indication", ActionKind.SignalUpper), new ActionStep("SRT := Initial Default", ActionKind.Processing), new ActionStep("T1V := 2 * SRT", ActionKind.Processing), new ActionStep("start_T3", ActionKind.Processing), new ActionStep("RC := 0", ActionKind.Processing) },
             Next: "Connected",
-            Notes: "spec_prose: as t14 — §6.3.5 ¶1 + §6.3.1 ¶1. SABME is the v2.2\nvariant of SABM; this column sets Version 2.2 and otherwise\nmirrors t14's chain.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "spec_prose: as t14 — §6.3.5 ¶1 + §6.3.1 ¶1. SABME is the v2.2\nvariant of SABM; this column sets Version 2.2 and otherwise\nmirrors t14's chain.\n\nNOTE: LinBPQ doesn't support SABME / Mod-128 at all — rejects\nSABME outright at L2FORUS:693 with FRMR (L2SENDINVALIDCTRL).\nThe 'able' branch has no equivalent there.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶1 + §6.3.1 ¶1", Quote: "responds with a UA response frame and resets all of its internal state variables (V(S), V(A) and V(R))", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "sabm_e_frame", Line: 4333, Note: "same state_0 branch as t14 with extended=1 selecting set_version_2_2 at line 4341; unified handler, no separate code path"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::sabme", Line: 1147, Note: "calls data.set_version_2_2() then sabm_and_sabme helper (line 1077); same body as t14 — same missing DL_CONNECT_indication caveat"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 396, Note: "same accept block as t14; SABME branch at 396-398 sets ax25->modulus = AX25_EMODULUS (version 2.2); otherwise identical") }),
         new TransitionSpec(
             Id: "t17_sabme_received_unable",
             From: "Disconnected",
@@ -169,7 +169,7 @@ public static class DataLink_Disconnected
             Guard: "not able_to_establish",
             Actions: new ActionStep[] { new ActionStep("F := P", ActionKind.Processing), new ActionStep("DM", ActionKind.SignalLower) },
             Next: "Disconnected",
-            Notes: "spec_prose: as t15 — §6.3.1 ¶3.\n",
-            References: new ImplementationReference[] {  }),
+            Notes: "spec_prose: as t15 — §6.3.1 ¶3.\n\nNOTE: LinBPQ treats SABME as invalid CTRL regardless of able/unable\n(sends FRMR via L2SENDINVALIDCTRL rather than DM). direwolf has no\n'unable' branch at all.\n",
+            References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.1 ¶3", Quote: "If the distant TNC receives a SABM(E) command and cannot enter the indicated state, it sends a DM frame.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2FORUS", Line: 693, Note: "SABME always treated as invalid CTRL; sends FRMR via L2SENDINVALIDCTRL rather than DM — diverges from figure"), new ImplementationReference(Source: "rax25", Cite: null, Quote: null, Path: "src/state.rs", Function: "Disconnected::sabm_and_sabme", Line: 1079, Note: "same helper branch as t15: returns SendDm{pf} when !able_to_establish, regardless of whether caller was sabm or sabme"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 345, Note: "same DM-return path as t15; Linux doesn't distinguish SABM vs SABME when refusing — SABM/SABME bit is read only on the accept path (line 396)") }),
     };
 }
