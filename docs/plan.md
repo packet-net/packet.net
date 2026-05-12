@@ -5,8 +5,8 @@
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
 **As of:** 2026-05-12
-**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. PR-only workflow + first push to GitHub. Phase 2 next.
-**Latest amendment:** [§17 entry 2026-05-12 PR workflow + CI healthcheck portability](#17-amendment-log)
+**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. CI workflows live + green; LinBPQ + net-sim + XRouter all exercised by interop suite. Phase 2 next.
+**Latest amendment:** [§17 entry 2026-05-12 XRouter AXUDP interop + FCS-on-the-wire finding](#17-amendment-log)
 
 ---
 
@@ -648,6 +648,38 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-12 — XRouter AXUDP interop + FCS-on-the-wire finding
+
+Adds XRouter to the cohort of peers we have working interop tests against.
+
+- **Container brings up cleanly** with `docker/xrouter/XROUTER.CFG`. Key
+  config discoveries: keyword is `NODECALL` (not `CALL`), `IPADDRESS`
+  doubles as the bind address for all IP services (so `127.0.0.1` makes
+  AXUDP unreachable from outside the container), comments must start in
+  column 1, AXUDP is configured as a peer-pair (not a generic listener)
+  via `INTERFACE TYPE=AXUDP` plus `PORT UDPLOCAL=…`, `IPLINK=…`,
+  `UDPREMOTE=…`. We pin `IPADDRESS=172.30.0.11` to the static bridge IP
+  set in the compose file so XRouter binds where docker NAT will reach
+  it, and set `IPLINK=172.30.0.1` (the bridge gateway, which is where
+  host-originated traffic appears from inside the container).
+- **XRouter requires FCS on AXUDP frames** ("AXUDP with CRC" per its
+  docs). Frames without a trailing CRC-16 are counted as "other
+  non-AXUDP ignored". LinBPQ's BPQAXIP driver accepts the FCS-less form
+  too, so the two listeners aren't directly compatible — encoders need
+  to know which they're talking to.
+- **FCS byte order on the wire = low byte first, then high byte.** AX.25
+  v2.2 §3.8 says "the FCS shall be transmitted MSB first" but that
+  refers to the bit-stream order on the radio, not the byte order in
+  serialised octets. Verified empirically: XRouter accepts low-byte-
+  first as "valid AXUDP received", rejects high-byte-first as "non-
+  AXUDP".
+- New API surface:
+  - `Ax25Frame.WriteToWithFcs(Span<byte>)` / `Ax25Frame.ToBytesWithFcs()`
+  - `AxudpSocket.SendAsync(..., includeFcs: bool, ...)`
+- New interop test: `Packet.Interop.Tests/Xrouter/XrouterAxudpInterop.cs`
+  with two scenarios — web UI reachability and "send a UI frame, watch
+  XRouter's `stats axudp` valid-counter tick".
 
 ### 2026-05-12 — PR-only workflow + CI healthcheck portability
 
