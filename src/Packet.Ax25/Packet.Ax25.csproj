@@ -1,5 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- Event / state names mirror the AX.25 spec's vocabulary verbatim
+         (e.g. IFramePopsOffQueue ← "I_frame_pops_off_queue"). The analyzer's
+         "no Queue/Stack/Collection suffix" rule would mangle that lineage. -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
   </ItemGroup>

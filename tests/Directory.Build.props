@@ -12,12 +12,17 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- Assertion libraries: AwesomeAssertions is the convention for new tests
+         (license-friendly FluentAssertions fork). Shouldly is kept for the
+         existing test corpus and remains auto-imported. See plan §2.8. -->
     <PackageReference Include="Shouldly" />
+    <PackageReference Include="AwesomeAssertions" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
+    <Using Include="AwesomeAssertions" />
   </ItemGroup>
 
 </Project>

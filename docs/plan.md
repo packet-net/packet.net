@@ -5,8 +5,8 @@
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
 **As of:** 2026-05-12
-**Current phase:** Phase 1 ✅ closed. Autopilot lap ✅ closed. CI workflows live + green; LinBPQ + net-sim + XRouter all exercised by interop suite. Phase 2 starting (orchestration scaffolding).
-**Latest amendment:** [§17 entry 2026-05-12 Pin docker interop image digests](#17-amendment-log)
+**Current phase:** Phase 2 starting — orchestration scaffolding (events, context, timer driver) lands first; action dispatch + Ax25Session runner to follow.
+**Latest amendment:** [§17 entry 2026-05-12 Phase 2 foundations: events, context, timer driver](#17-amendment-log)
 
 ---
 
@@ -102,6 +102,14 @@ Packet.NET is pre-alpha. There are no shipping consumers, no upstream code that 
 ### 2.6 Keep this document current
 
 Every meaningful change to direction, scope, or working agreement lands here as an [amendment log entry](#17-amendment-log) and the relevant section above it is updated in the same PR. See [§18 How to update this document](#18-how-to-update-this-document).
+
+### 2.7 No `DateTime.Now` / wall-clock in production code
+
+Code that needs the current time, or that schedules anything timer-shaped, takes a `System.TimeProvider` and uses its `GetUtcNow()` / `CreateTimer()` etc. Production wires `TimeProvider.System`; tests inject `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) and advance virtual time deterministically with `Advance(TimeSpan)`. No `DateTime.Now`, no `Thread.Sleep` in test code, no real-time waits.
+
+### 2.8 New tests use AwesomeAssertions
+
+For tests added from 2026-05-12 onwards, prefer AwesomeAssertions (license-friendly FluentAssertions fork). Both Shouldly and AwesomeAssertions are auto-imported via `tests/Directory.Build.props`. Existing Shouldly tests stay as-is — only migrated when touched for an unrelated reason.
 
 ---
 
@@ -648,6 +656,42 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-12 — Phase 2 foundations: events, context, timer driver
+
+First slice of the AX.25 state-machine orchestrator scaffolding. Pure
+data structures — no dispatch yet.
+
+- `Packet.Ax25.Session.Ax25Event` — abstract record + ~25 subtypes
+  covering every event name in `/spec-sdl/events.yaml` (DL primitives,
+  MDL primitives, frame-received variants, timer expiries, internal
+  events). Each subtype's `Name` matches the YAML's `on:` strings
+  verbatim, ready for the upcoming dispatcher's lookup.
+- `Packet.Ax25.Session.Ax25SessionContext` — mutable per-session state:
+  sequence variables (V(S), V(A), V(R), RC), flags (own/peer-receiver
+  busy, acknowledge-pending, reject-exception, layer-3-initiated,
+  …), XID-negotiated link parameters (N1=256, N2=10, k, modulus),
+  I-frame queue + sent-frame map. Field names mirror the spec's so the
+  action-dispatch switch (next PR) can map clean.
+- `ITimerScheduler` + `SystemTimerScheduler(TimeProvider)` — the
+  scheduler takes a `System.TimeProvider`, so the same class drives
+  real-time (pass `TimeProvider.System`) and virtual-time tests (pass
+  `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing`,
+  call `Advance(TimeSpan)` to fire timers deterministically).
+
+23 new tests. CA1711 ("avoid Queue/Stack/Collection suffixes") suppressed
+project-wide on `Packet.Ax25` since AX.25 event names like
+`IFramePopsOffQueue` are spec-dictated.
+
+New working agreements introduced in this slice:
+
+- [§2.7](#27-no-datetimenow--wall-clock-in-production-code): no
+  `DateTime.Now` in production; use `TimeProvider`. Tests inject
+  `FakeTimeProvider`, never real time / `Thread.Sleep`.
+- [§2.8](#28-new-tests-use-awesomeassertions): new tests use
+  AwesomeAssertions (license-friendly FluentAssertions fork). Existing
+  Shouldly tests stay unless touched. Both libraries auto-imported via
+  `tests/Directory.Build.props`.
 
 ### 2026-05-12 — Pin docker interop image digests
 
