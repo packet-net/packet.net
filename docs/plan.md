@@ -663,6 +663,41 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — spec_prose cross-check for figc4.4
+
+Closing out the figc4.4 validation chain (task #64) with `spec_prose`
+citations added to 49 of the 69 transitions on the Connected page.
+Citations pull from §6.3.3 (information-transfer phase), §6.3.4 (link
+disconnection), §6.3.7 (UI / connectionless), §6.4.x (I-frame send +
+receive, REJ/SREJ, RNR, T1 expiry), §6.5 (resetting procedure), §6.7.1
+(timer T3).
+
+20 transitions remain without explicit prose backing — figure-only
+specifics like DL-ERROR code letters E/F/K/L/M/N/O, unexpected-DM
+handling, and the various v22/v20 splits. Same pattern as previous
+figures: the figure is authoritative for these by design (spec says
+"error indications are discussed in the SDL appendices").
+
+Notable findings preserved verbatim from §6.4.5 / §6.4.4.x:
+- §6.4.5 says "When a TNC receives a frame with an incorrect FCS, an
+  invalid frame, or a frame with an improper address, that frame is
+  discarded." The figure DIVERGES — t32-t37 (frame-format errors) all
+  go through Establish_Data_Link + state transition rather than a
+  silent discard. The implementations agree more with the prose
+  (Linux silently drops, LinBPQ uses FRMR, direwolf/rax25 don't surface
+  DL-ERROR codes at all). Recorded on the references entries.
+- §6.5 ¶2 "A TNC initiates a reset procedure whenever it receives an
+  unexpected UA response frame, or after receipt of a FRMR frame from
+  a TNC using an older version of the protocol." backs t44-t47.
+
+Merger script approach (same as figc4.4's implementation refs PR):
+Python text-injection that finds each `id: tNN_` block and prepends a
+spec_prose entry to the existing `references:` list. 47 done by script,
+2 (t34/t35) manually patched because they had empty `references: []`
+inline arrays that the regex didn't match.
+
+Test totals unchanged: 394.
+
 ### 2026-05-12 — Schema: loop_while construct for SDL loops
 
 Tom confirmed the n148 stored-frame loop in figc4.4 is deliberate spec
