@@ -24,8 +24,10 @@ public class {{ page.class_name }}_GeneratedTests
 {{- if t.guard }}
         t.Guard.Should().Be({{ t.guard_literal }});
 {{- end }}
-{{- for a in t.action_literals }}
-        t.Actions.Should().Contain({{ a }});
+        t.Actions.Count.Should().Be({{ t.actions.size }});
+{{- for a in t.actions }}
+        t.Actions[{{ for.index }}].Verb.Should().Be({{ a.verb_literal }});
+        t.Actions[{{ for.index }}].Kind.Should().Be({{ a.kind_enum }});
 {{- end }}
     }
 {{ end }}

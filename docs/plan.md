@@ -663,6 +663,60 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-12 — SDL YAML schema: lossless figure encoding
+
+The flat schema (`transitions: [{ on, guard, actions:[string], next }]`)
+was lossy with respect to the SDL figure's structure: chained diamonds
+collapsed into the same compound `guard:` as a single compound predicate
+would; the original diamond wording was replaced by the canonical
+predicate; the position of actions inside a decision tree was recoverable
+only by analysis. Tom's requirement is that the YAML be **non-lossy** —
+"it should be possible to re-draw the SDLs (minus physical layout) just
+from the YAMLs."
+
+Schema changes (`spec-sdl/schema/sdl-machine.schema.json`):
+
+- Page-level **`decisions:`** catalogue. Each diamond has a stable `id`,
+  the `question` text as drawn in the figure, and a canonical `predicate`
+  evaluated at runtime.
+- Per-transition **`path:`** field replaces `guard:` + `actions:[string]`.
+  The path is an ordered interleaving of `{decision, branch}` and
+  `{action, kind}` steps — exactly the order a reader walks the column.
+  The codegen compiles this into the runtime's flat `(guard, actions[])`
+  pair (decisions become `not?` predicates ANDed together; actions
+  flatten in order) — runtime semantics unchanged.
+- Per-action **`kind:`** (enum: `signal_upper | signal_lower | processing
+  | subroutine | internal_out`) records the figc1.1 shape class that
+  produced each action, so the redraw tool can pick the right shape.
+- State-level optional **`save:`** field for the SDL save-parallelogram
+  shape (events deferred until next state). Schema-only for now; no
+  figure uses it yet.
+
+Runtime C# changes:
+- `Packet.Ax25.Sdl.TransitionSpec.Actions` is now
+  `IReadOnlyList<ActionStep>` instead of `IReadOnlyList<string>`.
+- New `ActionStep(string Verb, ActionKind Kind)` record and `ActionKind`
+  enum live alongside `TransitionSpec`.
+- `ActionDispatcher` gained an `ActionStep`-taking overload that
+  projects `.Verb` for handler lookup; the string overload stays for
+  hand-rolled test fixtures.
+
+The old `spec-sdl/data-link/connected.sdl.yaml` (5 transitions, figc4.4a
+cols 5+6) and its generated artefacts were deleted — Tom is redrawing
+all SDLs in yEd as graphml (OQ-006), and there's no point migrating the
+old transcription. The orchestrator tests that previously consumed
+`DataLink_Connected.Transitions` were rewritten to use inline
+`TransitionSpec[]` fixtures, which is more honest (orchestrator
+behaviour should be testable without a specific transcription anyway).
+
+Codegen end-to-end smoke-tested against a temporary fixture exercising
+zero-decision, single-decision, and chained-decision paths; output
+verified, fixture removed. 168 tests green after migration (was 175 —
+the 7 generated conformance tests went with the deleted yaml).
+
+See [`docs/sdl-primer.md`](sdl-primer.md) for the worked schema and the
+related "shape direction is not load-bearing" note about figc4.1.
+
 ### 2026-05-12 — SDL codegen: Scriban templates + Roslyn parse-back validation
 
 `tools/Packet.Sdl.CodeGen` used to emit C#, Mermaid, and xUnit

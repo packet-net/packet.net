@@ -9,10 +9,72 @@ namespace Packet.Ax25.Tests.Session;
 public class Ax25SessionTests
 {
     /// <summary>
-    /// Wire a session with the actual codegen-emitted Connected-state
-    /// transitions from /spec-sdl/data-link/connected.sdl.yaml (figc4.4a
-    /// cols 5+6).
+    /// Hand-rolled fixture covering the four columns of figc4.4a's flow-control
+    /// behaviour from the Connected state. Mirrors what a codegen-emitted
+    /// transcription would produce, but inline here so the orchestrator's
+    /// behaviour can be exercised without depending on any one *.sdl.yaml.
     /// </summary>
+    private static readonly IReadOnlyList<TransitionSpec> ConnectedFlowControlTransitions = new TransitionSpec[]
+    {
+        new(
+            Id: "t01_dl_flow_off_when_own_receiver_busy",
+            From: "Connected",
+            On: "DL_FLOW_OFF_request",
+            Guard: "own_receiver_busy",
+            Actions: new ActionStep[]
+            {
+                new("set_own_receiver_busy",      ActionKind.Processing),
+                new("RNR response",                ActionKind.SignalLower),
+                new("clear_acknowledge_pending",   ActionKind.Processing),
+            },
+            Next: "Connected",
+            Notes: null),
+        new(
+            Id: "t02_dl_flow_off_when_own_receiver_not_busy",
+            From: "Connected",
+            On: "DL_FLOW_OFF_request",
+            Guard: "not own_receiver_busy",
+            Actions: Array.Empty<ActionStep>(),
+            Next: "Connected",
+            Notes: null),
+        new(
+            Id: "t03_dl_flow_on_when_own_receiver_not_busy",
+            From: "Connected",
+            On: "DL_FLOW_ON_request",
+            Guard: "not own_receiver_busy",
+            Actions: Array.Empty<ActionStep>(),
+            Next: "Connected",
+            Notes: null),
+        new(
+            Id: "t04_dl_flow_on_when_busy_and_T1_not_running",
+            From: "Connected",
+            On: "DL_FLOW_ON_request",
+            Guard: "own_receiver_busy and not T1_running",
+            Actions: new ActionStep[]
+            {
+                new("clear_own_receiver_busy",    ActionKind.Processing),
+                new("RR command",                  ActionKind.SignalLower),
+                new("clear_acknowledge_pending",   ActionKind.Processing),
+                new("stop_T3",                     ActionKind.Processing),
+                new("start_T1",                    ActionKind.Processing),
+            },
+            Next: "Connected",
+            Notes: null),
+        new(
+            Id: "t05_dl_flow_on_when_busy_and_T1_running",
+            From: "Connected",
+            On: "DL_FLOW_ON_request",
+            Guard: "own_receiver_busy and T1_running",
+            Actions: new ActionStep[]
+            {
+                new("clear_own_receiver_busy",    ActionKind.Processing),
+                new("RR command",                  ActionKind.SignalLower),
+                new("clear_acknowledge_pending",   ActionKind.Processing),
+            },
+            Next: "Connected",
+            Notes: null),
+    };
+
     private static (Ax25Session session,
                     Ax25SessionContext ctx,
                     SystemTimerScheduler scheduler,
@@ -37,8 +99,8 @@ public class Ax25SessionTests
             ctx, scheduler, dispatcher, guards,
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
-                ["Connected"]       = DataLink_Connected.Transitions,
-                ["AwaitingRelease"] = Array.Empty<TransitionSpec>(),  // not yet transcribed
+                ["Connected"]       = ConnectedFlowControlTransitions,
+                ["AwaitingRelease"] = Array.Empty<TransitionSpec>(),
             },
             initialState: "Connected",
             onUnhandledEvent: unhandled.Add);
@@ -55,7 +117,6 @@ public class Ax25SessionTests
     [Fact]
     public void DL_FLOW_OFF_When_Own_Receiver_Busy_Sends_RNR_And_Stays_Connected()
     {
-        // t01_dl_flow_off_when_own_receiver_busy from figc4.4a col 5.
         // Yes branch: actions fire when own_receiver_busy is already set.
         var (s, ctx, _, _, sFrames, _) = NewConnectedSession();
         ctx.OwnReceiverBusy = true;
@@ -73,7 +134,6 @@ public class Ax25SessionTests
     [Fact]
     public void DL_FLOW_OFF_When_Not_Busy_Is_A_No_Op()
     {
-        // t02_dl_flow_off_when_own_receiver_not_busy — the No-op branch.
         var (s, ctx, _, _, sFrames, _) = NewConnectedSession();
         ctx.OwnReceiverBusy = false;
         ctx.AcknowledgePending = true;
@@ -88,7 +148,6 @@ public class Ax25SessionTests
     [Fact]
     public void DL_FLOW_ON_When_Busy_And_T1_Not_Running_Sends_RR_And_Arms_T1()
     {
-        // t04_dl_flow_on_when_busy_and_T1_not_running.
         var (s, ctx, scheduler, _, sFrames, _) = NewConnectedSession();
         ctx.OwnReceiverBusy = true;
         ctx.AcknowledgePending = true;
@@ -109,8 +168,6 @@ public class Ax25SessionTests
     [Fact]
     public void DL_FLOW_ON_When_Busy_And_T1_Running_Sends_RR_But_Leaves_Timers_Alone()
     {
-        // t05_dl_flow_on_when_busy_and_T1_running — the inner T1-running
-        // branch from col 6's Yes path. Doesn't touch T1/T3.
         var (s, ctx, scheduler, _, sFrames, _) = NewConnectedSession();
         ctx.OwnReceiverBusy = true;
         scheduler.Arm("T1", TimeSpan.FromSeconds(1), () => { });
@@ -128,7 +185,6 @@ public class Ax25SessionTests
     [Fact]
     public void DL_FLOW_ON_When_Not_Busy_Is_A_No_Op()
     {
-        // t03_dl_flow_on_when_own_receiver_not_busy.
         var (s, ctx, _, _, sFrames, _) = NewConnectedSession();
         ctx.OwnReceiverBusy = false;
 
@@ -141,8 +197,6 @@ public class Ax25SessionTests
     [Fact]
     public void Unhandled_Event_Is_Reported_And_State_Is_Unchanged()
     {
-        // SABM isn't transcribed in our partial Connected state yet,
-        // so it should hit the unhandled-event callback.
         var (s, _, _, _, _, unhandled) = NewConnectedSession();
         var sabm = new SabmReceived(Ax25Frame.Ui(
             destination: new Callsign("M0LTE", 0),
@@ -172,7 +226,7 @@ public class Ax25SessionTests
             ctx, scheduler, dispatcher, guards,
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
-                ["Connected"] = DataLink_Connected.Transitions,
+                ["Connected"] = ConnectedFlowControlTransitions,
             },
             initialState: "NoSuchState");
         act.Should().Throw<ArgumentException>().WithMessage("*NoSuchState*");

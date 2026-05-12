@@ -1,3 +1,5 @@
+using Packet.Ax25.Sdl;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -59,7 +61,26 @@ public sealed class ActionDispatcher
 
     /// <summary>
     /// Execute every action in <paramref name="actions"/> against the
-    /// supplied session state and scheduler.
+    /// supplied session state and scheduler. Action <see cref="ActionStep.Kind"/>
+    /// is preserved on the spec for downstream tools (figure redraw, cross-language
+    /// codegen) but the dispatcher looks up handlers by <see cref="ActionStep.Verb"/>.
+    /// </summary>
+    public void Execute(IEnumerable<ActionStep> actions, Ax25SessionContext ctx, ITimerScheduler scheduler)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(scheduler);
+
+        foreach (var step in actions)
+        {
+            Execute(step.Verb, ctx, scheduler);
+        }
+    }
+
+    /// <summary>
+    /// Execute every action verb in <paramref name="actions"/> against the
+    /// supplied session state and scheduler. Used by hand-rolled test
+    /// fixtures and ad-hoc consumers that don't need shape-class metadata.
     /// </summary>
     public void Execute(IEnumerable<string> actions, Ax25SessionContext ctx, ITimerScheduler scheduler)
     {

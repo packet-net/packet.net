@@ -16,6 +16,10 @@ internal static class Program
     private static readonly Template TestsTemplate   = LoadTemplate("tests.scriban-cs");
     private static readonly Template MermaidTemplate = LoadTemplate("mermaid.scriban-mmd");
 
+    private static readonly HashSet<string> ValidActionKinds = new(
+        new[] { "signal_upper", "signal_lower", "processing", "subroutine", "internal_out" },
+        StringComparer.Ordinal);
+
     public static int Main(string[] args)
     {
         string inDir = "spec-sdl";
@@ -241,6 +245,15 @@ internal static class Program
         if (page.Source is null)                       errors.Add($"{loc}: missing `source`");
         if (page.Transitions.Count == 0)               errors.Add($"{loc}: at least one transition required");
 
+        var decisionsById = new Dictionary<string, SdlDecision>(StringComparer.Ordinal);
+        foreach (var d in page.Decisions)
+        {
+            if (string.IsNullOrWhiteSpace(d.Id)) { errors.Add($"{loc}: decision missing `id`"); continue; }
+            if (!decisionsById.TryAdd(d.Id, d))  errors.Add($"{loc}: duplicate decision id `{d.Id}`");
+            if (string.IsNullOrWhiteSpace(d.Question))  errors.Add($"{loc}: decision `{d.Id}` missing `question`");
+            if (string.IsNullOrWhiteSpace(d.Predicate)) errors.Add($"{loc}: decision `{d.Id}` missing `predicate`");
+        }
+
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var t in page.Transitions)
         {
@@ -252,6 +265,39 @@ internal static class Program
                 errors.Add($"{loc}: transition `{t.Id}` references unknown event `{t.On}`. Add it to /spec-sdl/events.yaml.");
 
             if (string.IsNullOrWhiteSpace(t.Next)) errors.Add($"{loc}: transition `{t.Id}` missing `next`");
+
+            if (t.Path is null || t.Path.Count == 0)
+            {
+                errors.Add($"{loc}: transition `{t.Id}` missing `path` (must contain at least one decision-branch or action step)");
+                continue;
+            }
+
+            for (int i = 0; i < t.Path.Count; i++)
+            {
+                var step = t.Path[i];
+                var hasDecision = !string.IsNullOrWhiteSpace(step.Decision);
+                var hasAction   = !string.IsNullOrWhiteSpace(step.Action);
+                if (hasDecision == hasAction)
+                {
+                    errors.Add($"{loc}: transition `{t.Id}` path[{i}]: must specify exactly one of `decision:` or `action:`");
+                    continue;
+                }
+
+                if (hasDecision)
+                {
+                    if (!decisionsById.ContainsKey(step.Decision!))
+                        errors.Add($"{loc}: transition `{t.Id}` path[{i}] references undefined decision `{step.Decision}`. Add it to the page-level decisions[].");
+                    if (step.Branch is not "Yes" and not "No")
+                        errors.Add($"{loc}: transition `{t.Id}` path[{i}] branch must be 'Yes' or 'No' (was `{step.Branch}`)");
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(step.Kind))
+                        errors.Add($"{loc}: transition `{t.Id}` path[{i}] action `{step.Action}` missing `kind:` (one of signal_upper, signal_lower, processing, subroutine, internal_out)");
+                    else if (!ValidActionKinds.Contains(step.Kind))
+                        errors.Add($"{loc}: transition `{t.Id}` path[{i}] action `{step.Action}` has unknown kind `{step.Kind}`. Valid: {string.Join(", ", ValidActionKinds)}.");
+                }
+            }
         }
     }
 
@@ -287,6 +333,8 @@ internal sealed class SdlPage
     public string Coverage { get; set; } = "complete";
     public SdlSourceYaml? Source { get; set; }
     public List<string>? Variables { get; set; }
+    public List<string>? Save { get; set; }
+    public List<SdlDecision> Decisions { get; set; } = new();
     public List<SdlTransition> Transitions { get; set; } = new();
     [YamlIgnore] public string SourcePath { get; set; } = "";
 }
@@ -298,14 +346,32 @@ internal sealed class SdlSourceYaml
     public string? Url { get; set; }
 }
 
+internal sealed class SdlDecision
+{
+    public string Id { get; set; } = "";
+    public string Question { get; set; } = "";
+    public string Predicate { get; set; } = "";
+}
+
 internal sealed class SdlTransition
 {
     public string Id { get; set; } = "";
     public string On { get; set; } = "";
-    public string? Guard { get; set; }
-    public List<string>? Actions { get; set; }
+    public List<SdlPathStep> Path { get; set; } = new();
     public string Next { get; set; } = "";
     public string? Notes { get; set; }
+}
+
+/// <summary>
+/// One step in a transition's path. Exactly one of (Decision+Branch) or
+/// (Action+Kind) is populated; the validator rejects malformed steps.
+/// </summary>
+internal sealed class SdlPathStep
+{
+    public string? Decision { get; set; }
+    public string? Branch { get; set; }
+    public string? Action { get; set; }
+    public string? Kind { get; set; }
 }
 
 // ─── Template-facing projection ────────────────────────────────────────
@@ -326,6 +392,7 @@ internal sealed class TemplateModel
     public static TemplateModel From(SdlPage page)
     {
         var classBase = Pascal(page.Machine) + "_" + page.State;
+        var decisionsById = page.Decisions.ToDictionary(d => d.Id, d => d, StringComparer.Ordinal);
         return new TemplateModel
         {
             Machine          = page.Machine,
@@ -337,7 +404,7 @@ internal sealed class TemplateModel
             SourceFigure     = page.Source.Figure,
             SourceUrl        = page.Source.Url,
             SourceUrlLiteral = page.Source.Url is null ? "null" : CSharpStringLiteral(page.Source.Url),
-            Transitions      = page.Transitions.Select(TransitionModel.From).ToList(),
+            Transitions      = page.Transitions.Select(t => TransitionModel.From(t, decisionsById)).ToList(),
         };
     }
 
@@ -357,6 +424,16 @@ internal sealed class TemplateModel
             .Replace("\t", "\\t",  StringComparison.Ordinal);
         return "\"" + escaped + "\"";
     }
+
+    internal static string KindEnumLiteral(string kind) => kind switch
+    {
+        "signal_upper" => "ActionKind.SignalUpper",
+        "signal_lower" => "ActionKind.SignalLower",
+        "processing"   => "ActionKind.Processing",
+        "subroutine"   => "ActionKind.Subroutine",
+        "internal_out" => "ActionKind.InternalOut",
+        _ => throw new InvalidOperationException($"unknown action kind '{kind}'"),
+    };
 }
 
 internal sealed class TransitionModel
@@ -368,46 +445,83 @@ internal sealed class TransitionModel
     public string Next { get; set; } = "";
     public string? Notes { get; set; }
     public string NotesLiteral { get; set; } = "null";
-    public List<string> Actions { get; set; } = new();
-    public List<string> ActionLiterals { get; set; } = new();
+    public List<ActionModel> Actions { get; set; } = new();
     public string ActionsCsv { get; set; } = "";
     public string EdgeLabel { get; set; } = "";
 
-    public static TransitionModel From(SdlTransition t)
+    public static TransitionModel From(SdlTransition t, IReadOnlyDictionary<string, SdlDecision> decisionsById)
     {
-        var actionLiterals = (t.Actions ?? new()).Select(TemplateModel.CSharpStringLiteral).ToList();
+        // Compile path[] into the runtime's flat (guard, actions[]) pair.
+        // - Each {decision, branch} step contributes a predicate to the guard:
+        //   "Yes" → bare predicate; "No" → "not " + predicate.
+        // - Each {action, kind} step contributes to the action list, preserving
+        //   the original ordering. The runtime sees a flat list; the YAML
+        //   keeps the structural information for figure-redraw use cases.
+        var predicates = new List<string>();
+        var actions = new List<ActionModel>();
+        foreach (var step in t.Path)
+        {
+            if (!string.IsNullOrWhiteSpace(step.Decision))
+            {
+                var decision = decisionsById[step.Decision!];
+                predicates.Add(step.Branch == "Yes" ? decision.Predicate : "not " + decision.Predicate);
+            }
+            else
+            {
+                actions.Add(new ActionModel(step.Action!, step.Kind!));
+            }
+        }
+
+        var guard = predicates.Count == 0 ? null : string.Join(" and ", predicates);
+
         return new TransitionModel
         {
-            Id             = t.Id,
-            On             = t.On,
-            Guard          = t.Guard,
-            GuardLiteral   = t.Guard is null ? "null" : TemplateModel.CSharpStringLiteral(t.Guard),
-            Next           = t.Next,
-            Notes          = t.Notes,
-            NotesLiteral   = t.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(t.Notes),
-            Actions        = t.Actions ?? new(),
-            ActionLiterals = actionLiterals,
-            ActionsCsv     = string.Join(", ", actionLiterals),
-            EdgeLabel      = BuildMermaidEdgeLabel(t),
+            Id           = t.Id,
+            On           = t.On,
+            Guard        = guard,
+            GuardLiteral = guard is null ? "null" : TemplateModel.CSharpStringLiteral(guard),
+            Next         = t.Next,
+            Notes        = t.Notes,
+            NotesLiteral = t.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(t.Notes),
+            Actions      = actions,
+            ActionsCsv   = string.Join(", ", actions.Select(a =>
+                $"new ActionStep({TemplateModel.CSharpStringLiteral(a.Verb)}, {TemplateModel.KindEnumLiteral(a.Kind)})")),
+            EdgeLabel    = BuildMermaidEdgeLabel(t.Id, t.On, guard, actions),
         };
     }
 
-    private static string BuildMermaidEdgeLabel(SdlTransition t)
+    private static string BuildMermaidEdgeLabel(string id, string on, string? guard, List<ActionModel> actions)
     {
-        var parts = new List<string> { t.Id, "on: " + EscapeMermaid(t.On) };
-        if (!string.IsNullOrEmpty(t.Guard))
+        var parts = new List<string> { id, "on: " + EscapeMermaid(on) };
+        if (!string.IsNullOrEmpty(guard))
         {
-            parts.Add("[" + EscapeMermaid(t.Guard) + "]");
+            parts.Add("[" + EscapeMermaid(guard) + "]");
         }
-        foreach (var a in t.Actions ?? new())
+        foreach (var a in actions)
         {
-            parts.Add("/ " + EscapeMermaid(a));
+            parts.Add("/ " + KindIndicator(a.Kind) + " " + EscapeMermaid(a.Verb));
         }
         return string.Join("<br/>", parts);
     }
+
+    private static string KindIndicator(string kind) => kind switch
+    {
+        "signal_upper" => "↑",
+        "signal_lower" => "↓",
+        "processing"   => "·",
+        "subroutine"   => "→()",
+        "internal_out" => "⇢",
+        _ => "?",
+    };
 
     private static string EscapeMermaid(string s) => s
         .Replace("\"", "&quot;", StringComparison.Ordinal)
         .Replace("\n", " ",      StringComparison.Ordinal)
         .Replace("\r", string.Empty, StringComparison.Ordinal);
+}
+
+internal sealed record ActionModel(string Verb, string Kind)
+{
+    public string VerbLiteral => TemplateModel.CSharpStringLiteral(Verb);
+    public string KindEnum    => TemplateModel.KindEnumLiteral(Kind);
 }

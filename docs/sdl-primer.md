@@ -232,6 +232,101 @@ transcription is the path to interoperability — not "fixing" the figures.
 
 [upstream]: https://github.com/packethacking/ax25spec/issues
 
+## Shape direction is not always load-bearing
+
+Worth knowing before reading the Data-Link figures: figc1.1 defines four
+"signal" shape-classes that are visually direction-coded — left-notch for
+"Signal reception from Lower Layer", right-notch for upper, and similar
+for outputs. **The Data-Link figures don't always honour the legend's
+direction.** For example, figc4.1 draws `DL-DISCONNECT Request` and
+`DL-UNIT-DATA Request` with the **left-notch (lower-layer)** input shape,
+even though both are upper-layer service primitives per §5.
+
+What this means in practice:
+
+- The **text label** on a shape is what identifies the event/action.
+- The **shape class** (event vs. signal-out vs. processing vs. test) is
+  load-bearing.
+- The **left/right direction** of input/output shapes is *not* load-bearing
+  and should be ignored when reasoning about which layer a signal comes
+  from or goes to.
+
+This is "trust the figure" (§2.1) plus a corollary: the figure is the
+source of truth, even when it disagrees with its own legend. Don't try to
+"correct" it.
+
+## YAML schema (lossless encoding)
+
+The YAML DSL is designed so a figure can be **redrawn from the YAML
+alone** (minus physical layout). That requires preserving more than just
+"event → guard → actions → next state".
+
+Worked structure:
+
+```yaml
+machine: data_link
+state: Connected
+coverage: complete
+source:
+  spec: ax.25.2.2.4_Oct_25
+  figure: figc4.4a
+  url: https://raw.githubusercontent.com/packethacking/ax25spec/main/doc/media/figc4.4a.png
+variables: [V(S), V(R), RC]
+
+# Optional: events that should be deferred ("saved") in this state
+# until a new state is reached. Corresponds to the SDL save parallelogram.
+save: []
+
+# Decision-diamond catalogue. Each diamond has a stable id, the question
+# as drawn in the figure (lossless), and the canonical predicate evaluated
+# at runtime. Transitions reference diamonds by id from path[].
+decisions:
+  - id: own_receiver_busy_test
+    question: "Own Receiver Busy?"
+    predicate: own_receiver_busy
+  - id: t1_running_test
+    question: "T1 Running?"
+    predicate: T1_running
+
+transitions:
+  - id: t04_dl_flow_on_when_busy_and_T1_not_running
+    on: DL_FLOW_ON_request
+    # Ordered interleaving of decision-branch steps and action steps,
+    # exactly as they appear in the column. The codegen compiles this
+    # into a flat (guard, actions[]) pair for the runtime; the original
+    # ordering is preserved so the figure can be redrawn.
+    path:
+      - { decision: own_receiver_busy_test, branch: "Yes" }
+      - { decision: t1_running_test,         branch: "No"  }
+      - { action: clear_own_receiver_busy, kind: processing }
+      - { action: RR command,               kind: signal_lower }
+      - { action: clear_acknowledge_pending, kind: processing }
+      - { action: stop_T3,                  kind: processing }
+      - { action: start_T1,                 kind: processing }
+    next: Connected
+```
+
+`kind:` is one of:
+
+| `kind`         | Shape (figc1.1)                            | What lives here                              |
+|----------------|--------------------------------------------|----------------------------------------------|
+| `signal_upper` | Signal generation to upper layer           | DL-* indications/confirms                    |
+| `signal_lower` | Signal generation to lower layer           | frames to transmit (UI, SABM, RR, …)         |
+| `processing`   | Processing description (plain rectangle)   | internal tasks (`V(S):=0`, `start_T1`)       |
+| `subroutine`   | Subroutine call (rect with sidebars)       | named ref into a subroutine page             |
+| `internal_out` | Internal Signal Generation                 | posts to internal queues                     |
+
+The other figc1.1 shapes route to different places in the schema:
+
+| Shape                                | Routes to                                  |
+|--------------------------------------|--------------------------------------------|
+| State (rounded rect)                 | `state:` (focal) / `next:` (target)         |
+| Signal reception from Lower/upper     | `on:` event (catalog implicit)             |
+| Internal Signal Reception            | `on:` event (catalog implicit)             |
+| Test or decision (diamond)           | entry in `decisions:` + `path:` reference  |
+| Save a signal until a new state      | state-level `save: [...]`                  |
+| Subroutine start / Return            | only on subroutine pages (different schema)|
+
 ## Where this primer is invoked
 
 - `CONTRIBUTING.md` references this file under "Working with SDL diagrams".

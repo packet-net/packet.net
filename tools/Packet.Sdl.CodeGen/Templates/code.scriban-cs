@@ -24,7 +24,7 @@ public static class {{ page.class_name }}
             From: "{{ page.state }}",
             On: "{{ t.on }}",
             Guard: {{ t.guard_literal }},
-            Actions: new string[] { {{ t.actions_csv }} },
+            Actions: new ActionStep[] { {{ t.actions_csv }} },
             Next: "{{ t.next }}",
             Notes: {{ t.notes_literal }}),
 {{- end }}
