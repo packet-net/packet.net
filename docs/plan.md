@@ -664,6 +664,71 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-13 — Validate figc4.6 — smoke test + spec_prose + 4-codebase references
+
+Validation pass for `awaiting_v22_connection.sdl.yaml`: orchestrator
+smoke test (`DataLinkAwaitingConnection22SmokeTests.cs`, 25 [Fact]s —
+one per transition), 8 spec_prose citations, and structured references
+across the four pinned implementations.
+
+**Headline finding** — of the four pinned implementations, **only direwolf
+implements a distinct v2.2 awaiting state**:
+
+- **linbpq**: rejects SABME globally with FRMR at `L2Code.c:687-693`
+  ("Although some say V2.2 requires SABME I don't agree! Reject until we
+  support Mod 128"). No v2.2 awaiting state exists — all 25 figc4.6
+  transitions omit.
+- **direwolf**: has `state_5_awaiting_v22_connection` with full
+  implementation. 17 of 25 transitions cite direwolf code.
+- **rax25**: conflates v2.0 + v2.2 awaiting into one `AwaitingConnection`
+  struct. **Author's own TODO at `src/state.rs:1256` is the smoking gun**:
+  "TODO: This is supposed to transition to 'awaiting connect 2.2'." Direct
+  acknowledgement of the missing state.
+- **linux_oot**: fuses spec states 1 and 5 in `ax25_std_state1_machine`,
+  distinguishing modulus/window on SABM vs SABME at the receive side but
+  not state.
+
+**Triangulated upstream-spec / implementation findings**:
+
+1. **MDL-NEGOTIATE Request** (the v2.2-distinguishing action on
+   UA(F=1)→Connected paths t16/t17/t18) — implemented ONLY in direwolf
+   (`ua_frame:4910-4912`), with erratum comment that the figure itself
+   omits it. rax25's TODO acknowledges; linbpq and Linux have no concept.
+
+2. **direwolf's `#if 0` block at `dm_frame:4716-4765`** — figure-faithful
+   DM-handling commented out, replaced with v2.0 SABM retry as a
+   workaround for the KPC-3+ TNC bug. Erratum at 4735: 'copied from FRMR
+   case'. Real-world spec deviation worth flagging.
+
+3. **rax25 author's spec-bug annotations on UA path**:
+   - `state.rs:1192`: "Typo in 1998 spec: G, not g" (re: DL-ERROR(G)).
+   - `state.rs:1213-1231`: "1998 spec: ... 2017 spec: ... bug in the
+     2017 spec. This path says to start T1, then immediately stop it
+     again." (matches figc4.6 t18's "Start T3 twice" pattern).
+   - `state.rs:1236`: "1998 spec says 'stop T3'. 2017 spec says 'start T3'
+     (page 89), which makes much more sense."
+
+4. **direwolf FRMR erratum at `frmr_frame:5047`**: "State 1 clears it.
+   State 5 sets it. Why not the same?" — `layer_3_initiated` is cleared
+   on state-1 entry but set on state-5 entry (t21). direwolf author
+   asking the same Why?.
+
+5. **t23 (SABM → AwaitingConnection)** — direwolf does NOT explicitly
+   call `set_version_2_0` at `sabm_e_frame:4415-4423`, despite the
+   figure prescribing it. Implementation deviation.
+
+6. **DL-ERROR codes** (L/M/N/D/G) on t08/t09/t10/t15/t19: figure-
+   authoritative — no implementation surfaces them as typed errors.
+   rax25 partially does (D on t15, G on t19 with the "Typo: G, not g"
+   note) but not others.
+
+**Per-transition coverage**: 8 spec_prose citations, ~30 direwolf
+citations, ~10 rax25 citations, ~12 linux_oot citations, 0 linbpq
+citations (all-omit due to global SABME rejection). The all-omit linbpq
+case is itself a data point — captured in transition-level reasons.
+
+Test totals: 497 (was 472; +25 generated smoke tests for figc4.6).
+
 ### 2026-05-13 — Transcribe figc4.6 Data-Link Awaiting V2.2 Connection state
 
 Fifth SDL page. Tom drew
