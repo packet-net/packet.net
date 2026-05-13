@@ -418,7 +418,7 @@ Source: `https://github.com/packethacking/ax25spec/blob/main/doc/ax.25.2.2.4_Oct
 | Simplex Physical | C2a.1–C2a.7 | 7 | Ready, Receiving, TX Suppression, TX Start, Transmitting, Digipeating, RX Start | ⬜ none |
 | Duplex Physical | C2b.1–C2b.5 | 5 | RX Ready, Receiving, TX Ready, TX Start, Transmitting | ⬜ none |
 | Link Multiplexer | C3.1–C3.3 (+ C3.4 subroutines) | 3 (+1) | Idle, Seize Pending, Seized | ⬜ none |
-| Data-Link | C4.1, C4.2, C4.3, C4.4a–c, C4.5a–e, C4.6a, C4.7a–b (subs) | 11 (+2 subs) | Disconnected, Awaiting Connection, Awaiting Release, Connected, Timer Recovery, Awaiting V2.2 Connection | 🟡 figc4.4a cols 5+6 only |
+| Data-Link | C4.1, C4.2, C4.3, C4.4a–c, C4.5a–e, C4.6a, C4.7a–b (subs) | 11 (+2 subs) | Disconnected, Awaiting Connection, Awaiting Release, Connected, Timer Recovery, Awaiting V2.2 Connection | 🟡 figc4.1, figc4.2, figc4.3, figc4.4 done; figc4.5/4.6/4.7 remaining |
 | Management Data-Link | C5.1, C5.2 | ~2 | (XID negotiation flow) | ⬜ none |
 | Segmenter / Reassembler | C6.1–C6.2 | 2 | (Segmenter, Reassembler) | ⬜ none |
 
@@ -662,6 +662,51 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-13 — Transcribe figc4.3 Data-Link Awaiting Release state
+
+Fourth SDL page. Tom drew
+`spec-sdl/data-link/DataLink_AwaitingRelease.graphml` (60 nodes,
+62 edges, 15 input columns); I converted to
+`spec-sdl/data-link/awaiting_release.sdl.yaml` — **20 transitions**
+after binary-decision enumeration.
+
+The page has no SDL Save shapes (no `save:` directive) — DL-DISCONNECT
+request received while in AwaitingRelease is a real handler that
+re-emits Expedited DM rather than queuing for replay.
+
+New event in catalogue: `i_or_s_command_received` (frames_received
+group). The figure draws one composite SDL input column labelled
+"I, RR, RNR, REJ or SREJ Commands"; lossless encoding preserves the
+grouping rather than fanning out across the five frame events.
+
+Decision-catalogue: four diamonds — `t1_rc_eq_n2`, `ua_f_eq_1`,
+`dm_f_eq_1` (two distinct F==1? diamonds preserved with column-specific
+ids, mirroring figc4.2), and a shared `p_eq_1` referenced by both the
+UI column and the new `i_or_s_command_received` column (they merge into
+a single drawn diamond in the figure).
+
+Shape-class convention: figc4.3 follows the same figc4.1 quirk —
+DL-DISCONNECT Request, DL-UNIT-DATA Request, and one "All Other
+Primitives" column are drawn with "Signal reception from Lower Layer"
+shape despite being upper-layer primitives. Per CLAUDE.md `d5` is
+authoritative — disambiguated with `__from_lower_layer` /
+`__from_upper_layer` suffixes on the catch-all events.
+
+State name: `AwaitingRelease` — already established in the figc4.4
+transcription (used as `next:` on the DL-DISCONNECT request column
+there), now tied off.
+
+Local SDK pin in `global.json` lowered from 10.0.203 → 10.0.107
+(`rollForward: latestFeature`) so the codegen runs on the currently
+installed SDK; CI was using `global-json-file` so it auto-installs the
+pinned version.
+
+Test totals: 425 (was 403; +22 generated conformance tests covering the
+20 transitions plus structural/round-trip emissions).
+
+Validation chain (smoke test + spec_prose + 4-codebase implementation
+references) arrives in follow-up PR(s).
 
 ### 2026-05-12 — Codegen test project (Packet.Sdl.CodeGen.Tests)
 
