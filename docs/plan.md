@@ -663,6 +663,27 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-13 — Hygiene: quote `d5` verbatim in YAML shape-class comments
+
+Caught during figc4.3 review: my prose used "lower-layer parallelogram"
+(visual-shape language) in PR #26's summary, contrary to CLAUDE.md's
+rule that `d5` is the only authoritative source for a node's shape
+class and must be quoted verbatim in writing.
+
+Audit turned up 6 pre-existing slips in `awaiting_connection.sdl.yaml`
+(lines 78, 391, 398, 407, 537) and `connected.sdl.yaml` (line 1073) —
+section comments paraphrasing as "upper-layer shape" / "lower-layer
+shape". This PR rewrites them to quote `d5` verbatim
+(e.g. `d5: "Signal reception from upper layer"`).
+
+Comment-only with one knock-on: the t10 `all_other_primitives_from_upper_layer`
+**notes:** field flows into the generated code's `Notes:` string, so
+`DataLink_AwaitingConnection.g.cs` regenerates with the corrected
+docstring. Build + 425 tests green; no behaviour change.
+
+`disconnected.sdl.yaml` is unaffected (no shape-paraphrase slips on
+that page).
+
 ### 2026-05-13 — Transcribe figc4.3 Data-Link Awaiting Release state
 
 Fourth SDL page. Tom drew

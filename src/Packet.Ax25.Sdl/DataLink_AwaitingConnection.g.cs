@@ -115,7 +115,7 @@ public static class DataLink_AwaitingConnection
             Guard: null,
             Actions: new ActionStep[] {  },
             Next: "AwaitingConnection",
-            Notes: "Catch-all for unhandled upper-layer-shape primitives. No action —\nstay in AwaitingConnection.\n",
+            Notes: "Catch-all for unhandled primitives drawn with d5\n\"Signal reception from upper layer\". No action — stay in\nAwaitingConnection.\n",
             References: new ImplementationReference[] {  },
             Loops: new LoopRange[] {  }),
         new TransitionSpec(
