@@ -418,11 +418,12 @@ Source: `https://github.com/packethacking/ax25spec/blob/main/doc/ax.25.2.2.4_Oct
 | Simplex Physical | C2a.1–C2a.7 | 7 | Ready, Receiving, TX Suppression, TX Start, Transmitting, Digipeating, RX Start | ⬜ none |
 | Duplex Physical | C2b.1–C2b.5 | 5 | RX Ready, Receiving, TX Ready, TX Start, Transmitting | ⬜ none |
 | Link Multiplexer | C3.1–C3.3 (+ C3.4 subroutines) | 3 (+1) | Idle, Seize Pending, Seized | ⬜ none |
-| Data-Link | C4.1, C4.2, C4.3, C4.4a–c, C4.5a–e, C4.6a, C4.7a–b (subs) | 11 (+2 subs) | Disconnected, Awaiting Connection, Awaiting Release, Connected, Timer Recovery, Awaiting V2.2 Connection | 🟡 figc4.1, figc4.2, figc4.3, figc4.4 done; figc4.5/4.6/4.7 remaining |
+| Data-Link | C4.1, C4.2, C4.3, C4.4a–c, C4.5a–e, C4.6a–b, C4.7a–b (subs) | 12 (+2 subs) | Disconnected, Awaiting Connection, Awaiting Release, Connected, Timer Recovery, Awaiting V2.2 Connection | 🟡 figc4.1, figc4.2, figc4.3, figc4.4, figc4.6 done; figc4.5/4.7 remaining |
 | Management Data-Link | C5.1, C5.2 | ~2 | (XID negotiation flow) | ⬜ none |
 | Segmenter / Reassembler | C6.1–C6.2 | 2 | (Segmenter, Reassembler) | ⬜ none |
 
-Total ≈ 27 pages. Phase 0 covered ~2 columns of one page.
+Total ≈ 28 pages (was 27 before figc4.6 turned out to span pages a + b).
+Phase 0 covered ~2 columns of one page.
 
 ---
 
@@ -662,6 +663,63 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-13 — Transcribe figc4.6 Data-Link Awaiting V2.2 Connection state
+
+Fifth SDL page. Tom drew
+`spec-sdl/data-link/DataLink_AwaitingV22Connection.graphml` (81 nodes,
+85 edges, 18 input columns across the two figure pages 4.6a + 4.6b);
+I converted to `spec-sdl/data-link/awaiting_v22_connection.sdl.yaml` —
+**25 transitions** after binary-decision enumeration, plus 1 page-level
+`save:` entry (DL-DISCONNECT request).
+
+Closes the `AwaitingConnection22` placeholder loop: 14 figc4.4
+SABME-while-Awaiting transitions and figc4.2's t24 SABME-while-AWaitConn
+now target an actual transition table rather than an empty stub.
+
+**Inventory correction**: the prior plan listed figc4.6 as a single page
+("C4.6a"). Tom confirmed the state spans two pages (4.6a + 4.6b) in the
+spec, matching figc4.4's a/b/c convention. Inventory row updated to
+"C4.6a–b" and total page count adjusted 27 → 28.
+
+State name: `AwaitingConnection22` already established in figc4.4 and
+figc4.2 as a placeholder — now tied off.
+
+**Two verification_pending flags** preserved verbatim per Trust-the-Figure:
+
+1. **n8 column label "Info Field Permitted In Frame"** (note: missing
+   "Not") — figc4.3's same column reads "Info Not Permitted In Frame",
+   and the DL-ERROR(M) action means "info **not** permitted in frame".
+   Tom confirmed the spec PNG literally has "Permitted" (no "Not") on
+   this page — strong candidate spec typo. Encoded with canonical
+   `info_not_permitted_in_frame` event id (action dictates), figure-
+   verbatim label preserved in transition notes.
+
+2. **UI column `P == 1?` Yes/No swap** — figc4.6 PNG draws
+   `P==1 Yes → stay` and `P==1 No → DM(F=1)`. This is inverted from
+   figc4.3 and from §6.3.5 ¶3 prose ("Any TNC receiving a command
+   frame other than a SABM(E) or UI frame with the P bit set to '1'
+   responds with a DM frame…"). Tom confirmed the swap is genuine in
+   the spec PNG — strong upstream-spec issue candidate. Encoded
+   verbatim on t11/t12.
+
+Other notable structural features:
+- **MDL-NEGOTIATE Request** as an `internal_out` action fires on all
+  three UA(F=1)-into-Connected paths (t16/t17/t18), reflecting that
+  v2.2 connections trigger XID parameter negotiation post-establish.
+- **FRMR fallback** (t21): peer-reported frame-reject during v2.2
+  negotiation → run Establish Data Link subroutine, force Version 2.0,
+  drop to AwaitingConnection. The figure's only path that exits to
+  state 1 with a multi-step processing prelude.
+- **DM(F=0) fallback** (t14): peer-refused v2.2 drops to
+  AwaitingConnection (v2.0) rather than Disconnected — implements the
+  spec's v2.2-down-to-v2.0 negotiation cascade.
+
+Test totals: 472 (was 445; +27 generated conformance tests for figc4.6
+covering the 25 transitions plus structural emissions).
+
+Validation chain (smoke test + spec_prose + 4-codebase implementation
+references) arrives in follow-up PR(s).
 
 ### 2026-05-13 — Validate figc4.3 — smoke test + spec_prose + 4-codebase references
 
