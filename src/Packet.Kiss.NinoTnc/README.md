@@ -223,16 +223,62 @@ pressed is **not** this diagnostic — that's a separate test signal.
 `TxTestFrameReceivedEvent` is the synthetic KISS frame the firmware
 sends to the host alongside the on-air test transmission.
 
-## Operating-mode catalog
+## Firmware management
 
-`NinoTncCatalog.ByMode` is the DIP-switch-position → mode table for
-firmware v3.44; `NinoTncCatalog.FirmwareByteToMode` is the reverse
-lookup keyed on the firmware byte the TNC reports in its
-`BrdSwchMod` diagnostic field. The catalog is firmware-version-
-specific; bump when needed.
+`Packet.Kiss.NinoTnc.Firmware` lays the groundwork for an
+update-aware operator workflow. The strong types tell you what's
+running and whether something newer is available; the seam for the
+actual flash operation is in place but **the flash itself is not
+implemented yet** (see "What's intentionally not here" below).
+
+```csharp
+using Packet.Kiss.NinoTnc.Firmware;
+
+var http = new HttpClient();
+http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("yourapp", "1.0"));
+INinoTncFirmwareCatalogue catalogue = new GitHubNinoTncFirmwareCatalogue(http);
+
+tnc.InboundEvent += async (_, evt) =>
+{
+    if (evt is NinoTncTxTestFrameReceivedEvent t &&
+        t.Diagnostic.FirmwareVersion is { } version)
+    {
+        var availability = await catalogue.CheckForUpdateAsync(version);
+        Console.WriteLine($"Running {availability.CurrentVersion} on {availability.ChipVariant}.");
+        if (availability.UpdateAvailable)
+        {
+            Console.WriteLine($"Update available: {availability.LatestAvailable!.Version}");
+            Console.WriteLine($"Download: {availability.LatestAvailable.DownloadUrl}");
+        }
+    }
+};
+```
+
+**Chip variant detection.** The major component of the firmware
+version (`3.xx` or `4.xx`) identifies which dsPIC chip is fitted:
+
+| Firmware major | Chip | Image filename |
+|---:|---|---|
+| 3 | dsPIC33EP256GP | `N9600A-v3-{minor}.hex` |
+| 4 | dsPIC33EP512GP | `N9600A-v4-{minor}.hex` |
+
+Flashing the wrong image bricks the modem until ICSP recovery — the
+chip-variant check exists so a future UI / MCP layer can refuse to
+proceed when the operator picks a hex for the wrong variant.
+
+**Catalogue.** `GitHubNinoTncFirmwareCatalogue` reads
+`ninocarrillo/flashtnc@master` and pulls out whatever
+`N9600A-v{major}-{minor}.hex` files are sitting there at the moment.
+Nino's release process is "drop new hex, remove old hex", so the
+catalogue surfaces only the *current* release per chip variant. Old
+versions are reachable via git history but aren't in scope here.
 
 ## What's intentionally not here
 
+- The PIC bootloader protocol itself. `INinoTncFirmwareFlasher` is the
+  seam; the only in-tree implementation is `UnsupportedFirmwareFlasher`
+  which throws. A native C# implementation (or a process shell-out to
+  `flashtnc.py`) will arrive in a separate PR with its own review.
 - **POLL mode** (KISS command `0x0E`). Multi-drop, not used by any
   current hardware we care about.
 - **XOR checksum mode** (multi-drop variant). Same reason.
@@ -242,6 +288,14 @@ specific; bump when needed.
   layer still respects it (port 0–15 in the command byte's high
   nibble); the driver consistently uses port 0 and assumes one
   modem = one radio.
+
+## Operating-mode catalog
+
+`NinoTncCatalog.ByMode` is the DIP-switch-position → mode table for
+firmware v3.44; `NinoTncCatalog.FirmwareByteToMode` is the reverse
+lookup keyed on the firmware byte the TNC reports in its
+`BrdSwchMod` diagnostic field. The catalog is firmware-version-
+specific; bump when needed.
 
 ## See also
 

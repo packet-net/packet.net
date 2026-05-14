@@ -884,6 +884,59 @@ That's the next milestone. PR-by-PR work shifts back to APRS-IS corpus
 analysis or whatever's next on the spike backlog until you have time
 to redraw figc4.7 (and figc4.5 Timer Recovery).
 
+### 2026-05-14 — nino-tnc: firmware-management groundwork
+
+Sets up the layers that ought to exist *around* a firmware-flash
+operation, while deliberately leaving the flash itself out. The
+explicit goal was groundwork for firmware management, not a C# copy
+of flashtnc.
+
+New `Packet.Kiss.NinoTnc.Firmware` namespace:
+
+- `NinoTncFirmwareVersion(Major, Minor)` — strong type parsed from the
+  TX-Test diagnostic's `=FirmwareVr:` field. `Parse` / `TryParse` /
+  comparison operators. Aware that the major component encodes Nino's
+  chip-variant convention (3 = dsPIC33EP256GP, 4 = dsPIC33EP512GP).
+- `NinoTncChipVariant` enum derived from `NinoTncFirmwareVersion.Major`.
+  Surfaced on `NinoTncTxTestFrame.ChipVariant` so a button-press tells
+  the operator which dsPIC they have.
+- `INinoTncFirmwareCatalogue` — "what releases are available for chip
+  variant X". Default-interface-method `CheckForUpdateAsync` composes
+  current version + catalogue into a typed
+  `NinoTncFirmwareUpdateAvailability` answer.
+- `GitHubNinoTncFirmwareCatalogue` — the concrete implementation,
+  reads `ninocarrillo/flashtnc@master` via the GitHub contents API,
+  parses `N9600A-v{major}-{minor}.hex` filenames into typed releases,
+  pairs each with its sibling `v{major}-{minor}-mplab-checksums.txt`
+  for download-time verification. Nino's release process is "drop new
+  hex, remove old hex"; we deliberately surface only the current state
+  rather than chase git history.
+- `INinoTncFirmwareFlasher` — the seam where the actual flash
+  operation will eventually live. Documented intent: native C# port of
+  the bootloader protocol OR shell-out to `flashtnc.py`, on its own
+  PR with its own review discipline. The only in-tree implementation
+  is `UnsupportedFirmwareFlasher` which throws — lets callers wire to
+  the interface today.
+
+`NinoTncTxTestFrame.FirmwareVersion` is now a strong
+`NinoTncFirmwareVersion?` (was a raw `string?`); the raw string is
+kept alongside as `FirmwareVersionRaw` for callers that need the
+verbatim text.
+
+Test totals: `Packet.Kiss.NinoTnc.Tests` 74 (was 44, +30 firmware
+coverage). 4 new test files cover version parsing + comparison,
+update-availability logic, the GitHub catalogue (stub HttpClient
+serving real-shape JSON), and the unsupported-flasher stub's error
+message.
+
+What this PR explicitly does NOT do:
+
+- No bootloader protocol implementation. That's the dangerous bit.
+- No Intel-HEX parsing. Not needed until there's something to flash.
+- No automatic update workflow — the layers say "an update is
+  available" but never act on it. A UI / MCP / operator-CLI layer can
+  build on top later.
+
 ### 2026-05-14 — ax25: frame-aware guard predicates
 
 Fifth piece of the interop arc. Predicates like `P_eq_1`, `command`,

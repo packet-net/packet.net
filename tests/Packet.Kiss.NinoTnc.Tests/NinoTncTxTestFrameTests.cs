@@ -1,5 +1,6 @@
 using System.Text;
 using Packet.Kiss;
+using Packet.Kiss.NinoTnc.Firmware;
 
 namespace Packet.Kiss.NinoTnc.Tests;
 
@@ -21,7 +22,9 @@ public class NinoTncTxTestFrameTests
         NinoTncTxTestFrame.TryParse(PayloadFor(body), out var parsed).Should().BeTrue();
         parsed.Should().NotBeNull();
 
-        parsed!.FirmwareVersion.Should().Be("3.44");
+        parsed!.FirmwareVersionRaw.Should().Be("3.44");
+        parsed.FirmwareVersion.Should().Be(new NinoTncFirmwareVersion(3, 44));
+        parsed.ChipVariant.Should().Be(NinoTncChipVariant.Dspic33Ep256);
         parsed.SerialNumber.Should().Be("ABC123");
         parsed.UptimeMs.Should().Be(0x0001A2B3);
         parsed.Uptime.Should().Be(TimeSpan.FromMilliseconds(0x0001A2B3));
@@ -55,7 +58,8 @@ public class NinoTncTxTestFrameTests
         // Right command — succeeds.
         var dataFrame = new KissFrame(0, KissCommand.Data, body);
         NinoTncTxTestFrame.TryParse(dataFrame, out var parsed).Should().BeTrue();
-        parsed!.FirmwareVersion.Should().Be("3.44");
+        parsed!.FirmwareVersionRaw.Should().Be("3.44");
+        parsed.FirmwareVersion.Should().Be(new NinoTncFirmwareVersion(3, 44));
         parsed.RunningMode!.Value.Mode.Should().Be((byte)6); // 0x02 → mode 6, 1200 AFSK AX.25
 
         // Wrong command — fails even if payload would parse.

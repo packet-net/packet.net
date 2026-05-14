@@ -38,8 +38,29 @@ namespace Packet.Kiss.NinoTnc;
 /// </remarks>
 public sealed record NinoTncTxTestFrame
 {
-    /// <summary>Firmware version string, e.g. "3.44".</summary>
-    public string? FirmwareVersion { get; init; }
+    /// <summary>
+    /// Firmware version reported by the modem, parsed into Nino's two-
+    /// component form (e.g. <c>3.44</c>). <c>null</c> if the firmware
+    /// version field was missing or unparseable.
+    /// </summary>
+    public Firmware.NinoTncFirmwareVersion? FirmwareVersion { get; init; }
+
+    /// <summary>
+    /// The raw firmware version string the firmware emitted (e.g.
+    /// <c>"3.44"</c>). Kept alongside <see cref="FirmwareVersion"/> so
+    /// callers that need the verbatim string still have it. <c>null</c>
+    /// if the field was missing.
+    /// </summary>
+    public string? FirmwareVersionRaw { get; init; }
+
+    /// <summary>
+    /// Which dsPIC chip variant this modem runs, derived from the
+    /// firmware version's major component. Important for firmware
+    /// update flows — the two variants need different hex images and
+    /// mixing them up bricks the modem until ICSP recovery.
+    /// </summary>
+    public Firmware.NinoTncChipVariant ChipVariant =>
+        FirmwareVersion?.ChipVariant ?? Firmware.NinoTncChipVariant.Unknown;
 
     /// <summary>Serial number string. <c>null</c> when the TNC has none set.</summary>
     public string? SerialNumber { get; init; }
@@ -156,7 +177,8 @@ public sealed record NinoTncTxTestFrame
 
         parsed = new NinoTncTxTestFrame
         {
-            FirmwareVersion = fields.GetValueOrDefault("FirmwareVr"),
+            FirmwareVersionRaw = fields.GetValueOrDefault("FirmwareVr"),
+            FirmwareVersion = Firmware.NinoTncFirmwareVersion.TryParse(fields.GetValueOrDefault("FirmwareVr"), out var fwVersion) ? fwVersion : null,
             SerialNumber = NormaliseSerial(fields.GetValueOrDefault("SerialNmbr")),
             UptimeMs = TryHexLong(fields, "UptimeMilS"),
             BoardRevision = boardRev,

@@ -3,6 +3,7 @@ using Packet.Ax25;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
+using Packet.Kiss.NinoTnc.Firmware;
 
 namespace Packet.Kiss.NinoTnc.Tests;
 
@@ -41,7 +42,8 @@ public class NinoTncFrameClassifierTests
 
         evt.Should().BeOfType<NinoTncTxTestFrameReceivedEvent>();
         var typed = (NinoTncTxTestFrameReceivedEvent)evt;
-        typed.Diagnostic.FirmwareVersion.Should().Be("3.44");
+        typed.Diagnostic.FirmwareVersionRaw.Should().Be("3.44");
+        typed.Diagnostic.FirmwareVersion.Should().Be(new NinoTncFirmwareVersion(3, 44));
         typed.Diagnostic.RunningMode!.Value.Mode.Should().Be((byte)6); // 0x02 → mode 6
     }
 
