@@ -665,6 +665,36 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — SP-001b: APRS-IS UI-frame ingestion spike
+
+New `tools/Packet.AprsIs.Spike` connects to APRS-IS as a read-only
+listener, parses TNC2-format lines, reconstructs each as
+`Ax25Frame.Ui(...)`, round-trips through our AX.25 parser, and reports
+robustness stats. Drives a steady stream of real-world data through our
+AX.25 plumbing to surface edge cases synthetic tests don't cover.
+
+First 30-frame live smoke run (rotate.aprs2.net:14580): 22/30 round-trip
+successes; **8 reconstruct failures, all from D-Star gateways using
+APRS letter SSIDs** (`-B`, `-D`, `-T`, `-H`). AX.25 spec only allows
+numeric SSIDs 0–15; APRS-IS leaks the APRS convention through. Our
+`Callsign.TryParse` correctly rejects; the spike logs each failure to
+`artifacts/aprs-is-spike/<ts>/failures.jsonl` for visibility. The
+finding is exactly what the spike was designed to surface — synthetic
+tests don't generate letter SSIDs.
+
+Spike scope minimal:
+- UI frames only (the only frame type APRS-IS carries).
+- No persistence beyond `artifacts/`. No live regression corpus (that
+  belongs in SP-003).
+- v0.1; will retire or graduate to `src/Packet.Replay.AprsIs/` once the
+  patterns are clear and the richer LinBPQ-MQTT feed (SP-001) is wired
+  up.
+
+The `tools/Packet.AprsIs.Spike/README.md` captures possible follow-ups:
+a separate `AprsCallsign` type accepting letter SSIDs for the web
+monitor view, and gateway-layer mapping from APRS letter-SSID to AX.25
+numeric-SSID at the boundary.
+
 ### 2026-05-14 — interop: LinBPQ runtime state moved to named volume
 
 The self-hosted runner exposed a Docker-on-host papercut that masked
