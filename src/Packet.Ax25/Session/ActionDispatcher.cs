@@ -505,6 +505,119 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "F := P":                         tx.Pending.PfBit = ExtractPollFinal(tx); break;
             case "p := 0":                         tx.Pending.PfBit = false; break;
 
+            // ─── figc4.7 processing verbs (subroutine bodies) ──────────────
+            //
+            // The subroutines in figc4.7 use figure-verbatim verb spellings
+            // (title-case, mathematical-style assignments). Most map to the
+            // existing snake_case primitives the state-page transitions
+            // already use; we add per-spelling case arms here rather than
+            // adding aliases to actions.yaml because the spellings only
+            // ever appear in the subroutine YAML and routing them at
+            // dispatch time keeps the spec text faithful to the figure.
+
+            // Exception-condition clears (Clear_Exception_Conditions body).
+            //
+            // figc4.7's Establish_Data_Link draws "Clear Exception
+            // Conditions" as the first line of a multi-line processing
+            // box (not a subroutine call shape). Per the runbook's
+            // multi-line-box rule we transcribe it as a single processing
+            // verb; here it expands to the same six clears the
+            // Clear_Exception_Conditions subroutine performs.
+            case "Clear Exception Conditions":
+                ctx.PeerReceiverBusy = false;
+                ctx.OwnReceiverBusy  = false;
+                ctx.RejectException  = false;
+                ctx.SelectiveRejectException = false;
+                ctx.SrejExceptionCount = 0;
+                ctx.AcknowledgePending = false;
+                ctx.IFrameQueue.Clear();
+                break;
+            case "Clear Peer Receiver Busy":       ctx.PeerReceiverBusy   = false; break;
+            case "Clear Own Receiver Busy":        ctx.OwnReceiverBusy    = false; break;
+            case "Clear Reject Condition":         ctx.RejectException    = false; break;
+            case "Clear Sreject Condition":        ctx.SelectiveRejectException = false; ctx.SrejExceptionCount = 0; break;
+            case "Clear Acknowledge Pending":      ctx.AcknowledgePending = false; break;
+            case "Discard I Queue Entries":        ctx.IFrameQueue.Clear(); break;
+            case "Clear Layer 3 Initiated":        ctx.Layer3Initiated    = false; break;
+
+            // Pending-frame field assignments (figc4.7 title-case spellings
+            // for the same operations the snake_case forms handle above).
+            case "P <- 1":                         tx.Pending.PfBit = true; break;
+            case "N(r) <- V(r)":                   tx.Pending.Nr = ctx.VR; break;
+            case "V(a) <- N(r)":                   ctx.VA = ExtractNr(tx); break;
+
+            // Invoke_Retransmission body.
+            case "Backtrack":                      /* informational marker */ break;
+            case "X <- V(s)":                      ctx.X = ctx.VS; break;
+            case "V(s) <- N(r)":                   ctx.VS = ExtractNr(tx); break;
+            case "V(s) <- V(s) + 1":               ctx.VS = ctx.IncrementSeq(ctx.VS); break;
+
+            // Establish_Data_Link body.
+            case "RC <- 1":                        ctx.RC = 1; break;
+            case "Stop T3":                        scheduler.Cancel("T3"); break;
+            case "Start T1":                       scheduler.Arm("T1", ctx.T1V, () => onTimerExpiry("T1")); break;
+            case "Start T3":                       scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3")); break;
+            case "Stop T1":                        scheduler.Cancel("T1"); break;
+
+            // Set_Version_2_0 / Set_Version_2_2 bodies.
+            case "Set Half Duplex":                ctx.HalfDuplex      = true; break;
+            case "Set Implicit Reject":            ctx.ImplicitReject  = true;  ctx.SrejEnabled = false; break;
+            case "Set Selective Reject":           ctx.ImplicitReject  = false; ctx.SrejEnabled = true;  break;
+            case "Modulo <- 8":                    ctx.IsExtended = false; break;
+            case "Modulo <- 128":                  ctx.IsExtended = true;  break;
+            case "N1 <- 2048":                     ctx.N1 = 2048; break;
+            case "k <- 8":                         ctx.K  = 8;    break;
+            case "k <- 32":                        ctx.K  = 32;   break;
+            case "T2 <- 3000":                     ctx.T2 = TimeSpan.FromMilliseconds(3000); break;
+            case "N2 <- 10":                       ctx.N2 = 10;   break;
+
+            // Outbound frame verbs that figc4.7 spells with full-word
+            // labels rather than the snake_case shorthands.
+            case "RR Command":                     sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx, action)); break;
+            case "RR Response":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx, action)); break;
+            case "RNR Command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: true,  tx, action)); break;
+            case "RNR Response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
+            case "SABM":                           sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
+            case "SABME":                          sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
+
+            // Select_T1_Value body. The SRT formula is figure-verbatim;
+            // we treat it as a single named verb that runs the IIR
+            // update (1/8 weight on the new sample, 7/8 on history).
+            // "Remaining Time on T1 When Last Stopped" isn't tracked by
+            // our ITimerScheduler interface yet, so we approximate the
+            // sample as the elapsed-since-T1V-armed which simplifies to
+            // T1V (the worst-case sample). Real adaptive T1 would need
+            // a scheduler upgrade — flagged in plan.md.
+            case "SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8":
+                ctx.Srt = TimeSpan.FromMilliseconds(0.875 * ctx.Srt.TotalMilliseconds + 0.125 * ctx.T1V.TotalMilliseconds);
+                ctx.T1HadExpired = false;
+                break;
+            case "Next T1 <- 2 * SRT":             ctx.T1V = ctx.Srt * 2; break;
+            case "Next T1 <- (RC*0.25)+SRT*2":     ctx.T1V = TimeSpan.FromMilliseconds(ctx.RC * 250 + ctx.Srt.TotalMilliseconds * 2); ctx.T1HadExpired = false; break;
+
+            // Invoke_Retransmission body: figure-internal queue-push verb.
+            case "Push Old I Frame onto Queue":
+                if (ctx.SentIFrames.TryGetValue(ctx.VS, out var stash))
+                {
+                    ctx.IFrameQueue.Enqueue((stash.Data, stash.Pid));
+                }
+                break;
+
+            // Enquiry_Response body: the DL-ERROR (add) annotation is
+            // a figure shorthand we surface upward as the (add) letter
+            // so callers can distinguish it from other DL-ERROR letters.
+            case "DL-ERROR Indication (add)":
+                sendUpward(new DataLinkErrorIndication("add"));
+                break;
+            // Direct DL-ERROR letter forms used by figc4.7 (callers in
+            // figc4.x may spell them differently; these are the figc4.7
+            // verbatim spellings).
+            case "DL-ERROR Indication (A)":        sendUpward(new DataLinkErrorIndication("A")); break;
+            case "DL-ERROR Indication (J)":        sendUpward(new DataLinkErrorIndication("J")); break;
+            case "DL-ERROR Indication (K)":        sendUpward(new DataLinkErrorIndication("K")); break;
+            case "DL-ERROR Indication (Q)":        sendUpward(new DataLinkErrorIndication("Q")); break;
+            case "DL-UNIT-DATA Indication":        sendUpward(new DataLinkUnitDataIndication(ExtractIncomingInfo(tx), ExtractIncomingPid(tx))); break;
+
             default:
                 throw new InvalidOperationException(
                     $"unknown SDL action: '{action}'. " +
@@ -552,6 +665,14 @@ public sealed class ActionDispatcher : IActionDispatcher
         // fields, so no extended-mode gate is needed here.
         return frame.PollFinal;
     }
+
+    /// <summary>Information field of the triggering frame. Throws if no frame attached.</summary>
+    private static ReadOnlyMemory<byte> ExtractIncomingInfo(TransitionContext tx)
+        => RequireIncomingFrame(tx, "DL-UNIT-DATA Indication").Info;
+
+    /// <summary>PID byte of the triggering frame, or 0xF0 (no L3) if absent.</summary>
+    private static byte ExtractIncomingPid(TransitionContext tx)
+        => RequireIncomingFrame(tx, "DL-UNIT-DATA Indication").Pid ?? Ax25Frame.PidNoLayer3;
 
     /// <summary>
     /// Build a <see cref="SupervisoryFrameSpec"/> from the transition's

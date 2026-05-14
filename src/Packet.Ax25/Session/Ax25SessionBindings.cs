@@ -63,9 +63,28 @@ public static class Ax25SessionBindings
 
             // ─── Retry-counter comparison ──────────────────────────────
             ["RC_eq_N2"]                   = () => context.RC == context.N2,
+            ["rc_eq_0"]                    = () => context.RC == 0,
 
             // ─── Queue / storage state ─────────────────────────────────
             ["vr_i_frame_stored"]          = () => context.StoredReceivedIFrames.ContainsKey(context.VR),
+
+            // ─── figc4.7 subroutine predicates ─────────────────────────
+            // Modulus (figc4.7's `Mod 128?` / `Mod 8?` decisions).
+            ["mod_128"]                    = () => context.IsExtended,
+            ["mod_8"]                      = () => !context.IsExtended,
+            // T1 expired (consumed by Select_T1_Value's middle branch).
+            ["t1_expired"]                 = () => context.T1HadExpired,
+            // Lowercase alias for the existing T1_running predicate so
+            // figc4.7's lower-case-everywhere YAML doesn't break.
+            ["t1_running"]                 = () => scheduler.IsRunning("T1"),
+            // Out-of-sequence receive buffer presence (figc4.7's
+            // Enquiry_Response decision).
+            ["out_of_sequence_frames_in_receive_buffer"]
+                                           = () => context.StoredReceivedIFrames.Count > 0,
+            // Invoke_Retransmission loop terminator: V(s) caught up to
+            // its saved-on-entry value X. Returns false if X hasn't been
+            // set (i.e. we're not inside an Invoke_Retransmission call).
+            ["v_s_eq_x"]                   = () => context.X.HasValue && context.VS == context.X.Value,
         };
 
         if (currentTrigger is not null)
@@ -118,6 +137,40 @@ public static class Ax25SessionBindings
             bindings["info_field_valid"] = () =>
                 GetIncomingFrame(currentTrigger()) is { Info.Length: var len }
                 && len <= context.N1;
+
+            // ─── figc4.7 frame-aware predicates ─────────────────────────
+            // UI_Check uses `incoming_is_command` / `ui_info_field_valid`.
+            // Same semantics as `command` / `info_field_valid` already
+            // above; aliased here so the figc4.7 YAML's predicate names
+            // resolve.
+            bindings["incoming_is_command"]   = IncomingCommand;
+            bindings["ui_info_field_valid"]   = () =>
+                GetIncomingFrame(currentTrigger()) is { Info.Length: var len }
+                && len <= context.N1;
+
+            // N(r) comparisons for Check_I_Frame_Acknowledged.
+            bindings["n_r_eq_v_s"] = () => IncomingNr(currentTrigger()) is byte nr && nr == context.VS;
+            bindings["n_r_eq_v_a"] = () => IncomingNr(currentTrigger()) is byte nr && nr == context.VA;
+
+            // Compound flags for Check_Need_For_Response.
+            bindings["command_and_p_eq_1"]  = () =>
+                GetIncomingFrame(currentTrigger()) is { IsCommand: true, PollFinal: true };
+            bindings["response_and_f_eq_1"] = () =>
+                GetIncomingFrame(currentTrigger()) is { IsResponse: true, PollFinal: true };
+
+            // Enquiry_Response's first-decision compound: F bit set
+            // *and* the triggering frame is an RR / RNR / I (a poll-able
+            // shape). REJ / SREJ aren't included per the spec wording.
+            bindings["f_eq_1_and_supervisory_or_i"] = () =>
+            {
+                var f = GetIncomingFrame(currentTrigger());
+                if (f is null || !f.PollFinal) return false;
+                bool isIFrame = (f.Control & 0x01) == 0;
+                byte sBase = (byte)(f.Control & 0x0F);
+                bool isRR  = sBase == 0x01;
+                bool isRNR = sBase == 0x05;
+                return isIFrame || isRR || isRNR;
+            };
         }
 
         return bindings;

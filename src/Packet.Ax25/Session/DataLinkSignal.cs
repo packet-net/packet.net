@@ -40,3 +40,12 @@ public sealed record DataLinkDataIndication(ReadOnlyMemory<byte> Info, byte Pid)
 /// </summary>
 public sealed record DataLinkErrorIndication(string Code)
     : DataLinkSignal("DL_ERROR_indication");
+
+/// <summary>
+/// Connectionless data received via a valid UI frame (§5.5.6). Distinct
+/// from <see cref="DataLinkDataIndication"/> which carries connected-mode
+/// I-frame payloads. Emitted by figc4.7's <c>UI_Check</c> subroutine
+/// when an incoming UI frame passes the command-and-length checks.
+/// </summary>
+public sealed record DataLinkUnitDataIndication(ReadOnlyMemory<byte> Info, byte Pid)
+    : DataLinkSignal("DL_UNIT_DATA_indication");

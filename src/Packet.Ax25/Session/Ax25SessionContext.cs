@@ -75,6 +75,23 @@ public sealed class Ax25SessionContext
     /// <summary>SABM(E) was sent by request of Layer 3 (DL-CONNECT request).</summary>
     public bool Layer3Initiated { get; set; }
 
+    /// <summary>
+    /// Scratch register used by figc4.7's <c>Invoke_Retransmission</c>:
+    /// stashes V(s) at routine entry so the loop knows when it has caught
+    /// up. Only meaningful during a single Invoke_Retransmission invocation.
+    /// </summary>
+    public byte? X { get; set; }
+
+    /// <summary>
+    /// Set by the T1 timer-expiry handler; consumed and cleared by
+    /// figc4.7's <c>Select_T1_Value</c> subroutine when it picks between
+    /// the IIR-smoothed and the linear-backoff branches. Distinct from
+    /// "T1 currently running" (<see cref="ITimerScheduler.IsRunning"/>):
+    /// this flag records "T1 fired at least once since the last
+    /// Select_T1_Value call".
+    /// </summary>
+    public bool T1HadExpired { get; set; }
+
     // ─── Negotiated link parameters (§6.7.2, XID defaults) ───────────────
 
     /// <summary>Maximum information field length in octets (N1). Default 256.</summary>
@@ -91,6 +108,22 @@ public sealed class Ax25SessionContext
 
     /// <summary>True if SREJ has been negotiated via XID.</summary>
     public bool SrejEnabled { get; set; }
+
+    /// <summary>True for half-duplex operation. Set by figc4.7's <c>Set_Version_2_0</c> / <c>Set_Version_2_2</c> subroutines.</summary>
+    public bool HalfDuplex { get; set; } = true;
+
+    /// <summary>
+    /// True if implicit reject (mod-8 v2.0) is the selected reject scheme;
+    /// false means selective reject (v2.2). Mirrors the v2.0 / v2.2 selection
+    /// per figc4.7's <c>Set_Version_2_0</c> / <c>Set_Version_2_2</c>.
+    /// </summary>
+    public bool ImplicitReject { get; set; } = true;
+
+    /// <summary>
+    /// Acknowledgement-timer T2 duration. Default 3 s per AX.25 v2.2.
+    /// Set by figc4.7's <c>Set_Version_2_0</c> / <c>Set_Version_2_2</c>.
+    /// </summary>
+    public TimeSpan T2 { get; set; } = TimeSpan.FromMilliseconds(3000);
 
     /// <summary>
     /// Smoothed Round-Trip Time per §6.7.1.2. Updated as I-frames are
@@ -154,6 +187,8 @@ public sealed class Ax25SessionContext
         SelectiveRejectException = false;
         SrejExceptionCount = 0;
         Layer3Initiated = false;
+        X = null;
+        T1HadExpired = false;
         IFrameQueue.Clear();
         SentIFrames.Clear();
         StoredReceivedIFrames.Clear();

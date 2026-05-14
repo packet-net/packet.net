@@ -824,6 +824,73 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: figc4.7 predicate + action-verb bindings; Ax25Session auto-Wires
+
+The runtime side of the figc4.7 arc. Three pieces:
+
+1. **New session-context state** for figc4.7:
+   - `Ax25SessionContext.X` (nullable `byte`) — scratch register for
+     `Invoke_Retransmission`'s backtrack loop.
+   - `Ax25SessionContext.T1HadExpired` — set by the T1 expiry handler,
+     consumed and cleared by `Select_T1_Value` to pick between the
+     IIR-smoothed and linear-backoff branches.
+   - `Ax25SessionContext.HalfDuplex`, `ImplicitReject`, `T2` — for the
+     `Set_Version_2_0` / `_2_2` subroutines.
+   - `ResetState()` clears all of these on session re-init.
+
+2. **GuardEvaluator bindings** for the 17 figc4.7 predicates:
+   `mod_128`, `mod_8`, `rc_eq_0`, `t1_running` (lowercase alias),
+   `t1_expired`, `v_s_eq_x`, `out_of_sequence_frames_in_receive_buffer`,
+   plus the frame-aware ones: `incoming_is_command`, `ui_info_field_valid`,
+   `n_r_eq_v_s`, `n_r_eq_v_a`, `command_and_p_eq_1`,
+   `response_and_f_eq_1`, `f_eq_1_and_supervisory_or_i`.
+
+3. **ActionDispatcher cases** for the ~25 figure-verbatim verbs:
+   - The 7 `Clear_Exception_Conditions` clears (also: a `Clear Exception
+     Conditions` aggregate verb because `Establish_Data_Link` draws it
+     as the first line of its multi-line processing box).
+   - Pending-frame assignments (`P <- 1`, `N(r) <- V(r)`, `V(a) <- N(r)`).
+   - `Invoke_Retransmission` body (`Backtrack`, `X <- V(s)`, `V(s) <- N(r)`,
+     `V(s) <- V(s) + 1`, `Push Old I Frame onto Queue`).
+   - Timer ops (`Stop T3`, `Start T1`, `Start T3`, `Stop T1`).
+   - Establish_Data_Link tail (`RC <- 1`).
+   - Set_Version_2_0/2_2 body (`Set Half Duplex`, `Set Implicit Reject`,
+     `Set Selective Reject`, `Modulo <- 8/128`, `N1 <- 2048`, `k <- 8/32`,
+     `T2 <- 3000`, `N2 <- 10`).
+   - Frame emitters (`RR Command`, `RR Response`, `RNR Command`,
+     `RNR Response`, `SABM`, `SABME`).
+   - `Select_T1_Value` body (`SRT <- 7(SRT)/8 + ...` runs the IIR
+     formula; `Next T1 <- 2 * SRT`; `Next T1 <- (RC*0.25)+SRT*2`).
+   - DL-ERROR letter forms (`(J)`, `(K)`, `(Q)`, `(A)`, `(add)`).
+   - `DL-UNIT-DATA Indication` (new `DataLinkUnitDataIndication` signal
+     record added to `DataLinkSignal.cs`).
+
+**Auto-Wire flipped on** in `Ax25Session`. The default `DefaultSubroutineRegistry`
+now upgrades each subroutine name's no-op stub to a `SubroutineSpec`
+walker during session construction. Custom registries / tests using
+`Register()` are unaffected (the override is sticky).
+
+Six new smoke tests (`Figc47SubroutineBodyTests`) drive each of the
+simplest subroutines end-to-end:
+
+- `Set_Version_2_0` and `Set_Version_2_2` set all expected fields.
+- `Clear_Exception_Conditions` clears all six flags + queue.
+- `Establish_Data_Link` with mod-8 emits SABM, starts T1, clears
+  exception conditions, sets RC := 1.
+- `Establish_Data_Link` with mod-128 emits SABME (no SABM).
+- `N_r_Error_Recovery` emits DL-ERROR(J) and clears `Layer3Initiated`.
+
+Full suite (1,055+ tests) green. The four runtime gaps that previously
+blocked end-to-end interop are now closed; figc4.7 subroutines actually
+do something when invoked.
+
+**Approximation noted** (Select_T1_Value): the IIR formula needs
+"remaining time on T1 when last stopped", which our `ITimerScheduler`
+interface doesn't expose. Currently approximates the sample as the
+worst-case T1V (no real-time sub-T1V data). Adaptive T1 timing will
+need an `ITimerScheduler.TimeRemaining(name)` extension or similar.
+Tracked as a separate item.
+
 ### 2026-05-14 — sdl: actions.yaml hygiene + unused-alias lint
 
 Tom asked "did you pick up the new graphml?" after I shipped PR #103
