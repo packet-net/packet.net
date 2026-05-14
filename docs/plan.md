@@ -824,6 +824,29 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: end-to-end integration tests for figc4.2 + figc4.6
+
+Two new test files exercising the **real** dispatcher against the
+**real** generated transition tables for figc4.2 (Awaiting Connection)
+and figc4.6 (Awaiting V2.2 Connection).
+
+`DataLinkAwaitingConnectionEndToEndTests` — 6 figc4.2 transitions:
+- t01 DISC_received → DM with F=incoming P
+- t02 DM received F=1 → discard queue + DL_DISCONNECT_indication + stop_T1 + → Disconnected
+- t05 UA received F=1 layer_3_initiated → DL_CONNECT_confirm + Select_T1_Value + V(s/r/a):=0 + → Connected
+- t08 T1 expiry RC=N2 → discard queue + DL_ERROR(G) + DL_DISCONNECT_indication + → Disconnected
+- t10 all_other_primitives_from_upper_layer (no-op)
+- t12 DL_UNIT_DATA_request → UI command
+
+`DataLinkAwaitingV22ConnectionEndToEndTests` — 2 figc4.6 transitions:
+- t01 DL_CONNECT_request while negotiating v2.2 → discard queue + set_layer_3_initiated
+- t02 DL_UNIT_DATA_request → UI command
+
+Total E2E coverage so far: 19 transitions (11 figc4.1 + 6 figc4.2 + 2
+figc4.6). figc4.3 and figc4.4 to follow.
+
+668 tests green (was 660).
+
 ### 2026-05-14 — ax25: SRT/T1V wired + first end-to-end figc4.1 integration tests
 
 Two pieces:
