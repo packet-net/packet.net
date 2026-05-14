@@ -824,6 +824,31 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — wire: `AprsParseOptions` threaded through Status / Telemetry / Mic-E decoders
+
+Second retrofit. The three APRS decoders that the audit flagged
+gain `options` overloads; parameterless overloads route through
+`AprsParseOptions.Lenient` so existing callers see no change.
+
+Strict mode now actively enforces:
+
+- **Status**: each byte must be printable ASCII 32–126 except
+  `\|` (124) or `~` (126) per §16; trailing CR / LF / space
+  tolerated (they get trimmed). Lenient still UTF-8s through
+  non-ASCII.
+- **Telemetry**: each analog channel must be exactly 3 digits in
+  range 000–255 per §13. Lenient still accepts floats and
+  variable-width.
+- **Mic-E**: DTI must be `` ` `` (0x60) or `'` (0x27); the legacy
+  Rev. 0 beta `0x1C` / `0x1D` are rejected. Lenient still accepts
+  them.
+
+Position / Object / Item / Message decoders had no pragmatic
+choices per the audit — their signatures are unchanged.
+
+9 new tests pairing strict-rejects with lenient-accepts on the
+same inputs. Full suite (1,043+ tests) green.
+
 ### 2026-05-14 — wire: `Ax25ParseOptions` threaded through `Ax25Address.Read` + `Ax25Frame.TryParse`
 
 First retrofit. Both methods gain an `options` overload; the

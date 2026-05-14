@@ -29,12 +29,27 @@ public static class AprsTelemetryDecoder
     private const int DigitalBitCount = 8;
 
     /// <summary>
-    /// Try to decode an APRS telemetry report from <paramref name="info"/>.
+    /// Try to decode an APRS telemetry report from <paramref name="info"/>,
+    /// using the default lenient parser options.
+    /// </summary>
+    public static bool TryDecode(ReadOnlySpan<byte> info, out AprsTelemetry telemetry)
+        => TryDecode(info, AprsParseOptions.Lenient, out telemetry);
+
+    /// <summary>
+    /// Try to decode an APRS telemetry report from <paramref name="info"/>,
+    /// applying the supplied <see cref="AprsParseOptions"/>.
     /// </summary>
     /// <param name="info">Info bytes, optionally prefixed with the DTI byte <c>T</c>.</param>
+    /// <param name="options">Strict-vs-lenient parser knobs.</param>
     /// <param name="telemetry">On success, the decoded telemetry.</param>
-    public static bool TryDecode(ReadOnlySpan<byte> info, out AprsTelemetry telemetry)
+    /// <remarks>
+    /// Strict mode enforces APRS101 §13's "3-digit decimal numbers in
+    /// the range 000–255" for each analog channel — no variable-width
+    /// integers, no floating-point.
+    /// </remarks>
+    public static bool TryDecode(ReadOnlySpan<byte> info, AprsParseOptions options, out AprsTelemetry telemetry)
     {
+        ArgumentNullException.ThrowIfNull(options);
         telemetry = default;
         if (info.IsEmpty) return false;
 
@@ -66,7 +81,18 @@ public static class AprsTelemetryDecoder
         var analogs = new double[AnalogChannelCount];
         for (int i = 0; i < AnalogChannelCount; i++)
         {
-            if (!double.TryParse(parts[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out analogs[i]))
+            var raw = parts[i].Trim();
+            if (!options.AllowNonIntegerTelemetry)
+            {
+                // Strict §13: each channel is exactly 3 digits, 000–255.
+                if (raw.Length != 3) return false;
+                foreach (var c in raw) if (c < '0' || c > '9') return false;
+            }
+            if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out analogs[i]))
+            {
+                return false;
+            }
+            if (!options.AllowNonIntegerTelemetry && (analogs[i] < 0 || analogs[i] > 255))
             {
                 return false;
             }

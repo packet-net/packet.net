@@ -27,12 +27,28 @@ namespace Packet.Aprs;
 public static class AprsStatusDecoder
 {
     /// <summary>
-    /// Try to decode an APRS status report from <paramref name="info"/>.
+    /// Try to decode an APRS status report from <paramref name="info"/>,
+    /// using the default lenient parser options.
+    /// </summary>
+    public static bool TryDecode(ReadOnlySpan<byte> info, out AprsStatus status)
+        => TryDecode(info, AprsParseOptions.Lenient, out status);
+
+    /// <summary>
+    /// Try to decode an APRS status report from <paramref name="info"/>,
+    /// applying the supplied <see cref="AprsParseOptions"/>.
     /// </summary>
     /// <param name="info">Info bytes, optionally prefixed with DTI byte <c>&gt;</c>.</param>
+    /// <param name="options">Strict-vs-lenient parser knobs.</param>
     /// <param name="status">On success, the decoded status.</param>
-    public static bool TryDecode(ReadOnlySpan<byte> info, out AprsStatus status)
+    /// <remarks>
+    /// Strict mode rejects any byte outside printable ASCII (32–126,
+    /// minus <c>|</c> and <c>~</c> per §16) anywhere in the status
+    /// text. Trailing CR / LF / space are still tolerated since they
+    /// get trimmed before the value is exposed.
+    /// </remarks>
+    public static bool TryDecode(ReadOnlySpan<byte> info, AprsParseOptions options, out AprsStatus status)
     {
+        ArgumentNullException.ThrowIfNull(options);
         status = default;
         if (info.IsEmpty) return false;
 
@@ -48,10 +64,21 @@ public static class AprsStatusDecoder
             info = info[7..];
         }
 
-        // Remainder is the status text. Spec says ASCII, real corpus has
-        // UTF-8 (and worse); decode permissively with the replacement
-        // character for invalid bytes so callers see something rather
-        // than throwing.
+        // Strict §16 check: each byte must be printable ASCII (32–126),
+        // not | (124) or ~ (126). CR / LF tolerated as they get trimmed.
+        if (!options.AllowNonAsciiStatusText)
+        {
+            foreach (var b in info)
+            {
+                bool ok = (b >= 32 && b <= 126 && b != 0x7C && b != 0x7E)
+                          || b == 0x0D || b == 0x0A;
+                if (!ok) return false;
+            }
+        }
+
+        // Decode. Lenient: UTF-8 with replacement chars for invalid bytes
+        // (Chinese-station beacons rely on this). Strict path already
+        // proved everything is ASCII so UTF-8 = ASCII here.
         string text = Encoding.UTF8.GetString(info).TrimEnd('\r', '\n', ' ');
         status = new AprsStatus(timestamp, text);
         return true;

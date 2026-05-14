@@ -38,15 +38,34 @@ public static class AprsMicEDecoder
     /// </param>
     /// <param name="result">On success, the decoded Mic-E packet.</param>
     public static bool TryDecode(string destinationBase, ReadOnlySpan<byte> info, out AprsMicE result)
+        => TryDecode(destinationBase, info, AprsParseOptions.Lenient, out result);
+
+    /// <summary>
+    /// Try to decode a Mic-E frame with explicit <see cref="AprsParseOptions"/>.
+    /// </summary>
+    /// <remarks>
+    /// Strict mode (per APRS101 §10) rejects the legacy DTI bytes
+    /// <c>0x1C</c> / <c>0x1D</c> — those are "Rev. 0 beta units only"
+    /// per spec and effectively a permissive accommodation for early
+    /// Kenwood firmware.
+    /// </remarks>
+    public static bool TryDecode(string destinationBase, ReadOnlySpan<byte> info, AprsParseOptions options, out AprsMicE result)
     {
+        ArgumentNullException.ThrowIfNull(options);
         result = default;
         if (destinationBase is null) return false;
         if (destinationBase.Length != DestLen) return false;
         if (info.Length < InfoHeaderLen) return false;
 
-        // DTI check.
+        // DTI check. The spec-canonical DTIs are 0x60 (`) and 0x27 (').
+        // 0x1C / 0x1D are Rev. 0 beta legacy bytes — gated by an option.
         byte dti = info[0];
-        if (dti != (byte)'`' && dti != (byte)'\'' && dti != 0x1C && dti != 0x1D) return false;
+        bool isCanonicalDti = dti == (byte)'`' || dti == (byte)'\'';
+        bool isLegacyDti = dti == 0x1C || dti == 0x1D;
+        if (!isCanonicalDti && !(isLegacyDti && options.AllowMicELegacyDtiBytes))
+        {
+            return false;
+        }
 
         // ─── Destination address → lat / N-S / lon-offset / W-E / msg bits ───
         Span<char> latChars = stackalloc char[DestLen];
