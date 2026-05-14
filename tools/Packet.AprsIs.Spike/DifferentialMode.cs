@@ -61,7 +61,11 @@ public static class DifferentialMode
             cmd.CommandText = """
                 SELECT l.info, d.latitude, d.longitude, d.has_error, d.decoded_type
                 FROM lines l JOIN direwolf_decoded d ON d.line_id = l.id
-                WHERE hex(substr(l.info, 1, 1)) IN ('21', '3D')  -- '!' or '='
+                WHERE hex(substr(l.info, 1, 1)) IN
+                    ('21',  -- '!' no-timestamp, no-msg
+                     '3D',  -- '=' no-timestamp, msg-capable
+                     '40',  -- '@' timestamped, msg-capable
+                     '2F')  -- '/' timestamped, no-msg
             """;
 
             await using var rdr = await cmd.ExecuteReaderAsync();

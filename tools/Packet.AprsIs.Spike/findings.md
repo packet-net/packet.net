@@ -1,5 +1,32 @@
 # APRS-IS corpus — early findings
 
+## 2026-05-14 (later) — Extended decoder to `@` / `/` timestamped variants
+
+Position decoder now handles all four position DTIs (`!`, `=`, `@`, `/`).
+Timestamped variants (`@` and `/`) strip the 7-byte (DHM zulu / DHM local /
+HMS) or 8-byte (MDHM) timestamp prefix before delegating to the same
+position-decode path.
+
+Re-ran differential over 170,976 corpus rows covering all 4 DTIs:
+
+| Bucket | Count | % |
+|---|---:|---:|
+| `BothOkMatch` | 113,215 | **66.2%** (was 60.2% with just `!`/`=`) |
+| `OnlyUs` | 53,483 | 31.3% (was 37.4% — direwolf accepts more `@` because gateways more often have spec-clean SSIDs) |
+| `BothOkMismatch` | 3,016 | 1.8% |
+| `BothFailed` | 793 | 0.5% |
+| `OnlyDirewolf` | 469 | 0.3% (slightly up — some firmware uses non-spec timestamp terminator bytes like `S` that direwolf accepts and we reject) |
+
+Adding the timestamped variants nets ~6% more match coverage and reveals
+that the `BothOkMismatch` direwolf-bug pattern persists across `@` frames
+too (e.g. an `@095214h1104.61N/06357.19Wy...` Venezuela frame — comment
+mentions QRZ.com Venezuela suffix `YY7ECA` — gets `(11.08, -63.95)` from
+us correctly vs `(62.83, -121.66)` from direwolf).
+
+8 new unit tests covering DHM zulu / local / HMS / MDHM timestamp
+formats plus negative paths (malformed terminator, non-digit body,
+short input).
+
 ## 2026-05-14 (afternoon) — Position decoder differential vs direwolf
 
 Stood up `src/Packet.Aprs` with `AprsPositionDecoder.TryDecode` covering the

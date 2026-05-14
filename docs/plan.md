@@ -824,6 +824,31 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: position decoder gains `@` / `/` timestamped variants
+
+`AprsPositionDecoder.TryDecode` now handles all four position DTIs.
+Timestamped variants (`@` and `/`) strip the 7-byte (DHM zulu / DHM
+local / HMS) or 8-byte (MDHM) timestamp prefix before delegating to
+the same position-decode path.
+
+`TimestampLength` recognises:
+- `DDHHMMz` (zulu) — terminator `z`
+- `DDHHMM/` (local) — terminator `/`
+- `HHMMSSh` (HMS) — terminator `h`
+- `MMDDHHMM` (MDHM) — 8 digits, no terminator
+
+Re-ran differential mode over 170,976 corpus rows covering all 4 DTIs:
+
+| Bucket | % |
+|---|---:|
+| `BothOkMatch` | **66.2%** (was 60.2%) |
+| `OnlyUs` (direwolf rejects AX.25 envelope) | 31.3% |
+| `BothOkMismatch` (direwolf bugs we don't have) | 1.8% |
+| `BothFailed` | 0.5% |
+| `OnlyDirewolf` (we're stricter on edge cases) | 0.3% |
+
+8 new unit tests. 852 tests green (was 844).
+
 ### 2026-05-14 — aprs: position decoder v0 (`!` / `=` DTI) + corpus differential
 
 Stood up `src/Packet.Aprs` library. First decoder:

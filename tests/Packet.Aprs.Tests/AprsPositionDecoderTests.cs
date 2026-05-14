@@ -161,4 +161,78 @@ public class AprsPositionDecoderTests
         AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
         pos.Latitude.Should().BeApproximately(47.0, 1e-9);
     }
+
+    // ─── Timestamped variants (DTI @ and /) ────────────────────────────
+
+    [Fact]
+    public void TryDecode_Strips_DHM_Zulu_Timestamp_From_At_Sign_Position()
+    {
+        // @ DTI + DHM zulu timestamp (DDHHMMz) + position.
+        // 140951z = day 14, 09:51 zulu.
+        var bytes = "@140951z4725.22N/00810.83E_WX"u8;
+        AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
+        pos.Latitude.Should().BeApproximately(47.42033333333333, 1e-9);
+        pos.Longitude.Should().BeApproximately(8.1805, 1e-9);
+        pos.Comment.Should().Be("WX");
+    }
+
+    [Fact]
+    public void TryDecode_Strips_DHM_Local_Timestamp_From_Slash_Position()
+    {
+        // / DTI + DHM local timestamp (terminator '/') + position.
+        var bytes = "/140951/4725.22N/00810.83E_WX"u8;
+        AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
+        pos.Latitude.Should().BeApproximately(47.42033333333333, 1e-9);
+    }
+
+    [Fact]
+    public void TryDecode_Strips_HMS_Timestamp_From_At_Sign_Position()
+    {
+        // @ DTI + HMS timestamp (HHMMSSh terminator 'h') + position.
+        var bytes = "@095123h4725.22N/00810.83E_WX"u8;
+        AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
+        pos.Latitude.Should().BeApproximately(47.42033333333333, 1e-9);
+    }
+
+    [Fact]
+    public void TryDecode_Strips_MDHM_8Byte_Timestamp()
+    {
+        // @ DTI + MDHM timestamp (8 digits, no terminator) + position.
+        // 05140951 = May 14, 09:51.
+        var bytes = "@051409514725.22N/00810.83E_WX"u8;
+        AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
+        pos.Latitude.Should().BeApproximately(47.42033333333333, 1e-9);
+    }
+
+    [Fact]
+    public void TryDecode_Handles_Timestamped_Compressed_Position()
+    {
+        // @ DTI + 7-byte DHM zulu + compressed position bytes.
+        var bytes = "@140951zL3-3TM^`Ta  GBatt=4.33V"u8;
+        AprsPositionDecoder.TryDecode(bytes, out var pos).Should().BeTrue();
+        pos.Format.Should().Be(AprsPositionFormat.Compressed);
+        pos.Latitude.Should().BeApproximately(54.12600166666667, 1e-6);
+    }
+
+    [Fact]
+    public void TryDecode_Rejects_Timestamped_With_Malformed_Timestamp()
+    {
+        // Bad terminator byte (not z, /, h, or digit).
+        var bytes = "@140951X4725.22N/00810.83E_"u8;
+        AprsPositionDecoder.TryDecode(bytes, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryDecode_Rejects_Timestamped_With_Non_Digit_In_Timestamp_Body()
+    {
+        var bytes = "@14X951z4725.22N/00810.83E_"u8;
+        AprsPositionDecoder.TryDecode(bytes, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryDecode_Rejects_At_Sign_DTI_With_Too_Short_Input()
+    {
+        var bytes = "@short"u8;  // not even 8 bytes for timestamp
+        AprsPositionDecoder.TryDecode(bytes, out _).Should().BeFalse();
+    }
 }

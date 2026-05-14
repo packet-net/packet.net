@@ -29,9 +29,19 @@ public static class AprsPositionDecoder
     /// Try to decode an APRS position from <paramref name="info"/>.
     /// </summary>
     /// <param name="info">
-    /// Info-field bytes, optionally prefixed with the DTI byte (<c>!</c>
-    /// or <c>=</c>). For DTI <c>/</c> or <c>@</c> the caller is
-    /// responsible for stripping the 7-byte timestamp first.
+    /// Info-field bytes, optionally prefixed with the DTI byte. Handles
+    /// the four DTI variants:
+    /// <list type="bullet">
+    ///   <item><c>!</c> — no timestamp, no message capability</item>
+    ///   <item><c>=</c> — no timestamp, message-capable</item>
+    ///   <item><c>/</c> — timestamped, no message capability</item>
+    ///   <item><c>@</c> — timestamped, message-capable</item>
+    /// </list>
+    /// For the timestamped variants the 7-byte timestamp prefix
+    /// (or 8 bytes for MDHM) is stripped before the position bytes are
+    /// parsed. The timestamp itself isn't exposed by this decoder; a
+    /// future <c>AprsPositionWithTimestamp</c> overload could surface
+    /// it when callers need the time.
     /// </param>
     /// <param name="position">
     /// On success, the decoded position. On failure, the default value.
@@ -39,19 +49,32 @@ public static class AprsPositionDecoder
     /// <returns>
     /// <c>true</c> if the input parsed as a valid position; <c>false</c>
     /// for any structural defect (length, hemisphere indicator, digit
-    /// range, base-91 range, …).
+    /// range, base-91 range, timestamp format, …).
     /// </returns>
     public static bool TryDecode(ReadOnlySpan<byte> info, out AprsPosition position)
     {
         position = default;
         if (info.IsEmpty) return false;
 
-        // Strip optional DTI byte. The two DTIs we handle directly are
-        // ! and =; for / and @ the caller must remove the 7-byte
-        // timestamp first.
-        if (info[0] == (byte)'!' || info[0] == (byte)'=')
+        switch (info[0])
         {
-            info = info[1..];
+            case (byte)'!':
+            case (byte)'=':
+                info = info[1..];
+                break;
+            case (byte)'@':
+            case (byte)'/':
+                // Strip DTI + timestamp.
+                if (info.Length < 8) return false;
+                int tsLen = TimestampLength(info[1..8]);
+                if (tsLen == 0) return false;
+                if (info.Length < 1 + tsLen) return false;
+                info = info[(1 + tsLen)..];
+                break;
+            default:
+                // No DTI byte — assume caller already stripped it; fall
+                // through to format detection.
+                break;
         }
 
         if (info.IsEmpty) return false;
@@ -63,6 +86,38 @@ public static class AprsPositionDecoder
         return IsAsciiDigit(info[0])
             ? TryDecodeUncompressed(info, out position)
             : TryDecodeCompressed(info, out position);
+    }
+
+    /// <summary>
+    /// Determine the length of an APRS timestamp prefix per APRS12c §6.
+    /// Returns 0 for unrecognised formats (caller should reject).
+    /// </summary>
+    /// <remarks>
+    /// Four formats per spec:
+    /// <list type="bullet">
+    ///   <item>DHM zulu: <c>DDHHMMz</c> — 7 bytes, terminator <c>z</c></item>
+    ///   <item>DHM local: <c>DDHHMM/</c> — 7 bytes, terminator <c>/</c></item>
+    ///   <item>HMS: <c>HHMMSSh</c> — 7 bytes, terminator <c>h</c></item>
+    ///   <item>MDHM: <c>MMDDHHMM</c> — 8 bytes, all digits, no terminator</item>
+    /// </list>
+    /// The 7-byte forms have their format byte at position 6 (the 7th
+    /// byte). The 8-byte MDHM has no terminator — distinguished by all
+    /// 8 bytes being digits.
+    /// </remarks>
+    private static int TimestampLength(ReadOnlySpan<byte> candidate7)
+    {
+        if (candidate7.Length < 7) return 0;
+        for (int i = 0; i < 6; i++)
+        {
+            if (!IsAsciiDigit(candidate7[i])) return 0;
+        }
+        byte t = candidate7[6];
+        if (t == (byte)'z' || t == (byte)'/' || t == (byte)'h') return 7;
+        // MDHM (8 bytes, all digits) — also covers a final digit at
+        // position 6 followed by another digit at position 7 in the
+        // caller's buffer; we caught the first 7 here and need the 8th.
+        if (IsAsciiDigit(t)) return 8;
+        return 0;
     }
 
     // ─── Uncompressed (APRS12c §8) ─────────────────────────────────────
