@@ -824,6 +824,54 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: DirewolfPipeline frame-alignment fix (residual `BothOkMismatch` was our bug too)
+
+**Cascading bug, third correction.** After the q-strip fix (above), the
+differential still had ~2.4% `BothOkMismatch` on the
+`direwolf_decoded` table. Investigation: the `BothOkMismatch` examples
+had `direwolf_decoded.raw_output` that, when re-fed manually to
+`decode_aprs`, produced the *correct* coordinates — same as ours. So
+the stored lat/lon was right *for some other frame*. Alignment bug.
+
+Root cause in `DirewolfPipeline.SplitOutputByFrame`: when a single
+APRS-IS line contained two concatenated TNC2 frames
+(`...:!pos1FOO-1>BAR,...:!pos2`), `decode_aprs` treats the whole input
+as one frame, decodes `pos1`, and emits the trailing
+`FOO-1>BAR,...:!pos2` portion as the "comment field". Our splitter's
+TNC2-header regex matched that comment line and counted it as a
+second frame — shifting every subsequent batch-position assignment by
+one slot. Affected ~2.4% of corpus rows.
+
+Fix: a TNC2-header-shaped line only counts as a frame boundary when
+preceded by a blank line. Direwolf emits a colour-reset escape between
+consecutive frame analyses, which becomes a blank line after
+`AnsiStripper`. The comment lines inside one frame's body are never
+preceded by a blank.
+
+Wiped + re-decoded the corpus. Latest differential over **1.62M** rows:
+
+| Bucket | % |
+|---|---:|
+| `BothOkMatch` | **99.1%** |
+| `BothFailed` | 0.4% |
+| `OnlyDirewolf` | 0.3% |
+| `OnlyUs` | 0.1% |
+| `BothOkMismatch` | **1 row, 0.0001%** |
+
+The single remaining mismatch is a degenerate firmware-malformed
+timestamp `1415221z` (DHM zulu with an extra digit). Direwolf rejects
+the timestamp, falls back to compressed-position decoding of ASCII
+bytes, and emits garbage coords. Ours treats the 8th byte as part of
+an 8-digit MDHM and decodes the position correctly. Not really
+fixable on either side — degenerate input.
+
+**Three corrections, none of them direwolf's fault.** Findings.md now
+has both the "SECOND CORRECTION" header for this fix and the original
+q-strip correction.
+
+Also: `DirewolfMode` now delegates `SplitOutputByFrame` to the shared
+`DirewolfPipeline` helper instead of duplicating it.
+
 ### 2026-05-14 — aprs: q-strip regex fix + envelope-rewrite mode + correction of earlier "direwolf bug" claims
 
 Three intertwined pieces in one PR.

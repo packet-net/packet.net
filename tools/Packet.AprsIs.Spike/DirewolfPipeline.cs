@@ -115,23 +115,45 @@ public static class DirewolfPipeline
 
     public static List<string> SplitOutputByFrame(string output)
     {
+        // Frame-boundary detection rule (FIXED 2026-05-14): a line that
+        // matches the TNC2 header regex only counts as a NEW frame
+        // boundary when it's preceded by a blank line. Direwolf's output
+        // contains an ANSI colour change (which becomes a blank line
+        // after AnsiStripper) between consecutive frame analyses, so
+        // every real header is preceded by a blank.
+        //
+        // The previous version split on ANY header-matching line, which
+        // misfired on concatenated frames like
+        //   DB0OA-1>APDG03,TCPIP*,qAC,DB0OA-1:!pos1DB0OA-R>APDG03,...:!pos2
+        // Direwolf takes the WHOLE input as one frame, decodes its
+        // position, then emits the trailing portion as the "comment".
+        // That comment line happens to start with `B0OA-R>APDG03,...:`,
+        // which matched our header regex and made the splitter think
+        // one input produced two frames — shifting all subsequent
+        // batch-position alignments by one. ~2.4% of corpus rows were
+        // affected before the fix.
         var stripped = AnsiStripper.Replace(output, "");
         var lines = stripped.Split('\n');
         var frames = new List<string>();
         var current = new StringBuilder();
-        bool seenHeader = false;
+        bool currentHasHeader = false;
+        bool previousBlank = true;  // treat start-of-output as if preceded by blank
         foreach (var line in lines)
         {
-            bool isHeader = Tnc2Header.IsMatch(line);
-            if (isHeader && seenHeader)
+            bool isBlank = string.IsNullOrWhiteSpace(line);
+            bool isHeader = !isBlank && Tnc2Header.IsMatch(line);
+            bool isBoundary = isHeader && previousBlank;
+            if (isBoundary && currentHasHeader)
             {
                 frames.Add(current.ToString().TrimEnd());
                 current.Clear();
+                currentHasHeader = false;
             }
-            if (isHeader) seenHeader = true;
+            if (isBoundary) currentHasHeader = true;
             current.AppendLine(line);
+            previousBlank = isBlank;
         }
-        if (current.Length > 0 && seenHeader) frames.Add(current.ToString().TrimEnd());
+        if (current.Length > 0 && currentHasHeader) frames.Add(current.ToString().TrimEnd());
         return frames;
     }
 
