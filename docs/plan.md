@@ -824,6 +824,43 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: Mic-E decoder (`` ` `` / `'` DTI)
+
+`AprsMicE` + `AprsMicEDecoder` per APRS101 §10. Mic-E is the only
+APRS format that splits data across the AX.25 destination-address
+field (6 bytes encoding 6 latitude digits + 3 message bits + N/S +
+longitude offset + W/E) and the information field (encoding longitude,
+speed, course, symbol, optional comment).
+
+Surface:
+
+- 6-byte destination decoding: each char `0-9` / `A-J` / `K` / `L`
+  / `P-Y` / `Z` maps to a latitude digit (or space for position
+  ambiguity) and a message-bit value with a Std-vs-Custom hint.
+- Info field bytes 1-6: `d+28` / `m+28` / `h+28` (longitude),
+  `SP+28` / `DC+28` / `SE+28` (speed + course).
+- The DC+28 byte has two encodings in the wild (printable
+  `V..z` and old `0x1c..0x7f` ranges differ by 4 in the
+  course-hundreds index); the §10 worked example shows the
+  unified decode rule — "subtract 28, divide by 10 for units, then
+  subtract 4 from the remainder if it's ≥ 4" — handles both.
+- 15 message types decoded (`StandardM0OffDuty`...`M6Priority`,
+  `CustomC0`...`C6`, `Emergency`, `Unknown` for mixed Std/Custom).
+
+Live-corpus result (2.1 M rows now, was 1.95 M; +165 k Mic-E
+frames):
+
+| Bucket | % |
+|---|---:|
+| `BothOkMatch` | **99.0%** |
+| `BothFailed` | 0.6% |
+| `OnlyDirewolf` | 0.3% |
+| `OnlyUs` | 0.1% |
+| `BothOkMismatch` | 1 row |
+
+10 new tests including the §10 worked example, three real-corpus
+samples, and the Emergency-code path. Full suite green.
+
 ### 2026-05-14 — aprs: message decoder (`:` DTI)
 
 `AprsMessage` + `AprsMessageDecoder` per APRS101 §14.
