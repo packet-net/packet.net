@@ -824,6 +824,27 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — nino-tnc: retract mode-12-specific demod-wedge interpretation
+
+Earlier characterisation framed the intermittent B→A wedge as a
+mode-12-specific AFSK-without-PLL demod issue and recommended
+avoiding TXDELAY=100 on mode 12. A focused ~30-trial investigation
+on 2026-05-14 PM could not reproduce the wedge on demand across
+baseline / TX-queue back-pressure / SETHW thrash / mode-swap /
+TXDELAY-ladder hypotheses. The one fire that did occur during that
+session was in **mode 14**, not mode 12. Per-trial rate is ~5–15%
+with very high run-to-run variance.
+
+We have no substantiated mode-specific theory and no reliable
+trigger, so `docs/nino-tnc-characterisation.md` now records the
+wedge as an intermittent, unreproducible AFSK demod artefact
+rather than a mode-12 property, and the "avoid TXDELAY=100 on
+mode 12" caveat is dropped. Raw observation tables retained; the
+"mode 12 deep dive" framing is gone. Not actively investigating
+further on the Packet.NET side; if the firmware author wants to
+chase it, a firmware build that traces the AFSK demod state
+machine is the lowest-effort next step.
+
 ### 2026-05-14 — bpq: connected-mode A/B differential against BPQ's monitor render
 
 New `bpq_differential` spike mode (under `tools/Packet.AprsIs.Spike` —
