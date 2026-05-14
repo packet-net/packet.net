@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Packet.Sdl.IR</RootNamespace>
+    <Description>Language-agnostic intermediate representation for SDL state-machine and subroutine pages. Backends (C# / Go / etc.) consume this IR via Packet.Sdl.CodeGen.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

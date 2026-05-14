@@ -824,6 +824,46 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: codegen split into IR + C# emitter (Tier 1b prep)
+
+Refactored `tools/Packet.Sdl.CodeGen` from a single 1300-line console
+project into three projects, in preparation for adding a Go emitter
+alongside the C# one (Tier 1b):
+
+- **`tools/Packet.Sdl.IR`** — language-neutral library. YAML page models
+  (`SdlPage`, `SubroutinePage`, …), the action/event catalogs (`ActionCatalog`,
+  `EventCatalog`), the loader (`Loader.LoadPage`, `LoadSubroutinePage`),
+  the validator (`Validation.ValidatePage`, `NormaliseActionVerbs`,
+  lints) and a new resolver (`Resolver.Resolve`) that walks transition /
+  subroutine paths into a language-neutral IR (`ResolvedPage`,
+  `ResolvedSubroutinesPage`, `ResolvedAction`, `ResolvedLoop`,
+  `ResolvedReference`).
+
+- **`tools/Packet.Sdl.CodeGen.Csharp`** — C# emitter library. Owns the
+  Scriban templates (moved from `tools/Packet.Sdl.CodeGen/Templates/`),
+  the template loader, Roslyn parse-back validation (`CsharpValidator`),
+  the C#-specific view models (`CsharpStateModel`,
+  `CsharpSubroutinesModel`, with literal escaping + `ActionKind` enum
+  mapping), and the public emit API (`CsharpEmitter.EmitStatePage`,
+  `EmitSubroutinePage`).
+
+- **`tools/Packet.Sdl.CodeGen`** — slimmed to a ~190-line orchestrator
+  that wires the two libraries together: parse args, load events.yaml /
+  actions.yaml, partition YAML files into state-machine vs subroutine
+  pages, validate, resolve, hand to the emitter, write outputs, clean
+  stale files. Drops `YamlDotNet` / `Scriban` /
+  `Microsoft.CodeAnalysis.CSharp` direct package refs (now transitive
+  via the two new libs).
+
+**Verification.** Codegen output is bit-for-bit identical before/after
+the refactor (`git diff src/Packet.Ax25.Sdl tests/Packet.Ax25.Conformance.Tests`
+empty after a full regen). All 1057 default-filter tests pass. The
+black-box `Packet.Sdl.CodeGen.Tests` suite (which shells out to the
+codegen binary) is unchanged and green.
+
+Next step: add `tools/Packet.Sdl.CodeGen.Go` as a sibling backend, plus
+a `go-spec/` module skeleton and a Go CI job (Tier 1b second PR).
+
 ### 2026-05-14 — sdl: figc4.7 validation — four-codebase implementation references
 
 Validation PR for the figc4.7 arc, per the runbook's stages 6-10

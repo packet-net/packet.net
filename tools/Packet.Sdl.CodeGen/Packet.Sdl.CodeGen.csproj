@@ -6,15 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="YamlDotNet" />
-    <PackageReference Include="Scriban" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Scriban templates embedded into the tool, so the executable has
-         zero runtime dependency on its source directory layout. -->
-    <EmbeddedResource Include="Templates\**\*" />
+    <ProjectReference Include="..\Packet.Sdl.IR\Packet.Sdl.IR.csproj" />
+    <ProjectReference Include="..\Packet.Sdl.CodeGen.Csharp\Packet.Sdl.CodeGen.Csharp.csproj" />
   </ItemGroup>
 
 </Project>

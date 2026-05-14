@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Packet.Sdl.CodeGen.Csharp</RootNamespace>
+    <Description>C# emitter backend for the SDL codegen IR. Renders state-machine pages and subroutine pages to .g.cs / .g.Tests.cs / .g.mmd via Scriban templates; validates the emission with Roslyn parse-back.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Scriban" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Sdl.IR\Packet.Sdl.IR.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\**\*" />
+  </ItemGroup>
+
+</Project>
