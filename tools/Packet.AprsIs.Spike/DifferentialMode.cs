@@ -85,7 +85,8 @@ public static class DifferentialMode
                     ('21',  -- '!' no-timestamp, no-msg
                      '3D',  -- '=' no-timestamp, msg-capable
                      '40',  -- '@' timestamped, msg-capable
-                     '2F')  -- '/' timestamped, no-msg
+                     '2F',  -- '/' timestamped, no-msg
+                     '3B')  -- ';' object report
             """;
 
             await using var rdr = await cmd.ExecuteReaderAsync();
@@ -98,7 +99,21 @@ public static class DifferentialMode
                 string decodedType = rdr.IsDBNull(4) ? "" : rdr.GetString(4);
                 _ = rdr.GetBoolean(5);  // used_rewrite — reserved for future per-bucket attribution
 
-                bool usOk = AprsPositionDecoder.TryDecode(info, out var ours);
+                // Dispatch by DTI: objects (DTI `;`) go through the object
+                // decoder; position-class DTIs (! = @ /) go through the
+                // position decoder. Both produce an AprsPosition we can
+                // compare against direwolf's lat/lon.
+                bool usOk;
+                AprsPosition ours;
+                if (info.Length > 0 && info[0] == (byte)';')
+                {
+                    usOk = AprsObjectDecoder.TryDecode(info, out var obj);
+                    ours = usOk ? obj.Position : default;
+                }
+                else
+                {
+                    usOk = AprsPositionDecoder.TryDecode(info, out ours);
+                }
                 // dwOk = direwolf produced a position. has_error can be set
                 // for non-fatal warnings (e.g. lowercase callsign in the
                 // source, non-standard frequency in comment); we only use

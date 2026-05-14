@@ -77,6 +77,23 @@ public static class AprsPositionDecoder
                 break;
         }
 
+        return TryDecodePayload(info, out position);
+    }
+
+    /// <summary>
+    /// Decode position bytes that have already had any DTI byte and
+    /// timestamp stripped — useful for object / item / status-with-position
+    /// reports where the position payload follows a fixed-width header that
+    /// the caller has parsed.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="TryDecode"/>, this entry point does NOT treat a
+    /// leading <c>/</c> as a DTI byte — in compressed form <c>/</c> is a
+    /// valid symbol-table identifier.
+    /// </remarks>
+    public static bool TryDecodePayload(ReadOnlySpan<byte> info, out AprsPosition position)
+    {
+        position = default;
         if (info.IsEmpty) return false;
 
         // Compressed format starts with the symbol table identifier
