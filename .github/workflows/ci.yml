@@ -17,20 +17,19 @@ permissions:
 jobs:
   build-test:
     name: build & test
-    runs-on: ubuntu-latest
-    # Linux-only on every PR — Windows + macOS were the GitHub Actions
-    # budget consumers (Windows minutes are billed 2× Linux, and Windows
-    # .NET builds take 3-5× the wall-clock time on the same code). For a
-    # codebase that targets netX.0 + portable APIs only, Linux catches
-    # ~95 % of regressions. Cross-platform drift detection can ride a
-    # nightly schedule later if it actually proves necessary.
+    runs-on: [self-hosted, Linux, X64]
+    # Self-hosted Linux runner — zero GitHub Actions minutes consumed.
+    # Codebase targets netX.0 + portable APIs, so Linux catches ~95 %
+    # of regressions. Cross-platform drift detection can ride a nightly
+    # GitHub-hosted matrix later if it actually proves necessary.
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
+      - name: report .NET
+        run: dotnet --version
+        # .NET 10 SDK is pre-installed system-wide on the self-hosted
+        # runner. We skip actions/setup-dotnet because it would try to
+        # re-install per-job into a path the `gh` user can't write to.
 
       - name: restore
         run: dotnet restore
@@ -56,14 +55,15 @@ jobs:
 
   sdl-codegen-discipline:
     name: SDL codegen idempotent
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
+      - name: report .NET
+        run: dotnet --version
+        # .NET 10 SDK is pre-installed system-wide on the self-hosted
+        # runner. We skip actions/setup-dotnet because it would try to
+        # re-install per-job into a path the `gh` user can't write to.
 
       - name: run codegen
         run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --in spec-sdl --out src/Packet.Ax25.Sdl --tests tests/Packet.Ax25.Conformance.Tests

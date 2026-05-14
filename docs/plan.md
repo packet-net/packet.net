@@ -665,6 +665,24 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — CI: move all workflows to self-hosted runner
+
+GitHub-hosted Actions budget reset wasn't due for 18 days. Tom added a
+self-hosted Linux x64 runner (`github-actions-runner`, online + idle);
+all four jobs across `ci.yml` / `interop.yml` / `plan-check.yml`
+switched to `runs-on: [self-hosted, Linux, X64]`. Zero ongoing GitHub
+Actions minutes consumed.
+
+Runner prerequisites: `.NET 10` (or have `actions/setup-dotnet@v4`
+install it on first use), plus Docker for `interop.yml`.
+
+This supersedes the Windows+macOS-drop motivation in the previous
+amendment — the budget pressure goes away entirely on self-hosted, so
+the Linux-only matrix is now purely about wall-clock-per-PR rather
+than $-per-PR. Worth revisiting whether to put Windows+macOS back on a
+nightly GitHub-hosted schedule, since they're effectively free
+elsewhere.
+
 ### 2026-05-14 — CI: drop Windows + macOS runners from PR matrix
 
 `ci.yml` was running `build & test` across `[ubuntu-latest,
