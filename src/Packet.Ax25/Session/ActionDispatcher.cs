@@ -50,6 +50,8 @@ public sealed class ActionDispatcher : IActionDispatcher
     private readonly Action<UFrameSpec> sendUFrame;
     private readonly Action<UiFrameSpec> sendUiFrame;
     private readonly Action<DataLinkSignal> sendUpward;
+    private readonly Action<LinkMultiplexerSignal> sendLinkMux;
+    private readonly Action<InternalSignal> sendInternal;
 
     /// <summary>Default acknowledgement timer (T1).</summary>
     public TimeSpan T1Duration { get; init; } = TimeSpan.FromMilliseconds(3000);
@@ -95,18 +97,33 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>DL_DATA_indication</c>) and the error-indication letter
     /// variants (<c>DL_ERROR_indication_*</c>). Defaults to a no-op sink.
     /// </param>
+    /// <param name="sendLinkMux">
+    /// Called when an action raises a signal to the link multiplexer
+    /// (<c>LM_SEIZE_request</c>, <c>LM_RELEASE_request</c>,
+    /// <c>LM_DATA_request</c>). Defaults to a no-op sink.
+    /// </param>
+    /// <param name="sendInternal">
+    /// Called when an action raises an internal signal — to the
+    /// management data-link (<c>MDL_NEGOTIATE_request</c>) or the
+    /// internal I-frame queue (<c>push_*</c> verbs). Defaults to a
+    /// no-op sink.
+    /// </param>
     public ActionDispatcher(
         Action<string> onTimerExpiry,
         Action<SupervisoryFrameSpec> sendSFrame,
         Action<UFrameSpec>? sendUFrame = null,
         Action<UiFrameSpec>? sendUiFrame = null,
-        Action<DataLinkSignal>? sendUpward = null)
+        Action<DataLinkSignal>? sendUpward = null,
+        Action<LinkMultiplexerSignal>? sendLinkMux = null,
+        Action<InternalSignal>? sendInternal = null)
     {
         this.onTimerExpiry = onTimerExpiry ?? throw new ArgumentNullException(nameof(onTimerExpiry));
         this.sendSFrame    = sendSFrame    ?? throw new ArgumentNullException(nameof(sendSFrame));
         this.sendUFrame    = sendUFrame    ?? (_ => { });
         this.sendUiFrame   = sendUiFrame   ?? (_ => { });
         this.sendUpward    = sendUpward    ?? (_ => { });
+        this.sendLinkMux   = sendLinkMux   ?? (_ => { });
+        this.sendInternal  = sendInternal  ?? (_ => { });
     }
 
     /// <inheritdoc/>
@@ -278,6 +295,81 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "DL_ERROR_indication_N":          sendUpward(new DataLinkErrorIndication("N"));   break;
             case "DL_ERROR_indication_O":          sendUpward(new DataLinkErrorIndication("O"));   break;
 
+            // ─── Link-multiplexer signals (signal_lower) ──────────────
+            //
+            // The LM_*_request verbs go to the link multiplexer (the
+            // medium-access arbiter), not directly to the radio. See
+            // figc4.4 t53–t59 for the seize/release/data flow that
+            // implements P-persistence on the channel.
+            case "LM_seize_request":               sendLinkMux(new LinkMultiplexerSeizeRequest()); break;
+            case "LM_release_request":             sendLinkMux(new LinkMultiplexerReleaseRequest()); break;
+            case "LM_data_request":                sendLinkMux(new LinkMultiplexerDataRequest()); break;
+
+            // ─── Internal-out signals ──────────────────────────────────
+            //
+            // MDL_NEGOTIATE_request triggers the management data-link to
+            // start XID negotiation with the peer (figc4.6). The push_*
+            // verbs enqueue an I-frame onto the internal TX queue, which
+            // the session pops via I_frame_pops_off_queue events.
+            case "MDL_NEGOTIATE_request":          sendInternal(new MdlNegotiateRequestSignal()); break;
+            case "push_on_I_frame_queue":          PushOnIFrameQueue(tx); break;
+            case "push_frame_on_queue":            PushOnIFrameQueue(tx); break;
+            case "push_old_I_frame_N_r_on_queue":  PushOldIFrameNrOnQueue(tx); break;
+
+            // ─── Processing verbs (queue / storage / flags / counters) ─
+            //
+            // Two "discard queue" spellings exist across figures — both
+            // clear the I-frame transmit queue. `discard_I_frame_queue`
+            // is a third spelling (figc4.4); kept as a separate case so
+            // the catalogue can record all three as canonical names
+            // referring to the same operation.
+            case "discard_frame_queue":            ctx.IFrameQueue.Clear(); break;
+            case "discard_queue":                  ctx.IFrameQueue.Clear(); break;
+            case "discard_I_frame_queue":          ctx.IFrameQueue.Clear(); break;
+
+            // `discard_I_frame` and `discard_contents_of_I_frame` drop
+            // the current incoming frame's payload — explicit "we are
+            // not delivering this upward". No context mutation required;
+            // we just don't fire DL_DATA_indication for this trigger.
+            case "discard_I_frame":                /* no-op: incoming not stored anywhere */ break;
+            case "discard_contents_of_I_frame":    /* no-op: incoming not stored anywhere */ break;
+
+            // `discard_primitive` is the catch-all "drop the trigger and
+            // do nothing" verb (figc4.1 t06: all-other-primitives-from-
+            // upper-layer column).
+            case "discard_primitive":              /* no-op */ break;
+
+            // SREJ exception bookkeeping. SrejExceptionCount tracks the
+            // number of outstanding SREJ exceptions per §C4.3. The
+            // SelectiveRejectException bool flag is set when the count
+            // transitions 0 → 1+ and cleared on 1+ → 0.
+            case "set_reject_exception":           ctx.RejectException = true; break;
+            case "clear_reject_exception":         ctx.RejectException = false; break;
+            case "increment_srej_exception":
+                ctx.SrejExceptionCount++;
+                ctx.SelectiveRejectException = true;
+                break;
+            case "decrement_srej_exception_if_gt_0":
+                if (ctx.SrejExceptionCount > 0)
+                {
+                    ctx.SrejExceptionCount--;
+                    if (ctx.SrejExceptionCount == 0) ctx.SelectiveRejectException = false;
+                }
+                break;
+
+            // Out-of-sequence I-frame storage. `save_contents_of_I_frame`
+            // stashes the trigger I-frame's Info + Pid keyed by its N(S);
+            // `retrieve_stored_V_r_I_frame` pulls back the frame whose
+            // N(S) == V(r) (i.e. the next expected) when V(r) advances
+            // and ships it upward as DL_DATA_indication.
+            case "save_contents_of_I_frame":       SaveIncomingIFrame(tx); break;
+            case "retrieve_stored_V_r_I_frame":    RetrieveStoredVrIFrame(tx, sendUpward); break;
+
+            // Modulus selection. figc4.1 / figc4.4's SABM(E) paths use
+            // these to lock in mod-8 vs mod-128 once the peer accepts.
+            case "set_version_2_0":                ctx.IsExtended = false; break;
+            case "set_version_2_2":                ctx.IsExtended = true;  break;
+
             // ─── Sequence-variable assignments (pure context) ──────────
             //
             // Verb spellings here track the figure-canonical lowercase form
@@ -419,6 +511,86 @@ public sealed class ActionDispatcher : IActionDispatcher
     {
         bool pfBit = pfBitOverride ?? tx.Pending.PfBit ?? false;
         return new UFrameSpec(type, IsCommand: isCommand, PfBit: pfBit, IsExpedited: isExpedited);
+    }
+
+    /// <summary>
+    /// Implement <c>push_on_I_frame_queue</c> / <c>push_frame_on_queue</c>:
+    /// pull the payload from the triggering <see cref="DlDataRequest"/>
+    /// and append it to <see cref="Ax25SessionContext.IFrameQueue"/>.
+    /// Also raises the corresponding <see cref="InternalSignal"/> so
+    /// observers can see the push.
+    /// </summary>
+    private void PushOnIFrameQueue(TransitionContext tx)
+    {
+        if (tx.Trigger is not DlDataRequest dr)
+        {
+            throw new InvalidOperationException(
+                $"action `push_*_queue` requires the trigger to be DL_DATA_request, but it was '{tx.Trigger.Name}'.");
+        }
+        tx.Session.IFrameQueue.Enqueue(dr.Data);
+        sendInternal(new PushIFrameQueueSignal(dr.Data));
+    }
+
+    /// <summary>
+    /// Implement <c>push_old_I_frame_N_r_on_queue</c>: find the
+    /// previously-sent I-frame whose N(S) equals the incoming frame's
+    /// N(R), and put it back on the transmit queue for retransmission.
+    /// Used in figc4.4's REJ/SREJ recovery paths.
+    /// </summary>
+    private void PushOldIFrameNrOnQueue(TransitionContext tx)
+    {
+        byte nr = ExtractNr(tx);
+        if (!tx.Session.SentIFrames.TryGetValue(nr, out var payload))
+        {
+            // figc4.4 assumes the frame is still in storage. Real impls
+            // (linbpq/direwolf) silently skip if it's been evicted; we do
+            // the same rather than throw, since the figure's behaviour
+            // here is implementation-defined when state is lost.
+            return;
+        }
+        tx.Session.IFrameQueue.Enqueue(payload);
+        sendInternal(new PushIFrameQueueSignal(payload));
+    }
+
+    /// <summary>
+    /// Implement <c>save_contents_of_I_frame</c>: store the triggering
+    /// I-frame's <c>Info</c> + <c>Pid</c> keyed by its N(S), so a later
+    /// <c>retrieve_stored_V_r_I_frame</c> can pull it back when V(r)
+    /// advances to that seqno.
+    /// </summary>
+    private static void SaveIncomingIFrame(TransitionContext tx)
+    {
+        var frame = RequireIncomingFrame(tx, "save_contents_of_I_frame");
+        RequireMod8(tx, "N(S)");
+        byte ns = (byte)((frame.Control >> 1) & 0x07);
+        if (frame.Pid is not byte pid)
+        {
+            throw new InvalidOperationException(
+                "action `save_contents_of_I_frame` requires an I-frame trigger (which carries PID), but the frame has no PID.");
+        }
+        tx.Session.StoredReceivedIFrames[ns] = (frame.Info, pid);
+    }
+
+    /// <summary>
+    /// Implement <c>retrieve_stored_V_r_I_frame</c>: pull the stored
+    /// I-frame whose N(S) equals the session's current V(R), ship its
+    /// payload upward as <see cref="DataLinkDataIndication"/>, and
+    /// remove it from storage.
+    /// </summary>
+    /// <remarks>
+    /// In the spec figures, V(r) is typically incremented in the same
+    /// action chain before this verb fires, so V(r) points at the
+    /// next-expected seqno that the just-stored out-of-order frame had.
+    /// If no stored frame matches, this is a no-op — matching what
+    /// linbpq / direwolf do.
+    /// </remarks>
+    private static void RetrieveStoredVrIFrame(TransitionContext tx, Action<DataLinkSignal> sendUpward)
+    {
+        if (!tx.Session.StoredReceivedIFrames.Remove(tx.Session.VR, out var stored))
+        {
+            return;
+        }
+        sendUpward(new DataLinkDataIndication(stored.Info, stored.Pid));
     }
 
     /// <summary>

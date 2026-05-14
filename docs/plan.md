@@ -824,6 +824,66 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: long-tail processing verbs wired (queue / storage / counters / aliases)
+
+Mechanical batch closing out 19 long-tail verbs that the transcribed
+pages reference:
+
+**Queue clears** (all clear `ctx.IFrameQueue`): `discard_frame_queue`,
+`discard_queue`, `discard_I_frame_queue`. Figc4.6's title-case
+`Discard Frame Queue` / `Discard I Frame Queue` now alias via
+`actions.yaml` to the snake_case canonical.
+
+**No-op discards**: `discard_I_frame`, `discard_contents_of_I_frame`,
+`discard_primitive` — drop the current trigger and continue.
+
+**Reject/SREJ bookkeeping**: `set_reject_exception` / `clear_reject_exception`
+mutate `ctx.RejectException`. `increment_srej_exception` /
+`decrement_srej_exception_if_gt_0` maintain a new
+`Ax25SessionContext.SrejExceptionCount` (int counter per §C4.3),
+keeping `SelectiveRejectException` flag in sync.
+
+**Out-of-sequence I-frame storage**: `save_contents_of_I_frame` stashes
+the incoming I-frame's `Info` + `Pid` into a new
+`StoredReceivedIFrames` dictionary keyed by N(S).
+`retrieve_stored_V_r_I_frame` pulls the entry keyed by current V(R),
+emits `DL_DATA_indication` upward, and removes from storage.
+
+**Modulus selection**: `set_version_2_0` / `set_version_2_2` toggle
+`ctx.IsExtended`. `Set Version 2.0` (figc4.6 title-case) aliases to
+`set_version_2_0`.
+
+**Link multiplexer signals** (`signal_lower`): new `LinkMultiplexerSignal`
+record hierarchy + `sendLinkMux` dispatcher callback. Three verbs:
+`LM_seize_request`, `LM_release_request`, `LM_data_request`.
+
+**Internal-out signals**: new `InternalSignal` hierarchy +
+`sendInternal` callback. `MDL_NEGOTIATE_request` → `MdlNegotiateRequestSignal`.
+`push_on_I_frame_queue` / `push_frame_on_queue` push the triggering
+`DlDataRequest`'s payload onto `ctx.IFrameQueue` and emit
+`PushIFrameQueueSignal`. `push_old_I_frame_N_r_on_queue` re-enqueues
+from `ctx.SentIFrames` keyed by the incoming frame's N(R) (used in
+REJ/SREJ retransmit paths). `Push Frame Onto Queue` (figc4.6
+title-case) aliases.
+
+`Establish Data Link` (figc4.6 title-case) aliased to
+`Establish_Data_Link` snake_case canonical (subroutine; wiring proper
+gated on figc4.7).
+
+Tests: 21 new (verb behaviour, aliases, counter mechanics, storage,
+push-back-on-queue with stored sent frame). 628 tests green.
+
+After this PR, the only **unwired** verbs in the existing transcribed
+pages are:
+1. The subroutine verbs (Establish_Data_Link, UI_Check, Select_T1_Value,
+   Clear_Exception_Conditions, Transmit_Enquiry, Invoke_Retransmission,
+   Check_Need_For_Response, N_r_Error_Recovery, Enquiry_Response_F_0,
+   Enquiry_Response_F_1, Check_I_Frame_Acknowledged,
+   Check_I_Frames_Acknowledged) — these throw "unknown SDL action"
+   today; PR-J adds a stubbed-subroutine table that makes them no-op
+   with TODO markers pointing to the eventual figc4.7 wiring.
+2. `I_command` — needs session-loop machinery for queue→event posting.
+
 ### 2026-05-14 — ax25: DL upper-layer signals wired (5 primitives + 10 error letters)
 
 Closes every `signal_upper` verb the transcribed pages reference. New

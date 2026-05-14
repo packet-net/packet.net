@@ -63,6 +63,15 @@ public sealed class Ax25SessionContext
     /// <summary>An SREJ frame has been sent to the remote station.</summary>
     public bool SelectiveRejectException { get; set; }
 
+    /// <summary>
+    /// Count of outstanding SREJ exceptions per §C4.3. The figc4.4 SREJ
+    /// paths increment this when sending an SREJ and decrement when an
+    /// expected out-of-sequence I-frame is delivered. Distinct from the
+    /// <see cref="SelectiveRejectException"/> flag (which is just a
+    /// "have any SREJs been sent" boolean).
+    /// </summary>
+    public int SrejExceptionCount { get; set; }
+
     /// <summary>SABM(E) was sent by request of Layer 3 (DL-CONNECT request).</summary>
     public bool Layer3Initiated { get; set; }
 
@@ -88,8 +97,16 @@ public sealed class Ax25SessionContext
     /// <summary>FIFO queue of I-frame payloads awaiting transmission.</summary>
     public Queue<ReadOnlyMemory<byte>> IFrameQueue { get; } = new();
 
-    /// <summary>Map of seqno → I-frame body, for retransmission.</summary>
+    /// <summary>Map of seqno → I-frame body, for retransmission of outbound frames.</summary>
     public Dictionary<byte, ReadOnlyMemory<byte>> SentIFrames { get; } = new();
+
+    /// <summary>
+    /// Out-of-sequence received I-frames awaiting their turn — keyed by
+    /// the frame's N(S). When <see cref="VR"/> advances to a stored
+    /// seqno, the figc4.4 <c>retrieve_stored_V_r_I_frame</c> action
+    /// dequeues from here and delivers upward.
+    /// </summary>
+    public Dictionary<byte, (ReadOnlyMemory<byte> Info, byte Pid)> StoredReceivedIFrames { get; } = new();
 
     // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -109,8 +126,10 @@ public sealed class Ax25SessionContext
         AcknowledgePending = false;
         RejectException = false;
         SelectiveRejectException = false;
+        SrejExceptionCount = 0;
         Layer3Initiated = false;
         IFrameQueue.Clear();
         SentIFrames.Clear();
+        StoredReceivedIFrames.Clear();
     }
 }

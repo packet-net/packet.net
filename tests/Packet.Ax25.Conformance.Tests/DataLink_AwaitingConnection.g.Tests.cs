@@ -255,7 +255,7 @@ public class DataLink_AwaitingConnection_GeneratedTests
         t.Actions.Count.Should().Be(2);
         t.Actions[0].Verb.Should().Be("UI_Check");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
-        t.Actions[1].Verb.Should().Be("DM (F = 1)");
+        t.Actions[1].Verb.Should().Be("DM F=1");
         t.Actions[1].Kind.Should().Be(ActionKind.SignalLower);
     }
 

@@ -15,13 +15,17 @@ public class ActionDispatcherTests
                     List<SupervisoryFrameSpec> sFrames,
                     List<UFrameSpec> uFrames,
                     List<UiFrameSpec> uiFrames,
-                    List<DataLinkSignal> upward) NewRig()
+                    List<DataLinkSignal> upward,
+                    List<LinkMultiplexerSignal> linkMux,
+                    List<InternalSignal> internalSignals) NewRig()
     {
         var timerExpiries = new List<string>();
         var sFrames = new List<SupervisoryFrameSpec>();
         var uFrames = new List<UFrameSpec>();
         var uiFrames = new List<UiFrameSpec>();
         var upward = new List<DataLinkSignal>();
+        var linkMux = new List<LinkMultiplexerSignal>();
+        var internalSignals = new List<InternalSignal>();
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
         var dispatcher = new ActionDispatcher(
@@ -29,13 +33,15 @@ public class ActionDispatcherTests
             sendSFrame: sFrames.Add,
             sendUFrame: uFrames.Add,
             sendUiFrame: uiFrames.Add,
-            sendUpward: upward.Add);
+            sendUpward: upward.Add,
+            sendLinkMux: linkMux.Add,
+            sendInternal: internalSignals.Add);
         var ctx = new Ax25SessionContext
         {
             Local  = new Callsign("M0LTE", 0),
             Remote = new Callsign("G7XYZ", 7),
         };
-        return (dispatcher, ctx, scheduler, time, timerExpiries, sFrames, uFrames, uiFrames, upward);
+        return (dispatcher, ctx, scheduler, time, timerExpiries, sFrames, uFrames, uiFrames, upward, linkMux, internalSignals);
     }
 
     // ─── Flag mutations ────────────────────────────────────────────────
@@ -43,7 +49,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Set_Own_Receiver_Busy_Sets_The_Flag()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.OwnReceiverBusy.Should().BeFalse();
         d.Execute("set_own_receiver_busy", ctx, s);
         ctx.OwnReceiverBusy.Should().BeTrue();
@@ -52,7 +58,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Clear_Own_Receiver_Busy_Clears_The_Flag()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.OwnReceiverBusy = true;
         d.Execute("clear_own_receiver_busy", ctx, s);
         ctx.OwnReceiverBusy.Should().BeFalse();
@@ -67,7 +73,7 @@ public class ActionDispatcherTests
     [InlineData("clear_peer_receiver_busy",  nameof(Ax25SessionContext.PeerReceiverBusy),   false)]
     public void Flag_Verbs_Mutate_The_Right_Field(string action, string fieldName, bool expectedValue)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         // Set the opposite to make the change observable
         typeof(Ax25SessionContext).GetProperty(fieldName)!.SetValue(ctx, !expectedValue);
 
@@ -84,7 +90,7 @@ public class ActionDispatcherTests
     [InlineData("start_T3", "T3")]
     public void Start_Timer_Arms_The_Named_Timer(string action, string timerName)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
         s.IsRunning(timerName).Should().BeTrue();
     }
@@ -95,7 +101,7 @@ public class ActionDispatcherTests
     [InlineData("stop_T3", "T3")]
     public void Stop_Timer_Cancels_The_Named_Timer(string action, string timerName)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         // Arm first so cancel has something to clear
         d.Execute("start_" + timerName, ctx, s);
         s.IsRunning(timerName).Should().BeTrue();
@@ -107,7 +113,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Timer_Expiry_Calls_The_Configured_Callback_With_The_Timer_Name()
     {
-        var (d, ctx, s, time, expiries, _, _, _, _) = NewRig();
+        var (d, ctx, s, time, expiries, _, _, _, _, _, _) = NewRig();
         d.Execute("start_T1", ctx, s);
 
         time.Advance(d.T1Duration);
@@ -118,7 +124,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Default_Timer_Durations_Match_The_Spec_Defaults()
     {
-        var (d, _, _, _, _, _, _, _, _) = NewRig();
+        var (d, _, _, _, _, _, _, _, _, _, _) = NewRig();
         // T1 default 3000 ms (XID PI=9 default), T3 default chosen per §6.7.1.3.
         d.T1Duration.Should().Be(TimeSpan.FromMilliseconds(3000));
         d.T2Duration.Should().Be(TimeSpan.FromMilliseconds(1500));
@@ -130,7 +136,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Discard_I_Frame_Queue_Empties_The_Queue()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IFrameQueue.Enqueue(new byte[] { 1 });
         ctx.IFrameQueue.Enqueue(new byte[] { 2 });
         ctx.IFrameQueue.Should().HaveCount(2);
@@ -151,7 +157,7 @@ public class ActionDispatcherTests
     public void Supervisory_Verbs_Signal_Outgoing_Frame_With_Right_Type_And_Role(
         string action, SupervisoryFrameType expectedType, bool expectedIsCommand)
     {
-        var (d, ctx, s, _, _, sFrames, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
 
         sFrames.Should().ContainSingle();
@@ -162,7 +168,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Supervisory_Verb_Consumes_Pending_Nr_And_PfBit()
     {
-        var (d, ctx, s, _, _, sFrames, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         ctx.VR = 4;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
@@ -181,7 +187,7 @@ public class ActionDispatcherTests
         // `set_own_receiver_busy; RNR_response; clear_acknowledge_pending`
         // with no N(R) or F-bit setup before the frame. The dispatcher
         // applies the spec-implicit defaults: Nr = V(R), PfBit = false.
-        var (d, ctx, s, _, _, sFrames, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
         d.Execute("RNR_response", ctx, s);
 
@@ -204,7 +210,7 @@ public class ActionDispatcherTests
     public void Unnumbered_Verbs_Signal_Outgoing_Frame_With_Right_Type_Role_PfBit_And_Expedite(
         string action, UFrameType expectedType, bool expectedIsCommand, bool expectedPfBit, bool expectedExpedited)
     {
-        var (d, ctx, s, _, _, _, uFrames, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, uFrames, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
 
         uFrames.Should().ContainSingle();
@@ -218,7 +224,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Bare_UA_Consumes_Pending_PfBit()
     {
-        var (d, ctx, s, _, _, _, uFrames, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, uFrames, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new SabmReceived(
             Ax25Frame.Ui(
                 destination: new Callsign("M0LTE", 0),
@@ -239,7 +245,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Explicit_Qualifier_Overrides_Pending_PfBit()
     {
-        var (d, ctx, s, _, _, _, uFrames, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, uFrames, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         // Even with Pending.PfBit pre-set to false, an explicit (P == 1)
@@ -255,7 +261,7 @@ public class ActionDispatcherTests
     [Fact]
     public void UI_command_Reads_Payload_And_Pid_From_DlUnitDataRequest()
     {
-        var (d, ctx, s, _, _, _, _, uiFrames, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, uiFrames, _, _, _) = NewRig();
         var payload = "hello world"u8.ToArray();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest(payload, Pid: 0xCF));
 
@@ -272,7 +278,7 @@ public class ActionDispatcherTests
     [Fact]
     public void UI_command_Uses_Default_Pid_When_Primitive_Has_Default()
     {
-        var (d, ctx, s, _, _, _, _, uiFrames, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, uiFrames, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest("x"u8.ToArray()));
 
         d.Execute("UI_command", tx);
@@ -284,7 +290,7 @@ public class ActionDispatcherTests
     [Fact]
     public void UI_command_Consumes_Pending_PfBit_When_Set()
     {
-        var (d, ctx, s, _, _, _, _, uiFrames, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, uiFrames, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest("x"u8.ToArray()));
 
         d.Execute(new[] { "F := 1", "UI_command" }, tx);
@@ -295,7 +301,7 @@ public class ActionDispatcherTests
     [Fact]
     public void UI_command_Throws_When_Trigger_Is_Not_DlUnitDataRequest()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         var act = () => d.Execute("UI_command", tx);
@@ -313,7 +319,7 @@ public class ActionDispatcherTests
     [InlineData("DL_DISCONNECT_confirm",    typeof(DataLinkDisconnectConfirm))]
     public void Simple_DL_Signals_Are_Raised_With_No_Payload(string action, Type expectedRecordType)
     {
-        var (d, ctx, s, _, _, _, _, _, upward) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         d.Execute(action, ctx, s);
 
         upward.Should().ContainSingle();
@@ -333,7 +339,7 @@ public class ActionDispatcherTests
     [InlineData("DL_ERROR_indication_O",   "O")]
     public void DL_Error_Indication_Letters_Are_Raised_With_The_Code(string action, string expectedCode)
     {
-        var (d, ctx, s, _, _, _, _, _, upward) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         d.Execute(action, ctx, s);
 
         upward.Should().ContainSingle().Which.Should().BeOfType<DataLinkErrorIndication>()
@@ -343,7 +349,7 @@ public class ActionDispatcherTests
     [Fact]
     public void DL_Data_Indication_Reads_Info_And_Pid_From_Incoming_I_Frame()
     {
-        var (d, ctx, s, _, _, _, _, _, upward) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         // Build a mod-8 I-frame with N(R)=0, N(S)=0, P=0, info="payload", PID=0xF0
         var info = "payload"u8.ToArray();
         var bytes = new byte[7 + 7 + 1 + 1 + info.Length];
@@ -367,7 +373,7 @@ public class ActionDispatcherTests
     [Fact]
     public void DL_Data_Indication_Throws_When_Trigger_Has_No_Frame()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new T1Expiry());
 
         var act = () => d.Execute("DL_DATA_indication", tx);
@@ -384,7 +390,7 @@ public class ActionDispatcherTests
     [InlineData("RC := RC + 1", 4, 5)]
     public void RC_Assignment_Verbs_Mutate_RC(string action, int initial, int expected)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.RC = initial;
         d.Execute(action, ctx, s);
         ctx.RC.Should().Be(expected);
@@ -393,7 +399,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VS_Set_To_Zero_Resets_The_Field()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VS = 5;
         d.Execute("V(s) := 0", ctx, s);
         ctx.VS.Should().Be((byte)0);
@@ -402,7 +408,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VS_Increment_Wraps_At_Mod8_Modulus()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VS = 7;
         d.Execute("V(s) := V(s) + 1", ctx, s);
         ctx.VS.Should().Be((byte)0, "mod-8 by default; 7 + 1 wraps to 0");
@@ -411,7 +417,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VS_Increment_Wraps_At_Mod128_Modulus_When_Extended()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IsExtended = true;
         ctx.VS = 127;
         d.Execute("V(s) := V(s) + 1", ctx, s);
@@ -421,7 +427,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VR_Set_To_Zero_Resets_The_Field()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
         d.Execute("V(r) := 0", ctx, s);
         ctx.VR.Should().Be((byte)0);
@@ -430,7 +436,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VR_Increment_Wraps_At_Modulus()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 7;
         d.Execute("V(r) := V(r) + 1", ctx, s);
         ctx.VR.Should().Be((byte)0);
@@ -439,7 +445,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VA_Set_To_Zero_Resets_The_Field()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VA = 5;
         d.Execute("V(a) := 0", ctx, s);
         ctx.VA.Should().Be((byte)0);
@@ -452,7 +458,7 @@ public class ActionDispatcherTests
     {
         // The actual t01_dl_flow_off_when_own_receiver_busy chain from
         // figc4.4a col 5 (Yes branch).
-        var (d, ctx, s, _, _, sFrames, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         d.Execute(
             new[] { "set_own_receiver_busy", "RNR_response", "clear_acknowledge_pending" },
             ctx, s);
@@ -467,7 +473,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Unknown_Action_Throws()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var act = () => d.Execute("transmit_warp_drive", ctx, s);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*unknown SDL action*transmit_warp_drive*");
@@ -494,7 +500,7 @@ public class ActionDispatcherTests
     [InlineData(7)]
     public void VA_Assign_From_Nr_Reads_N_R_From_Incoming_Frame(byte nr)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var frame = BuildRrCommand(nr);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
 
@@ -506,7 +512,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VA_Assign_From_Nr_Throws_When_Trigger_Has_No_Frame()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         // DlConnectRequest is an upper-layer primitive — no attached frame.
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
@@ -519,7 +525,7 @@ public class ActionDispatcherTests
     [Fact]
     public void VA_Assign_From_Nr_Throws_For_Extended_Mode_Until_Wired()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IsExtended = true;
         var frame = BuildRrCommand(3);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
@@ -553,7 +559,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Nr_Assign_From_VR_Writes_Into_Pending()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
@@ -567,7 +573,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Ns_Assign_From_VS_Writes_Into_Pending()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VS = 6;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
@@ -579,7 +585,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Nr_Assign_From_Ns_Reads_Incoming_I_Frame_NS()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var frame = BuildIFrame(nr: 2, ns: 4, pollBit: false, info: "hello"u8.ToArray());
         var tx = new TransitionContext(ctx, s, new IFrameReceived(frame));
 
@@ -591,7 +597,7 @@ public class ActionDispatcherTests
     [Fact]
     public void Nr_Assign_From_Ns_Throws_When_Trigger_Has_No_Frame()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new T1Expiry());
 
         var act = () => d.Execute("N(r) := N(s)", tx);
@@ -606,7 +612,7 @@ public class ActionDispatcherTests
     [InlineData("p := 0", false)]
     public void F_And_P_Bit_Constant_Assignments_Write_Pending_PfBit(string action, bool expected)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         d.Execute(action, tx);
@@ -619,7 +625,7 @@ public class ActionDispatcherTests
     [InlineData(false)]
     public void F_Assign_From_P_Echoes_Incoming_Poll_Bit(bool pollBit)
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var frame = BuildRrCommand(3, pollBit: pollBit);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
 
@@ -631,7 +637,7 @@ public class ActionDispatcherTests
     [Fact]
     public void F_Assign_From_P_Throws_When_Trigger_Has_No_Frame()
     {
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         var act = () => d.Execute("F := P", tx);
@@ -646,7 +652,7 @@ public class ActionDispatcherTests
         // The whole point of Pending: a chain of processing verbs accumulates
         // fields, then a signal_lower (future PR) reads them as a unit.
         // For now we just prove the accumulation works.
-        var (d, ctx, s, _, _, _, _, _, _) = NewRig();
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
         ctx.VS = 6;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
@@ -656,5 +662,205 @@ public class ActionDispatcherTests
         tx.Pending.Ns.Should().Be((byte)6);
         tx.Pending.Nr.Should().Be((byte)5);
         tx.Pending.PfBit.Should().BeTrue();
+    }
+
+    // ─── Link-multiplexer signals ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("LM_seize_request",   typeof(LinkMultiplexerSeizeRequest))]
+    [InlineData("LM_release_request", typeof(LinkMultiplexerReleaseRequest))]
+    [InlineData("LM_data_request",    typeof(LinkMultiplexerDataRequest))]
+    public void Link_Multiplexer_Verbs_Raise_The_Right_Signal(string action, Type expectedType)
+    {
+        var (d, ctx, s, _, _, _, _, _, _, linkMux, _) = NewRig();
+        d.Execute(action, ctx, s);
+
+        linkMux.Should().ContainSingle();
+        linkMux[0].Should().BeOfType(expectedType);
+    }
+
+    // ─── Internal signals ──────────────────────────────────────────────
+
+    [Fact]
+    public void MDL_Negotiate_Request_Raises_Internal_Signal()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
+        d.Execute("MDL_NEGOTIATE_request", ctx, s);
+
+        internalSignals.Should().ContainSingle()
+            .Which.Should().BeOfType<MdlNegotiateRequestSignal>();
+    }
+
+    [Theory]
+    [InlineData("push_on_I_frame_queue")]
+    [InlineData("push_frame_on_queue")]
+    public void Push_On_I_Frame_Queue_Enqueues_Trigger_Payload(string verb)
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
+        var payload = "hello"u8.ToArray();
+        var tx = new TransitionContext(ctx, s, new DlDataRequest(payload));
+
+        d.Execute(verb, tx);
+
+        ctx.IFrameQueue.Should().HaveCount(1);
+        ctx.IFrameQueue.Peek().ToArray().Should().Equal(payload);
+        internalSignals.Should().ContainSingle().Which.Should().BeOfType<PushIFrameQueueSignal>();
+    }
+
+    [Fact]
+    public void Push_Old_I_Frame_N_R_On_Queue_Re_Enqueues_Stored_Sent_Frame()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
+        var oldPayload = "retransmit-me"u8.ToArray();
+        // Pretend we sent an I-frame with N(S) = 3 a while ago.
+        ctx.SentIFrames[3] = oldPayload;
+
+        // Now an RR comes in with N(R) = 3 — meaning "I want frame 3 again".
+        var bytes = new byte[15];
+        new Ax25Address(new Callsign("M0LTE", 0), CrhBit: true,  ExtensionBit: false).Write(bytes.AsSpan(0, 7));
+        new Ax25Address(new Callsign("G7XYZ", 7), CrhBit: false, ExtensionBit: true ).Write(bytes.AsSpan(7, 7));
+        bytes[14] = (3 << 5) | 0x01;
+        Ax25Frame.TryParse(bytes, out var frame).Should().BeTrue();
+        var tx = new TransitionContext(ctx, s, new RrReceived(frame!));
+
+        d.Execute("push_old_I_frame_N_r_on_queue", tx);
+
+        ctx.IFrameQueue.Should().HaveCount(1);
+        ctx.IFrameQueue.Peek().ToArray().Should().Equal(oldPayload);
+    }
+
+    // ─── Queue/exception/flag processing verbs ─────────────────────────
+
+    [Theory]
+    [InlineData("discard_frame_queue")]
+    [InlineData("discard_queue")]
+    [InlineData("discard_I_frame_queue")]
+    public void Discard_Queue_Verbs_All_Clear_IFrameQueue(string verb)
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
+        ctx.IFrameQueue.Enqueue(new byte[] { 2 });
+
+        d.Execute(verb, ctx, s);
+
+        ctx.IFrameQueue.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("discard_I_frame")]
+    [InlineData("discard_contents_of_I_frame")]
+    [InlineData("discard_primitive")]
+    public void No_Op_Discard_Verbs_Do_Not_Throw(string verb)
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var act = () => d.Execute(verb, ctx, s);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Set_And_Clear_Reject_Exception_Mutate_The_Flag()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        d.Execute("set_reject_exception", ctx, s);
+        ctx.RejectException.Should().BeTrue();
+        d.Execute("clear_reject_exception", ctx, s);
+        ctx.RejectException.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Increment_Srej_Exception_Bumps_Count_And_Sets_Flag()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.SrejExceptionCount.Should().Be(0);
+        ctx.SelectiveRejectException.Should().BeFalse();
+
+        d.Execute("increment_srej_exception", ctx, s);
+
+        ctx.SrejExceptionCount.Should().Be(1);
+        ctx.SelectiveRejectException.Should().BeTrue();
+
+        d.Execute("increment_srej_exception", ctx, s);
+        ctx.SrejExceptionCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void Decrement_Srej_Exception_If_GT_0_Bottoms_At_Zero_And_Clears_Flag()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.SrejExceptionCount = 2;
+        ctx.SelectiveRejectException = true;
+
+        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        ctx.SrejExceptionCount.Should().Be(1);
+        ctx.SelectiveRejectException.Should().BeTrue("count > 0 still");
+
+        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        ctx.SrejExceptionCount.Should().Be(0);
+        ctx.SelectiveRejectException.Should().BeFalse("count reached 0 — flag cleared");
+
+        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        ctx.SrejExceptionCount.Should().Be(0, "no negative values");
+    }
+
+    [Theory]
+    [InlineData("set_version_2_0", false)]
+    [InlineData("set_version_2_2", true)]
+    public void Set_Version_Verbs_Toggle_IsExtended(string verb, bool expectedExtended)
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.IsExtended = !expectedExtended;
+
+        d.Execute(verb, ctx, s);
+
+        ctx.IsExtended.Should().Be(expectedExtended);
+    }
+
+    [Fact]
+    public void Save_Contents_Of_I_Frame_Stashes_Trigger_Frame_Keyed_By_N_S()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var info = "out-of-order"u8.ToArray();
+        var bytes = new byte[7 + 7 + 1 + 1 + info.Length];
+        new Ax25Address(new Callsign("M0LTE", 0), CrhBit: true,  ExtensionBit: false).Write(bytes.AsSpan(0, 7));
+        new Ax25Address(new Callsign("G7XYZ", 7), CrhBit: false, ExtensionBit: true ).Write(bytes.AsSpan(7, 7));
+        // I-frame mod-8: N(R)=0, P=0, N(S)=4, low bit 0
+        bytes[14] = (byte)((4 & 0x07) << 1);
+        bytes[15] = Ax25Frame.PidNoLayer3;
+        info.CopyTo(bytes.AsSpan(16));
+        Ax25Frame.TryParse(bytes, out var frame).Should().BeTrue();
+        var tx = new TransitionContext(ctx, s, new IFrameReceived(frame!));
+
+        d.Execute("save_contents_of_I_frame", tx);
+
+        ctx.StoredReceivedIFrames.Should().ContainKey((byte)4);
+        ctx.StoredReceivedIFrames[4].Info.ToArray().Should().Equal(info);
+        ctx.StoredReceivedIFrames[4].Pid.Should().Be(Ax25Frame.PidNoLayer3);
+    }
+
+    [Fact]
+    public void Retrieve_Stored_V_R_I_Frame_Pulls_Frame_Matching_V_R_And_Delivers_Upward()
+    {
+        var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
+        ctx.VR = 5;
+        ctx.StoredReceivedIFrames[5] = ("delayed-payload"u8.ToArray(), Ax25Frame.PidNoLayer3);
+
+        d.Execute("retrieve_stored_V_r_I_frame", ctx, s);
+
+        ctx.StoredReceivedIFrames.Should().NotContainKey((byte)5, "the stored frame is consumed");
+        upward.Should().ContainSingle();
+        var sig = upward[0].Should().BeOfType<DataLinkDataIndication>().Subject;
+        sig.Info.ToArray().Should().Equal("delayed-payload"u8.ToArray());
+    }
+
+    [Fact]
+    public void Retrieve_Stored_V_R_I_Frame_Is_A_No_Op_When_No_Match()
+    {
+        var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
+        ctx.VR = 5;
+        // No stored frame for V(R) == 5.
+
+        d.Execute("retrieve_stored_V_r_I_frame", ctx, s);
+
+        upward.Should().BeEmpty();
     }
 }

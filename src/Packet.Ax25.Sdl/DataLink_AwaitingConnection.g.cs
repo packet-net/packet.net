@@ -193,7 +193,7 @@ public static class DataLink_AwaitingConnection
             From: "AwaitingConnection",
             On: "UI_received",
             Guard: "P_eq_1",
-            Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine), new ActionStep("DM (F = 1)", ActionKind.SignalLower) },
+            Actions: new ActionStep[] { new ActionStep("UI_Check", ActionKind.Subroutine), new ActionStep("DM F=1", ActionKind.SignalLower) },
             Next: "AwaitingConnection",
             Notes: null,
             References: new ImplementationReference[] { new ImplementationReference(Source: "spec_prose", Cite: "§6.3.5 ¶3", Quote: "UI frame with the P bit set to '1' responds with a DM frame with the F bit set to '1'.", Path: null, Function: null, Line: null, Note: null), new ImplementationReference(Source: "direwolf", Cite: null, Quote: null, Path: "src/ax25_link.c", Function: "ui_frame", Line: 5115, Note: "if (cr==cmd && pf==1): state_1 falls through with 0/2/5 to DM(F=pf). UI_Check explicitly omitted per header comment 5102-5104: 'UI frames don't go thru here for normal operation'"), new ImplementationReference(Source: "linbpq", Cite: null, Quote: null, Path: "L2Code.c", Function: "L2LINKACTIVE", Line: 1065, Note: "UI dispatched at active-link entry irrespective of state; no DM on P=1, no P-bit branch — divergence"), new ImplementationReference(Source: "linux_oot", Cite: null, Quote: null, Path: "net/ax25/ax25_in.c", Function: "ax25_rcv", Line: 229, Note: "DIVERGES: UI handled before state-machine dispatch, uniformly for all states; no DM(F=1) response on UI(P=1)") },

@@ -54,7 +54,7 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not layer_3_initiated");
         t.Actions.Count.Should().Be(1);
-        t.Actions[0].Verb.Should().Be("Push Frame Onto Queue");
+        t.Actions[0].Verb.Should().Be("push_frame_on_queue");
         t.Actions[0].Kind.Should().Be(ActionKind.InternalOut);
     }
 
@@ -74,7 +74,7 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not layer_3_initiated");
         t.Actions.Count.Should().Be(1);
-        t.Actions[0].Verb.Should().Be("Push Frame Onto Queue");
+        t.Actions[0].Verb.Should().Be("push_frame_on_queue");
         t.Actions[0].Kind.Should().Be(ActionKind.InternalOut);
     }
 
@@ -147,7 +147,7 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Next.Should().Be("Disconnected");
         t.Guard.Should().Be("F_eq_1");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("Discard I Frame Queue");
+        t.Actions[0].Verb.Should().Be("discard_I_frame_queue");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("DL_DISCONNECT_indication");
         t.Actions[1].Kind.Should().Be(ActionKind.SignalUpper);
@@ -261,7 +261,7 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Next.Should().Be("Disconnected");
         t.Guard.Should().Be("RC_eq_N2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("Discard Frame Queue");
+        t.Actions[0].Verb.Should().Be("discard_frame_queue");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("DL_ERROR_indication_G");
         t.Actions[1].Kind.Should().Be(ActionKind.SignalUpper);
@@ -296,11 +296,11 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("T1V := 2 * SRT");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[2].Verb.Should().Be("Establish Data Link");
+        t.Actions[2].Verb.Should().Be("Establish_Data_Link");
         t.Actions[2].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[3].Verb.Should().Be("set_layer_3_initiated");
         t.Actions[3].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[4].Verb.Should().Be("Set Version 2.0");
+        t.Actions[4].Verb.Should().Be("set_version_2_0");
         t.Actions[4].Kind.Should().Be(ActionKind.Processing);
     }
 
@@ -326,7 +326,7 @@ public class DataLink_AwaitingConnection22_GeneratedTests
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("UA");
         t.Actions[1].Kind.Should().Be(ActionKind.SignalLower);
-        t.Actions[2].Verb.Should().Be("Set Version 2.0");
+        t.Actions[2].Verb.Should().Be("set_version_2_0");
         t.Actions[2].Kind.Should().Be(ActionKind.Processing);
     }
 
