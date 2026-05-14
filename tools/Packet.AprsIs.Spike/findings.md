@@ -1,5 +1,50 @@
 # APRS-IS corpus — early findings
 
+## 2026-05-14 (even later) — SECOND CORRECTION: the residual mismatches were OUR frame-alignment bug
+
+After fixing the q-strip regex (see next section), the differential
+still showed ~2.4% of `direwolf_decoded` rows had coordinates that
+didn't match the position bytes in the frame. Investigation traced
+the bug to `DirewolfPipeline.SplitOutputByFrame`.
+
+**The bug**: when direwolf processes a TNC2 line whose payload contains
+**a concatenated second frame** (e.g. one APRS-IS gateway-bug line
+like `DB0OA-1>...,DB0OA-1:!4741.47N\01015.98EDB0OA-R>APDG03,...:!4741...`),
+direwolf decodes the first position correctly and emits the trailing
+portion as the frame's "comment field". That comment line happens to
+start with `B0OA-R>APDG03,...:` — which **matches our TNC2 header
+regex**. The splitter saw it as a new frame boundary, claimed one
+input produced two frames, and shifted every subsequent batch-position
+assignment by one.
+
+Reproduced cleanly: feed `DB0OA-1>...:!pos1DB0OA-R>...:!pos2` through
+`decode_aprs` manually, observe the trailing comment line. Re-ran the
+splitter on the captured output and confirmed it returns 2 frames
+instead of 1.
+
+**The fix**: a header-matching line only counts as a frame boundary
+when it's preceded by a blank line. Direwolf separates consecutive
+frame analyses with an ANSI colour change (becomes a blank line after
+`AnsiStripper`), so every real header is preceded by a blank. The
+comment-field "fake header" sits immediately after a coords line —
+not preceded by a blank — so the new rule rejects it.
+
+Code: `tools/Packet.AprsIs.Spike/DirewolfPipeline.cs:SplitOutputByFrame`.
+
+After re-decoding the corpus with the fixed splitter, the differential
+numbers should reflect direwolf's actual decode quality (no
+pipeline-induced mismatches).
+
+**Lesson recap** — both "direwolf bugs" I reported earlier turned out
+to be bugs in OUR pipeline:
+1. Q-strip regex was greedy across `:` → mangled direwolf input on
+   URLs
+2. Header regex was too permissive → frame alignment slipped on
+   concatenated-frame outputs
+
+Direwolf's actual decode quality on the cases I've examined is
+essentially perfect.
+
 ## 2026-05-14 (much later) — IMPORTANT CORRECTION: the "direwolf bugs" were our q-strip regex
 
 **Earlier "direwolf bug" claims (BothOkMismatch examples like Ajaccio/Indian Ocean,

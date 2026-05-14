@@ -264,28 +264,12 @@ public static class DirewolfMode
         return QConstructStripper.Replace(rawLine, ":");
     }
 
+    // Delegate to the shared splitter in DirewolfPipeline. The fixed
+    // splitter requires a frame-boundary header to be preceded by a
+    // blank line — see DirewolfPipeline.SplitOutputByFrame for the
+    // detailed rationale (concatenated-frame alignment bug, 2026-05-14).
     static List<string> SplitOutputByFrame(string output)
-    {
-        var stripped = AnsiStripper.Replace(output, "");
-        var lines = stripped.Split('\n');
-        var frames = new List<string>();
-        var current = new StringBuilder();
-        bool seenHeader = false;
-        foreach (var line in lines)
-        {
-            bool isHeader = Tnc2Header.IsMatch(line);
-            if (isHeader && seenHeader)
-            {
-                // Boundary: previous frame ends, new one starts.
-                frames.Add(current.ToString().TrimEnd());
-                current.Clear();
-            }
-            if (isHeader) seenHeader = true;
-            current.AppendLine(line);
-        }
-        if (current.Length > 0 && seenHeader) frames.Add(current.ToString().TrimEnd());
-        return frames;
-    }
+        => DirewolfPipeline.SplitOutputByFrame(output);
 
     static readonly Regex LatLonAlt = new(
         @"([NS])\s+(\d+)\s+(\d+\.\d+),\s+([EW])\s+(\d+)\s+(\d+\.\d+)(?:,\s+alt\s+(-?\d+)\s*m)?",
