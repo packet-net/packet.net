@@ -47,6 +47,7 @@ public sealed class ActionDispatcher : IActionDispatcher
 {
     private readonly Action<string> onTimerExpiry;
     private readonly Action<SupervisoryFrameSpec> sendSFrame;
+    private readonly Action<UFrameSpec> sendUFrame;
 
     /// <summary>Default acknowledgement timer (T1).</summary>
     public TimeSpan T1Duration { get; init; } = TimeSpan.FromMilliseconds(3000);
@@ -68,15 +69,24 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </param>
     /// <param name="sendSFrame">
     /// Called when an action requests transmission of a supervisory
-    /// frame. The session is responsible for translating the spec into
-    /// an actual <see cref="Ax25Frame"/> and shipping it on the wire.
+    /// frame (RR / RNR / REJ / SREJ). The session translates the spec
+    /// into an <see cref="Ax25Frame"/> and ships it on the wire.
+    /// </param>
+    /// <param name="sendUFrame">
+    /// Called when an action requests transmission of an unnumbered
+    /// frame (SABM, SABME, DISC, UA, DM, FRMR, XID, TEST). The session
+    /// translates the spec into an <see cref="Ax25Frame"/> and ships it.
+    /// Defaults to a no-op sink when omitted so the dispatcher can run
+    /// in test harnesses that don't care about U-frame emission.
     /// </param>
     public ActionDispatcher(
         Action<string> onTimerExpiry,
-        Action<SupervisoryFrameSpec> sendSFrame)
+        Action<SupervisoryFrameSpec> sendSFrame,
+        Action<UFrameSpec>? sendUFrame = null)
     {
         this.onTimerExpiry = onTimerExpiry ?? throw new ArgumentNullException(nameof(onTimerExpiry));
         this.sendSFrame    = sendSFrame    ?? throw new ArgumentNullException(nameof(sendSFrame));
+        this.sendUFrame    = sendUFrame    ?? (_ => { });
     }
 
     /// <inheritdoc/>
@@ -183,6 +193,33 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "RNR_response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
             case "REJ":                            sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: false, tx, action)); break;
             case "SREJ":                           sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: false, tx, action)); break;
+
+            // ─── Unnumbered-frame transmissions ────────────────────────
+            //
+            // Verb spellings track the figure as drawn. Spellings with an
+            // explicit poll/final qualifier (`SABM (P == 1)`,
+            // `SABME (P = 1)`, `DISC (P = 1)`, `DM (F = 1)`) force the P/F
+            // bit to 1 regardless of `tx.Pending`. Bare verbs (`UA`,
+            // `DM`, `Expedited UA`, `Expedited DM`) consume
+            // `tx.Pending.PfBit`, defaulting to false.
+            //
+            // The `DM (F = 1)` cluster (figc4.2 `DM F=1`, figc4.3
+            // `DM F = 1`, figc4.6 `DM (F = 1)`) is normalised to the
+            // parenthesised canonical by spec-sdl/actions.yaml.
+            //
+            // `Expedited UA` / `Expedited DM` from figc4.3 hint that the
+            // frame should jump ahead of the normal TX queue. The bit
+            // pattern on the wire is identical to UA / DM; the wire-
+            // translation layer reads <see cref="UFrameSpec.IsExpedited"/>
+            // to prioritise transmission.
+            case "UA":                             sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: false, tx)); break;
+            case "DM":                             sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: false, tx)); break;
+            case "DM (F = 1)":                     sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: true, isExpedited: false, tx)); break;
+            case "Expedited UA":                   sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx)); break;
+            case "Expedited DM":                   sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx)); break;
+            case "SABM (P == 1)":                  sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
+            case "SABME (P = 1)":                  sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
+            case "DISC (P = 1)":                   sendUFrame(BuildUFrame(UFrameType.Disc,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
 
             // ─── Sequence-variable assignments (pure context) ──────────
             //
@@ -306,6 +343,25 @@ public sealed class ActionDispatcher : IActionDispatcher
         byte nr     = tx.Pending.Nr    ?? tx.Session.VR;
         bool pfBit  = tx.Pending.PfBit ?? false;
         return new SupervisoryFrameSpec(type, IsCommand: isCommand, Nr: nr, PfBit: pfBit);
+    }
+
+    /// <summary>
+    /// Build a <see cref="UFrameSpec"/> for a U-frame signal_lower verb.
+    /// Reads <see cref="PendingFrame.PfBit"/> for bare verbs, or forces
+    /// it when the verb name carries an explicit qualifier
+    /// (<c>SABM (P == 1)</c>, <c>SABME (P = 1)</c>, <c>DISC (P = 1)</c>,
+    /// <c>DM (F = 1)</c>).
+    /// </summary>
+    /// <param name="pfBitOverride">
+    /// <c>null</c> to read <see cref="PendingFrame.PfBit"/> (default
+    /// <c>false</c> if unset); non-null to force the P/F bit value
+    /// regardless of pending state.
+    /// </param>
+    private static UFrameSpec BuildUFrame(
+        UFrameType type, bool isCommand, bool? pfBitOverride, bool isExpedited, TransitionContext tx)
+    {
+        bool pfBit = pfBitOverride ?? tx.Pending.PfBit ?? false;
+        return new UFrameSpec(type, IsCommand: isCommand, PfBit: pfBit, IsExpedited: isExpedited);
     }
 
     private static Ax25Frame RequireIncomingFrame(TransitionContext tx, string verb)
