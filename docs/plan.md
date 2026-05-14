@@ -824,6 +824,45 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: transport adapter + first wire-encoded loopback
+
+Third piece of the interop arc. New `Ax25Adapter` glues an
+`Ax25Session` + `ActionDispatcher` to byte-level I/O:
+
+- Constructor takes the standard session inputs (context, scheduler,
+  transitions table, initial state) plus a `sendBytes` callback
+- Internally builds an `ActionDispatcher` with all sinks wired:
+  S-frame / U-frame / UI-frame / I-frame sinks serialise via
+  `FrameSpecExtensions` and call `sendBytes`
+- `OnReceivedAx25Bytes(ReadOnlySpan<byte>)` parses with
+  `Ax25Frame.TryParse`, classifies with `Ax25FrameClassifier`, posts to
+  the session
+- Timer expiries auto-feed back as `T1Expiry`/`T2Expiry`/`T3Expiry`
+  events on the same session
+- `bindings` and `subroutines` are constructor-injectable for tests
+  and production wiring
+
+**Loopback test**: two adapters, side A's `Establish_Data_Link`
+subroutine wired to emit a SABM, side A posts `DlConnectRequest` →
+SABM bytes flow into side B's `OnReceivedAx25Bytes` → B classifies as
+`SabmReceived` → B advances to Connected (via figc4.1 t14 with
+`able_to_establish=Yes`). First time the state machine round-trips
+itself through wire-encoded bytes.
+
+Still missing for true interop against LinBPQ:
+1. ~~Wire codec~~ — #69
+2. ~~Incoming demux~~ — #70
+3. ~~Transport wiring (Ax25Adapter)~~ — this PR
+4. figc4.7 subroutine bodies (transcription-gated)
+5. Frame-aware predicate bindings (`P_eq_1`, `command`, etc. need to
+   read from `tx.IncomingFrame` not constructor-time constants)
+6. KISS framing glue between `Ax25Adapter.sendBytes` and
+   `Packet.Kiss.KissTcpClient` / `Packet.Kiss.NinoTnc.*`
+
+Items 5+6 are mechanical follow-ups; #4 is transcription-gated.
+
+786 tests green.
+
 ### 2026-05-14 — ax25: incoming frame demux — Ax25Frame → Ax25Event
 
 Second piece of the interop arc. New `Ax25FrameClassifier.Classify(frame)`
