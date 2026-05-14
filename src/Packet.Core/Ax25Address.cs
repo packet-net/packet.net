@@ -32,10 +32,25 @@ public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool E
     /// <summary>Number of octets one address slot occupies on the wire.</summary>
     public const int EncodedLength = 7;
 
-    /// <summary>Parse one 7-octet slot.</summary>
+    /// <summary>Parse one 7-octet slot using the default lenient options.</summary>
     /// <exception cref="ArgumentException">Span is too short, or the encoded callsign is malformed.</exception>
     public static Ax25Address Read(ReadOnlySpan<byte> source)
+        => Read(source, Ax25ParseOptions.Lenient);
+
+    /// <summary>
+    /// Parse one 7-octet slot, applying the supplied
+    /// <see cref="Ax25ParseOptions"/> for strict-vs-lenient parser
+    /// choices (e.g. whether to accept all-space callsign slots).
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// Span is too short, the encoded callsign is malformed, or the
+    /// supplied options reject a pragmatic accommodation this slot
+    /// would have otherwise been accepted under.
+    /// </exception>
+    public static Ax25Address Read(ReadOnlySpan<byte> source, Ax25ParseOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         if (source.Length < EncodedLength)
         {
             throw new ArgumentException($"address slot needs {EncodedLength} bytes (got {source.Length})", nameof(source));
@@ -61,6 +76,15 @@ public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool E
                 throw new ArgumentException($"address octet {i} contains non-space after padding", nameof(source));
             }
             baseChars[baseLen++] = c;
+        }
+
+        if (baseLen == 0 && !options.AllowEmptyCallsignBase)
+        {
+            // Strict §3.12 interpretation: a callsign must contain at least
+            // one alpha/numeric character. See docs/strict-vs-pragmatic-audit.md.
+            throw new ArgumentException(
+                "address slot has empty callsign — Ax25ParseOptions.AllowEmptyCallsignBase is false",
+                nameof(source));
         }
 
         var ssidByte = source[6];

@@ -824,6 +824,26 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — wire: `Ax25ParseOptions` threaded through `Ax25Address.Read` + `Ax25Frame.TryParse`
+
+First retrofit. Both methods gain an `options` overload; the
+parameterless overload routes through `Ax25ParseOptions.Lenient` so
+behaviour is unchanged for existing callers.
+
+Strict mode now actively enforces:
+
+- `Ax25Address.Read(span, Ax25ParseOptions.Strict)` throws on an
+  empty callsign slot (the BPQ-style all-space wire shape).
+- `Ax25Frame.TryParse(..., Ax25ParseOptions.Strict, ...)` returns
+  `false` for trailing bytes on supervisory frames (RR/RNR/REJ/SREJ)
+  and the no-info U-frames (SABM/SABME/DISC/UA/DM). Still accepts
+  trailing bytes on the §3.5-permitted FRMR/XID/TEST.
+
+8 new tests covering both strict-rejects and lenient-accepts paths
+on the same inputs, plus parameterless back-compat.
+
+Next: thread `AprsParseOptions` through the APRS decoder family.
+
 ### 2026-05-14 — design: `Ax25ParseOptions` / `AprsParseOptions` records (no wiring yet)
 
 Adds the option-record types that the upcoming retrofit will thread

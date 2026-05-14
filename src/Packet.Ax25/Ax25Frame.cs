@@ -256,10 +256,25 @@ public sealed partial class Ax25Frame
 
     /// <summary>
     /// Try to parse a frame from its KISS-form bytes (no opening / closing
-    /// flag, no FCS).
+    /// flag, no FCS), using the default lenient parser options.
     /// </summary>
     public static bool TryParse(ReadOnlySpan<byte> bytes, [NotNullWhen(true)] out Ax25Frame? frame)
+        => TryParse(bytes, Ax25ParseOptions.Lenient, out frame);
+
+    /// <summary>
+    /// Try to parse a frame from its KISS-form bytes, applying the supplied
+    /// <see cref="Ax25ParseOptions"/> for strict-vs-lenient parser choices.
+    /// </summary>
+    /// <remarks>
+    /// Options control acceptance of: all-space callsign slots
+    /// (<see cref="Ax25ParseOptions.AllowEmptyCallsignBase"/>), trailing
+    /// bytes on frames §3.5 doesn't permit an info field on
+    /// (<see cref="Ax25ParseOptions.AllowInfoOnSupervisoryFrames"/>).
+    /// See <c>docs/strict-vs-pragmatic-audit.md</c> for the full inventory.
+    /// </remarks>
+    public static bool TryParse(ReadOnlySpan<byte> bytes, Ax25ParseOptions options, [NotNullWhen(true)] out Ax25Frame? frame)
     {
+        ArgumentNullException.ThrowIfNull(options);
         frame = null;
 
         // Minimum frame: 14 bytes address (dest+source) + 1 byte control.
@@ -281,7 +296,7 @@ public sealed partial class Ax25Frame
         // having vetted them.
         try
         {
-            destination = Ax25Address.Read(bytes[offset..]);
+            destination = Ax25Address.Read(bytes[offset..], options);
             offset += Ax25Address.EncodedLength;
 
             if (destination.ExtensionBit)
@@ -290,7 +305,7 @@ public sealed partial class Ax25Frame
                 return false;
             }
 
-            source = Ax25Address.Read(bytes[offset..]);
+            source = Ax25Address.Read(bytes[offset..], options);
             offset += Ax25Address.EncodedLength;
 
             var lastAddress = source;
@@ -305,7 +320,7 @@ public sealed partial class Ax25Frame
                 {
                     return false;
                 }
-                lastAddress = Ax25Address.Read(bytes[offset..]);
+                lastAddress = Ax25Address.Read(bytes[offset..], options);
                 offset += Ax25Address.EncodedLength;
                 digipeaters.Add(lastAddress);
             }
@@ -337,14 +352,22 @@ public sealed partial class Ax25Frame
             pid = bytes[offset++];
             info = bytes[offset..].ToArray();
         }
-        else
+        else if (offset < bytes.Length)
         {
-            // Other U / S frames — info is rare. We still capture any trailing
-            // bytes as info for callers that care (FRMR / XID / TEST inspectors).
-            if (offset < bytes.Length)
+            // Per §3.5, the information field appears on I, UI, FRMR, XID,
+            // and TEST frames only. Other S frames (RR/RNR/REJ/SREJ) and
+            // unnumbered command/response frames (SABM/SABME/DISC/UA/DM)
+            // must have no trailing bytes.
+            byte uBase = (byte)(control & 0xEF);
+            bool isInfoAllowedUFrame =
+                uBase == 0x87 ||   // FRMR
+                uBase == 0xAF ||   // XID
+                uBase == 0xE3;     // TEST
+            if (!isInfoAllowedUFrame && !options.AllowInfoOnSupervisoryFrames)
             {
-                info = bytes[offset..].ToArray();
+                return false;
             }
+            info = bytes[offset..].ToArray();
         }
 
         frame = new Ax25Frame(destination, source, digipeaters, control, pid, info);
