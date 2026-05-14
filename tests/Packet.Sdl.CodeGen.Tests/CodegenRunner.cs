@@ -53,6 +53,10 @@ internal sealed class CodegenRunner : IDisposable
     public void WriteEventsCatalog(string yaml)
         => File.WriteAllText(Path.Combine(SpecDir, "events.yaml"), yaml);
 
+    /// <summary>Drop an actions.yaml at the SpecDir root (optional; soft passthrough when absent).</summary>
+    public void WriteActionsCatalog(string yaml)
+        => File.WriteAllText(Path.Combine(SpecDir, "actions.yaml"), yaml);
+
     public sealed record RunResult(int ExitCode, string Stdout, string Stderr);
 
     /// <summary>Run the codegen tool and capture exit + stdout + stderr.</summary>

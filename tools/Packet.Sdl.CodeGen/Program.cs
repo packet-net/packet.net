@@ -63,6 +63,7 @@ internal static class Program
         Directory.CreateDirectory(testsDir);
 
         var events = LoadEventCatalog(Path.Combine(inDir, "events.yaml"));
+        var actions = LoadActionCatalog(Path.Combine(inDir, "actions.yaml"));
 
         var pages = Directory.EnumerateFiles(inDir, "*.sdl.yaml", SearchOption.AllDirectories)
             .OrderBy(p => p, StringComparer.Ordinal)
@@ -72,6 +73,7 @@ internal static class Program
         var errors = new List<string>();
         foreach (var page in pages)
         {
+            NormaliseActionVerbs(page, actions, errors);
             ValidatePage(page, events, errors);
         }
         if (errors.Count > 0)
@@ -223,6 +225,102 @@ internal static class Program
             }
         }
         return set;
+    }
+
+    /// <summary>
+    /// Load the canonical action-verb catalog from <c>spec-sdl/actions.yaml</c>.
+    /// Soft mode: an absent file produces an empty catalog and codegen passes
+    /// every verb through verbatim. When the file exists, every alias of every
+    /// declared canonical name maps to the canonical, and the kind is recorded
+    /// so the validator can flag transcriptions that draw the same verb under
+    /// a different shape class.
+    /// </summary>
+    private static ActionCatalog LoadActionCatalog(string path)
+    {
+        var catalog = new ActionCatalog();
+        if (!File.Exists(path)) return catalog;
+
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(LowerCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+
+        var raw = deserializer.Deserialize<Dictionary<string, List<ActionCatalogEntry>>>(File.ReadAllText(path))
+                  ?? new Dictionary<string, List<ActionCatalogEntry>>(StringComparer.Ordinal);
+
+        foreach (var (kind, entries) in raw)
+        {
+            if (!ValidActionKinds.Contains(kind))
+                throw new InvalidDataException($"{path}: unknown action kind group `{kind}`. Valid: {string.Join(", ", ValidActionKinds)}.");
+
+            foreach (var entry in entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Name))
+                    throw new InvalidDataException($"{path}: entry under `{kind}:` is missing `name:`");
+
+                if (!catalog.CanonicalKind.TryAdd(entry.Name, kind))
+                    throw new InvalidDataException($"{path}: canonical name `{entry.Name}` declared twice");
+
+                // Canonical name is its own alias (identity passthrough).
+                if (!catalog.CanonicalLookup.TryAdd(entry.Name, entry.Name))
+                    throw new InvalidDataException($"{path}: canonical name `{entry.Name}` collides with an alias declared earlier");
+
+                foreach (var alias in entry.Aliases ?? new List<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(alias))
+                        throw new InvalidDataException($"{path}: empty alias under canonical name `{entry.Name}`");
+                    if (!catalog.CanonicalLookup.TryAdd(alias, entry.Name))
+                        throw new InvalidDataException($"{path}: alias `{alias}` is claimed by two canonical names");
+                }
+            }
+        }
+
+        return catalog;
+    }
+
+    /// <summary>
+    /// Walk a page's transitions and substitute every alias-spelling action
+    /// verb with its canonical name. If the catalog is empty (no actions.yaml
+    /// present), this is a no-op. Records validation errors when a canonical
+    /// verb is drawn with a different <c>kind:</c> than the catalog declared.
+    /// </summary>
+    private static void NormaliseActionVerbs(SdlPage page, ActionCatalog catalog, List<string> errors)
+    {
+        if (catalog.CanonicalLookup.Count == 0) return;
+
+        foreach (var t in page.Transitions)
+        {
+            if (t.Path is null) continue;
+            NormalisePathSteps(page.SourcePath, t.Id, "path", t.Path, catalog, errors);
+        }
+    }
+
+    private static void NormalisePathSteps(
+        string loc, string transitionId, string contextLabel,
+        List<SdlPathStep> path,
+        ActionCatalog catalog,
+        List<string> errors)
+    {
+        for (int i = 0; i < path.Count; i++)
+        {
+            var step = path[i];
+            if (!string.IsNullOrWhiteSpace(step.Action) && catalog.CanonicalLookup.TryGetValue(step.Action!, out var canonical))
+            {
+                if (catalog.CanonicalKind.TryGetValue(canonical, out var expectedKind)
+                    && !string.IsNullOrWhiteSpace(step.Kind)
+                    && !string.Equals(step.Kind, expectedKind, StringComparison.Ordinal))
+                {
+                    errors.Add($"{loc}: transition `{transitionId}` {contextLabel}[{i}] action `{step.Action}` (canonical `{canonical}`) " +
+                               $"is drawn with kind `{step.Kind}` but spec-sdl/actions.yaml declares it as `{expectedKind}`. " +
+                               "Either the YAML's kind is wrong, or the catalog is wrong.");
+                }
+                step.Action = canonical;
+            }
+            if (step.Body is not null)
+            {
+                NormalisePathSteps(loc, transitionId, contextLabel + $"[{i}].body", step.Body, catalog, errors);
+            }
+        }
     }
 
     private static SdlPage LoadPage(string path)
@@ -629,6 +727,31 @@ internal sealed class SdlPinnedRef
 {
     public string Repo { get; set; } = "";
     public string Commit { get; set; } = "";
+}
+
+/// <summary>
+/// One entry under a kind group in <c>spec-sdl/actions.yaml</c>. The
+/// <see cref="Name"/> is the canonical spelling emitted into <c>.g.cs</c>;
+/// <see cref="Aliases"/> are alternate figure-verbatim spellings normalised to
+/// the canonical at codegen time.
+/// </summary>
+internal sealed class ActionCatalogEntry
+{
+    public string Name { get; set; } = "";
+    public List<string>? Aliases { get; set; }
+}
+
+/// <summary>
+/// Resolved action-verb catalog. Built from <c>spec-sdl/actions.yaml</c>;
+/// empty when the file is absent (soft passthrough mode).
+/// </summary>
+internal sealed class ActionCatalog
+{
+    /// <summary>Map from any known spelling (canonical or alias) to canonical name.</summary>
+    public Dictionary<string, string> CanonicalLookup { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Map from canonical name to its declared SDL kind (signal_upper, signal_lower, etc.).</summary>
+    public Dictionary<string, string> CanonicalKind { get; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>

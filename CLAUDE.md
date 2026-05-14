@@ -19,6 +19,9 @@ Other essential reading:
 - [`docs/sdl-transcription-runbook.md`](docs/sdl-transcription-runbook.md) —
   end-to-end per-figure workflow (graphml → transcription PR → validation
   PR). Read this when starting a new SDL page.
+- [`docs/sdl-verb-catalogue.md`](docs/sdl-verb-catalogue.md) — how
+  `spec-sdl/actions.yaml` normalises figure-verbatim action spellings to
+  canonical verbs at codegen time.
 - [`docs/adr/0001-sdl-dsl.md`](docs/adr/0001-sdl-dsl.md) — why the SDL YAML
   DSL + codegen exists.
 

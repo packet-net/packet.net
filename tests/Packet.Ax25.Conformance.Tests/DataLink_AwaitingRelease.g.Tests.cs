@@ -203,7 +203,7 @@ public class DataLink_AwaitingRelease_GeneratedTests
         t.Actions.Count.Should().Be(2);
         t.Actions[0].Verb.Should().Be("UI_Check");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
-        t.Actions[1].Verb.Should().Be("DM F = 1");
+        t.Actions[1].Verb.Should().Be("DM (F = 1)");
         t.Actions[1].Kind.Should().Be(ActionKind.SignalLower);
     }
 
@@ -225,7 +225,7 @@ public class DataLink_AwaitingRelease_GeneratedTests
         t.Next.Should().Be("AwaitingRelease");
         t.Guard.Should().Be("P_eq_1");
         t.Actions.Count.Should().Be(1);
-        t.Actions[0].Verb.Should().Be("DM F = 1");
+        t.Actions[0].Verb.Should().Be("DM (F = 1)");
         t.Actions[0].Kind.Should().Be(ActionKind.SignalLower);
     }
 

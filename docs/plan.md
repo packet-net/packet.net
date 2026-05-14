@@ -824,6 +824,40 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: action-verb catalogue (`spec-sdl/actions.yaml`) with alias normalisation
+
+The AX.25 SDL figures sometimes draw the same semantic verb with different
+spellings on different pages. Three observed in the corpus:
+
+- `DM F=1` (figc4.2) / `DM F = 1` (figc4.3) / `DM (F = 1)` (figc4.6)
+- `Establish Data Link` (figc4.6) / `Establish_Data_Link` (figc4.1, 4.4)
+- `Set Version 2.0` (figc4.6) / `set_version_2_0` (figc4.1, 4.4)
+- `Push Frame Onto Queue` (figc4.6) / `push_frame_on_queue` (figc4.2)
+- `Discard Frame Queue` (figc4.6) / `discard_frame_queue` (figc4.2)
+- `Discard I Frame Queue` (figc4.6) / `discard_I_frame_queue` (figc4.4)
+
+Two competing constraints: trust-the-figure says YAML transcriptions stay
+verbatim; the runtime dispatcher needs one spelling per semantic verb.
+
+`spec-sdl/actions.yaml` resolves this — a canonical-name + aliases table
+read by the codegen. The codegen substitutes aliases for the canonical
+during YAML→`.g.cs` emission. YAMLs stay figure-verbatim; dispatcher
+only ever sees canonical.
+
+This PR ships the infrastructure plus one cluster as proof:
+`DM (F = 1)` with two aliases. Two new codegen smoke tests cover the
+mechanism (normalisation works, kind-mismatch is rejected). 538 tests
+green.
+
+Soft mode for now: verbs not in the catalog pass through verbatim.
+Follow-up PRs will populate the remaining clusters (`Establish_Data_Link`,
+`set_version_2_0`, etc.) and eventually flip strict mode so unknown
+verbs become hard errors — that's the "verb half" of [OQ-008](#15-open-questions)
+finally being closed.
+
+Docs: [`docs/sdl-verb-catalogue.md`](sdl-verb-catalogue.md) explains the
+file format and workflow.
+
 ### 2026-05-14 — sdl(awaiting_v22_connection): normalise `T1V := 2*SRT` → `T1V := 2 * SRT`
 
 Surgical fix in `DataLink_AwaitingV22Connection.graphml` (node n51): one

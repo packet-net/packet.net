@@ -308,6 +308,99 @@ public class CodegenSmokeTests
     }
 
     [Fact]
+    public void Actions_catalog_normalises_alias_spellings_to_canonical()
+    {
+        using var r = new CodegenRunner();
+        r.WriteEventsCatalog("""
+            primitives_upper:
+              - DL_DISCONNECT_request
+            frames_received:
+              - I_received
+              - RR_received
+              - RNR_received
+            catchalls: []
+            internal: []
+            timers: []
+            """);
+        r.WriteActionsCatalog("""
+            signal_lower:
+              - name: "DM (F = 1)"
+                aliases:
+                  - "DM F=1"
+                  - "DM F = 1"
+            """);
+        r.WritePage("data-link/connected.sdl.yaml", """
+            machine: data_link
+            state: Connected
+            coverage: complete
+            source: { spec: test, figure: f }
+            decisions: []
+            transitions:
+              - id: t01_alias_a
+                on: I_received
+                path:
+                  - { action: "DM F=1",  kind: signal_lower }
+                next: Connected
+              - id: t02_alias_b
+                on: RR_received
+                path:
+                  - { action: "DM F = 1", kind: signal_lower }
+                next: Connected
+              - id: t03_canonical
+                on: RNR_received
+                path:
+                  - { action: "DM (F = 1)", kind: signal_lower }
+                next: Connected
+            """);
+
+        var result = r.Run();
+
+        result.ExitCode.Should().Be(0, $"stderr: {result.Stderr}");
+        var gen = r.ReadGenerated("DataLink_Connected.g.cs");
+
+        // All three alias / canonical spellings normalise to the canonical
+        // emitted into .g.cs. The verbatim alias spellings never appear.
+        gen.Should().Contain("\"DM (F = 1)\"");
+        gen.Should().NotContain("\"DM F=1\"");
+        gen.Should().NotContain("\"DM F = 1\"");
+    }
+
+    [Fact]
+    public void Actions_catalog_kind_mismatch_is_rejected()
+    {
+        using var r = new CodegenRunner();
+        r.WriteEventsCatalog(MinimalEvents);
+        r.WriteActionsCatalog("""
+            signal_lower:
+              - name: "DM (F = 1)"
+                aliases:
+                  - "DM F=1"
+            """);
+        r.WritePage("data-link/connected.sdl.yaml", """
+            machine: data_link
+            state: Connected
+            coverage: complete
+            source: { spec: test, figure: f }
+            decisions: []
+            transitions:
+              - id: t01_wrong_kind
+                on: I_received
+                path:
+                  # Catalog declares "DM F=1" as signal_lower; YAML draws it
+                  # as processing — must be flagged as a transcription error.
+                  - { action: "DM F=1", kind: processing }
+                next: Connected
+            """);
+
+        var result = r.Run();
+
+        result.ExitCode.Should().NotBe(0);
+        result.Stderr.Should().Contain("DM F=1");
+        result.Stderr.Should().Contain("signal_lower");
+        result.Stderr.Should().Contain("processing");
+    }
+
+    [Fact]
     public void Reference_to_undefined_pinned_source_is_rejected()
     {
         using var r = new CodegenRunner();
