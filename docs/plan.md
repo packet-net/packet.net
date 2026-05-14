@@ -408,6 +408,7 @@ A transition entry looks like:
 4. `dotnet build` + `dotnet test` should pass. CI re-runs the codegen and fails on diff.
 5. PR review pairs the YAML diff with the source figure. The PR description embeds or links to the figure.
 6. On non-obvious transitions, the PR also cites at least one implementation reference per [§2.3](#23-pin-implementation-evidence).
+7. Any `verification_pending` note added to the YAML must also be added to [`docs/spec-issues.md`](spec-issues.md) — the central tracker for candidate upstream-spec issues. Cross-link in both directions (YAML transition notes reference the SI-NN id; the tracker cites the YAML transition id).
 
 ### 6.4 SDL inventory & status
 
@@ -663,6 +664,32 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-14 — docs/spec-issues.md — central tracker for verification_pending notes
+
+Consolidated all `verification_pending` notes and triangulated upstream
+findings from across the figc4.1–4.6 YAMLs into a single
+[`docs/spec-issues.md`](spec-issues.md) tracker. 19 issues catalogued:
+
+- **4** spec text errors (typos, missing labels)
+- **2** figure-vs-prose contradictions
+- **6** internal inconsistencies across 1998/2006/2017 spec revisions
+- **4** semantic ambiguities
+- **3** cases where the spec is widely ignored in practice
+
+Each entry has a stable ID (`SI-NN`), affected transition(s),
+triangulation evidence from reference implementations, and a
+status (`verification-pending` vs `triangulated`).
+
+**Strongest candidates for upstream filing** (CLAUDE.md still requires
+Tom's explicit ask before opening any):
+- **SI-14** (figc4.6 "Info Field Permitted In Frame" — dropped "Not")
+- **SI-15** (figc4.6 UI P==1 Yes/No swap)
+- **SI-08** (figc4.3 DISC handling: figure says stay, prose says enter Disconnected)
+- **SI-09** (figc4.3 UI(P=1) → DM: figure violates §6.3.5 ¶3 exclusion)
+
+Plan §6.3 amended: step 7 now requires every new
+`verification_pending` YAML note to also land in spec-issues.md.
 
 ### 2026-05-13 — Validate figc4.6 — smoke test + spec_prose + 4-codebase references
 
