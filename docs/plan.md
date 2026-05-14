@@ -824,6 +824,45 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: object report decoder (`;` DTI)
+
+New `AprsObject` + `AprsObjectDecoder` per APRS101 §11. Layout:
+
+```
+;NNNNNNNNN[*|_]DDHHMMzPOSITION_DATAcomment
+```
+
+- 9-byte fixed-width object name (trailing spaces preserved as a wire
+  identity)
+- `*` (live) or `_` (killed) indicator
+- 7-byte timestamp — accepts DDHHMMz (DHM zulu), DDHHMM/ (DHM local)
+  and HHMMSSh (HMS zulu) per spec
+- position bytes (uncompressed §8 or compressed §9), delegated to
+  `AprsPositionDecoder` via a new `TryDecodePayload` entry point that
+  doesn't treat a leading `/` as the timestamped-position DTI
+
+Also added `AprsPositionDecoder.TryDecodePayload` — same body as the
+DTI-stripping `TryDecode` but skips the DTI heuristic. The bug it
+fixes: a compressed-position object's symbol-table byte `/` was being
+mistaken for the `/`-DTI (timestamped-position-no-msg), causing
+~49 k object frames to reject. Useful generally for item / status
+decoders that have already parsed their own prefix.
+
+`DifferentialMode` extended to include `;` DTI; dispatches to the
+object decoder vs position decoder by DTI.
+
+**Result on the live corpus (1.93 M rows, was 1.62 M)**:
+
+| Bucket | % |
+|---|---:|
+| `BothOkMatch` | **99.0%** |
+| `BothFailed` | 0.6% |
+| `OnlyDirewolf` | 0.3% (was 49 k object-only; now 5.5 k edge cases) |
+| `OnlyUs` | 0.1% |
+| `BothOkMismatch` | 1 row (firmware-malformed timestamp, unchanged) |
+
+12 new tests; full suite (1,000+ tests) green.
+
 ### 2026-05-14 — nino-tnc: retract mode-12-specific demod-wedge interpretation
 
 Earlier characterisation framed the intermittent B→A wedge as a
