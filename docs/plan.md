@@ -362,6 +362,151 @@ Self-contained `dotnet publish` matrix for linux-x64/arm64/arm (v7), win-x64, os
 
 `Packet.Node.Extensions/IApplicationModule.cs` — REST routes, MCP tools, frontend bundle, AX.25 session handler. Loaded from `/var/lib/packetnet/plugins/*.dll` in isolated `AssemblyLoadContext`. DAPPS validates the API design. `Packet.NetRom` ships as a separate package. SharpFuzz harnesses + 72 h soak vs LinBPQ.
 
+### 5.10 Phase 10 — Hardware ecosystem & adaptive RF ⬜ (post-v1)
+
+The differentiator no other TNC stack does well: treat the radio + modem as first-class telemetry sources, and use their signals to drive AX.25's parameter knobs in real time. Unlocks a class of "you can see your link degrading and recover before it dies" UX that doesn't exist today.
+
+**Workstreams:**
+
+- **Tait 8100 / 8200 CCDI integration** — serial control channel to the radio surfaces SNR, signal-quality, MAS/SQ status, busy detect, channel programming. Three existing PoC repos by Tom (will be rewritten/folded into Packet.NET, not vendored):
+  - [`M0LTE/tait-ccdi`](https://github.com/M0LTE/tait-ccdi) — protocol layer.
+  - [`M0LTE/TaitMaster`](https://github.com/M0LTE/TaitMaster) — management UI.
+  - [`M0LTE/taitctrl`](https://github.com/M0LTE/taitctrl) — CLI control.
+  - Spec reference: [CCDI manual](https://wiki.oarc.uk/_media/radios:tm8100-protocol-manual.pdf) (PDF).
+  - Target `Packet.Radio.Tait` library with `IRadioControl` abstraction so other radios can slot in (Yaesu CAT, ICOM CI-V, …).
+- **Frequency-agile operation** — if the radio is CAT-controllable, schedule QSY across a frequency plan. Use cases: APRS digi tail on calling channel + drop to working channel for connected-mode sessions; per-link QSY when SNR drops below threshold; automatic channel hunting in poor band conditions.
+- **NinoTNC mode agility / negotiation** — currently the operator picks a NinoTNC mode (0–15) at config. Goal: query NinoTNC capabilities at startup, negotiate the optimal mode for current channel quality (1200 → 4800 → 9600 based on SNR), renegotiate on degradation. Requires SETHW probe + mode-change handshake (open question: does NinoTNC firmware support runtime mode change?).
+- **NinoTNC firmware upgrades** — port [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) flow into `packetnet ctl flash-tnc` so non-technical users can update firmware from the web UI. Bootloader protocol reverse-engineering needed.
+- **Channel-quality scoring** — fuse radio telemetry (SNR, RSSI, busy %) with AX.25 telemetry (RC, REJ/SREJ rate, RTT) into a per-link "quality index". Surface in UI; feed back into adaptive parameter tuning.
+- **Adaptive AX.25 parameters** — T1, RC, k, mod-8 vs mod-128 chosen dynamically from the quality score. Currently §C.4 leaves these fixed. Care needed — interop with non-adaptive peers must remain spec-compliant.
+
+**Hardware test harness** (incoming): 2× NinoTNC + 2× Tait radio on USB, cross-wired audio. Will be available for autonomous capability exploration once delivered. Initial autonomous spike: probe both radios via CCDI, dump capabilities, characterise SNR-vs-distance behaviour across the air-cross-coupling, baseline NinoTNC mode-change behaviour.
+
+**Exit criteria** (high-level):
+
+- `IRadioControl` abstraction with at least Tait CCDI implementation.
+- Per-link quality index visible in web UI + persisted to time-series.
+- At least one adaptive parameter (T1 or k) wired to quality feedback under a `--adaptive` flag.
+- NinoTNC mode-change demonstrated end-to-end (manual trigger, no auto-negotiation needed for exit).
+- `packetnet ctl flash-tnc` working from CLI; web UI integration optional.
+
+### 5.X Spike backlog ⬜
+
+Smaller, time-boxed exploration tasks. Not phase-sequenced — each can land
+whenever it's the highest-leverage next thing. Listed in approximate order
+of leverage-per-effort.
+
+**SP-001 — LinBPQ MQTT frame feed ingestion** (high leverage, low effort).
+Tom operates a live LinBPQ node with four real RF ports and is willing to
+expose an MQTT feed of every AX.25 frame sent/received (with or without KISS
+wrapper). Build a `Packet.Replay.MqttIngest` tool that subscribes to the
+feed, decodes frames, runs them through our parser, and emits structured
+records (frame type, callsigns, control bits, payload size, decoded errors).
+Acts as a 24/7 corpus of real-world frame traffic across four real RF
+channels — vastly richer than synthetic test traffic. Specifically catches
+parser edge cases that property-tests won't generate. Feeds the regression
+corpus in SP-003.
+
+**SP-002 — Direwolf-as-reference end-to-end harness** (high leverage, medium
+effort). Docker-containerise direwolf, expose KISS-TCP, point Packet.NET at
+it. For every transcribed transition, A/B our orchestrator's behaviour
+against direwolf's actual output. Direwolf is the closest-to-figure
+implementation (see SI-* triangulation in [`docs/spec-issues.md`](spec-issues.md)),
+so behavioural equivalence with direwolf is a strong correctness signal.
+Strongest force multiplier on the SDL transcription work.
+
+**SP-003 — Replay/record harness** (high leverage, medium effort). pcap-
+style timestamped capture of KISS + AX.25 wire bytes with per-frame direction
++ port + source labels. Replay later to repro bugs, build a regression
+library of weird-frames-seen-in-the-wild, and A/B real on-air behaviour
+against the orchestrator's projection. Foundation for SP-001's persistence
++ for future "I saw a strange frame, replay this against the state machine"
+debugging. Storage as JSON-lines or capnproto; both fine.
+
+**SP-004 — AX.25 wire-format fuzzer (SharpFuzz)** (medium leverage, low
+effort). Plan §7 already promises this for nightly. Frame parser as target.
+Mostly mechanical: a fuzz harness against `Ax25Frame.TryParse`, plus
+`KissFrame.TryParse`. Likely surfaces real bugs in edge cases (oversized
+fields, weird PIDs, malformed addresses). Cheap and overdue.
+
+**SP-005 — Multi-Packet.NET-instance interop via net-sim** (medium leverage,
+low effort). Net-sim already in the interop stack. Spin up 2-3 Packet.NET
+instances and let them talk to each other through net-sim's lossy channel.
+Any drift between identical implementations exposes a state-machine bug
+cheaper than against LinBPQ — and complements interop tests against
+heterogeneous peers.
+
+**SP-006 — Spec-prose-to-stub-test extractor** (higher effort, payoff after
+Phase 2). Parse the AX.25 v2.2 spec markdown, pull every "shall" sentence
+into a stub xUnit test (initially `[Skip]`). Surfaces gaps where the SDL
+transcription doesn't cover a prose mandate. Lower priority — the SDL
+transcription itself already does most of the work, but this acts as a
+backstop.
+
+**SP-007 — NinoTNC KISS-side SNR proxy** (low leverage but useful fallback).
+Even without Tait integration, can we infer link quality from frame-quality
+bits / retry rates / error counts alone? If yes, gives `IRadioControl`'s
+quality signal a fallback path for users without CAT-capable radios.
+Investigate after SP-001 has produced enough real-world data to baseline.
+
+**SP-008 — Full APRS encoding/decoding library** (large scope; significant
+ecosystem value). The SDL transcription work covers AX.25's link layer; APRS
+is the application-layer protocol that rides on UI frames. A native
+`Packet.Aprs` library covering position/weather/mic-E/messages/status/
+telemetry/objects/items would slot in cleanly above the AX.25 stack and
+make Packet.NET a credible APRS gateway / parser, not just a bare TNC.
+
+Specs:
+- [APRS101.pdf](http://www.ui-view.net/files/APRS101.pdf) — the original
+  1998 specification.
+- [`how.aprs.works/aprs101-pdf-is-obsolete`](https://how.aprs.works/aprs101-pdf-is-obsolete/)
+  — community-maintained corrections, clarifications, and deprecations
+  layered on top of the 1998 spec. Both are needed to model real-world
+  APRS faithfully.
+
+Approach mirrors the AX.25 SDL pipeline where possible:
+- Trust-the-spec encode-then-verify discipline.
+- Property tests for round-trip (decode → encode → assert byte-equal) on
+  every payload type.
+- A real-world corpus (the SP-001b APRS-IS feed already exists; the
+  forthcoming SP-001 LinBPQ-MQTT feed will be richer) gives free fuzz
+  coverage.
+
+Likely sequenced after the LinBPQ-MQTT feed lands so the library can be
+validated against real traffic from day one. Open question: do we want
+to support APRS Messaging end-to-end (would need state for acks +
+retries) or strictly the parsing/encoding surface? Decide before
+starting.
+
+### 5.Y Hardware-arrival probe playbook ⬜
+
+Concrete first-day actions for when the 2× NinoTNC + 2× Tait rig lands on
+the bench. Listed so the autonomous agent has a ready playbook the moment
+hardware is available.
+
+1. **Tait capability inventory** — query both radios via CCDI, dump full
+   capability list (channels, modes, frequencies, audio levels, supported
+   commands) into `artifacts/radio-capabilities/<radio-serial>.json`.
+2. **NinoTNC capability probe** — SETHW iteration over modes 0–15 + the
+   `+16` no-flash variant; record what KISS responses come back; observe
+   whether mode change is immediate or requires re-init. Directly answers
+   OQ-009.
+3. **SNR vs TX-level baseline** — step the Tait TX audio level across the
+   cross-wire; log SNR on the receiving Tait at each level. Builds a
+   per-rig calibration curve usable by the adaptive estimator.
+4. **NinoTNC mode-by-SNR survey** — for each NinoTNC mode that decodes on
+   the cross-wire, find the SNR floor at which BER starts climbing. Lets us
+   pick mode-switch thresholds.
+5. **1000-iteration AX.25 soak** — SABM → UA → I-frames → DISC → UA round-
+   trip, 1000 times, through both radios. Records frame error rate, retry
+   distribution, T1 variance, mode-stability across the run.
+6. **Cross-coupling degradation** — TX on radio 1, deliberately mistune
+   radio 2. Plot decode success vs offset. Maps the "graceful degradation"
+   shape of the audio path.
+
+Outputs all land in `artifacts/hardware-probe/<date>/` and feed into Phase
+10's adaptive-parameter tuning.
+
 ---
 
 ## 6. SDL transcription discipline
@@ -639,6 +784,9 @@ Tracked here so they don't get lost. Once resolved, move the resolution into the
 | OQ-006 | yEd / GraphML SDL workflow — Tom tried Mermaid and reported the rendering looks too unlike the original SDL to be useful for visual comparison. Mermaid output is shipped anyway (cheap, catches transcription bugs the YAML diff might miss) but does NOT solve the input-side problem. yEd spike (one figure, agreed shape mapping, parse the .graphml back to our YAML) still on the table whenever Tom has big-screen time. | Open | Tom |
 | ~~OQ-007~~ | ~~Stryker mutation score for `Packet.Kiss` is dragged below 70 % by `KissTcpClient`…~~ | ✅ Resolved 2026-05-12 — excluded via `stryker-config.json`; score 67.07→73.33. Fake-socket harness left for whenever Phase 6/7 wants tighter coverage. |
 | OQ-008 | Publish `/spec-sdl/` as a community-canonical AX.25 v2.2 state-machine artifact, separate from this repo? The YAML is language-agnostic by design — a Rust/Python/Go/TS codegen against the same files would produce the same transitions, and our C# codegen becomes the reference implementation rather than the source of truth. Three things would need to firm up before "authoritative" is defensible: (a) the guard mini-DSL needs a real grammar (today `GuardEvaluator` parses by ad-hoc string splitting — fine for one consumer, not for many); (b) action verbs need a stable catalog with documented semantics (today they're free-form strings like `"RNR response"`, `"start_T1"`); (c) the schema + events catalog need semver. Realistic move: finish the 27 pages, stabilise the schema, then split `/spec-sdl/` + schema + events into a sibling repo (likely under `packethacking/`). What makes this credibly authoritative rather than just *another* transcription is the encode-then-verify discipline + collaboration with the spec author — both already in place. Revisit at the end of Phase 2. | Open | Tom |
+| OQ-009 | NinoTNC mode-change handshake — does the firmware support runtime mode switching without a write-to-flash cycle? `SETHW(mode + 16)` is the "don't write to flash" form; is the actual mode change immediate, or does it require power-cycle? Affects feasibility of Phase 10's mode-agility workstream. Probe once hardware is on the bench. | Open | Phase 10 / hardware-arrival |
+| OQ-010 | NinoTNC bootloader / firmware-update protocol — `flashtnc` is the canonical tool; what's the wire protocol? Best to read [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) source rather than reinvent. Affects feasibility + risk of `packetnet ctl flash-tnc`. | Open | Phase 10 |
+| OQ-011 | Radio-control abstraction shape — what's the right `IRadioControl` API? Tait CCDI gives us SNR / RSSI / busy / channel / TX-keying. Yaesu CAT and ICOM CI-V have different feature sets. Common subset is probably {frequency-set, frequency-get, RSSI-get, busy-get, PTT-set} — anything radio-specific (Tait's SNR is unusually rich) goes behind a feature-probe. Decide before locking the Tait implementation. | Open | Phase 10 |
 
 ---
 
@@ -711,6 +859,56 @@ the Linux-only matrix is now purely about wall-clock-per-PR rather
 than $-per-PR. Worth revisiting whether to put Windows+macOS back on a
 nightly GitHub-hosted schedule, since they're effectively free
 elsewhere.
+
+### 2026-05-14 — Roadmap: Phase 10 (Hardware ecosystem & adaptive RF) added
+
+New Phase 10 entry in §5 captures the post-v1 differentiator: treating
+the radio + modem as first-class telemetry sources, and using their
+signals to drive AX.25's parameter knobs in real time. Workstreams:
+
+- **Tait 8100/8200 CCDI integration** — three existing Tom PoC repos
+  (`tait-ccdi`, `TaitMaster`, `taitctrl`) will be rewritten and folded
+  in. Target `Packet.Radio.Tait` library with `IRadioControl`
+  abstraction so Yaesu CAT / ICOM CI-V can slot in later.
+- **Frequency-agile operation** — CAT-driven QSY based on link policy.
+- **NinoTNC mode agility / negotiation** — query capabilities, pick
+  optimal mode for current SNR, renegotiate on degradation.
+- **NinoTNC firmware upgrades** — port `flashtnc` flow into
+  `packetnet ctl flash-tnc`.
+- **Channel-quality scoring** — fuse radio + AX.25 telemetry.
+- **Adaptive AX.25 parameters** — T1, RC, k, mod-8 vs mod-128 chosen
+  from quality score under an opt-in flag.
+
+Hardware test rig (2× NinoTNC + 2× Tait, cross-wired audio) is being
+prepared for autonomous capability exploration.
+
+Three new open questions added to §15:
+
+- **OQ-009** NinoTNC runtime mode-change support (probe needed).
+- **OQ-010** NinoTNC bootloader protocol (read flashtnc source).
+- **OQ-011** `IRadioControl` abstraction shape (common subset vs
+  per-radio feature probes).
+
+Same edit also added §5.X "Spike backlog" — seven SP-NNN candidates
+ordered by leverage-per-effort:
+
+- **SP-001** LinBPQ MQTT frame feed ingestion (Tom-supplied real-world
+  corpus from 4 RF ports; high leverage, low effort — top of the list).
+- **SP-002** Direwolf-as-reference end-to-end harness (force multiplier
+  on SDL transcription work).
+- **SP-003** Replay/record harness (pcap-style capture of KISS + AX.25
+  bytes for repro + regression corpus).
+- **SP-004** AX.25 wire-format fuzzer (SharpFuzz — promised by §7).
+- **SP-005** Multi-Packet.NET-instance interop via net-sim.
+- **SP-006** Spec-prose-to-stub-test extractor (post-Phase 2).
+- **SP-007** NinoTNC KISS-side SNR proxy (fallback for no-CAT radios).
+- **SP-008** Full APRS101 encoding/decoding library (large scope —
+  position, weather, mic-E, messages, telemetry, objects, items).
+  References APRS101.pdf + the community "APRS101 is obsolete"
+  corrections page.
+
+And §5.Y "Hardware-arrival probe playbook" — 6 concrete first-day
+actions to run autonomously when the 2× NinoTNC + 2× Tait rig lands.
 
 ### 2026-05-14 — CI: drop Windows + macOS runners from PR matrix
 
