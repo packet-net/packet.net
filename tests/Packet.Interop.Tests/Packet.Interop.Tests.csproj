@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Packet.Node\Packet.Node.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
     <ProjectReference Include="..\..\src\Packet.Axudp\Packet.Axudp.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />

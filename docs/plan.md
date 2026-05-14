@@ -824,6 +824,32 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — interop: more UI-frame scenarios against net-sim
+
+`tests/Packet.Interop.Tests/Netsim/NetsimUiFrameScenarios.cs` — four
+new scenarios that exercise UI-frame paths through the net-sim
+AFSK1200 link sim. UI-frame paths are the half of the interop arc
+that isn't gated on the figc4.7 SDL redraw, so they're shippable
+now.
+
+Scenarios:
+
+- `UI_Frame_With_Digipeater_Path_Round_Trips` — verifies digi-path
+  E-bit migration to the last digi survives the wire.
+- `UI_Frame_With_NetRom_Pid_Preserves_Payload` — PID 0xCF (NET/ROM
+  L3) + 20-byte info, the typical shape the BPQ corpus has 139 of.
+- `UI_Frame_With_Aprs_Position_Survives_RF_Round_Trip` — full stack
+  end-to-end: encode AX.25 UI carrying an APRS position, push
+  through AFSK1200, decode AX.25 + `AprsPositionDecoder` on the
+  other side, assert lat/lon matches.
+- `Burst_Of_UI_Frames_All_Arrive` — 5 frames in quick succession;
+  all 5 arrive within budget. Catches dropped-frame regressions
+  introduced by KISS-TCP back-pressure changes.
+
+All [SkippableFact] — they skip cleanly when net-sim isn't up; the
+CI interop job runs them against the live stack. Builds clean
+locally without the stack.
+
 ### 2026-05-14 — ax25: fuzz / property tests for the frame parser
 
 `tests/Packet.Ax25.Properties/Ax25ParserFuzzProperties.cs` — six new
