@@ -17,13 +17,13 @@ Observation:
     is not consistent across runs:
 
         Overnight run 1: TXDELAY=100 (1000 ms)
-            * A→B 99/100 (frame 0 only lost, otherwise clean)
-            * B→A   4/100 (frames 0, 5..99 all lost; contiguous run)
+            * A->B 99/100 (frame 0 only lost, otherwise clean)
+            * B->A   4/100 (frames 0, 5..99 all lost; contiguous run)
 
         Overnight run 2 (~2 h later, same hardware, same script):
-            * TXDELAY=50  (500 ms) →  A→B   0/100, B→A   0/100
-            * TXDELAY=100 (1000 ms) → A→B  99/100, B→A 100/100
-            * TXDELAY=20  (200 ms) →  A→B  99/100, B→A 100/100
+            * TXDELAY=50  (500 ms)  -> A->B   0/100, B->A   0/100
+            * TXDELAY=100 (1000 ms) -> A->B  99/100, B->A 100/100
+            * TXDELAY=20  (200 ms)  -> A->B  99/100, B->A 100/100
 
     Modes 13 (300 AFSKPLL IL2P) and 14 (300 AFSKPLL IL2P+CRC) — same
     300-baud air time, but PLL-based AFSK demodulator — *do not*
@@ -281,8 +281,10 @@ def main() -> int:
             a.close()
             b.close()
 
-        print(f"  A→B: {ab_ok}/{args.n} (failures: {summarize(ab_fail)})")
-        print(f"  B→A: {ba_ok}/{args.n} (failures: {summarize(ba_fail)})")
+        # ASCII arrows because Windows consoles using cp1252 trip on
+        # the Unicode arrow characters that look nicer everywhere else.
+        print(f"  A->B: {ab_ok}/{args.n} (failures: {summarize(ab_fail)})")
+        print(f"  B->A: {ba_ok}/{args.n} (failures: {summarize(ba_fail)})")
         print()
 
     return 0
@@ -290,7 +292,7 @@ def main() -> int:
 
 def summarize(failures: List[int]) -> str:
     if not failures:
-        return "—"
+        return "none"
     if len(failures) == 1 and failures[0] == 0:
         return "first only"
     if len(failures) == 1:
