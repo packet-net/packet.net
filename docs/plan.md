@@ -824,6 +824,45 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: I-frame emission + session-loop queue drain machinery
+
+The final piece: `I_command` verb + the session loop that pops
+`ctx.IFrameQueue` and posts synthetic `IFramePopsOffQueue` events.
+After this PR, **every signal_lower verb in the transcribed
+vocabulary is wired**, and DL_DATA_request → I-frame on the wire
+works end-to-end through the real dispatcher.
+
+**New types**:
+- `IFrameSpec(IsCommand, PBit, Nr, Ns, Info, Pid)` record
+- `Ax25SessionContext.IFrameQueue` retyped to
+  `Queue<(ReadOnlyMemory<byte> Data, byte Pid)>`
+- `Ax25SessionContext.SentIFrames` retyped to
+  `Dictionary<byte, (ReadOnlyMemory<byte> Data, byte Pid)>`
+- `DlDataRequest` and `IFramePopsOffQueue` gain `Pid` parameter
+  (defaults to `Ax25Frame.PidNoLayer3`)
+- `ActionDispatcher` gains optional `sendIFrame` callback
+
+**Session-loop machinery**: `Ax25Session.PostEvent` now calls a new
+`DrainIFrameQueue` after `DispatchEvent`. It pops one entry at a time
+and re-dispatches as `IFramePopsOffQueue`, stopping when the queue
+empties, the peer goes busy, or the send window fills
+(`(V(s) - V(a)) % modulus < k`). Matches figc4.4 t19/t20's guards
+(`peer_receiver_busy=No` + `V_s_eq_V_a_plus_k=No`).
+
+**EmitIFrame**: reads pending `Nr`/`Ns`/`PfBit` (defaulting to
+`V(R)`/`V(S)`/`false`), reads `Info`/`Pid` from the triggering
+`IFramePopsOffQueue` event, calls `sendIFrame`, and stashes the
+payload in `SentIFrames[Ns]` for figc4.4's REJ/SREJ retransmit paths.
+
+**Tests**: 4 new (2 unit tests for I_command, 2 figc4.4 E2E tests).
+685 tests green (was 681).
+
+End of the verb-wiring arc: every action verb the transcribed pages
+reference (figc4.1/4.2/4.3/4.4/4.6) is now executable through the real
+dispatcher. Action chains involving subroutines no-op via stubs;
+once figc4.7 is transcribed, real bodies replace the stubs with no
+dispatcher changes.
+
 ### 2026-05-14 — ax25: end-to-end integration tests for figc4.3 + figc4.4 (subset)
 
 Two more E2E test files driving real `ActionDispatcher` against real

@@ -139,7 +139,7 @@ public class DataLinkAwaitingConnectionEndToEndTests
     public void t02_DM_Received_F_Eq_1_Discards_Queue_Notifies_Upper_Stops_T1_Returns_To_Disconnected()
     {
         var (s, ctx, scheduler, _, _, _, _, upward, _, _, _) = NewRig(fEq1: true);
-        ctx.IFrameQueue.Enqueue(new byte[] { 1, 2 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1, 2 }, Ax25Frame.PidNoLayer3));
         scheduler.Arm("T1", TimeSpan.FromSeconds(1), () => { });
 
         // DM control = 0x0F, F=1 → 0x1F
@@ -180,7 +180,7 @@ public class DataLinkAwaitingConnectionEndToEndTests
     public void t08_T1_Expiry_RC_Eq_N2_Gives_Up_And_Returns_To_Disconnected()
     {
         var (s, ctx, _, _, _, _, _, upward, _, _, _) = NewRig(rcEqN2: true);
-        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
 
         s.PostEvent(new T1Expiry());
 

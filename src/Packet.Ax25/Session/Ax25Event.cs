@@ -21,7 +21,8 @@ public sealed record DlConnectRequest() : Ax25Event("DL_CONNECT_request");
 public sealed record DlDisconnectRequest() : Ax25Event("DL_DISCONNECT_request");
 
 /// <summary>Layer 3 hands an I-frame payload to the data-link.</summary>
-public sealed record DlDataRequest(ReadOnlyMemory<byte> Data) : Ax25Event("DL_DATA_request");
+public sealed record DlDataRequest(ReadOnlyMemory<byte> Data, byte Pid = Ax25Frame.PidNoLayer3)
+    : Ax25Event("DL_DATA_request");
 
 /// <summary>Layer 3 hands a UI-frame payload to the data-link.</summary>
 public sealed record DlUnitDataRequest(ReadOnlyMemory<byte> Data, byte Pid = Ax25Frame.PidNoLayer3)
@@ -63,8 +64,14 @@ public sealed record TestReceived(Ax25Frame Frame)       : Ax25Event("TEST_recei
 
 // ─── Internal events ────────────────────────────────────────────────────
 
-/// <summary>The session's I-frame queue surfaced its next ready frame.</summary>
-public sealed record IFramePopsOffQueue() : Ax25Event("I_frame_pops_off_queue");
+/// <summary>
+/// The session's I-frame queue surfaced its next ready frame for
+/// transmission. Synthesised by <see cref="Ax25Session"/> after a
+/// transition's action chain enqueued data and conditions allow
+/// transmission (peer not busy, V(s) within window).
+/// </summary>
+public sealed record IFramePopsOffQueue(ReadOnlyMemory<byte> Data, byte Pid = Ax25Frame.PidNoLayer3)
+    : Ax25Event("I_frame_pops_off_queue");
 
 /// <summary>
 /// Composite frame-received event covering the single SDL input column

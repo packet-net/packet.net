@@ -215,19 +215,19 @@ public class DataLinkConnectedSmokeTests
 
     // ─── Column 4 (I Frame Pops Off Queue) ─────────────────────────────
     [Fact] public void t19_i_frame_pops_off_queue_send_now_t1_running() =>
-        AssertTransitionFires("t19_i_frame_pops_off_queue_send_now_t1_running", new IFramePopsOffQueue(),
+        AssertTransitionFires("t19_i_frame_pops_off_queue_send_now_t1_running", new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty),
             new Guards { PeerReceiverBusy = false, VsEqVaPlusK = false, T1Running = true });
 
     [Fact] public void t20_i_frame_pops_off_queue_send_now_t1_not_running() =>
-        AssertTransitionFires("t20_i_frame_pops_off_queue_send_now_t1_not_running", new IFramePopsOffQueue(),
+        AssertTransitionFires("t20_i_frame_pops_off_queue_send_now_t1_not_running", new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty),
             new Guards { PeerReceiverBusy = false, VsEqVaPlusK = false, T1Running = false });
 
     [Fact] public void t21_i_frame_pops_off_queue_window_full() =>
-        AssertTransitionFires("t21_i_frame_pops_off_queue_window_full", new IFramePopsOffQueue(),
+        AssertTransitionFires("t21_i_frame_pops_off_queue_window_full", new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty),
             new Guards { PeerReceiverBusy = false, VsEqVaPlusK = true });
 
     [Fact] public void t22_i_frame_pops_off_queue_peer_busy() =>
-        AssertTransitionFires("t22_i_frame_pops_off_queue_peer_busy", new IFramePopsOffQueue(),
+        AssertTransitionFires("t22_i_frame_pops_off_queue_peer_busy", new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty),
             new Guards { PeerReceiverBusy = true });
 
     // ─── Column 5 ──────────────────────────────────────────────────────

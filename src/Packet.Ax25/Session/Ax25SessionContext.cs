@@ -110,11 +110,21 @@ public sealed class Ax25SessionContext
 
     // ─── Queues ─────────────────────────────────────────────────────────
 
-    /// <summary>FIFO queue of I-frame payloads awaiting transmission.</summary>
-    public Queue<ReadOnlyMemory<byte>> IFrameQueue { get; } = new();
+    /// <summary>
+    /// FIFO queue of I-frame payloads awaiting transmission. Each entry
+    /// carries the Layer-3 payload + PID byte; the session pops one
+    /// entry per <see cref="IFramePopsOffQueue"/> event when conditions
+    /// allow transmission.
+    /// </summary>
+    public Queue<(ReadOnlyMemory<byte> Data, byte Pid)> IFrameQueue { get; } = new();
 
-    /// <summary>Map of seqno → I-frame body, for retransmission of outbound frames.</summary>
-    public Dictionary<byte, ReadOnlyMemory<byte>> SentIFrames { get; } = new();
+    /// <summary>
+    /// Map of N(S) → I-frame payload + PID for retransmission of
+    /// previously-sent outbound frames. Populated when an I-frame is
+    /// emitted; consumed by figc4.4's
+    /// <c>push_old_I_frame_N_r_on_queue</c> verb during REJ/SREJ recovery.
+    /// </summary>
+    public Dictionary<byte, (ReadOnlyMemory<byte> Data, byte Pid)> SentIFrames { get; } = new();
 
     /// <summary>
     /// Out-of-sequence received I-frames awaiting their turn — keyed by

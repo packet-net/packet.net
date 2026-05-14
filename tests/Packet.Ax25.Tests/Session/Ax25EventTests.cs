@@ -10,7 +10,7 @@ public class Ax25EventTests
     [InlineData(typeof(DlDisconnectRequest), "DL_DISCONNECT_request")]
     [InlineData(typeof(DlFlowOffRequest),    "DL_FLOW_OFF_request")]
     [InlineData(typeof(DlFlowOnRequest),     "DL_FLOW_ON_request")]
-    [InlineData(typeof(IFramePopsOffQueue),  "I_frame_pops_off_queue")]
+    // IFramePopsOffQueue covered separately — its constructor takes (Data, Pid).
     [InlineData(typeof(T1Expiry),            "T1_expiry")]
     [InlineData(typeof(T2Expiry),            "T2_expiry")]
     [InlineData(typeof(T3Expiry),            "T3_expiry")]
@@ -18,6 +18,17 @@ public class Ax25EventTests
     {
         var evt = (Ax25Event)Activator.CreateInstance(eventType)!;
         evt.Name.Should().Be(expectedName);
+    }
+
+    [Fact]
+    public void IFramePopsOffQueue_Carries_Data_And_Pid_With_Correct_Name()
+    {
+        var data = "queued-payload"u8.ToArray();
+        var evt = new IFramePopsOffQueue(data, Pid: 0xCF);
+
+        evt.Name.Should().Be("I_frame_pops_off_queue");
+        evt.Data.ToArray().Should().Equal(data);
+        evt.Pid.Should().Be((byte)0xCF);
     }
 
     [Fact]

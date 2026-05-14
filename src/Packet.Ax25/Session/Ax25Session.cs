@@ -97,7 +97,12 @@ public sealed class Ax25Session
     public void PostEvent(Ax25Event evt)
     {
         ArgumentNullException.ThrowIfNull(evt);
+        DispatchEvent(evt);
+        DrainIFrameQueue();
+    }
 
+    private void DispatchEvent(Ax25Event evt)
+    {
         if (!transitionsByState.TryGetValue(CurrentState, out var stateTransitions))
         {
             throw new InvalidOperationException($"no transitions defined for current state '{CurrentState}'");
@@ -121,5 +126,42 @@ public sealed class Ax25Session
         var tx = new TransitionContext(Context, scheduler, evt);
         dispatcher.Execute(match.Actions, tx);
         CurrentState = match.Next;
+    }
+
+    /// <summary>
+    /// After every event dispatch, if <see cref="Ax25SessionContext.IFrameQueue"/>
+    /// has entries and conditions allow transmission (peer not busy, V(s)
+    /// within window k beyond V(a)), pop entries one at a time and
+    /// synthesise <see cref="IFramePopsOffQueue"/> events. Stops when the
+    /// queue empties, the peer goes busy, the send window fills, or the
+    /// session leaves a state that handles the synthetic event (e.g. moves
+    /// to Disconnected).
+    /// </summary>
+    /// <remarks>
+    /// This is the I-frame session-loop machinery the SDL figures rely on.
+    /// figc4.4 t18 enqueues data via <c>push_on_I_frame_queue</c>; t19/t20
+    /// handle the synthetic pop event by emitting the I-frame on the wire.
+    /// Without this drain, t19/t20 would never fire and DL_DATA_request
+    /// would silently sit on the queue.
+    /// </remarks>
+    private void DrainIFrameQueue()
+    {
+        while (Context.IFrameQueue.Count > 0 && CanTransmitIFrame())
+        {
+            var entry = Context.IFrameQueue.Dequeue();
+            DispatchEvent(new IFramePopsOffQueue(entry.Data, entry.Pid));
+        }
+    }
+
+    /// <summary>
+    /// True if the link conditions allow an I-frame to be sent right now —
+    /// peer not busy, send window not full. Mirrors the figc4.4 t19/t20
+    /// guards (<c>peer_receiver_busy=No</c> + <c>V_s_eq_V_a_plus_k=No</c>).
+    /// </summary>
+    private bool CanTransmitIFrame()
+    {
+        if (Context.PeerReceiverBusy) return false;
+        int outstanding = (Context.VS - Context.VA + Context.Modulus) % Context.Modulus;
+        return outstanding < Context.K;
     }
 }

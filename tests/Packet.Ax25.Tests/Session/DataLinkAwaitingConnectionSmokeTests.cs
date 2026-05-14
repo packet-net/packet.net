@@ -155,11 +155,11 @@ public class DataLinkAwaitingConnectionSmokeTests
 
     [Fact] public void t15_i_frame_pops_off_queue_layer_3_initiated() =>
         AssertTransitionFires("t15_i_frame_pops_off_queue_layer_3_initiated",
-            new IFramePopsOffQueue(), layer3Initiated: true);
+            new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty), layer3Initiated: true);
 
     [Fact] public void t16_i_frame_pops_off_queue_not_layer_3_initiated() =>
         AssertTransitionFires("t16_i_frame_pops_off_queue_not_layer_3_initiated",
-            new IFramePopsOffQueue(), layer3Initiated: false);
+            new IFramePopsOffQueue(ReadOnlyMemory<byte>.Empty), layer3Initiated: false);
 
     [Fact] public void t17_all_other_primitives_from_lower_layer() =>
         AssertTransitionFires("t17_all_other_primitives_from_lower_layer", new AllOtherPrimitivesFromLowerLayer());

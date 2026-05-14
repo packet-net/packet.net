@@ -49,6 +49,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     private readonly Action<SupervisoryFrameSpec> sendSFrame;
     private readonly Action<UFrameSpec> sendUFrame;
     private readonly Action<UiFrameSpec> sendUiFrame;
+    private readonly Action<IFrameSpec> sendIFrame;
     private readonly Action<DataLinkSignal> sendUpward;
     private readonly Action<LinkMultiplexerSignal> sendLinkMux;
     private readonly Action<InternalSignal> sendInternal;
@@ -109,6 +110,13 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// internal I-frame queue (<c>push_*</c> verbs). Defaults to a
     /// no-op sink.
     /// </param>
+    /// <param name="sendIFrame">
+    /// Called when an action requests transmission of an information
+    /// (I) frame. Triggered by the <c>I_command</c> verb after the
+    /// session pops a payload off <see cref="Ax25SessionContext.IFrameQueue"/>
+    /// and posts a synthetic <see cref="IFramePopsOffQueue"/> event.
+    /// Defaults to a no-op sink.
+    /// </param>
     /// <param name="subroutines">
     /// Registry for SDL subroutine action chains
     /// (<c>Establish_Data_Link</c>, <c>UI_Check</c>,
@@ -125,6 +133,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         Action<DataLinkSignal>? sendUpward = null,
         Action<LinkMultiplexerSignal>? sendLinkMux = null,
         Action<InternalSignal>? sendInternal = null,
+        Action<IFrameSpec>? sendIFrame = null,
         ISubroutineRegistry? subroutines = null)
     {
         this.onTimerExpiry = onTimerExpiry ?? throw new ArgumentNullException(nameof(onTimerExpiry));
@@ -134,6 +143,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         this.sendUpward    = sendUpward    ?? (_ => { });
         this.sendLinkMux   = sendLinkMux   ?? (_ => { });
         this.sendInternal  = sendInternal  ?? (_ => { });
+        this.sendIFrame    = sendIFrame    ?? (_ => { });
         this.subroutines   = subroutines   ?? new DefaultSubroutineRegistry();
     }
 
@@ -278,6 +288,19 @@ public sealed class ActionDispatcher : IActionDispatcher
             // false unless populated via `tx.Pending.PfBit` by a
             // preceding processing verb.
             case "UI_command":                     sendUiFrame(BuildUiFrame(isCommand: true, tx)); break;
+
+            // ─── I-frame transmission ─────────────────────────────────
+            //
+            // `I_command` is figc4.4's signal_lower verb for I-frame
+            // emission. The action chain preceding it (`N(s) := V(s);
+            // N(r) := V(r); p := 0`) sets pending fields; this verb
+            // reads them along with the payload + PID from the
+            // triggering <see cref="IFramePopsOffQueue"/> event. The
+            // emitted I-frame's payload is also stored in
+            // <see cref="Ax25SessionContext.SentIFrames"/> keyed by
+            // N(S), so figc4.4's REJ/SREJ recovery paths can retrieve
+            // it via <c>push_old_I_frame_N_r_on_queue</c>.
+            case "I_command":                      EmitIFrame(tx); break;
 
             // ─── DL upper-layer signals (signal_upper) ────────────────
             //
@@ -557,7 +580,7 @@ public sealed class ActionDispatcher : IActionDispatcher
 
     /// <summary>
     /// Implement <c>push_on_I_frame_queue</c> / <c>push_frame_on_queue</c>:
-    /// pull the payload from the triggering <see cref="DlDataRequest"/>
+    /// pull the payload + PID from the triggering <see cref="DlDataRequest"/>
     /// and append it to <see cref="Ax25SessionContext.IFrameQueue"/>.
     /// Also raises the corresponding <see cref="InternalSignal"/> so
     /// observers can see the push.
@@ -569,7 +592,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             throw new InvalidOperationException(
                 $"action `push_*_queue` requires the trigger to be DL_DATA_request, but it was '{tx.Trigger.Name}'.");
         }
-        tx.Session.IFrameQueue.Enqueue(dr.Data);
+        tx.Session.IFrameQueue.Enqueue((dr.Data, dr.Pid));
         sendInternal(new PushIFrameQueueSignal(dr.Data));
     }
 
@@ -582,7 +605,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     private void PushOldIFrameNrOnQueue(TransitionContext tx)
     {
         byte nr = ExtractNr(tx);
-        if (!tx.Session.SentIFrames.TryGetValue(nr, out var payload))
+        if (!tx.Session.SentIFrames.TryGetValue(nr, out var entry))
         {
             // figc4.4 assumes the frame is still in storage. Real impls
             // (linbpq/direwolf) silently skip if it's been evicted; we do
@@ -590,8 +613,35 @@ public sealed class ActionDispatcher : IActionDispatcher
             // here is implementation-defined when state is lost.
             return;
         }
-        tx.Session.IFrameQueue.Enqueue(payload);
-        sendInternal(new PushIFrameQueueSignal(payload));
+        tx.Session.IFrameQueue.Enqueue(entry);
+        sendInternal(new PushIFrameQueueSignal(entry.Data));
+    }
+
+    /// <summary>
+    /// Implement <c>I_command</c>: build an <see cref="IFrameSpec"/>
+    /// from pending fields + the triggering <see cref="IFramePopsOffQueue"/>
+    /// event's payload, emit it via <c>sendIFrame</c>, and stash it in
+    /// <see cref="Ax25SessionContext.SentIFrames"/> for potential
+    /// retransmission.
+    /// </summary>
+    private void EmitIFrame(TransitionContext tx)
+    {
+        if (tx.Trigger is not IFramePopsOffQueue popped)
+        {
+            throw new InvalidOperationException(
+                $"action `I_command` requires the trigger to be I_frame_pops_off_queue, but it was '{tx.Trigger.Name}'.");
+        }
+        byte ns   = tx.Pending.Ns    ?? tx.Session.VS;
+        byte nr   = tx.Pending.Nr    ?? tx.Session.VR;
+        bool pBit = tx.Pending.PfBit ?? false;
+        sendIFrame(new IFrameSpec(
+            IsCommand: true,
+            PBit:      pBit,
+            Nr:        nr,
+            Ns:        ns,
+            Info:      popped.Data,
+            Pid:       popped.Pid));
+        tx.Session.SentIFrames[ns] = (popped.Data, popped.Pid);
     }
 
     /// <summary>

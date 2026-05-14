@@ -137,8 +137,8 @@ public class ActionDispatcherTests
     public void Discard_I_Frame_Queue_Empties_The_Queue()
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
-        ctx.IFrameQueue.Enqueue(new byte[] { 2 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
+        ctx.IFrameQueue.Enqueue((new byte[] { 2 }, Ax25Frame.PidNoLayer3));
         ctx.IFrameQueue.Should().HaveCount(2);
 
         d.Execute("discard_i_frame_queue", ctx, s);
@@ -308,6 +308,57 @@ public class ActionDispatcherTests
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*UI_command*requires the trigger*DL_UNIT_DATA_request*DL_CONNECT_request*");
+    }
+
+    // ─── I-frame emission ──────────────────────────────────────────────
+
+    [Fact]
+    public void I_Command_Builds_IFrameSpec_From_Pending_And_Trigger_Stashes_For_Retransmit()
+    {
+        var iFrames = new List<IFrameSpec>();
+        var time = new FakeTimeProvider();
+        var scheduler = new SystemTimerScheduler(time);
+        var dispatcher = new ActionDispatcher(
+            onTimerExpiry: _ => { },
+            sendSFrame: _ => { },
+            sendIFrame: iFrames.Add);
+        var ctx = new Ax25SessionContext
+        {
+            Local  = new Callsign("M0LTE", 0),
+            Remote = new Callsign("G7XYZ", 7),
+            VS = 4,
+            VR = 7,
+        };
+        var payload = "i-payload"u8.ToArray();
+        var tx = new TransitionContext(ctx, scheduler, new IFramePopsOffQueue(payload, Pid: 0xCC));
+
+        // Replicate figc4.4 t20's chain: N(s):=V(s); N(r):=V(r); p:=0; I_command.
+        dispatcher.Execute(new[] { "N(s) := V(s)", "N(r) := V(r)", "p := 0", "I_command" }, tx);
+
+        iFrames.Should().ContainSingle();
+        var f = iFrames[0];
+        f.IsCommand.Should().BeTrue();
+        f.Ns.Should().Be((byte)4);
+        f.Nr.Should().Be((byte)7);
+        f.PBit.Should().BeFalse("p := 0 set Pending.PfBit = false");
+        f.Info.ToArray().Should().Equal(payload);
+        f.Pid.Should().Be((byte)0xCC);
+
+        ctx.SentIFrames.Should().ContainKey((byte)4);
+        ctx.SentIFrames[4].Data.ToArray().Should().Equal(payload);
+        ctx.SentIFrames[4].Pid.Should().Be((byte)0xCC);
+    }
+
+    [Fact]
+    public void I_Command_Throws_When_Trigger_Is_Not_IFramePopsOffQueue()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        var act = () => d.Execute("I_command", tx);
+
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*I_command*requires the trigger*I_frame_pops_off_queue*");
     }
 
     // ─── DL upper-layer signals ────────────────────────────────────────
@@ -703,7 +754,7 @@ public class ActionDispatcherTests
         d.Execute(verb, tx);
 
         ctx.IFrameQueue.Should().HaveCount(1);
-        ctx.IFrameQueue.Peek().ToArray().Should().Equal(payload);
+        ctx.IFrameQueue.Peek().Data.ToArray().Should().Equal(payload);
         internalSignals.Should().ContainSingle().Which.Should().BeOfType<PushIFrameQueueSignal>();
     }
 
@@ -713,7 +764,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
         var oldPayload = "retransmit-me"u8.ToArray();
         // Pretend we sent an I-frame with N(S) = 3 a while ago.
-        ctx.SentIFrames[3] = oldPayload;
+        ctx.SentIFrames[3] = (oldPayload, Ax25Frame.PidNoLayer3);
 
         // Now an RR comes in with N(R) = 3 — meaning "I want frame 3 again".
         var bytes = new byte[15];
@@ -726,7 +777,7 @@ public class ActionDispatcherTests
         d.Execute("push_old_I_frame_N_r_on_queue", tx);
 
         ctx.IFrameQueue.Should().HaveCount(1);
-        ctx.IFrameQueue.Peek().ToArray().Should().Equal(oldPayload);
+        ctx.IFrameQueue.Peek().Data.ToArray().Should().Equal(oldPayload);
     }
 
     // ─── Queue/exception/flag processing verbs ─────────────────────────
@@ -738,8 +789,8 @@ public class ActionDispatcherTests
     public void Discard_Queue_Verbs_All_Clear_IFrameQueue(string verb)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
-        ctx.IFrameQueue.Enqueue(new byte[] { 2 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
+        ctx.IFrameQueue.Enqueue((new byte[] { 2 }, Ax25Frame.PidNoLayer3));
 
         d.Execute(verb, ctx, s);
 

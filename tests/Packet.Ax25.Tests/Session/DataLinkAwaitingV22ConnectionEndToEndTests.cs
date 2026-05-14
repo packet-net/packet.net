@@ -85,7 +85,7 @@ public class DataLinkAwaitingV22ConnectionEndToEndTests
     public void t01_DL_CONNECT_request_Discards_Queue_Sets_Layer_3_Initiated_Stays_AwaitingConnection22()
     {
         var (s, ctx, _, _, _, _, _, _) = NewRig();
-        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
         ctx.Layer3Initiated = false;
 
         s.PostEvent(new DlConnectRequest());

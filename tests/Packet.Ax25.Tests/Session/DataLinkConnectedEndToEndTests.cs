@@ -112,7 +112,7 @@ public class DataLinkConnectedEndToEndTests
     public void t01_DL_DISCONNECT_request_Drains_Queue_Sends_DISC_Cycles_T1_T3_Transitions_To_AwaitingRelease()
     {
         var (s, ctx, scheduler, _, uFrames, _, _, _, _, _) = NewRig();
-        ctx.IFrameQueue.Enqueue(new byte[] { 1, 2 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1, 2 }, Ax25Frame.PidNoLayer3));
         ctx.RC = 9;
         scheduler.Arm("T3", TimeSpan.FromSeconds(1), () => { });
 
@@ -170,17 +170,27 @@ public class DataLinkConnectedEndToEndTests
     }
 
     [Fact]
-    public void DL_DATA_request_Enqueues_Payload_And_Raises_Internal_Signal()
+    public void DL_DATA_request_Enqueues_Then_Session_Loop_Pops_And_Emits_I_Frame()
     {
+        // figc4.4 t18 enqueues; the session-loop drain pops and posts a
+        // synthetic I_frame_pops_off_queue event, which figc4.4 t20 handles
+        // (peer_receiver_busy=No, V_s_eq_V_a_plus_k=No, !T1_running) by
+        // emitting an I_command and incrementing V(s).
         var (s, ctx, _, _, _, _, _, _, internalSignals, _) = NewRig();
         var payload = "data-to-send"u8.ToArray();
+        ctx.VS = 0;
+        ctx.VA = 0;
+        ctx.VR = 2;  // observable as the emitted N(R)
 
         s.PostEvent(new DlDataRequest(payload));
 
         s.CurrentState.Should().Be("Connected");
-        ctx.IFrameQueue.Should().HaveCount(1);
-        ctx.IFrameQueue.Peek().ToArray().Should().Equal(payload);
-        internalSignals.Should().ContainSingle().Which.Should().BeOfType<PushIFrameQueueSignal>();
+        ctx.IFrameQueue.Should().BeEmpty("the session loop drained the queue");
+        internalSignals.Should().ContainSingle()
+            .Which.Should().BeOfType<PushIFrameQueueSignal>();
+        ctx.VS.Should().Be((byte)1, "V(s) := V(s) + 1 after I_command");
+        ctx.SentIFrames.Should().ContainKey((byte)0,
+            "the sent frame is stashed for retransmit, keyed by its N(s) = pre-increment V(s)");
     }
 
     [Fact]
@@ -190,7 +200,7 @@ public class DataLinkConnectedEndToEndTests
         // DL_ERROR(L); discard_I_frame_queue; Establish_Data_Link;
         // set_layer_3_initiated; → AwaitingConnection.
         var (s, ctx, _, _, _, _, upward, _, _, subroutineCalls) = NewRig();
-        ctx.IFrameQueue.Enqueue(new byte[] { 1 });
+        ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
 
         s.PostEvent(new ControlFieldError());
 
@@ -201,6 +211,78 @@ public class DataLinkConnectedEndToEndTests
         ctx.IFrameQueue.Should().BeEmpty();
         subroutineCalls.Should().ContainSingle().Which.Should().Be("Establish_Data_Link");
         ctx.Layer3Initiated.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Two_DL_DATA_requests_Get_Sent_Sequentially_Through_Session_Loop()
+    {
+        var (s, ctx, _, _, _, _, _, _, _, _) = NewRig();
+        var iFrames = new List<IFrameSpec>();
+        // Replace dispatcher with one that captures I-frames (the default
+        // rig's NewRig doesn't capture them).
+        var time = new FakeTimeProvider();
+        var scheduler = new SystemTimerScheduler(time);
+        var ctx2 = new Ax25SessionContext
+        {
+            Local  = new Callsign("M0LTE", 0),
+            Remote = new Callsign("G7XYZ", 7),
+            VR = 3,
+        };
+        var dispatcher = new ActionDispatcher(
+            onTimerExpiry: _ => { },
+            sendSFrame: _ => { },
+            sendIFrame: iFrames.Add);
+        var bindings = new Dictionary<string, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx2, scheduler), StringComparer.Ordinal)
+        {
+            ["P_eq_1"]            = () => false,
+            ["F_eq_1"]             = () => false,
+            ["P_or_F_eq_1"]        = () => false,
+            ["command"]            = () => false,
+            ["nr_in_window"]       = () => true,
+            ["N_s_eq_V_r"]         = () => false,
+            ["info_field_valid"]   = () => true,
+            ["V_a_le_N_r_le_V_s"]  = () => true,
+            ["version_2_2"]        = () => false,
+            ["srej_exception_gt_0"] = () => false,
+            ["N_s_gt_V_r_plus_1"]  = () => false,
+            ["V_s_eq_V_a_plus_k"]  = () => false,
+            ["V_s_eq_V_a"]         = () => false,
+        };
+        var guards = new GuardEvaluator(bindings);
+        var session = new Ax25Session(
+            ctx2, scheduler, dispatcher, guards,
+            new Dictionary<string, IReadOnlyList<TransitionSpec>>
+            {
+                ["Connected"] = DataLink_Connected.Transitions,
+                ["AwaitingRelease"] = DataLink_AwaitingRelease.Transitions,
+                ["AwaitingConnection"] = DataLink_AwaitingConnection.Transitions,
+            },
+            initialState: "Connected");
+
+        session.PostEvent(new DlDataRequest("first"u8.ToArray()));
+        session.PostEvent(new DlDataRequest("second"u8.ToArray()));
+
+        iFrames.Should().HaveCount(2);
+        iFrames[0].Ns.Should().Be((byte)0);
+        iFrames[0].Nr.Should().Be((byte)3, "N(R) = V(R)");
+        iFrames[0].Info.ToArray().Should().Equal("first"u8.ToArray());
+        iFrames[1].Ns.Should().Be((byte)1, "second I-frame has incremented N(S)");
+        iFrames[1].Info.ToArray().Should().Equal("second"u8.ToArray());
+
+        ctx2.VS.Should().Be((byte)2, "two emissions, V(s) advanced twice");
+        ctx2.SentIFrames.Should().HaveCount(2, "both frames stashed for retransmit");
+    }
+
+    [Fact]
+    public void Session_Loop_Stops_Draining_When_Peer_Goes_Busy()
+    {
+        var (s, ctx, _, _, _, _, _, _, _, _) = NewRig(peerReceiverBusy: true);
+
+        s.PostEvent(new DlDataRequest("blocked"u8.ToArray()));
+
+        ctx.IFrameQueue.Should().HaveCount(1, "peer is busy — queue stays full");
+        ctx.VS.Should().Be((byte)0, "no I-frame emitted");
     }
 
     [Fact]

@@ -76,7 +76,7 @@ public class Ax25SessionContextTests
         ctx.RC = 7;
         ctx.OwnReceiverBusy = true;
         ctx.AcknowledgePending = true;
-        ctx.IFrameQueue.Enqueue(new byte[] { 0xAA });
+        ctx.IFrameQueue.Enqueue((new byte[] { 0xAA }, Ax25Frame.PidNoLayer3));
 
         ctx.ResetState();
 
