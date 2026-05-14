@@ -824,6 +824,44 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: dispatcher write-side verbs populate `tx.Pending` (N(r), N(s), F/P bit)
+
+The dispatcher now handles every "processing" verb in the transcribed
+pages that writes to an outgoing-frame field:
+
+- `N(r) := V(r)` — `tx.Pending.Nr = ctx.VR`
+- `N(s) := V(s)` — `tx.Pending.Ns = ctx.VS`
+- `N(r) := N(s)` — `tx.Pending.Nr = N(S)`-from-incoming-I-frame
+- `F := 0` / `F := 1` — `tx.Pending.PfBit = false/true`
+- `F := P` — `tx.Pending.PfBit = incoming.PollFinal`
+- `p := 0` — `tx.Pending.PfBit = false` (lowercase `p` is the spec
+  spelling for the outgoing P bit; same bit as F on the wire)
+
+The frame-extraction helpers are factored into `RequireIncomingFrame` +
+`RequireMod8` + `ExtractNr` / `ExtractNs` / `ExtractPollFinal` so all
+three verbs that read from the incoming frame share the same
+"frame is required" / "mod-128 not yet implemented" error paths.
+
+`PendingFrame` is now populated end-to-end through the dispatcher. The
+**consumption** side stays unchanged in this PR — the supervisory frame
+signal_lower verbs (`RR command` etc.) still emit a `SupervisoryFrameSpec`
+without N(R) / P/F. PR-E grows `SupervisoryFrameSpec` to carry those
+fields and rewires the consumption.
+
+Tests: 11 new (Pending writes for each verb, accumulation across a chain,
+F := P with both poll values, error paths for missing incoming frame).
+578 tests green.
+
+### 2026-05-14 — Q: assignment operator `:=` vs `<-` in YAML transcriptions
+
+Tom flagged that the spec figures (and his graphml redraws) draw
+assignment as `<-` (left arrow), while the YAML transcriptions translate
+this to `:=` (formal ITU Z.100 SDL). Same semantics; different notation.
+
+Parked decision: keep `:=` for now. Revisit if/when `/spec-sdl/` is
+published as a community-canonical artifact (OQ-008) — at that point a
+verbatim-to-figure choice may have value for outside consumers.
+
 ### 2026-05-14 — sdl(connected): normalise `N(R) := V(r)` → `N(r) := V(r)`
 
 Surgical fix in `DataLink_Connected.graphml` (nodes at lines 2561 and

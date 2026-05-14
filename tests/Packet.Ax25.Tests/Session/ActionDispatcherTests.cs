@@ -309,4 +309,129 @@ public class ActionDispatcherTests
         act.Should().Throw<NotSupportedException>()
            .WithMessage("*mod-128*not yet implemented*");
     }
+
+    // ─── Pending-frame field assignments (write side) ──────────────────
+
+    /// <summary>Build a mod-8 I-frame with the supplied N(R), N(S), P bit.</summary>
+    private static Ax25Frame BuildIFrame(byte nr, byte ns, bool pollBit, byte[] info)
+    {
+        // body: dest(7) + src(7) + control(1) + pid(1) + info
+        var bytes = new byte[7 + 7 + 1 + 1 + info.Length];
+        new Ax25Address(new Callsign("M0LTE", 0), CrhBit: true,  ExtensionBit: false).Write(bytes.AsSpan(0, 7));
+        new Ax25Address(new Callsign("G7XYZ", 7), CrhBit: false, ExtensionBit: true ).Write(bytes.AsSpan(7, 7));
+        // I-frame control (mod-8): bit 0 = 0, bits 7..5 = N(R), bit 4 = P, bits 3..1 = N(S)
+        bytes[14] = (byte)(((nr & 0x07) << 5) | (pollBit ? 0x10 : 0) | ((ns & 0x07) << 1));
+        bytes[15] = Ax25Frame.PidNoLayer3;
+        info.CopyTo(bytes.AsSpan(16));
+        Ax25Frame.TryParse(bytes, out var frame).Should().BeTrue();
+        return frame!;
+    }
+
+    [Fact]
+    public void Nr_Assign_From_VR_Writes_Into_Pending()
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        ctx.VR = 5;
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        d.Execute("N(r) := V(r)", tx);
+
+        tx.Pending.Nr.Should().Be((byte)5);
+        tx.Pending.Ns.Should().BeNull();
+        tx.Pending.PfBit.Should().BeNull();
+    }
+
+    [Fact]
+    public void Ns_Assign_From_VS_Writes_Into_Pending()
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        ctx.VS = 6;
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        d.Execute("N(s) := V(s)", tx);
+
+        tx.Pending.Ns.Should().Be((byte)6);
+    }
+
+    [Fact]
+    public void Nr_Assign_From_Ns_Reads_Incoming_I_Frame_NS()
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        var frame = BuildIFrame(nr: 2, ns: 4, pollBit: false, info: "hello"u8.ToArray());
+        var tx = new TransitionContext(ctx, s, new IFrameReceived(frame));
+
+        d.Execute("N(r) := N(s)", tx);
+
+        tx.Pending.Nr.Should().Be((byte)4);
+    }
+
+    [Fact]
+    public void Nr_Assign_From_Ns_Throws_When_Trigger_Has_No_Frame()
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        var tx = new TransitionContext(ctx, s, new T1Expiry());
+
+        var act = () => d.Execute("N(r) := N(s)", tx);
+
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*requires an incoming frame*T1_expiry*");
+    }
+
+    [Theory]
+    [InlineData("F := 0", false)]
+    [InlineData("F := 1", true)]
+    [InlineData("p := 0", false)]
+    public void F_And_P_Bit_Constant_Assignments_Write_Pending_PfBit(string action, bool expected)
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        d.Execute(action, tx);
+
+        tx.Pending.PfBit.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void F_Assign_From_P_Echoes_Incoming_Poll_Bit(bool pollBit)
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        var frame = BuildRrCommand(3, pollBit: pollBit);
+        var tx = new TransitionContext(ctx, s, new RrReceived(frame));
+
+        d.Execute("F := P", tx);
+
+        tx.Pending.PfBit.Should().Be(pollBit);
+    }
+
+    [Fact]
+    public void F_Assign_From_P_Throws_When_Trigger_Has_No_Frame()
+    {
+        var (d, ctx, s, _, _, _) = NewRig();
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        var act = () => d.Execute("F := P", tx);
+
+        act.Should().Throw<InvalidOperationException>()
+           .WithMessage("*requires an incoming frame*DL_CONNECT_request*");
+    }
+
+    [Fact]
+    public void Pending_Frame_Builder_Accumulates_Multiple_Writes_In_One_Chain()
+    {
+        // The whole point of Pending: a chain of processing verbs accumulates
+        // fields, then a signal_lower (future PR) reads them as a unit.
+        // For now we just prove the accumulation works.
+        var (d, ctx, s, _, _, _) = NewRig();
+        ctx.VR = 5;
+        ctx.VS = 6;
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        d.Execute(new[] { "N(s) := V(s)", "N(r) := V(r)", "F := 1" }, tx);
+
+        tx.Pending.Ns.Should().Be((byte)6);
+        tx.Pending.Nr.Should().Be((byte)5);
+        tx.Pending.PfBit.Should().BeTrue();
+    }
 }

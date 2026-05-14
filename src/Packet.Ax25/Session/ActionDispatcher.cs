@@ -201,6 +201,28 @@ public sealed class ActionDispatcher : IActionDispatcher
             // frame-receipt event; throws otherwise.
             case "V(a) := N(r)":                   ctx.VA = ExtractNr(tx); break;
 
+            // ─── Pending-frame field assignments (write side) ──────────
+            //
+            // These populate <see cref="TransitionContext.Pending"/>; the
+            // signal_lower verb that follows in the same chain consumes
+            // pending state to build a complete outgoing frame spec.
+            //
+            // For F := P / N(r) := N(s) the right-hand side is a field of
+            // the triggering incoming frame; the helper throws cleanly if
+            // the trigger doesn't carry one. For constant assignments
+            // (F := 0, F := 1, p := 0) no incoming frame is required.
+            //
+            // `p` (lowercase) is the spec's spelling of the outgoing P bit
+            // on a command frame. Treated as the same bit as F on the wire
+            // — both end up in <see cref="PendingFrame.PfBit"/>.
+            case "N(r) := V(r)":                   tx.Pending.Nr = ctx.VR; break;
+            case "N(s) := V(s)":                   tx.Pending.Ns = ctx.VS; break;
+            case "N(r) := N(s)":                   tx.Pending.Nr = ExtractNs(tx); break;
+            case "F := 0":                         tx.Pending.PfBit = false; break;
+            case "F := 1":                         tx.Pending.PfBit = true;  break;
+            case "F := P":                         tx.Pending.PfBit = ExtractPollFinal(tx); break;
+            case "p := 0":                         tx.Pending.PfBit = false; break;
+
             default:
                 throw new InvalidOperationException(
                     $"unknown SDL action: '{action}'. " +
@@ -215,17 +237,53 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </summary>
     private static byte ExtractNr(TransitionContext tx)
     {
-        if (tx.IncomingFrame is null)
-        {
-            throw new InvalidOperationException(
-                $"action `V(a) := N(r)` requires an incoming frame, but the trigger '{tx.Trigger.Name}' is not a frame-receipt event.");
-        }
+        var frame = RequireIncomingFrame(tx, "V(a) := N(r)");
+        RequireMod8(tx, "N(R)");
+        // mod-8: bits 7..5 of the 1-byte control field carry N(R) per §4.2.2.
+        return (byte)((frame.Control >> 5) & 0x07);
+    }
+
+    /// <summary>
+    /// Read the N(S) field from the incoming I-frame's control byte. Only
+    /// I-frames carry N(S); on an S-frame the same bits encode the S type
+    /// + P/F, so this returns a meaningless value if called against the
+    /// wrong frame type. The caller (the SDL transcription) decides when
+    /// it's valid to invoke <c>N(r) := N(s)</c>.
+    /// </summary>
+    private static byte ExtractNs(TransitionContext tx)
+    {
+        var frame = RequireIncomingFrame(tx, "N(r) := N(s)");
+        RequireMod8(tx, "N(S)");
+        // mod-8 I-frame: control = (N(R) << 5) | (P << 4) | (N(S) << 1) | 0.
+        return (byte)((frame.Control >> 1) & 0x07);
+    }
+
+    /// <summary>
+    /// Read the P/F bit (bit 4 of the control byte, mod-8) from the
+    /// incoming frame. Used by <c>F := P</c> to echo the peer's poll bit
+    /// back in the final.
+    /// </summary>
+    private static bool ExtractPollFinal(TransitionContext tx)
+    {
+        var frame = RequireIncomingFrame(tx, "F := P");
+        // The P/F bit lives at bit 4 in both mod-8 and mod-128 control
+        // fields, so no extended-mode gate is needed here.
+        return frame.PollFinal;
+    }
+
+    private static Ax25Frame RequireIncomingFrame(TransitionContext tx, string verb)
+    {
+        return tx.IncomingFrame
+            ?? throw new InvalidOperationException(
+                $"action `{verb}` requires an incoming frame, but the trigger '{tx.Trigger.Name}' is not a frame-receipt event.");
+    }
+
+    private static void RequireMod8(TransitionContext tx, string fieldName)
+    {
         if (tx.Session.IsExtended)
         {
             throw new NotSupportedException(
-                "extracting N(R) from an extended (mod-128) frame's 2-byte control field is not yet implemented; only mod-8 is wired today.");
+                $"extracting {fieldName} from an extended (mod-128) frame's 2-byte control field is not yet implemented; only mod-8 is wired today.");
         }
-        // mod-8: bits 7..5 of the 1-byte control field carry N(R) per §4.2.2.
-        return (byte)((tx.IncomingFrame.Control >> 5) & 0x07);
     }
 }
