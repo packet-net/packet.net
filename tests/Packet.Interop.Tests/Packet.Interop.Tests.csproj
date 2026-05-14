@@ -11,6 +11,7 @@
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
     <ProjectReference Include="..\..\src\Packet.Axudp\Packet.Axudp.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
     <ProjectReference Include="..\..\src\Packet.Rhp2\Packet.Rhp2.csproj" />
     <ProjectReference Include="..\..\src\Packet.Agw\Packet.Agw.csproj" />
     <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />

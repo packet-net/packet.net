@@ -4,9 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-05-12
-**Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Next: more SDL pages.
-**Latest amendment:** [§17 entry 2026-05-12 Migrate Shouldly → AwesomeAssertions](#17-amendment-log)
+**As of:** 2026-05-14
+**Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, and adaptive-parameter scaffolding. Next: more SDL pages, plus the Phase 3 soak campaign once we have data from the hardware pair.
+**Latest amendment:** [§17 entry 2026-05-14 NinoTNC serial driver + ACKMODE + adaptive parameter scaffolding](#17-amendment-log)
 
 ---
 
@@ -664,6 +664,142 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-14 — NinoTNC serial driver + ACKMODE + adaptive parameter scaffolding
+
+First end-to-end run against the back-to-back NinoTNC pair: both modems
+USB-attached (COM6 + COM8 on the Windows dev host), audio cross-wired,
+DIP set to 1111 ("Set from KISS"), TXDELAY pots at minimum. Pulls Phase 3
+"KISS hardening" partially forward — the catalog from 2026-05-12 now has
+a real driver sitting on top of it.
+
+**New code**
+
+- `Packet.Kiss.NinoTnc.NinoTncSerialPort` — async-shaped serial driver:
+  `Open(portName)`, background read pump on a dedicated long-running
+  thread, write serialisation through a `SemaphoreSlim`,
+  `SendFrameAsync` for plain KISS Data, `SendFrameWithAckAsync` for
+  ACKMODE-with-TX-completion echo (auto-sequence-tag, awaitable
+  `AckModeReceipt` with elapsed timing), parameter helpers
+  (`SetModeAsync` / `SetTxDelayAsync` / `SetPersistenceAsync` /
+  `SetSlotTimeAsync` / `SetFullDuplexAsync`),
+  `IAsyncEnumerable<KissFrame> ReadFramesAsync` plus a `FrameReceived`
+  event. `SetModeAsync` defaults to non-persist (+16) — flash is not
+  burned during normal driver use.
+- `Packet.Kiss.KissAckMode` — framing-neutral ACKMODE helpers
+  (`BuildSendFrame`, `TryParseAcknowledgement`, `TryParseDataFrame`).
+  Lives in `Packet.Kiss` since ACKMODE is a generic G8BPQ extension,
+  not NinoTNC-specific.
+- `Packet.Kiss.NinoTnc.NinoTncTxTestFrame` — parser for the on-demand
+  diagnostic frame the TNC emits when the front-panel TX-Test button is
+  pressed. Scans the KISS Data payload for the `=FirmwareVr:` marker and
+  decodes the `=Key:Value` field run (firmware version, serial number,
+  uptime, board rev + DIP position + firmware-mode byte → resolves to
+  the running `NinoTncMode` via the existing catalog, packet counters).
+  Permissive about the prefix bytes, because the firmware emits the
+  diagnostic as a KISS Data frame and the prefix is *not* a valid AX.25
+  header.
+- `Packet.Kiss.NinoTnc.NinoTncPortDiscovery` — cross-platform candidate
+  enumeration. Linux: `/dev/serial/by-id` symlinks first, `/dev/ttyACM*`
+  fallback. Windows / macOS: `SerialPort.GetPortNames()`. Honours
+  `PACKETNET_NINOTNC_PORTS="<porta>,<portb>"` env-var override —
+  necessary on the dev box where COM1 + COM107 alphabet-sort ahead of
+  COM6/COM8 and would otherwise be picked. USB VID/PID matching is a
+  follow-up.
+
+**Hardware-loop tests** (`tests/Packet.Interop.Tests/Hardware/NinoTncSerialPortLoopback.cs`,
+all `[Trait("Category","HardwareLoop")]` + `SkippableFact`):
+
+- `UI_Frame_Round_Trips_A_To_B_And_Back` — KISS Data → mode 6
+  (1200 AFSK AX.25) → over air → back to KISS Data, both directions.
+- `AckMode_Echo_Returns_For_Each_Sequence_Tag` — three concurrent
+  ACKMODE frames; each echoed back with the correct tag.
+- `FrameReceived_Event_Fires_For_Inbound_Frames` — event-based API
+  delivers the round-tripped frame.
+
+All three pass in ~4 s with the env-var override pointing at COM6+COM8.
+
+**Adaptive parameter scaffolding** (user stretch goal — full integration
+deferred to the Phase 3 KISS-hardening work, this is just the
+abstraction):
+
+- `Packet.Kiss.Adaptive.KissParameters` — `(TxDelay, Persist, SlotTime,
+  TxTail)` record with nullable fields and `.Override(other)` so a static
+  baseline can be composed with adaptive deltas.
+- `Packet.Kiss.Adaptive.FrameOutcome` enum +
+  `FrameOutcomeSample` record — what the controller feeds the estimator.
+- `Packet.Kiss.Adaptive.IAdaptiveParameterEstimator` — minimum protocol-
+  facing contract (`Recommend(peer)` + `Observe(sample)`) so the
+  estimator implementation can swap without churning integration points.
+- `Packet.Kiss.Adaptive.IPeerStateStore` — optional persistence hook for
+  surviving restarts without paying the cold-start re-learning tax.
+- `Packet.Kiss.Adaptive.TxDelayHillClimbEstimator` — concrete first-pass
+  estimator: walks per-peer TXDELAY down on consecutive first-try ACKs,
+  ratchets up on loss / ACK timeout, clamped to a min/max. Other KISS
+  parameters pass through unchanged for now.
+
+Not yet wired into `NinoTncSerialPort` — the session layer
+(`Packet.Ax25.Session`) is the right place to call `Observe(...)` from,
+and that integration belongs to the Phase 3 hardening work. The
+abstraction is here so that work can land without redesigning the
+contract.
+
+**Findings**
+
+- **`SerialPort.BaseStream.ReadAsync` is unreliable on Windows** —
+  cancellation tokens are not honoured by the underlying Win32
+  `ReadFile`, and the async path occasionally fails to deliver bytes
+  even when `BytesToRead` shows them. The driver therefore runs a
+  dedicated long-running thread doing synchronous
+  `SerialPort.Read(...)` with `ReadTimeout = 100ms`. Reads return
+  promptly when data is present, the `TimeoutException` path is
+  caught and looped. This is what the manual spike has been observed
+  to round-trip reliably.
+- **Disposal order matters.** `SerialPort.Dispose()` must come *before*
+  awaiting the pump task — disposing the port is what actually unblocks
+  the pending synchronous `Read`, and the cancellation token alone
+  does not. The driver's `DisposeAsync` is ordered accordingly.
+- **Port enumeration without VID/PID filtering is dangerous.** Built-in
+  COM1 + a virtual COM107 sorted alphabetically ahead of the real TNCs
+  on the dev host; blind "take first two" picks them and the test then
+  times out with zero frames received. Hence the
+  `PACKETNET_NINOTNC_PORTS` env-var override; proper VID/PID matching
+  is the long-term fix.
+
+**Spike tool** at `tools/Packet.NinoTnc.Spike/`:
+
+- `dotnet run -- COM6 COM8` — direct-`SerialPort` round-trip, the
+  hello-world that proved the audio path works.
+- `dotnet run -- driver COM6 COM8` — same round-trip via the production
+  `NinoTncSerialPort` API, including diagnostic logging on each
+  inbound frame.
+- `dotnet run -- test-shape COM6 COM8` — mirrors the xUnit hardware
+  test outside the test runner; useful when isolating xUnit-harness
+  vs hardware issues.
+
+**Test totals**
+
+- Default filter (`Category!=HardwareLoop&Category!=Interop`):
+  `Packet.Kiss.Tests` 39 (was 29 — +10 for KISS ACKMODE + adaptive)
+  and `Packet.Kiss.NinoTnc.Tests` 29 (was 22 — +7 for TX-Test frame
+  parsing). Full default-filter count tracked in CI.
+- Hardware-loop filter (`Category=HardwareLoop`): 3 new tests against
+  the COM6+COM8 pair, all green.
+
+**What's still open / what comes next**
+
+- USB VID/PID-based discovery on Windows (use WMI / `SetupAPI`) and
+  Linux (`/sys/class/tty/.../device/idVendor` etc.) so the env-var
+  override is just a tie-breaker.
+- Soak campaign across all audio-compatible modes (6 / 7 / 12, plus
+  9600 GFSK if the loopback audio is good enough) with TXDELAY sweep,
+  frame-size sweep, and sustained-throughput measurements. The data
+  feeds back into the adaptive estimator's tuning.
+- Wire `TxDelayHillClimbEstimator` into the session layer's TX path
+  and have it actually move TXDELAY on the wire (currently it tracks
+  state but no one consumes its recommendations).
+- Persistence layer (`IPeerStateStore` SQLite implementation) — Phase 4
+  territory.
 
 ### 2026-05-14 — docs/spec-issues.md — central tracker for verification_pending notes
 

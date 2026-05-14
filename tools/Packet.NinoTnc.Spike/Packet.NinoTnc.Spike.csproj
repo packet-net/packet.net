@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Spike tool, not for shipping. Relax analyzer-as-error so we can iterate fast. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
+  </ItemGroup>
+
+</Project>
