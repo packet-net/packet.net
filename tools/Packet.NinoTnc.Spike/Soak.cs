@@ -63,6 +63,15 @@ internal static class Soak
                 case "estimator-live":
                     await EstimatorLive(portA, portB, sink);
                     break;
+                case "stress":
+                    await StressRun(portA, portB, sink);
+                    break;
+                case "per-mode-txdelay":
+                    await PerModeTxDelaySweep(portA, portB, sink);
+                    break;
+                case "binary-payload":
+                    await BinaryPayloadStress(portA, portB, sink);
+                    break;
                 case "all":
                     await ModeSweep(portA, portB, sink);
                     await TxDelaySweep(portA, portB, sink);
@@ -71,6 +80,21 @@ internal static class Soak
                     await AckModeConcurrent(portA, portB, sink);
                     await Bidirectional(portA, portB, sink);
                     await EstimatorLive(portA, portB, sink);
+                    await IdleWatch(portA, portB, sink);
+                    break;
+                case "marathon":
+                    // The "I have hours" run. Adds the stress + binary +
+                    // per-mode-TXDELAY soaks on top of the standard set.
+                    await ModeSweep(portA, portB, sink);
+                    await TxDelaySweep(portA, portB, sink);
+                    await PerModeTxDelaySweep(portA, portB, sink);
+                    await PayloadSweep(portA, portB, sink);
+                    await BinaryPayloadStress(portA, portB, sink);
+                    await Throughput(portA, portB, sink);
+                    await AckModeConcurrent(portA, portB, sink);
+                    await Bidirectional(portA, portB, sink);
+                    await EstimatorLive(portA, portB, sink);
+                    await StressRun(portA, portB, sink);
                     await IdleWatch(portA, portB, sink);
                     break;
                 default:
@@ -467,6 +491,146 @@ internal static class Soak
         }
         await sink.WriteLineAsync();
         await sink.WriteLineAsync($"- final recommendation: TXDELAY={estimator.CurrentTxDelayFor(peer)} units ({(estimator.CurrentTxDelayFor(peer) ?? 0) * 10} ms)");
+        await sink.WriteLineAsync();
+    }
+
+    // -------------------- 9. High-volume stress --------------------
+
+    private static async Task StressRun(string portA, string portB, ReportSink sink)
+    {
+        await sink.WriteLineAsync("## High-volume stress (mode 6, TXDELAY=5)");
+        await sink.WriteLineAsync();
+        await sink.WriteLineAsync("200 AX.25 UI frames A→B sequentially at the lowest-known-good TXDELAY (5 = 50 ms). Reports success rate, throughput, distribution of round-trip times.");
+        await sink.WriteLineAsync();
+
+        await using var a = NinoTncSerialPort.Open(portA);
+        await using var b = NinoTncSerialPort.Open(portB);
+        await a.SetModeAsync(DefaultModeForSweeps);
+        await b.SetModeAsync(DefaultModeForSweeps);
+        await a.SetTxDelayAsync(5);
+        await b.SetTxDelayAsync(5);
+        await Task.Delay(500);
+
+        const int N = 200;
+        const int sz = 100;
+        int success = 0;
+        var roundTrips = new List<double>(N);
+        for (int i = 0; i < N; i++)
+        {
+            byte[] info = RandomPayload(sz, i, $"STRESS-{i:0000}");
+            var ax25 = Ax25Frame.Ui(new Callsign("TEST", 2), new Callsign("M0LTE", 1), info);
+            var ms = await OneRoundTrip(a, b, ax25, TimeSpan.FromSeconds(6));
+            if (ms >= 0)
+            {
+                success++;
+                roundTrips.Add(ms);
+            }
+            if (i % 20 == 0)
+            {
+                Console.WriteLine($"  stress {i + 1}/{N}: success so far {success}");
+            }
+        }
+        await sink.WriteLineAsync($"- frames: {N}");
+        await sink.WriteLineAsync($"- success: {success}/{N} ({100.0 * success / N:F1}%)");
+        if (roundTrips.Count > 0)
+        {
+            var sorted = roundTrips.OrderBy(x => x).ToList();
+            double Pct(double p) => sorted[Math.Min(sorted.Count - 1, (int)(sorted.Count * p))];
+            await sink.WriteLineAsync($"- round-trip ms: min {sorted[0]:F0}, p50 {Pct(0.5):F0}, p95 {Pct(0.95):F0}, p99 {Pct(0.99):F0}, max {sorted[^1]:F0}");
+        }
+        await sink.WriteLineAsync();
+    }
+
+    // -------------------- 10. Per-mode TXDELAY scan --------------------
+
+    private static async Task PerModeTxDelaySweep(string portA, string portB, ReportSink sink)
+    {
+        await sink.WriteLineAsync("## Per-mode TXDELAY minimum scan");
+        await sink.WriteLineAsync();
+        await sink.WriteLineAsync("Walks TXDELAY down a fixed ladder until either direction drops below 10/10. Records the lowest TXDELAY that still scored 10/10 — the audio-link 'floor' for that mode on this hardware.");
+        await sink.WriteLineAsync();
+        await sink.WriteLineAsync("| Mode | Name | bps | Min TXDELAY 10/10 | Min ms | Notes |");
+        await sink.WriteLineAsync("|---:|---|---:|---:|---:|---|");
+
+        byte[] modes = { 6, 7, 12, 0, 2, 3, 1 };
+        foreach (var mode in modes)
+        {
+            var info = NinoTncCatalog.ByMode[mode];
+            Console.WriteLine($"\n--- TXDELAY scan mode {mode} ({info.Name}) ---");
+            await using var a = NinoTncSerialPort.Open(portA);
+            await using var b = NinoTncSerialPort.Open(portB);
+            await a.SetModeAsync(mode);
+            await b.SetModeAsync(mode);
+            await Task.Delay(700);
+
+            byte[] ladder = { 50, 30, 20, 15, 10, 8, 5, 3, 2, 1 };
+            byte? lowestOk = null;
+            string notes = "";
+            foreach (var txd in ladder)
+            {
+                await a.SetTxDelayAsync(txd);
+                await b.SetTxDelayAsync(txd);
+                await Task.Delay(100);
+                var ab = await RoundTrips(a, b, 10, $"M{mode}-TXD{txd}-AB", TimeSpan.FromSeconds(10));
+                var ba = await RoundTrips(b, a, 10, $"M{mode}-TXD{txd}-BA", TimeSpan.FromSeconds(10));
+                Console.WriteLine($"   txd={txd}: ab {ab.Successes}/{ab.Total}, ba {ba.Successes}/{ba.Total}");
+                if (ab.Successes >= 10 && ba.Successes >= 10)
+                {
+                    lowestOk = txd;
+                }
+                else
+                {
+                    notes = $"breaks at TXDELAY={txd} ({ab.Successes}/{ab.Total} | {ba.Successes}/{ba.Total})";
+                    break;
+                }
+            }
+            string lowestStr = lowestOk?.ToString() ?? "—";
+            string msStr = lowestOk is null ? "—" : $"{lowestOk.Value * 10}";
+            await sink.WriteLineAsync($"| {mode} | {info.Name} | {info.BitRateHz} | {lowestStr} | {msStr} | {notes} |");
+        }
+        await sink.WriteLineAsync();
+    }
+
+    // -------------------- 11. Binary payload stress (KISS escape coverage) --------------------
+
+    private static async Task BinaryPayloadStress(string portA, string portB, ReportSink sink)
+    {
+        await sink.WriteLineAsync("## Binary payload stress (KISS escape coverage)");
+        await sink.WriteLineAsync();
+        await sink.WriteLineAsync("Random AX.25 INFO bytes biased toward 0xC0 (FEND) and 0xDB (FESC) to exercise the KISS escape path through the actual driver and modem. 30 frames at mode 6 with TXDELAY=5.");
+        await sink.WriteLineAsync();
+
+        await using var a = NinoTncSerialPort.Open(portA);
+        await using var b = NinoTncSerialPort.Open(portB);
+        await a.SetModeAsync(DefaultModeForSweeps);
+        await b.SetModeAsync(DefaultModeForSweeps);
+        await a.SetTxDelayAsync(5);
+        await b.SetTxDelayAsync(5);
+        await Task.Delay(500);
+
+        const int N = 30;
+        int success = 0;
+        var rng = new Random(0xC0DB);
+        for (int i = 0; i < N; i++)
+        {
+            int len = rng.Next(20, 200);
+            var payload = new byte[len];
+            for (int j = 0; j < len; j++)
+            {
+                int dice = rng.Next(100);
+                if (dice < 15) payload[j] = 0xC0;
+                else if (dice < 30) payload[j] = 0xDB;
+                else if (dice < 45) payload[j] = 0xDC;
+                else if (dice < 60) payload[j] = 0xDD;
+                else payload[j] = (byte)rng.Next(256);
+            }
+            var ax25 = Ax25Frame.Ui(new Callsign("TEST", 2), new Callsign("M0LTE", 1), payload);
+            var ms = await OneRoundTrip(a, b, ax25, TimeSpan.FromSeconds(6));
+            Console.WriteLine($"  binary {i + 1}/{N} len={len} → {(ms >= 0 ? "ok" : "FAIL")}");
+            if (ms >= 0) success++;
+        }
+        await sink.WriteLineAsync($"- frames: {N}");
+        await sink.WriteLineAsync($"- escape-heavy success: {success}/{N} ({100.0 * success / N:F1}%)");
         await sink.WriteLineAsync();
     }
 
