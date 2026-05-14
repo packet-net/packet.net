@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Packet.Kiss.NinoTnc.Firmware;
 
 namespace Packet.Kiss.NinoTnc.Tests.Firmware;
@@ -132,9 +133,187 @@ public class GitHubNinoTncFirmwareCatalogueTests
         releases.Should().BeEmpty();
     }
 
-    private static GitHubNinoTncFirmwareCatalogue NewCatalogue(string responseJson)
+    [Fact]
+    public async Task Dir_Entries_Are_Ignored_Even_If_Their_Name_Matches_The_Hex_Pattern()
     {
-        var handler = new StubHttpMessageHandler(responseJson);
+        // GitHub's contents API returns "dir" type entries alongside files.
+        // Even if a directory happens to be named like a firmware hex
+        // (unlikely in practice but defensible), it should not be treated
+        // as a release.
+        const string json = """
+            [
+              {"name":"N9600A-v3-44.hex","type":"dir","download_url":null},
+              {"name":"N9600A-v3-44.hex","type":"file","download_url":"https://example.test/N9600A-v3-44.hex"}
+            ]
+            """;
+        var catalogue = NewCatalogue(json);
+        var releases = await catalogue.ListReleasesAsync();
+        releases.Should().HaveCount(1);
+        releases[0].DownloadUrl.Host.Should().Be("example.test");
+    }
+
+    [Fact]
+    public async Task Hex_File_With_Null_Download_Url_Is_Skipped()
+    {
+        const string json = """
+            [
+              {"name":"N9600A-v3-44.hex","type":"file","download_url":null},
+              {"name":"N9600A-v4-44.hex","type":"file","download_url":"https://example.test/N9600A-v4-44.hex"}
+            ]
+            """;
+        var catalogue = NewCatalogue(json);
+        var releases = await catalogue.ListReleasesAsync();
+        releases.Should().HaveCount(1);
+        releases[0].ChipVariant.Should().Be(NinoTncChipVariant.Dspic33Ep512);
+    }
+
+    [Fact]
+    public async Task Missing_Checksum_Sibling_Leaves_MplabChecksumUrl_Null()
+    {
+        // Hex file present, no v3-44-mplab-checksums.txt sibling.
+        const string json = """
+            [
+              {"name":"N9600A-v3-44.hex","type":"file","download_url":"https://example.test/N9600A-v3-44.hex"}
+            ]
+            """;
+        var catalogue = NewCatalogue(json);
+        var releases = await catalogue.ListReleasesAsync();
+        releases.Should().HaveCount(1);
+        releases[0].MplabChecksumUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Checksum_Sibling_With_Null_Download_Url_Still_Yields_Null_Checksum()
+    {
+        const string json = """
+            [
+              {"name":"N9600A-v3-44.hex","type":"file","download_url":"https://example.test/N9600A-v3-44.hex"},
+              {"name":"v3-44-mplab-checksums.txt","type":"file","download_url":null}
+            ]
+            """;
+        var catalogue = NewCatalogue(json);
+        var releases = await catalogue.ListReleasesAsync();
+        releases.Should().HaveCount(1);
+        releases[0].MplabChecksumUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Non_2xx_Response_Propagates_HttpRequestException()
+    {
+        var handler = new ConfigurableHandler { StatusCode = HttpStatusCode.BadGateway, Body = "upstream down" };
+        var catalogue = NewCatalogue(handler);
+        var act = async () => await catalogue.ListReleasesAsync();
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
+    [Fact]
+    public async Task Malformed_Json_Propagates_JsonException()
+    {
+        var catalogue = NewCatalogue("not-valid-json{");
+        var act = async () => await catalogue.ListReleasesAsync();
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
+    [Fact]
+    public async Task Network_Failure_Propagates()
+    {
+        var handler = new ConfigurableHandler { ThrowOnSend = new HttpRequestException("simulated DNS failure") };
+        var catalogue = NewCatalogue(handler);
+        var act = async () => await catalogue.ListReleasesAsync();
+        await act.Should().ThrowAsync<HttpRequestException>().WithMessage("*DNS failure*");
+    }
+
+    [Fact]
+    public async Task Cancellation_Token_Is_Honoured()
+    {
+        // Hand the catalogue an already-cancelled token; the request
+        // should never complete, the OperationCanceledException (or a
+        // TaskCanceledException, which derives from it) should surface.
+        var handler = new ConfigurableHandler { DelayMs = 5000, Body = "[]" };
+        var catalogue = NewCatalogue(handler);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var act = async () => await catalogue.ListReleasesAsync(cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Url_Includes_Configured_Owner_Repo_And_Branch()
+    {
+        var handler = new ConfigurableHandler { Body = "[]" };
+        var http = new HttpClient(handler);
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("test", "1.0"));
+        var catalogue = new GitHubNinoTncFirmwareCatalogue(http,
+            owner: "fork-owner",
+            repo: "fork-repo",
+            branch: "develop");
+
+        await catalogue.ListReleasesAsync();
+
+        handler.LastRequestUri.Should().NotBeNull();
+        handler.LastRequestUri!.ToString().Should().Be("https://api.github.com/repos/fork-owner/fork-repo/contents?ref=develop");
+    }
+
+    [Fact]
+    public void Constructor_Rejects_Null_HttpClient()
+    {
+        ((Action)(() => new GitHubNinoTncFirmwareCatalogue(null!)))
+            .Should().Throw<ArgumentNullException>();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Constructor_Rejects_Empty_Owner(string? owner)
+    {
+        var http = new HttpClient();
+        ((Action)(() => new GitHubNinoTncFirmwareCatalogue(http, owner: owner!)))
+            .Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Constructor_Rejects_Empty_Repo(string? repo)
+    {
+        var http = new HttpClient();
+        ((Action)(() => new GitHubNinoTncFirmwareCatalogue(http, repo: repo!)))
+            .Should().Throw<ArgumentException>();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Constructor_Rejects_Empty_Branch(string? branch)
+    {
+        var http = new HttpClient();
+        ((Action)(() => new GitHubNinoTncFirmwareCatalogue(http, branch: branch!)))
+            .Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task CheckForUpdateAsync_Dispatched_Through_Interface_Uses_Catalogue_State()
+    {
+        // Default-interface-method test: verify that
+        // INinoTncFirmwareCatalogue.CheckForUpdateAsync works on the real
+        // concrete class through an interface-typed reference. This
+        // catches "default method exists but isn't dispatched" regressions
+        // that the FakeCatalogue tests can mask.
+        INinoTncFirmwareCatalogue catalogue = NewCatalogue(SampleContents);
+
+        var availability = await catalogue.CheckForUpdateAsync(new NinoTncFirmwareVersion(3, 43));
+
+        availability.CurrentVersion.Should().Be(new NinoTncFirmwareVersion(3, 43));
+        availability.ChipVariant.Should().Be(NinoTncChipVariant.Dspic33Ep256);
+        availability.UpdateAvailable.Should().BeTrue();
+        availability.LatestAvailable!.Version.Should().Be(new NinoTncFirmwareVersion(3, 44));
+    }
+
+    private static GitHubNinoTncFirmwareCatalogue NewCatalogue(string responseJson) =>
+        NewCatalogue(new StubHttpMessageHandler(responseJson));
+
+    private static GitHubNinoTncFirmwareCatalogue NewCatalogue(HttpMessageHandler handler)
+    {
         var http = new HttpClient(handler);
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("packet.net-test", "1.0"));
         return new GitHubNinoTncFirmwareCatalogue(http);
@@ -150,6 +329,38 @@ public class GitHubNinoTncFirmwareCatalogueTests
                 RequestMessage = request,
             };
             return Task.FromResult(response);
+        }
+    }
+
+    /// <summary>
+    /// Configurable handler for testing error paths: status code, body,
+    /// optional simulated network exception, optional delay (for cancellation
+    /// tests), and request capture.
+    /// </summary>
+    private sealed class ConfigurableHandler : HttpMessageHandler
+    {
+        public HttpStatusCode StatusCode { get; init; } = HttpStatusCode.OK;
+        public string Body { get; init; } = "[]";
+        public Exception? ThrowOnSend { get; init; }
+        public int DelayMs { get; init; }
+        public Uri? LastRequestUri { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestUri = request.RequestUri;
+            if (ThrowOnSend is not null)
+            {
+                throw ThrowOnSend;
+            }
+            if (DelayMs > 0)
+            {
+                await Task.Delay(DelayMs, cancellationToken).ConfigureAwait(false);
+            }
+            return new HttpResponseMessage(StatusCode)
+            {
+                Content = new StringContent(Body, Encoding.UTF8, "application/json"),
+                RequestMessage = request,
+            };
         }
     }
 }

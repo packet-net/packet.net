@@ -85,4 +85,33 @@ public class NinoTncTxTestFrameTests
         NinoTncTxTestFrame.TryParse(PayloadFor(body), out var parsed).Should().BeTrue();
         parsed!.SerialNumber.Should().BeNull();
     }
+
+    [Fact]
+    public void Unparseable_FirmwareVr_Field_Degrades_Gracefully()
+    {
+        // Firmware emits some garbage in the version field (firmware
+        // regression, encoding mishap, whatever). The parser must NOT
+        // throw — it preserves the raw text and leaves the strong types
+        // null/Unknown so callers can detect and report rather than
+        // crash.
+        const string body = "=FirmwareVr:banana=BrdSwchMod:040F0002";
+        NinoTncTxTestFrame.TryParse(PayloadFor(body), out var parsed).Should().BeTrue();
+        parsed!.FirmwareVersionRaw.Should().Be("banana");
+        parsed.FirmwareVersion.Should().BeNull();
+        parsed.ChipVariant.Should().Be(NinoTncChipVariant.Unknown);
+    }
+
+    [Fact]
+    public void Missing_FirmwareVr_Field_Leaves_Version_Null()
+    {
+        // No =FirmwareVr: at all. The marker is the start of *parsing* —
+        // without it, TryParse returns false. But if some future frame
+        // shape has BrdSwchMod first and no firmware string, we'd want
+        // graceful degradation. Today's parser fails outright, which is
+        // fine — but the regression test pins the behaviour so we
+        // notice if it changes.
+        const string body = "=BrdSwchMod:040F0002";
+        NinoTncTxTestFrame.TryParse(PayloadFor(body), out var parsed).Should().BeFalse();
+        parsed.Should().BeNull();
+    }
 }

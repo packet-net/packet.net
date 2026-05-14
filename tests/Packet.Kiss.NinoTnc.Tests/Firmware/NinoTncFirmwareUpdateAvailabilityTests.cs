@@ -101,6 +101,30 @@ public class NinoTncFirmwareUpdateAvailabilityTests
         availability.ChipVariant.Should().Be(NinoTncChipVariant.Unknown);
     }
 
+    [Fact]
+    public async Task UpdateAvailable_Is_False_When_Catalogue_Has_An_Older_Release()
+    {
+        // Defensive case: the catalogue somehow surfaces a release older
+        // than what the modem is running (e.g. somebody downgraded the
+        // upstream tip of master while a host was already on a newer
+        // version). UpdateAvailable should be false — never recommend
+        // a downgrade.
+        var current = new NinoTncFirmwareVersion(3, 44);
+        INinoTncFirmwareCatalogue catalogue = new FakeCatalogue
+        {
+            LatestFor256 = new NinoTncFirmwareRelease(
+                Version: new NinoTncFirmwareVersion(3, 43),
+                ChipVariant: NinoTncChipVariant.Dspic33Ep256,
+                DownloadUrl: new Uri("https://example.test/N9600A-v3-43.hex"),
+                MplabChecksumUrl: null),
+        };
+
+        var availability = await catalogue.CheckForUpdateAsync(current);
+
+        availability.UpdateAvailable.Should().BeFalse("downgrades are not 'updates'");
+        availability.LatestAvailable!.Version.Should().Be(new NinoTncFirmwareVersion(3, 43));
+    }
+
     private sealed class FakeCatalogue : INinoTncFirmwareCatalogue
     {
         public NinoTncFirmwareRelease? LatestFor256 { get; init; }
