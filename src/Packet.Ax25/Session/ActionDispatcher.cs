@@ -49,6 +49,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     private readonly Action<SupervisoryFrameSpec> sendSFrame;
     private readonly Action<UFrameSpec> sendUFrame;
     private readonly Action<UiFrameSpec> sendUiFrame;
+    private readonly Action<DataLinkSignal> sendUpward;
 
     /// <summary>Default acknowledgement timer (T1).</summary>
     public TimeSpan T1Duration { get; init; } = TimeSpan.FromMilliseconds(3000);
@@ -87,16 +88,25 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// spec into an <see cref="Ax25Frame"/> and ships it. Defaults to a
     /// no-op sink.
     /// </param>
+    /// <param name="sendUpward">
+    /// Called when an action raises a signal to Layer 3 — the five DL
+    /// primitives (<c>DL_CONNECT_indication</c>, <c>DL_CONNECT_confirm</c>,
+    /// <c>DL_DISCONNECT_indication</c>, <c>DL_DISCONNECT_confirm</c>,
+    /// <c>DL_DATA_indication</c>) and the error-indication letter
+    /// variants (<c>DL_ERROR_indication_*</c>). Defaults to a no-op sink.
+    /// </param>
     public ActionDispatcher(
         Action<string> onTimerExpiry,
         Action<SupervisoryFrameSpec> sendSFrame,
         Action<UFrameSpec>? sendUFrame = null,
-        Action<UiFrameSpec>? sendUiFrame = null)
+        Action<UiFrameSpec>? sendUiFrame = null,
+        Action<DataLinkSignal>? sendUpward = null)
     {
         this.onTimerExpiry = onTimerExpiry ?? throw new ArgumentNullException(nameof(onTimerExpiry));
         this.sendSFrame    = sendSFrame    ?? throw new ArgumentNullException(nameof(sendSFrame));
         this.sendUFrame    = sendUFrame    ?? (_ => { });
         this.sendUiFrame   = sendUiFrame   ?? (_ => { });
+        this.sendUpward    = sendUpward    ?? (_ => { });
     }
 
     /// <inheritdoc/>
@@ -241,6 +251,33 @@ public sealed class ActionDispatcher : IActionDispatcher
             // preceding processing verb.
             case "UI_command":                     sendUiFrame(BuildUiFrame(isCommand: true, tx)); break;
 
+            // ─── DL upper-layer signals (signal_upper) ────────────────
+            //
+            // Pure event-out. Each verb maps to a DataLinkSignal record
+            // forwarded via `sendUpward` to the upper-layer consumer.
+            // DL_DATA_indication carries the triggering I-frame's Info
+            // and Pid; the others have no payload.
+            case "DL_CONNECT_indication":          sendUpward(new DataLinkConnectIndication()); break;
+            case "DL_CONNECT_confirm":             sendUpward(new DataLinkConnectConfirm()); break;
+            case "DL_DISCONNECT_indication":       sendUpward(new DataLinkDisconnectIndication()); break;
+            case "DL_DISCONNECT_confirm":          sendUpward(new DataLinkDisconnectConfirm()); break;
+            case "DL_DATA_indication":             sendUpward(BuildDataIndication(tx)); break;
+
+            // DL_ERROR_indication_* — per §C5 error-code letter table.
+            // The suffix after `DL_ERROR_indication_` is the code:
+            // single letters C/D/E/F/G/K/L/M/N/O, plus the C_D pair
+            // (figure draws the combined code on one event).
+            case "DL_ERROR_indication_C_D":        sendUpward(new DataLinkErrorIndication("C_D")); break;
+            case "DL_ERROR_indication_D":          sendUpward(new DataLinkErrorIndication("D"));   break;
+            case "DL_ERROR_indication_E":          sendUpward(new DataLinkErrorIndication("E"));   break;
+            case "DL_ERROR_indication_F":          sendUpward(new DataLinkErrorIndication("F"));   break;
+            case "DL_ERROR_indication_G":          sendUpward(new DataLinkErrorIndication("G"));   break;
+            case "DL_ERROR_indication_K":          sendUpward(new DataLinkErrorIndication("K"));   break;
+            case "DL_ERROR_indication_L":          sendUpward(new DataLinkErrorIndication("L"));   break;
+            case "DL_ERROR_indication_M":          sendUpward(new DataLinkErrorIndication("M"));   break;
+            case "DL_ERROR_indication_N":          sendUpward(new DataLinkErrorIndication("N"));   break;
+            case "DL_ERROR_indication_O":          sendUpward(new DataLinkErrorIndication("O"));   break;
+
             // ─── Sequence-variable assignments (pure context) ──────────
             //
             // Verb spellings here track the figure-canonical lowercase form
@@ -382,6 +419,33 @@ public sealed class ActionDispatcher : IActionDispatcher
     {
         bool pfBit = pfBitOverride ?? tx.Pending.PfBit ?? false;
         return new UFrameSpec(type, IsCommand: isCommand, PfBit: pfBit, IsExpedited: isExpedited);
+    }
+
+    /// <summary>
+    /// Build a <see cref="DataLinkDataIndication"/> from the triggering
+    /// I-frame. Reads <see cref="Ax25Frame.Info"/> and <see cref="Ax25Frame.Pid"/>
+    /// from the incoming frame; throws if the trigger isn't a frame-receipt
+    /// event or the frame doesn't carry a PID.
+    /// </summary>
+    /// <remarks>
+    /// In figc4.4 some paths fire <c>DL_DATA_indication</c> after a
+    /// <c>retrieve_stored_V_r_I_frame</c> verb, which dequeues a
+    /// previously-saved out-of-sequence frame. That delivery path needs
+    /// to plumb the stored frame's Info/Pid through — not yet wired,
+    /// because <c>retrieve_stored_V_r_I_frame</c> itself isn't wired.
+    /// The current implementation only handles the simple case (deliver
+    /// the trigger frame's Info/Pid).
+    /// </remarks>
+    private static DataLinkDataIndication BuildDataIndication(TransitionContext tx)
+    {
+        var frame = RequireIncomingFrame(tx, "DL_DATA_indication");
+        if (frame.Pid is not byte pid)
+        {
+            throw new InvalidOperationException(
+                "action `DL_DATA_indication` requires the incoming frame to carry a PID octet, " +
+                "but the frame has none (only I and UI frames have PID).");
+        }
+        return new DataLinkDataIndication(frame.Info, pid);
     }
 
     /// <summary>

@@ -824,6 +824,39 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: DL upper-layer signals wired (5 primitives + 10 error letters)
+
+Closes every `signal_upper` verb the transcribed pages reference. New
+`DataLinkSignal` record hierarchy:
+
+- `DataLinkConnectIndication` / `DataLinkConnectConfirm`
+- `DataLinkDisconnectIndication` / `DataLinkDisconnectConfirm`
+- `DataLinkDataIndication(Info, Pid)`
+- `DataLinkErrorIndication(Code)` for the 10 letter codes
+  (`C_D`, `D`, `E`, `F`, `G`, `K`, `L`, `M`, `N`, `O`) per §C5
+
+Dispatcher gains an optional `sendUpward: Action<DataLinkSignal>`
+callback. The 15 verb cases dispatch to it. `DL_DATA_indication`
+extracts `Info` + `Pid` from the triggering I-frame; the others have
+no payload. `BuildDataIndication` is the helper.
+
+16 new tests covering all 15 verbs + the missing-frame error path for
+DL_DATA_indication. 607 tests green.
+
+After this PR, the dispatcher's signal-emission vocabulary is
+**complete** for what the transcribed figures reference. Remaining
+unwired categories:
+
+1. `I_command` — needs new session-loop machinery (pop ctx.IFrameQueue,
+   post synthetic `I_frame_pops_off_queue` events)
+2. Subroutine verbs (`Establish_Data_Link`, `UI_Check`, …) — gated on
+   figc4.7 transcription
+3. Long-tail queue/exception verbs (`push_*`, `discard_*` variants,
+   `set/clear_reject_exception`, `increment/decrement_srej_exception`,
+   `discard_primitive`, `save_contents_of_I_frame`,
+   `retrieve_stored_V_r_I_frame`, etc.) — mechanical work, can land in
+   batches.
+
 ### 2026-05-14 — ax25: UI-frame emission wired (`UI_command`)
 
 Closes the final signal_lower verb that the existing transcribed pages
