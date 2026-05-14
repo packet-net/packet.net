@@ -824,6 +824,39 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: actions.yaml hygiene + unused-alias lint
+
+Tom asked "did you pick up the new graphml?" after I shipped PR #103
+without re-running codegen against the figc4.7 verbatim spellings. The
+subroutines.sdl.yaml correctly used verbatim figure labels like
+`"Enquiry Response (F = 1)"`, but actions.yaml had no aliases mapping
+those to the canonical `Enquiry_Response_F_1` — so the generated
+DataLink_Subroutines.g.cs emitted the verbatim spelling, which the
+dispatcher's switch doesn't match. Production semantics were silently
+wrong (the `Check_Need_For_Response` subroutine's call into
+Enquiry_Response would have fallen through to the "unknown SDL
+action" throw).
+
+Fixes in this PR:
+
+1. Added canonical-name entries for the figc4.7-redraw additions:
+   `Establish_Extended_Data_Link`, `Set_Version_2_0`,
+   `Set_Version_2_2`, `Enquiry_Response`.
+2. Added the alias `"Enquiry Response (F = 1)"` → `Enquiry_Response_F_1`.
+   Tom's graphml normalisation (commit dbc4521) ensured the spacing
+   is consistent across all references.
+3. **Unused-alias lint** in `tools/Packet.Sdl.CodeGen`: every alias
+   declared in actions.yaml must be referenced by at least one
+   verb across all *.sdl.yaml pages. Otherwise it's a build-time
+   error. Stops the catalog from accumulating dead spellings as
+   transcriptions evolve.
+
+Catalog state after this PR: 6 aliases, all used.
+
+Tom's "pass to remove unused aliases" applied: nothing to remove
+(catalog is clean), but the lint now keeps it that way going
+forward.
+
 ### 2026-05-14 — sdl: route Enquiry_Response_F_0 / _F_1 legacy aliases to canonical spec
 
 Follow-up to PR #102. Originally I made the legacy aliases no-op even

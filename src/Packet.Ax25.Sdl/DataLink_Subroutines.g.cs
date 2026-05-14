@@ -227,7 +227,7 @@ public static class DataLink_Subroutines
                 new SubroutinePath(
                     Id: "t01_command_poll_enquiry_response",
                     Guard: "command_and_p_eq_1",
-                    Actions: new ActionStep[] { new ActionStep("Enquiry Response (F = 1)", ActionKind.Subroutine) },
+                    Actions: new ActionStep[] { new ActionStep("Enquiry_Response_F_1", ActionKind.Subroutine) },
                     Notes: null,
                     References: new ImplementationReference[] {  },
                     Loops: new LoopRange[] {  }),

@@ -95,6 +95,21 @@ internal static class Program
             NormaliseSubroutineActionVerbs(subPage, actions, errors);
             ValidateSubroutinePage(subPage, errors);
         }
+
+        // Unused-alias lint: every alias declared in actions.yaml should
+        // be referenced by at least one *.sdl.yaml verb. Otherwise the
+        // alias is dead weight — file an error so the catalog stays tidy.
+        foreach (var alias in actions.DeclaredAliases)
+        {
+            if (!actions.SeenAliases.Contains(alias))
+            {
+                errors.Add(
+                    $"spec-sdl/actions.yaml: alias `{alias}` (→ `{actions.CanonicalLookup[alias]}`) " +
+                    "is declared but never referenced by any *.sdl.yaml verb. Remove the alias or update " +
+                    "a YAML page to use it.");
+            }
+        }
+
         if (errors.Count > 0)
         {
             foreach (var e in errors) Console.Error.WriteLine($"::error::{e}");
@@ -304,6 +319,7 @@ internal static class Program
                         throw new InvalidDataException($"{path}: empty alias under canonical name `{entry.Name}`");
                     if (!catalog.CanonicalLookup.TryAdd(alias, entry.Name))
                         throw new InvalidDataException($"{path}: alias `{alias}` is claimed by two canonical names");
+                    catalog.DeclaredAliases.Add(alias);
                 }
             }
         }
@@ -346,6 +362,14 @@ internal static class Program
                     errors.Add($"{loc}: transition `{transitionId}` {contextLabel}[{i}] action `{step.Action}` (canonical `{canonical}`) " +
                                $"is drawn with kind `{step.Kind}` but spec-sdl/actions.yaml declares it as `{expectedKind}`. " +
                                "Either the YAML's kind is wrong, or the catalog is wrong.");
+                }
+                // Track alias usage so we can warn about dead aliases at the
+                // end of the run. An alias is "used" if at least one YAML
+                // verb literally matched it (i.e. step.Action wasn't already
+                // the canonical name).
+                if (!string.Equals(step.Action, canonical, StringComparison.Ordinal))
+                {
+                    catalog.SeenAliases.Add(step.Action!);
                 }
                 step.Action = canonical;
             }
@@ -877,6 +901,17 @@ internal sealed class ActionCatalog
 
     /// <summary>Map from canonical name to its declared SDL kind (signal_upper, signal_lower, etc.).</summary>
     public Dictionary<string, string> CanonicalKind { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Every declared alias (non-canonical spelling). Populated at load time.
+    /// After all YAMLs have been normalised, anything in this set that
+    /// wasn't <see cref="SeenAliases"/>-touched is a dead alias and is
+    /// reported as a build error.
+    /// </summary>
+    public HashSet<string> DeclaredAliases { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Aliases that <see cref="NormalisePathSteps"/> actually substituted on at least one verb.</summary>
+    public HashSet<string> SeenAliases { get; } = new(StringComparer.Ordinal);
 }
 
 /// <summary>
