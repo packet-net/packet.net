@@ -381,6 +381,17 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "set_version_2_0":                ctx.IsExtended = false; break;
             case "set_version_2_2":                ctx.IsExtended = true;  break;
 
+            // ─── Link-parameter assignments (SRT, T1V) ────────────────
+            //
+            // Smoothed Round-Trip Time and T1 timeout value per §6.7.1.
+            // The dispatcher's <see cref="T1Duration"/> property is the
+            // *initial* T1V for new sessions; <c>ctx.T1V</c> is the
+            // *current* per-session value mutated by these verbs and
+            // (in production) by RTT smoothing in figc4.7's
+            // Select_T1_Value subroutine.
+            case "SRT := Initial Default":         ctx.Srt = TimeSpan.FromMilliseconds(3000); break;
+            case "T1V := 2 * SRT":                 ctx.T1V = ctx.Srt + ctx.Srt; break;
+
             // ─── Subroutine calls ──────────────────────────────────────
             //
             // Each routes through the registry. DefaultSubroutineRegistry

@@ -92,6 +92,22 @@ public sealed class Ax25SessionContext
     /// <summary>True if SREJ has been negotiated via XID.</summary>
     public bool SrejEnabled { get; set; }
 
+    /// <summary>
+    /// Smoothed Round-Trip Time per §6.7.1.2. Updated as I-frames are
+    /// sent and acknowledged; used to derive <see cref="T1V"/>. Default
+    /// 3 seconds matches the spec's "Initial Default" value.
+    /// </summary>
+    public TimeSpan Srt { get; set; } = TimeSpan.FromMilliseconds(3000);
+
+    /// <summary>
+    /// T1 timeout value per §6.7.1.3 — the actual duration the
+    /// acknowledgement timer is armed for. Recomputed as 2 × SRT
+    /// after each round-trip; figc4.1 t03 / figc4.2 t21 / figc4.4 etc.
+    /// initialise this via <c>T1V := 2 * SRT</c> on (re)connection.
+    /// Default 6 seconds = 2 × initial SRT.
+    /// </summary>
+    public TimeSpan T1V { get; set; } = TimeSpan.FromMilliseconds(6000);
+
     // ─── Queues ─────────────────────────────────────────────────────────
 
     /// <summary>FIFO queue of I-frame payloads awaiting transmission.</summary>

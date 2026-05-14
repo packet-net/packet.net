@@ -824,6 +824,46 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: SRT/T1V wired + first end-to-end figc4.1 integration tests
+
+Two pieces:
+
+**SRT and T1V wired**. The link-parameter assignment verbs
+`SRT := Initial Default` and `T1V := 2 * SRT` now mutate new
+`Ax25SessionContext.Srt` (default 3s) and `Ax25SessionContext.T1V`
+(default 6s) fields. Required to drive figc4.1 t03 end-to-end.
+
+**`DataLinkDisconnectedEndToEndTests`**. First integration tests
+against the **real** generated `DataLink_Disconnected.Transitions`
+table, driven through the **real** `ActionDispatcher` with every sink
+wired. 11 figc4.1 transitions covered:
+
+- t01: DL_DISCONNECT_request → DataLinkDisconnectConfirm
+- t02: DL_UNIT_DATA_request → UI command with payload + PID
+- t03: DL_CONNECT_request → SRT/T1V init + Establish_Data_Link
+  subroutine + Layer3Initiated flag + → AwaitingConnection state
+- t06: All-other-primitives-upper → discard_primitive (no-op)
+- t07/t08/t09: control_field_error / info_not_permitted_in_frame /
+  u_or_s_frame_length_error → DL_ERROR letter codes (L/M/N)
+- t10: UA received → DL_ERROR_indication("C_D")
+- t11: UI received P=1 → UI_Check subroutine + DM (F=1)
+- t12: UI received P=0 → UI_Check, no DM
+- t13: DISC received → F := P; DM (response with F = incoming P bit)
+
+Deferred: t05 (`all_other_commands`: F := P; DM) — needs
+`AllOtherCommands` to carry a frame so F := P can read PollFinal.
+That's an `Ax25Event` refactor for a follow-up PR.
+
+This validates the **full dispatcher pipeline end-to-end**: event
+routing, guard evaluation, action-chain execution, context mutations,
+frame emission with correct N(R)/P/F/payload, DL signal raising,
+subroutine invocation, state transitions. Every verb the figure draws
+gets exercised through the real dispatcher; the recording-stub layer
+is no longer the only thing proving correctness.
+
+660 tests green (was 643). 11 figc4.1 end-to-end tests + 4 SRT/T1V
+unit tests added.
+
 ### 2026-05-14 — ax25: subroutine stub registry (12 figc4.7 subroutines)
 
 Every `kind: subroutine` verb the transcribed pages reference now routes

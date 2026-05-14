@@ -816,6 +816,29 @@ public class ActionDispatcherTests
     }
 
     [Fact]
+    public void SRT_Assign_Initial_Default_Sets_3_Seconds()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.Srt = TimeSpan.FromMinutes(99);
+
+        d.Execute("SRT := Initial Default", ctx, s);
+
+        ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(3000));
+    }
+
+    [Fact]
+    public void T1V_Assign_2_Times_SRT_Doubles_Current_SRT()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.Srt = TimeSpan.FromMilliseconds(2500);
+        ctx.T1V = TimeSpan.FromMinutes(99);
+
+        d.Execute("T1V := 2 * SRT", ctx, s);
+
+        ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(5000));
+    }
+
+    [Fact]
     public void Save_Contents_Of_I_Frame_Stashes_Trigger_Frame_Keyed_By_N_S()
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
