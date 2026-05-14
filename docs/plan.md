@@ -824,6 +824,22 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: figc4.7 redraw ambiguities resolved upstream
+
+Tom landed `46d3782 Update DataLink_Subroutines.graphml` fixing the
+two `verification_pending` items I flagged in PR #100:
+
+1. **Enquiry_Response / SREJ Enabled? = No** — n22 now has an
+   explicit No → RR Response edge (was previously absent). YAML
+   updated: `Enquiry_Response` gains a new `t03_polled_srej_disabled_rr`
+   path; existing paths renumbered t04–t07. Total paths: 31 → 32.
+2. **Establish_Data_Link / Mod 128? = Yes** — the Yes → SABME edge
+   is now explicitly labeled (was unlabeled). YAML notes updated to
+   record this. No path-count change.
+
+All `verification_pending:` references removed from
+`subroutines.sdl.yaml`.
+
 ### 2026-05-14 — sdl: figc4.7 subroutines transcription (PR 1 of 2)
 
 Tom landed the redrawn `DataLink_Subroutines.graphml` on main. This PR
