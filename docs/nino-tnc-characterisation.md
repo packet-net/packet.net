@@ -134,14 +134,34 @@ Multiple ACKMODE frames in flight simultaneously, mode 6:
 | 4 | yes | 0.91 | 226 | 560 | 891 |
 | 8 | yes | 1.81 | 226 | 1001 | 1773 |
 
-**Reproducible finding:** the very first ACKMODE frame after
-`SetModeAsync + Open` takes **~15 s** to receive its TX-completion
-echo. Subsequent ACKMODE frames complete in well under a second each.
-Hypothesis: a one-time firmware initialisation cost on the
-ACKMODE-correlation path that the 700 ms post-`SetMode` settle does
-not cover. Two campaigns (separate run timestamps) reproduced it
-within 0.3 s of each other. **Tracked as a Phase 3 follow-up** —
-likely fix is a single priming send during `SetModeAsync`.
+**Resolved post-marathon:** the soak's `throughput` sub-command runs
+just before `ackmode-concurrent`, bursting 20 frames at the modem
+without ACK pacing. The TNC silently queues frames it can't transmit
+immediately. When `ackmode-concurrent`'s first measured frame is
+submitted, its ACKMODE echo correctly waits for every previously-
+queued frame to drain off the TX queue first — that's ~15 s of
+1200 AFSK at 200 bytes per frame.
+
+The `tools/Packet.NinoTnc.Spike` `ack-warmup-probe` sub-command
+reproduces this on demand:
+
+```
+Scenario 5: Open + SetMode + 20 back-to-back Data frames + ACKMODE
+  first ACK (after burst): 17 467 ms
+  second ACK:                  213 ms
+```
+
+The other four scenarios (vanilla, long settle, prime-with-data,
+prime-with-ack) all return the first ACK in **228–857 ms**. The 15 s
+is not a firmware initialisation cost; it is the modem's TX queue
+draining correctly.
+
+**Implication:** the driver / session layer should treat ACKMODE
+elapsed time as a *true* TX-completion measure, not a queueing
+measure. If you `await Send(...)` and care about TX completion, use
+`SendFrameWithAckAsync`. Don't burst plain Data frames followed by
+"how long did the next one take" — that measures the queue, not the
+modem.
 
 ### Bidirectional simultaneous send (half-duplex CSMA contention)
 
