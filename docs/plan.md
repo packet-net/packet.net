@@ -824,6 +824,49 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: U-frame emission wired (UA / DM / SABM / SABME / DISC / Expedited variants)
+
+Parallel of the S-frame work (#57). All eight U-frame verbs the
+transcribed pages reference are now executable end-to-end:
+
+| Verb | Type | Role | P/F | Expedited |
+|---|---|---|---|---|
+| `UA` | Ua | response | from pending (default false) | false |
+| `DM` | Dm | response | from pending (default false) | false |
+| `DM (F = 1)` | Dm | response | **forced true** | false |
+| `Expedited UA` | Ua | response | from pending | **true** |
+| `Expedited DM` | Dm | response | from pending | **true** |
+| `SABM (P == 1)` | Sabm | command | **forced true** | false |
+| `SABME (P = 1)` | Sabme | command | **forced true** | false |
+| `DISC (P = 1)` | Disc | command | **forced true** | false |
+
+New `UFrameSpec(Type, IsCommand, PfBit, IsExpedited)` record and
+`UFrameType` enum (8 subtypes per §4.3.3). Dispatcher constructor gains
+an optional `sendUFrame` callback (defaults to no-op so existing
+fixtures keep working).
+
+`BuildUFrame(type, isCommand, pfBitOverride, isExpedited, tx)` helper:
+when `pfBitOverride` is non-null (explicit qualifier in verb name), it
+forces the P/F bit; otherwise consumes `tx.Pending.PfBit` with default
+false.
+
+`Expedited` is a TX priority hint to the wire-translation layer — the
+bit pattern on the wire is identical to plain UA/DM, but expedited
+frames jump ahead of any pending I-frame queue. figc4.3 (Awaiting
+Release) uses this for DM-out-of-band responses during teardown.
+
+Tests: 10 new (a `Theory` covering all 8 verbs' field combinations,
+plus two case-tests confirming bare verbs consume Pending while
+explicit-qualifier verbs override it). 587 tests green.
+
+With S-frame (#57) and U-frame (this PR) emission done, the only
+unwired signal_lower verbs are `I_command` (one occurrence in figc4.4)
+and `UI_command` (four occurrences across figc4.1/4.2/4.3/4.6). These
+need I/UI frame specs that carry info-field payload, plus a way to
+plumb the payload through the dispatcher — I-frame's payload comes
+from `ctx.IFrameQueue`, UI-frame's comes from the triggering
+`DlUnitDataRequest` event.
+
 ### 2026-05-14 — ax25: S-frame emission consumes `tx.Pending`, figure-canonical verb names
 
 Closes the read/write loop on the S-frame emission pathway:
