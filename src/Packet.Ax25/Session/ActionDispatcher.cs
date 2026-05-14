@@ -170,14 +170,19 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "discard_i_frame_queue":          ctx.IFrameQueue.Clear(); break;
 
             // ─── Supervisory-frame transmissions ───────────────────────
-            case "RR command":                     sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rr,   IsCommand: true));  break;
-            case "RR response":                    sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rr,   IsCommand: false)); break;
-            case "RNR command":                    sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rnr,  IsCommand: true));  break;
-            case "RNR response":                   sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rnr,  IsCommand: false)); break;
-            case "REJ command":                    sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rej,  IsCommand: true));  break;
-            case "REJ response":                   sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Rej,  IsCommand: false)); break;
-            case "SREJ command":                   sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Srej, IsCommand: true));  break;
-            case "SREJ response":                  sendSFrame(new SupervisoryFrameSpec(SupervisoryFrameType.Srej, IsCommand: false)); break;
+            //
+            // Verb spellings here are figure-canonical (`RR_command`,
+            // `RR`, `RNR_response`, `REJ`, `SREJ`) — what figc4.4 draws.
+            // The bare verbs (`RR`, `REJ`, `SREJ`) are response-form per
+            // SDL convention; the `_command` / `_response` suffixed verbs
+            // are explicit. Each emission consumes `tx.Pending.Nr` and
+            // `tx.Pending.PfBit`, both of which must have been populated
+            // by an earlier processing verb in the same chain.
+            case "RR_command":                     sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx, action)); break;
+            case "RR":                             sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx, action)); break;
+            case "RNR_response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
+            case "REJ":                            sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: false, tx, action)); break;
+            case "SREJ":                           sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: false, tx, action)); break;
 
             // ─── Sequence-variable assignments (pure context) ──────────
             //
@@ -269,6 +274,38 @@ public sealed class ActionDispatcher : IActionDispatcher
         // The P/F bit lives at bit 4 in both mod-8 and mod-128 control
         // fields, so no extended-mode gate is needed here.
         return frame.PollFinal;
+    }
+
+    /// <summary>
+    /// Build a <see cref="SupervisoryFrameSpec"/> from the transition's
+    /// <see cref="PendingFrame"/>, applying spec-implicit defaults for any
+    /// field not explicitly set by a preceding processing verb.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The AX.25 SDL figures don't always populate N(R) and F/P before
+    /// every <c>signal_lower</c> verb. For example, figc4.4 t23
+    /// (DL_FLOW_OFF, own_receiver_busy=Yes) draws bare
+    /// <c>set_own_receiver_busy; RNR_response; clear_acknowledge_pending</c>
+    /// with no N(R) or F-bit setup beforehand — the spec assumes the
+    /// implementation fills in <c>N(R) = V(R)</c> (current receive state)
+    /// and <c>F = 0</c> implicitly. Other transitions are explicit when
+    /// they need a specific value (e.g. <c>F := 1; N(r) := V(r); RR</c>
+    /// for response-with-poll-final-set).
+    /// </para>
+    /// <para>
+    /// Defaults applied here: <c>Nr</c> falls back to
+    /// <see cref="Ax25SessionContext.VR"/>; <c>PfBit</c> falls back to
+    /// <c>false</c>. These match the spec's implicit "no special value
+    /// requested" semantics.
+    /// </para>
+    /// </remarks>
+    private static SupervisoryFrameSpec BuildSFrame(
+        SupervisoryFrameType type, bool isCommand, TransitionContext tx, string verb)
+    {
+        byte nr     = tx.Pending.Nr    ?? tx.Session.VR;
+        bool pfBit  = tx.Pending.PfBit ?? false;
+        return new SupervisoryFrameSpec(type, IsCommand: isCommand, Nr: nr, PfBit: pfBit);
     }
 
     private static Ax25Frame RequireIncomingFrame(TransitionContext tx, string verb)

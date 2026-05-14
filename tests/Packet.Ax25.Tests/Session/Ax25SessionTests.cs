@@ -24,7 +24,7 @@ public class Ax25SessionTests
             Actions: new ActionStep[]
             {
                 new("set_own_receiver_busy",      ActionKind.Processing),
-                new("RNR response",                ActionKind.SignalLower),
+                new("RNR_response",                ActionKind.SignalLower),
                 new("clear_acknowledge_pending",   ActionKind.Processing),
             },
             Next: "Connected",
@@ -59,7 +59,7 @@ public class Ax25SessionTests
             Actions: new ActionStep[]
             {
                 new("clear_own_receiver_busy",    ActionKind.Processing),
-                new("RR command",                  ActionKind.SignalLower),
+                new("RR_command",                  ActionKind.SignalLower),
                 new("clear_acknowledge_pending",   ActionKind.Processing),
                 new("stop_T3",                     ActionKind.Processing),
                 new("start_T1",                    ActionKind.Processing),
@@ -76,7 +76,7 @@ public class Ax25SessionTests
             Actions: new ActionStep[]
             {
                 new("clear_own_receiver_busy",    ActionKind.Processing),
-                new("RR command",                  ActionKind.SignalLower),
+                new("RR_command",                  ActionKind.SignalLower),
                 new("clear_acknowledge_pending",   ActionKind.Processing),
             },
             Next: "Connected",
@@ -138,7 +138,7 @@ public class Ax25SessionTests
         ctx.OwnReceiverBusy.Should().BeTrue("set_own_receiver_busy was in the action chain");
         ctx.AcknowledgePending.Should().BeFalse("clear_acknowledge_pending fired");
         sFrames.Should().ContainSingle()
-            .Which.Should().Be(new SupervisoryFrameSpec(SupervisoryFrameType.Rnr, IsCommand: false));
+            .Which.Should().Be(new SupervisoryFrameSpec(SupervisoryFrameType.Rnr, IsCommand: false, Nr: ctx.VR, PfBit: false));
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class Ax25SessionTests
         ctx.OwnReceiverBusy.Should().BeFalse("clear_own_receiver_busy fired");
         ctx.AcknowledgePending.Should().BeFalse("clear_acknowledge_pending fired");
         sFrames.Should().ContainSingle()
-            .Which.Should().Be(new SupervisoryFrameSpec(SupervisoryFrameType.Rr, IsCommand: true));
+            .Which.Should().Be(new SupervisoryFrameSpec(SupervisoryFrameType.Rr, IsCommand: true, Nr: ctx.VR, PfBit: false));
         scheduler.IsRunning("T1").Should().BeTrue("start_T1 fired");
         scheduler.IsRunning("T3").Should().BeFalse("stop_T3 fired");
     }

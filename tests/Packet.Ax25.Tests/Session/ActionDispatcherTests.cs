@@ -134,14 +134,11 @@ public class ActionDispatcherTests
     // ─── Supervisory-frame transmissions ───────────────────────────────
 
     [Theory]
-    [InlineData("RR command",   SupervisoryFrameType.Rr,   true)]
-    [InlineData("RR response",  SupervisoryFrameType.Rr,   false)]
-    [InlineData("RNR command",  SupervisoryFrameType.Rnr,  true)]
-    [InlineData("RNR response", SupervisoryFrameType.Rnr,  false)]
-    [InlineData("REJ command",  SupervisoryFrameType.Rej,  true)]
-    [InlineData("REJ response", SupervisoryFrameType.Rej,  false)]
-    [InlineData("SREJ command", SupervisoryFrameType.Srej, true)]
-    [InlineData("SREJ response", SupervisoryFrameType.Srej, false)]
+    [InlineData("RR_command",   SupervisoryFrameType.Rr,   true)]
+    [InlineData("RR",           SupervisoryFrameType.Rr,   false)]
+    [InlineData("RNR_response", SupervisoryFrameType.Rnr,  false)]
+    [InlineData("REJ",          SupervisoryFrameType.Rej,  false)]
+    [InlineData("SREJ",         SupervisoryFrameType.Srej, false)]
     public void Supervisory_Verbs_Signal_Outgoing_Frame_With_Right_Type_And_Role(
         string action, SupervisoryFrameType expectedType, bool expectedIsCommand)
     {
@@ -151,6 +148,37 @@ public class ActionDispatcherTests
         sFrames.Should().ContainSingle();
         sFrames[0].Type.Should().Be(expectedType);
         sFrames[0].IsCommand.Should().Be(expectedIsCommand);
+    }
+
+    [Fact]
+    public void Supervisory_Verb_Consumes_Pending_Nr_And_PfBit()
+    {
+        var (d, ctx, s, _, _, sFrames) = NewRig();
+        ctx.VR = 4;
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+
+        // Mimic a figc4.4-style RR response chain: set F, set N(r), emit RR.
+        d.Execute(new[] { "F := 1", "N(r) := V(r)", "RR" }, tx);
+
+        sFrames.Should().ContainSingle();
+        sFrames[0].Should().Be(new SupervisoryFrameSpec(
+            SupervisoryFrameType.Rr, IsCommand: false, Nr: 4, PfBit: true));
+    }
+
+    [Fact]
+    public void Supervisory_Verb_Defaults_Nr_To_VR_And_PfBit_False_When_Pending_Unset()
+    {
+        // figc4.4 t23 (DL_FLOW_OFF, own_receiver_busy=Yes) draws bare
+        // `set_own_receiver_busy; RNR_response; clear_acknowledge_pending`
+        // with no N(R) or F-bit setup before the frame. The dispatcher
+        // applies the spec-implicit defaults: Nr = V(R), PfBit = false.
+        var (d, ctx, s, _, _, sFrames) = NewRig();
+        ctx.VR = 5;
+        d.Execute("RNR_response", ctx, s);
+
+        sFrames.Should().ContainSingle();
+        sFrames[0].Should().Be(new SupervisoryFrameSpec(
+            SupervisoryFrameType.Rnr, IsCommand: false, Nr: 5, PfBit: false));
     }
 
     // ─── Sequence-variable assignments ─────────────────────────────────
@@ -231,7 +259,7 @@ public class ActionDispatcherTests
         // figc4.4a col 5 (Yes branch).
         var (d, ctx, s, _, _, sFrames) = NewRig();
         d.Execute(
-            new[] { "set_own_receiver_busy", "RNR response", "clear_acknowledge_pending" },
+            new[] { "set_own_receiver_busy", "RNR_response", "clear_acknowledge_pending" },
             ctx, s);
 
         ctx.OwnReceiverBusy.Should().BeTrue();

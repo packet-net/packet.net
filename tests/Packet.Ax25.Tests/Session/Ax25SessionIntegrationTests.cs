@@ -155,7 +155,7 @@ public class Ax25SessionIntegrationTests
             next: "S1",
             ("RC := 0",      ActionKind.Processing),
             ("start_T1",     ActionKind.Processing),
-            ("RR command",   ActionKind.SignalLower));
+            ("RR_command",   ActionKind.SignalLower));
 
         var (session, ctx, scheduler, _, sFrames) = NewSession(SingleStateMap("S1", t), "S1");
         ctx.RC = 9;

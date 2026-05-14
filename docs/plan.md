@@ -824,6 +824,50 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: S-frame emission consumes `tx.Pending`, figure-canonical verb names
+
+Closes the read/write loop on the S-frame emission pathway:
+
+1. `SupervisoryFrameSpec` grows from `(Type, IsCommand)` to
+   `(Type, IsCommand, Nr, PfBit)` — the values the wire-translation layer
+   actually needs.
+2. The dispatcher's signal_lower S-frame verbs now consume `tx.Pending.Nr`
+   and `tx.Pending.PfBit` to build the spec. A new `BuildSFrame` helper
+   applies sensible defaults when the chain doesn't populate them
+   explicitly: `Nr` defaults to `ctx.VR`, `PfBit` defaults to `false`.
+   This matches what figc4.4 does — e.g. t23 (DL_FLOW_OFF on busy) draws
+   bare `set_own_receiver_busy; RNR_response; clear_acknowledge_pending`
+   with no N(R) / F-bit assignment beforehand, relying on implicit
+   defaults. Other transitions (t04 etc.) populate explicitly when they
+   need a specific value.
+3. Verb spellings move to figure-canonical: `RR_command`, `RR` (bare =
+   response per SDL convention), `RNR_response`, `REJ`, `SREJ`. The old
+   space-suffixed `"RR command"` / `"RR response"` / `"RNR command"` /
+   `"RNR response"` / `"REJ command"` / `"REJ response"` / `"SREJ command"` /
+   `"SREJ response"` are removed — none of them appeared in any YAML.
+4. `spec-sdl/actions.yaml` records the new canonical names for
+   documentation (no aliases needed — only one spelling each).
+
+Test updates: `Ax25SessionTests` (hand-rolled fixtures) renamed to use
+the new verb spellings; both `SupervisoryFrameSpec(...)` assertions
+updated to include the `Nr`/`PfBit` constructor args. Two new
+`ActionDispatcherTests`: one for the explicit-pending path, one for the
+default-pending path (RNR_response from a `DL_FLOW_OFF`-style chain).
+
+577 tests green (-1 vs PR-D: eliminated the four superfluous "RNR/REJ/SREJ command"
+theory cases since figc4.4 never draws them).
+
+This effectively closes the dispatcher arc for **S-frame emission**.
+Real figc4.4 connected-state transitions involving RR/RNR/REJ/SREJ are
+now executable end-to-end through the real dispatcher. Remaining
+unwired emission categories: U-frames (`UA`, `DM`, `SABM (P == 1)`,
+`SABME (P = 1)`, `DISC (P = 1)`, `Expedited UA`, `Expedited DM`),
+I-frames (`I_command`), and UI-frames (`UI_command`). DL upper-layer
+signals (`DL_CONNECT_indication`, `DL_DATA_indication`, the 13
+`DL_ERROR_indication_*` letters) and subroutines (`Establish_Data_Link`,
+`UI_Check`, `Select_T1_Value`, `Clear_Exception_Conditions` …) also
+still unwired.
+
 ### 2026-05-14 — ax25: dispatcher write-side verbs populate `tx.Pending` (N(r), N(s), F/P bit)
 
 The dispatcher now handles every "processing" verb in the transcribed
