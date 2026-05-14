@@ -61,7 +61,7 @@ public class DataLinkAwaitingReleaseSmokeTests
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
                 ["AwaitingRelease"] = DataLink_AwaitingRelease.Transitions,
-                ["Disconnected"]    = Array.Empty<TransitionSpec>(),
+                ["Disconnected"]    = DataLink_Disconnected.Transitions,
             },
             initialState: "AwaitingRelease");
         return (session, recorder);

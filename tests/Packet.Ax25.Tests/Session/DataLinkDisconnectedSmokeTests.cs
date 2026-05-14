@@ -66,10 +66,8 @@ public class DataLinkDisconnectedSmokeTests
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
                 ["Disconnected"]        = DataLink_Disconnected.Transitions,
-                // Successor states aren't transcribed yet; empty tables keep
-                // the session valid for the single-event tests below.
-                ["AwaitingConnection"]  = Array.Empty<TransitionSpec>(),
-                ["Connected"]           = Array.Empty<TransitionSpec>(),
+                ["AwaitingConnection"]  = DataLink_AwaitingConnection.Transitions,
+                ["Connected"]           = DataLink_Connected.Transitions,
             },
             initialState: "Disconnected");
         return (session, recorder);

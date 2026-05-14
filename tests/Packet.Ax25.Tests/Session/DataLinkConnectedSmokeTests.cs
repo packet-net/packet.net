@@ -112,11 +112,11 @@ public class DataLinkConnectedSmokeTests
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
                 ["Connected"]            = DataLink_Connected.Transitions,
-                ["Disconnected"]         = Array.Empty<TransitionSpec>(),
-                ["AwaitingConnection"]   = Array.Empty<TransitionSpec>(),
-                ["AwaitingRelease"]      = Array.Empty<TransitionSpec>(),
+                ["Disconnected"]         = DataLink_Disconnected.Transitions,
+                ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
+                ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
                 ["TimerRecovery"]        = Array.Empty<TransitionSpec>(),
-                ["AwaitingConnection22"] = Array.Empty<TransitionSpec>(),
+                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
             },
             initialState: "Connected");
         return (session, recorder);

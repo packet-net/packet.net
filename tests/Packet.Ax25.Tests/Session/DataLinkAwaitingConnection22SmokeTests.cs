@@ -74,9 +74,9 @@ public class DataLinkAwaitingConnection22SmokeTests
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
                 ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
-                ["AwaitingConnection"]   = Array.Empty<TransitionSpec>(),
-                ["Disconnected"]         = Array.Empty<TransitionSpec>(),
-                ["Connected"]            = Array.Empty<TransitionSpec>(),
+                ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
+                ["Disconnected"]         = DataLink_Disconnected.Transitions,
+                ["Connected"]            = DataLink_Connected.Transitions,
             },
             initialState: "AwaitingConnection22");
         return (session, recorder);
