@@ -96,11 +96,19 @@ public sealed class Ax25Adapter
             sendInternal:  _ => { /* internal signals: queue-management already mutates Context directly */ },
             subroutines:   subroutines);
 
-        var guards = new GuardEvaluator(bindings ?? Ax25SessionBindings.CreateDefault(context, scheduler));
+        // If no custom bindings were supplied, build the default ones —
+        // but with frame-awareness wired to the session we're about to
+        // create. The forward-reference is harmless because the binding
+        // closures only fire later, when guards.Evaluate is called.
+        Ax25Session? sessionRef = null;
+        var resolvedBindings = bindings
+            ?? Ax25SessionBindings.CreateDefault(context, scheduler, currentTrigger: () => sessionRef?.CurrentTrigger);
+        var guards = new GuardEvaluator(resolvedBindings);
 
         Session = new Ax25Session(
             context, scheduler, Dispatcher, guards,
             transitions, initialState);
+        sessionRef = Session;
     }
 
     /// <summary>

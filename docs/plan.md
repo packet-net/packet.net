@@ -824,6 +824,45 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ax25: frame-aware guard predicates
+
+Fifth piece of the interop arc. Predicates like `P_eq_1`, `command`,
+`N_s_eq_V_r`, `nr_in_window` referenced by figc4.1/4.4 transitions now
+read from the **current triggering event's attached frame** rather than
+constructor-time constants.
+
+`Ax25Session` gains a `CurrentTrigger` property, non-null only during
+`DispatchEvent` (set before guard evaluation, cleared in a `finally`).
+`Ax25SessionBindings.CreateDefault` gains an optional
+`currentTrigger: Func<Ax25Event?>` parameter; when supplied, the
+binding dictionary includes frame-aware predicates that resolve
+through that thunk.
+
+Bindings added when frame-aware mode is enabled:
+- `P_eq_1` / `F_eq_1` / `P_or_F_eq_1` → incoming.PollFinal
+- `command` → incoming.IsCommand (from C-bits)
+- `N_s_eq_V_r` → mod-8 N(S) extraction == ctx.VR
+- `N_s_gt_V_r_plus_1` → mod-8-aware comparison
+- `nr_in_window` / `V_a_le_N_r_le_V_s` → mod-8-aware window check
+  against [V(a)..V(s)]
+- `info_field_valid` → incoming.Info.Length ≤ ctx.N1
+
+Always-on additions (no frame needed): `version_2_2`,
+`srej_exception_gt_0`, `V_s_eq_V_a`, `V_s_eq_V_a_plus_k`, `RC_eq_N2`,
+`vr_i_frame_stored`.
+
+`Ax25Adapter` defaults to enabling frame-aware bindings (forward-
+references its own session via closure). Existing tests that supply
+manual bindings continue to work — frame-aware mode is opt-in via the
+`currentTrigger` parameter.
+
+18 new tests covering each frame-aware predicate, mod-8 wrap-around
+math, fallback when no trigger frame, and backward-compat
+verification. 818 tests green (was 786).
+
+Closes item 5 of the interop arc. Items remaining: figc4.7 subroutine
+bodies (transcription-gated) and KISS framing glue.
+
 ### 2026-05-14 — ax25: transport adapter + first wire-encoded loopback
 
 Third piece of the interop arc. New `Ax25Adapter` glues an

@@ -36,6 +36,15 @@ public sealed class Ax25Session
     public string CurrentState { get; private set; }
 
     /// <summary>
+    /// The event currently being dispatched. Non-null only during
+    /// guard evaluation and action execution; <c>null</c> outside of
+    /// <see cref="PostEvent"/>. Frame-aware bindings read this to
+    /// resolve predicates like <c>P_eq_1</c>, <c>command</c>,
+    /// <c>N_s_eq_V_r</c> against the triggering frame.
+    /// </summary>
+    public Ax25Event? CurrentTrigger { get; private set; }
+
+    /// <summary>
     /// Construct a session.
     /// </summary>
     /// <param name="context">Mutable session state — sequence variables, flags, queues.</param>
@@ -108,24 +117,35 @@ public sealed class Ax25Session
             throw new InvalidOperationException($"no transitions defined for current state '{CurrentState}'");
         }
 
-        TransitionSpec? match = null;
-        foreach (var t in stateTransitions)
+        // Expose the trigger to frame-aware guard bindings + the
+        // dispatcher's TransitionContext. Cleared in the finally so
+        // a thrown action doesn't leave stale state on the session.
+        CurrentTrigger = evt;
+        try
         {
-            if (!string.Equals(t.On, evt.Name, StringComparison.Ordinal)) continue;
-            if (!guards.Evaluate(t.Guard)) continue;
-            match = t;
-            break;
-        }
+            TransitionSpec? match = null;
+            foreach (var t in stateTransitions)
+            {
+                if (!string.Equals(t.On, evt.Name, StringComparison.Ordinal)) continue;
+                if (!guards.Evaluate(t.Guard)) continue;
+                match = t;
+                break;
+            }
 
-        if (match is null)
+            if (match is null)
+            {
+                onUnhandledEvent?.Invoke(evt);
+                return;
+            }
+
+            var tx = new TransitionContext(Context, scheduler, evt);
+            dispatcher.Execute(match.Actions, tx);
+            CurrentState = match.Next;
+        }
+        finally
         {
-            onUnhandledEvent?.Invoke(evt);
-            return;
+            CurrentTrigger = null;
         }
-
-        var tx = new TransitionContext(Context, scheduler, evt);
-        dispatcher.Execute(match.Actions, tx);
-        CurrentState = match.Next;
     }
 
     /// <summary>
