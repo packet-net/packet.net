@@ -824,6 +824,88 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: figc4.7 subroutines codegen + registry walker
+
+PR 2 of the figc4.7 arc. Adds the data types, the codegen pipeline, and
+the runtime walker that lets a subroutine's path data drive an actual
+action chain. Auto-Wire from `Ax25Session` is intentionally OFF for
+now — figc4.7 subroutines reference action verbs (`Clear Peer
+Receiver Busy`, `RC <- 1`, …) and predicates (`mod_128`,
+`incoming_is_command`, …) that aren't bound yet. Callers who want the
+walker can opt in:
+
+```csharp
+var registry = new DefaultSubroutineRegistry();
+registry.Wire(dispatcher, guards);
+```
+
+**New artefacts:**
+
+- `src/Packet.Ax25.Sdl/SubroutineSpec.cs` — `SubroutineSpec` +
+  `SubroutinePath` records, mirroring `TransitionSpec` for subroutine
+  pages.
+- `tools/Packet.Sdl.CodeGen/Templates/subroutines.scriban-cs` — new
+  template for the per-subroutines-page output file.
+- `tools/Packet.Sdl.CodeGen/Program.cs` — `SubroutinePage` /
+  `SubroutineYamlEntry` / `SubroutinePathYaml` YAML models;
+  `LoadSubroutinePage` + `ValidateSubroutinePage`;
+  `SubroutinesTemplateModel.From` projection; routing in Main.
+- `src/Packet.Ax25.Sdl/DataLink_Subroutines.g.cs` — generated. 13
+  subroutines, 32 paths, all action / decision data baked in.
+- `src/Packet.Ax25/Session/SubroutineRegistry.cs` — registry walker:
+  `Wire(dispatcher, guards)` upgrades each name's no-op stub to a
+  `SubroutineSpec` walker. `KnownSubroutines` now derives from the
+  generated list (drops `Enquiry_Response_F_0`/`_F_1`, adds
+  `Establish_Extended_Data_Link`, `Set_Version_2_0`, `Set_Version_2_2`,
+  collapses to single `Enquiry_Response`).
+- `tests/Packet.Ax25.Tests/Session/DefaultSubroutineRegistryWalkerTests.cs` —
+  6 tests: stub-when-not-wired, generated-list shape, walker fires
+  actions on Wire, Register-overrides-survive-Wire (sticky), guard
+  picks first matching path, unbound-predicate degrades to no-match.
+
+**Walker semantics:**
+
+- `Invoke(name, tx)` looks up the name; if Wire hasn't run and the
+  name is a stub, no-ops (pre-figc4.7 behaviour preserved).
+- After `Wire`, each spec's name fires a walker that evaluates path
+  guards in order via `GuardEvaluator`. First match runs through
+  `IActionDispatcher.Execute(path.Actions, tx)`.
+- `Register(name, impl)` is sticky: a subsequent `Wire` won't
+  overwrite a delegate the caller set explicitly.
+- Unbound predicates degrade gracefully — `GuardEvaluationException`
+  inside the walker is caught and treated as "path doesn't match".
+  Lets the walker ship today; predicate bindings unblock paths as
+  they land.
+
+Codegen check: `dotnet run --project tools/Packet.Sdl.CodeGen`
+produces `DataLink_Subroutines.g.cs` (336 lines) deterministically.
+Full test suite (1,049+ tests) green.
+
+**Loop_while predicate quirk** noted: the runtime's `loop_while`
+construct iterates while its predicate is TRUE, but figures naturally
+draw "until X" loops. `Invoke_Retransmission` encodes the inverse
+predicate explicitly (`v_s_neq_x` defined as `not v_s_eq_x`). A future
+codegen enhancement could accept `negate: true` so YAML can use the
+figure's literal predicate.
+
+**Still TODO (future PRs):**
+
+1. Bind ~18 new predicates in `GuardEvaluator` (`mod_128`,
+   `peer_receiver_busy`, `incoming_is_command`, etc.) — most read from
+   `TransitionContext.IncomingFrame` and the session context.
+2. Bind ~25 new action verbs in `ActionDispatcher.Execute`
+   (`Clear Peer Receiver Busy`, `RC <- 1`, `Stop T3`, `Set Implicit Reject`,
+   `Modulo <- 8/128`, etc.). Once enough bind to make
+   `Set_Version_2_0` / `Set_Version_2_2` / `Clear_Exception_Conditions`
+   actually do something, flip `Ax25Session` to auto-Wire.
+3. Validation PR per runbook stages 6–10: per-subroutine smoke tests
+   + spec_prose references + four-codebase implementation
+   citations.
+4. Refactor-shaped **Tier 1 Go codegen** (out-of-arc): split
+   `Packet.Sdl.CodeGen` into a shared IR + per-language backends
+   (C# emitter today; Go emitter as new tier). Sets up Tier 3
+   (poly-language tool) as "add more backends".
+
 ### 2026-05-14 — sdl: figc4.7 redraw ambiguities resolved upstream
 
 Tom landed `46d3782 Update DataLink_Subroutines.graphml` fixing the

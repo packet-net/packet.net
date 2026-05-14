@@ -1,3 +1,5 @@
+using Packet.Ax25.Sdl;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -19,79 +21,139 @@ public interface ISubroutineRegistry
 }
 
 /// <summary>
-/// Pre-populated subroutine registry. Knows every subroutine name the
-/// transcribed pages reference, registers each as a no-op stub by
-/// default, and throws on unknown names so transcription typos surface
-/// immediately.
+/// Pre-populated subroutine registry. Defaults each known subroutine name
+/// to a walker that executes the figc4.7-generated <see cref="SubroutineSpec"/>
+/// data from <see cref="DataLink_Subroutines"/>, then lets tests
+/// override individual entries with hand-written delegates via
+/// <see cref="Register"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The no-op stubs are placeholders. figc4.7 (Subroutines) is the
-/// figure that gives each subroutine its action body — that
-/// transcription work is the next step in the SDL arc. Until then, the
-/// dispatcher can run a transition's full action chain through
-/// orchestrator + real ActionDispatcher; the subroutine bodies just
-/// don't *do* anything specific. The orchestrator routing, the
-/// context-variable mutations, the timer ops, the frame emissions
-/// surrounding the subroutine calls all work end-to-end today.
+/// The registry resolves a subroutine call at <see cref="Invoke"/> time
+/// by looking up the name in its internal delegate table. The
+/// constructor populates that table from the supplied
+/// <see cref="IReadOnlyList{SubroutineSpec}"/> (defaults to
+/// <see cref="DataLink_Subroutines.Subroutines"/>): each name maps to a
+/// walker that evaluates each path's guard via the supplied
+/// <see cref="GuardEvaluator"/>, takes the first match, and executes
+/// the path's <see cref="ActionStep"/> chain via the supplied
+/// <see cref="IActionDispatcher"/>.
 /// </para>
 /// <para>
-/// To override a stub for testing, use <see cref="Register"/>:
+/// To override a subroutine for testing, use <see cref="Register"/>:
 /// <code>
 /// var registry = new DefaultSubroutineRegistry();
-/// registry.Register("Establish_Data_Link", tx => {
-///     // … test-specific behaviour, e.g. record the call …
-/// });
+/// registry.Wire(dispatcher, guards);   // optional — without this, subroutines no-op
+/// registry.Register("Establish_Data_Link", tx => { /* record */ });
 /// </code>
 /// </para>
 /// </remarks>
 public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
 {
     private readonly Dictionary<string, Action<TransitionContext>> subroutines = new(StringComparer.Ordinal);
+    private readonly HashSet<string> userOverridden = new(StringComparer.Ordinal);
+    private readonly IReadOnlyList<SubroutineSpec> specs;
+    private IActionDispatcher? wiredDispatcher;
+    private GuardEvaluator? wiredGuards;
 
-    /// <summary>Canonical names of every subroutine the transcribed pages reference.</summary>
-    public static IReadOnlyList<string> KnownSubroutines { get; } = new[]
+    /// <summary>
+    /// Legacy subroutine names that remain referenced by older
+    /// state-machine YAML pages (e.g. <c>connected.sdl.yaml</c>'s
+    /// <c>Enquiry_Response_F_0</c> / <c>_F_1</c>) but don't have their
+    /// own entries in the redrawn <c>figc4.7</c>. Kept as no-op stubs
+    /// for back-compat; they'll be retired when the referring state
+    /// pages are re-transcribed to use the canonical name.
+    /// </summary>
+    private static readonly string[] LegacyAliases =
     {
-        // figc4.1 (Disconnected) + figc4.4 (Connected)
-        "Establish_Data_Link",
-        "Clear_Exception_Conditions",
-        // figc4.2 / 4.3 / 4.6
-        "UI_Check",
-        "Select_T1_Value",
-        // figc4.4 (Connected) — I-frame and ack flow
-        "Check_I_Frame_Acknowledged",
-        "Check_I_Frames_Acknowledged",
-        "Check_Need_For_Response",
-        "Transmit_Enquiry",
-        "Invoke_Retransmission",
-        "N_r_Error_Recovery",
         "Enquiry_Response_F_0",
         "Enquiry_Response_F_1",
     };
 
     /// <summary>
-    /// Construct a registry with no-op stubs registered for every known
-    /// subroutine. Each stub silently succeeds — figc4.7 transcription
-    /// is what will give them real bodies.
+    /// Canonical names of every subroutine the transcribed pages reference.
+    /// Sourced from the generated <see cref="DataLink_Subroutines.Subroutines"/>
+    /// list plus the legacy aliases — transcription updates flow through
+    /// automatically.
+    /// </summary>
+    public static IReadOnlyList<string> KnownSubroutines { get; } =
+        DataLink_Subroutines.Subroutines.Select(s => s.Name)
+            .Concat(LegacyAliases)
+            .ToList();
+
+    /// <summary>
+    /// Construct a registry pre-populated with no-op stubs for every name
+    /// in <see cref="KnownSubroutines"/>. Call <see cref="Wire"/> to upgrade
+    /// the stubs to actual SubroutineSpec walkers (needs a dispatcher +
+    /// guard evaluator to execute path actions and evaluate path guards).
     /// </summary>
     public DefaultSubroutineRegistry()
+        : this(DataLink_Subroutines.Subroutines)
     {
-        foreach (var name in KnownSubroutines)
+    }
+
+    /// <summary>
+    /// Construct a registry from an explicit subroutine-spec list.
+    /// Primarily for tests that want to substitute a smaller / different
+    /// list; production code should use the parameterless constructor.
+    /// </summary>
+    public DefaultSubroutineRegistry(IReadOnlyList<SubroutineSpec> specs)
+    {
+        ArgumentNullException.ThrowIfNull(specs);
+        this.specs = specs;
+        foreach (var spec in specs)
         {
-            subroutines[name] = _ => { /* TODO: figc4.7 transcription */ };
+            subroutines[spec.Name] = _ => { /* no-op until Wire() is called */ };
+        }
+        // Legacy aliases (e.g. Enquiry_Response_F_0 / _F_1) — no spec body
+        // in the redrawn figc4.7, but still referenced by older
+        // transcriptions. Always no-op even after Wire.
+        foreach (var alias in LegacyAliases)
+        {
+            subroutines[alias] = _ => { /* legacy alias — no walker */ };
+        }
+    }
+
+    /// <summary>
+    /// Bind this registry to a dispatcher + guard evaluator. After this
+    /// call, every <see cref="SubroutineSpec"/> name not previously
+    /// overridden via <see cref="Register"/> maps to a walker that
+    /// evaluates each path's guard, takes the first match, and executes
+    /// its action chain.
+    /// </summary>
+    /// <remarks>
+    /// Order-independent w.r.t. <see cref="Register"/>: names that have
+    /// been explicitly registered keep their caller-supplied delegate;
+    /// names whose entries are still default no-op stubs are replaced
+    /// with walkers.
+    /// </remarks>
+    public void Wire(IActionDispatcher dispatcher, GuardEvaluator guards)
+    {
+        ArgumentNullException.ThrowIfNull(dispatcher);
+        ArgumentNullException.ThrowIfNull(guards);
+        wiredDispatcher = dispatcher;
+        wiredGuards = guards;
+        foreach (var spec in specs)
+        {
+            if (userOverridden.Contains(spec.Name)) continue;
+            var captured = spec;   // close-over copy
+            subroutines[spec.Name] = tx => WalkSubroutine(captured, tx);
         }
     }
 
     /// <summary>
     /// Register a custom implementation for the named subroutine. Replaces
-    /// any existing entry (including the default no-op stub) so tests can
-    /// observe / mock subroutine calls.
+    /// any existing entry (including the default walker if Wire has been
+    /// called) so tests can observe / mock subroutine calls. The override
+    /// is "sticky" — a subsequent <see cref="Wire"/> call will NOT
+    /// re-replace this name with a walker.
     /// </summary>
     public void Register(string name, Action<TransitionContext> implementation)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(implementation);
         subroutines[name] = implementation;
+        userOverridden.Add(name);
     }
 
     /// <inheritdoc/>
@@ -101,8 +163,41 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             throw new InvalidOperationException(
                 $"unknown SDL subroutine: '{name}'. " +
-                "Known subroutines are registered in DefaultSubroutineRegistry — add a Register() call or update KnownSubroutines.");
+                "Known subroutines are populated from DataLink_Subroutines.Subroutines — " +
+                "either the figc4.7 YAML doesn't declare this name, or this is a transcription typo.");
         }
         impl(tx);
     }
+
+    private void WalkSubroutine(SubroutineSpec spec, TransitionContext tx)
+    {
+        // Wire() must have run before walker fires. If a name still has its
+        // no-op stub, the user never called Wire — the call no-ops silently,
+        // matching the pre-figc4.7-codegen behaviour.
+        if (wiredDispatcher is null || wiredGuards is null) return;
+
+        foreach (var path in spec.Paths)
+        {
+            bool guardHolds;
+            try
+            {
+                guardHolds = wiredGuards.Evaluate(path.Guard);
+            }
+            catch (GuardEvaluationException)
+            {
+                // Predicate isn't bound yet (frame-aware bindings are item 5
+                // of the interop arc and lag behind figc4.7's path
+                // requirements). Treat this path as not-matching — the
+                // subroutine call degrades to no-op rather than crash the
+                // calling state-machine transition. When the predicate is
+                // bound, the walker starts following the path automatically.
+                continue;
+            }
+            if (!guardHolds) continue;
+            wiredDispatcher.Execute(path.Actions, tx);
+            return;
+        }
+        // No matching path — silently no-op.
+    }
+
 }

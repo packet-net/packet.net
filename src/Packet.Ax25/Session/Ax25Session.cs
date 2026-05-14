@@ -90,6 +90,21 @@ public sealed class Ax25Session
         this.transitionsByState = transitionsByState;
         this.CurrentState = initialState;
         this.onUnhandledEvent = onUnhandledEvent;
+
+        // Note: we intentionally do NOT auto-wire the default subroutine
+        // registry here. figc4.7-generated SubroutineSpecs reference action
+        // verbs (e.g. "Clear Peer Receiver Busy", "RC <- 1") and predicates
+        // that aren't yet bound in ActionDispatcher / GuardEvaluator. Until
+        // those bindings land, subroutines stay as no-op stubs to preserve
+        // existing-test behaviour. Callers who want the walker can opt in
+        // explicitly:
+        //
+        //   var registry = new DefaultSubroutineRegistry();
+        //   registry.Wire(dispatcher, guards);
+        //   // pass registry to ActionDispatcher.
+        //
+        // Tracking issue: bind all figc4.7-referenced action verbs +
+        // predicates so auto-wire here can be turned on.
     }
 
     /// <summary>

@@ -960,17 +960,27 @@ public class ActionDispatcherTests
 
     // ─── Subroutine calls ──────────────────────────────────────────────
 
+    // KnownSubroutines is now derived from the figc4.7 redraw. The
+    // _F_0 / _F_1 names from the prior hand-stubbed list don't exist
+    // any more — Enquiry_Response collapses both into one subroutine.
+    // New names from the redraw: Establish_Extended_Data_Link,
+    // Set_Version_2_0, Set_Version_2_2.
     [Theory]
     [InlineData("Establish_Data_Link")]
+    [InlineData("Establish_Extended_Data_Link")]
     [InlineData("Clear_Exception_Conditions")]
     [InlineData("UI_Check")]
     [InlineData("Select_T1_Value")]
     [InlineData("Check_I_Frame_Acknowledged")]
-    [InlineData("Check_I_Frames_Acknowledged")]
     [InlineData("Check_Need_For_Response")]
     [InlineData("Transmit_Enquiry")]
     [InlineData("Invoke_Retransmission")]
     [InlineData("N_r_Error_Recovery")]
+    [InlineData("Enquiry_Response")]
+    [InlineData("Set_Version_2_0")]
+    [InlineData("Set_Version_2_2")]
+    // Legacy aliases — kept as no-op stubs for back-compat with
+    // pre-redraw YAML pages.
     [InlineData("Enquiry_Response_F_0")]
     [InlineData("Enquiry_Response_F_1")]
     public void Known_Subroutine_Verbs_Are_Stubbed_NoOp_By_Default(string verb)

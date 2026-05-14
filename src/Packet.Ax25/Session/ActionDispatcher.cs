@@ -55,6 +55,15 @@ public sealed class ActionDispatcher : IActionDispatcher
     private readonly Action<InternalSignal> sendInternal;
     private readonly ISubroutineRegistry subroutines;
 
+    /// <summary>
+    /// The subroutine registry this dispatcher consults when a
+    /// <c>kind: subroutine</c> action fires. Exposed so callers (e.g.
+    /// <see cref="Ax25Session"/>) can wire a <see cref="DefaultSubroutineRegistry"/>
+    /// with the guard evaluator it needs to walk
+    /// <see cref="SubroutineSpec"/> paths.
+    /// </summary>
+    public ISubroutineRegistry Subroutines => subroutines;
+
     /// <summary>Default acknowledgement timer (T1).</summary>
     public TimeSpan T1Duration { get; init; } = TimeSpan.FromMilliseconds(3000);
 
@@ -430,6 +439,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // real action chains. Tests can register custom impls to
             // observe / mock subroutine invocations.
             case "Establish_Data_Link":            subroutines.Invoke("Establish_Data_Link", tx); break;
+            case "Establish_Extended_Data_Link":   subroutines.Invoke("Establish_Extended_Data_Link", tx); break;
             case "Clear_Exception_Conditions":     subroutines.Invoke("Clear_Exception_Conditions", tx); break;
             case "UI_Check":                       subroutines.Invoke("UI_Check", tx); break;
             case "Select_T1_Value":                subroutines.Invoke("Select_T1_Value", tx); break;
@@ -439,6 +449,15 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "Transmit_Enquiry":               subroutines.Invoke("Transmit_Enquiry", tx); break;
             case "Invoke_Retransmission":          subroutines.Invoke("Invoke_Retransmission", tx); break;
             case "N_r_Error_Recovery":             subroutines.Invoke("N_r_Error_Recovery", tx); break;
+            case "Enquiry_Response":               subroutines.Invoke("Enquiry_Response", tx); break;
+            case "Set_Version_2_0":                subroutines.Invoke("Set_Version_2_0", tx); break;
+            case "Set_Version_2_2":                subroutines.Invoke("Set_Version_2_2", tx); break;
+            // Legacy names that still appear in connected.sdl.yaml — kept
+            // distinct from Enquiry_Response so existing tests / transitions
+            // continue to record them under their own names. The registry
+            // adds them as no-op stubs alongside the generated specs; a
+            // follow-up PR can update connected.sdl.yaml to call
+            // Enquiry_Response directly and retire these.
             case "Enquiry_Response_F_0":           subroutines.Invoke("Enquiry_Response_F_0", tx); break;
             case "Enquiry_Response_F_1":           subroutines.Invoke("Enquiry_Response_F_1", tx); break;
 

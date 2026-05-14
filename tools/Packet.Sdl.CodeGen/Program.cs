@@ -12,9 +12,10 @@ namespace Packet.Sdl.CodeGen;
 
 internal static class Program
 {
-    private static readonly Template CodeTemplate    = LoadTemplate("code.scriban-cs");
-    private static readonly Template TestsTemplate   = LoadTemplate("tests.scriban-cs");
-    private static readonly Template MermaidTemplate = LoadTemplate("mermaid.scriban-mmd");
+    private static readonly Template CodeTemplate        = LoadTemplate("code.scriban-cs");
+    private static readonly Template TestsTemplate       = LoadTemplate("tests.scriban-cs");
+    private static readonly Template MermaidTemplate     = LoadTemplate("mermaid.scriban-mmd");
+    private static readonly Template SubroutinesTemplate = LoadTemplate("subroutines.scriban-cs");
 
     private static readonly HashSet<string> ValidActionKinds = new(
         new[] { "signal_upper", "signal_lower", "processing", "subroutine", "internal_out" },
@@ -65,19 +66,19 @@ internal static class Program
         var events = LoadEventCatalog(Path.Combine(inDir, "events.yaml"));
         var actions = LoadActionCatalog(Path.Combine(inDir, "actions.yaml"));
 
-        // Subroutine pages (figc4.7-style) use a different schema and
-        // are consumed by separate codegen logic (TODO). For now, skip
-        // them with a notice so the existing state-machine codegen
-        // doesn't trip on the missing `state:` / `transitions:` fields.
+        // Split YAML files into state-machine pages (sdl-machine schema)
+        // and subroutine pages (sdl-subroutines schema). Both schemas use
+        // the *.sdl.yaml extension; IsSubroutinePage detects by content.
         var yamlFiles = Directory.EnumerateFiles(inDir, "*.sdl.yaml", SearchOption.AllDirectories)
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToList();
         var pages = new List<SdlPage>(yamlFiles.Count);
+        var subroutinePages = new List<SubroutinePage>();
         foreach (var path in yamlFiles)
         {
             if (IsSubroutinePage(path))
             {
-                Console.WriteLine($"  skip {path}  (subroutine page — codegen integration pending)");
+                subroutinePages.Add(LoadSubroutinePage(path));
                 continue;
             }
             pages.Add(LoadPage(path));
@@ -88,6 +89,11 @@ internal static class Program
         {
             NormaliseActionVerbs(page, actions, errors);
             ValidatePage(page, events, errors);
+        }
+        foreach (var subPage in subroutinePages)
+        {
+            NormaliseSubroutineActionVerbs(subPage, actions, errors);
+            ValidateSubroutinePage(subPage, errors);
         }
         if (errors.Count > 0)
         {
@@ -134,6 +140,18 @@ internal static class Program
             Console.WriteLine($"  ok  {page.SourcePath}  →  {model.ClassName}.{{g.cs,g.Tests.cs,g.mmd}}");
         }
 
+        // Subroutine pages: emit one .g.cs per page (no tests / mermaid).
+        foreach (var subPage in subroutinePages)
+        {
+            var subModel = SubroutinesTemplateModel.From(subPage);
+            var codePath = Path.Combine(outDir, subModel.ClassName + ".g.cs");
+            var codeText = Render(SubroutinesTemplate, subModel);
+            ValidateCSharp(codePath, codeText);
+            WriteIfChanged(codePath, codeText);
+            writtenCode.Add(Path.GetFullPath(codePath));
+            Console.WriteLine($"  ok  {subPage.SourcePath}  →  {subModel.ClassName}.g.cs  (subroutines)");
+        }
+
         // Tidy stale generated files (someone deleted a *.sdl.yaml).
         CleanStaleFiles(outDir,   "*.g.cs",       writtenCode);
         CleanStaleFiles(testsDir, "*.g.Tests.cs", writtenTests);
@@ -149,7 +167,7 @@ internal static class Program
             }
         }
 
-        Console.WriteLine($"generated {pages.Count} state machine page(s)");
+        Console.WriteLine($"generated {pages.Count} state machine page(s), {subroutinePages.Count} subroutine page(s)");
         return 0;
     }
 
@@ -173,11 +191,13 @@ internal static class Program
         return template;
     }
 
-    private static string Render(Template template, TemplateModel model)
+    private static string Render<T>(Template template, T model)
     {
         // Pass the model through Scriban's POCO support with the snake_case
         // renamer so templates can use page.class_name, t.action_literals,
-        // etc. instead of the C# PascalCase property names.
+        // etc. instead of the C# PascalCase property names. Generic so the
+        // same Render works for state-machine pages (TemplateModel) and
+        // subroutine pages (SubroutinesTemplateModel).
         return template.Render(new { page = model }, member => StandardMemberRenamer.Default(member));
     }
 
@@ -366,6 +386,80 @@ internal static class Program
             if (line.StartsWith("transitions:", StringComparison.Ordinal)) return false;
         }
         return false;
+    }
+
+    private static SubroutinePage LoadSubroutinePage(string path)
+    {
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(LowerCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+        var page = deserializer.Deserialize<SubroutinePage>(File.ReadAllText(path))
+                   ?? throw new InvalidDataException($"could not parse {path}");
+        page.SourcePath = path;
+        return page;
+    }
+
+    /// <summary>
+    /// Normalise action-verb spellings on a subroutine page. Same canonicalisation
+    /// the state-machine page version applies; lifted into a separate method
+    /// because the page types are different.
+    /// </summary>
+    private static void NormaliseSubroutineActionVerbs(SubroutinePage page, ActionCatalog catalog, List<string> errors)
+    {
+        if (catalog.CanonicalLookup.Count == 0) return;
+        foreach (var sub in page.Subroutines)
+        {
+            foreach (var p in sub.Paths)
+            {
+                NormalisePathSteps(page.SourcePath, p.Id, "path", p.Path, catalog, errors);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Structural validation for subroutine pages. Enforces the same
+    /// decision-branch / path-ID rules as state-machine page validation,
+    /// adapted for subroutines (no `on:` event, no `next:` state).
+    /// </summary>
+    private static void ValidateSubroutinePage(SubroutinePage page, List<string> errors)
+    {
+        var loc = page.SourcePath;
+        if (string.IsNullOrWhiteSpace(page.Machine)) errors.Add($"{loc}: missing `machine`");
+        if (page.Source is null)                     errors.Add($"{loc}: missing `source`");
+        if (page.Subroutines.Count == 0)             errors.Add($"{loc}: at least one subroutine required");
+
+        var subNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sub in page.Subroutines)
+        {
+            if (string.IsNullOrWhiteSpace(sub.Name)) { errors.Add($"{loc}: subroutine missing `name`"); continue; }
+            if (!subNames.Add(sub.Name)) errors.Add($"{loc}: duplicate subroutine name `{sub.Name}`");
+
+            var decisionsById = new Dictionary<string, SdlDecision>(StringComparer.Ordinal);
+            foreach (var d in sub.Decisions)
+            {
+                if (string.IsNullOrWhiteSpace(d.Id)) { errors.Add($"{loc}: {sub.Name}: decision missing `id`"); continue; }
+                if (!decisionsById.TryAdd(d.Id, d))  errors.Add($"{loc}: {sub.Name}: duplicate decision id `{d.Id}`");
+                if (string.IsNullOrWhiteSpace(d.Question))  errors.Add($"{loc}: {sub.Name}: decision `{d.Id}` missing `question`");
+                if (string.IsNullOrWhiteSpace(d.Predicate)) errors.Add($"{loc}: {sub.Name}: decision `{d.Id}` missing `predicate`");
+            }
+
+            var pathIds = new HashSet<string>(StringComparer.Ordinal);
+            if (sub.Paths.Count == 0) errors.Add($"{loc}: {sub.Name}: at least one path required");
+            foreach (var p in sub.Paths)
+            {
+                if (string.IsNullOrWhiteSpace(p.Id)) { errors.Add($"{loc}: {sub.Name}: path missing `id`"); continue; }
+                if (!pathIds.Add(p.Id)) errors.Add($"{loc}: {sub.Name}: duplicate path id `{p.Id}`");
+
+                if (p.Path is null || p.Path.Count == 0)
+                {
+                    // A decision-free, action-free path is fine (silent return).
+                    continue;
+                }
+
+                ValidatePathSteps(loc, p.Id, "path", p.Path, decisionsById, errors);
+            }
+        }
     }
 
     private static void ValidatePage(SdlPage page, HashSet<string> events, List<string> errors)
@@ -1008,3 +1102,184 @@ internal sealed record ActionModel(string Verb, string Kind)
 }
 
 internal sealed record LoopModel(int Start, int Length, string Predicate);
+
+// ─── Subroutine page YAML model ────────────────────────────────────────
+
+internal sealed class SubroutinePage
+{
+    public string Machine { get; set; } = "";
+    public SdlSourceYaml? Source { get; set; }
+    [YamlMember(Alias = "pinned_refs", ApplyNamingConventions = false)]
+    public Dictionary<string, SdlPinnedRef>? PinnedRefs { get; set; }
+    public List<SubroutineYamlEntry> Subroutines { get; set; } = new();
+    [YamlIgnore] public string SourcePath { get; set; } = "";
+}
+
+internal sealed class SubroutineYamlEntry
+{
+    public string Name { get; set; } = "";
+    public string? Notes { get; set; }
+    public List<string>? Variables { get; set; }
+    public List<SdlDecision> Decisions { get; set; } = new();
+    public List<SubroutinePathYaml> Paths { get; set; } = new();
+}
+
+internal sealed class SubroutinePathYaml
+{
+    public string Id { get; set; } = "";
+    public List<SdlPathStep> Path { get; set; } = new();
+    public string? Notes { get; set; }
+    public List<SdlReference>? References { get; set; }
+}
+
+// ─── Subroutine page template projection ──────────────────────────────
+
+internal sealed class SubroutinesTemplateModel
+{
+    public string Machine { get; set; } = "";
+    public string ClassName { get; set; } = "";
+    public string SourcePath { get; set; } = "";
+    public string SourceSpec { get; set; } = "";
+    public string SourceFigure { get; set; } = "";
+    public string? SourceUrl { get; set; }
+    public string SourceUrlLiteral { get; set; } = "null";
+    public List<SubroutineModel> Subroutines { get; set; } = new();
+
+    public static SubroutinesTemplateModel From(SubroutinePage page)
+    {
+        // ClassName: derive from the file name so a future second page
+        // (e.g. Link_Mux subroutines) doesn't collide. Use the parent
+        // file stem capitalised.
+        var fileStem = Path.GetFileNameWithoutExtension(page.SourcePath)
+            .Replace(".sdl", string.Empty, StringComparison.Ordinal);
+        var className = TitleSnakeToPascal(page.Machine) + "_" + TitleSnakeToPascal(fileStem);
+
+        return new SubroutinesTemplateModel
+        {
+            Machine          = page.Machine,
+            ClassName        = className,
+            SourcePath       = page.SourcePath,
+            SourceSpec       = page.Source!.Spec,
+            SourceFigure     = page.Source.Figure,
+            SourceUrl        = page.Source.Url,
+            SourceUrlLiteral = page.Source.Url is null ? "null" : TemplateModel.CSharpStringLiteral(page.Source.Url),
+            Subroutines      = page.Subroutines.Select(SubroutineModel.From).ToList(),
+        };
+    }
+
+    private static string TitleSnakeToPascal(string snake)
+    {
+        var parts = snake.Split('_');
+        return string.Concat(parts.Select(p => p.Length == 0 ? p : char.ToUpperInvariant(p[0]) + p[1..]));
+    }
+}
+
+internal sealed class SubroutineModel
+{
+    public string Name { get; set; } = "";
+    public string? Notes { get; set; }
+    public string NotesLiteral { get; set; } = "null";
+    public string ReferencesCsv { get; set; } = "";
+    public List<SubroutinePathModel> Paths { get; set; } = new();
+
+    public static SubroutineModel From(SubroutineYamlEntry s)
+    {
+        var decisionsById = s.Decisions.ToDictionary(d => d.Id, d => d, StringComparer.Ordinal);
+        return new SubroutineModel
+        {
+            Name          = s.Name,
+            Notes         = s.Notes,
+            NotesLiteral  = s.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(s.Notes),
+            ReferencesCsv = "",   // subroutine-level references are rare; emit empty array for now.
+            Paths         = s.Paths.Select(p => SubroutinePathModel.From(p, decisionsById)).ToList(),
+        };
+    }
+}
+
+internal sealed class SubroutinePathModel
+{
+    public string Id { get; set; } = "";
+    public string? Guard { get; set; }
+    public string GuardLiteral { get; set; } = "null";
+    public string? Notes { get; set; }
+    public string NotesLiteral { get; set; } = "null";
+    public string ActionsCsv { get; set; } = "";
+    public string ReferencesCsv { get; set; } = "";
+    public string LoopsCsv { get; set; } = "";
+
+    public static SubroutinePathModel From(SubroutinePathYaml p, IReadOnlyDictionary<string, SdlDecision> decisionsById)
+    {
+        // Same path-walking logic as TransitionModel — guard is the AND of
+        // decision-branch outcomes; actions are accumulated; loops are
+        // recorded as ranges into the flat action list.
+        var predicates = new List<string>();
+        var actions = new List<ActionModel>();
+        var loops = new List<LoopModel>();
+        WalkSubroutinePath(p.Path, decisionsById, predicates, actions, loops);
+
+        var guard = predicates.Count == 0 ? null : string.Join(" and ", predicates);
+        var refs = (p.References ?? new()).Select(r =>
+            "new ImplementationReference(" +
+            $"Source: {TemplateModel.CSharpStringLiteral(r.Source)}, " +
+            $"Cite: {NullOrLiteralStatic(r.Cite)}, " +
+            $"Quote: {NullOrLiteralStatic(r.Quote)}, " +
+            $"Path: {NullOrLiteralStatic(r.Path)}, " +
+            $"Function: {NullOrLiteralStatic(r.Function)}, " +
+            $"Line: {(r.Line is null ? "null" : r.Line.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))}, " +
+            $"Note: {NullOrLiteralStatic(r.Note)})").ToList();
+
+        return new SubroutinePathModel
+        {
+            Id            = p.Id,
+            Guard         = guard,
+            GuardLiteral  = guard is null ? "null" : TemplateModel.CSharpStringLiteral(guard),
+            Notes         = p.Notes,
+            NotesLiteral  = p.Notes is null ? "null" : TemplateModel.CSharpStringLiteral(p.Notes),
+            ActionsCsv    = string.Join(", ", actions.Select(a =>
+                $"new ActionStep({TemplateModel.CSharpStringLiteral(a.Verb)}, {TemplateModel.KindEnumLiteral(a.Kind)})")),
+            ReferencesCsv = string.Join(", ", refs),
+            LoopsCsv      = string.Join(", ", loops.Select(l =>
+                $"new LoopRange({l.Start.ToString(System.Globalization.CultureInfo.InvariantCulture)}, " +
+                $"{l.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)}, " +
+                $"{TemplateModel.CSharpStringLiteral(l.Predicate)})")),
+        };
+    }
+
+    private static string NullOrLiteralStatic(string? s) =>
+        s is null ? "null" : TemplateModel.CSharpStringLiteral(s);
+
+    private static void WalkSubroutinePath(
+        List<SdlPathStep> path,
+        IReadOnlyDictionary<string, SdlDecision> decisionsById,
+        List<string> predicates,
+        List<ActionModel> actions,
+        List<LoopModel> loops)
+    {
+        foreach (var step in path)
+        {
+            if (!string.IsNullOrWhiteSpace(step.Decision))
+            {
+                var d = decisionsById[step.Decision!];
+                predicates.Add(step.Branch == "Yes" ? d.Predicate : "not " + d.Predicate);
+            }
+            else if (!string.IsNullOrWhiteSpace(step.LoopWhile))
+            {
+                var loopGuard = decisionsById[step.LoopWhile!];
+                var startIndex = actions.Count;
+                foreach (var bodyStep in step.Body!)
+                {
+                    if (!string.IsNullOrWhiteSpace(bodyStep.Action))
+                    {
+                        actions.Add(new ActionModel(bodyStep.Action!, bodyStep.Kind!));
+                    }
+                }
+                var length = actions.Count - startIndex;
+                loops.Add(new LoopModel(startIndex, length, loopGuard.Predicate));
+            }
+            else
+            {
+                actions.Add(new ActionModel(step.Action!, step.Kind!));
+            }
+        }
+    }
+}
