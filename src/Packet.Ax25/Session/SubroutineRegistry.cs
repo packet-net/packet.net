@@ -57,12 +57,29 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     private GuardEvaluator? wiredGuards;
 
     /// <summary>
+    /// Legacy subroutine names that remain referenced by older
+    /// state-machine YAML pages (e.g. <c>connected.sdl.yaml</c>'s
+    /// <c>Enquiry_Response_F_0</c> / <c>_F_1</c>) but don't have their
+    /// own entries in the redrawn <c>figc4.7</c>. Kept as no-op stubs
+    /// for back-compat; they'll be retired when the referring state
+    /// pages are re-transcribed to use the canonical name.
+    /// </summary>
+    private static readonly string[] LegacyAliases =
+    {
+        "Enquiry_Response_F_0",
+        "Enquiry_Response_F_1",
+    };
+
+    /// <summary>
     /// Canonical names of every subroutine the transcribed pages reference.
     /// Sourced from the generated <see cref="DataLink_Subroutines.Subroutines"/>
-    /// list so transcription updates flow through automatically.
+    /// list plus the legacy aliases — transcription updates flow through
+    /// automatically.
     /// </summary>
     public static IReadOnlyList<string> KnownSubroutines { get; } =
-        DataLink_Subroutines.Subroutines.Select(s => s.Name).ToList();
+        DataLink_Subroutines.Subroutines.Select(s => s.Name)
+            .Concat(LegacyAliases)
+            .ToList();
 
     /// <summary>
     /// Construct a registry pre-populated with no-op stubs for every name
@@ -87,6 +104,13 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         foreach (var spec in specs)
         {
             subroutines[spec.Name] = _ => { /* no-op until Wire() is called */ };
+        }
+        // Legacy aliases (e.g. Enquiry_Response_F_0 / _F_1) — no spec body
+        // in the redrawn figc4.7, but still referenced by older
+        // transcriptions. Always no-op even after Wire.
+        foreach (var alias in LegacyAliases)
+        {
+            subroutines[alias] = _ => { /* legacy alias — no walker */ };
         }
     }
 

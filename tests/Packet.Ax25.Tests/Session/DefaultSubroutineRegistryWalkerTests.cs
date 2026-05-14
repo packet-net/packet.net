@@ -19,10 +19,12 @@ namespace Packet.Ax25.Tests.Session;
 public class DefaultSubroutineRegistryWalkerTests
 {
     [Fact]
-    public void KnownSubroutines_Reflects_Generated_Specs()
+    public void KnownSubroutines_Reflects_Generated_Specs_Plus_Legacy_Aliases()
     {
-        // figc4.7 transcription declares 13 subroutines.
-        DefaultSubroutineRegistry.KnownSubroutines.Should().HaveCount(13);
+        // figc4.7 redraw declares 13 subroutines; the registry also exposes
+        // 2 legacy aliases (Enquiry_Response_F_0 / _F_1) referenced by
+        // pre-redraw YAML pages.
+        DefaultSubroutineRegistry.KnownSubroutines.Should().HaveCount(15);
         DefaultSubroutineRegistry.KnownSubroutines.Should().Contain(new[]
         {
             "N_r_Error_Recovery",
@@ -31,6 +33,8 @@ public class DefaultSubroutineRegistryWalkerTests
             "Set_Version_2_2",
             "Establish_Data_Link",
             "Establish_Extended_Data_Link",
+            "Enquiry_Response_F_0",   // legacy alias
+            "Enquiry_Response_F_1",   // legacy alias
         });
     }
 
