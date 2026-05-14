@@ -824,6 +824,35 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: item report decoder (`)` DTI)
+
+Companion to the object decoder. APRS101 §11 items are variable-length
+(3–9 char) names terminated by `!` (live) or `_` (killed), followed
+directly by uncompressed or compressed position bytes. No timestamp.
+
+Implementation:
+
+- `AprsItem` value type — `Name`, `IsAlive`, `Position`.
+- `AprsItemDecoder.TryDecode` — scans for the first `!` or `_` byte
+  in the name-length window [3, 9] (per spec these characters cannot
+  appear inside an item name), then hands the remaining bytes to
+  `AprsPositionDecoder.TryDecodePayload` (the no-DTI-stripping entry
+  point added for objects).
+- `DifferentialMode` extended: DTI `)` → item decoder, `;` → object,
+  else position.
+
+Live-corpus result (now 1.95 M rows, was 1.93 M):
+
+| Bucket | % |
+|---|---:|
+| `BothOkMatch` | **98.9%** |
+| `BothFailed` | 0.7% |
+| `OnlyDirewolf` | 0.3% |
+| `OnlyUs` | 0.1% |
+| `BothOkMismatch` | 1 row |
+
+11 new tests; full suite green.
+
 ### 2026-05-14 — aprs: object report decoder (`;` DTI)
 
 New `AprsObject` + `AprsObjectDecoder` per APRS101 §11. Layout:

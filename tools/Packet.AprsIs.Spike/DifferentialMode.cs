@@ -86,7 +86,8 @@ public static class DifferentialMode
                      '3D',  -- '=' no-timestamp, msg-capable
                      '40',  -- '@' timestamped, msg-capable
                      '2F',  -- '/' timestamped, no-msg
-                     '3B')  -- ';' object report
+                     '3B',  -- ';' object report
+                     '29')  -- ')' item report
             """;
 
             await using var rdr = await cmd.ExecuteReaderAsync();
@@ -99,9 +100,10 @@ public static class DifferentialMode
                 string decodedType = rdr.IsDBNull(4) ? "" : rdr.GetString(4);
                 _ = rdr.GetBoolean(5);  // used_rewrite — reserved for future per-bucket attribution
 
-                // Dispatch by DTI: objects (DTI `;`) go through the object
-                // decoder; position-class DTIs (! = @ /) go through the
-                // position decoder. Both produce an AprsPosition we can
+                // Dispatch by DTI: objects (`;`) and items (`)`) have
+                // their own decoders; position-class DTIs (! = @ /) go
+                // through the position decoder. All three produce an
+                // AprsPosition we can
                 // compare against direwolf's lat/lon.
                 bool usOk;
                 AprsPosition ours;
@@ -109,6 +111,11 @@ public static class DifferentialMode
                 {
                     usOk = AprsObjectDecoder.TryDecode(info, out var obj);
                     ours = usOk ? obj.Position : default;
+                }
+                else if (info.Length > 0 && info[0] == (byte)')')
+                {
+                    usOk = AprsItemDecoder.TryDecode(info, out var itm);
+                    ours = usOk ? itm.Position : default;
                 }
                 else
                 {
