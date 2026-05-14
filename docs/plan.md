@@ -824,6 +824,29 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: status report decoder (`>` DTI)
+
+`AprsStatus` + `AprsStatusDecoder` per APRS101 §16.
+
+Layout:
+- `>` DTI
+- Optional 7-byte DHM-zulu timestamp (`DDHHMMz`) — and *only* DHM-zulu
+  per §16. DHM-local (`/`) and HMS (`h`) are NOT valid status
+  timestamps even though they're allowed in position and object
+  reports.
+- Free-form text up to 62 chars (or 55 if a timestamp is present)
+
+We decode permissively: spec says ASCII-only, but the corpus has
+plenty of UTF-8 (Chinese-station beacons etc.); decode UTF-8 with the
+replacement character for invalid bytes, strip trailing CR/LF/space.
+
+7.3% of the corpus is `>` DTI — no direwolf differential A/B yet
+(direwolf's decode_aprs renders status but doesn't surface a "did it
+parse" signal we can compare against the way lat/lon serves for
+positions); will revisit if there's an obvious comparison surface.
+
+11 new tests; full suite green.
+
 ### 2026-05-14 — aprs: item report decoder (`)` DTI)
 
 Companion to the object decoder. APRS101 §11 items are variable-length
