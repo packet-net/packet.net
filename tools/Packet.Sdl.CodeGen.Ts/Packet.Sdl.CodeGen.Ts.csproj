@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Packet.Sdl.CodeGen.Ts</RootNamespace>
+    <Description>TypeScript emitter backend for the SDL codegen IR. Hand-rolled string emission; produces .g.ts files that compile against the hand-written runtime types in ts-spec/src/ax25sdl/types.ts.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Sdl.IR\Packet.Sdl.IR.csproj" />
+  </ItemGroup>
+
+</Project>

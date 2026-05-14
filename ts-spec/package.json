@@ -1,0 +1,27 @@
+{
+  "name": "ax25sdl",
+  "version": "0.0.0",
+  "description": "AX.25 v2.2 SDL specification as TypeScript data structures. Generated from spec-sdl/.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}

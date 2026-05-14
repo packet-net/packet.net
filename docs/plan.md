@@ -824,6 +824,71 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl: TypeScript emitter + ts-spec/ npm package (Tier 1c)
+
+Added a third backend on top of the IR refactor. The codegen IR now
+fans out to C#, Go, and TypeScript in a single `dotnet run --project
+tools/Packet.Sdl.CodeGen` invocation; all three stay in lockstep by
+construction.
+
+**New projects:**
+
+- **`tools/Packet.Sdl.CodeGen.Ts`** — TypeScript emitter. Hand-rolled
+  string emission (same approach as the Go emitter). Public API:
+  `TsEmitter.EmitStatePage` / `EmitSubroutinePage` /
+  `EmitIndex` (the index re-exports every page so consumers can
+  `import { DataLinkConnected } from "ax25sdl"`).
+
+- **`ts-spec/`** — new npm package (`name: ax25sdl`, `type: module`,
+  Node 22+, ESM-only, NodeNext module resolution). Hand-written
+  `src/ax25sdl/types.ts` provides the runtime interfaces (`StatePage`,
+  `SubroutinesPage`, `TransitionSpec`, `SubroutinePath`,
+  `SubroutineSpec`, `ActionStep`, `LoopRange`,
+  `ImplementationReference`, `SdlSource`, `ActionKind`).
+  `ActionKind` is a string-literal union (`"signal_upper" | ...`)
+  rather than an enum — narrower types in IDE autocomplete and no
+  ergonomic cost given the values come from spec-sdl/actions.yaml.
+
+**Orchestrator changes** (`tools/Packet.Sdl.CodeGen/Program.cs`):
+
+- New `--ts <dir>` flag; auto-detects to `ts-spec/src/ax25sdl` when
+  that directory exists.
+- After emitting all pages, also generates `index.ts` (re-exports
+  every page + the runtime types). The stale-file pass scopes its
+  delete on `*.g.ts`, leaving `index.ts` and `types.ts` alone.
+
+**CI** (`.github/workflows/ci.yml`):
+
+- `sdl-codegen-discipline` job now installs Node 22 via
+  `actions/setup-node@v4` with npm caching, and asserts no drift on
+  `ts-spec/src/ax25sdl` alongside the C# / Go directories.
+- Added a `ts-spec typecheck + test` step that runs `npm ci`,
+  `npm run typecheck` (tsc --noEmit, strict mode), and `npm test`
+  (vitest run).
+
+**Smoke tests** (`ts-spec/src/ax25sdl/sdl.test.ts`):
+
+- Every state-machine page has non-empty `transitions`.
+- figc4.7 has the expected 13 subroutines and includes
+  `Establish_Data_Link`.
+- Every generated `ActionStep.kind` value is in the declared
+  `ActionKind` union (belt-and-braces — the type system already
+  enforces this at compile time).
+
+**Why vitest, not `node --test`.** Ubuntu's packaged Node 22 binary
+is built without TypeScript stripping (`ERR_NO_TYPESCRIPT`). Vitest
+handles `.ts` via esbuild transparently, runs fast, and is a single
+top-level devDep. Going with `tsx` + `node --test` would have needed
+a wrapper layer for similar ergonomics.
+
+**What's not in scope.** Same as Go: this is **specification data**,
+not a runtime. Building a TypeScript packet engine on top requires
+binding predicates and action verbs to TS behaviour and wiring to
+frame I/O — WebSerial to a NinoTNC, AGWPE/AX.UDP over WebSocket, or
+an audio-DSP softmodem (ambitious). The codegen IR now demonstrably
+supports three languages; adding a runtime in any of them is a
+separate effort that benefits from the same single source of truth.
+
 ### 2026-05-14 — sdl: Go emitter + go-spec/ module (Tier 1b)
 
 Added a second backend on top of the IR refactor, proving the codegen

@@ -133,9 +133,10 @@ dotnet build
 dotnet test --filter "Category!=HardwareLoop&Category!=Interop"
 
 # Regenerate SDL state machines after editing a *.sdl.yaml.
-# Emits C# under src/Packet.Ax25.Sdl + Go under go-spec/ax25sdl in
-# one pass. Requires `gofmt` on PATH if go-spec/ax25sdl/ exists
-# (install Go with `sudo apt-get install -y golang-go`).
+# Emits C# under src/Packet.Ax25.Sdl, Go under go-spec/ax25sdl, and
+# TypeScript under ts-spec/src/ax25sdl in one pass. Requires `gofmt`
+# on PATH if go-spec/ax25sdl/ exists. (`sudo apt-get install -y
+# golang-go nodejs npm` covers both.)
 dotnet run --project tools/Packet.Sdl.CodeGen -- \
   --in spec-sdl \
   --out src/Packet.Ax25.Sdl \
@@ -143,6 +144,9 @@ dotnet run --project tools/Packet.Sdl.CodeGen -- \
 
 # Verify the generated Go compiles + passes gofmt
 cd go-spec && go build ./... && go vet ./... && go test ./... && gofmt -l .
+
+# Verify the generated TS typechecks + tests pass
+cd ts-spec && npm ci && npm run typecheck && npm test
 
 # Bring up the interop stack (LinBPQ + Xrouter + net-sim)
 docker compose -f docker/compose.interop.yml up -d --wait
@@ -200,10 +204,12 @@ spec-sdl/events.yaml             canonical event catalog
 tools/Packet.Sdl.IR/             language-neutral IR + validation
 tools/Packet.Sdl.CodeGen.Csharp/ C# emitter (Scriban + Roslyn)
 tools/Packet.Sdl.CodeGen.Go/     Go emitter (hand-rolled, gofmt-finalised)
+tools/Packet.Sdl.CodeGen.Ts/     TypeScript emitter (hand-rolled)
 tools/Packet.Sdl.CodeGen/        thin orchestrator (driver)
 tools/Packet.Sdl.Lint/           standalone schema lint
 tools/Packet.*.Spike/            scratch experiments
 go-spec/                         Go module — GENERATED .g.go + hand-written types.go
+ts-spec/                         npm package — GENERATED .g.ts + hand-written types.ts
 docker/                          interop compose stack + fixtures
 docs/                            plan, ADRs, primers
 .github/workflows/               CI
@@ -212,11 +218,12 @@ docs/                            plan, ADRs, primers
 ## Things to avoid
 
 - Don't hand-edit `src/Packet.Ax25.Sdl/*.g.cs`,
-  `tests/Packet.Ax25.Conformance.Tests/*.g.Tests.cs`, or
-  `go-spec/ax25sdl/*.g.go`. They are generated. Edit the corresponding
-  `*.sdl.yaml` and rerun the codegen. (`go-spec/ax25sdl/types.go` IS
-  hand-written — keep it in sync with the C# types in
-  `src/Packet.Ax25.Sdl/`.)
+  `tests/Packet.Ax25.Conformance.Tests/*.g.Tests.cs`,
+  `go-spec/ax25sdl/*.g.go`, or `ts-spec/src/ax25sdl/*.g.ts`. They are
+  generated. Edit the corresponding `*.sdl.yaml` and rerun the codegen.
+  (`go-spec/ax25sdl/types.go`, `ts-spec/src/ax25sdl/types.ts`, and
+  `ts-spec/src/ax25sdl/*.test.ts` ARE hand-written — keep the type
+  files in sync with the C# types in `src/Packet.Ax25.Sdl/`.)
 - Don't add `[Version=...]` on `<PackageReference>` items — CPM enforces a
   central version table.
 - Don't write `appsettings.Local.json` to git. It's `.gitignore`d for a

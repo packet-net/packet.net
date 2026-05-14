@@ -74,13 +74,24 @@ jobs:
         # Go on PATH, emitted Go would drift from the committed copy and
         # the no-drift assert below would fail.
 
+      - name: setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ts-spec/package-lock.json
+        # Codegen emits TS alongside C#/Go when ts-spec/src/ax25sdl/
+        # exists; we don't need npm at codegen time (the emitter is
+        # pure C#), but we DO need Node for the typecheck + test steps
+        # below.
+
       - name: run codegen
         run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --in spec-sdl --out src/Packet.Ax25.Sdl --tests tests/Packet.Ax25.Conformance.Tests
         continue-on-error: true # Phase 0: codegen exists but is still a stub
 
       - name: assert no drift
         run: |
-          if ! git diff --exit-code -- src/Packet.Ax25.Sdl tests/Packet.Ax25.Conformance.Tests spec-sdl/'**/*.g.mmd' go-spec/ax25sdl; then
+          if ! git diff --exit-code -- src/Packet.Ax25.Sdl tests/Packet.Ax25.Conformance.Tests spec-sdl/'**/*.g.mmd' go-spec/ax25sdl ts-spec/src/ax25sdl; then
             echo "::error::SDL codegen produced uncommitted output. Run the codegen tool locally and commit the regenerated files."
             exit 1
           fi
@@ -97,3 +108,10 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+
+      - name: ts-spec typecheck + test
+        run: |
+          cd ts-spec
+          npm ci
+          npm run typecheck
+          npm test

@@ -1,5 +1,6 @@
 using Packet.Sdl.CodeGen.Csharp;
 using Packet.Sdl.CodeGen.Go;
+using Packet.Sdl.CodeGen.Ts;
 using Packet.Sdl.IR;
 
 namespace Packet.Sdl.CodeGen;
@@ -22,6 +23,7 @@ internal static class Program
         string testsDir = "tests/Packet.Ax25.Conformance.Tests";
         string? mermaidDir = null;  // null = "alongside the source YAML"
         string? goDir = null;       // null = don't emit Go
+        string? tsDir = null;       // null = don't emit TS
 
         for (int i = 0; i < args.Length - 1; i++)
         {
@@ -32,20 +34,19 @@ internal static class Program
                 case "--tests":   testsDir   = args[++i]; break;
                 case "--mermaid": mermaidDir = args[++i]; break;
                 case "--go":      goDir      = args[++i]; break;
+                case "--ts":      tsDir      = args[++i]; break;
             }
         }
 
-        // Default: emit Go when the conventional package directory
+        // Default: emit Go / TS when the conventional package directory
         // exists, so a normal `dotnet run --project tools/Packet.Sdl.CodeGen`
-        // keeps both backends in sync without an explicit flag.
-        if (goDir is null && Directory.Exists("go-spec/ax25sdl"))
-        {
-            goDir = "go-spec/ax25sdl";
-        }
+        // keeps every backend in sync without an explicit flag.
+        if (goDir is null && Directory.Exists("go-spec/ax25sdl")) goDir = "go-spec/ax25sdl";
+        if (tsDir is null && Directory.Exists("ts-spec/src/ax25sdl")) tsDir = "ts-spec/src/ax25sdl";
 
         try
         {
-            return Run(inDir, outDir, testsDir, mermaidDir, goDir);
+            return Run(inDir, outDir, testsDir, mermaidDir, goDir, tsDir);
         }
         catch (Exception ex)
         {
@@ -54,7 +55,7 @@ internal static class Program
         }
     }
 
-    private static int Run(string inDir, string outDir, string testsDir, string? mermaidDir, string? goDir)
+    private static int Run(string inDir, string outDir, string testsDir, string? mermaidDir, string? goDir, string? tsDir)
     {
         if (!Directory.Exists(inDir))
         {
@@ -122,12 +123,20 @@ internal static class Program
         var writtenTests   = new HashSet<string>(StringComparer.Ordinal);
         var writtenMermaid = new HashSet<string>(StringComparer.Ordinal);
         var writtenGo      = new HashSet<string>(StringComparer.Ordinal);
+        var writtenTs      = new HashSet<string>(StringComparer.Ordinal);
+
+        // Collect resolved IR so EmitIndex (TS) sees the full set in
+        // deterministic order at the end of the run.
+        var resolvedPages = new List<ResolvedPage>(pages.Count);
+        var resolvedSubPages = new List<ResolvedSubroutinesPage>(subroutinePages.Count);
 
         if (goDir is not null) Directory.CreateDirectory(goDir);
+        if (tsDir is not null) Directory.CreateDirectory(tsDir);
 
         foreach (var page in pages)
         {
             var resolved = Resolver.Resolve(page);
+            resolvedPages.Add(resolved);
 
             // Class name comes back from the emitter so we don't need to
             // duplicate the snake-to-Pascal naming convention here.
@@ -158,13 +167,22 @@ internal static class Program
                 writtenGo.Add(Path.GetFullPath(goPath));
             }
 
-            Console.WriteLine($"  ok  {page.SourcePath}  →  {emission.ClassName}.{{g.cs,g.Tests.cs,g.mmd}}{(goDir is not null ? " + .g.go" : "")}");
+            if (tsDir is not null)
+            {
+                var ts = TsEmitter.EmitStatePage(resolved);
+                var tsPath = Path.Combine(tsDir, ts.FileName);
+                WriteIfChanged(tsPath, ts.Content);
+                writtenTs.Add(Path.GetFullPath(tsPath));
+            }
+
+            Console.WriteLine($"  ok  {page.SourcePath}  →  {emission.ClassName}.{{g.cs,g.Tests.cs,g.mmd}}{(goDir is not null ? " + .g.go" : "")}{(tsDir is not null ? " + .g.ts" : "")}");
         }
 
         // Subroutine pages: one .g.cs per page (no tests / mermaid).
         foreach (var subPage in subroutinePages)
         {
             var resolved = Resolver.Resolve(subPage);
+            resolvedSubPages.Add(resolved);
             var probeModel = CsharpSubroutinesModel.From(resolved);
             var codePath = Path.Combine(outDir, probeModel.ClassName + ".g.cs");
             var emission = CsharpEmitter.EmitSubroutinePage(resolved, codePath);
@@ -179,7 +197,26 @@ internal static class Program
                 writtenGo.Add(Path.GetFullPath(goPath));
             }
 
-            Console.WriteLine($"  ok  {subPage.SourcePath}  →  {emission.ClassName}.g.cs  (subroutines){(goDir is not null ? " + .g.go" : "")}");
+            if (tsDir is not null)
+            {
+                var ts = TsEmitter.EmitSubroutinePage(resolved);
+                var tsPath = Path.Combine(tsDir, ts.FileName);
+                WriteIfChanged(tsPath, ts.Content);
+                writtenTs.Add(Path.GetFullPath(tsPath));
+            }
+
+            Console.WriteLine($"  ok  {subPage.SourcePath}  →  {emission.ClassName}.g.cs  (subroutines){(goDir is not null ? " + .g.go" : "")}{(tsDir is not null ? " + .g.ts" : "")}");
+        }
+
+        // TS package needs an index.ts that re-exports every page so
+        // consumers can `import { DataLinkConnected } from "ax25sdl"`.
+        // Go doesn't need this — every var declared in a package is
+        // visible from the package namespace already.
+        if (tsDir is not null)
+        {
+            var indexPath = Path.Combine(tsDir, "index.ts");
+            WriteIfChanged(indexPath, TsEmitter.EmitIndex(resolvedPages, resolvedSubPages));
+            writtenTs.Add(Path.GetFullPath(indexPath));
         }
 
         // Tidy stale generated files (someone deleted a *.sdl.yaml).
@@ -201,8 +238,15 @@ internal static class Program
             CleanStaleFiles(goDir, "*.g.go", writtenGo);
             RunGofmt(goDir);
         }
+        if (tsDir is not null)
+        {
+            // index.ts is generated too; the CleanStaleFiles pass scopes
+            // by *.g.ts so it leaves index.ts (and types.ts) alone.
+            CleanStaleFiles(tsDir, "*.g.ts", writtenTs);
+        }
 
-        Console.WriteLine($"generated {pages.Count} state machine page(s), {subroutinePages.Count} subroutine page(s){(goDir is not null ? " (+ Go)" : "")}");
+        var extras = (goDir is not null ? " (+ Go)" : "") + (tsDir is not null ? " (+ TS)" : "");
+        Console.WriteLine($"generated {pages.Count} state machine page(s), {subroutinePages.Count} subroutine page(s){extras}");
         return 0;
     }
 
