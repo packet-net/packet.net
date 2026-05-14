@@ -824,6 +824,32 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — bpq: corpus mining findings (first slice)
+
+New [`docs/bpq-corpus-findings-2026-05-14.md`](bpq-corpus-findings-2026-05-14.md)
+analyses the ~36 h BPQ MQTT corpus we have so far. Headlines:
+
+- **Connected-mode shapes in the wild**: SABM/UA + I/RR + REJ +
+  DISC/UA, all mod-8, paclen=256, window=7. No SREJ, no SABME, no
+  segmentation observed.
+- **REJ behaviour**: all 80 REJ frames came from one lossy session;
+  the N(r) distribution is flat across mod-8 → random RF loss, not
+  a specific-N(s) pathology.
+- **XID parameters**: `Paclen=256 Window=7` universal across all 45
+  observed peer pairs; Compress flag varies.
+- **Retry counts are huge**: BPQ retried SABM 212 times over 9.6 h
+  on one pair before completing. Our session machine should not
+  assume a small bound.
+- **No PID 0x08 segmented frames** in this corpus — our segment path
+  needs synthetic coverage (no live data is going to exercise it).
+- **No ACKMODE TX-complete echoes** in MQTT — the plugin publishes
+  the data frame but not the echo. Can't measure host↔TNC timing
+  from MQTT alone.
+
+The next-collection targets section in the findings file lists what
+we still need to observe in the wild (high-throughput segmenting
+nodes, SREJ-capable peers, mod-128 sessions).
+
 ### 2026-05-14 — aprs: Mic-E decoder (`` ` `` / `'` DTI)
 
 `AprsMicE` + `AprsMicEDecoder` per APRS101 §10. Mic-E is the only
