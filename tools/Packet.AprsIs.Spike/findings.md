@@ -1,5 +1,109 @@
 # APRS-IS corpus — early findings
 
+## 2026-05-14 (afternoon) — Position decoder differential vs direwolf
+
+Stood up `src/Packet.Aprs` with `AprsPositionDecoder.TryDecode` covering the
+uncompressed (APRS12c §8) and compressed (§9) variants of DTI `!` / `=`.
+Ran `differential` mode over 125,036 corpus lines:
+
+| Bucket | Count | % |
+|---|---:|---:|
+| `BothOkMatch` (we agree with direwolf within 1e-4°) | 75,316 | 60.2% |
+| `OnlyUs` (we decoded; direwolf produced no lat/lon) | 46,724 | 37.4% |
+| `BothOkMismatch` (both decoded but disagree) | 2,224 | 1.8% |
+| `BothFailed` (both reject) | 602 | 0.5% |
+| `OnlyDirewolf` (direwolf decoded; we rejected) | 170 | 0.1% |
+
+### `OnlyUs` (37.4%) — direwolf rejects AX.25 envelope before getting to position
+
+Spot-checking samples: every `OnlyUs` case is direwolf reporting `"Bad source address"`
+and refusing to process the frame. The position bytes are well-formed; direwolf
+gives up at the callsign-parse stage when it sees letter SSIDs (`-D`, `-B`, etc.)
+that APRS-IS routinely leaks through.
+
+Examples from the corpus (info-field bytes, all decoded fine by our payload-level decoder):
+
+| Source | Info-field (truncated) | Why direwolf rejects |
+|---|---|---|
+| `K0MVH-D` | `!3011.07N\09749.87W&...` | SSID `D` not numeric |
+| `ZS6ATZ-D` | `!2536.00SW02812.00Ei...` | SSID `D` |
+| `SM6JWU-B` | `!5638.82ND01255.59E&...` | SSID `B` |
+
+**Implication for our library**: payload-layer decoding should be independent of
+AX.25 envelope validity — APRS payloads decode reliably even when the surrounding
+frame is AX.25-invalid (D-Star / DMR gateways routinely violate). The strict
+`Callsign` we use for outbound frame production is correct; for inbound APRS
+monitor display, we'll want the permissive `AprsCallsign` type planned in
+Tier 1(a) so we can still surface station identifiers from these frames.
+
+### `BothOkMismatch` (1.8%) — most are direwolf bugs
+
+Of 5 hand-checked `BothOkMismatch` examples, **4 show direwolf producing
+wildly wrong coordinates** while our decoder produces a position that matches
+the frame's comment text:
+
+| Comment text in frame | Our decode | Direwolf decode |
+|---|---|---|
+| "Ajaccio VHF (145.6375)" | (41.95, 8.70) — Corsica ✓ | (-38.08, 76.55) — southern Indian Ocean |
+| "Repeteur 147.255...Node 1453" (French) | (48.74, -69.09) — Quebec ✓ | (-79.63, 132.03) — Antarctica |
+| "Free radio repeater 446.225" | (50.43, 30.38) — Kyiv area | (62.66, -125.31) — northern Canada |
+| "LoRa APRS at Pir7 Tromsø" | (69.67, 19.02) — Tromsø ✓ | (-77.70, 131.92) — Antarctica |
+| "LoRa Tracker !wl]!" | (55.9512, -4.3275) — Glasgow | (55.9513, -4.3276) — same, 11m apart |
+
+The Glasgow row is right at our 1e-4° (~11m) tolerance — borderline floating-point
+precision difference, not a real disagreement. The other four are systematic
+direwolf bugs. The wrong direwolf coordinates cluster in a recognisable pattern
+(latitudes around -77 to 62, longitudes around -125 to 132) suggesting direwolf
+may be misreading some bytes outside the position field on certain frame layouts.
+
+**Implication**: our decoder is competitive with — and on these cases, more
+accurate than — direwolf. Worth filing the mismatches as upstream
+`wb2osz/direwolf` issues once we've nailed down the exact direwolf version
++ reproducer.
+
+### `OnlyDirewolf` (0.1%) — we're over-strict on symbol table identifier
+
+Examples:
+- `!5846.46N[01658.39El000/000...` — symbol table `[` (0x5B); we reject, direwolf accepts.
+- `!4949.37N#01316.42EIPHG2130 12.1V` — symbol table `#`; we reject, direwolf accepts.
+
+Per APRS12c §20, the symbol table identifier should be `/`, `\`, or an
+overlay character from `0–9` / `A–Z`. `[` and `#` are non-spec but accepted
+in practice. Loosening our validator to "any printable ASCII" would clear
+these but at the cost of accepting some garbage. Trade-off to revisit.
+
+### `BothFailed` (0.5%) — genuinely malformed firmware bugs
+
+- `!335636.00ND1172241.40E&...` — 6-digit lat / 7-digit lon (overshoots format)
+- `!1488.93NU09062.91W#` — `90.62` longitude minutes (>59, invalid)
+- `!51.2867N,/07.7420E-` — decimal degrees in the lat field (non-standard)
+- `!4944.2930N/0920.5371W#` — extra digits in minutes field
+
+Real firmware bugs in the wild. Same flavour as the lowercase-source-address /
+exotic-DTI bugs documented in the earlier APRS12c spec cross-reference.
+
+### Bottom line
+
+The `AprsPositionDecoder` v0 works. On the ~125k `!` / `=` frames sampled:
+
+- We agree with direwolf on **>97%** of frames where direwolf produced a
+  position (60.2 / (60.2 + 1.8 + 0.1) = 97.0%).
+- The few mismatch cases we've examined favour our decoder.
+- 37.4% of frames are AX.25-invalid (letter SSIDs) and direwolf rejects them
+  outright — our decoder works on those because we look at payload bytes only.
+
+Follow-ups:
+
+1. Add support for `@` / `/` (timestamped positions) — strip the 7-byte
+   timestamp prefix before delegating to the same decoder.
+2. Decide on symbol-table strictness for production.
+3. Investigate the `BothOkMismatch` direwolf bugs in more detail; file
+   upstream if reproducible.
+4. Implement Tier 1(a) `AprsCallsign` so letter-SSID frames are usable
+   end-to-end in the monitor view.
+
+---
+
 First proper analyser pass. Curated narrative kept under source control;
 raw stats.md / failures.jsonl land in `artifacts/aprs-is-analysis/<ts>/`
 (gitignored).

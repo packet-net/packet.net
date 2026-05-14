@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
     <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
   </ItemGroup>
 

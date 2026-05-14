@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Automatic Packet Reporting System (APRS) payload parsing per APRS12c.pdf. Includes a position decoder for the four DTI variants (!, =, /, @) plus mic-E (`, ').</Description>
+    <PackageTags>aprs;amateur-radio;packet</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -3,6 +3,7 @@
     <Project Path="src/Packet.Agw/Packet.Agw.csproj" />
     <Project Path="src/Packet.Ax25.Sdl/Packet.Ax25.Sdl.csproj" />
     <Project Path="src/Packet.Ax25/Packet.Ax25.csproj" />
+    <Project Path="src/Packet.Aprs/Packet.Aprs.csproj" />
     <Project Path="src/Packet.Axudp/Packet.Axudp.csproj" />
     <Project Path="src/Packet.Core/Packet.Core.csproj" />
     <Project Path="src/Packet.Kiss.NinoTnc/Packet.Kiss.NinoTnc.csproj" />
@@ -19,6 +20,7 @@
     <Project Path="tests/Packet.Ax25.Conformance.Tests/Packet.Ax25.Conformance.Tests.csproj" />
     <Project Path="tests/Packet.Ax25.Properties/Packet.Ax25.Properties.csproj" />
     <Project Path="tests/Packet.Ax25.Tests/Packet.Ax25.Tests.csproj" />
+    <Project Path="tests/Packet.Aprs.Tests/Packet.Aprs.Tests.csproj" />
     <Project Path="tests/Packet.Axudp.Tests/Packet.Axudp.Tests.csproj" />
     <Project Path="tests/Packet.Core.Tests/Packet.Core.Tests.csproj" />
     <Project Path="tests/Packet.Interop.Tests/Packet.Interop.Tests.csproj" />

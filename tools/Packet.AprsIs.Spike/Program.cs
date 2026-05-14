@@ -34,11 +34,12 @@ var opts = ParseArgs(args);
 
 return opts.Mode switch
 {
-    "oneshot"  => await OneshotMode.RunAsync(opts),
-    "collect"  => await CollectMode.RunAsync(opts),
-    "analyse"  => await AnalyseMode.RunAsync(opts),
-    "direwolf" => await DirewolfMode.RunAsync(opts),
-    _          => Fail($"unknown mode: {opts.Mode}"),
+    "oneshot"      => await OneshotMode.RunAsync(opts),
+    "collect"      => await CollectMode.RunAsync(opts),
+    "analyse"      => await AnalyseMode.RunAsync(opts),
+    "direwolf"     => await DirewolfMode.RunAsync(opts),
+    "differential" => await DifferentialMode.RunAsync(opts),
+    _              => Fail($"unknown mode: {opts.Mode}"),
 };
 
 static int Fail(string msg) { Console.Error.WriteLine($"# {msg}"); return 1; }
