@@ -95,24 +95,35 @@ escape path through the actual driver and modem:
 
 - **30/30 (100 %) round-trip success.** Escape coding is solid.
 
-### Sustained throughput, back-to-back KISS Data submission
+### Sustained throughput, ACK-paced
 
-| Mode | Frames sent | Frames received | Effective B/s | Efficiency |
+20 frames of 200-byte AX.25 INFO sent A→B in ACKMODE: each
+`SendFrameWithAckAsync` awaits the TX-completion echo before the next
+is queued. TXDELAY=5 (50 ms) on every mode.
+
+| Mode | Frames | All ACKed? | Effective B/s | Efficiency |
 |---:|---:|---:|---:|---:|
-| 6 (1200 AFSK AX.25) | 20 | 2 | 121 | 80 % |
-| 7 (1200 AFSK IL2P+CRC) | 20 | 0 | 0 | 0 % |
-| 12 (300 AFSK AX.25) | 20 | 0 | 0 | 0 % |
-| 2 (9600 GFSK IL2P+CRC) | 20 | 0 | 0 | 0 % |
+| 6 (1200 AFSK AX.25) | 20 | yes | 87 | 58 % |
+| 7 (1200 AFSK IL2P+CRC) | 20 | yes | 78 | 52 % |
+| 12 (300 AFSK AX.25) | 20 | yes | 34 | 91 % |
+| 2 (9600 GFSK IL2P+CRC) | 20 | yes | 346 | 29 % |
 
-**Finding:** rapid-fire KISS Data submission to the TNC does **not**
-result in rapid air transmission — the TNC silently queues/drops
-without the host knowing. The session-layer integration must default
-to ACK-paced TX (each frame's `SendFrameWithAckAsync` awaits the
-TX-completion echo before the next one is queued).
+**Finding:** the ACK-pacing pattern is the right one for the
+session-layer integration. Every frame ACKs on the first try at
+TXDELAY=50 ms, so the only overhead per frame is the TX-DELAY +
+slot-time + per-frame ACK-echo round-trip. Mode 12 (300 AFSK)
+shows the best efficiency because its per-frame air time is large
+relative to that fixed overhead; mode 2 (9600 GFSK) shows the
+lowest because the per-frame air time is much shorter than the
+fixed overhead.
 
-The 80 % efficiency on mode 6 is misleading: only 2 of 20 frames got
-through, but the test counted unique bodies received and divided by
-elapsed wall-clock. The other three modes lost every frame.
+**Earlier finding, retracted:** a non-paced version of this test
+bursted Data frames without awaiting completion; on three of four
+modes it delivered ~0 % of the frames because the TNC silently
+queued and (under sufficient pressure) dropped them. That number is
+**not** representative of the modem's actual throughput — it's a
+property of unmanaged-queue behaviour. The session-layer integration
+must use ACK-pacing or some other queue-depth control.
 
 ### High-volume stress, ACK-paced (mode 6, TXDELAY=5)
 

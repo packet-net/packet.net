@@ -220,12 +220,14 @@ internal static class Soak
 
     private static async Task Throughput(string portA, string portB, ReportSink sink)
     {
-        await sink.WriteLineAsync("## Sustained throughput");
+        await sink.WriteLineAsync("## Sustained throughput (ACK-paced)");
         await sink.WriteLineAsync();
-        await sink.WriteLineAsync("20 frames of 200-byte AX.25 INFO sent A→B as fast as possible; the rx side counts matching frames. Effective bytes/sec is total INFO bytes received ÷ wall-clock elapsed. Compare to theoretical (bps ÷ 8).");
+        await sink.WriteLineAsync("20 frames of 200-byte AX.25 INFO sent A→B in ACKMODE: each `SendFrameWithAckAsync` awaits the TX-completion echo before the next is queued. Effective bytes/sec is total INFO bytes ÷ wall-clock elapsed. Compare to theoretical (bps ÷ 8).");
         await sink.WriteLineAsync();
-        await sink.WriteLineAsync("| Mode | Name | bps | Theoretical B/s | Frames sent | Frames recv | Bytes recv | Elapsed s | Effective B/s | Efficiency |");
-        await sink.WriteLineAsync("|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|");
+        await sink.WriteLineAsync("Note: an earlier non-paced version of this test bursted Data frames at the TNC; on three of four modes that delivered ~0 % of the frames because the TNC silently dropped under pressure. ACK-paced sends one at a time and is a true measure of sustained airtime throughput.");
+        await sink.WriteLineAsync();
+        await sink.WriteLineAsync("| Mode | Name | bps | Theoretical B/s | Frames | All ACKed? | Elapsed s | Effective B/s | Efficiency |");
+        await sink.WriteLineAsync("|---:|---|---:|---:|---:|---:|---:|---:|---:|");
 
         byte[] modes = { 6, 7, 12, 2 };
         foreach (var mode in modes)
@@ -236,28 +238,14 @@ internal static class Soak
             await using var b = NinoTncSerialPort.Open(portB);
             await a.SetModeAsync(mode);
             await b.SetModeAsync(mode);
+            await a.SetTxDelayAsync(5);    // Use the measured floor — every mode supports it
             await Task.Delay(700);
 
             const int N = 20;
             const int sz = 200;
-            var seenInfos = new HashSet<string>(StringComparer.Ordinal);
-            int bytesReceived = 0;
-            int framesReceived = 0;
-            b.FrameReceived += (_, frame) =>
-            {
-                if (frame.Command == KissCommand.Data &&
-                    Ax25Frame.TryParse(frame.Payload, out var parsed))
-                {
-                    var key = Encoding.ASCII.GetString(parsed.Info.Span);
-                    if (seenInfos.Add(key))
-                    {
-                        framesReceived++;
-                        bytesReceived += parsed.Info.Length;
-                    }
-                }
-            };
 
             var sw = Stopwatch.StartNew();
+            int acked = 0;
             for (int i = 0; i < N; i++)
             {
                 byte[] payload = RandomPayload(sz, i, $"TPUT M{mode} {i:000}");
@@ -265,23 +253,25 @@ internal static class Soak
                     destination: new Callsign("TEST", 2),
                     source: new Callsign("M0LTE", 1),
                     info: payload);
-                await a.SendFrameAsync(ax25.ToBytes());
-            }
-
-            // Wait for last frame to arrive — drain up to a bound.
-            var bound = sw.Elapsed + TimeSpan.FromMilliseconds(info.BitRateHz > 0
-                ? (sz + 20) * 8 * 1000 / info.BitRateHz + 1000
-                : 5000);
-            while (sw.Elapsed < bound && framesReceived < N)
-            {
-                await Task.Delay(50);
+                try
+                {
+                    await a.SendFrameWithAckAsync(ax25.ToBytes(), TimeSpan.FromSeconds(30));
+                    acked++;
+                }
+                catch (TimeoutException)
+                {
+                    Console.WriteLine($"   frame {i + 1}/{N}: ACK timeout — bailing");
+                    break;
+                }
             }
             sw.Stop();
 
-            double effective = sw.Elapsed.TotalSeconds > 0 ? bytesReceived / sw.Elapsed.TotalSeconds : 0;
+            int totalBytes = acked * sz;
+            double effective = sw.Elapsed.TotalSeconds > 0 ? totalBytes / sw.Elapsed.TotalSeconds : 0;
             double theoretical = info.BitRateHz / 8.0;
             double efficiency = theoretical > 0 ? effective / theoretical : 0;
-            await sink.WriteLineAsync($"| {mode} | {info.Name} | {info.BitRateHz} | {theoretical:F0} | {N} | {framesReceived} | {bytesReceived} | {sw.Elapsed.TotalSeconds:F2} | {effective:F0} | {efficiency:P0} |");
+            string allAcked = acked == N ? "yes" : $"no — {acked}/{N}";
+            await sink.WriteLineAsync($"| {mode} | {info.Name} | {info.BitRateHz} | {theoretical:F0} | {acked} | {allAcked} | {sw.Elapsed.TotalSeconds:F2} | {effective:F0} | {efficiency:P0} |");
         }
         await sink.WriteLineAsync();
     }
