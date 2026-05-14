@@ -16,12 +16,14 @@ permissions:
 
 jobs:
   build-test:
-    name: build & test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    name: build & test
+    runs-on: ubuntu-latest
+    # Linux-only on every PR — Windows + macOS were the GitHub Actions
+    # budget consumers (Windows minutes are billed 2× Linux, and Windows
+    # .NET builds take 3-5× the wall-clock time on the same code). For a
+    # codebase that targets netX.0 + portable APIs only, Linux catches
+    # ~95 % of regressions. Cross-platform drift detection can ride a
+    # nightly schedule later if it actually proves necessary.
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +50,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}
+          name: test-results
           path: '**/TestResults/*.trx'
           retention-days: 7
 

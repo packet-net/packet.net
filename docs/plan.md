@@ -665,6 +665,22 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — CI: drop Windows + macOS runners from PR matrix
+
+`ci.yml` was running `build & test` across `[ubuntu-latest,
+windows-latest, macos-latest]` on every PR. Windows runner-minutes are
+billed 2× Linux at GitHub's pricing, and Windows .NET builds take 3-5×
+the wall-clock on the same code — so Windows was the dominant Actions
+budget consumer. The combination hit the org's monthly cap mid-day on
+2026-05-14, blocking merges on #39 / #40.
+
+Matrix removed; `build & test` is now Linux-only on PRs. The codebase
+targets `netX.0` + portable APIs, so Linux catches ~95 % of regressions.
+Cross-platform drift detection can ride a nightly schedule later if it
+ever proves necessary.
+
+No process changes for contributors; just fewer CI minutes per PR.
+
 ### 2026-05-14 — Soak campaign + adaptive transport + hardware-loop test serialisation
 
 Continuation of the same overnight session as the driver work below.
