@@ -824,6 +824,43 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — design: `Ax25ParseOptions` / `AprsParseOptions` records (no wiring yet)
+
+Adds the option-record types that the upcoming retrofit will thread
+through the parsers / decoders. No call-site changes yet; this PR is
+just the types + presets + tests.
+
+`Packet.Core.Ax25ParseOptions`:
+
+- `AllowEmptyCallsignBase` (default `true`) — for BPQ-style
+  blank-callsign-slot UI beacons
+- `AllowInfoOnSupervisoryFrames` (default `true`) — current TryParse
+  captures trailing bytes on S frames; §3.5 doesn't permit that
+
+`Packet.Aprs.AprsParseOptions`:
+
+- `AllowNonAsciiStatusText` (default `true`) — UTF-8 in status
+- `AllowNonIntegerTelemetry` (default `true`) — floats / variable-width
+- `AllowMicELegacyDtiBytes` (default `true`) — `0x1C` / `0x1D`
+
+Presets per-record:
+
+- **`Strict`** — all pragmatic flags off, pure spec
+- **`Lenient`** — kitchen-sink accept-everything (current behaviour);
+  used by parameterless decoder overloads to preserve back-compat
+- **`Bpq`** / **`Direwolf`** / **`Xrouter`** (AX.25 only) — peer-specific
+- **`Direwolf`** / **`AprsIs`** (APRS only) — source-specific
+
+Today `Bpq` / `Direwolf` / `AprsIs` are aliases of `Lenient` and
+`Xrouter` is an alias of `Strict` because we haven't yet
+differentiated. Tests cover the alias relationships so any future
+divergence is a deliberate update.
+
+Records use `init`-only properties so callers can derive variants via
+`with`-expressions.
+
+11 new tests; full suite green.
+
 ### 2026-05-14 — interop: more UI-frame scenarios against net-sim
 
 `tests/Packet.Interop.Tests/Netsim/NetsimUiFrameScenarios.cs` — four
