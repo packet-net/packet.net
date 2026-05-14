@@ -112,7 +112,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
         t.Actions[2].Verb.Should().Be("F := 1");
         t.Actions[2].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[3].Verb.Should().Be("N(R) := V(r)");
+        t.Actions[3].Verb.Should().Be("N(r) := V(r)");
         t.Actions[3].Kind.Should().Be(ActionKind.Processing);
         t.Actions[4].Verb.Should().Be("RR");
         t.Actions[4].Kind.Should().Be(ActionKind.SignalLower);
@@ -152,7 +152,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[4].Kind.Should().Be(ActionKind.SignalUpper);
         t.Actions[5].Verb.Should().Be("F := 1");
         t.Actions[5].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[6].Verb.Should().Be("N(R) := V(r)");
+        t.Actions[6].Verb.Should().Be("N(r) := V(r)");
         t.Actions[6].Kind.Should().Be(ActionKind.Processing);
         t.Actions[7].Verb.Should().Be("RR");
         t.Actions[7].Kind.Should().Be(ActionKind.SignalLower);
@@ -215,7 +215,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
         t.Actions[2].Verb.Should().Be("F := 1");
         t.Actions[2].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[3].Verb.Should().Be("N(R) := V(r)");
+        t.Actions[3].Verb.Should().Be("N(r) := V(r)");
         t.Actions[3].Kind.Should().Be(ActionKind.Processing);
         t.Actions[4].Verb.Should().Be("RR");
         t.Actions[4].Kind.Should().Be(ActionKind.SignalLower);
@@ -1185,7 +1185,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[7].Kind.Should().Be(ActionKind.Processing);
         t.Actions[8].Verb.Should().Be("F := 1");
         t.Actions[8].Kind.Should().Be(ActionKind.Processing);
-        t.Actions[9].Verb.Should().Be("N(R) := V(r)");
+        t.Actions[9].Verb.Should().Be("N(r) := V(r)");
         t.Actions[9].Kind.Should().Be(ActionKind.Processing);
         t.Actions[10].Verb.Should().Be("RR");
         t.Actions[10].Kind.Should().Be(ActionKind.SignalLower);

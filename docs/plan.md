@@ -824,6 +824,24 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — sdl(connected): normalise `N(R) := V(r)` → `N(r) := V(r)`
+
+Surgical fix in `DataLink_Connected.graphml` (nodes at lines 2561 and
+2887): two processing boxes drew `N(R) <- V(r)` (uppercase R) while
+three other boxes in the same figure drew `N(r) <- V(r)` (lowercase r).
+Tom confirmed the figc4.4 spec figure always draws the action label
+lowercase — the uppercase variants are transcription typos.
+
+(Aside: spec PROSE consistently uses `N(R)` uppercase when describing
+the concept in text. The SDL figure action labels use lowercase to
+match the rest of the SDL vocabulary — `V(s)`, `V(r)`, `V(a)`, `N(s)`.
+This split is preserved verbatim: the `references:` spec_prose quotes
+still use uppercase `N(R)` exactly as the spec writes them.)
+
+Fix: 2 boxes in graphml + 4 transitions in YAML + 3 paraphrase comments
+at the top of `connected.sdl.yaml`. Regenerated `.g.cs` / `.g.Tests.cs`
+/ `.g.mmd` from the corrected source. 555 tests still pass.
+
 ### 2026-05-14 — ax25: dispatcher TransitionContext refactor, `V(a) := N(r)` wired (reads from incoming frame)
 
 `IActionDispatcher.Execute` signature changed from
