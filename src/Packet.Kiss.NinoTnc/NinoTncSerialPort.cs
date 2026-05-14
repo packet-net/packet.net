@@ -42,20 +42,38 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
     /// <summary>The port name the connection was opened on (e.g. "COM6" or "/dev/ttyACM0").</summary>
     public string PortName => serial.PortName;
 
-    /// <summary>The KISS port nibble used for write helpers when none is specified.</summary>
-    public byte KissPort { get; init; }
+    // The driver assumes one TNC = one KISS port = one radio (the user's
+    // explicit modelling decision). All TX uses port nibble 0; the encoder /
+    // decoder remain capable of arbitrary ports if some future use of the
+    // lower-level Packet.Kiss types needs it.
+    private const byte KissPort = 0;
 
     /// <summary>
-    /// Fired for every inbound KISS frame after framing/unescaping. Subscribers
-    /// run on the read-pump task — keep handlers fast and non-blocking.
-    /// Use <see cref="ReadFramesAsync"/> if you'd rather pull frames on your own task.
+    /// Fired for every inbound KISS frame after framing/unescaping, in
+    /// its raw form. Subscribers run on the read-pump task — keep handlers
+    /// fast and non-blocking. Use <see cref="ReadFramesAsync"/> if you'd
+    /// rather pull frames on your own task.
     /// </summary>
+    /// <remarks>
+    /// Subscribers that want shape-typed events (AX.25 frames, TX-Test
+    /// diagnostics, ACKMODE-Data) should subscribe to
+    /// <see cref="InboundEvent"/> instead. Both fire for every inbound
+    /// frame; pick whichever fits your dispatch model.
+    /// </remarks>
     public event EventHandler<KissFrame>? FrameReceived;
+
+    /// <summary>
+    /// Fired for every inbound KISS frame after framing/unescaping, *and*
+    /// after the driver has classified the shape (AX.25, TX-Test diagnostic,
+    /// ACKMODE-Data, or unknown). Strongly typed for ergonomic handler
+    /// dispatch. Subscribers run on the read-pump task.
+    /// </summary>
+    public event EventHandler<NinoTncInboundEvent>? InboundEvent;
 
     /// <summary>
     /// Open the named serial port at 57 600 8N1 and start the background read pump.
     /// </summary>
-    public static NinoTncSerialPort Open(string portName, int baudRate = DefaultBaudRate, byte kissPort = 0)
+    public static NinoTncSerialPort Open(string portName, int baudRate = DefaultBaudRate)
     {
         ArgumentException.ThrowIfNullOrEmpty(portName);
         var serial = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
@@ -71,7 +89,7 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
             RtsEnable = true,
         };
         serial.Open();
-        var tnc = new NinoTncSerialPort(serial) { KissPort = kissPort };
+        var tnc = new NinoTncSerialPort(serial);
         tnc.readPump = Task.Factory.StartNew(
             () => tnc.PumpReadsBlocking(tnc.pumpCts.Token),
             TaskCreationOptions.LongRunning);
@@ -91,13 +109,9 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
     /// has *not* happened yet. Use <see cref="SendFrameWithAckAsync"/> when
     /// you need to know when the modem has finished keying.
     /// </summary>
-    public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default) =>
-        SendFrameAsync(KissPort, ax25Bytes, cancellationToken);
-
-    /// <inheritdoc cref="SendFrameAsync(System.ReadOnlyMemory{byte},System.Threading.CancellationToken)"/>
-    public async Task SendFrameAsync(byte port, ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+    public async Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
     {
-        var encoded = KissEncoder.Encode(port, KissCommand.Data, ax25Bytes.Span);
+        var encoded = KissEncoder.Encode(KissPort, KissCommand.Data, ax25Bytes.Span);
         await WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
     }
 
@@ -110,16 +124,7 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
     /// <param name="timeout">Maximum time to wait for the echo. Defaults to 30 s.</param>
     /// <param name="sequenceTag">Caller-supplied 16-bit tag, or <c>null</c> to auto-assign.</param>
     /// <param name="cancellationToken">Cancels the wait (does not un-queue the frame at the TNC).</param>
-    public Task<AckModeReceipt> SendFrameWithAckAsync(
-        ReadOnlyMemory<byte> ax25Bytes,
-        TimeSpan? timeout = null,
-        ushort? sequenceTag = null,
-        CancellationToken cancellationToken = default) =>
-        SendFrameWithAckAsync(KissPort, ax25Bytes, timeout, sequenceTag, cancellationToken);
-
-    /// <inheritdoc cref="SendFrameWithAckAsync(System.ReadOnlyMemory{byte},System.Nullable{System.TimeSpan},System.Nullable{ushort},System.Threading.CancellationToken)"/>
     public async Task<AckModeReceipt> SendFrameWithAckAsync(
-        byte port,
         ReadOnlyMemory<byte> ax25Bytes,
         TimeSpan? timeout = null,
         ushort? sequenceTag = null,
@@ -132,7 +137,7 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
             throw new InvalidOperationException($"sequence tag 0x{tag:X4} already has a pending ACK; pick a unique tag");
         }
 
-        var wire = KissAckMode.BuildSendFrame(port, tag, ax25Bytes.Span);
+        var wire = KissAckMode.BuildSendFrame(KissPort, tag, ax25Bytes.Span);
         var queuedAt = DateTimeOffset.UtcNow;
         try
         {
@@ -190,6 +195,10 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
     /// <summary>Send a KISS FULLDUPLEX (0x05) command.</summary>
     public Task SetFullDuplexAsync(bool fullDuplex, CancellationToken cancellationToken = default) =>
         SendParameterAsync(KissCommand.FullDuplex, fullDuplex ? (byte)1 : (byte)0, cancellationToken);
+
+    /// <summary>Send a KISS TXTAIL (0x04) command. Units are 10 ms.</summary>
+    public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) =>
+        SendParameterAsync(KissCommand.TxTail, tenMsUnits, cancellationToken);
 
     private Task SendParameterAsync(KissCommand command, byte value, CancellationToken cancellationToken)
     {
@@ -265,14 +274,24 @@ public sealed class NinoTncSerialPort : INinoTncModem, IAsyncDisposable, IDispos
 
     private void DispatchFrame(KissFrame frame)
     {
+        // ACKMODE TX-completion echo: 2-byte payload, our own outbound
+        // sequence tag echoed back. Complete the pending TCS so the
+        // caller's `SendFrameWithAckAsync` returns.
         if (KissAckMode.TryParseAcknowledgement(frame, out var tag) &&
             pendingAcks.TryRemove(tag, out var tcs))
         {
             tcs.TrySetResult(new AckModeReceipt(tag, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+            // No typed event for our own echo — the caller already gets it
+            // as the return value of SendFrameWithAckAsync.
+            inbound.Writer.TryWrite(frame);
+            FrameReceived?.Invoke(this, frame);
+            return;
         }
 
+        var typed = NinoTncFrameClassifier.Classify(frame);
         inbound.Writer.TryWrite(frame);
         FrameReceived?.Invoke(this, frame);
+        InboundEvent?.Invoke(this, typed);
     }
 
     private void FailPendingAcks(Exception cause)

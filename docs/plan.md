@@ -885,6 +885,68 @@ dispatcher. Action chains involving subroutines no-op via stubs;
 once figc4.7 is transcribed, real bodies replace the stubs with no
 dispatcher changes.
 
+### 2026-05-14 — KISS / NinoTNC driver — ACKMODE solidified, typed inbound surface, CSMA adaptive, USB discovery
+
+Closes the "shape gaps" called out in the morning review of
+`Packet.Kiss.NinoTnc`:
+
+**KISS command coverage** — TXTAIL (`0x04`) helper added on
+`INinoTncModem` + `NinoTncSerialPort` so the four adjustable KISS
+parameters (TXDELAY, PERSIST, SLOTTIME, TXTAIL) all have first-class
+helpers. POLL (`0x0E`), Return-from-KISS (`0xFF`) and the multi-drop
+XOR-checksum extension are explicitly out of scope — no current
+hardware needs them.
+
+**Multi-drop port nibble dropped from the driver API.** The KISS
+framing layer still respects 0–15 port nibbles correctly; the driver
+hard-codes port 0 and the public surface is simpler for it (one modem
+= one serial port = one radio).
+
+**Typed inbound event surface.** New `NinoTncInboundEvent` hierarchy:
+`Ax25FrameReceivedEvent`, `TxTestFrameReceivedEvent`,
+`AckModeDataReceivedEvent`, `UnknownInboundEvent`. Classification
+lives in `NinoTncFrameClassifier.Classify(KissFrame)` so it is
+unit-testable on its own. The raw `FrameReceived` event still fires
+alongside; subscribers pick the surface that fits.
+
+ACKMODE TX-completion echoes for *our own* outbound frames are still
+correlated by sequence tag inside `NinoTncSerialPort` and surface as
+`SendFrameWithAckAsync`'s return value — no typed event for those,
+because the caller already has them via the receipt.
+
+**Adaptive CSMA estimator.** New `CsmaContentionEstimator` tunes
+PERSIST + SLOTTIME from contention signals — `AckModeTimedOut` (TNC
+accepted the frame but never won a slot) and `Lost` (frame TX'd but
+peer never ACKed at AX.25 layer). Step-down on contention, slow
+step-up on sustained success. Composable with the existing
+`TxDelayHillClimbEstimator` through the new `CompositeAdaptiveEstimator`.
+
+**USB VID/PID discovery on Windows** — walks
+`HKLM\SYSTEM\CurrentControlSet\Enum\USB\` for devices whose key name
+matches `KnownVidPids` (currently `04D8:00DD`, the Microchip USB-CDC
+reference the stock NinoTNC firmware presents as) and reads each
+match's `Device Parameters\PortName`. Verified: returns `COM6` +
+`COM8` on the dev host with the env-var override unset — the COM1 /
+COM107 false positives are gone. Locked-down hosts fall back to
+generic enumeration.
+
+**Driver README** at `src/Packet.Kiss.NinoTnc/README.md` now reflects
+the full shape, including the "out of scope" list. Notes explicitly
+that parameter readback is not possible without the operator pressing
+the TX-Test button — KISS has no read commands and the NinoTNC
+firmware has no query path.
+
+**Test totals**: `Packet.Kiss.Tests` 55 (was 43, +12 for CSMA +
+Composite); `Packet.Kiss.NinoTnc.Tests` 44 (was 37, +7 for the
+frame classifier). 7 hardware-loop tests including a new typed-event
+assertion against the real pair.
+
+Tracked as a follow-up: the mode-12 Python repro
+(`tools/repro/ninotnc_mode12_repro.py`) still doesn't reliably
+trigger the catastrophic-RX-lockup pattern in verification runs;
+needs the trigger condition pinned down before it's worth handing
+upstream.
+
 ### 2026-05-14 — ax25: end-to-end integration tests for figc4.3 + figc4.4 (subset)
 
 Two more E2E test files driving real `ActionDispatcher` against real

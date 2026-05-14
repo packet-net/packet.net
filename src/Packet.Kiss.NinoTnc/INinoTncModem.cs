@@ -31,4 +31,12 @@ public interface INinoTncModem
 
     /// <summary>KISS SLOTTIME (0x03), units of 10 ms.</summary>
     Task SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// KISS TXTAIL (0x04), units of 10 ms. Modern modems generally ignore
+    /// this; the KISS TNC spec recommends 0 and the NinoTNC follows that.
+    /// We surface a helper so the adaptive layer can drive it on
+    /// experimental setups that care.
+    /// </summary>
+    Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default);
 }

@@ -215,6 +215,14 @@ public class AdaptiveNinoTncTransportTests
             SlotTimeCalls.Add(tenMsUnits);
             return Task.CompletedTask;
         }
+
+        public List<byte> TxTailCalls { get; } = new();
+
+        public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default)
+        {
+            TxTailCalls.Add(tenMsUnits);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingEstimator : IAdaptiveParameterEstimator

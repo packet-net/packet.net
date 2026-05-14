@@ -67,6 +67,38 @@ public class NinoTncSerialPortLoopback
     }
 
     [SkippableFact]
+    public async Task InboundEvent_Fires_Typed_Ax25FrameReceived_For_Real_Ax25_Frames()
+    {
+        var ports = SelectTwoPorts();
+        await using var a = NinoTncSerialPort.Open(ports[0]);
+        await using var b = NinoTncSerialPort.Open(ports[1]);
+        await a.SetModeAsync(LoopbackMode);
+        await b.SetModeAsync(LoopbackMode);
+        await Task.Delay(500);
+
+        var ax25 = Ax25Frame.Ui(
+            destination: new Callsign("TEST", 2),
+            source: new Callsign("M0LTE", 1),
+            info: "TYPED EVENT"u8);
+
+        var tcs = new TaskCompletionSource<Ax25FrameReceivedEvent>();
+        b.InboundEvent += (_, evt) =>
+        {
+            if (evt is Ax25FrameReceivedEvent typed &&
+                typed.Ax25.Info.Span.SequenceEqual(ax25.Info.Span))
+            {
+                tcs.TrySetResult(typed);
+            }
+        };
+
+        await a.SendFrameAsync(ax25.ToBytes());
+        var got = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(FrameWaitSeconds));
+
+        got.Ax25.Source.Callsign.Should().Be(ax25.Source.Callsign);
+        got.Ax25.Destination.Callsign.Should().Be(ax25.Destination.Callsign);
+    }
+
+    [SkippableFact]
     public async Task UI_Frame_Round_Trips_A_To_B_And_Back()
     {
         var ports = SelectTwoPorts();

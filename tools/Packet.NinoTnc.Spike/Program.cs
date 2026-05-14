@@ -50,6 +50,15 @@ if (args.Length > 0 && args[0] == "mode12-probe")
         args.Length > 1 ? args[1] : "COM6",
         args.Length > 2 ? args[2] : "COM8");
 }
+if (args.Length > 0 && args[0] == "discovery")
+{
+    return Packet.NinoTnc.Spike.DiscoveryProbe.Run();
+}
+if (args.Length >= 1 && args[0] == "txtest-listen")
+{
+    var p = args.Length > 1 ? args[1] : "COM6";
+    return await Packet.NinoTnc.Spike.TxTestListener.Run(p);
+}
 if (args.Length > 0 && args[0] == "slow-mode-probe")
 {
     return await Packet.NinoTnc.Spike.SlowModeProbe.Run(

@@ -1,5 +1,7 @@
 using System.IO.Ports;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using Microsoft.Win32;
 
 namespace Packet.Kiss.NinoTnc;
 
@@ -52,6 +54,16 @@ public static class NinoTncPortDiscovery
     public const string PortsEnvVar = "PACKETNET_NINOTNC_PORTS";
 
     /// <summary>
+    /// USB VID/PID pairs the NinoTNC has been observed to present as. The
+    /// stock firmware uses Microchip's USB-CDC reference (04D8:00DD) which
+    /// is shared with many small Microchip-based projects — match is
+    /// best-effort, not exclusive. The TX-Test diagnostic frame is the
+    /// authoritative "this is definitely a NinoTNC" probe.
+    /// </summary>
+    public static readonly IReadOnlyCollection<(ushort Vid, ushort Pid)> KnownVidPids =
+        new[] { ((ushort)0x04D8, (ushort)0x00DD) };
+
+    /// <summary>
     /// Return every serial port the host believes could be a NinoTNC. If the
     /// <see cref="PortsEnvVar"/> environment variable is set, its comma-
     /// separated entries win — auto-discovery is skipped.
@@ -70,6 +82,11 @@ public static class NinoTncPortDiscovery
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             return EnumerateLinux();
+        }
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var matched = EnumerateWindowsByVidPid();
+            return matched.Count > 0 ? matched : EnumerateGeneric();
         }
         return EnumerateGeneric();
     }
@@ -115,6 +132,70 @@ public static class NinoTncPortDiscovery
         return SerialPort.GetPortNames()
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
             .Select(p => new NinoTncCandidatePort(p, null))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Walk the Windows registry's USB device tree under
+    /// <c>HKLM\SYSTEM\CurrentControlSet\Enum\USB\</c>, find subkeys whose
+    /// name matches a <see cref="KnownVidPids"/> pair, and for each
+    /// matching device instance read its <c>Device Parameters\PortName</c>
+    /// value. Returns the corresponding COM port names.
+    /// </summary>
+    /// <remarks>
+    /// No <c>System.Management</c> / WMI dependency — uses
+    /// <see cref="Microsoft.Win32.Registry"/> from the BCL. Failures
+    /// (locked-down hosts, missing branches) fall back to the generic
+    /// enumeration via the caller.
+    /// </remarks>
+    [SupportedOSPlatform("windows")]
+    private static List<NinoTncCandidatePort> EnumerateWindowsByVidPid()
+    {
+        var results = new List<NinoTncCandidatePort>();
+        try
+        {
+            using var usbRoot = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\USB");
+            if (usbRoot is null)
+            {
+                return results;
+            }
+
+            var matchPrefixes = KnownVidPids
+                .Select(vp => $"VID_{vp.Vid:X4}&PID_{vp.Pid:X4}")
+                .ToArray();
+
+            foreach (var deviceKeyName in usbRoot.GetSubKeyNames())
+            {
+                if (!matchPrefixes.Any(p => deviceKeyName.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+                using var deviceKey = usbRoot.OpenSubKey(deviceKeyName);
+                if (deviceKey is null) continue;
+
+                foreach (var instanceName in deviceKey.GetSubKeyNames())
+                {
+                    using var instance = deviceKey.OpenSubKey(instanceName);
+                    using var deviceParams = instance?.OpenSubKey("Device Parameters");
+                    var portName = deviceParams?.GetValue("PortName") as string;
+                    if (!string.IsNullOrWhiteSpace(portName))
+                    {
+                        results.Add(new NinoTncCandidatePort(portName, null));
+                    }
+                }
+            }
+        }
+        catch (System.Security.SecurityException)
+        {
+            // Locked-down host. Fall through; caller will retry with generic.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same — registry node visible but read-denied.
+        }
+
+        return results
+            .OrderBy(p => p.PortName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 }

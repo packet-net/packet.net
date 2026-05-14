@@ -170,8 +170,11 @@ public sealed class AdaptiveNinoTncTransport : IAsyncDisposable, IDisposable
             await modem.SetSlotTimeAsync(s, cancellationToken).ConfigureAwait(false);
             lastApplied = lastApplied with { SlotTimeTenMsUnits = s };
         }
-        // TXTAIL has no helper; obsolete on modern modems. If we add a helper
-        // later, mirror the same diff-and-apply pattern here.
+        if (recommendation.TxTailTenMsUnits is byte tt && lastApplied.TxTailTenMsUnits != tt)
+        {
+            await modem.SetTxTailAsync(tt, cancellationToken).ConfigureAwait(false);
+            lastApplied = lastApplied with { TxTailTenMsUnits = tt };
+        }
     }
 
     /// <inheritdoc/>
