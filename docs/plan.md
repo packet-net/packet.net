@@ -824,6 +824,58 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — aprs: position decoder v0 (`!` / `=` DTI) + corpus differential
+
+Stood up `src/Packet.Aprs` library. First decoder:
+`AprsPositionDecoder.TryDecode` for DTI `!` (no timestamp, no message)
+and `=` (no timestamp, message-capable). Covers both:
+
+- **Uncompressed** (APRS12c §8): `DDMM.mmN/S<symtbl>DDDMM.mmE/W<sym><comment>`
+  with space-pad-for-privacy support, symbol table validation,
+  hemisphere checks, minutes-< 60 / degrees-≤ 90/180 range checks.
+- **Compressed** (APRS12c §9): `<symtbl><base91_lat:4><base91_lon:4><sym><csT:3><comment>`
+  with base-91 character-range validation (`!` through `{`).
+
+21 unit tests pin every encoding edge case using real corpus frames as
+test data (the lat/lon expected values are direwolf's reference
+decodes for the same byte sequence).
+
+**Differential mode**: new `differential` mode on `Packet.AprsIs.Spike`
+walks `lines JOIN direwolf_decoded` over every `!` / `=` row, runs our
+decoder, classifies the outcome into 5 buckets, and writes a Markdown
+report.
+
+Ran over 125,036 corpus rows:
+
+| Bucket | Count | % |
+|---|---:|---:|
+| `BothOkMatch` (agree within 1e-4°) | 75,316 | 60.2% |
+| `OnlyUs` (direwolf rejected the AX.25 envelope) | 46,724 | 37.4% |
+| `BothOkMismatch` (both decoded, disagree) | 2,224 | 1.8% |
+| `BothFailed` (both reject — true firmware bugs) | 602 | 0.5% |
+| `OnlyDirewolf` (we're over-strict on symbol table) | 170 | 0.1% |
+
+Headline findings (see [`findings.md`](../tools/Packet.AprsIs.Spike/findings.md)):
+
+1. **`OnlyUs` is APRS-vs-AX.25 layer divergence**: direwolf rejects
+   frames with letter SSIDs (D-Star `-D`, `-B`, etc.) at the
+   AX.25 callsign-parse stage. Our payload-layer decoder doesn't gate
+   on envelope validity and recovers the position fine. Real-world
+   APRS-IS leaks ~37% of these.
+2. **`BothOkMismatch` is mostly direwolf bugs**: of 5 hand-checked
+   examples, 4 have direwolf producing wildly wrong coordinates
+   (Antarctica when the comment text says "Tromsø") while our decoder
+   matches the comment's location. Pattern looks like direwolf is
+   sometimes misreading post-position bytes.
+3. We agree with direwolf on **>97%** of frames where direwolf
+   produced a position (excluding the AX.25 envelope rejections).
+
+Follow-ups: `@` / `/` timestamped variants, `AprsCallsign` permissive
+type (Tier 1(a)) for the letter-SSID frames, decide symbol-table
+strictness for production.
+
+844 tests green (was 823: +21 new decoder tests).
+
 ### 2026-05-14 — kiss: AX.25 ↔ KISS bridge
 
 Sixth and final mechanical piece of the interop arc. New
