@@ -198,7 +198,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[4].Kind.Should().Be(ActionKind.SignalUpper);
         t.Actions[5].Verb.Should().Be("LM_seize_request");
         t.Actions[5].Kind.Should().Be(ActionKind.SignalLower);
-        t.Actions[6].Verb.Should().Be("set_acknowledgement_pending");
+        t.Actions[6].Verb.Should().Be("set_acknowledge_pending");
         t.Actions[6].Kind.Should().Be(ActionKind.Processing);
     }
 
@@ -1243,7 +1243,7 @@ public class DataLink_Connected_GeneratedTests
         t.Actions[7].Kind.Should().Be(ActionKind.Processing);
         t.Actions[8].Verb.Should().Be("LM_seize_request");
         t.Actions[8].Kind.Should().Be(ActionKind.SignalLower);
-        t.Actions[9].Verb.Should().Be("set_acknowledgement_pending");
+        t.Actions[9].Verb.Should().Be("set_acknowledge_pending");
         t.Actions[9].Kind.Should().Be(ActionKind.Processing);
     }
 

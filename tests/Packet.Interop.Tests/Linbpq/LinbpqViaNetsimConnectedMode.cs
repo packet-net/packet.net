@@ -86,6 +86,98 @@ public class LinbpqViaNetsimConnectedMode
         try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
+    /// <summary>
+    /// Beyond the handshake: drive the figc4.4 Connected state's data path
+    /// end-to-end against BPQ's node prompt. After SABM/UA, BPQ emits a
+    /// welcome banner as one or more I-frames; we collect at least one
+    /// DataLinkDataIndication, then send "P\r" (ports command) as an
+    /// outbound I-frame and wait for BPQ's response indication. Finally
+    /// DISC/UA to close the link cleanly. This exercises t18 (DL-DATA
+    /// push), t19/t20 (I-frame TX with V(s)++ and T1 management), t14-t16
+    /// (I-frame RX with N(s)/N(r) accounting), the upward data plumbing
+    /// via sendUpward, and BPQ's own ack/RR handling on both directions.
+    /// </summary>
+    /// <remarks>
+    /// Assertion is intentionally tolerant of BPQ's exact wording — only
+    /// "non-empty payload from BPQ" is checked, not specific text — so
+    /// the test survives BPQ upstream banner changes. Pid is asserted as
+    /// 0xF0 (no layer 3) which is what BPQ's node prompt uses; any other
+    /// pid would surface a real protocol mismatch worth investigating.
+    /// </remarks>
+    [Fact]
+    public async Task Connected_IFrame_RoundTrip_Against_Linbpq_Node_Prompt()
+    {
+        var totalBudget = ConnectBudget
+            + TimeSpan.FromSeconds(15)   // banner wait
+            + TimeSpan.FromSeconds(15)   // command response wait
+            + DisconnectBudget
+            + TimeSpan.FromSeconds(15);  // slack
+        using var cts = new CancellationTokenSource(totalBudget);
+
+        await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
+        var rig = BuildRig(local: OurCall, remote: BpqCall, kiss: kiss);
+
+        var pumps = new[]
+        {
+            Task.Run(() => InboundPump(rig, cts.Token), cts.Token),
+        };
+
+        await Task.Delay(500, cts.Token);
+
+        // ─── Connect ────────────────────────────────────────────────
+        rig.Session.PostEvent(new DlConnectRequest());
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        connectConfirm.Should().NotBeNull("must complete handshake before any data exchange");
+
+        // ─── Banner from BPQ ────────────────────────────────────────
+        // BPQ emits its node-prompt welcome banner as one or more
+        // I-frames immediately after sending UA. Some BPQ versions
+        // split it across multiple frames — we only require the first
+        // to arrive; later frames will queue up behind it but we
+        // don't gate on them.
+        var banner = await WaitForSignal<DataLinkDataIndication>(rig.Signals, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        banner.Should().NotBeNull("BPQ must emit its node-prompt welcome banner as an I-frame after the handshake completes");
+        banner!.Info.Length.Should().BeGreaterThan(0, "banner payload should not be empty");
+        banner.Pid.Should().Be(Ax25Frame.PidNoLayer3, "BPQ's node prompt uses PID 0xF0 (no layer 3)");
+
+        // Drain any follow-up banner frames so they don't surface as
+        // false matches when we wait for the command response below.
+        await Task.Delay(TimeSpan.FromSeconds(1), cts.Token);
+        DrainIndications(rig.Signals);
+
+        // ─── Outbound command ───────────────────────────────────────
+        // "P\r" is BPQ's "Ports" command at the node prompt — short,
+        // deterministically non-empty response, no side effects on
+        // BPQ's state.
+        rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("P\r"), Ax25Frame.PidNoLayer3));
+
+        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        response.Should().NotBeNull("BPQ must reply to our ports command with at least one I-frame");
+        response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
+        response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
+
+        rig.Session.CurrentState.Should().Be("Connected", "link must survive the data round-trip");
+
+        // ─── Disconnect ─────────────────────────────────────────────
+        rig.Session.PostEvent(new DlDisconnectRequest());
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        disconnectConfirm.Should().NotBeNull("clean DISC/UA close after data exchange");
+        rig.Session.CurrentState.Should().Be("Disconnected");
+
+        cts.Cancel();
+        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
+    }
+
+    private static void DrainIndications(ConcurrentQueue<DataLinkSignal> signals)
+    {
+        var keep = new List<DataLinkSignal>();
+        while (signals.TryDequeue(out var s))
+        {
+            if (s is not DataLinkDataIndication) keep.Add(s);
+        }
+        foreach (var s in keep) signals.Enqueue(s);
+    }
+
     // ─── Rig ────────────────────────────────────────────────────────
     //
     // Identical shape to NetsimConnectedModeScenarios.BuildRig. Kept
