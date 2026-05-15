@@ -24,4 +24,19 @@ public interface ITimerScheduler
 
     /// <summary>True if a timer named <paramref name="name"/> is currently armed.</summary>
     bool IsRunning(string name);
+
+    /// <summary>
+    /// Time remaining until <paramref name="name"/> expires. Returns
+    /// <see cref="TimeSpan.Zero"/> when the timer isn't running (either
+    /// never armed, already fired, or cancelled).
+    /// </summary>
+    /// <remarks>
+    /// AX.25 v2.2 §6.7.1.2's SRT update needs the "remaining time on T1
+    /// when last stopped" sample. Callers typically read this immediately
+    /// before <see cref="Cancel"/> and stash it on session state for the
+    /// next <c>Select_T1_Value</c> invocation. Querying after cancel
+    /// gives zero, which is correct semantics ("stopped = no time
+    /// remaining") but unhelpful for that formula.
+    /// </remarks>
+    TimeSpan TimeRemaining(string name);
 }

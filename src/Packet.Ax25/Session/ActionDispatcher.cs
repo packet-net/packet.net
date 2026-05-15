@@ -246,7 +246,15 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "start_T1":                       scheduler.Arm("T1", ctx.T1V,     () => onTimerExpiry("T1")); break;
             case "start_T2":                       scheduler.Arm("T2", T2Duration, () => onTimerExpiry("T2")); break;
             case "start_T3":                       scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3")); break;
-            case "stop_T1":                        scheduler.Cancel("T1"); break;
+            case "stop_T1":
+                // Capture remaining time BEFORE cancelling so the next
+                // Select_T1_Value gets a real round-trip sample for its
+                // IIR. The spec calls this "Remaining Time on T1 When
+                // Last Stopped"; after Cancel the timer is gone and
+                // queries return zero.
+                ctx.T1RemainingWhenLastStopped = scheduler.TimeRemaining("T1");
+                scheduler.Cancel("T1");
+                break;
             case "stop_T2":                        scheduler.Cancel("T2"); break;
             case "stop_T3":                        scheduler.Cancel("T3"); break;
 
@@ -557,7 +565,10 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "Stop T3":                        scheduler.Cancel("T3"); break;
             case "Start T1":                       scheduler.Arm("T1", ctx.T1V, () => onTimerExpiry("T1")); break;
             case "Start T3":                       scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3")); break;
-            case "Stop T1":                        scheduler.Cancel("T1"); break;
+            case "Stop T1":
+                ctx.T1RemainingWhenLastStopped = scheduler.TimeRemaining("T1");
+                scheduler.Cancel("T1");
+                break;
 
             // Set_Version_2_0 / Set_Version_2_2 bodies.
             case "Set Half Duplex":                ctx.HalfDuplex      = true; break;
@@ -582,16 +593,24 @@ public sealed class ActionDispatcher : IActionDispatcher
 
             // Select_T1_Value body. The SRT formula is figure-verbatim;
             // we treat it as a single named verb that runs the IIR
-            // update (1/8 weight on the new sample, 7/8 on history).
-            // "Remaining Time on T1 When Last Stopped" isn't tracked by
-            // our ITimerScheduler interface yet, so we approximate the
-            // sample as the elapsed-since-T1V-armed which simplifies to
-            // T1V (the worst-case sample). Real adaptive T1 would need
-            // a scheduler upgrade — flagged in plan.md.
+            // update (1/8 weight on the new round-trip sample, 7/8 on
+            // history). The new-sample term is (T1V - remaining_when_stopped):
+            // the elapsed portion of T1 from arm to stop, which is what
+            // the spec calls "Remaining Time on T1 When Last Stopped"
+            // subtracted from T1V. T1RemainingWhenLastStopped is
+            // captured on stop_T1; zero when T1 expired (gives the
+            // worst-case T1V sample, which is what the spec wants in
+            // that case anyway).
             case "SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8":
-                ctx.Srt = TimeSpan.FromMilliseconds(0.875 * ctx.Srt.TotalMilliseconds + 0.125 * ctx.T1V.TotalMilliseconds);
+            {
+                var sample = ctx.T1V - ctx.T1RemainingWhenLastStopped;
+                if (sample < TimeSpan.Zero) sample = TimeSpan.Zero;
+                ctx.Srt = TimeSpan.FromMilliseconds(
+                    0.875 * ctx.Srt.TotalMilliseconds + 0.125 * sample.TotalMilliseconds);
                 ctx.T1HadExpired = false;
+                ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;
                 break;
+            }
             case "Next T1 <- 2 * SRT":             ctx.T1V = ctx.Srt * 2; break;
             case "Next T1 <- (RC*0.25)+SRT*2":     ctx.T1V = TimeSpan.FromMilliseconds(ctx.RC * 250 + ctx.Srt.TotalMilliseconds * 2); ctx.T1HadExpired = false; break;
 

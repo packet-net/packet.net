@@ -110,7 +110,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and P_eq_1");
     expect(t.actions).toHaveLength(6);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("discard_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -132,7 +132,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and not P_eq_1");
     expect(t.actions).toHaveLength(2);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("discard_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -146,7 +146,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and P_eq_1");
     expect(t.actions).toHaveLength(9);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");
@@ -174,7 +174,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and acknowledge_pending");
     expect(t.actions).toHaveLength(5);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");
@@ -194,7 +194,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending");
     expect(t.actions).toHaveLength(7);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");
@@ -218,7 +218,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and P_eq_1");
     expect(t.actions).toHaveLength(6);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("discard_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -240,7 +240,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and not P_eq_1");
     expect(t.actions).toHaveLength(2);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("discard_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -254,7 +254,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and not N_s_gt_V_r_plus_1");
     expect(t.actions).toHaveLength(6);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("save_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -276,7 +276,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and N_s_gt_V_r_plus_1");
     expect(t.actions).toHaveLength(8);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("save_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -302,7 +302,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and srej_exception_gt_0");
     expect(t.actions).toHaveLength(6);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("save_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -324,7 +324,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and not srej_enabled");
     expect(t.actions).toHaveLength(7);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("discard_contents_of_I_frame");
     expect(t.actions[1].kind).toBe("processing");
@@ -955,7 +955,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("V_a_le_N_r_le_V_s");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -971,7 +971,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection22");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -987,7 +987,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and not version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1079,7 +1079,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("V_a_le_N_r_le_V_s and not P_or_F_eq_1");
     expect(t.actions).toHaveLength(10);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1109,7 +1109,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("V_a_le_N_r_le_V_s and P_or_F_eq_1");
     expect(t.actions).toHaveLength(11);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1141,7 +1141,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection22");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1157,7 +1157,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and not version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1173,7 +1173,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("V_a_le_N_r_le_V_s");
     expect(t.actions).toHaveLength(8);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1199,7 +1199,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection22");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1215,7 +1215,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and not version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("clear_peer_busy");
+    expect(t.actions[0].verb).toBe("clear_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1231,7 +1231,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and P_eq_1");
     expect(t.actions).toHaveLength(12);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");
@@ -1265,7 +1265,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and acknowledge_pending");
     expect(t.actions).toHaveLength(8);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");
@@ -1291,7 +1291,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending");
     expect(t.actions).toHaveLength(10);
-    expect(t.actions[0].verb).toBe("Check_I_Frames_Acknowledged");
+    expect(t.actions[0].verb).toBe("Check_I_Frame_Acknowledged");
     expect(t.actions[0].kind).toBe("subroutine");
     expect(t.actions[1].verb).toBe("V(r) := V(r) + 1");
     expect(t.actions[1].kind).toBe("processing");

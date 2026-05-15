@@ -106,7 +106,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and P_eq_1");
         t.Actions.Count.Should().Be(6);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("discard_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -127,7 +127,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and not P_eq_1");
         t.Actions.Count.Should().Be(2);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("discard_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -140,7 +140,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and P_eq_1");
         t.Actions.Count.Should().Be(9);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -167,7 +167,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and acknowledge_pending");
         t.Actions.Count.Should().Be(5);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -186,7 +186,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending");
         t.Actions.Count.Should().Be(7);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -209,7 +209,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and P_eq_1");
         t.Actions.Count.Should().Be(6);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("discard_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -230,7 +230,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and not P_eq_1");
         t.Actions.Count.Should().Be(2);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("discard_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -243,7 +243,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and not N_s_gt_V_r_plus_1");
         t.Actions.Count.Should().Be(6);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("save_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -264,7 +264,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and N_s_gt_V_r_plus_1");
         t.Actions.Count.Should().Be(8);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("save_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -289,7 +289,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and srej_exception_gt_0");
         t.Actions.Count.Should().Be(6);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("save_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -310,7 +310,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and not srej_enabled");
         t.Actions.Count.Should().Be(7);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("discard_contents_of_I_frame");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -906,7 +906,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("V_a_le_N_r_le_V_s");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -921,7 +921,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -936,7 +936,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and not version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1022,7 +1022,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("V_a_le_N_r_le_V_s and not P_or_F_eq_1");
         t.Actions.Count.Should().Be(10);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1051,7 +1051,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("V_a_le_N_r_le_V_s and P_or_F_eq_1");
         t.Actions.Count.Should().Be(11);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1082,7 +1082,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1097,7 +1097,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and not version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1112,7 +1112,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("V_a_le_N_r_le_V_s");
         t.Actions.Count.Should().Be(8);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1137,7 +1137,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1152,7 +1152,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and not version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("clear_peer_busy");
+        t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -1167,7 +1167,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and P_eq_1");
         t.Actions.Count.Should().Be(12);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -1200,7 +1200,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and acknowledge_pending");
         t.Actions.Count.Should().Be(8);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);
@@ -1225,7 +1225,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending");
         t.Actions.Count.Should().Be(10);
-        t.Actions[0].Verb.Should().Be("Check_I_Frames_Acknowledged");
+        t.Actions[0].Verb.Should().Be("Check_I_Frame_Acknowledged");
         t.Actions[0].Kind.Should().Be(ActionKind.Subroutine);
         t.Actions[1].Verb.Should().Be("V(r) := V(r) + 1");
         t.Actions[1].Kind.Should().Be(ActionKind.Processing);

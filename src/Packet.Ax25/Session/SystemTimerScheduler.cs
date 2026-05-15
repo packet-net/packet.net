@@ -21,7 +21,13 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
 {
     private readonly TimeProvider time;
     private readonly object gate = new();
-    private readonly Dictionary<string, ITimer> timers = new(StringComparer.Ordinal);
+
+    // We keep both the underlying ITimer (so Cancel can dispose it) and
+    // the deadline so TimeRemaining can answer without poking at the
+    // ITimer. Deadlines are absolute on TimeProvider's clock so they
+    // tick correctly under FakeTimeProvider too.
+    private readonly Dictionary<string, (ITimer Timer, DateTimeOffset Deadline)> timers =
+        new(StringComparer.Ordinal);
 
     /// <summary>
     /// Create a scheduler. <paramref name="time"/> controls how durations are
@@ -43,9 +49,10 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
         {
             if (timers.TryGetValue(name, out var existing))
             {
-                existing.Dispose();
+                existing.Timer.Dispose();
                 timers.Remove(name);
             }
+            var deadline = time.GetUtcNow() + duration;
             // Capture `name` so the callback can self-remove on fire.
             var timer = time.CreateTimer(_ =>
             {
@@ -55,7 +62,7 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
                 }
                 onExpiry();
             }, state: null, dueTime: duration, period: Timeout.InfiniteTimeSpan);
-            timers[name] = timer;
+            timers[name] = (timer, deadline);
         }
     }
 
@@ -64,9 +71,9 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
     {
         lock (gate)
         {
-            if (timers.TryGetValue(name, out var timer))
+            if (timers.TryGetValue(name, out var entry))
             {
-                timer.Dispose();
+                entry.Timer.Dispose();
                 timers.Remove(name);
             }
         }
@@ -82,13 +89,24 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
     }
 
     /// <inheritdoc/>
+    public TimeSpan TimeRemaining(string name)
+    {
+        lock (gate)
+        {
+            if (!timers.TryGetValue(name, out var entry)) return TimeSpan.Zero;
+            var remaining = entry.Deadline - time.GetUtcNow();
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
         lock (gate)
         {
-            foreach (var timer in timers.Values)
+            foreach (var entry in timers.Values)
             {
-                timer.Dispose();
+                entry.Timer.Dispose();
             }
             timers.Clear();
         }

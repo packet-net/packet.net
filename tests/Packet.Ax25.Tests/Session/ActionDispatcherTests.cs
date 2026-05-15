@@ -909,6 +909,84 @@ public class ActionDispatcherTests
         ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(5000));
     }
 
+    // ─── SRT IIR formula (figc4.7 Select_T1_Value) ─────────────────────
+
+    [Fact]
+    public void Stop_T1_Captures_Remaining_Time_Before_Cancel()
+    {
+        var (d, ctx, s, time, _, _, _, _, _, _, _) = NewRig();
+        ctx.T1V = TimeSpan.FromMilliseconds(6000);
+        d.Execute("start_T1", ctx, s);
+
+        time.Advance(TimeSpan.FromMilliseconds(2300));
+        d.Execute("stop_T1", ctx, s);
+
+        // The sample stashed onto the context should be what was left
+        // on T1 at the moment of cancel, not zero (which is what
+        // TimeRemaining would return after cancel).
+        ctx.T1RemainingWhenLastStopped.Should().Be(TimeSpan.FromMilliseconds(3700));
+        s.IsRunning("T1").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Select_T1_Value_IIR_Uses_Real_Sample_When_T1_Stopped_Early()
+    {
+        // SRT update on a happy ack: T1 armed for 6s, stopped after
+        // 2s elapsed → remaining = 4s → sample = T1V - remaining = 2s.
+        // Spec formula: SRT' = 7/8 * 3000 + 1/8 * 2000 = 2625 + 250 = 2875.
+        var (d, ctx, s, time, _, _, _, _, _, _, _) = NewRig();
+        ctx.Srt = TimeSpan.FromMilliseconds(3000);
+        ctx.T1V = TimeSpan.FromMilliseconds(6000);
+        d.Execute("start_T1", ctx, s);
+        time.Advance(TimeSpan.FromMilliseconds(2000));
+        d.Execute("stop_T1", ctx, s);
+
+        d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+
+        ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(2875));
+        ctx.T1RemainingWhenLastStopped.Should().Be(TimeSpan.Zero, "consumed by the IIR — next call starts fresh");
+    }
+
+    [Fact]
+    public void Select_T1_Value_IIR_Falls_Back_To_Full_T1V_When_T1_Expired()
+    {
+        // Worst case: T1 was allowed to expire, so remaining = 0 → sample = T1V.
+        // SRT' = 7/8 * 3000 + 1/8 * 6000 = 2625 + 750 = 3375.
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.Srt = TimeSpan.FromMilliseconds(3000);
+        ctx.T1V = TimeSpan.FromMilliseconds(6000);
+        ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;
+
+        d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+
+        ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(3375));
+    }
+
+    [Fact]
+    public void Select_T1_Value_IIR_Converges_To_Actual_Rtt_Over_Multiple_Samples()
+    {
+        // Drive the IIR with a steady "real RTT = 800ms" signal and
+        // confirm SRT smooths toward 800ms. We model a peer that ACKs
+        // 800ms after every SABM-like exchange. T1V stays at 6s (the
+        // armed duration); each round-trip leaves 5200ms on the clock
+        // when stop_T1 fires.
+        var (d, ctx, s, time, _, _, _, _, _, _, _) = NewRig();
+        ctx.Srt = TimeSpan.FromMilliseconds(3000);  // initial default
+        ctx.T1V = TimeSpan.FromMilliseconds(6000);
+
+        for (int i = 0; i < 50; i++)
+        {
+            d.Execute("start_T1", ctx, s);
+            time.Advance(TimeSpan.FromMilliseconds(800));
+            d.Execute("stop_T1", ctx, s);
+            d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+        }
+
+        // 50 iterations of (7/8)^n decay: residual = 2200 * 0.875^50 ≈ 3ms.
+        // Well within 10ms of 800ms — i.e. essentially converged.
+        ctx.Srt.Should().BeCloseTo(TimeSpan.FromMilliseconds(800), TimeSpan.FromMilliseconds(10));
+    }
+
     [Fact]
     public void Save_Contents_Of_I_Frame_Stashes_Trigger_Frame_Keyed_By_N_S()
     {

@@ -824,6 +824,66 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — session: runtime wiring follow-ups (Tier 2 prep)
+
+Five-item work item from the figc4.7 arc: now that the data-link state
+machine is end-to-end-walkable, several gaps and approximations needed
+either a fix or a hardness pass.
+
+**ITimerScheduler.TimeRemaining + real T1 IIR.** The
+`Select_T1_Value` IIR was approximating its round-trip sample with the
+worst-case `T1V` because `ITimerScheduler` didn't expose remaining
+time. Added `TimeSpan TimeRemaining(string name)` to the interface,
+backed by per-timer `DateTimeOffset Deadline` tracking in
+`SystemTimerScheduler`. The `stop_T1` / `Stop T1` verbs now capture
+remaining time onto `Ax25SessionContext.T1RemainingWhenLastStopped`
+before cancelling. `Select_T1_Value` plugs the captured value into
+the spec formula `SRT := 7/8*SRT + (T1V - remaining)/8`. Tests cover
+convergence over 50 samples (3000ms → 800ms, residual <10ms).
+
+**End-to-end SDL-driven session lifecycle tests.** New file
+`DataLinkSessionLifecycleTests.cs` drives a real `Ax25Session`
+(default subroutine registry, frame-aware bindings) across
+Disconnected → AwaitingConnection → Connected → AwaitingRelease →
+Disconnected via primitives. Five scenarios: full happy path,
+data-round-trip + disconnect, connect refused by DM(F=1), mod-128
+SABME path, inbound I-frame → DL-DATA-indication. Asserts byte-level
+frame sequence (via dispatcher recorder lists) AND DL-* signal
+sequence (via the upward callback).
+
+**Transcription consistency gaps surfaced + fixed.** Lifecycle tests
+exposed three figure-vs-implementation aliases missing from
+`spec-sdl/actions.yaml`:
+
+- `clear_peer_busy` (figc4.4 spelling) → `clear_peer_receiver_busy`
+  (canonical).
+- `Select T1 Value` (figc4.7 internal call shape, spaced) →
+  `Select_T1_Value` (canonical).
+- `Check_I_Frames_Acknowledged` (figc4.4 plural) →
+  `Check_I_Frame_Acknowledged` (figc4.7 singular). Previously declared
+  as two distinct canonicals — wrong, they're one subroutine.
+
+Plus a binding alias: `V_r_I_frame_stored` (figc4.4 canonical YAML
+predicate) is now in `Ax25SessionBindings.CreateDefault` alongside the
+existing lowercase `vr_i_frame_stored`.
+
+**Net-sim interop tests un-skipped.** The 4 UI-frame scenarios in
+`tests/Packet.Interop.Tests/Netsim/NetsimUiFrameScenarios.cs` had
+unconditional `Skip.If(true, "TODO: ... pending investigation")`. The
+SkipIfNetsimDown guard already handles the "stack not up" case, so the
+unconditional skip was just guesswork from PR #94. Removed; the
+interop CI matrix will now run them against the live net-sim and tell
+us whether they pass (in which case we've gained 4 tests) or fail (in
+which case we have concrete data to file against net-sim, not
+speculation).
+
+**DataLinkSignal already-typed: scope deletion.** The 5th item on the
+original list was "stronger DL-primitive types". Recon found these
+already exist as a record hierarchy: `DataLinkConnectIndication`,
+`DataLinkDataIndication(Info, Pid)`, `DataLinkErrorIndication(Code)`,
+etc. No work needed — kept as a noted non-task here so future readers
+don't redo the recon.
+
 ### 2026-05-14 — ci: matrix `dotnet test` over per-project entries
 
 Replaced the monolithic `build & test` job in `.github/workflows/ci.yml`

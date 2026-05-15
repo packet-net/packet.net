@@ -226,5 +226,6 @@ public class DefaultSubroutineRegistryWalkerTests
         public void Arm(string name, TimeSpan duration, Action onExpiry) { }
         public void Cancel(string name) { }
         public bool IsRunning(string name) => false;
+        public TimeSpan TimeRemaining(string name) => TimeSpan.Zero;
     }
 }

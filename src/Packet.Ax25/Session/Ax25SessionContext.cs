@@ -92,6 +92,17 @@ public sealed class Ax25SessionContext
     /// </summary>
     public bool T1HadExpired { get; set; }
 
+    /// <summary>
+    /// Captures <see cref="ITimerScheduler.TimeRemaining"/> for T1 at
+    /// the moment <c>stop_T1</c> last ran. Consumed by figc4.7's
+    /// <c>Select_T1_Value</c> SRT IIR formula: the spec uses
+    /// <c>SRT := (7/8)*SRT + (T1V - remaining_when_stopped)/8</c>,
+    /// where the parenthesised term is the round-trip-time estimate
+    /// for this exchange. Zero on a fresh session or after T1 has
+    /// expired (no remaining time to sample).
+    /// </summary>
+    public TimeSpan T1RemainingWhenLastStopped { get; set; }
+
     // ─── Negotiated link parameters (§6.7.2, XID defaults) ───────────────
 
     /// <summary>Maximum information field length in octets (N1). Default 256.</summary>
@@ -189,6 +200,7 @@ public sealed class Ax25SessionContext
         Layer3Initiated = false;
         X = null;
         T1HadExpired = false;
+        T1RemainingWhenLastStopped = TimeSpan.Zero;
         IFrameQueue.Clear();
         SentIFrames.Clear();
         StoredReceivedIFrames.Clear();

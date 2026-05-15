@@ -157,7 +157,7 @@ public static class DataLink_Subroutines
                 new SubroutinePath(
                     Id: "t03_caught_up_select_t1",
                     Guard: "not peer_receiver_busy and n_r_eq_v_s",
-                    Actions: new ActionStep[] { new ActionStep("V(a) <- N(r)", ActionKind.Processing), new ActionStep("Stop T1", ActionKind.Processing), new ActionStep("Start T3", ActionKind.Processing), new ActionStep("Select T1 Value", ActionKind.Subroutine) },
+                    Actions: new ActionStep[] { new ActionStep("V(a) <- N(r)", ActionKind.Processing), new ActionStep("Stop T1", ActionKind.Processing), new ActionStep("Start T3", ActionKind.Processing), new ActionStep("Select_T1_Value", ActionKind.Subroutine) },
                     Notes: "Peer not busy, N(r) == V(s): we're fully caught up. Update\nV(a), stop T1, start T3, then run Select_T1_Value to\nrecompute the next T1.\n",
                     References: new ImplementationReference[] {  },
                     Loops: new LoopRange[] {  }),

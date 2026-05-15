@@ -99,4 +99,47 @@ public class TimerSchedulerTests
         using var sched = new SystemTimerScheduler(time);
         sched.IsRunning("never_armed").Should().BeFalse();
     }
+
+    [Fact]
+    public void TimeRemaining_Tracks_Elapsed_Then_Zero_After_Expiry()
+    {
+        var time = new FakeTimeProvider();
+        using var sched = new SystemTimerScheduler(time);
+        sched.Arm("T1", TimeSpan.FromMilliseconds(3000), () => { });
+
+        sched.TimeRemaining("T1").Should().Be(TimeSpan.FromMilliseconds(3000));
+
+        time.Advance(TimeSpan.FromMilliseconds(1200));
+        sched.TimeRemaining("T1").Should().Be(TimeSpan.FromMilliseconds(1800));
+
+        time.Advance(TimeSpan.FromMilliseconds(1800));
+        // Timer has fired → callback ran → entry removed → query is zero.
+        sched.TimeRemaining("T1").Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void TimeRemaining_Returns_Zero_For_Unknown_Timer()
+    {
+        var time = new FakeTimeProvider();
+        using var sched = new SystemTimerScheduler(time);
+        sched.TimeRemaining("never_armed").Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void TimeRemaining_Returns_Zero_After_Cancel()
+    {
+        var time = new FakeTimeProvider();
+        using var sched = new SystemTimerScheduler(time);
+        sched.Arm("T1", TimeSpan.FromMilliseconds(3000), () => { });
+        time.Advance(TimeSpan.FromMilliseconds(1000));
+
+        // Caller must read TimeRemaining BEFORE cancelling to get the
+        // actual round-trip sample — this is the contract that
+        // ActionDispatcher's stop_T1 case relies on.
+        var sampled = sched.TimeRemaining("T1");
+        sched.Cancel("T1");
+
+        sampled.Should().Be(TimeSpan.FromMilliseconds(2000));
+        sched.TimeRemaining("T1").Should().Be(TimeSpan.Zero);
+    }
 }

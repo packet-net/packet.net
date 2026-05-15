@@ -66,6 +66,12 @@ public static class Ax25SessionBindings
             ["rc_eq_0"]                    = () => context.RC == 0,
 
             // ─── Queue / storage state ─────────────────────────────────
+            // Predicate name is figc4.4's "V(r) I-frame stored" mangled
+            // into an identifier — V_r_I_frame_stored is the canonical
+            // YAML spelling; vr_i_frame_stored is the same predicate
+            // under the lower-case-everywhere convention used by some
+            // call sites.
+            ["V_r_I_frame_stored"]         = () => context.StoredReceivedIFrames.ContainsKey(context.VR),
             ["vr_i_frame_stored"]          = () => context.StoredReceivedIFrames.ContainsKey(context.VR),
 
             // ─── figc4.7 subroutine predicates ─────────────────────────

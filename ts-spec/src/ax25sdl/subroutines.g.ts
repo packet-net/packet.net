@@ -238,7 +238,7 @@ export const DataLinkSubroutines: SubroutinesPage = {
             { verb: "V(a) <- N(r)", kind: "processing" },
             { verb: "Stop T1", kind: "processing" },
             { verb: "Start T3", kind: "processing" },
-            { verb: "Select T1 Value", kind: "subroutine" },
+            { verb: "Select_T1_Value", kind: "subroutine" },
           ],
           notes: "Peer not busy, N(r) == V(s): we're fully caught up. Update\nV(a), stop T1, start T3, then run Select_T1_Value to\nrecompute the next T1.\n",
           references: [],

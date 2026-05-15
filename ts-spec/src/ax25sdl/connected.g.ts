@@ -134,7 +134,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
         { verb: "F := 1", kind: "processing" },
         { verb: "N(r) := V(r)", kind: "processing" },
@@ -158,7 +158,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and not P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
       ],
       next: "Connected",
@@ -176,7 +176,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },
@@ -203,7 +203,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and acknowledge_pending",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },
@@ -226,7 +226,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },
@@ -250,7 +250,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
         { verb: "F := 1", kind: "processing" },
         { verb: "N(r) := V(r)", kind: "processing" },
@@ -273,7 +273,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and not P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
       ],
       next: "Connected",
@@ -291,7 +291,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and not N_s_gt_V_r_plus_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "save_contents_of_I_frame", kind: "processing" },
         { verb: "N(r) := V(r)", kind: "processing" },
         { verb: "F := 1", kind: "processing" },
@@ -314,7 +314,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and N_s_gt_V_r_plus_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "save_contents_of_I_frame", kind: "processing" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
         { verb: "set_reject_exception", kind: "processing" },
@@ -338,7 +338,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and srej_exception_gt_0",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "save_contents_of_I_frame", kind: "processing" },
         { verb: "N(r) := N(s)", kind: "processing" },
         { verb: "F := 0", kind: "processing" },
@@ -360,7 +360,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and not srej_enabled",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "discard_contents_of_I_frame", kind: "processing" },
         { verb: "set_reject_exception", kind: "processing" },
         { verb: "F := P", kind: "processing" },
@@ -1068,7 +1068,7 @@ export const DataLinkConnected: StatePage = {
       on: "RR_received",
       guard: "V_a_le_N_r_le_V_s",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
       ],
@@ -1089,7 +1089,7 @@ export const DataLinkConnected: StatePage = {
       on: "RR_received",
       guard: "not V_a_le_N_r_le_V_s and version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1109,7 +1109,7 @@ export const DataLinkConnected: StatePage = {
       on: "RR_received",
       guard: "not V_a_le_N_r_le_V_s and not version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1221,7 +1221,7 @@ export const DataLinkConnected: StatePage = {
       on: "SREJ_received",
       guard: "V_a_le_N_r_le_V_s and not P_or_F_eq_1",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "stop_T1", kind: "processing" },
         { verb: "start_T3", kind: "processing" },
@@ -1247,7 +1247,7 @@ export const DataLinkConnected: StatePage = {
       on: "SREJ_received",
       guard: "V_a_le_N_r_le_V_s and P_or_F_eq_1",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "V(a) := N(r)", kind: "processing" },
         { verb: "stop_T1", kind: "processing" },
@@ -1274,7 +1274,7 @@ export const DataLinkConnected: StatePage = {
       on: "SREJ_received",
       guard: "not V_a_le_N_r_le_V_s and version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1292,7 +1292,7 @@ export const DataLinkConnected: StatePage = {
       on: "SREJ_received",
       guard: "not V_a_le_N_r_le_V_s and not version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1310,7 +1310,7 @@ export const DataLinkConnected: StatePage = {
       on: "REJ_received",
       guard: "V_a_le_N_r_le_V_s",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "V(a) := N(r)", kind: "processing" },
         { verb: "start_T1", kind: "processing" },
@@ -1335,7 +1335,7 @@ export const DataLinkConnected: StatePage = {
       on: "REJ_received",
       guard: "not V_a_le_N_r_le_V_s and version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1354,7 +1354,7 @@ export const DataLinkConnected: StatePage = {
       on: "REJ_received",
       guard: "not V_a_le_N_r_le_V_s and not version_2_2",
       actions: [
-        { verb: "clear_peer_busy", kind: "processing" },
+        { verb: "clear_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1373,7 +1373,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and P_eq_1",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },
@@ -1404,7 +1404,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and acknowledge_pending",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },
@@ -1431,7 +1431,7 @@ export const DataLinkConnected: StatePage = {
       on: "I_received",
       guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending",
       actions: [
-        { verb: "Check_I_Frames_Acknowledged", kind: "subroutine" },
+        { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
         { verb: "V(r) := V(r) + 1", kind: "processing" },
         { verb: "clear_reject_exception", kind: "processing" },
         { verb: "decrement_srej_exception_if_gt_0", kind: "processing" },

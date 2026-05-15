@@ -236,7 +236,7 @@ var DataLinkSubroutines = SubroutinesPage{
 						{Verb: "V(a) <- N(r)", Kind: Processing},
 						{Verb: "Stop T1", Kind: Processing},
 						{Verb: "Start T3", Kind: Processing},
-						{Verb: "Select T1 Value", Kind: Subroutine},
+						{Verb: "Select_T1_Value", Kind: Subroutine},
 					},
 					Notes:      "Peer not busy, N(r) == V(s): we're fully caught up. Update\nV(a), stop T1, start T3, then run Select_T1_Value to\nrecompute the next T1.\n",
 					References: []ImplementationReference{},

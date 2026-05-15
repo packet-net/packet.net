@@ -132,7 +132,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 				{Verb: "F := 1", Kind: Processing},
 				{Verb: "N(r) := V(r)", Kind: Processing},
@@ -156,7 +156,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and own_receiver_busy and not P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 			},
 			Next:  "Connected",
@@ -174,7 +174,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
@@ -201,7 +201,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and acknowledge_pending",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
@@ -224,7 +224,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and not V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
@@ -248,7 +248,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 				{Verb: "F := 1", Kind: Processing},
 				{Verb: "N(r) := V(r)", Kind: Processing},
@@ -271,7 +271,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and reject_exception and not P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 			},
 			Next:  "Connected",
@@ -289,7 +289,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and not N_s_gt_V_r_plus_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "save_contents_of_I_frame", Kind: Processing},
 				{Verb: "N(r) := V(r)", Kind: Processing},
 				{Verb: "F := 1", Kind: Processing},
@@ -312,7 +312,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and not srej_exception_gt_0 and N_s_gt_V_r_plus_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "save_contents_of_I_frame", Kind: Processing},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 				{Verb: "set_reject_exception", Kind: Processing},
@@ -336,7 +336,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and srej_enabled and srej_exception_gt_0",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "save_contents_of_I_frame", Kind: Processing},
 				{Verb: "N(r) := N(s)", Kind: Processing},
 				{Verb: "F := 0", Kind: Processing},
@@ -358,7 +358,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and not N_s_eq_V_r and not reject_exception and not srej_enabled",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "discard_contents_of_I_frame", Kind: Processing},
 				{Verb: "set_reject_exception", Kind: Processing},
 				{Verb: "F := P", Kind: Processing},
@@ -1066,7 +1066,7 @@ var DataLinkConnected = StatePage{
 			On:    "RR_received",
 			Guard: "V_a_le_N_r_le_V_s",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 			},
@@ -1087,7 +1087,7 @@ var DataLinkConnected = StatePage{
 			On:    "RR_received",
 			Guard: "not V_a_le_N_r_le_V_s and version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1107,7 +1107,7 @@ var DataLinkConnected = StatePage{
 			On:    "RR_received",
 			Guard: "not V_a_le_N_r_le_V_s and not version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1219,7 +1219,7 @@ var DataLinkConnected = StatePage{
 			On:    "SREJ_received",
 			Guard: "V_a_le_N_r_le_V_s and not P_or_F_eq_1",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "stop_T1", Kind: Processing},
 				{Verb: "start_T3", Kind: Processing},
@@ -1245,7 +1245,7 @@ var DataLinkConnected = StatePage{
 			On:    "SREJ_received",
 			Guard: "V_a_le_N_r_le_V_s and P_or_F_eq_1",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "V(a) := N(r)", Kind: Processing},
 				{Verb: "stop_T1", Kind: Processing},
@@ -1272,7 +1272,7 @@ var DataLinkConnected = StatePage{
 			On:    "SREJ_received",
 			Guard: "not V_a_le_N_r_le_V_s and version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1290,7 +1290,7 @@ var DataLinkConnected = StatePage{
 			On:    "SREJ_received",
 			Guard: "not V_a_le_N_r_le_V_s and not version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1308,7 +1308,7 @@ var DataLinkConnected = StatePage{
 			On:    "REJ_received",
 			Guard: "V_a_le_N_r_le_V_s",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "V(a) := N(r)", Kind: Processing},
 				{Verb: "start_T1", Kind: Processing},
@@ -1333,7 +1333,7 @@ var DataLinkConnected = StatePage{
 			On:    "REJ_received",
 			Guard: "not V_a_le_N_r_le_V_s and version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1352,7 +1352,7 @@ var DataLinkConnected = StatePage{
 			On:    "REJ_received",
 			Guard: "not V_a_le_N_r_le_V_s and not version_2_2",
 			Actions: []ActionStep{
-				{Verb: "clear_peer_busy", Kind: Processing},
+				{Verb: "clear_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1371,7 +1371,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and P_eq_1",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
@@ -1402,7 +1402,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and acknowledge_pending",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
@@ -1429,7 +1429,7 @@ var DataLinkConnected = StatePage{
 			On:    "I_received",
 			Guard: "command and info_field_valid and V_a_le_N_r_le_V_s and not own_receiver_busy and N_s_eq_V_r and V_r_I_frame_stored and not P_eq_1 and not acknowledge_pending",
 			Actions: []ActionStep{
-				{Verb: "Check_I_Frames_Acknowledged", Kind: Subroutine},
+				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 				{Verb: "V(r) := V(r) + 1", Kind: Processing},
 				{Verb: "clear_reject_exception", Kind: Processing},
 				{Verb: "decrement_srej_exception_if_gt_0", Kind: Processing},
