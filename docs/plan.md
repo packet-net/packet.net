@@ -824,6 +824,35 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — ci: sweep workflow annotations (bump action pins, disable empty Go cache)
+
+PR #113's CI run carried persistent warnings on every job —
+specifically:
+
+1. **Node.js 20 deprecation banner** on `actions/checkout@v4`,
+   `actions/setup-go@v5`, `actions/setup-node@v4`,
+   `actions/upload-artifact@v4`. The PR #113 opt-in
+   (`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`) was forcing them onto
+   Node 24, but the banner stayed because the actions themselves
+   still target Node 20 internally.
+
+2. **`setup-go` "Restore cache failed: Dependencies file is not
+   found"** — the action tries to hash `go.sum` for the Go module
+   cache but `go-spec/` has no external dependencies.
+
+Bumped to the current latest majors (each targets Node 24 natively):
+
+- `actions/checkout@v4` → `@v6`
+- `actions/setup-go@v5` → `@v6` (plus `cache: false`)
+- `actions/setup-node@v4` → `@v6`
+- `actions/upload-artifact@v4` → `@v7`
+
+The `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` env var stays as a
+belt-and-braces safeguard — once every pinned action ships native
+Node 24, it's a no-op, but it catches any future action regression
+back to Node 20 without us needing to remember.
+
+
 ### 2026-05-15 — codegen CLI: CommandLineParser + opt-in-by-presence
 
 Replaced the ad-hoc `for (...) switch (args[i])` parser in

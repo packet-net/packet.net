@@ -39,11 +39,23 @@ jobs:
     name: interop matrix
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: report .NET
         run: dotnet --version
         # .NET 10 SDK is pre-installed system-wide on the self-hosted runner.
+
+      - name: pre-up cleanup
+        # The self-hosted docker daemon's state can leak between runs —
+        # a crashed previous run can leave the named volume pointing at
+        # a container ID that no longer exists, which then makes
+        # `compose up` fail with "No such container" on the next run.
+        # Forcing a clean slate before each invocation prevents that.
+        # `|| true` because there may be nothing to clean up on a fresh
+        # runner, and that's not an error.
+        run: docker compose -f docker/compose.interop.yml down -v --remove-orphans || true
+        env:
+          COMPOSE_PROJECT_NAME: packetnet-interop
 
       - name: bring up interop stack
         run: docker compose -f docker/compose.interop.yml up -d --wait

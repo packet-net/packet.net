@@ -47,7 +47,7 @@ jobs:
           - Packet.Rhp2.Tests
           - Packet.Sdl.CodeGen.Tests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: report .NET
         run: dotnet --version
@@ -69,7 +69,7 @@ jobs:
         # the upload itself succeeded.
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.project }}
           path: 'tests/${{ matrix.project }}/TestResults/*.trx'
@@ -93,7 +93,7 @@ jobs:
     name: SDL codegen — C# drift
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: report .NET
         run: dotnet --version
@@ -116,15 +116,19 @@ jobs:
     name: SDL codegen — Go drift + build/vet/test/gofmt
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: report .NET
         run: dotnet --version
 
       - name: setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
+          # No external Go dependencies in go-spec (no go.sum) so the
+          # default cache step warns "Dependencies file is not found".
+          # Disable cache rather than carry a useless warning.
+          cache: false
 
       - name: run codegen (Go only)
         # --go opts in to the Go backend only. No --csharp / --ts means
@@ -157,13 +161,13 @@ jobs:
     name: SDL codegen — TS drift + typecheck/test
     runs-on: [self-hosted, Linux, X64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: report .NET
         run: dotnet --version
 
       - name: setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
