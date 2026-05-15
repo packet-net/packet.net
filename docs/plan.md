@@ -828,6 +828,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — interop: bpq32.cfg simplification (drop redundant NODE=1, BBS=0)
+
+Follow-up to the I-frame round-trip entry below. The previous fix added explicit `NODE=1` and `BBS=0` thinking they were needed to make BPQ respond on an L2 connection. Per the [LinBPQ SIMPLE-mode reference](https://m0lte.github.io/linbpq/configuration/reference/?h=simple#quick-start-simple-mode), `SIMPLE=1` already sets `NODE=1` and `BBS=1` — so our `NODE=1` was redundant and our `BBS=0` was overriding the SIMPLE default to no useful effect for these tests. What was actually missing was just the `CTEXT: … ***` banner block, which `SIMPLE=1` does NOT seed. Verified both BPQ-via-netsim interop tests still pass with just `SIMPLE=1` + the CTEXT block.
+
 ### 2026-05-15 — interop: Rax25-via-netsim connected-mode test
 
 Third stack on the netsim interop matrix and the first Rust implementation. Thomas Habets's [rax25](https://github.com/ThomasHabets/rax25) `async_server` example dials net-sim's KISS-TCP listener on port 8104 (node `e`) from inside docker; our `Ax25Session` attaches to net-sim's port 8100 (node `a`) and the afsk1200 sim bridges between us. Mirrors `LinbpqViaNetsimConnectedMode` and `XrouterViaNetsimConnectedMode` — handshake-only assertion (SABM/UA + DISC/UA), 15 interop tests green locally including the new fact.
