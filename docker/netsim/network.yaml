@@ -1,6 +1,6 @@
 # Net-sim topology for Packet.NET KISS-TCP interop tests.
 #
-# Four simulated nodes, all on the same afsk1200 channel:
+# Five simulated nodes, all on the same afsk1200 channel:
 #
 #   a <-> b   the "our-sessions" pair on 8100 / 8101 — used by the
 #             NetsimConnectedModeScenarios / NetsimUiFrameScenarios
@@ -13,14 +13,19 @@
 #             XrouterViaNetsimConnectedMode test where one end is our
 #             session and the other is XRouter dialling 8103 as a
 #             KISS-TCP client
+#   a <-> e   the "rax25" pair on 8100 / 8104 — used by the
+#             Rax25ViaNetsimConnectedMode test where the remote end
+#             is Thomas Habets's rax25 `async_server` example
+#             (Rust, accept-inbound) dialling 8104 as a KISS-TCP client
 #
-# Node a is the shared "ours" endpoint. b, c, d aren't directly linked
-# to each other, but that's only a path-loss decision: in FM-capture
-# mode all stations in earshot hear every TX, so concurrent runs would
-# see each other's frames if they were linked. Filtering happens at
-# the AX.25 address layer (each test uses distinct callsigns so
-# off-target frames are dropped by the inbound pump or by the foreign
-# stack on the other side).
+# Node a is the shared "ours" endpoint. The peer-only nodes (b, c, d, e)
+# are NOT linked to each other — only to a. That's a path-loss decision:
+# in FM-capture mode all stations in earshot hear every TX, so concurrent
+# runs against different third-party peers would otherwise see each
+# other's frames at the RF-sim layer. Filtering also happens at the
+# AX.25 address layer (each test uses distinct callsigns so off-target
+# frames are dropped by the inbound pump or by the peer's stack), but
+# keeping the topology isolated is cleaner.
 
 mixer_mode: fm_capture
 capture_db: 6.0
@@ -51,12 +56,17 @@ nodes:
         modem:
           mode: afsk1200
         kiss_port: 8103
+  - id: e
+    ports:
+      - id: vhf
+        modem:
+          mode: afsk1200
+        kiss_port: 8104
 
 # Modems on both ends of a link must match. afsk1200 on every port here.
 # loss_db is the path loss applied in the FM-capture mixer; 10 dB is well
-# above the modem threshold so frames decode reliably. The b<->c, b<->d
-# and c<->d pairs are NOT linked — each foreign-stack pair is isolated
-# to a from a-anchored two-node subnet.
+# above the modem threshold so frames decode reliably. b / c / d / e are
+# NOT linked to each other — keeps the third-party-peer scenarios isolated.
 links:
   - { from: a.vhf, to: b.vhf, loss_db: 10 }
   - { from: b.vhf, to: a.vhf, loss_db: 10 }
@@ -64,3 +74,5 @@ links:
   - { from: c.vhf, to: a.vhf, loss_db: 10 }
   - { from: a.vhf, to: d.vhf, loss_db: 10 }
   - { from: d.vhf, to: a.vhf, loss_db: 10 }
+  - { from: a.vhf, to: e.vhf, loss_db: 10 }
+  - { from: e.vhf, to: a.vhf, loss_db: 10 }

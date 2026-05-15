@@ -24,6 +24,7 @@ Once everything is healthy:
 | net-sim web UI | http://localhost:8080 | topology + start/stop |
 | net-sim KISS A | localhost:8100 | afsk1200 node A |
 | net-sim KISS B | localhost:8101 | afsk1200 node B |
+| rax25 | (no host port) | Habets's Rust AX.25 engine; dials netsim:8104 as a KISS-TCP client (built from source at image-build time) |
 
 Tear down:
 
@@ -70,6 +71,8 @@ docker/
     bpq32.cfg              minimal LinBPQ config
   xrouter/
     XROUTER.CFG            minimal XRouter config
+  rax25/
+    Dockerfile             builds Habets's rax25 async_server example from source
   netsim/
-    network.yaml           two-node topology for interop tests
+    network.yaml           multi-node topology for interop tests
 ```

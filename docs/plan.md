@@ -600,6 +600,7 @@ CI filter convention: default jobs run with `--filter "Category!=HardwareLoop&Ca
 | 1 | UI frame across back-to-back NinoTNCs | both ends decode identical bytes |
 | 2 | SABM/UA cycle (mod-8) vs LinBPQ over net-sim AFSK1200 | our session reaches Connected after UA; DISC/UA returns it to Disconnected (`LinbpqViaNetsimConnectedMode`) |
 | 2 | SABM/UA cycle (mod-8) vs XRouter over net-sim AFSK1200 | our session reaches Connected after UA; DISC/UA returns it to Disconnected (`XrouterViaNetsimConnectedMode`) |
+| 2 | SABM/UA cycle (mod-8) vs rax25 (Habets, Rust) over net-sim AFSK1200 | our session reaches Connected after UA; DISC/UA returns it to Disconnected (`Rax25ViaNetsimConnectedMode`) — handshake only; REJ/SREJ + segmentation untested in rax25 |
 | 2 | 30 % scripted loss net-sim afsk1200, 10 kB transfer | completes; retries observed; no FRMR |
 | 3 | ACKMODE echo via LinBPQ | ack-bytes returned within 5 s |
 | 3 | ACKMODE via NinoTNC pair | ack-bytes correlate to RX on partner TNC |
@@ -826,6 +827,33 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-15 — interop: Rax25-via-netsim connected-mode test
+
+Third stack on the netsim interop matrix and the first Rust implementation. Thomas Habets's [rax25](https://github.com/ThomasHabets/rax25) `async_server` example dials net-sim's KISS-TCP listener on port 8104 (node `e`) from inside docker; our `Ax25Session` attaches to net-sim's port 8100 (node `a`) and the afsk1200 sim bridges between us. Mirrors `LinbpqViaNetsimConnectedMode` and `XrouterViaNetsimConnectedMode` — handshake-only assertion (SABM/UA + DISC/UA), 15 interop tests green locally including the new fact.
+
+Adds:
+
+- **`docker/rax25/Dockerfile`** — multi-stage build (`rust:1-slim-bookworm` → `debian:bookworm-slim`). Upstream publishes no pre-built image so we build the `async_server` example from source at image-build time. Pinned to commit `3cc22e59…` via the `RAX25_REV` build-arg for reproducibility. Build deps include `libudev-dev` for the `serialport` crate (a transitive dep of rax25 that we don't exercise here since we only use the TCP endpoint, but it's part of rax25's main lib so we can't avoid linking it). Edition 2024 means the image needs a recent Rust toolchain (rax25 declares `rust-version = "1.91"`). The resulting image is local-only and never pushed to a registry.
+- **Fifth net-sim node `e`** in `docker/netsim/network.yaml` on `kiss_port: 8104`, linked only to `a` (not to b/c/d) so concurrent scenarios stay isolated at the RF-sim layer.
+- **`rax25` service in `docker/compose.interop.yml`** with `depends_on netsim: healthy`. The command pre-bakes the CLI flags `-v debug -p tcp://netsim:8104 -s PN0RAX-1` — `-s PN0RAX-1` registers rax25 as `PN0RAX-1` (SSID 1), which our test uses as the remote callsign. No CTEXT-equivalent needed: rax25's `accept()` loops on incoming SABM and replies UA automatically, then writes a fixed welcome banner I-frame ("Welcome to the server!\n") which we don't assert on.
+- **`tests/Packet.Interop.Tests/Rax25/Rax25ViaNetsimConnectedMode.cs`** — one fact, `[Collection(NetsimCollection.Name)]`. Rig duplicated from the LinBPQ and XRouter equivalents rather than shared (rax25-specific quirks likely to surface, particularly around the extended-mode reserved-bit handling and the missing REJ/SREJ support).
+
+**Caveats acknowledged in the test docstring and PR body:** rax25's README flags REJ/SREJ as "untested / probably broken" and segmentation as "not implemented". SABM/UA/DISC/UA — the only frames this test exercises — do NOT touch any of those paths, so the scope is genuinely safe. A future I-frame round-trip or recovery-path test against rax25 will need care: assertions that generalise across LinBPQ and XRouter may not transfer.
+
+**License:** rax25 is MIT-licensed (declared in its `Cargo.toml`; the repo lacks a top-level `LICENSE` file but the package metadata is authoritative under standard Rust ecosystem conventions). We build from source at image-build time and don't redistribute the resulting image — pure local docker / CI use.
+
+Wire-log evidence (from `docker logs pn-netsim` after the test run):
+
+```
+[a.vhf] PNTEST>PN0RAX-1:(SABM cmd, p=1)
+[e.vhf] PN0RAX-1>PNTEST:(UA res, f=1)
+[e.vhf] PN0RAX-1>PNTEST:(I cmd, n(s)=0, n(r)=0, p=0, pid=0xf0)Welcome to the server!<0x0a>
+[a.vhf] PNTEST>PN0RAX-1:(DISC cmd, p=1)
+[e.vhf] PN0RAX-1>PNTEST:(UA res, f=1)
+```
+
+Pattern follows the LinBPQ-via-netsim and XRouter-via-netsim entries before it: minimum-useful assertion + duplicated rig to keep the blast radius of any later regression localised to one peer at a time. Fills the Rust slot of the third-party AX.25 interop matrix (LinBPQ: C/mature, XRouter: C/mature, rax25: Rust/young). The `§7.1 interop-scenarios` table grows a row to reflect that the connected-mode SABM/UA-vs-rax25 scenario is now covered.
 
 ### 2026-05-15 — interop: XRouter-via-netsim connected-mode test
 

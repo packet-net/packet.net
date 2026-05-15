@@ -89,6 +89,32 @@ services:
       rfnet:
         ipv4_address: 172.30.0.11
 
+  rax25:
+    # Thomas Habets's Rust AX.25 engine (https://github.com/ThomasHabets/rax25).
+    # Built from source — no upstream image is published. The Dockerfile
+    # pins to a specific commit SHA via build-arg RAX25_REV so behaviour
+    # is reproducible. The resulting image is local-only and never pushed
+    # to a registry. rax25 is MIT-licensed (declared in its Cargo.toml).
+    build:
+      context: ./rax25
+    container_name: pn-rax25
+    restart: unless-stopped
+    depends_on:
+      # rax25's async_server dials net-sim's KISS-TCP listener on 8104
+      # (node e) as a client. Waiting on netsim being healthy avoids
+      # a startup race where the first dial fails before netsim has
+      # bound the port; rax25 doesn't retry, it would just exit.
+      netsim:
+        condition: service_healthy
+    # async_server CLI: -p tcp://host:port, -s call-ssid, -v <level>.
+    # See docker/rax25/Dockerfile header for upstream caveats (REJ/SREJ
+    # untested, no segmentation — our tests are handshake-only so this
+    # doesn't bite us, but a future I-frame test must take care).
+    command: ["-v", "debug", "-p", "tcp://netsim:8104", "-s", "PN0RAX-1"]
+    networks:
+      rfnet:
+        ipv4_address: 172.30.0.13
+
   netsim:
     # ghcr.io/packethacking/net-sim:main @ 2026-05-12
     image: ghcr.io/packethacking/net-sim@sha256:71aed5bf5224966a4a640a20bc2bdb8ae5f45f601b0d8e2614c1463504d78417
