@@ -418,7 +418,7 @@ static int test_t18_ui_received_p_eq_1(void) {
   ASSERT(t->actions_len == 2, "actions count");
   ASSERT_STREQ(t->actions[0].verb, "UI_Check", "actions[0].verb");
   ASSERT(t->actions[0].kind == AX25SDL_KIND_SUBROUTINE, "actions[0].kind");
-  ASSERT_STREQ(t->actions[1].verb, "DM F=1", "actions[1].verb");
+  ASSERT_STREQ(t->actions[1].verb, "DM (F = 1)", "actions[1].verb");
   ASSERT(t->actions[1].kind == AX25SDL_KIND_SIGNAL_LOWER, "actions[1].kind");
   return 0;
 }

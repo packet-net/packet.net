@@ -270,7 +270,7 @@ describe("DataLinkAwaitingConnection", () => {
     expect(t.actions).toHaveLength(2);
     expect(t.actions[0].verb).toBe("UI_Check");
     expect(t.actions[0].kind).toBe("subroutine");
-    expect(t.actions[1].verb).toBe("DM F=1");
+    expect(t.actions[1].verb).toBe("DM (F = 1)");
     expect(t.actions[1].kind).toBe("signal_lower");
   });
 

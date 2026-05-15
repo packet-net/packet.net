@@ -3314,7 +3314,7 @@
       "guard": "V_a_le_N_r_le_V_s",
       "actions": [
         {
-          "verb": "set_peer_busy",
+          "verb": "set_peer_receiver_busy",
           "kind": "processing"
         },
         {
@@ -3375,7 +3375,7 @@
       "guard": "not V_a_le_N_r_le_V_s and version_2_2",
       "actions": [
         {
-          "verb": "set_peer_busy",
+          "verb": "set_peer_receiver_busy",
           "kind": "processing"
         },
         {
@@ -3436,7 +3436,7 @@
       "guard": "not V_a_le_N_r_le_V_s and not version_2_2",
       "actions": [
         {
-          "verb": "set_peer_busy",
+          "verb": "set_peer_receiver_busy",
           "kind": "processing"
         },
         {

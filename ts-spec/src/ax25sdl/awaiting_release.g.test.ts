@@ -217,7 +217,7 @@ describe("DataLinkAwaitingRelease", () => {
     expect(t.actions).toHaveLength(2);
     expect(t.actions[0].verb).toBe("UI_Check");
     expect(t.actions[0].kind).toBe("subroutine");
-    expect(t.actions[1].verb).toBe("DM F = 1");
+    expect(t.actions[1].verb).toBe("DM (F = 1)");
     expect(t.actions[1].kind).toBe("signal_lower");
   });
 
@@ -241,7 +241,7 @@ describe("DataLinkAwaitingRelease", () => {
     expect(t.next).toBe("AwaitingRelease");
     expect(t.guard).toBe("P_eq_1");
     expect(t.actions).toHaveLength(1);
-    expect(t.actions[0].verb).toBe("DM F = 1");
+    expect(t.actions[0].verb).toBe("DM (F = 1)");
     expect(t.actions[0].kind).toBe("signal_lower");
   });
 

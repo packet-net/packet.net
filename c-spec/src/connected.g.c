@@ -2235,7 +2235,7 @@ static const ImplementationReference
 
 static const ActionStep
     data_link_connected_t55_rnr_received_nr_in_window_actions[] = {
-        {.verb = "set_peer_busy", .kind = AX25SDL_KIND_PROCESSING},
+        {.verb = "set_peer_receiver_busy", .kind = AX25SDL_KIND_PROCESSING},
         {.verb = "Check_Need_For_Response", .kind = AX25SDL_KIND_SUBROUTINE},
         {.verb = "Check_I_Frame_Acknowledged", .kind = AX25SDL_KIND_SUBROUTINE},
 };
@@ -2278,7 +2278,7 @@ static const ImplementationReference
 
 static const ActionStep
     data_link_connected_t56_rnr_received_nr_out_of_window_v22_actions[] = {
-        {.verb = "set_peer_busy", .kind = AX25SDL_KIND_PROCESSING},
+        {.verb = "set_peer_receiver_busy", .kind = AX25SDL_KIND_PROCESSING},
         {.verb = "Check_Need_For_Response", .kind = AX25SDL_KIND_SUBROUTINE},
         {.verb = "N_r_Error_Recovery", .kind = AX25SDL_KIND_SUBROUTINE},
 };
@@ -2318,7 +2318,7 @@ static const ImplementationReference
 
 static const ActionStep
     data_link_connected_t57_rnr_received_nr_out_of_window_v20_actions[] = {
-        {.verb = "set_peer_busy", .kind = AX25SDL_KIND_PROCESSING},
+        {.verb = "set_peer_receiver_busy", .kind = AX25SDL_KIND_PROCESSING},
         {.verb = "Check_Need_For_Response", .kind = AX25SDL_KIND_SUBROUTINE},
         {.verb = "N_r_Error_Recovery", .kind = AX25SDL_KIND_SUBROUTINE},
 };

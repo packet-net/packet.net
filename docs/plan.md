@@ -826,6 +826,22 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — codegen: action-verb-completeness lint + two latent action bugs
+
+Mirror of the predicate-completeness lint added earlier today, addressing the follow-up flagged in the previous I-frame round-trip entry. Walks every action verb in every resolved SDL page (post-`actions.yaml` alias substitution) and confirms there's a matching `case "..."` arm in `ActionDispatcher.Execute`. Verbs lacking a case become codegen errors with the YAML location of their first use and a hint to either add a dispatcher case or an `actions.yaml` alias.
+
+The lint surfaced **two real latent bugs on first run**:
+
+- **`actions.yaml` had duplicate `signal_lower:` mapping keys.** The first block declared `DM (F = 1)` + aliases (`DM F=1`, `DM F = 1`). The second block declared the `LM_*` link-multiplexer verbs. YAML's duplicate-key semantics meant the second block silently replaced the first, so the DM aliases never reached the resolver and the generated code emitted figure-verbatim `DM F = 1` / `DM F=1` straight to the dispatcher. The dispatcher only had a `case "DM (F = 1)":` (canonical), so any transition emitting these would have thrown `unknown SDL action` at runtime. None of the existing tests exercised those transitions, hence "latent". Fixed by folding the LM_* entries into the single canonical `signal_lower:` block.
+
+- **`set_peer_busy → set_peer_receiver_busy` alias missing.** The matching `clear_peer_busy → clear_peer_receiver_busy` alias was present, but the `set` form wasn't catalogued, so figc4.4 t55/t57/t58's `set_peer_busy` flowed unsubstituted through the codegen and the dispatcher only had `case "set_peer_receiver_busy":` (canonical). Same latent-runtime-throw profile as the DM case. Fixed by adding the alias entry.
+
+The lint also caught the verbatim `set_acknowledgement_pending` case from the previous amendment-log entry, so the regression-guard story is real: had the lint been in place before that PR, the runtime exception would have been a codegen error instead.
+
+Lint code lives next to `LintPredicateBindings` in `tools/Packet.Sdl.CodeGen/Program.cs`. Extraction of dispatcher case labels is a single regex scan of `ActionDispatcher.cs`; resolution is done inline so the lint sees canonical names rather than figure-verbatim. Standalone-codegen mode (no runtime library on disk) silently skips the lint.
+
+After the fix, all 7 backends regenerated cleanly. 1106 non-interop tests pass; 12/12 interop tests pass.
+
 ### 2026-05-15 — interop: I-frame round-trip vs BPQ node prompt
 
 Extends `LinbpqViaNetsimConnectedMode` with a second fact that drives figc4.4's data path end-to-end against BPQ's node prompt over the same net-sim AFSK1200 RF sim. After SABM/UA we wait for BPQ's CTEXT banner I-frame, send `"P\r"` as an outbound I-frame, wait for BPQ's ports-listing response I-frame, then DISC/UA. Net-sim wire-log shows the full exchange with correct N(s)/N(r) bookkeeping on both sides: BPQ I(n(s)=0, n(r)=0, p=1, "PN0TST Packet.NET interop test node\r") → us RR(n(r)=1, f=1) → us I(n(s)=0, n(r)=1, "P\r") → BPQ I(n(s)=1, n(r)=1, "PNTST:PN0TST} Ports\r  1 Telnet  2 AXIP  3 netsim") → BPQ I(n(s)=2, n(r)=1, p=1).

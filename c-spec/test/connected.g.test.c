@@ -1526,7 +1526,7 @@ static int test_t55_rnr_received_nr_in_window(void) {
   ASSERT_STREQ(t->next, "Connected", "next");
   ASSERT_STREQ(t->guard, "V_a_le_N_r_le_V_s", "guard");
   ASSERT(t->actions_len == 3, "actions count");
-  ASSERT_STREQ(t->actions[0].verb, "set_peer_busy", "actions[0].verb");
+  ASSERT_STREQ(t->actions[0].verb, "set_peer_receiver_busy", "actions[0].verb");
   ASSERT(t->actions[0].kind == AX25SDL_KIND_PROCESSING, "actions[0].kind");
   ASSERT_STREQ(t->actions[1].verb, "Check_Need_For_Response",
                "actions[1].verb");
@@ -1551,7 +1551,7 @@ static int test_t56_rnr_received_nr_out_of_window_v22(void) {
   ASSERT_STREQ(t->next, "AwaitingConnection22", "next");
   ASSERT_STREQ(t->guard, "not V_a_le_N_r_le_V_s and version_2_2", "guard");
   ASSERT(t->actions_len == 3, "actions count");
-  ASSERT_STREQ(t->actions[0].verb, "set_peer_busy", "actions[0].verb");
+  ASSERT_STREQ(t->actions[0].verb, "set_peer_receiver_busy", "actions[0].verb");
   ASSERT(t->actions[0].kind == AX25SDL_KIND_PROCESSING, "actions[0].kind");
   ASSERT_STREQ(t->actions[1].verb, "Check_Need_For_Response",
                "actions[1].verb");
@@ -1575,7 +1575,7 @@ static int test_t57_rnr_received_nr_out_of_window_v20(void) {
   ASSERT_STREQ(t->next, "AwaitingConnection", "next");
   ASSERT_STREQ(t->guard, "not V_a_le_N_r_le_V_s and not version_2_2", "guard");
   ASSERT(t->actions_len == 3, "actions count");
-  ASSERT_STREQ(t->actions[0].verb, "set_peer_busy", "actions[0].verb");
+  ASSERT_STREQ(t->actions[0].verb, "set_peer_receiver_busy", "actions[0].verb");
   ASSERT(t->actions[0].kind == AX25SDL_KIND_PROCESSING, "actions[0].kind");
   ASSERT_STREQ(t->actions[1].verb, "Check_Need_For_Response",
                "actions[1].verb");

@@ -286,7 +286,7 @@ export const DataLinkAwaitingRelease: StatePage = {
       guard: "P_eq_1",
       actions: [
         { verb: "UI_Check", kind: "subroutine" },
-        { verb: "DM F = 1", kind: "signal_lower" },
+        { verb: "DM (F = 1)", kind: "signal_lower" },
       ],
       next: "AwaitingRelease",
       notes: "DIVERGENCE: §6.3.5 ¶3 explicitly EXCLUDES UI from the \"respond DM\"\nrule (\"Any TNC receiving a command frame other than a SABM(E) or\nUI frame with the P bit set to '1' responds with a DM frame...\"),\nyet figc4.3 shows UI(P=1) → DM(F=1). direwolf alone follows the\nfigure on this; linbpq/linux/rax25 follow the prose (no DM reply).\nFigure-authoritative here, but flagged as candidate spec issue.\n",
@@ -316,7 +316,7 @@ export const DataLinkAwaitingRelease: StatePage = {
       on: "i_or_s_command_received",
       guard: "P_eq_1",
       actions: [
-        { verb: "DM F = 1", kind: "signal_lower" },
+        { verb: "DM (F = 1)", kind: "signal_lower" },
       ],
       next: "AwaitingRelease",
       notes: "Direwolf erratum at rr_rnr_frame:3537-3541 (duplicated in rej/srej):\n\"RR, RNR, REJ, SREJ responses would fall under all other primitives.\nIn the original, we simply ignore it and stay in state 2. The 2006\nversion, page 94, says go into 1 awaiting connection state. That\nmakes no sense to me.\" — 2006 vs 1998 spec divergence.\n\nDirewolf srej_frame:4046 erratum: \"Based on X.25, I don't think\nSREJ can be a command\" — suggests the figure's enumeration of SREJ\nin the command-column is questionable.\n",

@@ -951,7 +951,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("Connected");
         t.Guard.Should().Be("V_a_le_N_r_le_V_s");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("set_peer_busy");
+        t.Actions[0].Verb.Should().Be("set_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -966,7 +966,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection22");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("set_peer_busy");
+        t.Actions[0].Verb.Should().Be("set_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);
@@ -981,7 +981,7 @@ public class DataLink_Connected_GeneratedTests
         t.Next.Should().Be("AwaitingConnection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and not version_2_2");
         t.Actions.Count.Should().Be(3);
-        t.Actions[0].Verb.Should().Be("set_peer_busy");
+        t.Actions[0].Verb.Should().Be("set_peer_receiver_busy");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);
         t.Actions[1].Verb.Should().Be("Check_Need_For_Response");
         t.Actions[1].Kind.Should().Be(ActionKind.Subroutine);

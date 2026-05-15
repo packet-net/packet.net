@@ -1003,7 +1003,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("Connected");
     expect(t.guard).toBe("V_a_le_N_r_le_V_s");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("set_peer_busy");
+    expect(t.actions[0].verb).toBe("set_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1019,7 +1019,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection22");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("set_peer_busy");
+    expect(t.actions[0].verb).toBe("set_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");
@@ -1035,7 +1035,7 @@ describe("DataLinkConnected", () => {
     expect(t.next).toBe("AwaitingConnection");
     expect(t.guard).toBe("not V_a_le_N_r_le_V_s and not version_2_2");
     expect(t.actions).toHaveLength(3);
-    expect(t.actions[0].verb).toBe("set_peer_busy");
+    expect(t.actions[0].verb).toBe("set_peer_receiver_busy");
     expect(t.actions[0].kind).toBe("processing");
     expect(t.actions[1].verb).toBe("Check_Need_For_Response");
     expect(t.actions[1].kind).toBe("subroutine");

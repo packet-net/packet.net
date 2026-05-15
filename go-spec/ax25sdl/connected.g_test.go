@@ -2716,8 +2716,8 @@ func TestDataLinkConnected_t55_rnr_received_nr_in_window(t *testing.T) {
 	if got := len(tx.Actions); got != 3 {
 		t.Fatalf("len(Actions) = %d, want 3", got)
 	}
-	if tx.Actions[0].Verb != "set_peer_busy" {
-		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_busy")
+	if tx.Actions[0].Verb != "set_peer_receiver_busy" {
+		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_receiver_busy")
 	}
 	if tx.Actions[0].Kind != Processing {
 		t.Errorf("Actions[0].Kind = %v, want Processing", tx.Actions[0].Kind)
@@ -2759,8 +2759,8 @@ func TestDataLinkConnected_t56_rnr_received_nr_out_of_window_v22(t *testing.T) {
 	if got := len(tx.Actions); got != 3 {
 		t.Fatalf("len(Actions) = %d, want 3", got)
 	}
-	if tx.Actions[0].Verb != "set_peer_busy" {
-		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_busy")
+	if tx.Actions[0].Verb != "set_peer_receiver_busy" {
+		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_receiver_busy")
 	}
 	if tx.Actions[0].Kind != Processing {
 		t.Errorf("Actions[0].Kind = %v, want Processing", tx.Actions[0].Kind)
@@ -2802,8 +2802,8 @@ func TestDataLinkConnected_t57_rnr_received_nr_out_of_window_v20(t *testing.T) {
 	if got := len(tx.Actions); got != 3 {
 		t.Fatalf("len(Actions) = %d, want 3", got)
 	}
-	if tx.Actions[0].Verb != "set_peer_busy" {
-		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_busy")
+	if tx.Actions[0].Verb != "set_peer_receiver_busy" {
+		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "set_peer_receiver_busy")
 	}
 	if tx.Actions[0].Kind != Processing {
 		t.Errorf("Actions[0].Kind = %v, want Processing", tx.Actions[0].Kind)

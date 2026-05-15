@@ -317,7 +317,7 @@ pub static DATA_LINK_AWAITING_CONNECTION: StatePage = StatePage {
             guard: "P_eq_1",
             actions: &[
                 ActionStep { verb: "UI_Check", kind: ActionKind::Subroutine },
-                ActionStep { verb: "DM F=1", kind: ActionKind::SignalLower },
+                ActionStep { verb: "DM (F = 1)", kind: ActionKind::SignalLower },
             ],
             next: "AwaitingConnection",
             notes: "",
@@ -758,7 +758,7 @@ mod tests {
         assert_eq!(tx.actions.len(), 2);
         assert_eq!(tx.actions[0].verb, "UI_Check");
         assert_eq!(tx.actions[0].kind, ActionKind::Subroutine);
-        assert_eq!(tx.actions[1].verb, "DM F=1");
+        assert_eq!(tx.actions[1].verb, "DM (F = 1)");
         assert_eq!(tx.actions[1].kind, ActionKind::SignalLower);
     }
 

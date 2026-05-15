@@ -251,7 +251,7 @@ def test_t17_ui_received_p_eq_1() -> None:
     assert len(t.actions) == 2
     assert t.actions[0].verb == "UI_Check"
     assert t.actions[0].kind == ActionKind.SUBROUTINE
-    assert t.actions[1].verb == "DM F = 1"
+    assert t.actions[1].verb == "DM (F = 1)"
     assert t.actions[1].kind == ActionKind.SIGNAL_LOWER
 
 
@@ -279,7 +279,7 @@ def test_t19_i_or_s_command_p_eq_1() -> None:
     assert t.next == "AwaitingRelease"
     assert t.guard == "P_eq_1"
     assert len(t.actions) == 1
-    assert t.actions[0].verb == "DM F = 1"
+    assert t.actions[0].verb == "DM (F = 1)"
     assert t.actions[0].kind == ActionKind.SIGNAL_LOWER
 
 

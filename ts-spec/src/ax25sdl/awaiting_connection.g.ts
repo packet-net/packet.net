@@ -315,7 +315,7 @@ export const DataLinkAwaitingConnection: StatePage = {
       guard: "P_eq_1",
       actions: [
         { verb: "UI_Check", kind: "subroutine" },
-        { verb: "DM F=1", kind: "signal_lower" },
+        { verb: "DM (F = 1)", kind: "signal_lower" },
       ],
       next: "AwaitingConnection",
       notes: "",

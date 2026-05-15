@@ -548,8 +548,8 @@ func TestDataLinkAwaitingRelease_t17_ui_received_p_eq_1(t *testing.T) {
 	if tx.Actions[0].Kind != Subroutine {
 		t.Errorf("Actions[0].Kind = %v, want Subroutine", tx.Actions[0].Kind)
 	}
-	if tx.Actions[1].Verb != "DM F = 1" {
-		t.Errorf("Actions[1].Verb = %q, want %q", tx.Actions[1].Verb, "DM F = 1")
+	if tx.Actions[1].Verb != "DM (F = 1)" {
+		t.Errorf("Actions[1].Verb = %q, want %q", tx.Actions[1].Verb, "DM (F = 1)")
 	}
 	if tx.Actions[1].Kind != SignalLower {
 		t.Errorf("Actions[1].Kind = %v, want SignalLower", tx.Actions[1].Kind)
@@ -610,8 +610,8 @@ func TestDataLinkAwaitingRelease_t19_i_or_s_command_p_eq_1(t *testing.T) {
 	if got := len(tx.Actions); got != 1 {
 		t.Fatalf("len(Actions) = %d, want 1", got)
 	}
-	if tx.Actions[0].Verb != "DM F = 1" {
-		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "DM F = 1")
+	if tx.Actions[0].Verb != "DM (F = 1)" {
+		t.Errorf("Actions[0].Verb = %q, want %q", tx.Actions[0].Verb, "DM (F = 1)")
 	}
 	if tx.Actions[0].Kind != SignalLower {
 		t.Errorf("Actions[0].Kind = %v, want SignalLower", tx.Actions[0].Kind)

@@ -2649,7 +2649,7 @@ DATA_LINK_CONNECTED = StatePage(
             on="RNR_received",
             guard="V_a_le_N_r_le_V_s",
             actions=(
-                ActionStep(verb="set_peer_busy", kind=ActionKind.PROCESSING),
+                ActionStep(verb="set_peer_receiver_busy", kind=ActionKind.PROCESSING),
                 ActionStep(verb="Check_Need_For_Response", kind=ActionKind.SUBROUTINE),
                 ActionStep(verb="Check_I_Frame_Acknowledged", kind=ActionKind.SUBROUTINE),
             ),
@@ -2701,7 +2701,7 @@ DATA_LINK_CONNECTED = StatePage(
             on="RNR_received",
             guard="not V_a_le_N_r_le_V_s and version_2_2",
             actions=(
-                ActionStep(verb="set_peer_busy", kind=ActionKind.PROCESSING),
+                ActionStep(verb="set_peer_receiver_busy", kind=ActionKind.PROCESSING),
                 ActionStep(verb="Check_Need_For_Response", kind=ActionKind.SUBROUTINE),
                 ActionStep(verb="N_r_Error_Recovery", kind=ActionKind.SUBROUTINE),
             ),
@@ -2753,7 +2753,7 @@ DATA_LINK_CONNECTED = StatePage(
             on="RNR_received",
             guard="not V_a_le_N_r_le_V_s and not version_2_2",
             actions=(
-                ActionStep(verb="set_peer_busy", kind=ActionKind.PROCESSING),
+                ActionStep(verb="set_peer_receiver_busy", kind=ActionKind.PROCESSING),
                 ActionStep(verb="Check_Need_For_Response", kind=ActionKind.SUBROUTINE),
                 ActionStep(verb="N_r_Error_Recovery", kind=ActionKind.SUBROUTINE),
             ),

@@ -313,7 +313,7 @@ var DataLinkAwaitingConnection = StatePage{
 			Guard: "P_eq_1",
 			Actions: []ActionStep{
 				{Verb: "UI_Check", Kind: Subroutine},
-				{Verb: "DM F=1", Kind: SignalLower},
+				{Verb: "DM (F = 1)", Kind: SignalLower},
 			},
 			Next:  "AwaitingConnection",
 			Notes: "",

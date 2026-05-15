@@ -1129,7 +1129,7 @@ export const DataLinkConnected: StatePage = {
       on: "RNR_received",
       guard: "V_a_le_N_r_le_V_s",
       actions: [
-        { verb: "set_peer_busy", kind: "processing" },
+        { verb: "set_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "Check_I_Frame_Acknowledged", kind: "subroutine" },
       ],
@@ -1149,7 +1149,7 @@ export const DataLinkConnected: StatePage = {
       on: "RNR_received",
       guard: "not V_a_le_N_r_le_V_s and version_2_2",
       actions: [
-        { verb: "set_peer_busy", kind: "processing" },
+        { verb: "set_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],
@@ -1169,7 +1169,7 @@ export const DataLinkConnected: StatePage = {
       on: "RNR_received",
       guard: "not V_a_le_N_r_le_V_s and not version_2_2",
       actions: [
-        { verb: "set_peer_busy", kind: "processing" },
+        { verb: "set_peer_receiver_busy", kind: "processing" },
         { verb: "Check_Need_For_Response", kind: "subroutine" },
         { verb: "N_r_Error_Recovery", kind: "subroutine" },
       ],

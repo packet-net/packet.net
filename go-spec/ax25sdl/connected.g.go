@@ -1127,7 +1127,7 @@ var DataLinkConnected = StatePage{
 			On:    "RNR_received",
 			Guard: "V_a_le_N_r_le_V_s",
 			Actions: []ActionStep{
-				{Verb: "set_peer_busy", Kind: Processing},
+				{Verb: "set_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "Check_I_Frame_Acknowledged", Kind: Subroutine},
 			},
@@ -1147,7 +1147,7 @@ var DataLinkConnected = StatePage{
 			On:    "RNR_received",
 			Guard: "not V_a_le_N_r_le_V_s and version_2_2",
 			Actions: []ActionStep{
-				{Verb: "set_peer_busy", Kind: Processing},
+				{Verb: "set_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},
@@ -1167,7 +1167,7 @@ var DataLinkConnected = StatePage{
 			On:    "RNR_received",
 			Guard: "not V_a_le_N_r_le_V_s and not version_2_2",
 			Actions: []ActionStep{
-				{Verb: "set_peer_busy", Kind: Processing},
+				{Verb: "set_peer_receiver_busy", Kind: Processing},
 				{Verb: "Check_Need_For_Response", Kind: Subroutine},
 				{Verb: "N_r_Error_Recovery", Kind: Subroutine},
 			},

@@ -306,7 +306,7 @@ def test_t18_ui_received_p_eq_1() -> None:
     assert len(t.actions) == 2
     assert t.actions[0].verb == "UI_Check"
     assert t.actions[0].kind == ActionKind.SUBROUTINE
-    assert t.actions[1].verb == "DM F=1"
+    assert t.actions[1].verb == "DM (F = 1)"
     assert t.actions[1].kind == ActionKind.SIGNAL_LOWER
 
 

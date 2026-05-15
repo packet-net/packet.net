@@ -549,7 +549,7 @@ static const ImplementationReference
 static const ActionStep
     data_link_awaiting_release_t17_ui_received_p_eq_1_actions[] = {
         {.verb = "UI_Check", .kind = AX25SDL_KIND_SUBROUTINE},
-        {.verb = "DM F = 1", .kind = AX25SDL_KIND_SIGNAL_LOWER},
+        {.verb = "DM (F = 1)", .kind = AX25SDL_KIND_SIGNAL_LOWER},
 };
 
 static const ImplementationReference
@@ -585,7 +585,7 @@ static const ImplementationReference
 
 static const ActionStep
     data_link_awaiting_release_t19_i_or_s_command_p_eq_1_actions[] = {
-        {.verb = "DM F = 1", .kind = AX25SDL_KIND_SIGNAL_LOWER},
+        {.verb = "DM (F = 1)", .kind = AX25SDL_KIND_SIGNAL_LOWER},
 };
 
 static const ImplementationReference

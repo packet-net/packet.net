@@ -697,7 +697,7 @@
           "kind": "subroutine"
         },
         {
-          "verb": "DM F = 1",
+          "verb": "DM (F = 1)",
           "kind": "signal_lower"
         }
       ],
@@ -749,7 +749,7 @@
       "guard": "P_eq_1",
       "actions": [
         {
-          "verb": "DM F = 1",
+          "verb": "DM (F = 1)",
           "kind": "signal_lower"
         }
       ],

@@ -1113,7 +1113,7 @@ def test_t55_rnr_received_nr_in_window() -> None:
     assert t.next == "Connected"
     assert t.guard == "V_a_le_N_r_le_V_s"
     assert len(t.actions) == 3
-    assert t.actions[0].verb == "set_peer_busy"
+    assert t.actions[0].verb == "set_peer_receiver_busy"
     assert t.actions[0].kind == ActionKind.PROCESSING
     assert t.actions[1].verb == "Check_Need_For_Response"
     assert t.actions[1].kind == ActionKind.SUBROUTINE
@@ -1131,7 +1131,7 @@ def test_t56_rnr_received_nr_out_of_window_v22() -> None:
     assert t.next == "AwaitingConnection22"
     assert t.guard == "not V_a_le_N_r_le_V_s and version_2_2"
     assert len(t.actions) == 3
-    assert t.actions[0].verb == "set_peer_busy"
+    assert t.actions[0].verb == "set_peer_receiver_busy"
     assert t.actions[0].kind == ActionKind.PROCESSING
     assert t.actions[1].verb == "Check_Need_For_Response"
     assert t.actions[1].kind == ActionKind.SUBROUTINE
@@ -1149,7 +1149,7 @@ def test_t57_rnr_received_nr_out_of_window_v20() -> None:
     assert t.next == "AwaitingConnection"
     assert t.guard == "not V_a_le_N_r_le_V_s and not version_2_2"
     assert len(t.actions) == 3
-    assert t.actions[0].verb == "set_peer_busy"
+    assert t.actions[0].verb == "set_peer_receiver_busy"
     assert t.actions[0].kind == ActionKind.PROCESSING
     assert t.actions[1].verb == "Check_Need_For_Response"
     assert t.actions[1].kind == ActionKind.SUBROUTINE

@@ -151,6 +151,22 @@ internal static class Program
         // RF test exposes them.
         LintPredicateBindings(pages, subroutinePages, errors);
 
+        // Action-verb-completeness lint: every action verb the YAML
+        // emits — after actions.yaml alias resolution — must have a
+        // case arm in ActionDispatcher.Execute. Without this, an
+        // unhandled verb makes the dispatcher throw at runtime with
+        // "unknown SDL action". Same risk profile as the predicate
+        // lint (silent swallow inside a background pump = mysterious
+        // dropped frame). Catches both kinds of gap:
+        //   1. SDL uses a figure-verbatim spelling, no alias in
+        //      actions.yaml, no case in the dispatcher → lint fires
+        //      with the YAML-verbatim name so we know to either add
+        //      an alias or add a case.
+        //   2. SDL uses the canonical spelling directly but the
+        //      dispatcher's case is missing → lint fires with the
+        //      canonical name so we know to add the case.
+        LintActionDispatcherCoverage(pages, subroutinePages, errors);
+
         if (errors.Count > 0)
         {
             foreach (var e in errors) Console.Error.WriteLine($"::error::{e}");
@@ -735,6 +751,99 @@ internal static class Program
             names.Add(m.Groups[1].Value);
         }
         return names;
+    }
+
+    private const string DispatcherPath = "src/Packet.Ax25/Session/ActionDispatcher.cs";
+
+    /// <summary>
+    /// Cross-reference every action verb the resolved IR emits against
+    /// the case arms <see cref="DispatcherPath"/>'s Execute switch
+    /// declares. The IR is resolved here (not before) so the lint sees
+    /// the canonical verb names that the dispatcher actually receives at
+    /// runtime — i.e. post-aliasing via <c>spec-sdl/actions.yaml</c>.
+    /// Missing cases become codegen errors with the precise verb name
+    /// and the YAML location of its first use.
+    /// </summary>
+    /// <remarks>
+    /// Cases are extracted by regex-scanning <see cref="DispatcherPath"/>
+    /// for <c>case "..."</c> string-literal labels. The dispatcher uses a
+    /// single switch on the action string today; if a second switch is
+    /// added in the same file the regex will pick up its cases too. That
+    /// would over-accept (verbs in unrelated switches counted as handled)
+    /// rather than under-accept, so the lint stays conservative. The
+    /// lint is silently skipped when the dispatcher file isn't present
+    /// (codegen as a standalone tool without the runtime library).
+    /// </remarks>
+    private static void LintActionDispatcherCoverage(
+        List<SdlPage> pages,
+        List<SubroutinePage> subroutinePages,
+        List<string> errors)
+    {
+        if (!File.Exists(DispatcherPath))
+        {
+            return;
+        }
+
+        var handled = ExtractDispatcherCaseLabels(File.ReadAllText(DispatcherPath));
+
+        var firstSeen = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var page in pages)
+        {
+            var resolved = Resolver.Resolve(page);
+            foreach (var t in resolved.Transitions)
+            {
+                foreach (var a in t.Actions)
+                {
+                    var loc = $"{page.SourcePath}: transition `{t.Id}` action `{a.Verb}`";
+                    firstSeen.TryAdd(a.Verb, loc);
+                }
+            }
+        }
+
+        foreach (var subPage in subroutinePages)
+        {
+            var resolved = Resolver.Resolve(subPage);
+            foreach (var sub in resolved.Subroutines)
+            {
+                foreach (var path in sub.Paths)
+                {
+                    foreach (var a in path.Actions)
+                    {
+                        var loc = $"{subPage.SourcePath}: subroutine `{sub.Name}` path `{path.Id}` action `{a.Verb}`";
+                        firstSeen.TryAdd(a.Verb, loc);
+                    }
+                }
+            }
+        }
+
+        foreach (var (verb, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        {
+            if (!handled.Contains(verb))
+            {
+                errors.Add(
+                    $"{loc}: action `{verb}` has no case in {DispatcherPath}'s Execute switch. " +
+                    "Add a case arm there, OR if this is a figure-verbatim spelling of an existing " +
+                    "canonical verb, add an alias entry to spec-sdl/actions.yaml. Unhandled verbs " +
+                    "throw 'unknown SDL action' at runtime, which can be silently swallowed by a " +
+                    "background pump and manifest as dropped frames.");
+            }
+        }
+    }
+
+    private static HashSet<string> ExtractDispatcherCaseLabels(string dispatcherSource)
+    {
+        // Match `case "literal":` arms. Body can contain any non-quote
+        // character (the dispatcher's verb spellings include spaces,
+        // parens, equals, colons, arrows — but no embedded quotes or
+        // escape sequences in practice).
+        var rx = new System.Text.RegularExpressions.Regex(@"case\s+""([^""]+)""\s*:");
+        var labels = new HashSet<string>(StringComparer.Ordinal);
+        foreach (System.Text.RegularExpressions.Match m in rx.Matches(dispatcherSource))
+        {
+            labels.Add(m.Groups[1].Value);
+        }
+        return labels;
     }
 
     private static void WriteIfChanged(string path, string contents)

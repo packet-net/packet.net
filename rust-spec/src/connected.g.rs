@@ -1131,7 +1131,7 @@ pub static DATA_LINK_CONNECTED: StatePage = StatePage {
             on: "RNR_received",
             guard: "V_a_le_N_r_le_V_s",
             actions: &[
-                ActionStep { verb: "set_peer_busy", kind: ActionKind::Processing },
+                ActionStep { verb: "set_peer_receiver_busy", kind: ActionKind::Processing },
                 ActionStep { verb: "Check_Need_For_Response", kind: ActionKind::Subroutine },
                 ActionStep { verb: "Check_I_Frame_Acknowledged", kind: ActionKind::Subroutine },
             ],
@@ -1151,7 +1151,7 @@ pub static DATA_LINK_CONNECTED: StatePage = StatePage {
             on: "RNR_received",
             guard: "not V_a_le_N_r_le_V_s and version_2_2",
             actions: &[
-                ActionStep { verb: "set_peer_busy", kind: ActionKind::Processing },
+                ActionStep { verb: "set_peer_receiver_busy", kind: ActionKind::Processing },
                 ActionStep { verb: "Check_Need_For_Response", kind: ActionKind::Subroutine },
                 ActionStep { verb: "N_r_Error_Recovery", kind: ActionKind::Subroutine },
             ],
@@ -1171,7 +1171,7 @@ pub static DATA_LINK_CONNECTED: StatePage = StatePage {
             on: "RNR_received",
             guard: "not V_a_le_N_r_le_V_s and not version_2_2",
             actions: &[
-                ActionStep { verb: "set_peer_busy", kind: ActionKind::Processing },
+                ActionStep { verb: "set_peer_receiver_busy", kind: ActionKind::Processing },
                 ActionStep { verb: "Check_Need_For_Response", kind: ActionKind::Subroutine },
                 ActionStep { verb: "N_r_Error_Recovery", kind: ActionKind::Subroutine },
             ],
@@ -2650,7 +2650,7 @@ mod tests {
         assert_eq!(tx.next, "Connected");
         assert_eq!(tx.guard, "V_a_le_N_r_le_V_s");
         assert_eq!(tx.actions.len(), 3);
-        assert_eq!(tx.actions[0].verb, "set_peer_busy");
+        assert_eq!(tx.actions[0].verb, "set_peer_receiver_busy");
         assert_eq!(tx.actions[0].kind, ActionKind::Processing);
         assert_eq!(tx.actions[1].verb, "Check_Need_For_Response");
         assert_eq!(tx.actions[1].kind, ActionKind::Subroutine);
@@ -2669,7 +2669,7 @@ mod tests {
         assert_eq!(tx.next, "AwaitingConnection22");
         assert_eq!(tx.guard, "not V_a_le_N_r_le_V_s and version_2_2");
         assert_eq!(tx.actions.len(), 3);
-        assert_eq!(tx.actions[0].verb, "set_peer_busy");
+        assert_eq!(tx.actions[0].verb, "set_peer_receiver_busy");
         assert_eq!(tx.actions[0].kind, ActionKind::Processing);
         assert_eq!(tx.actions[1].verb, "Check_Need_For_Response");
         assert_eq!(tx.actions[1].kind, ActionKind::Subroutine);
@@ -2688,7 +2688,7 @@ mod tests {
         assert_eq!(tx.next, "AwaitingConnection");
         assert_eq!(tx.guard, "not V_a_le_N_r_le_V_s and not version_2_2");
         assert_eq!(tx.actions.len(), 3);
-        assert_eq!(tx.actions[0].verb, "set_peer_busy");
+        assert_eq!(tx.actions[0].verb, "set_peer_receiver_busy");
         assert_eq!(tx.actions[0].kind, ActionKind::Processing);
         assert_eq!(tx.actions[1].verb, "Check_Need_For_Response");
         assert_eq!(tx.actions[1].kind, ActionKind::Subroutine);

@@ -642,7 +642,7 @@ DATA_LINK_AWAITING_CONNECTION = StatePage(
             guard="P_eq_1",
             actions=(
                 ActionStep(verb="UI_Check", kind=ActionKind.SUBROUTINE),
-                ActionStep(verb="DM F=1", kind=ActionKind.SIGNAL_LOWER),
+                ActionStep(verb="DM (F = 1)", kind=ActionKind.SIGNAL_LOWER),
             ),
             next="AwaitingConnection",
             notes="",

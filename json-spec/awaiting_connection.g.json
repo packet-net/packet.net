@@ -759,7 +759,7 @@
           "kind": "subroutine"
         },
         {
-          "verb": "DM F=1",
+          "verb": "DM (F = 1)",
           "kind": "signal_lower"
         }
       ],
