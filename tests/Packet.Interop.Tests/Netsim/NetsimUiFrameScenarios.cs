@@ -50,15 +50,19 @@ public class NetsimUiFrameScenarios
         await using var receiver = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
         await Task.Delay(200, cts.Token);
 
+        // Per-test source callsign so the receiver socket can pick this
+        // test's frame out from any in-flight siblings — every test in
+        // this class shares the same KISS-TCP receive port on node B.
+        var ourSource = new Callsign("PNDIGI", 9);
         var digis = new[] { new Callsign("WIDE1", 1), new Callsign("WIDE2", 2) };
         var outbound = Ax25Frame.Ui(
             destination: new Callsign("APRS", 0),
-            source:      new Callsign("PN0TST", 9),
+            source:      ourSource,
             info:        "via digis"u8,
             digipeaters: digis);
         await sender.SendAsync(0, KissCommand.Data, outbound.ToBytes(), cts.Token);
 
-        var rx = await WaitForOurFrame(receiver, cts.Token);
+        var rx = await WaitForOurFrame(receiver, ourSource, cts.Token);
         rx.Digipeaters.Should().HaveCount(2);
         rx.Digipeaters[0].Callsign.Should().Be(new Callsign("WIDE1", 1));
         rx.Digipeaters[1].Callsign.Should().Be(new Callsign("WIDE2", 2));
@@ -80,14 +84,15 @@ public class NetsimUiFrameScenarios
         var info = new byte[20];
         new Random(42).NextBytes(info);
 
+        var ourSource = new Callsign("PNNET", 9);
         var outbound = Ax25Frame.Ui(
             destination: new Callsign("NODES", 0),
-            source:      new Callsign("PN0TST", 9),
+            source:      ourSource,
             info:        info,
             pid:         Ax25Frame.PidNetRom);
         await sender.SendAsync(0, KissCommand.Data, outbound.ToBytes(), cts.Token);
 
-        var rx = await WaitForOurFrame(receiver, cts.Token);
+        var rx = await WaitForOurFrame(receiver, ourSource, cts.Token);
         rx.Pid.Should().Be(Ax25Frame.PidNetRom);
         rx.Info.ToArray().Should().Equal(info);
     }
@@ -110,13 +115,14 @@ public class NetsimUiFrameScenarios
         // and symbol code '-' (house).
         var aprsInfo = Encoding.ASCII.GetBytes("!5118.15N/00038.59W-Reading UK test");
 
+        var ourSource = new Callsign("PNAPRS", 9);
         var outbound = Ax25Frame.Ui(
             destination: new Callsign("APRS", 0),
-            source:      new Callsign("PN0TST", 9),
+            source:      ourSource,
             info:        aprsInfo);
         await sender.SendAsync(0, KissCommand.Data, outbound.ToBytes(), cts.Token);
 
-        var rx = await WaitForOurFrame(receiver, cts.Token);
+        var rx = await WaitForOurFrame(receiver, ourSource, cts.Token);
         AprsPositionDecoder.TryDecode(rx.Info.Span, out var pos).Should().BeTrue();
         pos.Latitude.Should().BeApproximately(51.3025, 1e-3);
         pos.Longitude.Should().BeApproximately(-0.6431, 1e-3);
@@ -136,13 +142,14 @@ public class NetsimUiFrameScenarios
         // 5 frames in quick succession. afsk1200 won't transmit them in
         // parallel — net-sim will queue them and key the TX in sequence
         // — but the receive side should see all 5 within the budget.
+        var ourSource = new Callsign("PNBURST", 9);
         const int N = 5;
         for (int i = 0; i < N; i++)
         {
             var info = Encoding.ASCII.GetBytes($"seq={i}");
             var frame = Ax25Frame.Ui(
                 destination: new Callsign("APRS", 0),
-                source:      new Callsign("PN0TST", 9),
+                source:      ourSource,
                 info:        info);
             await sender.SendAsync(0, KissCommand.Data, frame.ToBytes(), cts.Token);
         }
@@ -155,7 +162,7 @@ public class NetsimUiFrameScenarios
             {
                 if (f.Command != KissCommand.Data) continue;
                 if (!Ax25Frame.TryParse(f.Payload, out var parsed)) continue;
-                if (parsed.Source.Callsign == new Callsign("PN0TST", 9))
+                if (parsed.Source.Callsign == ourSource)
                 {
                     seenSeqs.Add(Encoding.ASCII.GetString(parsed.Info.Span));
                 }
@@ -173,7 +180,14 @@ public class NetsimUiFrameScenarios
             $"net-sim not healthy on {Host}:{NetsimWebPort}. Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait netsim'.");
     }
 
-    private static async Task<Ax25Frame> WaitForOurFrame(KissTcpClient receiver, CancellationToken ct)
+    /// <summary>
+    /// Wait for a UI frame originating from <paramref name="ourSource"/>.
+    /// Each test in this class uses a distinct source callsign so the
+    /// receiver socket doesn't deliver another test's frame to us — the
+    /// KISS-TCP receiver sees every frame that arrives on node B, and
+    /// in-flight frames from siblings can outlive their test's scope.
+    /// </summary>
+    private static async Task<Ax25Frame> WaitForOurFrame(KissTcpClient receiver, Callsign ourSource, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -182,13 +196,13 @@ public class NetsimUiFrameScenarios
             {
                 if (f.Command != KissCommand.Data) continue;
                 if (!Ax25Frame.TryParse(f.Payload, out var parsed)) continue;
-                if (parsed.Source.Callsign == new Callsign("PN0TST", 9))
+                if (parsed.Source.Callsign == ourSource)
                 {
                     return parsed;
                 }
             }
         }
-        throw new TimeoutException("expected frame from PN0TST-9 didn't arrive within the budget");
+        throw new TimeoutException($"expected frame from {ourSource} didn't arrive within the budget");
     }
 
     private static async Task<bool> IsNetsimHealthy()
