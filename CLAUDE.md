@@ -133,14 +133,16 @@ dotnet build
 dotnet test --filter "Category!=HardwareLoop&Category!=Interop"
 
 # Regenerate SDL state machines after editing a *.sdl.yaml.
-# Emits C# under src/Packet.Ax25.Sdl, Go under go-spec/ax25sdl, and
-# TypeScript under ts-spec/src/ax25sdl in one pass. Requires `gofmt`
-# on PATH if go-spec/ax25sdl/ exists. (`sudo apt-get install -y
-# golang-go nodejs npm` covers both.)
-dotnet run --project tools/Packet.Sdl.CodeGen -- \
-  --in spec-sdl \
-  --out src/Packet.Ax25.Sdl \
-  --tests tests/Packet.Ax25.Conformance.Tests
+# With no flags, emits C# under src/Packet.Ax25.Sdl, Go under
+# go-spec/ax25sdl, and TypeScript under ts-spec/src/ax25sdl in one
+# pass — requires `gofmt`, `node`, and `npm` on PATH. (`sudo apt-get
+# install -y golang-go nodejs npm` covers all three.)
+#
+# Pass any of --csharp / --go / --ts (with or without paired
+# --csharp-out / --csharp-tests / --go-out / --ts-out) to emit only
+# the named backend(s). See `dotnet run --project tools/Packet.Sdl.CodeGen
+# -- --help` for the full surface.
+dotnet run --project tools/Packet.Sdl.CodeGen
 
 # Verify the generated Go compiles + passes gofmt
 cd go-spec && go build ./... && go vet ./... && go test ./... && gofmt -l .

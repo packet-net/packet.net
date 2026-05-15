@@ -80,7 +80,13 @@ internal sealed class CodegenRunner : IDisposable
                 $"codegen DLL not found at expected path: {dll}. Ensure the codegen project is built before running tests.");
         }
 
-        var psi = new ProcessStartInfo("dotnet", $"\"{dll}\" --in \"{SpecDir}\" --out \"{OutDir}\" --tests \"{TestsDir}\"")
+        // --csharp opts in to the C# backend (only) so the test
+        // sandbox doesn't touch Go / TS spec directories. Per-test
+        // input + output paths are passed through --in, --csharp-out,
+        // --csharp-tests; the CLI's opt-in-by-presence semantics treat
+        // setting either path as an explicit selection of the C#
+        // backend, with all others off.
+        var psi = new ProcessStartInfo("dotnet", $"\"{dll}\" --in \"{SpecDir}\" --csharp --csharp-out \"{OutDir}\" --csharp-tests \"{TestsDir}\"")
         {
             RedirectStandardOutput = true,
             RedirectStandardError  = true,

@@ -99,7 +99,10 @@ jobs:
         run: dotnet --version
 
       - name: run codegen (C# only)
-        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --in spec-sdl --out src/Packet.Ax25.Sdl --tests tests/Packet.Ax25.Conformance.Tests --no-go --no-ts
+        # --csharp opts in to the C# backend with its default output paths.
+        # No --go / --ts means only C# emits (opt-in-by-presence — see
+        # Packet.Sdl.CodeGen/Program.cs for the CLI contract).
+        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --csharp
         continue-on-error: true # Phase 0: codegen exists but is still a stub
 
       - name: assert no drift
@@ -123,12 +126,11 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: run codegen (skip TS)
-        # We need .NET to emit Go (the emitter is a C# project), but
-        # not Node — --no-ts saves the npm tooling install. The C#
-        # emitter still runs because we don't suppress it; that's fine,
-        # we only assert drift on the Go output here.
-        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --in spec-sdl --out src/Packet.Ax25.Sdl --tests tests/Packet.Ax25.Conformance.Tests --no-ts
+      - name: run codegen (Go only)
+        # --go opts in to the Go backend only. No --csharp / --ts means
+        # the C# + TS backends are skipped — this job only needs .NET +
+        # Go installed.
+        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --go
         continue-on-error: true
 
       - name: assert no drift in go-spec
@@ -167,8 +169,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ts-spec/package-lock.json
 
-      - name: run codegen (skip Go)
-        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --in spec-sdl --out src/Packet.Ax25.Sdl --tests tests/Packet.Ax25.Conformance.Tests --no-go
+      - name: run codegen (TS only)
+        # --ts opts in to the TS backend only. No --csharp / --go means
+        # the C# + Go backends are skipped — this job only needs .NET +
+        # Node installed.
+        run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --ts
         continue-on-error: true
 
       - name: assert no drift in ts-spec

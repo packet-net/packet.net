@@ -824,6 +824,47 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — codegen CLI: CommandLineParser + opt-in-by-presence
+
+Replaced the ad-hoc `for (...) switch (args[i])` parser in
+`tools/Packet.Sdl.CodeGen/Program.cs` with `CommandLineParser`
+(`Directory.Packages.props` adds it at 2.9.1). Two semantic changes
+on top of the library swap:
+
+**Per-backend opt-in by presence.** Old design: every backend was
+auto-detected and enabled by default; `--no-go` / `--no-ts` were
+escape hatches that suppressed individual backends. New design: each
+backend has a positive flag (`--csharp`, `--go`, `--ts`) and optional
+path flags (`--csharp-out`, `--csharp-tests`, `--go-out`, `--ts-out`).
+Passing any language flag selects only the explicitly-named backends;
+passing none means "all three with default paths" (preserves the
+zero-args developer experience).
+
+The new design eliminates the negation logic that prompted the
+fragility concern — there's no `if (suppressGo)` anywhere. A backend
+is "enabled" iff its flag or its path option is present; otherwise
+the default-all rule fires.
+
+**CLI invocation also simpler.** CI workflow goes from
+`--in spec-sdl --out src/... --tests tests/... --no-go --no-ts` to
+just `--csharp` (and equivalent simplifications for the Go / TS
+jobs). Path defaults are owned by `CodegenPlan.From`.
+
+**Code organisation.** Two new internal types:
+- `CodegenOptions` — CLI surface (attribute-decorated POCO).
+- `CodegenPlan` — resolved decision (`EmitCsharp` / `EmitGo` /
+  `EmitTs` booleans + final paths), built by `CodegenPlan.From(opt)`
+  which applies the default-all rule and resolves blank sentinels.
+
+`Run` now takes a `CodegenPlan` instead of an 8-string parameter
+list. Stale-file cleanup is scoped per emitted backend so e.g.
+`--csharp` doesn't touch `go-spec/ax25sdl/*.g.go`.
+
+The `Packet.Sdl.CodeGen.Tests` harness was updated to use
+`--csharp --csharp-out ... --csharp-tests ...` since its sandbox tests
+only need the C# backend.
+
+
 ### 2026-05-15 — ci: split sdl-codegen-discipline into 3 parallel jobs + Node 24 opt-in
 
 Now that the self-hosted box runs 4 GitHub Actions runners (Tom
