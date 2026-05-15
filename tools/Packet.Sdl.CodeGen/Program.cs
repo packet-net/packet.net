@@ -456,19 +456,18 @@ internal static class Program
         {
             // Hand-written sources (ax25sdl.h, smoke.test.c, CMakeLists,
             // README) live outside the *.g.{c,h} globs and survive
-            // cleanup.
-            //
-            // clang-format is NOT run by the orchestrator: it isn't part
-            // of every dev/CI environment (gofmt/rustfmt ship with the
-            // SDK; clang-format is a separate apt package), so making
-            // it a hard step would tie no-drift to a specific tool
-            // version on every machine. The emitter aims to produce
-            // already-readable output; developers who want canonical
-            // formatting can run `clang-format -i c-spec/src/*.g.[ch]
-            // c-spec/test/*.g.test.c` manually.
+            // cleanup. clang-format runs over src/ + test/ to wrap
+            // long struct-initialiser strings into readable multi-line
+            // form. The CI clang-format check enforces this canonical
+            // shape; if clang-format isn't installed, the emitter's
+            // raw single-line output gets written instead and CI's
+            // dry-run check fails loudly — by design, since clang-format
+            // is part of the documented runner toolchain.
             CleanStaleFiles(plan.COut,           "*.g.c",      writtenCSrc);
             CleanStaleFiles(plan.COut,           "*.g.h",      writtenCSrc);
             CleanStaleFiles(CTestDir(plan.COut), "*.g.test.c", writtenCTest);
+            RunClangFormat(plan.COut);
+            RunClangFormat(CTestDir(plan.COut));
         }
         if (plan.EmitPython)
         {
