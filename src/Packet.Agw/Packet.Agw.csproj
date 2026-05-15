@@ -1,9 +1,26 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- NuGet packaging metadata. The library is small, self-contained,
+         and useful outside packet.net (any .NET app that wants to talk
+         to LinBPQ / direwolf / SoundModem / XRouter via AGW can take a
+         direct dependency on it). -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Packet.Agw</PackageId>
+    <Description>SV2AGW AGWPE protocol client for .NET. Connects to LinBPQ, direwolf, SoundModem, and XRouter AGW listeners for AX.25 connected-mode and UNPROTO interop.</Description>
+    <Authors>Packet.NET contributors</Authors>
+    <PackageTags>ax25;agw;agwpe;packet-radio;linbpq;direwolf;soundmodem</PackageTags>
+    <PackageProjectUrl>https://github.com/M0LTE/packet.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/M0LTE/packet.net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
 </Project>

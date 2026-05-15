@@ -826,6 +826,23 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — Packet.Agw: SV2AGW AGWPE client library
+
+First substantive code in `src/Packet.Agw/`. Pure client (dials INTO LinBPQ / direwolf / SoundModem / XRouter AGW listeners) — not the AGW server packet.net will need to expose later as an application interface. Those are protocol-symmetric but distinct code surfaces; this PR is the client only.
+
+Design points:
+
+- **`AgwFrame`**: pure value record for the 36-byte header + body. `ToBytes()` / `Parse()` round-trip; `TryReadDataLength()` lets a streaming reader decide how many body bytes to await without fully parsing.
+- **`AgwFrameStream`**: low-level frame I/O over an arbitrary `Stream`. Inbound frames land in a bounded `Channel<AgwFrame>`; outbound writes are serialised with a `SemaphoreSlim` so concurrent senders can't interleave bytes mid-header. Decoupled from `TcpClient` so tests can drive it over paired pipes.
+- **`AgwClient`**: high-level handle. `ConnectAsync(host, port)` opens a TCP connection; `FromStream(stream)` wraps a caller-provided duplex stream for tests. `RegisterCallsignAsync`, `OpenSessionAsync`, `GetPortInfoAsync` cover the canonical operations. Built-in keepalive pumps `R` (version) every 15s by default to defeat BPQ's ~20s idle disconnect — set to `TimeSpan.Zero` to disable.
+- **`AgwSession`**: connected-mode session as a `Stream` subclass. Writes split into ≤256-byte `D` frames; reads drain `D` frames from the server in arrival order. `'d'` from the server surfaces as EOF on the next read. `DisconnectedTask` lets callers await session teardown without blocking on `ReadAsync`.
+
+Inspiration but not lift: dapps's AGW code (`src/dapps/dapps.client/Transport/Agw/`) is the de-facto reference for an AGW client in C# but is tightly coupled to dapps internals (`IDappsTxGate`, `IBackhaulInbox`, `OperationalMetrics`). This implementation is a fresh design with the same conceptual shape — `AgwFrame` framing + `AgwFrameStream` transport + `Stream`-shaped sessions — packaged as a standalone NuGet (`PackageId=Packet.Agw`) with no project-specific dependencies. A follow-up issue will be filed on `m0lte/dapps` asking it to consume the published NuGet once 1.0 lands.
+
+Tests: 16 facts in `Packet.Agw.Tests/`. Frame round-trips, NUL-trimmed callsigns, truncation handling, plus end-to-end client behaviour against an in-memory paired-pipe stub server (register/connect/read/write/server-disconnect/chunked-send all exercised without a real socket).
+
+Not in this PR: AGW server, UNPROTO (`M`/`V`) send/receive, monitor frames (`U`/`I`/`S`), heard-list (`H`), via-digipeater connects. Connected-mode `C`/`D`/`d` + registration `X` + port-info `G` is the working subset; the rest can land as needs surface.
+
 ### 2026-05-15 — codegen: lint pack (subroutine, DL-ERROR, state-target, dispatcher orphan, catchall)
 
 Five more codegen-time lints, completing the structural-consistency family. Each is the same shape as the predicate / action-verb lints — walk the resolved IR, cross-reference against a per-file extraction (dispatcher regex / subroutine registry / state set), report gaps with the YAML location.
