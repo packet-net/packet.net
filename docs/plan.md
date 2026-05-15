@@ -828,6 +828,43 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — ax25.ts: browser-targeted TypeScript library, table-driven from the SDL
+
+New package at `web/ax25-ts/` — a TypeScript library for connected-mode AX.25 v2.2 sessions over Web Serial KISS modems. Hand-rolled at first; reworked mid-PR to walk the generated SDL transition tables in `ts-spec/src/ax25sdl/` (same shape as the C# runtime in `src/Packet.Ax25/Session/`).
+
+**Layout** (mirrors `src/Packet.Ax25/Session/` deliberately):
+
+- `src/frame.ts` (418), `src/callsign.ts` (80), `src/address.ts` (79), `src/kiss.ts` (136) — pure value types + codecs. Mod-8 only.
+- `src/transport.ts` (27) — the `Ax25Transport` interface (3 methods: start / send / stop). The seam future TCP / AGW / bridge transports slot into.
+- `src/webserial-transport.ts` (130) — concrete `WebSerialKissTransport` typed against `@types/w3c-web-serial`, duck-typed via `WebSerialLikePort` so tests don't need a browser.
+- `src/sdl/events.ts` / `session-context.ts` / `timer-scheduler.ts` / `guard-evaluator.ts` / `session-bindings.ts` / `action-dispatcher.ts` / `subroutine-registry.ts` / `session-driver.ts` — the table-walking runtime. ~1500 LOC. Imports transitions from `ax25sdl`.
+- `src/session.ts` (424) — public-API wrapper: `Ax25Stack`, `Ax25Session` with `connect/onData/onDisconnected/write/disconnect`. No state machine logic; pure plumbing on top of the SDL driver.
+- `src/index.ts` (109) — the public exports.
+
+**Tests** (52 facts in 6 vitest files):
+
+- `tests/frame.test.ts` (9) — all frame types (SABM/UA/DISC/DM/UI/RR/I) + digipeater E-bit migration.
+- `tests/callsign.test.ts` (8) + `tests/address.test.ts` (4) — parse / serialize / v2.2 reserved bits / C/H bit handling.
+- `tests/kiss.test.ts` (9) — FEND/FESC escape, port nibble, complete / split-across-pushes / inter-frame-FEND resync.
+- `tests/sdl-driver.test.ts` (11) — catchall behaviour, deterministic guard ordering, `GuardEvaluationError` on unbound predicate, `UnknownActionError` on unhandled verb (with verb + state in message), `and`/`or`/`not` grammar coverage, bindings dictionary against `Ax25SessionContext` + scheduler.
+- `tests/session.test.ts` (11) — end-to-end via paired `MockTransport` pipes: SABM→UA connect, DM rejection, N2 exhaustion retry, I-frame TX/RX with V(s)/V(r)/V(a) bookkeeping, RR ack handling, DISC→UA, peer-initiated DISC, `Ax25Stack.connect` precondition tests.
+
+**Predicates / actions wired** in `session-bindings.ts` / `action-dispatcher.ts`: all 39 predicates referenced by figc4.x guards, ~140 action verbs in both snake_case and figc4.7 title-case spellings.
+
+**Explicitly out of scope** (documented in `web/ax25-ts/README.md`'s scope-limitations table):
+
+- mod-128 / SABME (the `version_2_2` binding always returns false; mod-128-only transitions route around).
+- figc4.7 subroutine walker (4 inlined: `Establish_Data_Link`, `Establish_Extended_Data_Link`, `Clear_Exception_Conditions`, `Check_I_Frame_Acknowledged`; 8 left as no-op registry stubs — `Select_T1_Value`, `Transmit_Enquiry`, `Invoke_Retransmission`, `N_r_Error_Recovery`, `Enquiry_Response`, `Check_Need_For_Response`, `UI_Check`, `Set_Version_2_*`).
+- TimerRecovery state aliased to Connected — figc4.5 isn't transcribed yet.
+- TCP / AGW / bridge / audio transports (transport seam is the only concrete is Web Serial).
+- AGW server.
+- Inbound connection acceptance (the `Ax25Stack` initiates only).
+- `via` digipeater paths in `connect()` throw "not implemented" (the codec handles them, tested).
+
+**`ts-spec/package.json` fix**: `main`/`types`/`exports` were pointing at `dist/index.*` but `tsc` emits to `dist/ax25sdl/index.*` (because the source layout is `src/ax25sdl/`). Corrected to actual output paths. Codegen doesn't regenerate `package.json` so the fix is stable.
+
+**CI**: added two steps after the existing ts-spec typecheck/test — `ts-spec build` (so the `file:../../ts-spec` dependency's `files: ["dist/**"]` copies aren't empty) and `web/ax25-ts build + test` (npm ci, tsc, vitest). The TS-drift assertion is unchanged.
+
 ### 2026-05-15 — interop: bpq32.cfg simplification (drop redundant NODE=1, BBS=0)
 
 Follow-up to the I-frame round-trip entry below. The previous fix added explicit `NODE=1` and `BBS=0` thinking they were needed to make BPQ respond on an L2 connection. Per the [LinBPQ SIMPLE-mode reference](https://m0lte.github.io/linbpq/configuration/reference/?h=simple#quick-start-simple-mode), `SIMPLE=1` already sets `NODE=1` and `BBS=1` — so our `NODE=1` was redundant and our `BBS=0` was overriding the SIMPLE default to no useful effect for these tests. What was actually missing was just the `CTEXT: … ***` banner block, which `SIMPLE=1` does NOT seed. Verified both BPQ-via-netsim interop tests still pass with just `SIMPLE=1` + the CTEXT block.
