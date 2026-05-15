@@ -333,18 +333,28 @@ jobs:
         run: dotnet --version
 
       - name: probe Python
-        # setup-python can't always find a pre-built CPython for the
-        # runner's Ubuntu version (Ubuntu 26.04 had no python3.12 cache
-        # entry as of this run). Fall back to whatever python3 is on
-        # PATH — Ubuntu ships a recent enough python3 by default.
+        # We need both `python3` and an importable `venv` module. The
+        # system Python on Ubuntu 26.04 ships python3 but `venv` is in
+        # a separate apt package (`python3.14-venv`) — without it,
+        # `python3 -m venv` fails with "ensurepip is not available".
+        # The `gh` user can't `sudo apt install` non-interactively, so
+        # missing venv means we degrade to a drift-only check rather
+        # than reach for --break-system-packages.
         id: probe
         run: |
+          have_python=false
+          have_venv=false
           if which python3 >/dev/null 2>&1; then
-            echo "have_python=true" >> "$GITHUB_OUTPUT"
+            have_python=true
             python3 --version
-          else
-            echo "have_python=false" >> "$GITHUB_OUTPUT"
+            if python3 -c "import venv" 2>/dev/null; then
+              have_venv=true
+            fi
           fi
+          {
+            echo "have_python=$have_python"
+            echo "have_venv=$have_venv"
+          } >> "$GITHUB_OUTPUT"
 
       - name: run codegen (Python only)
         run: dotnet run --project tools/Packet.Sdl.CodeGen --configuration Release -- --python
@@ -358,19 +368,18 @@ jobs:
           fi
 
       - name: python-spec install + pytest
-        if: steps.probe.outputs.have_python == 'true'
+        if: steps.probe.outputs.have_python == 'true' && steps.probe.outputs.have_venv == 'true'
         run: |
           cd python-spec
-          # The runner's system Python doesn't have python3-venv
-          # available (and the `gh` user can't sudo apt install
-          # non-interactively). PEP 668 marks Debian/Ubuntu's system
-          # Python as externally-managed; `--break-system-packages`
-          # is the documented escape hatch for ephemeral CI installs.
-          # Per-user (--user) keeps the install out of /usr/lib.
-          python3 -m pip install --upgrade --quiet --user --break-system-packages pip pytest
-          python3 -m pip install --quiet --user --break-system-packages -e .
-          python3 -m pytest -q
+          # Standard venv-isolated install — proper environment hygiene.
+          # Requires python3-venv apt package on the runner (e.g.
+          # `apt install python3.14-venv`).
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install --upgrade --quiet pip pytest
+          .ci-venv/bin/pip install --quiet -e .
+          .ci-venv/bin/pytest -q
 
-      - name: warn on missing Python
-        if: steps.probe.outputs.have_python != 'true'
-        run: echo "::warning::Self-hosted runner has no python3 on PATH; pytest skipped. Install python3 (>=3.10) to enable pytest verification."
+      - name: warn on missing Python tooling
+        if: steps.probe.outputs.have_python != 'true' || steps.probe.outputs.have_venv != 'true'
+        run: |
+          echo "::warning::Self-hosted runner missing Python tooling (python3=${{ steps.probe.outputs.have_python }} venv=${{ steps.probe.outputs.have_venv }}). pytest skipped. Install python3 + python3.14-venv to enable pytest verification."
