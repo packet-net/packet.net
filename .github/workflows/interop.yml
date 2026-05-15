@@ -13,6 +13,8 @@ on:
       - 'src/Packet.Agw/**'
       - 'src/Packet.Node/**'
       - 'tests/Packet.Interop.Tests/**'
+      - 'web/ax25-ts/**'
+      - 'ts-spec/**'
       - 'docker/**'
       - '.github/workflows/interop.yml'
   push:
@@ -71,8 +73,39 @@ jobs:
       - name: build
         run: dotnet build --configuration Release
 
-      - name: interop tests
+      - name: interop tests (C#)
         run: dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop"
+
+      # ax25.ts ships its own integration test against LinBPQ via net-sim
+      # (`tests/integration/linbpq-via-netsim.test.ts`). It dials the same
+      # 127.0.0.1:8100 KISS-TCP listener the C# tests use; the describe
+      # block self-skips if the listener is unreachable, but we're inside
+      # the interop job so it should always be up by the time this step
+      # runs. Build ts-spec first (web/ax25-ts depends on it via `file:`).
+      - name: setup Node (for ax25.ts integration tests)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            ts-spec/package-lock.json
+            web/ax25-ts/package-lock.json
+
+      - name: build ts-spec
+        run: |
+          cd ts-spec
+          npm ci
+          npm run build
+
+      - name: ax25.ts integration tests
+        # `npm test` runs unit tests only (excludes tests/integration/).
+        # `npm run test:integration` uses the integration vitest config,
+        # which includes only tests/integration/**.
+        run: |
+          cd web/ax25-ts
+          npm ci
+          npm run build
+          npm run test:integration
 
       - name: tear down
         if: always()
