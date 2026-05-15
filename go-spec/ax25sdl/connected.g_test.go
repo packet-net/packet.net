@@ -545,8 +545,8 @@ func TestDataLinkConnected_t11_i_received_in_seq_no_stored_p_eq_0_no_ack_pending
 	if tx.Actions[5].Kind != SignalLower {
 		t.Errorf("Actions[5].Kind = %v, want SignalLower", tx.Actions[5].Kind)
 	}
-	if tx.Actions[6].Verb != "set_acknowledgement_pending" {
-		t.Errorf("Actions[6].Verb = %q, want %q", tx.Actions[6].Verb, "set_acknowledgement_pending")
+	if tx.Actions[6].Verb != "set_acknowledge_pending" {
+		t.Errorf("Actions[6].Verb = %q, want %q", tx.Actions[6].Verb, "set_acknowledge_pending")
 	}
 	if tx.Actions[6].Kind != Processing {
 		t.Errorf("Actions[6].Kind = %v, want Processing", tx.Actions[6].Kind)
@@ -3564,8 +3564,8 @@ func TestDataLinkConnected_t69_i_received_in_seq_stored_p_eq_0_no_ack_pending(t 
 	if tx.Actions[8].Kind != SignalLower {
 		t.Errorf("Actions[8].Kind = %v, want SignalLower", tx.Actions[8].Kind)
 	}
-	if tx.Actions[9].Verb != "set_acknowledgement_pending" {
-		t.Errorf("Actions[9].Verb = %q, want %q", tx.Actions[9].Verb, "set_acknowledgement_pending")
+	if tx.Actions[9].Verb != "set_acknowledge_pending" {
+		t.Errorf("Actions[9].Verb = %q, want %q", tx.Actions[9].Verb, "set_acknowledge_pending")
 	}
 	if tx.Actions[9].Kind != Processing {
 		t.Errorf("Actions[9].Kind = %v, want Processing", tx.Actions[9].Kind)

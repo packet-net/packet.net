@@ -826,6 +826,17 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-15 — interop: I-frame round-trip vs BPQ node prompt
+
+Extends `LinbpqViaNetsimConnectedMode` with a second fact that drives figc4.4's data path end-to-end against BPQ's node prompt over the same net-sim AFSK1200 RF sim. After SABM/UA we wait for BPQ's CTEXT banner I-frame, send `"P\r"` as an outbound I-frame, wait for BPQ's ports-listing response I-frame, then DISC/UA. Net-sim wire-log shows the full exchange with correct N(s)/N(r) bookkeeping on both sides: BPQ I(n(s)=0, n(r)=0, p=1, "PN0TST Packet.NET interop test node\r") → us RR(n(r)=1, f=1) → us I(n(s)=0, n(r)=1, "P\r") → BPQ I(n(s)=1, n(r)=1, "PNTST:PN0TST} Ports\r  1 Telnet  2 AXIP  3 netsim") → BPQ I(n(s)=2, n(r)=1, p=1).
+
+Two non-test fixes were needed before this could pass:
+
+- **`bpq32.cfg`**: needed `NODE=1` + a top-level `CTEXT: … ***` block. Without `NODE=1`, BPQ accepts the SABM but no application is listening for L2 data, so it stays silent and our wait-for-banner times out. `SIMPLE=1` only seeds L3/L4 numeric defaults; it does NOT enable the node application. Pattern is verbatim from m0lte/test-net's working configs.
+- **`spec-sdl/actions.yaml`**: figc4.4 uses `set_acknowledgement_pending` (with "ment") on the set verb but `clear_acknowledge_pending` (without) on the clear verb — the same flag with inconsistent spelling within the same figure. The dispatcher only had a case for `set_acknowledge_pending`; the test surfaced this via `unknown SDL action` at runtime (caught immediately by the rig's pump-task fault propagation rather than timing out). Added an alias entry so the codegen normaliser rewrites the figure's "ment" spelling to canonical.
+
+A natural follow-up surfaced by the second fix: today we have a codegen lint for unbound predicates (added 2026-05-15) but no equivalent for unknown action verbs. The "ment" / non-"ment" mismatch was caught only at runtime — a codegen-time lint that walks every action verb in every SDL page and checks for either a dispatcher case or an `actions.yaml` alias would have surfaced it at generation time. Same shape as the predicate lint. Not gated on; deferrable.
+
 ### 2026-05-15 — interop: LinBPQ-via-netsim connected-mode test
 
 The "proper next step" called out in the previous interop entry. Our `Ax25Session` on net-sim's port 8100 (node a) drives a SABM/UA connect and DISC/UA disconnect against a real LinBPQ container that dials net-sim's port 8102 (node c) as a KISS-TCP client. Net-sim's AFSK1200 sim bridges frames between us and BPQ. First test in the suite with a genuinely third-party AX.25 stack as the remote peer; round-trip completes in ~3s.

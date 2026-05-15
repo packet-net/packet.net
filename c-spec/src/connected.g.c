@@ -484,7 +484,7 @@ static const ActionStep
              .kind = AX25SDL_KIND_PROCESSING},
             {.verb = "DL_DATA_indication", .kind = AX25SDL_KIND_SIGNAL_UPPER},
             {.verb = "LM_seize_request", .kind = AX25SDL_KIND_SIGNAL_LOWER},
-            {.verb = "set_acknowledgement_pending",
+            {.verb = "set_acknowledge_pending",
              .kind = AX25SDL_KIND_PROCESSING},
 };
 
@@ -2785,7 +2785,7 @@ static const ActionStep
             {.verb = "DL_DATA_indication", .kind = AX25SDL_KIND_SIGNAL_UPPER},
             {.verb = "V(r) := V(r) + 1", .kind = AX25SDL_KIND_PROCESSING},
             {.verb = "LM_seize_request", .kind = AX25SDL_KIND_SIGNAL_LOWER},
-            {.verb = "set_acknowledgement_pending",
+            {.verb = "set_acknowledge_pending",
              .kind = AX25SDL_KIND_PROCESSING},
 };
 

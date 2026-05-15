@@ -340,7 +340,7 @@ static int test_t11_i_received_in_seq_no_stored_p_eq_0_no_ack_pending(void) {
   ASSERT(t->actions[4].kind == AX25SDL_KIND_SIGNAL_UPPER, "actions[4].kind");
   ASSERT_STREQ(t->actions[5].verb, "LM_seize_request", "actions[5].verb");
   ASSERT(t->actions[5].kind == AX25SDL_KIND_SIGNAL_LOWER, "actions[5].kind");
-  ASSERT_STREQ(t->actions[6].verb, "set_acknowledgement_pending",
+  ASSERT_STREQ(t->actions[6].verb, "set_acknowledge_pending",
                "actions[6].verb");
   ASSERT(t->actions[6].kind == AX25SDL_KIND_PROCESSING, "actions[6].kind");
   return 0;
@@ -1978,7 +1978,7 @@ static int test_t69_i_received_in_seq_stored_p_eq_0_no_ack_pending(void) {
   ASSERT(t->actions[7].kind == AX25SDL_KIND_PROCESSING, "actions[7].kind");
   ASSERT_STREQ(t->actions[8].verb, "LM_seize_request", "actions[8].verb");
   ASSERT(t->actions[8].kind == AX25SDL_KIND_SIGNAL_LOWER, "actions[8].kind");
-  ASSERT_STREQ(t->actions[9].verb, "set_acknowledgement_pending",
+  ASSERT_STREQ(t->actions[9].verb, "set_acknowledge_pending",
                "actions[9].verb");
   ASSERT(t->actions[9].kind == AX25SDL_KIND_PROCESSING, "actions[9].kind");
   return 0;

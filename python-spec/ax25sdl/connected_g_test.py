@@ -228,7 +228,7 @@ def test_t11_i_received_in_seq_no_stored_p_eq_0_no_ack_pending() -> None:
     assert t.actions[4].kind == ActionKind.SIGNAL_UPPER
     assert t.actions[5].verb == "LM_seize_request"
     assert t.actions[5].kind == ActionKind.SIGNAL_LOWER
-    assert t.actions[6].verb == "set_acknowledgement_pending"
+    assert t.actions[6].verb == "set_acknowledge_pending"
     assert t.actions[6].kind == ActionKind.PROCESSING
 
 
@@ -1447,6 +1447,6 @@ def test_t69_i_received_in_seq_stored_p_eq_0_no_ack_pending() -> None:
     assert t.actions[7].kind == ActionKind.PROCESSING
     assert t.actions[8].verb == "LM_seize_request"
     assert t.actions[8].kind == ActionKind.SIGNAL_LOWER
-    assert t.actions[9].verb == "set_acknowledgement_pending"
+    assert t.actions[9].verb == "set_acknowledge_pending"
     assert t.actions[9].kind == ActionKind.PROCESSING
 

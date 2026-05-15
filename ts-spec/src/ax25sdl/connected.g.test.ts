@@ -206,7 +206,7 @@ describe("DataLinkConnected", () => {
     expect(t.actions[4].kind).toBe("signal_upper");
     expect(t.actions[5].verb).toBe("LM_seize_request");
     expect(t.actions[5].kind).toBe("signal_lower");
-    expect(t.actions[6].verb).toBe("set_acknowledgement_pending");
+    expect(t.actions[6].verb).toBe("set_acknowledge_pending");
     expect(t.actions[6].kind).toBe("processing");
   });
 
@@ -1309,7 +1309,7 @@ describe("DataLinkConnected", () => {
     expect(t.actions[7].kind).toBe("processing");
     expect(t.actions[8].verb).toBe("LM_seize_request");
     expect(t.actions[8].kind).toBe("signal_lower");
-    expect(t.actions[9].verb).toBe("set_acknowledgement_pending");
+    expect(t.actions[9].verb).toBe("set_acknowledge_pending");
     expect(t.actions[9].kind).toBe("processing");
   });
 

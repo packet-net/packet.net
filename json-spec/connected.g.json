@@ -687,7 +687,7 @@
           "kind": "signal_lower"
         },
         {
-          "verb": "set_acknowledgement_pending",
+          "verb": "set_acknowledge_pending",
           "kind": "processing"
         }
       ],
@@ -4218,7 +4218,7 @@
           "kind": "signal_lower"
         },
         {
-          "verb": "set_acknowledgement_pending",
+          "verb": "set_acknowledge_pending",
           "kind": "processing"
         }
       ],

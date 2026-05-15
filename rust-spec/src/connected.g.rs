@@ -234,7 +234,7 @@ pub static DATA_LINK_CONNECTED: StatePage = StatePage {
                 ActionStep { verb: "decrement_srej_exception_if_gt_0", kind: ActionKind::Processing },
                 ActionStep { verb: "DL_DATA_indication", kind: ActionKind::SignalUpper },
                 ActionStep { verb: "LM_seize_request", kind: ActionKind::SignalLower },
-                ActionStep { verb: "set_acknowledgement_pending", kind: ActionKind::Processing },
+                ActionStep { verb: "set_acknowledge_pending", kind: ActionKind::Processing },
             ],
             next: "Connected",
             notes: "In-sequence data; not polled; no ack pending — arrange to send\none: seize the medium and set ack-pending so we know to RR when\nwe get LM-SEIZE Confirm (see column 24).\n",
@@ -1442,7 +1442,7 @@ pub static DATA_LINK_CONNECTED: StatePage = StatePage {
                 ActionStep { verb: "DL_DATA_indication", kind: ActionKind::SignalUpper },
                 ActionStep { verb: "V(r) := V(r) + 1", kind: ActionKind::Processing },
                 ActionStep { verb: "LM_seize_request", kind: ActionKind::SignalLower },
-                ActionStep { verb: "set_acknowledgement_pending", kind: ActionKind::Processing },
+                ActionStep { verb: "set_acknowledge_pending", kind: ActionKind::Processing },
             ],
             next: "Connected",
             notes: "Same stored-frame loop as t67; continues into the not-polled /\nno-ack tail.\n",
@@ -1711,7 +1711,7 @@ mod tests {
         assert_eq!(tx.actions[4].kind, ActionKind::SignalUpper);
         assert_eq!(tx.actions[5].verb, "LM_seize_request");
         assert_eq!(tx.actions[5].kind, ActionKind::SignalLower);
-        assert_eq!(tx.actions[6].verb, "set_acknowledgement_pending");
+        assert_eq!(tx.actions[6].verb, "set_acknowledge_pending");
         assert_eq!(tx.actions[6].kind, ActionKind::Processing);
     }
 
@@ -2998,7 +2998,7 @@ mod tests {
         assert_eq!(tx.actions[7].kind, ActionKind::Processing);
         assert_eq!(tx.actions[8].verb, "LM_seize_request");
         assert_eq!(tx.actions[8].kind, ActionKind::SignalLower);
-        assert_eq!(tx.actions[9].verb, "set_acknowledgement_pending");
+        assert_eq!(tx.actions[9].verb, "set_acknowledge_pending");
         assert_eq!(tx.actions[9].kind, ActionKind::Processing);
     }
 }
