@@ -23,6 +23,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
+[Collection(NetsimCollection.Name)]
 public class NetsimKissTcpInterop
 {
     private const string Host        = "127.0.0.1";

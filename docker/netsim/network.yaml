@@ -1,8 +1,21 @@
-# Minimal net-sim topology for Packet.NET KISS-TCP interop tests.
+# Net-sim topology for Packet.NET KISS-TCP interop tests.
 #
-# Two simulated nodes on the same modem mode wired with a clean RF link.
-# Tests connect via KISS-TCP on the two host ports below, exchange UI
-# frames, and assert the receiving side sees what the sending side sent.
+# Three simulated nodes, all on the same afsk1200 channel:
+#
+#   a <-> b   the "our-sessions" pair on 8100 / 8101 — used by the
+#             NetsimConnectedModeScenarios / NetsimUiFrameScenarios
+#             tests where both ends are our own Ax25Session
+#   a <-> c   the "BPQ" pair on 8100 / 8102 — used by the
+#             LinbpqViaNetsimConnectedMode test where one end is our
+#             session and the other is LinBPQ dialling 8102 as a
+#             KISS-TCP client
+#
+# Node a is the shared "ours" endpoint. b and c aren't directly linked,
+# but that's only a path-loss decision: in FM-capture mode all stations
+# in earshot hear every TX, so concurrent runs would see each other's
+# frames if they were linked. Filtering happens at the AX.25 address
+# layer (each test uses distinct callsigns so off-target frames are
+# dropped by the inbound pump or by BPQ).
 
 mixer_mode: fm_capture
 capture_db: 6.0
@@ -21,10 +34,19 @@ nodes:
         modem:
           mode: afsk1200
         kiss_port: 8101
+  - id: c
+    ports:
+      - id: vhf
+        modem:
+          mode: afsk1200
+        kiss_port: 8102
 
-# Modems on both ends of a link must match. afsk1200 on both ends here.
+# Modems on both ends of a link must match. afsk1200 on every port here.
 # loss_db is the path loss applied in the FM-capture mixer; 10 dB is well
-# above the modem threshold so frames decode reliably.
+# above the modem threshold so frames decode reliably. b and c are NOT
+# linked — keeps the two test scenarios isolated.
 links:
   - { from: a.vhf, to: b.vhf, loss_db: 10 }
   - { from: b.vhf, to: a.vhf, loss_db: 10 }
+  - { from: a.vhf, to: c.vhf, loss_db: 10 }
+  - { from: c.vhf, to: a.vhf, loss_db: 10 }

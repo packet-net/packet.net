@@ -478,6 +478,8 @@ to support APRS Messaging end-to-end (would need state for acks +
 retries) or strictly the parsing/encoding surface? Decide before
 starting.
 
+**SP-009 — Visual state-machine display** (medium leverage, low effort for the static rung). Two rungs of increasing scope. **Static rung (near-term):** add a Mermaid emitter to the SDL codegen pipeline (`tools/Packet.Sdl.CodeGen.Mermaid/`) that walks the IR and produces one `stateDiagram-v2` per page, with transitions labelled by trigger + guard. Outputs land next to the existing AX.25 figures in `docs/`, render directly in GitHub markdown, and slot naturally into the existing 7-backend codegen pattern. ~1–2 hours. **Live rung (deferred):** expose a "transition occurred" event on `Ax25Session`, render the same graph in a small UI (Avalonia desktop, or the browser-terminal track if/when SP-N lands) and highlight the current state + flash the firing edge. ~2–3 days plus whatever UI host we pick. Pay the live rung's cost only when there's a concrete demo or debug-of-live-link need driving it; the static rung pays for itself immediately as documentation. The mermaid emitter is also the natural baseline for any future graph-style export (Graphviz dot, PlantUML), so even if a different live UI is chosen later the documentation track stands alone.
+
 ### 5.Y Hardware-arrival probe playbook ⬜
 
 Concrete first-day actions for when the 2× NinoTNC + 2× Tait rig lands on
@@ -596,7 +598,7 @@ CI filter convention: default jobs run with `--filter "Category!=HardwareLoop&Ca
 |---|---|---|
 | 1 | UI frame KISS-TCP → LinBPQ | LinBPQ log contains exact AX.25 hex |
 | 1 | UI frame across back-to-back NinoTNCs | both ends decode identical bytes |
-| 2 | SABM/UA cycle (mod-8) vs LinBPQ | wire capture matches expected sequence numbers |
+| 2 | SABM/UA cycle (mod-8) vs LinBPQ over net-sim AFSK1200 | our session reaches Connected after UA; DISC/UA returns it to Disconnected (`LinbpqViaNetsimConnectedMode`) |
 | 2 | 30 % scripted loss net-sim afsk1200, 10 kB transfer | completes; retries observed; no FRMR |
 | 3 | ACKMODE echo via LinBPQ | ack-bytes returned within 5 s |
 | 3 | ACKMODE via NinoTNC pair | ack-bytes correlate to RX on partner TNC |
@@ -823,6 +825,21 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-15 — interop: LinBPQ-via-netsim connected-mode test
+
+The "proper next step" called out in the previous interop entry. Our `Ax25Session` on net-sim's port 8100 (node a) drives a SABM/UA connect and DISC/UA disconnect against a real LinBPQ container that dials net-sim's port 8102 (node c) as a KISS-TCP client. Net-sim's AFSK1200 sim bridges frames between us and BPQ. First test in the suite with a genuinely third-party AX.25 stack as the remote peer; round-trip completes in ~3s.
+
+Adds:
+
+- **Third net-sim node `c`** in `docker/netsim/network.yaml`. Linked only to `a`, not to `b`, so concurrent test runs don't see each other's frames at the RF-sim layer (the AX.25 address filter would catch them anyway, but cleaner not to rely on it).
+- **Second `PORT` block in `docker/linbpq/bpq32.cfg`**: `TYPE=ASYNC PROTOCOL=KISS IPADDR=172.30.0.12 TCPPORT=8102 CHANNEL=A …`. Follows m0lte/test-net's working KISS-TCP configs verbatim (no `KISSOPTIONS=ACKMODE` — dropped per Tom for the minimal-first iteration; no per-port `MYCALL=` — inherits `NODECALL=PN0TST`; no `CONFIG` line; `CHANNEL=A` is the easy-to-miss mandatory field). BPQ retries the dial if the listener isn't yet up, so startup ordering is forgiving, but compose still has `depends_on netsim: healthy` belt-and-braces.
+- **`NetsimCollection` (xUnit `[CollectionDefinition]`)** with `DisableParallelization = true`. All netsim-attaching test classes (existing three + the new one) now share this collection so concurrent runs don't fight over port 8100.
+- **`tests/Packet.Interop.Tests/Linbpq/LinbpqViaNetsimConnectedMode.cs`** — one fact: SABM → UA → Connected → DISC → UA → Disconnected. Assertion is intentionally minimal; AGW / telnet probes of BPQ's heard-list and per-port counters are deferred so the scope of any later regression is obvious. Rig structure duplicated from `NetsimConnectedModeScenarios.BuildRig` rather than lifted into a shared helper — premature sharing would obscure the BPQ-specific quirks (PACLEN clamping, ACKMODE handling, link recovery) likely to surface in later tests.
+
+Verified locally: full SABM/UA/DISC/UA flow captured in net-sim's logs with `PNTEST → PN0TST` and `PN0TST → PNTEST` on the `a.vhf` and `c.vhf` ports. All 11 interop tests green together.
+
+Update to §7.1 interop-scenarios table reflects that the SABM/UA-vs-LinBPQ row is now satisfied (over net-sim, not direct KISS).
 
 ### 2026-05-15 — interop: first third-party-style connected-mode test
 

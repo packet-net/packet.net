@@ -25,6 +25,14 @@ services:
     image: m0lte/linbpq@sha256:872343ffb76a52316b1ae42a42d3c0893f545ccd577301ebc7c4455b292a8025
     container_name: pn-linbpq
     restart: unless-stopped
+    depends_on:
+      # LinBPQ's second PORT block dials netsim's KISS-TCP listener at
+      # 172.30.0.12:8102. BPQ retries the dial so strict ordering isn't
+      # required, but waiting for netsim to be healthy avoids a window
+      # where the first few dials fail and BPQ's retry backoff slows the
+      # interop test's first connect attempt.
+      netsim:
+        condition: service_healthy
     volumes:
       # LinBPQ writes runtime state under /data (HTML templates, .log files,
       # PIDs, the MH heard list, etc.). The container runs as root inside,
