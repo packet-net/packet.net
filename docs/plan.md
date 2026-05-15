@@ -824,6 +824,31 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-14 — ci: matrix `dotnet test` over per-project entries
+
+Replaced the monolithic `build & test` job in `.github/workflows/ci.yml`
+with a 13-entry matrix, one per test project. Each matrix entry runs
+its own `dotnet test <project>` which transitively builds the project's
+dependencies — compile errors in depended-on libraries still surface,
+test failures are reported per-project, and artifact uploads are named
+per matrix value so they don't collide.
+
+`fail-fast: false` so all projects report independently — one failing
+project doesn't suppress others' results.
+
+**Parallelism is gated on runner count.** GitHub schedules matrix
+entries up to the self-hosted pool's concurrency limit. With a single
+runner instance the matrix runs serially and is marginally slower
+than the old job (per-entry checkout overhead, ~10-20s). The win
+lands once ≥2 runner instances are registered on the box; with 4-8
+runners the wallclock should drop to "longest single test project"
+plus overhead.
+
+Removed the separate `restore`/`build` steps — `dotnet test` runs
+them transitively, and a standalone build smoke job would only catch
+issues in projects no test references (spikes, tool-only utilities),
+which are low-stakes.
+
 ### 2026-05-14 — sdl: generated per-transition tests in Go + TS
 
 Brought Go and TS up to test-coverage parity with C#. Previously only

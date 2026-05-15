@@ -15,13 +15,43 @@ permissions:
   contents: read
 
 jobs:
-  build-test:
-    name: build & test
+  test:
+    name: test (${{ matrix.project }})
     runs-on: [self-hosted, Linux, X64]
     # Self-hosted Linux runner — zero GitHub Actions minutes consumed.
     # Codebase targets netX.0 + portable APIs, so Linux catches ~95 %
     # of regressions. Cross-platform drift detection can ride a nightly
     # GitHub-hosted matrix later if it actually proves necessary.
+    #
+    # One matrix entry per test project. Each entry runs its own
+    # `dotnet test <project>` which transitively builds the project's
+    # dependencies — i.e. a compile error in a depended-on src/* lights
+    # up every matrix entry that uses it, and a compile error in a
+    # test project lights up just that entry. We get build coverage
+    # plus parallelism for free.
+    #
+    # Parallelism cap: GitHub schedules as many matrix entries as the
+    # self-hosted pool can take concurrently. With one runner this is
+    # serial (and slower than the old single-job step thanks to
+    # per-entry checkout overhead); the win lands when ≥2 runner
+    # instances are registered on the box.
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Packet.Agw.Tests
+          - Packet.Aprs.Tests
+          - Packet.Ax25.Conformance.Tests
+          - Packet.Ax25.Properties
+          - Packet.Ax25.Tests
+          - Packet.Axudp.Tests
+          - Packet.Core.Tests
+          - Packet.Interop.Tests
+          - Packet.Kiss.NinoTnc.Tests
+          - Packet.Kiss.Tests
+          - Packet.Node.Tests
+          - Packet.Rhp2.Tests
+          - Packet.Sdl.CodeGen.Tests
     steps:
       - uses: actions/checkout@v4
 
@@ -31,14 +61,12 @@ jobs:
         # runner. We skip actions/setup-dotnet because it would try to
         # re-install per-job into a path the `gh` user can't write to.
 
-      - name: restore
-        run: dotnet restore
-
-      - name: build
-        run: dotnet build --configuration Release --no-restore
-
       - name: test
-        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --filter "Category!=HardwareLoop&Category!=Interop"
+        run: |
+          dotnet test tests/${{ matrix.project }}/${{ matrix.project }}.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=test-results.trx" \
+            --filter "Category!=HardwareLoop&Category!=Interop"
 
       - name: upload test results
         # Only upload on failure to spare the account's artifact-storage
@@ -49,8 +77,8 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: '**/TestResults/*.trx'
+          name: test-results-${{ matrix.project }}
+          path: 'tests/${{ matrix.project }}/TestResults/*.trx'
           retention-days: 7
 
   sdl-codegen-discipline:
