@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Event / state names mirror the AX.25 spec's vocabulary verbatim;
+         Spectre.Console types pulled into our namespace include Color etc.
+         that trip a couple of stylistic-name rules. -->
+    <NoWarn>$(NoWarn);CA1711;CA1303;CA2007</NoWarn>
+    <RootNamespace>Packet.Term</RootNamespace>
+    <AssemblyName>Packet.Term</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="CommandLineParser" />
+    <PackageReference Include="System.IO.Ports" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+    <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\Packet.Ax25.Sdl\Packet.Ax25.Sdl.csproj" />
+    <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -14,6 +14,7 @@
     <Project Path="src/Packet.Node/Packet.Node.csproj" />
     <Project Path="src/Packet.Rhp2.Server/Packet.Rhp2.Server.csproj" />
     <Project Path="src/Packet.Rhp2/Packet.Rhp2.csproj" />
+    <Project Path="src/Packet.Term/Packet.Term.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Packet.Agw.Tests/Packet.Agw.Tests.csproj" />
@@ -29,6 +30,7 @@
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
     <Project Path="tests/Packet.Sdl.CodeGen.Tests/Packet.Sdl.CodeGen.Tests.csproj" />
+    <Project Path="tests/Packet.Term.Tests/Packet.Term.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Packet.AprsIs.Spike/Packet.AprsIs.Spike.csproj" />

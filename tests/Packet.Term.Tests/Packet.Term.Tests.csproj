@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Term\Packet.Term.csproj" />
+  </ItemGroup>
+
+</Project>

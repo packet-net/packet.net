@@ -829,6 +829,20 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-16 — Packet.Term: Spectre.Console TUI for AX.25 sessions
+
+New `src/Packet.Term/` console app — a three-pane Spectre.Console terminal (frame monitor on top, chat in the middle, status bar, input line at the bottom) that drives `Ax25Session` over a USB KISS modem at 57600 8N1. Outbound and inbound connections both supported: outbound via `C` keybinding (prompt for target, validate via `Callsign.Parse`, post `DlConnectRequest`); inbound via a SABM-listening pump that spins up a fresh session keyed off the SABM source. `able_to_establish` is wired so a second peer SABMs while we're busy and gets DM'd by the SDL automatically rather than queued — Tom's "no second connection" rule honoured at the SDL guard layer.
+
+Settings persist as JSON under `<LocalAppData>/PacketNet/Packet.Term/settings.json` (MYCALL, serial port, last-connect target). CLI flags `--mycall / --port / --connect` override for one run only; if MYCALL or port is unset and no flag supplied, the app prompts interactively before starting the TUI. `--connect` skips the disconnected state and kicks SABM at startup.
+
+Frame monitor is always-on and promiscuous — every frame on the wire renders in BPQ-style format (`HH:MM:SS T M0LTE-1>G1AAA <SABM C P>`), regardless of addressing, with the info field shown indented on the next line for I/UI frames. Status-bar keybinding cheatsheet changes with state so the user always sees what's allowed.
+
+Tests cover the FrameFormatter (representative SABM/UA/DISC/DM/RR/I/undecodable cases), the JSON settings round-trip (including corrupt-file → blank-defaults), and the CommandLineParser binding. Spectre's `Live` display is intentionally not exercised in unit tests — too hard to drive from xUnit without a real terminal.
+
+New library deps in `Directory.Packages.props`: `Spectre.Console`, `Microsoft.Extensions.Configuration`(`.Json`,`.Binder`). Reuses the already-pinned `CommandLineParser` and `System.IO.Ports`.
+
+Run-the-app one-liner for Tom: `dotnet run --project src/Packet.Term -- --mycall M0LTE-1 --port /dev/ttyUSB0`.
+
 ### 2026-05-16 — packet terminal example app
 
 Self-contained HTML demo at `web/ax25/examples/packet-terminal/` showing `@packet-net/ax25` driving a browser terminal against a USB KISS modem. xterm.js as the screen, Web Serial as the modem-attach point, a TNC2-style command set (`MYCALL`, `CONNECT`, `DISCONNECT`, `STATUS`, `ECHO`, `CLEAR`, `VERSION`, `HELP`), command/converse mode toggle on `Ctrl-C`.
