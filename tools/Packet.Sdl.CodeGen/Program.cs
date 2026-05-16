@@ -7,6 +7,8 @@ using Packet.Sdl.CodeGen.Python;
 using Packet.Sdl.CodeGen.Rust;
 using Packet.Sdl.CodeGen.Ts;
 using Packet.Sdl.IR;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace Packet.Sdl.CodeGen;
 
@@ -140,20 +142,28 @@ internal static class Program
             }
         }
 
+        // Load the per-runtime lint configuration. When the file isn't
+        // present (e.g. legacy invocation, or a test fixture that doesn't
+        // need runtime cross-referencing), this returns an empty target
+        // list and all runtime-specific lints become no-ops — preserving
+        // the historical silent-skip behaviour.
+        var lintTargets = LintTargetsConfig.Load(Path.Combine(plan.InDir, "lint-targets.yaml"));
+
         // Predicate-completeness lint: every predicate the YAML's
-        // decisions reference must have a binding in
-        // Ax25SessionBindings.CreateDefault. Without this, an unbound
-        // predicate makes GuardEvaluator.Evaluate throw at runtime
-        // — and worse, the throw can be silently swallowed by a
-        // background pump task, manifesting as a state machine that
-        // mysteriously ignores certain frames. The lint catches it at
-        // codegen time so transcription gaps surface BEFORE the live
-        // RF test exposes them.
-        LintPredicateBindings(pages, subroutinePages, errors);
+        // decisions reference must have a binding in each runtime's
+        // bindings file. Without this, an unbound predicate makes the
+        // guard evaluator throw at runtime — and worse, the throw can
+        // be silently swallowed by a background pump task, manifesting
+        // as a state machine that mysteriously ignores certain frames.
+        // The lint catches it at codegen time so transcription gaps
+        // surface BEFORE the live RF test exposes them. Errors are
+        // prefixed `[<language>]` so a CI failure attributes the gap
+        // to the specific runtime.
+        LintPredicateBindings(pages, subroutinePages, lintTargets, errors);
 
         // Action-verb-completeness lint: every action verb the YAML
         // emits — after actions.yaml alias resolution — must have a
-        // case arm in ActionDispatcher.Execute. Without this, an
+        // case arm in each runtime's dispatcher. Without this, an
         // unhandled verb makes the dispatcher throw at runtime with
         // "unknown SDL action". Same risk profile as the predicate
         // lint (silent swallow inside a background pump = mysterious
@@ -165,34 +175,38 @@ internal static class Program
         //   2. SDL uses the canonical spelling directly but the
         //      dispatcher's case is missing → lint fires with the
         //      canonical name so we know to add the case.
-        LintActionDispatcherCoverage(pages, subroutinePages, errors);
+        LintActionDispatcherCoverage(pages, subroutinePages, lintTargets, errors);
 
         // Subroutine-completeness lint: every action with kind=subroutine
         // must resolve to either a figc4.7 subroutine page entry or a
-        // hard-coded legacy alias in SubroutineRegistry.LegacyAliases.
-        // Otherwise SubroutineRegistry.Invoke throws "unknown subroutine"
-        // at runtime — same silent-swallow risk profile as the action /
-        // predicate lints.
-        LintSubroutineCoverage(pages, subroutinePages, errors);
+        // hard-coded legacy alias in each runtime's subroutine registry.
+        // Otherwise the runtime's subroutine registry throws "unknown
+        // subroutine" at runtime — same silent-swallow risk profile as
+        // the action / predicate lints. Targets without a `subroutines:`
+        // entry (e.g. the TS runtime, whose registry tolerates unknown
+        // names) silently skip this lint.
+        LintSubroutineCoverage(pages, subroutinePages, lintTargets, errors);
 
         // DL-ERROR letter lint: every DL_ERROR_indication_<X> verb must
         // use a letter (or the special "add" annotation) the dispatcher
         // is prepared to relay. Catches transcription typos like
         // DL_ERROR_indication_Z.
-        LintDlErrorLetters(pages, subroutinePages, errors);
+        LintDlErrorLetters(pages, subroutinePages, lintTargets, errors);
 
         // State-target lint: every transition's `next:` must name a state
         // that exists somewhere in the same machine. Catches transcription
         // typos like `next: connecteed` that would otherwise wedge the
-        // session in a state the runtime can't dispatch on.
+        // session in a state the runtime can't dispatch on. Runtime-
+        // agnostic — operates on SDL pages directly, not against any
+        // runtime file.
         LintStateTargets(pages, errors);
 
-        // Dispatcher-orphan lint: every `case "..."` in ActionDispatcher
-        // should be reachable from at least one SDL transition (post-
-        // alias resolution). Orphans aren't a runtime bug, but they
+        // Dispatcher-orphan lint: every `case "..."` in each runtime's
+        // dispatcher should be reachable from at least one SDL transition
+        // (post-alias resolution). Orphans aren't a runtime bug, but they
         // accumulate dead code that obscures real coverage. Symmetric
         // with the existing unused-alias lint on actions.yaml.
-        LintDispatcherOrphans(pages, subroutinePages, errors);
+        LintDispatcherOrphans(pages, subroutinePages, lintTargets, errors);
 
         // Per-state catchall-coverage lint: every state should have at
         // least one transition triggered by a `catchalls:` event (e.g.
@@ -691,8 +705,6 @@ internal static class Program
         }
     }
 
-    private const string BindingsPath = "src/Packet.Ax25/Session/Ax25SessionBindings.cs";
-
     private static readonly HashSet<string> GuardOperators =
         new(new[] { "and", "or", "not" }, StringComparer.Ordinal);
 
@@ -700,37 +712,31 @@ internal static class Program
 
     /// <summary>
     /// Cross-reference every predicate identifier the YAML's decisions
-    /// reference against the bindings <see cref="BindingsPath"/> declares.
-    /// Missing bindings become codegen errors with the precise predicate
-    /// name and the YAML location of its first use.
+    /// reference against the bindings each configured runtime declares.
+    /// Missing bindings become codegen errors prefixed with the runtime
+    /// label, the precise predicate name, and the YAML location of its
+    /// first use. The same predicate gap can fire once per runtime —
+    /// intentional, so a CI failure attributes the gap to a specific
+    /// language port and the fix lands in the right file.
     /// </summary>
     /// <remarks>
-    /// Bindings are extracted by regex-scanning <see cref="BindingsPath"/>
-    /// for indexer literals (<c>["name"] =</c>) — the canonical syntax for
-    /// declaring bindings today. If someone adds a binding via a different
-    /// mechanism (e.g. dynamic <c>bindings.Add(...)</c>), this lint won't
-    /// see it; the regex is the contract. The lint is silently skipped
-    /// when the bindings file isn't present, keeping the codegen tool
-    /// useful as a standalone library generator without
-    /// <c>Packet.Ax25</c> on disk.
+    /// Bindings are extracted by regex-scanning each target's bindings
+    /// file using the per-target regex from <c>spec-sdl/lint-targets.yaml</c>.
+    /// Targets whose bindings file isn't on disk skip silently — keeping
+    /// the codegen tool useful as a standalone library generator without
+    /// every runtime's source tree available.
     /// </remarks>
     private static void LintPredicateBindings(
         List<SdlPage> pages,
         List<SubroutinePage> subroutinePages,
+        LintTargetsConfig lintTargets,
         List<string> errors)
     {
-        if (!File.Exists(BindingsPath))
-        {
-            // Standalone codegen invocation without the runtime library
-            // on disk — skip rather than fail.
-            return;
-        }
-
-        var bound = ExtractBoundPredicateNames(File.ReadAllText(BindingsPath));
-
         // Walk every decision in every page, tokenize its predicate,
         // and remember the first YAML location each identifier appears
-        // at so the error message can point at it.
+        // at so the error message can point at it. The same firstSeen
+        // map is shared across targets — every target gets to evaluate
+        // the same set of identifiers.
         var firstSeen = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var page in pages)
         {
@@ -750,15 +756,27 @@ internal static class Program
             }
         }
 
-        foreach (var (ident, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        foreach (var target in lintTargets.Targets)
         {
-            if (!bound.Contains(ident))
+            if (target.Bindings is null) continue;
+            if (!File.Exists(target.Bindings.Path))
             {
-                errors.Add(
-                    $"{loc}: predicate `{ident}` has no binding in {BindingsPath}. " +
-                    "Add an entry to Ax25SessionBindings.CreateDefault — unbound predicates throw " +
-                    "GuardEvaluationException at runtime, which can manifest as silently-dropped frames " +
-                    "when a background pump swallows the exception.");
+                // Standalone codegen invocation without this runtime on
+                // disk — skip rather than fail.
+                continue;
+            }
+
+            var bound = ExtractByRegex(File.ReadAllText(target.Bindings.Path), target.Bindings.Regex);
+
+            foreach (var (ident, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+            {
+                if (!bound.Contains(ident))
+                {
+                    errors.Add(
+                        $"[{target.Language}] {loc}: predicate `{ident}` has no binding in {target.Bindings.Path}. " +
+                        "Add a binding entry — unbound predicates throw at runtime, which can manifest as " +
+                        "silently-dropped frames when a background pump swallows the exception.");
+                }
             }
         }
     }
@@ -774,55 +792,47 @@ internal static class Program
         }
     }
 
-    private static HashSet<string> ExtractBoundPredicateNames(string bindingsSource)
+    /// <summary>
+    /// Generic capture-group-1 extractor. Returns the set of distinct
+    /// values captured by the first group of every match. Used by every
+    /// runtime-specific lint to harvest names from a runtime source file
+    /// — the per-target regex chooses what's extracted (predicate names,
+    /// dispatcher case labels, subroutine registry keys).
+    /// </summary>
+    private static HashSet<string> ExtractByRegex(string source, string pattern)
     {
-        // Match `["name"]` indexer literals — both the dictionary-
-        // initializer form (`["foo"] = ...`) and any other use of
-        // the same indexer syntax. The regex's identifier class
-        // matches C# identifier rules (letter/underscore start,
-        // alnum/underscore body).
-        var rx = new System.Text.RegularExpressions.Regex(@"\[""([A-Za-z_][A-Za-z0-9_]*)""\]");
+        var rx = new System.Text.RegularExpressions.Regex(pattern);
         var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (System.Text.RegularExpressions.Match m in rx.Matches(bindingsSource))
+        foreach (System.Text.RegularExpressions.Match m in rx.Matches(source))
         {
             names.Add(m.Groups[1].Value);
         }
         return names;
     }
 
-    private const string DispatcherPath = "src/Packet.Ax25/Session/ActionDispatcher.cs";
-
     /// <summary>
     /// Cross-reference every action verb the resolved IR emits against
-    /// the case arms <see cref="DispatcherPath"/>'s Execute switch
-    /// declares. The IR is resolved here (not before) so the lint sees
-    /// the canonical verb names that the dispatcher actually receives at
-    /// runtime — i.e. post-aliasing via <c>spec-sdl/actions.yaml</c>.
-    /// Missing cases become codegen errors with the precise verb name
-    /// and the YAML location of its first use.
+    /// the case arms each configured runtime's dispatcher declares. The
+    /// IR is resolved here (not before) so the lint sees the canonical
+    /// verb names that the dispatcher actually receives at runtime —
+    /// i.e. post-aliasing via <c>spec-sdl/actions.yaml</c>. Missing cases
+    /// become codegen errors prefixed with the runtime label.
     /// </summary>
     /// <remarks>
-    /// Cases are extracted by regex-scanning <see cref="DispatcherPath"/>
-    /// for <c>case "..."</c> string-literal labels. The dispatcher uses a
-    /// single switch on the action string today; if a second switch is
-    /// added in the same file the regex will pick up its cases too. That
-    /// would over-accept (verbs in unrelated switches counted as handled)
-    /// rather than under-accept, so the lint stays conservative. The
-    /// lint is silently skipped when the dispatcher file isn't present
-    /// (codegen as a standalone tool without the runtime library).
+    /// Cases are extracted by regex-scanning each target's dispatcher
+    /// file. The dispatcher uses a single switch on the action string
+    /// today; if a second switch is added in the same file the regex
+    /// will pick up its cases too. That would over-accept (verbs in
+    /// unrelated switches counted as handled) rather than under-accept,
+    /// so the lint stays conservative. Targets whose dispatcher file
+    /// isn't on disk skip silently.
     /// </remarks>
     private static void LintActionDispatcherCoverage(
         List<SdlPage> pages,
         List<SubroutinePage> subroutinePages,
+        LintTargetsConfig lintTargets,
         List<string> errors)
     {
-        if (!File.Exists(DispatcherPath))
-        {
-            return;
-        }
-
-        var handled = ExtractDispatcherCaseLabels(File.ReadAllText(DispatcherPath));
-
         var firstSeen = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var page in pages)
@@ -854,64 +864,54 @@ internal static class Program
             }
         }
 
-        foreach (var (verb, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        foreach (var target in lintTargets.Targets)
         {
-            if (!handled.Contains(verb))
+            if (target.Dispatcher is null) continue;
+            if (!File.Exists(target.Dispatcher.Path)) continue;
+
+            var handled = ExtractByRegex(File.ReadAllText(target.Dispatcher.Path), target.Dispatcher.Regex);
+
+            foreach (var (verb, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
             {
-                errors.Add(
-                    $"{loc}: action `{verb}` has no case in {DispatcherPath}'s Execute switch. " +
-                    "Add a case arm there, OR if this is a figure-verbatim spelling of an existing " +
-                    "canonical verb, add an alias entry to spec-sdl/actions.yaml. Unhandled verbs " +
-                    "throw 'unknown SDL action' at runtime, which can be silently swallowed by a " +
-                    "background pump and manifest as dropped frames.");
+                if (!handled.Contains(verb))
+                {
+                    errors.Add(
+                        $"[{target.Language}] {loc}: action `{verb}` has no case in {target.Dispatcher.Path}'s Execute switch. " +
+                        "Add a case arm there, OR if this is a figure-verbatim spelling of an existing " +
+                        "canonical verb, add an alias entry to spec-sdl/actions.yaml. Unhandled verbs " +
+                        "throw 'unknown SDL action' at runtime, which can be silently swallowed by a " +
+                        "background pump and manifest as dropped frames.");
+                }
             }
         }
     }
-
-    private static HashSet<string> ExtractDispatcherCaseLabels(string dispatcherSource)
-    {
-        // Match `case "literal":` arms. Body can contain any non-quote
-        // character (the dispatcher's verb spellings include spaces,
-        // parens, equals, colons, arrows — but no embedded quotes or
-        // escape sequences in practice).
-        var rx = new System.Text.RegularExpressions.Regex(@"case\s+""([^""]+)""\s*:");
-        var labels = new HashSet<string>(StringComparer.Ordinal);
-        foreach (System.Text.RegularExpressions.Match m in rx.Matches(dispatcherSource))
-        {
-            labels.Add(m.Groups[1].Value);
-        }
-        return labels;
-    }
-
-    private const string SubroutineRegistryPath = "src/Packet.Ax25/Session/SubroutineRegistry.cs";
 
     /// <summary>
     /// Cross-reference every subroutine name the resolved IR invokes
     /// against the figc4.7 subroutine pages + the legacy-alias map in
-    /// <see cref="SubroutineRegistryPath"/>. Missing names become codegen
-    /// errors so figc4.x → figc4.7 wiring gaps don't first surface as
-    /// runtime "unknown subroutine" throws.
+    /// each configured runtime's subroutine registry. Missing names
+    /// become codegen errors prefixed with the runtime label, so figc4.x
+    /// → figc4.7 wiring gaps don't first surface as runtime "unknown
+    /// subroutine" throws. Targets with no <c>subroutines:</c> entry in
+    /// <c>spec-sdl/lint-targets.yaml</c> are silently skipped — this is
+    /// the escape hatch for runtimes (e.g. the TS port) whose subroutine
+    /// registry has no static name list to lint against.
     /// </summary>
     private static void LintSubroutineCoverage(
         List<SdlPage> pages,
         List<SubroutinePage> subroutinePages,
+        LintTargetsConfig lintTargets,
         List<string> errors)
     {
-        // Known subroutines: every name defined in any figc4.7 page,
-        // plus the LegacyAliases dictionary in SubroutineRegistry.cs.
-        var known = new HashSet<string>(StringComparer.Ordinal);
+        // Subroutines defined in figc4.7 pages are "known" for every
+        // runtime (those names are in the codegen output every runtime
+        // consumes). Per-runtime legacy aliases land on top.
+        var knownFromPages = new HashSet<string>(StringComparer.Ordinal);
         foreach (var sp in subroutinePages)
         {
             foreach (var sub in sp.Subroutines)
             {
-                known.Add(sub.Name);
-            }
-        }
-        if (File.Exists(SubroutineRegistryPath))
-        {
-            foreach (var legacy in ExtractLegacyAliasKeys(File.ReadAllText(SubroutineRegistryPath)))
-            {
-                known.Add(legacy);
+                knownFromPages.Add(sub.Name);
             }
         }
 
@@ -947,32 +947,28 @@ internal static class Program
             }
         }
 
-        foreach (var (name, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        foreach (var target in lintTargets.Targets)
         {
-            if (!known.Contains(name))
+            if (target.Subroutines is null) continue;
+            if (!File.Exists(target.Subroutines.Path)) continue;
+
+            var known = new HashSet<string>(knownFromPages, StringComparer.Ordinal);
+            foreach (var legacy in ExtractByRegex(File.ReadAllText(target.Subroutines.Path), target.Subroutines.Regex))
             {
-                errors.Add(
-                    $"{loc}: no figc4.7 subroutine page defines `{name}` and {SubroutineRegistryPath} " +
-                    "has no legacy-alias entry for it. Add the subroutine to a figc4.7 *.sdl.yaml " +
-                    "page (canonical), OR add a LegacyAliases entry mapping it to an existing canonical name.");
+                known.Add(legacy);
+            }
+
+            foreach (var (name, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+            {
+                if (!known.Contains(name))
+                {
+                    errors.Add(
+                        $"[{target.Language}] {loc}: no figc4.7 subroutine page defines `{name}` and {target.Subroutines.Path} " +
+                        "has no legacy-alias entry for it. Add the subroutine to a figc4.7 *.sdl.yaml " +
+                        "page (canonical), OR add a LegacyAliases entry mapping it to an existing canonical name.");
+                }
             }
         }
-    }
-
-    private static HashSet<string> ExtractLegacyAliasKeys(string registrySource)
-    {
-        // Match `["name"] = "..."` indexer-literal entries inside the
-        // LegacyAliases dictionary initialiser. The same regex used by
-        // the predicate lint is too permissive here (it'd match any
-        // `["foo"]` indexer), so we anchor to lines that contain `= "`
-        // (the value-assignment part of the dict literal).
-        var rx = new System.Text.RegularExpressions.Regex(@"\[""([A-Za-z_][A-Za-z0-9_]*)""\]\s*=\s*""");
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (System.Text.RegularExpressions.Match m in rx.Matches(registrySource))
-        {
-            keys.Add(m.Groups[1].Value);
-        }
-        return keys;
     }
 
     // ─── DL-ERROR letter lint ───────────────────────────────────────────
@@ -986,29 +982,20 @@ internal static class Program
 
     /// <summary>
     /// Every `DL_ERROR_indication_<X>` verb in the resolved IR must
-    /// have a corresponding case in the dispatcher. This is redundant
-    /// with the action-verb lint for canonical verbs, but it adds an
-    /// independent check that the X portion is recognisable (e.g.
-    /// flags a typo like `DL_ERROR_indication_Z` even if someone
+    /// have a corresponding case in each runtime's dispatcher. This is
+    /// redundant with the action-verb lint for canonical verbs, but it
+    /// adds an independent check that the X portion is recognisable
+    /// (e.g. flags a typo like `DL_ERROR_indication_Z` even if someone
     /// added a misleading alias in actions.yaml that mapped it to a
-    /// valid canonical).
+    /// valid canonical). Errors are prefixed with the runtime label so
+    /// a CI failure attributes the gap to the specific runtime.
     /// </summary>
     private static void LintDlErrorLetters(
         List<SdlPage> pages,
         List<SubroutinePage> subroutinePages,
+        LintTargetsConfig lintTargets,
         List<string> errors)
     {
-        if (!File.Exists(DispatcherPath)) return;
-        var handled = ExtractDispatcherCaseLabels(File.ReadAllText(DispatcherPath));
-
-        // Build the recognised DL-ERROR verbs from the dispatcher's
-        // own case labels — anything starting with `DL_ERROR_indication`
-        // or `DL-ERROR Indication`.
-        var recognised = new HashSet<string>(
-            handled.Where(c => c.StartsWith("DL_ERROR_indication", StringComparison.Ordinal)
-                            || c.StartsWith("DL-ERROR Indication",  StringComparison.Ordinal)),
-            StringComparer.Ordinal);
-
         var firstSeen = new Dictionary<string, string>(StringComparer.Ordinal);
 
         void Collect(string verb, string loc)
@@ -1035,14 +1022,30 @@ internal static class Program
                         Collect(a.Verb, $"{subPage.SourcePath}: subroutine `{sub.Name}` path `{path.Id}` action `{a.Verb}`");
         }
 
-        foreach (var (verb, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+        foreach (var target in lintTargets.Targets)
         {
-            if (!recognised.Contains(verb))
+            if (target.Dispatcher is null) continue;
+            if (!File.Exists(target.Dispatcher.Path)) continue;
+
+            var handled = ExtractByRegex(File.ReadAllText(target.Dispatcher.Path), target.Dispatcher.Regex);
+
+            // Build the recognised DL-ERROR verbs from the dispatcher's
+            // own case labels — anything starting with `DL_ERROR_indication`
+            // or `DL-ERROR Indication`.
+            var recognised = new HashSet<string>(
+                handled.Where(c => c.StartsWith("DL_ERROR_indication", StringComparison.Ordinal)
+                                || c.StartsWith("DL-ERROR Indication",  StringComparison.Ordinal)),
+                StringComparer.Ordinal);
+
+            foreach (var (verb, loc) in firstSeen.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
             {
-                errors.Add(
-                    $"{loc}: DL-ERROR variant `{verb}` is not in {DispatcherPath}'s recognised set. " +
-                    "Either the suffix letter is a typo (compare against §C5's A..R range), or this " +
-                    "is a genuinely new variant that needs a dispatcher case + actions.yaml entry.");
+                if (!recognised.Contains(verb))
+                {
+                    errors.Add(
+                        $"[{target.Language}] {loc}: DL-ERROR variant `{verb}` is not in {target.Dispatcher.Path}'s recognised set. " +
+                        "Either the suffix letter is a typo (compare against §C5's A..R range), or this " +
+                        "is a genuinely new variant that needs a dispatcher case + actions.yaml entry.");
+                }
             }
         }
     }
@@ -1115,17 +1118,29 @@ internal static class Program
     // ─── Dispatcher orphan lint ─────────────────────────────────────────
 
     /// <summary>
-    /// Every <c>case "..."</c> in the dispatcher's Execute switch should
-    /// be reachable from at least one SDL transition's resolved action.
-    /// Orphan cases aren't a runtime bug but they accumulate dead code
-    /// that obscures real coverage. Symmetric with the unused-alias lint
-    /// on <c>spec-sdl/actions.yaml</c>.
+    /// Every <c>case "..."</c> in each runtime's dispatcher Execute switch
+    /// should be reachable from at least one SDL transition's resolved
+    /// action. Orphan cases aren't a runtime bug but they accumulate dead
+    /// code that obscures real coverage. Symmetric with the unused-alias
+    /// lint on <c>spec-sdl/actions.yaml</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// We exclude a small allow-list of verbs that the dispatcher accepts
     /// but no SDL page emits today, kept distinct in the source so the
     /// audit log stays accurate. Add an entry here (with a one-line
     /// reason) rather than letting the lint shrug at unused arms.
+    /// </para>
+    /// <para>
+    /// This allow-list is shared across all runtime targets. The simplifying
+    /// observation: the C# and TS dispatchers ship the same verb vocabulary
+    /// (the TS port is a line-for-line translation of the C# dispatcher),
+    /// so a verb that's an "orphan" in one is an "orphan" in the other.
+    /// If a future runtime introduces a divergent set of orphans, split
+    /// this into a per-target <c>orphan_allow_list:</c> block in
+    /// <c>spec-sdl/lint-targets.yaml</c> rather than letting the lint
+    /// stay silent.
+    /// </para>
     /// </remarks>
     private static readonly HashSet<string> DispatcherOrphanAllowList = new(StringComparer.Ordinal)
     {
@@ -1168,11 +1183,9 @@ internal static class Program
     private static void LintDispatcherOrphans(
         List<SdlPage> pages,
         List<SubroutinePage> subroutinePages,
+        LintTargetsConfig lintTargets,
         List<string> errors)
     {
-        if (!File.Exists(DispatcherPath)) return;
-        var cases = ExtractDispatcherCaseLabels(File.ReadAllText(DispatcherPath));
-
         var used = new HashSet<string>(StringComparer.Ordinal);
         foreach (var page in pages)
         {
@@ -1190,14 +1203,22 @@ internal static class Program
                         used.Add(a.Verb);
         }
 
-        foreach (var c in cases.OrderBy(x => x, StringComparer.Ordinal))
+        foreach (var target in lintTargets.Targets)
         {
-            if (used.Contains(c)) continue;
-            if (DispatcherOrphanAllowList.Contains(c)) continue;
-            errors.Add(
-                $"{DispatcherPath}: case `\"{c}\"` is not emitted by any SDL transition (post alias " +
-                "resolution). Either remove the case, OR add an entry to DispatcherOrphanAllowList in " +
-                "tools/Packet.Sdl.CodeGen/Program.cs with a one-line reason for keeping it.");
+            if (target.Dispatcher is null) continue;
+            if (!File.Exists(target.Dispatcher.Path)) continue;
+
+            var cases = ExtractByRegex(File.ReadAllText(target.Dispatcher.Path), target.Dispatcher.Regex);
+
+            foreach (var c in cases.OrderBy(x => x, StringComparer.Ordinal))
+            {
+                if (used.Contains(c)) continue;
+                if (DispatcherOrphanAllowList.Contains(c)) continue;
+                errors.Add(
+                    $"[{target.Language}] {target.Dispatcher.Path}: case `\"{c}\"` is not emitted by any SDL transition (post alias " +
+                    "resolution). Either remove the case, OR add an entry to DispatcherOrphanAllowList in " +
+                    "tools/Packet.Sdl.CodeGen/Program.cs with a one-line reason for keeping it.");
+            }
         }
     }
 
@@ -1417,4 +1438,55 @@ internal sealed class CodegenPlan
             MermaidOut  = opt.MermaidOut.Length > 0 ? opt.MermaidOut : null,
         };
     }
+}
+
+/// <summary>
+/// Per-runtime lint configuration loaded from
+/// <c>spec-sdl/lint-targets.yaml</c>. Each target points at a runtime's
+/// bindings / dispatcher / subroutine files, with regexes tuned to that
+/// language's syntax. Missing files silently skip the lint for that
+/// target (preserves the "standalone codegen invocation" behaviour the
+/// existing lints already support).
+/// </summary>
+/// <remarks>
+/// When the config file is absent (e.g. test fixtures, legacy invocation
+/// without the per-runtime sources on disk), <see cref="Load"/> returns
+/// an empty <see cref="Targets"/> list and every runtime-specific lint
+/// becomes a no-op. The runtime-agnostic lints (state-target, catchall-
+/// coverage) don't consult this config — they operate on SDL pages
+/// directly and always run.
+/// </remarks>
+internal sealed class LintTargetsConfig
+{
+    public List<LintTarget> Targets { get; set; } = new();
+
+    public static LintTargetsConfig Empty { get; } = new();
+
+    public static LintTargetsConfig Load(string path)
+    {
+        if (!File.Exists(path)) return Empty;
+        var deserializer = new DeserializerBuilder()
+            .WithNamingConvention(LowerCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+        var cfg = deserializer.Deserialize<LintTargetsConfig>(File.ReadAllText(path));
+        return cfg ?? Empty;
+    }
+}
+
+/// <summary>One runtime's bindings / dispatcher / subroutine triple.</summary>
+internal sealed class LintTarget
+{
+    /// <summary>Human-readable name of the runtime (csharp / typescript / etc.). Surfaces in error messages as <c>[language]</c>.</summary>
+    public string Language { get; set; } = "";
+    public LintTargetFile? Bindings { get; set; }
+    public LintTargetFile? Dispatcher { get; set; }
+    public LintTargetFile? Subroutines { get; set; }
+}
+
+/// <summary>Path + extraction regex for one runtime source file. The regex's capture group 1 names the symbol to extract.</summary>
+internal sealed class LintTargetFile
+{
+    public string Path { get; set; } = "";
+    public string Regex { get; set; } = "";
 }

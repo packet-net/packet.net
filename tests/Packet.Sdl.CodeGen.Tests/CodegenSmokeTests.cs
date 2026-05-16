@@ -433,4 +433,159 @@ public class CodegenSmokeTests
         result.Stderr.Should().Contain("not_pinned_anywhere");
         result.Stderr.Should().Contain("pinned_refs");
     }
+
+    // ─── lint-targets.yaml behaviour ─────────────────────────────────────
+    //
+    // The runtime-specific lints (predicate / dispatcher / subroutine /
+    // DL-ERROR / orphan) are driven by spec-sdl/lint-targets.yaml. These
+    // tests pin three invariants:
+    //   1. No lint-targets.yaml → runtime-specific lints all skip cleanly
+    //      (preserves the standalone-codegen escape hatch).
+    //   2. Two targets where one has a bindings gap → only that target's
+    //      label appears in the error.
+    //   3. Error messages carry the `[language]` prefix from the target's
+    //      `language:` field, so a CI failure attributes the gap.
+
+    [Fact]
+    public void Without_lint_targets_yaml_runtime_specific_lints_skip()
+    {
+        using var r = new CodegenRunner();
+        r.WriteEventsCatalog(MinimalEvents);
+        // A page that references a predicate not bound in any runtime —
+        // the predicate lint would normally fire if any target was on
+        // disk. With no lint-targets.yaml, the runtime-specific lints
+        // all silently skip, so codegen succeeds.
+        r.WritePage("data-link/connected.sdl.yaml", """
+            machine: data_link
+            state: Connected
+            coverage: partial
+            source: { spec: test, figure: f }
+            decisions:
+              - id: needs_unbound_predicate
+                question: "Definitely unbound?"
+                predicate: some_predicate_no_runtime_binds
+            transitions:
+              - id: t01_yes
+                on: I_received
+                path:
+                  - { decision: needs_unbound_predicate, branch: "Yes" }
+                  - { action: do_thing, kind: processing }
+                next: Connected
+              - id: t02_no
+                on: I_received
+                path:
+                  - { decision: needs_unbound_predicate, branch: "No" }
+                  - { action: do_other_thing, kind: processing }
+                next: Connected
+            """);
+
+        var result = r.Run();
+
+        result.ExitCode.Should().Be(0, $"stderr: {result.Stderr}");
+        result.Stderr.Should().NotContain("some_predicate_no_runtime_binds");
+    }
+
+    [Fact]
+    public void Lint_targets_with_two_runtimes_fires_only_for_target_with_gap()
+    {
+        using var r = new CodegenRunner();
+        r.WriteEventsCatalog(MinimalEvents);
+        r.WritePage("data-link/connected.sdl.yaml", """
+            machine: data_link
+            state: Connected
+            coverage: partial
+            source: { spec: test, figure: f }
+            decisions:
+              - id: foo_check
+                question: "Foo?"
+                predicate: foo_predicate
+            transitions:
+              - id: t01_yes
+                on: I_received
+                path:
+                  - { decision: foo_check, branch: "Yes" }
+                  - { action: do_thing, kind: processing }
+                next: Connected
+              - id: t02_no
+                on: I_received
+                path:
+                  - { decision: foo_check, branch: "No" }
+                  - { action: do_other_thing, kind: processing }
+                next: Connected
+            """);
+        // Two fake runtime bindings files: alpha has the binding,
+        // bravo doesn't.
+        r.WriteFile("fake-runtime/alpha/bindings.cs",
+            "// alpha binds the predicate\nvar bindings = new Dictionary<string, Func<bool>>(); bindings[\"foo_predicate\"] = () => true;\n");
+        r.WriteFile("fake-runtime/bravo/bindings.cs",
+            "// bravo binds something else entirely\nvar bindings = new Dictionary<string, Func<bool>>(); bindings[\"different_predicate\"] = () => true;\n");
+        r.WriteLintTargets("""
+            targets:
+              - language: alpha
+                bindings:
+                  path: fake-runtime/alpha/bindings.cs
+                  regex: '\["([A-Za-z_][A-Za-z0-9_]*)"\]'
+              - language: bravo
+                bindings:
+                  path: fake-runtime/bravo/bindings.cs
+                  regex: '\["([A-Za-z_][A-Za-z0-9_]*)"\]'
+            """);
+
+        var result = r.Run();
+
+        result.ExitCode.Should().NotBe(0, $"stderr: {result.Stderr}");
+        // Error must mention the bravo target by language label, but
+        // not the alpha target — alpha has the binding.
+        result.Stderr.Should().Contain("[bravo]");
+        result.Stderr.Should().Contain("foo_predicate");
+        result.Stderr.Should().NotContain("[alpha]");
+    }
+
+    [Fact]
+    public void Lint_targets_error_messages_carry_language_label()
+    {
+        using var r = new CodegenRunner();
+        r.WriteEventsCatalog(MinimalEvents);
+        r.WritePage("data-link/connected.sdl.yaml", """
+            machine: data_link
+            state: Connected
+            coverage: partial
+            source: { spec: test, figure: f }
+            decisions:
+              - id: gap_check
+                question: "Gap?"
+                predicate: gap_predicate
+            transitions:
+              - id: t01_yes
+                on: I_received
+                path:
+                  - { decision: gap_check, branch: "Yes" }
+                  - { action: do_thing, kind: processing }
+                next: Connected
+              - id: t02_no
+                on: I_received
+                path:
+                  - { decision: gap_check, branch: "No" }
+                  - { action: do_other_thing, kind: processing }
+                next: Connected
+            """);
+        r.WriteFile("fake-runtime/mypy/bindings.py",
+            "# python-style binding declaration\nbindings = {}\n");
+        r.WriteLintTargets("""
+            targets:
+              - language: mypy
+                bindings:
+                  path: fake-runtime/mypy/bindings.py
+                  regex: 'bindings\["([A-Za-z_][A-Za-z0-9_]*)"\]'
+            """);
+
+        var result = r.Run();
+
+        result.ExitCode.Should().NotBe(0);
+        // The custom language label appears verbatim in the error
+        // message — so future runtimes can be added with arbitrary
+        // labels and the per-target attribution still works.
+        result.Stderr.Should().Contain("[mypy]");
+        result.Stderr.Should().Contain("gap_predicate");
+    }
 }

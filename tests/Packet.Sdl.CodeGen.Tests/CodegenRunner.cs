@@ -63,6 +63,27 @@ internal sealed class CodegenRunner : IDisposable
     public void WriteActionsCatalog(string yaml)
         => File.WriteAllText(Path.Combine(SpecDir, "actions.yaml"), yaml);
 
+    /// <summary>
+    /// Drop a lint-targets.yaml at the SpecDir root. Configures the
+    /// runtime-specific lints' per-target bindings / dispatcher /
+    /// subroutine paths + regexes. Missing means runtime-specific lints
+    /// silently skip (preserving the standalone-codegen escape hatch).
+    /// </summary>
+    public void WriteLintTargets(string yaml)
+        => File.WriteAllText(Path.Combine(SpecDir, "lint-targets.yaml"), yaml);
+
+    /// <summary>
+    /// Drop a file under the sandboxed root at <paramref name="relativePath"/>.
+    /// Used to stage a fake runtime source (bindings.cs / dispatcher.cs)
+    /// against which the lint-targets.yaml paths can resolve.
+    /// </summary>
+    public void WriteFile(string relativePath, string contents)
+    {
+        var full = Path.Combine(RootDir, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, contents);
+    }
+
     public sealed record RunResult(int ExitCode, string Stdout, string Stderr);
 
     /// <summary>Run the codegen tool and capture exit + stdout + stderr.</summary>
@@ -85,6 +106,10 @@ internal sealed class CodegenRunner : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
+            // Anchor relative paths inside lint-targets.yaml (and any
+            // future relative path the codegen reads) to the test
+            // sandbox rather than the test bin dir.
+            WorkingDirectory       = RootDir,
         };
         using var proc = Process.Start(psi)!;
         var stdout = proc.StandardOutput.ReadToEnd();
@@ -105,6 +130,7 @@ internal sealed class CodegenRunner : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
+            WorkingDirectory       = RootDir,
         };
         using var proc = Process.Start(psi)!;
         var stdout = proc.StandardOutput.ReadToEnd();
@@ -125,6 +151,7 @@ internal sealed class CodegenRunner : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
             UseShellExecute        = false,
+            WorkingDirectory       = RootDir,
         };
         using var proc = Process.Start(psi)!;
         var stdout = proc.StandardOutput.ReadToEnd();
