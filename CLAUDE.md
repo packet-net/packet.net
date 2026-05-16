@@ -235,6 +235,11 @@ docs/                            plan, ADRs, primers
   `verification_pending:` notes in the relevant `*.sdl.yaml` instead.
 - Don't infer protocol semantics from the spec PNGs. See "Encode-then-verify"
   above.
+- Don't add new GitHub Actions jobs with `runs-on: ubuntu-latest` (or any other
+  GitHub-hosted runner label). This project has no Actions minutes budget for
+  hosted runners — every workflow job MUST target `[self-hosted, Linux, X64]`,
+  matching the existing CI / interop / npm-publish jobs. Reach for hosted
+  runners only after Tom explicitly authorises a budget for them.
 
 ## When in doubt
 

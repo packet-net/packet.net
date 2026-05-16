@@ -31,11 +31,10 @@ env:
 jobs:
   publish:
     name: publish to npmjs.com
-    runs-on: ubuntu-latest
-    # ubuntu-latest (not self-hosted) is intentional: this job runs only
-    # on tags, so its annual frequency doesn't put any meaningful load
-    # on GitHub Actions minutes. Using a hosted runner means the publish
-    # path doesn't depend on any self-hosted-runner-only tooling.
+    runs-on: [self-hosted, Linux, X64]
+    # Self-hosted matches the rest of the repo: GitHub-hosted Actions
+    # minutes aren't budgeted for this project. The publish path uses
+    # only Node + npm + the npmjs registry — nothing self-hosted-only.
     env:
       # Job-level env so the `if: env.NPM_TOKEN != ''` checks on the
       # publish steps see the secret's resolved value (step-level env is
