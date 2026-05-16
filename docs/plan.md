@@ -829,6 +829,28 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-16 — codegen: generalise runtime-specific lints across C# and TypeScript
+
+Before this PR the codegen-time lints in `tools/Packet.Sdl.CodeGen/Program.cs` hard-coded paths under `src/Packet.Ax25/Session/` — so the predicate-binding / action-dispatcher / subroutine-coverage / DL-ERROR / dispatcher-orphan lints only ran against the C# runtime. Gaps in the TypeScript port (under `web/ax25-ts/src/sdl/`) would silently land and only surface at runtime when a transcription referenced an unbound predicate or unknown action verb. This PR drives the runtime-specific lints from a single config file so both runtimes (and any future ones) get the same coverage.
+
+**Shape of the refactor**:
+
+- New file `spec-sdl/lint-targets.yaml` lists each runtime as a target with paths + extraction regexes for its bindings / dispatcher / subroutine source files. Today there are two targets — `csharp` and `typescript`. Other backends (Go / Rust / C / JSON / Python) ship tables-only and have no runtime to lint against, so they're absent.
+- Each per-target file entry has its own regex tuned to the language's syntax. The C# regexes are unchanged from before this PR. The TS regexes that work for the current files are: `bindings\.set\(\s*"([A-Za-z_][A-Za-z0-9_]*)"` for bindings (the `\s*` covers the multi-line `set(\n    "name",` forms used three times in `session-bindings.ts`), and the C# case-label regex (`case\s+"([^"]+)"\s*:`) carries over verbatim for the TS dispatcher.
+- The TS port has no `subroutines:` entry in its target. The TS `DefaultSubroutineRegistry` has no static name list — it tolerates unknown subroutines by logging via the `onUnknown` sink, no throw. The strict subroutine-coverage lint doesn't translate; we made the `subroutines:` block optional per target rather than force a synthetic check.
+- Error messages from every runtime-specific lint are now prefixed `[<language>]` so a CI failure attributes the gap to a specific runtime.
+- The runtime-agnostic lints (`LintStateTargets`, `LintCatchallCoverage`) don't read `lint-targets.yaml` — they operate on SDL pages directly and apply to every runtime equally.
+
+**Decision: keep state-target + catchall lints runtime-agnostic.** Both check structural properties of the SDL transcriptions themselves (a `next:` target must name a known state in the same machine; every complete state needs a catchall transition). The semantics of those checks don't change between runtimes — there's no per-language tuning the lint could do, so factoring them into the per-target config would only add ceremony.
+
+**Decision: shared dispatcher-orphan + state-target allow-lists.** Today the C# and TS dispatchers ship the same verb vocabulary (the TS port is a near-line-for-line translation of the C# dispatcher), so a verb that's an orphan in one is an orphan in the other. The `DispatcherOrphanAllowList` and `StateTargetAllowList` are kept as in-code shared sets with a comment noting the choice — if a future runtime introduces divergent orphans, split into per-target allow-list YAML blocks at that point.
+
+**Standalone-codegen escape hatch preserved.** When `spec-sdl/lint-targets.yaml` is absent (legacy invocation, test fixtures, libraries built without the runtime source on disk), `LintTargetsConfig.Load` returns an empty list and every runtime-specific lint becomes a no-op. Per-target files that don't exist still silently skip — same shape as before the refactor.
+
+**Adding a future runtime.** When/if a Go runtime, Rust runtime, etc. appears, it's a single block in `spec-sdl/lint-targets.yaml` — no Program.cs change required. The block names the language, the bindings / dispatcher / subroutines paths, and the regex per file that extracts the symbol from capture group 1. Tested via the new "lint-targets with two runtimes fires only for target with gap" test in `CodegenSmokeTests`, which spins up two synthetic targets ("alpha" / "bravo") and asserts that the language label is attached correctly.
+
+**Verification**: codegen runs error-free against the current state of both runtimes (the C# and TS bindings files have identical 41-element predicate sets, dispatchers have identical 146-element case-label sets — confirmed by a side-by-side regex comparison). The 24 pre-existing codegen tests still pass; three new tests (`Without_lint_targets_yaml_runtime_specific_lints_skip`, `Lint_targets_with_two_runtimes_fires_only_for_target_with_gap`, `Lint_targets_error_messages_carry_language_label`) cover the new config-driven behaviour.
+
 ### 2026-05-15 — ax25.ts: developer docs + npm distribution plumbing
 
 Stacks on the two ax25.ts entries below. Before this PR the library was internally documented (README, in-code JSDoc) but had no API reference, no distribution plumbing, no LICENSE / CHANGELOG, and the `ts-spec/` package was missing the npm metadata fields needed to publish. This PR fills all of those gaps without touching the library's runtime code path.
