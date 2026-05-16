@@ -8,7 +8,7 @@ namespace Packet.Kiss;
 /// in both directions so callers deal in <see cref="KissFrame"/>s, not
 /// escape sequences.
 /// </summary>
-public sealed class KissTcpClient : IDisposable, IAsyncDisposable
+public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
 {
     private readonly TcpClient tcp;
     private readonly NetworkStream stream;
@@ -71,6 +71,39 @@ public sealed class KissTcpClient : IDisposable, IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// <see cref="IKissModem"/> shape: write a KISS-Data frame on
+    /// port 0. Delegates to <see cref="SendAsync"/>.
+    /// </summary>
+    public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        => SendAsync(port: 0, KissCommand.Data, ax25Bytes, cancellationToken);
+
+    /// <summary>
+    /// <see cref="IKissModem"/> shape: async stream of every inbound
+    /// KISS frame until the socket closes or the token fires. Loops
+    /// internally over <see cref="ReceiveAsync"/>.
+    /// </summary>
+    public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            IReadOnlyList<KissFrame> frames;
+            try { frames = await ReceiveAsync(cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { yield break; }
+            catch (IOException) { yield break; /* peer closed */ }
+            foreach (var f in frames) yield return f;
+        }
+    }
+
+    Task<AckModeReceipt> IKissModem.SendFrameWithAckAsync(
+        ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout, ushort? sequenceTag, CancellationToken cancellationToken)
+        => throw new NotSupportedException("KissTcpClient does not implement KISS ACKMODE; use SendFrameAsync for fire-and-forget transmission.");
+    Task IKissModem.SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken)        => SendAsync(0, KissCommand.TxDelay,    new[] { tenMsUnits }, cancellationToken);
+    Task IKissModem.SetPersistenceAsync(byte value, CancellationToken cancellationToken)         => SendAsync(0, KissCommand.Persistence, new[] { value },      cancellationToken);
+    Task IKissModem.SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken)       => SendAsync(0, KissCommand.SlotTime,   new[] { tenMsUnits }, cancellationToken);
+    Task IKissModem.SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken)         => SendAsync(0, KissCommand.TxTail,     new[] { tenMsUnits }, cancellationToken);
 
     /// <inheritdoc/>
     public void Dispose()

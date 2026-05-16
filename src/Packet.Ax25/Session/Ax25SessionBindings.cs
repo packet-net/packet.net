@@ -55,16 +55,19 @@ public static class Ax25SessionBindings
             //
             // "Able to establish?" — the spec defers to the station's
             // own policy: link budget, channel busy, callsign allow-list,
-            // resource limits, etc. We default to `true` (always accept)
-            // which matches direwolf's behaviour ("we are always willing
-            // to accept connections", ax25_link.c:4337). Production
-            // stations that need finer control should override this
-            // binding with their own policy hook — the cleanest shape
-            // is probably an `IAx25SessionPolicy` injected into the
-            // session ctor, but until that lands the override-on-build
-            // pattern (replace the entry in this dictionary before
-            // handing it to GuardEvaluator) is sufficient.
-            ["able_to_establish"]          = () => true,
+            // resource limits, etc. The default reads
+            // <see cref="Ax25SessionContext.AcceptIncoming"/>, which
+            // defaults to <c>true</c> (always accept) — matching
+            // direwolf's behaviour ("we are always willing to accept
+            // connections", ax25_link.c:4337). The
+            // <see cref="Ax25Listener"/> flips this flag at the session
+            // boundary (false on a transient session it has chosen to
+            // reject) so the SDL t15 path emits DM without any wrapper
+            // closure. Callers that need richer policy (callsign
+            // allow-lists, channel busy, resource limits) can still
+            // override the binding entry — replace it in this dict
+            // before handing it to <see cref="GuardEvaluator"/>.
+            ["able_to_establish"]          = () => context.AcceptIncoming,
 
             // ─── Sequence-variable comparisons (mod-aware) ─────────────
             ["V_s_eq_V_a"]                 = () => context.VS == context.VA,

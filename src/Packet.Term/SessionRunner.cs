@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using Packet.Ax25;
-using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
 
@@ -24,35 +21,39 @@ public enum LinkState
 }
 
 /// <summary>
-/// Wraps <see cref="Ax25Session"/> + dispatcher + signal queue for one
-/// session at a time. Owns the inbound pump (which reads frames off the
-/// modem and dispatches them), the data-link signal observation loop
-/// (which surfaces upper-layer events as TUI updates), and the
-/// connect / disconnect lifecycle.
+/// Thin TUI-side facade over <see cref="Ax25Listener"/>. The listener owns
+/// the inbound pump, per-peer session cache, address-filtering dispatch,
+/// and the modem TX/RX trace stream. <see cref="SessionRunner"/> adds
+/// only the TUI-specific UX:
+/// <list type="bullet">
+///   <item>"One connection at a time" policy via
+///         <see cref="Ax25Listener.AcceptIncoming"/>.</item>
+///   <item>Mapping <see cref="DataLinkSignal"/> events to
+///         <see cref="LinkState"/> transitions for the status bar.</item>
+///   <item>Surfacing inbound DL-DATA into the chat pane.</item>
+///   <item>Welcome-banner emission on first DL-CONNECT-indication.</item>
+/// </list>
 /// </summary>
 /// <remarks>
-/// One <see cref="SessionRunner"/> per modem connection. The runner
-/// maintains exactly one <see cref="Ax25Session"/> at a time: outbound
-/// connects build it before sending SABM; inbound connects rebuild it
-/// when a SABM addressed to MYCALL arrives from an unknown peer (since
-/// <see cref="Ax25SessionContext.Remote"/> is init-only).
+/// Compared with the pre-listener implementation, this drops the
+/// hand-rolled inbound pump, per-SABM session-recreate logic, the
+/// <c>ableToEstablish</c> closure plumbing, and the dual inbound /
+/// outbound signal-drain loops. Per-peer SRT / T1V history is preserved
+/// across reconnects — sessions sit idle in Disconnected rather than
+/// being thrown away.
 /// </remarks>
 public sealed class SessionRunner : IDisposable
 {
-    private readonly KissSerialModem modem;
     private readonly Callsign myCall;
     private readonly Action<string> chatLog;
     private readonly Action<LinkState, Callsign?> onStateChange;
+    private readonly Ax25Listener listener;
 
     private readonly object sessionLock = new();
-    private Ax25Session? session;
-    private SystemTimerScheduler? scheduler;
-    private ConcurrentQueue<DataLinkSignal>? signals;
+    private Ax25Session? activeSession;
     private Callsign? remote;
     private LinkState state = LinkState.Disconnected;
-    private bool inSession;            // true between SABM/UA and DISC/UA
-    private Task? signalLoop;
-    private CancellationTokenSource? signalLoopCts;
+    private bool welcomeSent;
 
     /// <summary>The active peer's callsign, or <c>null</c> when no session.</summary>
     public Callsign? Remote
@@ -67,8 +68,8 @@ public sealed class SessionRunner : IDisposable
     }
 
     /// <summary>
-    /// Construct a runner. The runner does not start its pump until
-    /// <see cref="Start"/> is called.
+    /// Construct a runner. The runner does not start its listener pump
+    /// until <see cref="Start"/> is called.
     /// </summary>
     /// <param name="modem">Serial KISS modem the session talks through.</param>
     /// <param name="myCall">Our callsign; all inbound filtering checks against this.</param>
@@ -76,382 +77,232 @@ public sealed class SessionRunner : IDisposable
     /// <param name="onStateChange">Notified when the coarse link state changes.</param>
     public SessionRunner(KissSerialModem modem, Callsign myCall, Action<string> chatLog, Action<LinkState, Callsign?> onStateChange)
     {
-        this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
+        ArgumentNullException.ThrowIfNull(modem);
         this.myCall = myCall;
         this.chatLog = chatLog ?? throw new ArgumentNullException(nameof(chatLog));
         this.onStateChange = onStateChange ?? throw new ArgumentNullException(nameof(onStateChange));
+
+        listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = myCall,
+            ConfigureSession = AttachSessionListeners,
+        });
+        listener.SessionAccepted += OnSessionAccepted;
     }
 
     /// <summary>
-    /// Start the inbound pump. Spawns a background task that reads frames
-    /// off the modem, address-filters, and either creates a new inbound
-    /// session (on SABM to MYCALL with no active link) or posts the
-    /// classified event to the existing session.
+    /// Frame trace event — every TX/RX frame the listener observes.
+    /// The TUI subscribes here to render the monitor pane.
+    /// </summary>
+    public event EventHandler<Ax25FrameEventArgs>? FrameTraced
+    {
+        add    => listener.FrameTraced += value;
+        remove => listener.FrameTraced -= value;
+    }
+
+    /// <summary>
+    /// Start the listener's inbound pump. Returns immediately; the pump
+    /// runs in the background until <see cref="Dispose"/>.
     /// </summary>
     public Task Start(CancellationToken cancellationToken)
-    {
-        return Task.Run(() => InboundPump(cancellationToken), cancellationToken);
-    }
+        => listener.StartAsync(cancellationToken);
 
     /// <summary>
-    /// Build a fresh session targeting <paramref name="target"/>, then post
-    /// <see cref="DlConnectRequest"/> to fire SABM. Returns the
-    /// <see cref="DataLinkConnectConfirm"/> / disconnect indication / null
-    /// (timeout) as the outcome.
+    /// Open a session to <paramref name="target"/>, awaiting DL-CONNECT-confirm.
     /// </summary>
     public async Task<DataLinkSignal?> ConnectAsync(Callsign target, TimeSpan budget, CancellationToken cancellationToken)
     {
-        Ax25Session sessionLocal;
-        ConcurrentQueue<DataLinkSignal> signalsLocal;
         lock (sessionLock)
         {
-            if (inSession)
+            if (state != LinkState.Disconnected)
             {
                 throw new InvalidOperationException("a session is already active — disconnect first");
             }
-            (sessionLocal, signalsLocal) = BuildSession(target, ableToEstablish: () => !inSession);
             state = LinkState.Connecting;
+            remote = target;
+            welcomeSent = true;     // outbound: no welcome banner (we initiated).
         }
         onStateChange(LinkState.Connecting, target);
 
-        sessionLocal.PostEvent(new DlConnectRequest());
+        // Block new inbound while we're connecting outbound — same
+        // "one connection at a time" rule.
+        listener.AcceptIncoming = false;
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(budget);
         try
         {
-            while (!cts.IsCancellationRequested)
+            var sess = await listener.ConnectAsync(target, cts.Token).ConfigureAwait(false);
+            lock (sessionLock)
             {
-                while (signalsLocal.TryDequeue(out var sig))
-                {
-                    switch (sig)
-                    {
-                        case DataLinkConnectConfirm:
-                            lock (sessionLock)
-                            {
-                                inSession = true;
-                                state = LinkState.Connected;
-                            }
-                            onStateChange(LinkState.Connected, target);
-                            return sig;
-
-                        case DataLinkDisconnectIndication:
-                        case DataLinkDisconnectConfirm:
-                            lock (sessionLock)
-                            {
-                                state = LinkState.Disconnected;
-                                remote = null;
-                            }
-                            onStateChange(LinkState.Disconnected, null);
-                            return sig;
-
-                        case DataLinkDataIndication di when inSession:
-                            DeliverData(di);
-                            break;
-                    }
-                }
-                await Task.Delay(50, cts.Token).ConfigureAwait(false);
+                activeSession = sess;
+                state = LinkState.Connected;
             }
+            onStateChange(LinkState.Connected, target);
+            return new DataLinkConnectConfirm();
+        }
+        catch (TimeoutException)
+        {
+            ResetState();
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            ResetState();
+            return new DataLinkDisconnectIndication();
         }
         catch (OperationCanceledException)
         {
-            // Fall through; budget expired.
+            ResetState();
+            return null;
         }
-
-        // Timed out — tear down.
-        lock (sessionLock)
-        {
-            state = LinkState.Disconnected;
-            remote = null;
-        }
-        onStateChange(LinkState.Disconnected, null);
-        return null;
     }
 
     /// <summary>
     /// Send the current line as one I-frame on the active session.
     /// </summary>
-    public void SendData(ReadOnlyMemory<byte> bytes, byte pid = Ax25Frame.PidNoLayer3)
+    public void SendData(ReadOnlyMemory<byte> bytes, byte pid = Packet.Ax25.Ax25Frame.PidNoLayer3)
     {
         Ax25Session? s;
-        lock (sessionLock) s = session;
+        lock (sessionLock) s = activeSession;
         s?.PostEvent(new DlDataRequest(bytes, pid));
     }
 
     /// <summary>
-    /// Post <see cref="DlDisconnectRequest"/> and await the resulting
-    /// <see cref="DataLinkDisconnectConfirm"/>.
+    /// Post <see cref="DlDisconnectRequest"/> and wait briefly for
+    /// the resulting <see cref="DataLinkDisconnectConfirm"/>. The
+    /// session's <see cref="Ax25Session.DataLinkSignalEmitted"/> event
+    /// (subscribed in <see cref="OnSessionAccepted"/>) reflects state
+    /// back regardless of whether DisconnectAsync was awaited.
     /// </summary>
     public async Task<DataLinkSignal?> DisconnectAsync(TimeSpan budget, CancellationToken cancellationToken)
     {
         Ax25Session? s;
-        ConcurrentQueue<DataLinkSignal>? q;
         Callsign? peer;
         lock (sessionLock)
         {
-            s = session;
-            q = signals;
+            s = activeSession;
             peer = remote;
-            if (s is null || q is null)
-            {
-                return null;
-            }
+            if (s is null) return null;
             state = LinkState.Disconnecting;
         }
         onStateChange(LinkState.Disconnecting, peer);
 
-        s.PostEvent(new DlDisconnectRequest());
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(budget);
+        var tcs = new TaskCompletionSource<DataLinkSignal>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(object? _, DataLinkSignal sig)
+        {
+            if (sig is DataLinkDisconnectConfirm or DataLinkDisconnectIndication)
+            {
+                tcs.TrySetResult(sig);
+            }
+        }
+        s.DataLinkSignalEmitted += Handler;
         try
         {
-            while (!cts.IsCancellationRequested)
+            s.PostEvent(new DlDisconnectRequest());
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(budget);
+            var done = await Task.WhenAny(tcs.Task, Task.Delay(budget, cts.Token)).ConfigureAwait(false);
+            if (done == tcs.Task)
             {
-                while (q.TryDequeue(out var sig))
-                {
-                    if (sig is DataLinkDisconnectConfirm or DataLinkDisconnectIndication)
-                    {
-                        lock (sessionLock)
-                        {
-                            inSession = false;
-                            state = LinkState.Disconnected;
-                            remote = null;
-                        }
-                        onStateChange(LinkState.Disconnected, null);
-                        return sig;
-                    }
-                }
-                await Task.Delay(50, cts.Token).ConfigureAwait(false);
+                return tcs.Task.Result;
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Budget exhausted — force the runner back to idle.
-        }
-
-        lock (sessionLock)
-        {
-            inSession = false;
-            state = LinkState.Disconnected;
-            remote = null;
-        }
-        onStateChange(LinkState.Disconnected, null);
-        return null;
-    }
-
-    /// <summary>
-    /// True if we should accept an inbound SABM right now — only when we
-    /// don't already have an active session.
-    /// </summary>
-    private bool CanAcceptInbound()
-    {
-        lock (sessionLock) return !inSession;
-    }
-
-    private (Ax25Session, ConcurrentQueue<DataLinkSignal>) BuildSession(Callsign peer, Func<bool> ableToEstablish)
-    {
-        var sched = new SystemTimerScheduler(TimeProvider.System);
-        var ctx = new Ax25SessionContext { Local = myCall, Remote = peer };
-        var signalQ = new ConcurrentQueue<DataLinkSignal>();
-
-        Ax25Session? sessionRef = null;
-
-        void SendBytes(ReadOnlyMemory<byte> bytes)
-        {
-            try
-            {
-                _ = modem.SendDataAsync(bytes);
-            }
-            catch (Exception ex)
-            {
-                chatLog($"*** Modem error on TX: {ex.Message}");
-            }
-        }
-
-        var subroutines = new DefaultSubroutineRegistry();
-        var dispatcher = new ActionDispatcher(
-            onTimerExpiry: name => sessionRef!.PostEvent(TimerExpiry(name)),
-            sendSFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
-            sendUFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
-            sendUiFrame:   spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
-            sendIFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
-            sendUpward:    signalQ.Enqueue,
-            sendLinkMux:   _ => { },
-            sendInternal:  _ => { },
-            subroutines:   subroutines);
-
-        // Default bindings but with our able_to_establish hook so a second
-        // SABM while we're already in a session gets DM'd by the SDL.
-        var defaultBindings = Ax25SessionBindings.CreateDefault(ctx, sched, () => sessionRef?.CurrentTrigger);
-        var bindings = new Dictionary<string, Func<bool>>(defaultBindings, StringComparer.Ordinal)
-        {
-            ["able_to_establish"] = ableToEstablish,
-        };
-        var guards = new GuardEvaluator(bindings);
-
-        var sessionLocal = new Ax25Session(
-            ctx, sched, dispatcher, guards,
-            transitionsByState: TransitionMap(),
-            initialState: "Disconnected");
-        sessionRef = sessionLocal;
-
-        lock (sessionLock)
-        {
-            session = sessionLocal;
-            scheduler = sched;
-            signals = signalQ;
-            remote = peer;
-        }
-
-        return (sessionLocal, signalQ);
-    }
-
-    private void InboundPump(CancellationToken ct)
-    {
-        // We piggyback on the modem's FrameReceived event in addition to
-        // ReadFramesAsync, because the latter also surfaces non-Data KISS
-        // commands; this loop only cares about Data frames. We use the
-        // async stream for cancellation safety.
-        var stream = modem.ReadFramesAsync(ct).GetAsyncEnumerator(ct);
-        try
-        {
-            while (true)
-            {
-                bool moved;
-                try
-                {
-                    var moveNext = stream.MoveNextAsync();
-                    moved = moveNext.AsTask().GetAwaiter().GetResult();
-                }
-                catch (OperationCanceledException) { return; }
-                catch (Exception ex)
-                {
-                    chatLog($"*** Modem error — link torn down: {ex.Message}");
-                    return;
-                }
-                if (!moved) return;
-
-                var kissFrame = stream.Current;
-                if (kissFrame.Command != Packet.Kiss.KissCommand.Data) continue;
-                if (!Ax25Frame.TryParse(kissFrame.Payload, out var parsed)) continue;
-
-                HandleInboundFrame(parsed);
-            }
+            return null;
         }
         finally
         {
-            try { stream.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(1), CancellationToken.None); }
-            catch { /* swallowed on shutdown */ }
+            s.DataLinkSignalEmitted -= Handler;
+            // Reset only after the disconnect completes (the
+            // OnDataLinkSignalEmitted handler attached during
+            // OnSessionAccepted also resets when it sees disconnect,
+            // but doing it here avoids the gap if our handler races
+            // theirs).
+            ResetState();
         }
     }
 
-    private void HandleInboundFrame(Ax25Frame parsed)
+    private void ResetState()
     {
-        // Frames not addressed to us: monitor-only (already logged by the
-        // Program's tap on the modem FrameReceived event); don't deliver
-        // to any session.
-        if (!parsed.Destination.Callsign.Equals(myCall))
-        {
-            return;
-        }
-
-        Ax25Session? activeSession;
-        Callsign? activePeer;
         lock (sessionLock)
         {
-            activeSession = session;
-            activePeer = remote;
+            state = LinkState.Disconnected;
+            remote = null;
+            activeSession = null;
+            welcomeSent = false;
         }
-
-        // Active session — only deliver frames whose source matches.
-        if (activeSession is not null && activePeer is { } peer && parsed.Source.Callsign.Equals(peer))
-        {
-            activeSession.PostEvent(Ax25FrameClassifier.Classify(parsed));
-            return;
-        }
-
-        // No active session (or source mismatches the active peer): only
-        // SABM with us idle warrants new session creation.
-        if (CanAcceptInbound() &&
-            Ax25FrameClassifier.Classify(parsed) is SabmReceived)
-        {
-            var newPeer = parsed.Source.Callsign;
-            chatLog($"*** Incoming connection from {FormatCallsignDisplay(newPeer)}");
-
-            var (newSession, newSignals) = BuildSession(newPeer, ableToEstablish: () => !inSession);
-            lock (sessionLock)
-            {
-                state = LinkState.Connecting;
-            }
-            onStateChange(LinkState.Connecting, newPeer);
-
-            // Post the SABM into the brand-new session so it runs t14
-            // (or whichever applies) and emits the UA.
-            newSession.PostEvent(Ax25FrameClassifier.Classify(parsed));
-
-            // Spin up a background loop to drain this session's signal
-            // queue. ConnectAsync's loop only runs for outbound; inbound
-            // needs its own observer.
-            signalLoopCts?.Cancel();
-            signalLoopCts = CancellationTokenSource.CreateLinkedTokenSource();
-            signalLoop = Task.Run(() => DrainInboundSignals(newSignals, newPeer, signalLoopCts.Token));
-        }
+        listener.AcceptIncoming = true;
+        onStateChange(LinkState.Disconnected, null);
     }
 
-    private async Task DrainInboundSignals(ConcurrentQueue<DataLinkSignal> q, Callsign peer, CancellationToken ct)
+    private void AttachSessionListeners(Ax25Session sess)
     {
-        bool announced = false;
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                while (q.TryDequeue(out var sig))
-                {
-                    switch (sig)
-                    {
-                        case DataLinkConnectIndication:
-                            lock (sessionLock)
-                            {
-                                inSession = true;
-                                state = LinkState.Connected;
-                            }
-                            onStateChange(LinkState.Connected, peer);
-                            if (!announced)
-                            {
-                                announced = true;
-                                chatLog($"*** Connected to {FormatCallsignDisplay(peer)}");
-                                // Send the welcome banner the brief asks for.
-                                var msg = System.Text.Encoding.ASCII.GetBytes(
-                                    $"Packet.Term {AppInfo.Version} ready. Hello {FormatCallsignDisplay(peer)}.\r");
-                                SendData(msg);
-                            }
-                            break;
-
-                        case DataLinkDataIndication di:
-                            DeliverData(di);
-                            break;
-
-                        case DataLinkDisconnectIndication:
-                        case DataLinkDisconnectConfirm:
-                            chatLog($"*** {FormatCallsignDisplay(peer)} disconnected");
-                            lock (sessionLock)
-                            {
-                                inSession = false;
-                                state = LinkState.Disconnected;
-                                remote = null;
-                            }
-                            onStateChange(LinkState.Disconnected, null);
-                            return;
-                    }
-                }
-                await Task.Delay(50, ct).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) { /* normal shutdown */ }
+        // Subscribe to the session's signal stream before the SDL
+        // processes the inbound SABM. Once SABM accepts, this handler
+        // sees DL-CONNECT-indication and flips state via
+        // OnSessionAccepted (the listener fires that after posting).
+        // For DL-DATA-indication and DL-DISCONNECT-indication this
+        // handler is the long-term route.
+        sess.DataLinkSignalEmitted += OnSessionDataLinkSignal;
     }
 
-    private void DeliverData(DataLinkDataIndication di)
+    private void OnSessionDataLinkSignal(object? sender, DataLinkSignal sig)
+    {
+        if (sender is not Ax25Session sess) return;
+        var peer = sess.Context.Remote;
+        switch (sig)
+        {
+            case DataLinkDataIndication di:
+                DeliverData(di, peer);
+                break;
+
+            case DataLinkDisconnectIndication:
+            case DataLinkDisconnectConfirm:
+                lock (sessionLock)
+                {
+                    if (!ReferenceEquals(activeSession, sess)) return;
+                }
+                chatLog($"*** {FormatCallsignDisplay(peer)} disconnected");
+                ResetState();
+                break;
+        }
+    }
+
+    private void OnSessionAccepted(object? sender, Ax25SessionEventArgs e)
+    {
+        var sess = e.Session;
+        var peer = sess.Context.Remote;
+
+        lock (sessionLock)
+        {
+            // Skip if our outbound ConnectAsync already set state —
+            // outbound resolves through its awaited path, not through
+            // SessionAccepted's inbound flow.
+            if (state == LinkState.Connected) return;
+            if (state == LinkState.Connecting && remote is { } r && r.Equals(peer)) return;
+
+            activeSession = sess;
+            remote = peer;
+            state = LinkState.Connected;
+        }
+        onStateChange(LinkState.Connected, peer);
+
+        listener.AcceptIncoming = false;
+        chatLog($"*** Incoming connection from {FormatCallsignDisplay(peer)}");
+
+        // Welcome banner on the first inbound connect of a session.
+        // Won't fire on subsequent reconnects from the same peer in
+        // this run (the cached session persists welcomeSent).
+        bool sendBanner;
+        lock (sessionLock) { sendBanner = !welcomeSent; welcomeSent = true; }
+        if (sendBanner)
+        {
+            var msg = System.Text.Encoding.ASCII.GetBytes(
+                $"Packet.Term {AppInfo.Version} ready. Hello {FormatCallsignDisplay(peer)}.\r");
+            SendData(msg);
+        }
+    }
+
+    private void DeliverData(DataLinkDataIndication di, Callsign peer)
     {
         var span = di.Info.Span;
         int end = span.Length;
@@ -462,36 +313,16 @@ public sealed class SessionRunner : IDisposable
             byte b = span[i];
             sb.Append(b is >= 0x20 and < 0x7F ? (char)b : '.');
         }
-        var peer = remote is { } r ? FormatCallsignDisplay(r) : "peer";
-        chatLog($"{peer}: {sb}");
+        chatLog($"{FormatCallsignDisplay(peer)}: {sb}");
     }
 
     private static string FormatCallsignDisplay(Callsign c)
         => c.Ssid == 0 ? c.Base : c.ToString();
 
-    private static Dictionary<string, IReadOnlyList<TransitionSpec>> TransitionMap() => new()
-    {
-        ["Disconnected"]         = DataLink_Disconnected.Transitions,
-        ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
-        ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
-        ["Connected"]            = DataLink_Connected.Transitions,
-        ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
-        ["TimerRecovery"]        = Array.Empty<TransitionSpec>(),
-    };
-
-    private static Ax25Event TimerExpiry(string name) => name switch
-    {
-        "T1" => new T1Expiry(),
-        "T2" => new T2Expiry(),
-        "T3" => new T3Expiry(),
-        _    => throw new InvalidOperationException($"unexpected timer expiry name '{name}'"),
-    };
-
     /// <inheritdoc/>
     public void Dispose()
     {
-        signalLoopCts?.Cancel();
-        try { signalLoop?.Wait(TimeSpan.FromSeconds(1), CancellationToken.None); } catch { /* swallowed */ }
-        signalLoopCts?.Dispose();
+        try { listener.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2), CancellationToken.None); }
+        catch { /* swallowed */ }
     }
 }

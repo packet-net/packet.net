@@ -6,7 +6,7 @@
 
 **As of:** 2026-05-14
 **Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, adaptive-parameter scaffolding, adaptive-transport glue, and a first soak campaign producing [`docs/nino-tnc-characterisation.md`](nino-tnc-characterisation.md). Next: more SDL pages, plus a real-RF soak campaign once we have field data to compare against the bench.
-**Latest amendment:** [§17 entry 2026-05-14 Soak campaign + adaptive transport + hardware-loop test serialisation](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-05-16 Ax25Listener + AcceptIncoming context property](#17-amendment-log)
 
 ---
 
@@ -828,6 +828,30 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-05-16 — Ax25Listener + AcceptIncoming context property
+
+First-class inbound-acceptance API at `src/Packet.Ax25/Session/Ax25Listener.cs`. The Listener is the foundational piece for packet.net as a *node* — a station that exists to accept inbound connections rather than only making outbound ones. Every node-style consumer (BBS, gateway, automated forwarder, the TUI) now goes through it instead of reinventing the inbound-pump / session-rebuild loop the TUI's `SessionRunner` originally carried.
+
+**Public surface.** `Ax25Listener(IKissModem modem, Ax25ListenerOptions options)` with `MyCall`, `IsRunning`, `AcceptIncoming` flag, `SessionAccepted` + `FrameTraced` events, `StartAsync`, `ConnectAsync(remote)`, `StopAsync`, `DisposeAsync`. Options carry `MyCall`, optional T1V/T2/T3/N2/K overrides, `MaxCachedPeers` (LRU cap, default 64), and a `ConfigureSession` hook for per-session bring-up wiring.
+
+**Per-peer session cache.** The Listener keeps a `ConcurrentDictionary<Callsign, Ax25Session>` keyed by remote callsign. Sessions survive disconnect — they sit idle in Disconnected, retaining their `Ax25SessionContext` (and therefore their SRT / T1V smoothing / sequence-variable history) for the next time that peer connects in either direction. LRU eviction once `MaxCachedPeers` is exceeded. The Listener creates each peer's session ONCE (at first contact, inbound SABM or outbound `ConnectAsync`) and reuses it forever after. SessionAccepted re-fires on reconnect so consumers can re-arm per-session handlers.
+
+**Closes three issues:**
+
+- **#137** (add `Ax25Listener`) — full first-class API as above.
+- **#136** (`able_to_establish` as context flag) — new `Ax25SessionContext.AcceptIncoming` property (default `true`); `Ax25SessionBindings.CreateDefault` reads it. Override-via-dictionary still works for callers that want richer policy (callsign allow-lists, channel load, etc.).
+- **#135** (Remote is init-only across peer-swap) — obsoleted by the per-peer session cache. The Listener never throws away a peer's session, so the "rebind Remote on every new peer" pattern is gone. The existing `Ax25Session` constructor is still available for direct low-level use; no breaking change.
+
+**TUI rewrite.** `src/Packet.Term/SessionRunner.cs` drops from 497 LOC to 328 LOC (−169, ~34 %). The hand-rolled inbound pump, per-SABM session-recreate logic, dual signal-drain loops, and `ableToEstablish` closure plumbing all evaporate — that work now lives in the listener. The TUI subscribes to `SessionAccepted` (status-bar transition) and `FrameTraced` (promiscuous frame monitor), and uses the new `Ax25Session.DataLinkSignalEmitted` event for DL-DATA-indication delivery + disconnect detection. "One connection at a time" becomes a single line each: `listener.AcceptIncoming = false` on accept, `= true` on disconnect.
+
+**Modem abstraction layering.** Moving the Listener into `Packet.Ax25` while keeping its `IKissModem` parameter required a new tiny `src/Packet.Kiss.Abstractions/` project — holding `IKissModem`, `KissFrame`, `KissCommand`, `AckModeReceipt`. Both `Packet.Ax25` and `Packet.Kiss` reference Abstractions; Packet.Kiss keeps the AX.25-aware bridge / classifier (which uses Packet.Ax25). Same shape as `Microsoft.Extensions.*.Abstractions`. The Listener also extends `IKissModem` with a default-implementation `ReadFramesAsync(CancellationToken)` (empty stream by default) so the small set of existing in-test stub modems compile unchanged. Real modems (`KissSerialModem`, `KissTcpClient`, `NinoTncSerialPort`) all implement it concretely.
+
+**New public API on `Ax25Session`.** A `DataLinkSignalEmitted` event + `RaiseDataLinkSignal(DataLinkSignal)` raise method. The Listener wires its dispatcher's `sendUpward` shim to both the listener's per-session signal queue (for `ConnectAsync` to await `DL-CONNECT-confirm`) and through this event (for UI / app observers wanting push-style delivery). Pre-listener callers that build sessions directly are unaffected — the event is raised additively, never replacing the dispatcher's construction-time callback.
+
+**Tests added.** Five new unit tests in `tests/Packet.Ax25.Tests/Session/Ax25ListenerTests.cs` covering accept-inbound-SABM, session reuse across sequential disconnects (same `Ax25Session` instance returned), DM-reject when `AcceptIncoming=false`, two concurrent peers (independent sessions), and FrameTraced firing for both TX and RX. One new netsim interop test in `tests/Packet.Interop.Tests/Netsim/NetsimListenerScenarios.cs` mirroring `NetsimConnectedModeScenarios` but driving both ends through `Ax25Listener`. The pre-listener netsim test is preserved as the canonical low-level rig reference.
+
+**Verification**: 1119 unit tests pass (was 1114; +5 new Listener tests). The Netsim interop suite passes including the new listener scenario; LinBPQ interop passes (7/7); the two pre-existing XRouter-via-Netsim failures (unrelated to this PR — same failures on `main` with this branch's changes stashed) remain. SessionRunner trims by 169 LOC. Build is clean.
 
 ### 2026-05-16 — Packet.Term: Spectre.Console TUI for AX.25 sessions
 

@@ -47,13 +47,16 @@ public sealed class TerminalUi : IDisposable
             remote = peer;
         });
 
-        // Tap every outbound + inbound AX.25 frame into the monitor pane,
-        // regardless of addressing — Tom's brief explicitly wants
-        // promiscuous capture.
-        modem.FrameTransmitted += (_, bytes) =>
-            AddFrame(FrameDirection.Transmit, bytes);
-        modem.FrameReceived += (_, bytes) =>
-            AddFrame(FrameDirection.Receive, bytes);
+        // Tap every outbound + inbound AX.25 frame into the monitor pane
+        // through the listener's promiscuous-capture event. The listener
+        // never filters this stream by addressing — Tom's brief
+        // explicitly wants the monitor to see everything.
+        runner.FrameTraced += (_, e) =>
+            AddFrame(
+                e.Direction == Packet.Ax25.Session.FrameDirection.Transmitted
+                    ? FrameDirection.Transmit
+                    : FrameDirection.Receive,
+                e.Frame);
     }
 
     /// <summary>
@@ -441,6 +444,15 @@ public sealed class TerminalUi : IDisposable
     private void AddFrame(FrameDirection direction, ReadOnlyMemory<byte> bytes)
     {
         var line = FrameFormatter.Format(direction, bytes.Span, DateTimeOffset.Now);
+        foreach (var sub in line.Split('\n'))
+        {
+            frameLog.Add(sub);
+        }
+    }
+
+    private void AddFrame(FrameDirection direction, Packet.Ax25.Ax25Frame frame)
+    {
+        var line = FrameFormatter.Format(direction, frame, DateTimeOffset.Now);
         foreach (var sub in line.Split('\n'))
         {
             frameLog.Add(sub);
