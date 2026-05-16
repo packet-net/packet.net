@@ -1,3 +1,5 @@
+using Packet.Core;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -33,10 +35,17 @@ namespace Packet.Ax25.Session;
 /// PID octet identifying the Layer-3 protocol carried (§3.4).
 /// Sourced from the queue entry alongside <see cref="Info"/>.
 /// </param>
+/// <param name="Path">
+/// Optional digipeater chain override. See <see cref="UFrameSpec.Path"/>.
+/// Most I-frame emissions are triggered by an upper-layer DL request
+/// rather than a frame, so this is usually <c>null</c> and the wire
+/// path uses the session context's chain.
+/// </param>
 public readonly record struct IFrameSpec(
     bool IsCommand,
     bool PBit,
     byte Nr,
     byte Ns,
     ReadOnlyMemory<byte> Info,
-    byte Pid);
+    byte Pid,
+    IReadOnlyList<Callsign>? Path = null);

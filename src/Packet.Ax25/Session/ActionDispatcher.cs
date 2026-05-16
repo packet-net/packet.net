@@ -1,4 +1,5 @@
 using Packet.Ax25.Sdl;
+using Packet.Core;
 
 namespace Packet.Ax25.Session;
 
@@ -722,7 +723,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     {
         byte nr     = tx.Pending.Nr    ?? tx.Session.VR;
         bool pfBit  = tx.Pending.PfBit ?? false;
-        return new SupervisoryFrameSpec(type, IsCommand: isCommand, Nr: nr, PfBit: pfBit);
+        return new SupervisoryFrameSpec(type, IsCommand: isCommand, Nr: nr, PfBit: pfBit, Path: ReversedTriggerPath(tx));
     }
 
     /// <summary>
@@ -741,7 +742,12 @@ public sealed class ActionDispatcher : IActionDispatcher
         UFrameType type, bool isCommand, bool? pfBitOverride, bool isExpedited, TransitionContext tx)
     {
         bool pfBit = pfBitOverride ?? tx.Pending.PfBit ?? false;
-        return new UFrameSpec(type, IsCommand: isCommand, PfBit: pfBit, IsExpedited: isExpedited);
+        return new UFrameSpec(
+            type,
+            IsCommand: isCommand,
+            PfBit: pfBit,
+            IsExpedited: isExpedited,
+            Path: ReversedTriggerPath(tx));
     }
 
     /// <summary>
@@ -806,7 +812,8 @@ public sealed class ActionDispatcher : IActionDispatcher
             Nr:        nr,
             Ns:        ns,
             Info:      popped.Data,
-            Pid:       popped.Pid));
+            Pid:       popped.Pid,
+            Path:      ReversedTriggerPath(tx)));
         tx.Session.SentIFrames[ns] = (popped.Data, popped.Pid);
     }
 
@@ -893,7 +900,12 @@ public sealed class ActionDispatcher : IActionDispatcher
                 $"action `UI_command` requires the trigger to be DL_UNIT_DATA_request, but it was '{tx.Trigger.Name}'.");
         }
         bool pfBit = tx.Pending.PfBit ?? false;
-        return new UiFrameSpec(IsCommand: isCommand, PfBit: pfBit, Info: dud.Data, Pid: dud.Pid);
+        return new UiFrameSpec(
+            IsCommand: isCommand,
+            PfBit: pfBit,
+            Info: dud.Data,
+            Pid: dud.Pid,
+            Path: ReversedTriggerPath(tx));
     }
 
     private static Ax25Frame RequireIncomingFrame(TransitionContext tx, string verb)
@@ -910,5 +922,46 @@ public sealed class ActionDispatcher : IActionDispatcher
             throw new NotSupportedException(
                 $"extracting {fieldName} from an extended (mod-128) frame's 2-byte control field is not yet implemented; only mod-8 is wired today.");
         }
+    }
+
+    /// <summary>
+    /// Return the trigger's inbound digipeater chain reversed, or
+    /// <c>null</c> when the trigger has no inbound frame or the chain is
+    /// empty. The wire-translation layer treats <c>null</c> as "use the
+    /// session context's <see cref="Ax25SessionContext.Digipeaters"/>";
+    /// non-null overrides it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Implements AX.25 v2.2 §C.2 (Path Construction): a response to a
+    /// digipeated frame is sent along the reversed inbound chain so the
+    /// digipeater closest to the responder is the first hop. For example,
+    /// inbound SABM via <c>[GB7CIP, MB7UR]</c> (source-to-destination
+    /// transmission order) → outbound UA via <c>[MB7UR, GB7CIP]</c>.
+    /// </para>
+    /// <para>
+    /// Returns <c>null</c> (rather than an empty list) when the trigger
+    /// has no inbound frame OR the inbound frame has no digipeaters —
+    /// this lets the wire-translation layer fall back to the context's
+    /// <see cref="Ax25SessionContext.Digipeaters"/> for direct links and
+    /// for outbound-initiated frames (SABM via our own configured digi
+    /// chain), and keeps spec-record equality holding for tests that
+    /// build specs without a Path override.
+    /// </para>
+    /// </remarks>
+    private static Callsign[]? ReversedTriggerPath(TransitionContext tx)
+    {
+        var frame = tx.IncomingFrame;
+        if (frame is null || frame.Digipeaters.Count == 0)
+        {
+            return null;
+        }
+        var src = frame.Digipeaters;
+        var reversed = new Callsign[src.Count];
+        for (int i = 0; i < src.Count; i++)
+        {
+            reversed[i] = src[src.Count - 1 - i].Callsign;
+        }
+        return reversed;
     }
 }

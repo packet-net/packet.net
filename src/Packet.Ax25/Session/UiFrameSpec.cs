@@ -1,3 +1,5 @@
+using Packet.Core;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -25,8 +27,15 @@ namespace Packet.Ax25.Session;
 /// <see cref="DlUnitDataRequest.Pid"/>; defaults to <c>0xF0</c>
 /// (no Layer-3 protocol) per the primitive's default.
 /// </param>
+/// <param name="Path">
+/// Optional digipeater chain override. See <see cref="UFrameSpec.Path"/>.
+/// UI is typically broadcast-shaped (no reply path), but this is kept
+/// for symmetry with the other frame specs and to let callers shape
+/// UI-via-digi when desired.
+/// </param>
 public readonly record struct UiFrameSpec(
     bool IsCommand,
     bool PfBit,
     ReadOnlyMemory<byte> Info,
-    byte Pid);
+    byte Pid,
+    IReadOnlyList<Callsign>? Path = null);

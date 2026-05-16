@@ -1,3 +1,5 @@
+using Packet.Core;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -43,8 +45,16 @@ public enum SupervisoryFrameType
 /// preceding processing verb (typically <c>F := 1</c>, <c>F := P</c>,
 /// or <c>p := 0</c>) must have set it.
 /// </param>
+/// <param name="Path">
+/// Optional digipeater chain override for this specific outgoing frame.
+/// See <see cref="UFrameSpec.Path"/> for the rationale. <c>null</c>
+/// means "use the session context's chain"; non-null means "use this
+/// list" (typically the reversed inbound chain when responding to a
+/// digipeated trigger).
+/// </param>
 public readonly record struct SupervisoryFrameSpec(
     SupervisoryFrameType Type,
     bool IsCommand,
     byte Nr,
-    bool PfBit);
+    bool PfBit,
+    IReadOnlyList<Callsign>? Path = null);

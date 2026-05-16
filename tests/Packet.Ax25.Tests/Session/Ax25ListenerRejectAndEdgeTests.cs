@@ -177,20 +177,21 @@ public class Ax25ListenerRejectAndEdgeTests
     // ─── Category 5: spec edge cases ────────────────────────────────────
 
     /// <summary>
-    /// DISC from a peer not in our cache: the listener does NOT build a
-    /// session for it. The DISC is dropped at the listener layer (the
-    /// guard at <c>DispatchInbound</c> only creates sessions for
-    /// SABM/SABME).
+    /// DISC from a peer not in our cache: the listener builds a transient
+    /// Disconnected session, runs figc4.1 t13 (which emits DM), then
+    /// drops the session WITHOUT caching it. A real-world peer with a
+    /// half-open session view of us gets a polite "I don't recognise
+    /// this connection" answer rather than silence.
     /// </summary>
     /// <remarks>
-    /// figc4.1 t13 specifies a DISC-received-in-Disconnected emits DM,
-    /// but only if there's a session in Disconnected state to dispatch
-    /// the event into. Our listener routes by per-peer cache; an
-    /// unknown peer has no cache entry, so the spec's t13 never fires.
-    /// This is current behaviour; the test pins it.
+    /// Pre-#143 behaviour: the listener dropped DISC at the cache-miss
+    /// filter before any SDL ran, so t13 never fired and the peer was
+    /// left hanging. Post-fix: t13 fires; DM goes back. The transient
+    /// session never enters the cache (verified separately by
+    /// <see cref="Listener_Cache_Stays_Clean_After_Non_SABM_Reject_Path"/>).
     /// </remarks>
     [Fact]
-    public async Task Listener_Ignores_Disc_For_Unknown_Peer()
+    public async Task Listener_Emits_DM_For_Disc_From_Unknown_Peer()
     {
         var modem = new LoopbackModem();
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
@@ -201,21 +202,27 @@ public class Ax25ListenerRejectAndEdgeTests
 
         modem.InjectInbound(Ax25Frame.Disc(LocalCall, PeerCallA));
 
-        // Give the pump a chance to act.
-        await Task.Delay(100);
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
 
-        accepted.Should().Be(0, "listener must not build a session for an unsolicited DISC");
-        modem.SentFrames.Count.Should().Be(0,
-            "listener must not emit any frame in response to a DISC from an unknown peer (no cached session ⇒ no SDL t13)");
+        accepted.Should().Be(0, "transient reject-path sessions don't fire SessionAccepted");
+        modem.SentFrames.Count.Should().Be(1,
+            "figc4.1 t13 emits exactly one DM in response to DISC in Disconnected");
+
+        Ax25Frame.TryParse(modem.SentFrames[0].Span, out var dm).Should().BeTrue();
+        (dm!.Control & 0xEF).Should().Be(0x0F, "the response must be a DM (control 0x0F base)");
+        dm.Destination.Callsign.Should().Be(PeerCallA,
+            "the DM goes back to the DISC's original source");
+        dm.Source.Callsign.Should().Be(LocalCall);
     }
 
     /// <summary>
-    /// Same idea for RR. figc4.1's catchall would emit DM if the SDL
-    /// were dispatching, but the listener drops the frame before any
-    /// session sees it.
+    /// RR (or any other non-DISC/UI/UA/SABM(E) frame) from an unknown
+    /// peer falls through to figc4.1's <c>all_other_commands</c>
+    /// catch-all (t05), which emits DM. Same shape as the DISC test
+    /// but exercising the reclassification path inside the listener.
     /// </summary>
     [Fact]
-    public async Task Listener_Ignores_Rr_For_Unknown_Peer()
+    public async Task Listener_Emits_DM_For_Rr_From_Unknown_Peer()
     {
         var modem = new LoopbackModem();
         await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
@@ -226,10 +233,16 @@ public class Ax25ListenerRejectAndEdgeTests
 
         modem.InjectInbound(Ax25Frame.Rr(LocalCall, PeerCallA, nr: 0, isCommand: true));
 
-        await Task.Delay(100);
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
 
         accepted.Should().Be(0);
-        modem.SentFrames.Count.Should().Be(0);
+        modem.SentFrames.Count.Should().Be(1,
+            "t05 (all_other_commands) emits exactly one DM");
+
+        Ax25Frame.TryParse(modem.SentFrames[0].Span, out var dm).Should().BeTrue();
+        (dm!.Control & 0xEF).Should().Be(0x0F, "the response must be a DM");
+        dm.Destination.Callsign.Should().Be(PeerCallA);
+        dm.Source.Callsign.Should().Be(LocalCall);
     }
 
     /// <summary>
@@ -351,22 +364,19 @@ public class Ax25ListenerRejectAndEdgeTests
     }
 
     /// <summary>
-    /// SABM with a digipeater chain. The listener routes by
-    /// <c>parsed.Destination.Callsign</c> (which is our MYCALL) and
-    /// <c>parsed.Source.Callsign</c> (the SABM's originator). It does
-    /// NOT inspect the digi chain. Today's behaviour: SABM-via-digi is
-    /// accepted as if direct; the resulting UA will be emitted without
-    /// a digi chain (since the listener's outbound path doesn't
-    /// propagate it). Test pins the current behaviour and documents the
-    /// limitation.
+    /// SABM with a digipeater chain. The listener accepts the SABM
+    /// (destination callsign matches MYCALL) and the UA response goes
+    /// back along the reversed digipeater chain so the peer behind the
+    /// digi can route the reply. Per AX.25 v2.2 §C.2 (Path Construction):
+    /// inbound chain reversed == outbound chain.
     /// </summary>
     /// <remarks>
-    /// Real-world implications: if a peer SABMs us through a digi
-    /// chain, our UA will go out on the air without the chain — the
-    /// peer won't see it, the handshake never completes. We accept
-    /// the inbound and emit a phantom UA, but the link won't form.
-    /// This is a known gap, captured here so a future fix has a
-    /// regression test ready to flip.
+    /// Pre-#141 behaviour: the UA went out without any digi chain — the
+    /// peer behind the digi never saw it and the handshake didn't
+    /// complete. Post-fix: the dispatcher's frame builders auto-populate
+    /// the response's digipeater path from the trigger's reversed chain
+    /// when the trigger carries an inbound frame, and the wire path
+    /// uses that override.
     /// </remarks>
     [Fact]
     public async Task Listener_Handles_Sabm_With_Digipeater_Path()
@@ -379,25 +389,146 @@ public class Ax25ListenerRejectAndEdgeTests
 
         await listener.StartAsync();
 
-        var digi = new Callsign("GB7DIG", 1);
-        var sabmViaDigi = Ax25Frame.Sabm(LocalCall, PeerCallA, digipeaters: new[] { digi });
+        // Two-hop via chain. Source-to-destination transmission order
+        // (the SABM travels GB7CIP → MB7UR → us); the reversed chain
+        // for the UA is therefore [MB7UR, GB7CIP] so the digi closest
+        // to us forwards the response first.
+        var digi1 = new Callsign("GB7CIP", 0);
+        var digi2 = new Callsign("MB7UR", 0);
+        var sabmViaDigis = Ax25Frame.Sabm(LocalCall, PeerCallA, digipeaters: new[] { digi1, digi2 });
 
-        modem.InjectInbound(sabmViaDigi);
+        modem.InjectInbound(sabmViaDigis);
 
-        // Current behaviour: the listener accepts the SABM as if direct
-        // (destination callsign matches MYCALL regardless of the
-        // digi chain).
         var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
         session.Context.Remote.Should().Be(PeerCallA,
             "the listener's per-peer key is the source callsign, not the digi-resolved path");
 
-        // Outbound UA was emitted — but with no digipeaters in its
-        // path (our session-build path doesn't preserve a Via chain on
-        // the cached context). This is the documented gap.
         await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
         Ax25Frame.TryParse(modem.SentFrames[0].Span, out var ua).Should().BeTrue();
-        ua!.Digipeaters.Count.Should().Be(0,
-            "KNOWN-GAP: digipeated inbound is accepted, but the outbound UA does not propagate the via-path. " +
-            "A real peer behind a digi chain would not see this UA. Test pinned here so a fix has a clear before/after.");
+        (ua!.Control & 0xEF).Should().Be(0x63, "first emitted frame must be a UA response");
+        ua.Digipeaters.Select(d => d.Callsign).Should().Equal(
+            new[] { digi2, digi1 },
+            "the UA's via-chain is the inbound SABM's chain reversed — closest-to-responder first");
+    }
+
+    // ─── Post-#141 / #143 fix coverage ──────────────────────────────────
+
+    /// <summary>
+    /// Direct unit-level proof that <see cref="ActionDispatcher"/>
+    /// reverses the digipeater chain on responses to digipeated
+    /// triggers. No listener involved — drives the dispatcher directly
+    /// via a session in Disconnected and posts a SABM with a 2-hop via.
+    /// </summary>
+    [Fact]
+    public void ActionDispatcher_Reverses_Digipeater_Path_On_Response()
+    {
+        var modem = new LoopbackModem();
+        var localCall = LocalCall;
+        var peer = PeerCallA;
+        var digi1 = new Callsign("GB7CIP", 0);
+        var digi2 = new Callsign("MB7UR", 0);
+
+        UFrameSpec? captured = null;
+        var emitted = new List<UFrameSpec>();
+
+        var ctx = new Ax25SessionContext { Local = localCall, Remote = peer };
+        using var scheduler = new SystemTimerScheduler(TimeProvider.System);
+        var dispatcher = new ActionDispatcher(
+            onTimerExpiry: _ => { },
+            sendSFrame:    _ => { },
+            sendUFrame:    spec => { captured = spec; emitted.Add(spec); },
+            sendUiFrame:   _ => { },
+            sendUpward:    _ => { },
+            sendLinkMux:   _ => { },
+            sendInternal:  _ => { },
+            sendIFrame:    _ => { });
+
+        // Inbound SABM via [digi1, digi2] (transmission order).
+        var inbound = Ax25Frame.Sabm(localCall, peer, digipeaters: new[] { digi1, digi2 });
+        var trigger = new SabmReceived(inbound);
+        var tx = new TransitionContext(ctx, scheduler, trigger);
+
+        // figc4.1 t14's UA emit, simplified — just the UA verb.
+        dispatcher.Execute(new[] { "F := P", "UA" }, tx);
+
+        captured.Should().NotBeNull();
+        captured!.Value.Type.Should().Be(UFrameType.Ua);
+        captured.Value.Path.Should().NotBeNull(
+            "BuildUFrame must populate Path from the trigger's reversed digipeater chain");
+        captured.Value.Path!.Should().Equal(
+            new[] { digi2, digi1 },
+            "the reversed chain puts the digi closest to the responder first");
+
+        // And the resulting Ax25Frame carries the override on the wire.
+        var wireFrame = captured.Value.ToAx25Frame(ctx);
+        wireFrame.Digipeaters.Select(d => d.Callsign).Should().Equal(new[] { digi2, digi1 });
+    }
+
+    /// <summary>
+    /// Spec-compliance generalisation of the DISC/RR cases: an I-frame
+    /// from an unknown peer also elicits DM (via t05 all_other_commands).
+    /// </summary>
+    [Fact]
+    public async Task Listener_Emits_DM_For_I_Frame_From_Unknown_Peer()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
+
+        int accepted = 0;
+        listener.SessionAccepted += (_, _) => Interlocked.Increment(ref accepted);
+        await listener.StartAsync();
+
+        modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCallA,
+            nr: 0, ns: 0,
+            info: System.Text.Encoding.ASCII.GetBytes("HELLO"),
+            pollBit: false));
+
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
+
+        accepted.Should().Be(0, "stray I-frames don't create cached sessions");
+        Ax25Frame.TryParse(modem.SentFrames[0].Span, out var dm).Should().BeTrue();
+        (dm!.Control & 0xEF).Should().Be(0x0F, "spec-compliant response to an I-frame in Disconnected is DM");
+        dm.Destination.Callsign.Should().Be(PeerCallA);
+    }
+
+    /// <summary>
+    /// After the listener handles a DISC/RR/I from an unknown peer,
+    /// the transient session must NOT remain in the per-peer cache:
+    /// a subsequent outbound <see cref="Ax25Listener.ConnectAsync"/>
+    /// to the same peer must build a fresh session (no stale state).
+    /// </summary>
+    [Fact]
+    public async Task Listener_Cache_Stays_Clean_After_Non_SABM_Reject_Path()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
+
+        await listener.StartAsync();
+
+        // Drive a DM-emit via the transient path.
+        modem.InjectInbound(Ax25Frame.Disc(LocalCall, PeerCallA));
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));
+
+        // No cache visibility on the API surface, but a fresh inbound
+        // SABM from the same peer must still fire SessionAccepted —
+        // proving no transient session intercepted it.
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) =>
+        {
+            if (e.Session.Context.Remote.Equals(PeerCallA))
+            {
+                accepted.TrySetResult(e.Session);
+            }
+        };
+
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        session.CurrentState.Should().Be("Connected",
+            "the SABM handshake must complete cleanly — the transient DISC session must not have polluted the cache");
+
+        // Sanity: that's 1 DM (from the DISC) + 1 UA (from the SABM) on
+        // the wire.
+        await modem.SentFrames.WaitForCountAsync(2, TimeSpan.FromSeconds(2));
+        modem.SentFrames.Count.Should().Be(2);
     }
 }

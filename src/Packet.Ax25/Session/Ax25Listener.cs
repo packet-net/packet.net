@@ -324,37 +324,77 @@ public sealed class Ax25Listener : IAsyncDisposable
             return;
         }
 
-        // No cached session and this isn't a SABM — drop. We don't
-        // build a session for an unsolicited RR / I / etc. from a
-        // peer we've never spoken to; figc4.1 says only SABM(E)
-        // creates a session from Disconnected.
-        if (classified is not SabmReceived && classified is not SabmeReceived)
+        // No cached session and this isn't a SABM. Two cases:
+        //
+        //  (a) SABM-shape that we want to refuse (AcceptIncoming=false):
+        //      route through a transient Disconnected session so the
+        //      SDL's figc4.1 t15 branch fires DM. Don't cache.
+        //
+        //  (b) Any other frame kind (DISC / RR / RNR / REJ / SREJ / I /
+        //      UI / FRMR / XID / TEST) addressed to us with no cached
+        //      session: route through a transient Disconnected session.
+        //      DISC has its own t13 (DM); UI has t11/t12 (UI_Check + DM
+        //      on P=1); UA has t10 (DL_ERROR_indication C/D); everything
+        //      else (RR/RNR/REJ/SREJ/I/FRMR/XID/TEST) falls to t05
+        //      (all_other_commands → DM). We re-post the latter cluster
+        //      as AllOtherCommands so t05's chain fires — the classifier
+        //      produces specific event types (RrReceived etc.) which are
+        //      correct for *cached* sessions in Connected/etc. but have
+        //      no transition in Disconnected. The catch-all is named
+        //      `all_other_commands` for exactly this case.
+        //
+        // The transient session uses the listener's current
+        // AcceptIncoming for case (a)'s reject behaviour, and always
+        // true for case (b) — the catch-alls don't gate on it.
+        bool isSabmShaped = classified is SabmReceived || classified is SabmeReceived;
+
+        if (isSabmShaped && AcceptIncoming)
         {
+            // Accept path: build the session, cache it, fire the
+            // consumer hook before posting SABM so consumers can attach
+            // listeners on the session's signal stream before any
+            // events flow.
+            var built = BuildSession(peer, allowAccept: true);
+            AddToCache(peer, built);
+            options.ConfigureSession?.Invoke(built.Session);
+            built.Session.PostEvent(classified);
+            RaiseSessionAccepted(built.Session);
             return;
         }
 
-        if (!AcceptIncoming)
-        {
-            // figc4.1 t15 reject path: build a transient session with
-            // AcceptIncoming=false so the SDL falls through to the No
-            // branch and emits DM. Discard the session after posting —
-            // it never enters the cache; nobody outside the listener
-            // sees the SessionAccepted event for it.
-            var transient = BuildSession(peer, allowAccept: false);
-            transient.Session.PostEvent(classified);
-            transient.Scheduler.Dispose();
-            return;
-        }
-
-        // Accept path: build the session, cache it, fire the consumer
-        // hook before posting SABM so consumers can attach listeners
-        // on the session's signal stream before any events flow.
-        var built = BuildSession(peer, allowAccept: true);
-        AddToCache(peer, built);
-        options.ConfigureSession?.Invoke(built.Session);
-        built.Session.PostEvent(classified);
-        RaiseSessionAccepted(built.Session);
+        // Transient fall-through:
+        //   SABM-shape with AcceptIncoming=false → figc4.1 t15 emits DM.
+        //   DISC/UI/UA unknown peer            → specific Disconnected transition.
+        //   RR/RNR/REJ/SREJ/I/FRMR/XID/TEST    → reclassify as AllOtherCommands
+        //                                          so t05 fires DM.
+        //
+        // Build, post, dispose. No cache write, no SessionAccepted
+        // event.
+        var transient = BuildSession(peer, allowAccept: AcceptIncoming);
+        var transientEvent = isSabmShaped
+            ? classified
+            : ReclassifyForDisconnectedCatchAll(classified, parsed);
+        transient.Session.PostEvent(transientEvent);
+        transient.Scheduler.Dispose();
     }
+
+    /// <summary>
+    /// Map an inbound classified event to the event the Disconnected
+    /// SDL knows how to handle. Specific events handled in Disconnected
+    /// (DISC/UI/UA/SABM/SABME) pass through unchanged; everything else
+    /// (RR/RNR/REJ/SREJ/I/FRMR/XID/TEST) becomes <see cref="AllOtherCommands"/>
+    /// so the SDL's t05 catch-all emits DM. See figc4.1 — the catch-all
+    /// is named "all other commands" precisely for this case (the
+    /// figure's per-frame-type column doesn't list RR/I-frame handling
+    /// in Disconnected; they fall to the rightmost catch-all column).
+    /// </summary>
+    private static Ax25Event ReclassifyForDisconnectedCatchAll(Ax25Event classified, Ax25Frame frame)
+        => classified switch
+        {
+            DiscReceived or UiReceived or UaReceived
+                or SabmReceived or SabmeReceived => classified,
+            _ => new AllOtherCommands(frame),
+        };
 
     private void RaiseSessionAccepted(Ax25Session session)
     {

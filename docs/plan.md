@@ -830,6 +830,26 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-16 — fix(ax25): #141 via-chain reversal + #143 listener cache-miss DM
+
+Two implementation bugs surfaced by PR #140's coverage-broadening sweep. Both are in-engine, no SDL / spec interpretation needed — the issues' fixed behaviour matches AX.25 v2.2 §C.2 (Path Construction) and figc4.1 t05 / t13 (the catch-all that emits DM for unrecognised events in Disconnected).
+
+**#141 — Dispatcher via-chain reversal.** Pre-fix, the UA we sent in response to a digipeated SABM had an empty digipeater list — peers behind a digi never saw our reply. Fixed by adding an optional `Path` field to each frame spec (`UFrameSpec`, `SupervisoryFrameSpec`, `IFrameSpec`, `UiFrameSpec`), populated automatically by the dispatcher's frame builders from `TransitionContext.IncomingFrame.Digipeaters` reversed when the trigger carries an inbound frame. `FrameSpecExtensions.ToAx25Frame` prefers `spec.Path` over `context.Digipeaters` when non-null. Path stays `null` for outbound-initiated frames (DL_CONNECT_request triggers — we sent the SABM, no trigger frame), so the context's outgoing chain is used; null also preserves spec-record equality for existing tests that build specs without paths. Outbound-initiated via-chain support (we SABM out through our own digi list) was verified as already wired via `Ax25SessionContext.Digipeaters` — separate gap not relevant to this fix.
+
+**#143 — Listener fall-through for unknown-peer non-SABM frames.** Pre-fix, the listener's cache-miss filter dropped everything except SABM/SABME — DISC, RR, I, etc. from unknown peers were silently swallowed before the SDL ever saw them. The spec wants DM (figc4.1 t13 for DISC, t05 catch-all for RR/RNR/REJ/SREJ/I/FRMR/XID/TEST). Fixed by generalising the existing `AcceptIncoming=false` reject path: for any non-SABM unknown-peer frame, build a transient Disconnected session, post the event, dispose. Non-SABM events that have no specific Disconnected transition (RrReceived, IFrameReceived, etc.) get reclassified to `AllOtherCommands` so t05 fires DM. The transient session never enters the cache, so subsequent outbound `ConnectAsync` / inbound SABM from the same peer still builds fresh state.
+
+**Tests flipped (3 in `Ax25ListenerRejectAndEdgeTests.cs`):**
+- `Listener_Handles_Sabm_With_Digipeater_Path` — now asserts UA emits with reversed via chain `[MB7UR, GB7CIP]` (was: assert empty).
+- `Listener_Ignores_Disc_For_Unknown_Peer` → renamed `Listener_Emits_DM_For_Disc_From_Unknown_Peer` — asserts exactly one DM, addressed to the original DISC source.
+- `Listener_Ignores_Rr_For_Unknown_Peer` → renamed `Listener_Emits_DM_For_Rr_From_Unknown_Peer` — asserts exactly one DM via the t05 catch-all path.
+
+**New tests (3 in the same file):**
+- `ActionDispatcher_Reverses_Digipeater_Path_On_Response` — direct dispatcher-level unit test of the reversal, no listener involved.
+- `Listener_Emits_DM_For_I_Frame_From_Unknown_Peer` — generalises the DM-for-unknown-peer case to I-frames.
+- `Listener_Cache_Stays_Clean_After_Non_SABM_Reject_Path` — invariant that the transient session is dropped, not cached.
+
+**Verification.** Unit suite green (`Category!=HardwareLoop&Category!=Interop`): 1147 tests pass (was 1144; +3 new); Listener-specific tests 30/30. The two `verification_pending` issues #142 (SABM-with-C-bit-response) and #144 (SABME without v2.2 gating) remain open as documented — both require a figure re-read and are SDL-side fixes, not in-engine.
+
 ### 2026-05-16 — Ax25Listener: broad test coverage
 
 Six new test groups + a real-bug fix surfaced by them. The Listener landed yesterday (`feat(ax25): Ax25Listener — first-class inbound-session acceptance (#138)`) with 5 unit tests + 1 interop scenario — enough to prove the happy path but not enough for a foundational node-side API. This PR widens that envelope substantially before downstream consumers (BBS, gateway, automatic forwarder, the TUI) build on it.

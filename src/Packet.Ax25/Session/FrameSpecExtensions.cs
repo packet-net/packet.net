@@ -32,12 +32,13 @@ public static class FrameSpecExtensions
     public static Ax25Frame ToAx25Frame(this SupervisoryFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        var digi = ResolvePath(spec.Path, context);
         return spec.Type switch
         {
-            SupervisoryFrameType.Rr   => Ax25Frame.Rr  (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, context.Digipeaters),
-            SupervisoryFrameType.Rnr  => Ax25Frame.Rnr (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, context.Digipeaters),
-            SupervisoryFrameType.Rej  => Ax25Frame.Rej (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, context.Digipeaters),
-            SupervisoryFrameType.Srej => Ax25Frame.Srej(context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, context.Digipeaters),
+            SupervisoryFrameType.Rr   => Ax25Frame.Rr  (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, digi),
+            SupervisoryFrameType.Rnr  => Ax25Frame.Rnr (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, digi),
+            SupervisoryFrameType.Rej  => Ax25Frame.Rej (context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, digi),
+            SupervisoryFrameType.Srej => Ax25Frame.Srej(context.Remote, context.Local, spec.Nr, spec.IsCommand, spec.PfBit, digi),
             _ => throw new ArgumentOutOfRangeException(nameof(spec), $"unknown supervisory frame type '{spec.Type}'"),
         };
     }
@@ -46,16 +47,17 @@ public static class FrameSpecExtensions
     public static Ax25Frame ToAx25Frame(this UFrameSpec spec, Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        var digi = ResolvePath(spec.Path, context);
         return spec.Type switch
         {
-            UFrameType.Sabm  => Ax25Frame.Sabm (context.Remote, context.Local, spec.PfBit, context.Digipeaters),
-            UFrameType.Sabme => Ax25Frame.Sabme(context.Remote, context.Local, spec.PfBit, context.Digipeaters),
-            UFrameType.Disc  => Ax25Frame.Disc (context.Remote, context.Local, spec.PfBit, context.Digipeaters),
-            UFrameType.Ua    => Ax25Frame.Ua   (context.Remote, context.Local, spec.PfBit, context.Digipeaters),
-            UFrameType.Dm    => Ax25Frame.Dm   (context.Remote, context.Local, spec.PfBit, context.Digipeaters),
-            UFrameType.Frmr  => Ax25Frame.Frmr (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.PfBit, context.Digipeaters),
-            UFrameType.Xid   => Ax25Frame.Xid  (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.IsCommand, spec.PfBit, context.Digipeaters),
-            UFrameType.Test  => Ax25Frame.Test (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.IsCommand, spec.PfBit, context.Digipeaters),
+            UFrameType.Sabm  => Ax25Frame.Sabm (context.Remote, context.Local, spec.PfBit, digi),
+            UFrameType.Sabme => Ax25Frame.Sabme(context.Remote, context.Local, spec.PfBit, digi),
+            UFrameType.Disc  => Ax25Frame.Disc (context.Remote, context.Local, spec.PfBit, digi),
+            UFrameType.Ua    => Ax25Frame.Ua   (context.Remote, context.Local, spec.PfBit, digi),
+            UFrameType.Dm    => Ax25Frame.Dm   (context.Remote, context.Local, spec.PfBit, digi),
+            UFrameType.Frmr  => Ax25Frame.Frmr (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.PfBit, digi),
+            UFrameType.Xid   => Ax25Frame.Xid  (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.IsCommand, spec.PfBit, digi),
+            UFrameType.Test  => Ax25Frame.Test (context.Remote, context.Local, info: ReadOnlySpan<byte>.Empty, spec.IsCommand, spec.PfBit, digi),
             _ => throw new ArgumentOutOfRangeException(nameof(spec), $"unknown unnumbered frame type '{spec.Type}'"),
         };
     }
@@ -71,7 +73,7 @@ public static class FrameSpecExtensions
             pid:         spec.Pid,
             isCommand:   spec.IsCommand,
             pollFinal:   spec.PfBit,
-            digipeaters: context.Digipeaters);
+            digipeaters: ResolvePath(spec.Path, context));
     }
 
     /// <summary>Build an <see cref="Ax25Frame"/> for an outgoing I-frame using session addressing.</summary>
@@ -86,6 +88,18 @@ public static class FrameSpecExtensions
             info:        spec.Info.Span,
             pid:         spec.Pid,
             pollBit:     spec.PBit,
-            digipeaters: context.Digipeaters);
+            digipeaters: ResolvePath(spec.Path, context));
     }
+
+    // Per-spec Path overrides the context's chain when present. The
+    // dispatcher uses this for via-chain reversal on responses to
+    // digipeated triggers (AX.25 v2.2 §C.2 Path Construction): when a
+    // SABM arrives via [GB7CIP, MB7UR] the UA back must go via
+    // [MB7UR, GB7CIP] so the digi closest to the responder forwards it
+    // first. Outbound-initiated frames (we sent SABM) have no trigger
+    // path, so spec.Path is null and we fall back to the context's
+    // outgoing chain.
+    private static IReadOnlyList<Core.Callsign> ResolvePath(
+        IReadOnlyList<Core.Callsign>? specPath, Ax25SessionContext context)
+        => specPath ?? context.Digipeaters;
 }

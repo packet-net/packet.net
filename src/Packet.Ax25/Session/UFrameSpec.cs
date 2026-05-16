@@ -1,3 +1,5 @@
+using Packet.Core;
+
 namespace Packet.Ax25.Session;
 
 /// <summary>
@@ -52,8 +54,21 @@ public enum UFrameType
 /// should bypass any pending I-frame queue and go out at the next
 /// opportunity. False for the normal-priority forms.
 /// </param>
+/// <param name="Path">
+/// Optional digipeater chain override for this specific outgoing frame.
+/// When non-null, the wire-translation layer uses this list verbatim as
+/// the via-chain instead of the session context's
+/// <see cref="Ax25SessionContext.Digipeaters"/>. Populated by the
+/// dispatcher when the triggering frame arrived via a digipeater path —
+/// the response carries the source-to-destination path reversed so the
+/// peer's digipeaters route the reply back along the same chain. See
+/// AX.25 v2.2 §C.2 (Path Construction). <c>null</c> on triggers without
+/// an inbound frame (upper-layer DL requests, timer expiries) — in
+/// which case the context's chain is used.
+/// </param>
 public readonly record struct UFrameSpec(
     UFrameType Type,
     bool IsCommand,
     bool PfBit,
-    bool IsExpedited = false);
+    bool IsExpedited = false,
+    IReadOnlyList<Callsign>? Path = null);
