@@ -76,6 +76,23 @@ public sealed class Ax25SessionContext
     public bool Layer3Initiated { get; set; }
 
     /// <summary>
+    /// Node-policy flag — when <c>true</c> (the default), the session
+    /// accepts inbound SABM/SABME frames and runs the figc4.1 t14 /
+    /// figc4.1 t13 acceptance path. When <c>false</c>, figc4.1's
+    /// <c>able_to_establish?</c> decision falls through to the No branch
+    /// (t15) which emits DM and stays Disconnected. Per-session because
+    /// in deployments with multiple sessions on one modem the policy
+    /// genuinely differs per peer — a node that has already accepted
+    /// one connection still wants the catalogue's existing default
+    /// behaviour for unrelated peer sessions. The cleanest binding is a
+    /// context field; callers can still override the
+    /// <c>able_to_establish</c> binding for richer policies (callsign
+    /// allow-lists, channel load, etc.) — the default just reads this
+    /// flag.
+    /// </summary>
+    public bool AcceptIncoming { get; set; } = true;
+
+    /// <summary>
     /// Scratch register used by figc4.7's <c>Invoke_Retransmission</c>:
     /// stashes V(s) at routine entry so the loop knows when it has caught
     /// up. Only meaningful during a single Invoke_Retransmission invocation.

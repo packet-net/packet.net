@@ -22,6 +22,36 @@ public interface IKissModem
     Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Async stream of every inbound KISS frame the modem reports, until
+    /// disposal or <paramref name="cancellationToken"/> fires. The default
+    /// implementation returns an empty stream — modems that don't expose
+    /// inbound frames (test stubs, write-only adapters) can leave this as
+    /// the default and consumers that need RX simply won't see anything.
+    /// </summary>
+    /// <remarks>
+    /// Surfaces all KISS commands (Data, TX-Test echoes, ACKMODE wrappers,
+    /// modem diagnostics). Consumers typically filter to
+    /// <see cref="KissCommand.Data"/> before parsing as AX.25.
+    /// <see cref="Ax25Listener"/>-shape consumers expect this to be a
+    /// long-running enumerable that yields frames as they arrive.
+    /// </remarks>
+    IAsyncEnumerable<KissFrame> ReadFramesAsync(CancellationToken cancellationToken = default)
+#pragma warning disable CS1998 // async body, but the empty path doesn't need awaits
+        => EmptyAsync(cancellationToken);
+#pragma warning restore CS1998
+
+    private static async IAsyncEnumerable<KissFrame> EmptyAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        // Yield zero frames. The await keeps the iterator state-machine
+        // honest under cancellation — without it the compiler warns that
+        // the async body has no awaits.
+        await Task.CompletedTask.ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        yield break;
+    }
+
+    /// <summary>
     /// Send a frame in ACKMODE and await the TNC's TX-completion echo.
     /// </summary>
     Task<AckModeReceipt> SendFrameWithAckAsync(

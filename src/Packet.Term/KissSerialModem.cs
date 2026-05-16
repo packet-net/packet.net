@@ -4,6 +4,8 @@ using Packet.Kiss;
 
 namespace Packet.Term;
 
+// IKissModem in Packet.Kiss; pulled in for the implements clause.
+
 /// <summary>
 /// A KISS-over-USB-serial transport. Hardcoded to 57600 8N1 — the only
 /// shape <c>Packet.Term</c> supports. Surfaces inbound KISS frames as an
@@ -21,7 +23,7 @@ namespace Packet.Term;
 /// <c>Packet.Kiss.NinoTnc.NinoTncSerialPort</c>, just stripped to the
 /// pieces Packet.Term actually uses.
 /// </remarks>
-public sealed class KissSerialModem : IAsyncDisposable, IDisposable
+public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
 {
     /// <summary>The hard-coded baud rate. Not user-tunable on this transport.</summary>
     public const int BaudRate = 57600;
@@ -156,6 +158,48 @@ public sealed class KissSerialModem : IAsyncDisposable, IDisposable
     /// </summary>
     public IAsyncEnumerable<KissFrame> ReadFramesAsync(CancellationToken cancellationToken = default)
         => inbound.Reader.ReadAllAsync(cancellationToken);
+
+    /// <summary>
+    /// <see cref="IKissModem.SendFrameAsync"/> shim: forwards to
+    /// <see cref="SendDataAsync"/>. Both spellings exist so the
+    /// transport stays compatible with the modem-agnostic
+    /// <see cref="Packet.Ax25.Session.Ax25Listener"/> while preserving
+    /// the Packet.Term-internal SendDataAsync call sites.
+    /// </summary>
+    Task IKissModem.SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken)
+        => SendDataAsync(ax25Bytes, cancellationToken);
+
+    /// <summary>
+    /// ACKMODE not wired in this transport — the TUI doesn't track
+    /// per-frame TNC ACKs. Throws so the listener path doesn't silently
+    /// fall back to ACKMODE behaviour it can't deliver.
+    /// </summary>
+    Task<AckModeReceipt> IKissModem.SendFrameWithAckAsync(
+        ReadOnlyMemory<byte> ax25Bytes,
+        TimeSpan? timeout,
+        ushort? sequenceTag,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException("KissSerialModem does not implement KISS ACKMODE; use SendFrameAsync for fire-and-forget transmission.");
+
+    // KISS parameter setters — the TUI does not need to retune the modem
+    // at runtime; we ship straight-pass-through zero-ops so the interface
+    // is satisfied and adaptive controllers can plug in without throwing.
+    Task IKissModem.SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken)        => WriteKissParamAsync(KissCommand.TxDelay,    tenMsUnits, cancellationToken);
+    Task IKissModem.SetPersistenceAsync(byte value, CancellationToken cancellationToken)         => WriteKissParamAsync(KissCommand.Persistence, value,      cancellationToken);
+    Task IKissModem.SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken)       => WriteKissParamAsync(KissCommand.SlotTime,   tenMsUnits, cancellationToken);
+    Task IKissModem.SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken)         => WriteKissParamAsync(KissCommand.TxTail,     tenMsUnits, cancellationToken);
+
+    private async Task WriteKissParamAsync(KissCommand cmd, byte value, CancellationToken ct)
+    {
+        // stackalloc is illegal inside an async body; allocate the 1-byte
+        // payload on the heap. The setter path is hit at most a handful
+        // of times per session so the allocation cost is irrelevant.
+        var payload = new byte[] { value };
+        var encoded = KissEncoder.Encode(port: 0, cmd, payload);
+        await writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try { serial.Write(encoded, 0, encoded.Length); }
+        finally { writeLock.Release(); }
+    }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()

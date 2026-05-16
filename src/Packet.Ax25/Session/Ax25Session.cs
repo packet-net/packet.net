@@ -45,6 +45,47 @@ public sealed class Ax25Session
     public Ax25Event? CurrentTrigger { get; private set; }
 
     /// <summary>
+    /// Raised when the session's dispatcher emits a Layer-3 signal
+    /// (DL-CONNECT-confirm, DL-DATA-indication, DL-DISCONNECT-indication,
+    /// DL-ERROR-indication, …). Consumers external to the session
+    /// rig — typically <see cref="Ax25Listener"/>-side UI / app code —
+    /// subscribe here instead of supplying a <c>sendUpward</c>
+    /// closure at dispatcher-construction time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Listener wires every session's dispatcher with a
+    /// <c>sendUpward</c> shim that fan-outs into both the listener's
+    /// own per-session queue (for <see cref="Ax25Listener.ConnectAsync"/>
+    /// to await DL-CONNECT-confirm) AND this event (for UI / app
+    /// observers that want push-style delivery). Pre-listener callers
+    /// that build sessions directly via the <see cref="Ax25Session"/>
+    /// constructor can still wire their own sink — this event is
+    /// raised additively, never replacing the dispatcher's
+    /// construction-time callback.
+    /// </para>
+    /// <para>
+    /// Subscribers run synchronously on the thread that posted the
+    /// triggering event into <see cref="PostEvent"/>. Keep handlers
+    /// fast — long-running work belongs on a different task.
+    /// </para>
+    /// </remarks>
+    public event EventHandler<DataLinkSignal>? DataLinkSignalEmitted;
+
+    /// <summary>
+    /// Raise the <see cref="DataLinkSignalEmitted"/> event. Called by
+    /// the dispatcher's <c>sendUpward</c> shim — typically wired by
+    /// <see cref="Ax25Listener"/> at session-creation time. Public so
+    /// custom rigs that build their own dispatcher can chain into the
+    /// event from their own <c>sendUpward</c> callback.
+    /// </summary>
+    public void RaiseDataLinkSignal(DataLinkSignal signal)
+    {
+        ArgumentNullException.ThrowIfNull(signal);
+        DataLinkSignalEmitted?.Invoke(this, signal);
+    }
+
+    /// <summary>
     /// Construct a session.
     /// </summary>
     /// <param name="context">Mutable session state — sequence variables, flags, queues.</param>
