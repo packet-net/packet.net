@@ -67,3 +67,6 @@ appsettings.*.user.json
 # OS
 Thumbs.db
 ehthumbs.db
+
+# TypeScript build artefacts for the ax25 web library
+web/ax25/dist/

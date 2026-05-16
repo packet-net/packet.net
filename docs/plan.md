@@ -829,6 +829,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-16 — packet terminal example app
+
+Self-contained HTML demo at `web/ax25/examples/packet-terminal/` showing `@packet-net/ax25` driving a browser terminal against a USB KISS modem. xterm.js as the screen, Web Serial as the modem-attach point, a TNC2-style command set (`MYCALL`, `CONNECT`, `DISCONNECT`, `STATUS`, `ECHO`, `CLEAR`, `VERSION`, `HELP`), command/converse mode toggle on `Ctrl-C`.
+
+Aesthetic is intentional — late-80s phosphor-CRT terminal: VT323 typeface, deep green-on-black, scanlines + RGB-mask shimmer + vignette + 8-second flicker cycle in CSS, status bar showing MYCALL / LINK / MODEM with pulse indicators. The boot banner identifies `@packet-net/ax25 0.1.0` and `ax25sdl 0.1.0` by name to make the library's role visible.
+
+Zero build step — imports `@packet-net/ax25@0.1.0`, `xterm@5.3.0`, and `xterm-addon-fit@0.8.0` from esm.sh; Google Fonts for VT323 and IBM Plex Mono. Opens directly in Chromium / Edge. Firefox + Safari show the layout but the modem-attach button fails (Web Serial standard not implemented in those browsers; modal explains the constraint).
+
+This is the first real consumer of the published `@packet-net/ax25` NuGet equivalent and validates the import surface (`Ax25Stack`, `WebSerialKissTransport`, `Callsign`) ergonomically resolves in a vanilla-HTML context.
+
 ### 2026-05-16 — ax25.ts: rename to @packet-net/ax25
 
 Pre-publish rename. Unscoped `ax25` on npm is already taken (existing Node KISS+AX.25 stack at v1.1.2), so we ship under the `@packet-net` scope. Drops the `-ts` suffix from the package name; the directory and docs paths match (`web/ax25/`, `docs/web-ax25/`). No code-shape changes; nothing was published under the old name so there's no migration path to honour.
