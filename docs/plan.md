@@ -833,6 +833,24 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-17 — drop ts-spec, flip web/ax25 to consume ax25sdl from npm
+
+Fifth step of the 5-repo split. `ts-spec/` (the local copy of the `ax25sdl` npm package, file-linked from `web/ax25`) goes away; `web/ax25/package.json` now depends on `ax25sdl@^0.1.1` from npmjs.com directly.
+
+**Version reality check.** The latest `ax25sdl` actually on npmjs.com is `0.1.1` (the `0.2.x` bump in `ts-spec/package.json` from #148 was never published — no `v*` tag was pushed against `m0lte/packet.net` after the bump, so `npm-publish.yml` never fired, and the `0.3.0` publish from `m0lte/ax25sdl` is parked on the auth issue). `ax25sdl@0.1.1` is content-equivalent to what `web/ax25` was consuming via the file: link — verified by `npm test` in `web/ax25/` passing 103/103 against the npm version. The SDL transition tables haven't changed since the 0.1.1 publish; the `0.2.x` bump in tree was an aspirational version that never shipped.
+
+**Changes.**
+
+- `web/ax25/package.json` — `"ax25sdl": "file:../../ts-spec"` → `"ax25sdl": "^0.1.1"`.
+- `web/ax25/package-lock.json` — regenerated with `npx npm@10 install` after the dep flip; `ax25sdl` now resolves to `https://registry.npmjs.org/ax25sdl/-/ax25sdl-0.1.1.tgz`.
+- `ts-spec/` — deleted in full.
+- `.github/workflows/ci.yml` — `ts-build-test` job slimmed to just the `web/ax25` install / typecheck / build / test (the ts-spec build step is gone with ts-spec). Cache key bumped from `ts-spec/package-lock.json` to `web/ax25/package-lock.json`.
+
+**Verification.** `cd web/ax25 && npm run typecheck && npm test` — 103/103 unit tests green against npm-sourced ax25sdl@0.1.1. The integration tests (LinBPQ/netsim) weren't run locally; CI's `interop` workflow will exercise them.
+
+**What's still pending.** `web/ax25` itself still lives in `m0lte/packet.net`. It moves to `m0lte/ax25-ts` once the npm publish path from `m0lte/ax25sdl` is unblocked (so that the next iteration of `@packet-net/ax25` can depend on a fresh `ax25sdl`).
+
+
 ### 2026-05-17 — drop SDL codegen + spec sources from packet.net (extracted to m0lte/ax25sdl)
 
 Fourth step of the 5-repo split. The SDL transcriptions, codegen tools, multi-language artefacts (`go-spec/`), codegen tests, and SDL documentation all live at `m0lte/ax25sdl` now. `packet.net` consumes `Packet.Ax25.Sdl 0.3.0` from nuget.org (set up in #155). This PR removes the local source.

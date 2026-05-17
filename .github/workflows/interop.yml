@@ -14,7 +14,6 @@ on:
       - 'src/Packet.Node/**'
       - 'tests/Packet.Interop.Tests/**'
       - 'web/ax25/**'
-      - 'ts-spec/**'
       - 'docker/**'
       - '.github/workflows/interop.yml'
   push:
@@ -81,21 +80,14 @@ jobs:
       # 127.0.0.1:8100 KISS-TCP listener the C# tests use; the describe
       # block self-skips if the listener is unreachable, but we're inside
       # the interop job so it should always be up by the time this step
-      # runs. Build ts-spec first (web/ax25 depends on it via `file:`).
+      # runs. web/ax25 consumes ax25sdl from npmjs.com (no local ts-spec
+      # dep) so no pre-build is needed.
       - name: setup Node (for ax25.ts integration tests)
         uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: |
-            ts-spec/package-lock.json
-            web/ax25/package-lock.json
-
-      - name: build ts-spec
-        run: |
-          cd ts-spec
-          npm ci
-          npm run build
+          cache-dependency-path: web/ax25/package-lock.json
 
       - name: ax25.ts integration tests
         # `npm test` runs unit tests only (excludes tests/integration/).

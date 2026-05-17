@@ -66,13 +66,12 @@ jobs:
           retention-days: 7
 
   ts-build-test:
-    name: TS — ts-spec + web/ax25 build + test
+    name: TS — web/ax25 build + test
     runs-on: [self-hosted, Linux, X64]
-    # ts-spec carries pre-generated *.g.ts (sourced from m0lte/ax25sdl);
-    # web/ax25 consumes it via `file:../../ts-spec`. Both stay in this
-    # repo while the npm publish path from m0lte/ax25sdl is parked. Once
-    # that's resolved, ts-spec drops out (sourced from npm) and web/ax25
-    # moves to its own repo.
+    # web/ax25 consumes ax25sdl (the SDL tables) from npmjs.com since
+    # 2026-05-17. The library itself will move to m0lte/ax25-ts once the
+    # npm publish path from m0lte/ax25sdl is unblocked; until then it
+    # lives here.
     steps:
       - uses: actions/checkout@v6
 
@@ -81,19 +80,12 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: ts-spec/package-lock.json
+          cache-dependency-path: web/ax25/package-lock.json
 
-      - name: ts-spec typecheck + test + build
-        run: |
-          cd ts-spec
-          npm ci
-          npm run typecheck
-          npm test
-          npm run build
-
-      - name: web/ax25 build + test
+      - name: web/ax25 install + typecheck + build + test
         run: |
           cd web/ax25
           npm ci
+          npm run typecheck
           npm run build
           npm test
