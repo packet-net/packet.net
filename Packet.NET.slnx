@@ -28,11 +28,6 @@
     <Project Path="tests/Packet.Kiss.Tests/Packet.Kiss.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
-<<<<<<< HEAD
-    <Project Path="tests/Packet.Sdl.CodeGen.Tests/Packet.Sdl.CodeGen.Tests.csproj" />
-=======
-    <Project Path="tests/Packet.Term.Tests/Packet.Term.Tests.csproj" />
->>>>>>> e76e222 (chore: drop SDL codegen + spec sources (extracted to m0lte/ax25sdl))
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Packet.AprsIs.Spike/Packet.AprsIs.Spike.csproj" />
