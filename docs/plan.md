@@ -6,6 +6,7 @@
 
 **As of:** 2026-05-17
 **Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, adaptive-parameter scaffolding, adaptive-transport glue, and a first soak campaign producing [`docs/nino-tnc-characterisation.md`](nino-tnc-characterisation.md). Next: more SDL pages, plus a real-RF soak campaign once we have field data to compare against the bench.
+**Latest amendment:** [§17 entry 2026-05-17 — packet-terminal example: modernize to Ax25Listener + listener-session facade](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-05-17 — Packet.Term: Spectre.Console → Terminal.Gui v2](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-05-16 — interop flake investigation: XRouter tests cleared](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-05-16 Ax25Listener: broad test coverage](#17-amendment-log)
@@ -843,6 +844,28 @@ Bumps the interop-test budgets that were timing out under host-CPU contention fr
 **Skip — `IFrame_RoundTrip_Against_Linbpq_Node_Prompt`.** Bumping the budget surfaced a real bug that timing wasn't masking: the second L2 session in the same vitest file establishes (SABM/UA) but the CTEXT banner that this test waits for never arrives. The 30s bump still failed — total elapsed 34.8s with no chunk delivered. The sibling `Connect_Then_Disconnect` test passes, so the wire-up works. Probable root causes are BPQ-side session-reuse / banner-suppression behaviour or a netsim-side state leak between sequential L2 sessions on the same address pair. Marked `.skip` in this PR with a `TODO(#153)` comment pointing to the tracking issue; unskip when the root cause is understood (likely needs fresh callsigns per session or a BPQ config tweak).
 
 No happy-path runtime impact from the bumps — tests still complete in ~3s when the host isn't loaded. The bumps just stop cancelling early under contention; the skip parks the one test that has a real underlying bug.
+
+### 2026-05-17 — packet-terminal example: modernize to Ax25Listener + listener-session facade
+
+Two coupled changes — a small library addition that lets the in-tree packet-terminal example drop hand-rolled adapter code, and the example update itself.
+
+**Library — friendly facade on `Ax25ListenerSession` (`web/ax25/src/listener.ts`).** Adds `to`, `onData(cb)`, `onDisconnected(cb)`, `write(chunk, pid?)`, `disconnect()` to `Ax25ListenerSession`. They mirror the same-named methods on `Ax25Session` (Ax25Stack's session class) byte-for-byte, so a session from either source is drop-in compatible. The raw `postEvent` / `onDataLinkSignal` API stays available for advanced consumers (FRMR generation, XID, custom error-recovery flows).
+
+This was surfaced by the example modernization: switching the demo from `Ax25Stack` (outbound-only) to `Ax25Listener` (inbound + outbound) would otherwise have required the demo to write an adapter that re-creates `onData / write / disconnect` on top of the listener-session's raw signal API — which is exactly the "in-tree examples shouldn't reimplement runtime features" anti-pattern. Lifting the facade to the library where it belongs solves both consumers.
+
+Bumps `web/ax25` and `ts-spec` to `0.2.1` in lockstep (additive only — no breaking changes). 9 new unit tests in `Ax25ListenerSessionFacade.test.ts` cover the five facade methods plus edge cases (empty-buffer write, write-while-disconnected, custom PID, idempotent disconnect).
+
+**Example — `web/ax25/examples/packet-terminal/index.html`.** Modernizes the deployed-at-packet-term.m0lte.uk demo:
+
+- **`Ax25Stack` → `Ax25Listener`.** One transport, one stack. Drops the `wrapTransport` hand-rolled transport adapter (~20 LOC) in favour of `listener.onFrameTraced` — the library's native hook for the BPQ-style frame monitor.
+- **Drops `tryDecode` helper.** `onFrameTraced` delivers a pre-decoded `Ax25Frame`; no try/catch around `decodeFrame` needed.
+- **Adds inbound-call support.** `listener.onSessionAccepted` wires inbound SABMs into the existing converse-mode UI — a peer can now `CONNECT` to your MYCALL and the terminal switches to chat with them. Matches real TNC2 behaviour.
+- **New `BUSY ON|OFF` command.** Flips `listener.acceptIncoming` — `BUSY ON` refuses new inbound (peer sees DM, figc4.1 t15); default `BUSY OFF` accepts everything.
+- **STATUS extended.** Shows `link: CONNECTED < <peer>` (inbound) or `> <peer>` (outbound), plus `busy:` state.
+- **Modem attach now requires MYCALL first** (listener needs `myCall` at construction). Tighter UX — your callsign must be set before you can use the radio.
+- **Version pin bumped 0.1.0 → 0.2.1.**
+
+Both pieces ship in one PR — the library facade is the prerequisite for the example consolidation.
 
 ### 2026-05-17 — Packet.Term: Spectre.Console → Terminal.Gui v2
 

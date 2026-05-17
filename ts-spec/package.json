@@ -1,6 +1,6 @@
 {
   "name": "ax25sdl",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AX.25 v2.2 SDL specification as TypeScript data structures, generated from the canonical SDL figure transcriptions in M0LTE/packet.net.",
   "license": "MIT",
   "repository": {
