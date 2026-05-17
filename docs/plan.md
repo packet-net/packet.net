@@ -833,6 +833,20 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-17 — extract packet-terminal demo to m0lte/packet-term-web
+
+Second extraction step of the 5-repo split — moves the browser TNC2 emulator (single-file HTML demo, deployed at https://packet-term.m0lte.uk) out of `web/ax25/examples/packet-terminal/` into a new public repo `m0lte/packet-term-web`.
+
+The demo is structurally a downstream consumer of `@packet-net/ax25` (which it imports via esm.sh, pinned at `0.2.1`) — same shape as if a third party had built a TNC2 terminal on the library. It has no build step, no node_modules, no package.json; just `index.html` (the demo) + `README.md` (with the deploy URL + command reference) + the new repo's scaffolding. The previous full path was nested four levels deep (`web/ax25/examples/packet-terminal/...`) for monorepo-organisational reasons that no longer apply.
+
+**How.** Cloned packet.net, ran `git filter-repo --subdirectory-filter web/ax25/examples/packet-terminal` to extract the subtree with history (5 commits that touched the directory survived; the rest were dropped). Pushed to https://github.com/m0lte/packet-term-web as a fresh `main`. Added LICENSE (MIT, copied from packet.net) and a tailored CLAUDE.md (key rule: no build step ever — the ESM-via-CDN model is deliberate, lets non-developers fork the file).
+
+**Visibility decision.** Public. Unlike `m0lte/ax25sdl` (private), this repo doesn't carry self-hosted-runner risk — there's no CI to run on fork PRs. The content is already publicly served from packet-term.m0lte.uk anyway.
+
+**This PR removes the directory from packet.net.** No other changes — no references elsewhere in this repo to update (only historical amendment-log entries mention the old path, and those describe past state correctly). The deploy at https://packet-term.m0lte.uk is unaffected; this is purely a source-of-truth move.
+
+**Independent of the parked npm-publish-from-ax25sdl issue.** The demo pins `@packet-net/ax25@0.2.1` (already on npm), so it doesn't depend on the upstream-publish path being live.
+
 ### 2026-05-17 — set up NuGet publishing for the Packet.NET libraries
 
 Phase 2.5 of the 5-repo split — sets up `m0lte/packet.net` itself as a NuGet publisher for the .NET libraries downstream apps (the upcoming `m0lte/packet-term-tui` being the first) will consume. Matches the pattern proven by `m0lte/ax25sdl`'s `Packet.Ax25.Sdl` publish.
