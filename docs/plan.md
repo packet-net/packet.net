@@ -833,6 +833,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-17 — Packet.Term: hot-swap MYCALL/port, Esc-to-quit, CLI-ephemeral
+
+Three follow-ups on #152 (Terminal.Gui v2 refactor), driven by Tom needing to run two parallel Packet.Term instances in one directory and have each one's MYCALL configurable at runtime.
+
+**Hot-swap MYCALL + port.** The Settings dialog now applies changes immediately rather than "binds on next launch". On OK, `MainWindow.ReconfigureAsync` runs on a background task: disconnects any active session, opens the new modem (if port changed), disposes the old runner + modem, builds a fresh `SessionRunner` with the new MYCALL, restarts the listener pump, and refreshes window title + status bar. Failures during modem-open preserve the current configuration and surface a MessageBox; runtime errors during disconnect don't block the swap. Same-config no-ops cleanly. `myCall` / `portName` / `modem` / `runner` are no longer `readonly`. Modem ownership transferred from `Program` to `MainWindow`.
+
+**F10 → Esc for Quit.** F10 in Terminal.Gui v2 is hardcoded as the MenuBar activator (Turbo Vision idiom); a status-bar `Shortcut` bound to F10 was shadowed by the framework and never fired. Status bar now shows `Esc=Quit`. The menu still has `File → Exit (Ctrl-Q)`. F10 stays as the menu-activator implicitly.
+
+**CLI-ephemeral persistence.** When both `--mycall` and `--port` are supplied on the command line, `AppContext.PersistenceEnabled` flips to `false` and `SaveSettings()` becomes a no-op for the rest of the run. The shared settings JSON file isn't clobbered by parallel instances each driven by their own CLI args. Boot prints a one-line notice so the user knows persistence is off. Without both flags, behaviour is unchanged (prompts on first-launch + settings remembered for next time).
+
 ### 2026-05-17 — Interop budget bumps (C# RxBudget + TS waitForNext) for AFSK-sim flake
 
 Bumps the interop-test budgets that were timing out under host-CPU contention from the AFSK1200 software sim. The XRouter-misattribution investigation (see 2026-05-16 entry just below) identified this as the actual flake — when the interop runner is loaded, the AFSK round-trip latency spikes above the original budgets and tests cancel before frames arrive. CI's self-hosted runner has more headroom than local laptops but isn't immune; on the post-#149 run both #150 and #151 hit it on every interop run.

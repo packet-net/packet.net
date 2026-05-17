@@ -36,9 +36,12 @@ internal sealed class MainWindow : Window
     private const int ChatLogCapacity = 200;
 
     private readonly IApplication app;
-    private readonly Callsign myCall;
-    private readonly string portName;
-    private readonly SessionRunner runner;
+    // myCall / portName / modem / runner are mutable so the Settings dialog
+    // can hot-swap them at runtime — see ReconfigureAsync.
+    private Callsign myCall;
+    private string portName;
+    private KissSerialModem modem;
+    private SessionRunner runner;
     // Not `readonly`: the View → "Clear ..." menu commands swap in a fresh
     // buffer rather than touching RingBuffer's internals (kept as-is per
     // the brief).
@@ -48,6 +51,8 @@ internal sealed class MainWindow : Window
     private readonly TextView monitorView;
     private readonly TextView chatView;
     private readonly TextField inputField;
+    private readonly Shortcut statusIdentity;
+    private readonly Shortcut statusPort;
     private readonly Shortcut statusLink;
     private readonly MenuItem acceptIncomingMenuItem;
 
@@ -63,7 +68,7 @@ internal sealed class MainWindow : Window
         this.app = app ?? throw new ArgumentNullException(nameof(app));
         this.myCall = myCall;
         this.portName = portName ?? throw new ArgumentNullException(nameof(portName));
-        ArgumentNullException.ThrowIfNull(modem);
+        this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
 
         Title = $"Packet.Term {AppInfo.Version}  —  MYCALL {FormatCallsign(myCall)}  port {portName} @ 57600";
         BorderStyle = LineStyle.None;
@@ -133,12 +138,18 @@ internal sealed class MainWindow : Window
         inputField.Accepting += OnInputAccepting;
 
         // ─── StatusBar (bottom row) ───────────────────────────────────
-        var statusIdentity = new Shortcut(Key.Empty, FormatCallsign(myCall), null);
-        var statusPort = new Shortcut(Key.Empty, portName, null);
+        // Identity + port are stored as fields so the Settings-dialog
+        // hot-swap path can mutate their Title without rebuilding the bar.
+        // F10 is intentionally NOT bound here for Quit — Terminal.Gui v2
+        // hardcodes F10 as the MenuBar activator (the Turbo Vision idiom),
+        // so a status-bar Shortcut on F10 is shadowed by the framework
+        // and never fires. Esc reaches the user reliably from any focus.
+        statusIdentity = new Shortcut(Key.Empty, FormatCallsign(myCall), null);
+        statusPort = new Shortcut(Key.Empty, portName, null);
         statusLink = new Shortcut(Key.Empty, "DISCONNECTED", null);
         var statusConnect = new Shortcut(Key.F2, "Conn", () => PromptConnect());
         var statusDisconnect = new Shortcut(Key.F3, "Disc", () => InitiateDisconnect());
-        var statusQuit = new Shortcut(Key.F10, "Quit", () => app.RequestStop());
+        var statusQuit = new Shortcut(Key.Esc, "Quit", () => app.RequestStop());
 
         var statusBar = new StatusBar(new[]
         {
@@ -319,35 +330,132 @@ internal sealed class MainWindow : Window
 
     private void PromptSettings()
     {
-        var dialog = new SettingsDialog(AppContext.Settings.MyCall ?? FormatCallsign(myCall),
-                                        AppContext.Settings.SerialPort ?? portName);
+        // Pre-fill with the LIVE config (mutable myCall / portName) rather
+        // than the saved settings — the user expects "edit what's currently
+        // running", not "edit what's persisted".
+        var dialog = new SettingsDialog(FormatCallsign(myCall), portName);
         app.Run(dialog);
         if (dialog.Canceled)
         {
             return;
         }
 
-        var newCall = dialog.MyCallResult;
-        var newPort = dialog.PortResult;
+        var newCallStr = dialog.MyCallResult ?? string.Empty;
+        var newPortStr = (dialog.PortResult ?? string.Empty).Trim();
 
-        if (!string.IsNullOrWhiteSpace(newCall))
+        if (string.IsNullOrWhiteSpace(newCallStr) || string.IsNullOrWhiteSpace(newPortStr))
         {
-            if (!Callsign.TryParse(newCall, out _))
-            {
-                MessageBox.ErrorQuery(app, "Invalid callsign",
-                    $"\"{newCall}\" doesn't parse. Settings not saved.", "OK");
-                return;
-            }
-            AppContext.Settings.MyCall = newCall;
+            MessageBox.ErrorQuery(app, "Settings incomplete",
+                "Both MYCALL and serial port must be set.", "OK");
+            return;
         }
-        if (!string.IsNullOrWhiteSpace(newPort))
+        if (!Callsign.TryParse(newCallStr, out var newCall))
         {
-            AppContext.Settings.SerialPort = newPort;
+            MessageBox.ErrorQuery(app, "Invalid callsign",
+                $"\"{newCallStr}\" doesn't parse. Settings unchanged.", "OK");
+            return;
         }
+
+        // Update the persisted settings (no-op if PersistenceEnabled=false,
+        // i.e. CLI-driven instances).
+        AppContext.Settings.MyCall = newCallStr;
+        AppContext.Settings.SerialPort = newPortStr;
         AppContext.SaveSettings();
 
-        MessageBox.Query(app, "Settings saved",
-            "MYCALL / port changes take effect on the next launch.", "OK");
+        // Hot-swap. Runs on a background task so the UI thread stays
+        // responsive; ReconfigureAsync marshals UI updates back via
+        // app.Invoke.
+        _ = Task.Run(() => ReconfigureAsync(newPortStr, newCall));
+    }
+
+    /// <summary>
+    /// Apply a live MYCALL / port change without restarting the process.
+    /// Disconnects any active session, disposes the runner (and the modem
+    /// if the port is changing), reopens the modem on the new port if
+    /// needed, builds a fresh runner with the new MYCALL, and resumes
+    /// pumping. UI status bar + window title refresh once the new pump
+    /// is live.
+    /// </summary>
+    private async Task ReconfigureAsync(string newPortName, Callsign newMyCall)
+    {
+        var portChanged = !string.Equals(newPortName, portName, StringComparison.Ordinal);
+        var callChanged = !newMyCall.Equals(myCall);
+        if (!portChanged && !callChanged)
+        {
+            app.Invoke(() => AppendChat("*** Settings unchanged."));
+            return;
+        }
+
+        app.Invoke(() => AppendChat(
+            $"*** Reconfiguring: MYCALL={FormatCallsign(newMyCall)} port={newPortName} ..."));
+
+        // 1. Disconnect active session (best-effort; we proceed regardless).
+        if (linkState != LinkState.Disconnected)
+        {
+            try
+            {
+                await runner.DisconnectAsync(TimeSpan.FromSeconds(5), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // proceed anyway — the runner is about to be disposed
+            }
+        }
+
+        // 2. Open the new modem FIRST (if port changing). Doing this before
+        //    disposing the current modem means a failed open leaves us with
+        //    a working configuration to fall back to.
+        KissSerialModem newModem = modem;
+        if (portChanged)
+        {
+            try
+            {
+                newModem = KissSerialModem.Open(newPortName);
+            }
+            catch (Exception ex)
+            {
+                app.Invoke(() => MessageBox.ErrorQuery(app, "Modem open failed",
+                    $"Couldn't open {newPortName}: {ex.Message}\n\nKeeping current configuration.",
+                    "OK"));
+                return;
+            }
+        }
+
+        // 3. Stop + dispose old runner. (Always — the listener is bound
+        //    to a specific MyCall at construction, so a call change alone
+        //    still requires a rebuild.)
+        try { runnerCts?.Cancel(); } catch { /* swallow */ }
+        try { runner.Dispose(); } catch { /* swallow */ }
+        try { runnerCts?.Dispose(); } catch { /* swallow */ }
+        runnerCts = null;
+
+        // 4. Swap modem (if port changed).
+        if (portChanged)
+        {
+            try { modem.Dispose(); } catch { /* swallow */ }
+            modem = newModem;
+        }
+
+        myCall = newMyCall;
+        portName = newPortName;
+
+        // 5. Build the new runner + restart the pump.
+        runner = new SessionRunner(modem, myCall, OnRunnerChatLine, OnRunnerLinkStateChanged);
+        runner.FrameTraced += OnRunnerFrameTraced;
+        runnerCts = new CancellationTokenSource();
+        _ = runner.Start(runnerCts.Token);
+
+        // 6. Refresh UI bits the user notices.
+        app.Invoke(() =>
+        {
+            Title = $"Packet.Term {AppInfo.Version}  —  MYCALL {FormatCallsign(myCall)}  port {portName} @ 57600";
+            statusIdentity.Title = FormatCallsign(myCall);
+            statusPort.Title = portName;
+            AppendChat($"*** Reconfigured: MYCALL={FormatCallsign(myCall)} port={portName}");
+            // statusbar layout may need a kick if Title widths changed.
+            SetNeedsLayout();
+        });
     }
 
     private void ShowAbout()
@@ -472,6 +580,9 @@ internal sealed class MainWindow : Window
             try { runnerCts?.Cancel(); } catch { /* swallowed */ }
             try { runner.Dispose(); } catch { /* swallowed */ }
             try { runnerCts?.Dispose(); } catch { /* swallowed */ }
+            // MainWindow owns the modem (Program transferred it at
+            // construction); dispose it here so the serial port closes.
+            try { modem.Dispose(); } catch { /* swallowed */ }
         }
         base.Dispose(disposing);
     }

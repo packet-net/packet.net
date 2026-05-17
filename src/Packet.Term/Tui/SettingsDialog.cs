@@ -5,10 +5,12 @@ using Terminal.Gui.Views;
 namespace Packet.Term.Tui;
 
 /// <summary>
-/// Modal "Settings" dialog — edit MYCALL and serial port. Changes are
-/// persisted by the caller via <see cref="AppContext.SaveSettings"/>; the
-/// dialog itself is purely a form. MYCALL changes don't hot-swap the
-/// listener — the next launch picks them up.
+/// Modal "Settings" dialog — edit MYCALL and serial port. The dialog is
+/// purely a form; the caller (MainWindow.PromptSettings) persists changes
+/// via <see cref="AppContext.SaveSettings"/> and applies them at runtime
+/// via MainWindow's reconfigure flow — the listener is disposed and
+/// rebuilt, the modem is reopened if the port changes, and any active
+/// session is dropped.
 /// </summary>
 internal sealed class SettingsDialog : Dialog
 {
@@ -64,7 +66,7 @@ internal sealed class SettingsDialog : Dialog
         {
             X = 1,
             Y = 7,
-            Text = "MYCALL / port changes take effect on next launch.",
+            Text = "Changes apply immediately. Active session will be dropped.",
         };
 
         var ok = new Button

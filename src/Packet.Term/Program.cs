@@ -29,6 +29,19 @@ public static class Program
 
         AppContext.Load();
 
+        // When MYCALL and port are both supplied via CLI, treat this run
+        // as ephemeral — disable settings persistence so two parallel
+        // instances started with their own --mycall and --port don't race
+        // on the shared settings.json. The Connect-target history and
+        // any Settings-dialog changes during this run won't survive to
+        // disk, which is the right trade-off when the CLI is the source
+        // of truth for identity + port.
+        if (!string.IsNullOrWhiteSpace(opts.MyCall) && !string.IsNullOrWhiteSpace(opts.Port))
+        {
+            AppContext.PersistenceEnabled = false;
+            Console.WriteLine("Packet.Term: --mycall + --port both provided, settings persistence disabled for this run.");
+        }
+
         // Resolve MYCALL: --mycall > settings > prompt.
         var myCallStr = opts.MyCall ?? AppContext.Settings.MyCall;
         if (string.IsNullOrWhiteSpace(myCallStr))
@@ -92,10 +105,10 @@ public static class Program
 
         try
         {
-            using (modem)
-            {
-                PacketTermApp.Run(myCall, portName, modem, autoConnect);
-            }
+            // MainWindow takes ownership of the modem now — it may swap
+            // to a different port at runtime via the Settings dialog.
+            // Don't wrap with `using` here; MainWindow.Dispose handles it.
+            PacketTermApp.Run(myCall, portName, modem, autoConnect);
         }
         catch (Exception ex)
         {

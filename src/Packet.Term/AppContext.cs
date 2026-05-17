@@ -22,6 +22,15 @@ internal static class AppContext
     /// <summary>Path the settings round-trip through.</summary>
     public static string SettingsPath { get; private set; } = AppSettings.DefaultPath;
 
+    /// <summary>
+    /// When <c>false</c>, <see cref="SaveSettings"/> is a no-op. Set this
+    /// at boot when MYCALL and port are both fully specified on the CLI —
+    /// in that case the launch is treated as ephemeral, so parallel
+    /// instances driven by their own CLI flags can run side-by-side in
+    /// the same directory without racing on the shared settings file.
+    /// </summary>
+    public static bool PersistenceEnabled { get; set; } = true;
+
     /// <summary>Initialise <see cref="Settings"/> from <paramref name="path"/>.</summary>
     public static void Load(string? path = null)
     {
@@ -32,6 +41,7 @@ internal static class AppContext
     /// <summary>Persist <see cref="Settings"/> to <see cref="SettingsPath"/>.</summary>
     public static void SaveSettings()
     {
+        if (!PersistenceEnabled) return;
         try
         {
             Settings.Save(SettingsPath);
