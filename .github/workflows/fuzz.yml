@@ -1,0 +1,82 @@
+name: fuzz
+
+# Nightly SharpFuzz smoke run against AX.25 + KISS parsers
+# (SP-004 / docs/plan.md §7). Hits Packet.Fuzz's in-process smoke mode
+# with a much higher iteration count than the default 1000, mutating
+# the seed corpus and generating structured + random inputs.
+#
+# On any unhandled exception, the smoke run exits non-zero and the job
+# fails — Tom sees a red workflow on his nightly digest and any new
+# crash inputs land in the workflow artifacts for triage.
+
+on:
+  schedule:
+    # Nightly at 02:17 UTC — same minute as the existing interop nightly
+    # to keep them spaced apart from any half-hour scheduled chaos.
+    - cron: '17 2 * * *'
+  pull_request:
+    branches: [main]
+    paths:
+      # Run on PRs that touch the fuzzer itself, the targets, or this
+      # workflow — so changes to Ax25Frame.TryParse / KissDecoder get
+      # an immediate smoke signal rather than waiting for the nightly.
+      - 'src/Packet.Ax25/**'
+      - 'src/Packet.Kiss/**'
+      - 'tools/Packet.Fuzz/**'
+      - '.github/workflows/fuzz.yml'
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Iterations per parser (default 1000000)'
+        required: false
+        default: '1000000'
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  smoke:
+    name: smoke (${{ github.event_name == 'workflow_dispatch' && inputs.iterations || '1000000' }} iterations)
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: report .NET
+        run: dotnet --version
+
+      - name: build fuzzer
+        run: dotnet build tools/Packet.Fuzz/Packet.Fuzz.csproj --configuration Release --nologo
+
+      - name: smoke run
+        id: smoke
+        run: |
+          iterations="${{ github.event_name == 'workflow_dispatch' && inputs.iterations || '1000000' }}"
+          # --smoke <iterations> <seed> — fixed seed for reproducibility;
+          # any failure here re-runs deterministically in workflow_dispatch
+          # with the same seed. Tee stdout so the log survives the run
+          # for upload-on-failure (smoke prints grouped exception types
+          # + sample input hex per finding).
+          dotnet run --project tools/Packet.Fuzz --configuration Release --no-build -- \
+            --smoke "${iterations}" 305419896 \
+            2>&1 | tee fuzz-smoke.log
+          # Preserve the exit code from `dotnet run`, not from tee.
+          exit "${PIPESTATUS[0]}"
+
+      - name: upload smoke log
+        if: failure()
+        # Only on a finding — successful runs are summarised in the
+        # workflow stdout (clean: N inputs, no throws), no artifact needed.
+        # Saves org-wide artifact storage quota for the runs that matter.
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-smoke-log-${{ github.run_number }}
+          path: fuzz-smoke.log
+          if-no-files-found: warn
+          retention-days: 30

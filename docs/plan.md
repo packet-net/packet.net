@@ -837,6 +837,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-19 — nightly fuzz workflow shipped (SP-004 / §7)
+
+`.github/workflows/fuzz.yml` lands the nightly SharpFuzz smoke run §7 promised. Triggers: nightly at 02:17 UTC, on-PR for any PR touching `src/Packet.Ax25/`, `src/Packet.Kiss/`, `tools/Packet.Fuzz/`, or the workflow itself, plus `workflow_dispatch`.
+
+Defaults to **1,000,000 iterations per parser** (Ax25Frame.TryParse + KissDecoder.Push) — 1000× the previous smoke default. Local runtime ≈ 8 seconds total, so §7's "1 h per target" target is comfortably under-budget; can crank further via the workflow_dispatch `iterations` input if desired.
+
+On a finding: exit code 2, job goes red, `fuzz-smoke.log` uploaded as artifact (only on failure — successful runs are summarised in workflow stdout, no need to burn artifact quota). Reproduction: same seed (`305419896`) replays the same input sequence locally.
+
+Closes [#179](https://github.com/m0lte/packet.net/issues/179).
+
 ### 2026-05-19 — adopt GitHub Issues as the open-work tracker; plan.md becomes the narrative anchor
 
 Open work that used to live as paragraphs inside `plan.md` (phases 2–10, the spike backlog SP-001 through SP-009, the hardware-arrival playbook §5.Y, and the open-questions table §15) is now mirrored as GitHub Issues — one per trackable item. The plan keeps the narrative shape, the issues hold day-to-day status / claim / discussion.
