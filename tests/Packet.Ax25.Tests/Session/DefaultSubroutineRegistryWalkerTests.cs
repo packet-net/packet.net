@@ -21,10 +21,15 @@ public class DefaultSubroutineRegistryWalkerTests
     [Fact]
     public void KnownSubroutines_Reflects_Generated_Specs_Plus_Legacy_Aliases()
     {
-        // figc4.7 redraw declares 13 subroutines; the registry also exposes
-        // 2 legacy aliases (Enquiry_Response_F_0 / _F_1) referenced by
-        // pre-redraw YAML pages.
-        DefaultSubroutineRegistry.KnownSubroutines.Should().HaveCount(15);
+        // Packet.Ax25.Sdl v0.5.0's figc4.7 transcription emits 11
+        // subroutines (was 13 — Establish_Data_Link and
+        // Establish_Extended_Data_Link are skipped pending the n50
+        // missing-edge graphml fix at m0lte/ax25sdl#11; supplied
+        // hand-coded for now). The registry also exposes 4 legacy
+        // aliases — the historic Enquiry_Response_F_0 / _F_1, plus the
+        // post-rename aliases Select_T1_Value / Check_Need_For_Response
+        // emitted as action verbs by older state-machine yamls.
+        DefaultSubroutineRegistry.KnownSubroutines.Should().HaveCount(17);
         DefaultSubroutineRegistry.KnownSubroutines.Should().Contain(new[]
         {
             "N_r_Error_Recovery",
@@ -68,11 +73,11 @@ public class DefaultSubroutineRegistryWalkerTests
         {
             "Set Half Duplex",
             "Set Implicit Reject",
-            "Modulo <- 8",
-            "N1 <- 2048",
-            "k <- 8",
-            "T2 <- 3000",
-            "N2 <- 10",
+            "Modulo := 8",
+            "N1 := 2048",
+            "k := 8",
+            "T2 := 3000",
+            "N2 := 10",
         });
     }
 
@@ -133,7 +138,7 @@ public class DefaultSubroutineRegistryWalkerTests
 
         actionsExecuted.Should().Equal(new[]
         {
-            "N(r) <- V(r)",
+            "N(r) := V(r)",
             "RR Response",
             "Clear Acknowledge Pending",
         });

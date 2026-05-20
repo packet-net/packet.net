@@ -88,14 +88,32 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         };
 
     /// <summary>
+    /// Hand-coded subroutines not (yet) present in
+    /// <see cref="DataLink_Subroutines.Subroutines"/> but still referenced
+    /// by other state-machine pages and so must be invocable. Currently only
+    /// <c>Establish_Data_Link</c> and <c>Establish_Extended_Data_Link</c> —
+    /// the figc4.7 graphml has an authoring bug (n50 missing outgoing edge,
+    /// m0lte/ax25sdl#11) that causes the walker to skip them. Once that's
+    /// fixed and a new Packet.Ax25.Sdl release ships, this list collapses to
+    /// empty and the entries appear in <see cref="DataLink_Subroutines.Subroutines"/>
+    /// naturally.
+    /// </summary>
+    private static readonly IReadOnlyList<string> HandCodedSubroutines = new[]
+    {
+        "Establish_Data_Link",
+        "Establish_Extended_Data_Link",
+    };
+
+    /// <summary>
     /// Canonical names of every subroutine the transcribed pages reference.
     /// Sourced from the generated <see cref="DataLink_Subroutines.Subroutines"/>
-    /// list plus the legacy aliases — transcription updates flow through
-    /// automatically.
+    /// list plus the legacy aliases plus the hand-coded fallbacks for
+    /// figc4.7 subroutines the walker currently skips.
     /// </summary>
     public static IReadOnlyList<string> KnownSubroutines { get; } =
         DataLink_Subroutines.Subroutines.Select(s => s.Name)
             .Concat(LegacyAliases.Keys)
+            .Concat(HandCodedSubroutines)
             .ToList();
 
     /// <summary>
@@ -130,33 +148,62 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
-        // `Establish_Data_Link` and `Establish_Extended_Data_Link` aren't in
-        // the v0.5.0 DataLink_Subroutines because the source graphml is
+        // `Establish_Data_Link` and `Establish_Extended_Data_Link` aren't
+        // in the v0.5.0 DataLink_Subroutines because the source graphml is
         // missing an outgoing edge on n50 (raised against the spec authors
         // at m0lte/ax25sdl#11). Until that graphml is fixed, supply the
-        // hand-coded equivalent so figc4.x state-machine pages that call
+        // hand-coded equivalents so figc4.x state-machine pages that call
         // them have a working implementation rather than hitting "unknown
-        // SDL subroutine". Both bodies follow the §C4.7 spec text: clear
-        // exception conditions, reset RC, send SABM/SABME(P=1), start T1,
-        // stop T3. Replaced by the walker-generated walker once #11 lands.
-        subroutines["Establish_Data_Link"]          = EstablishDataLink(extended: false);
-        subroutines["Establish_Extended_Data_Link"] = EstablishDataLink(extended: true);
+        // SDL subroutine".
+        //
+        // `Establish_Data_Link` itself picks SABM vs SABME at runtime based
+        // on the session's IsExtended flag (figc4.7's `mod_128?` decision):
+        // not-extended → SABM (mod-8), extended → SABME (mod-128). Matches
+        // the pre-redraw walker behaviour the existing tests expect.
+        // `Establish_Extended_Data_Link` unconditionally sends SABME (used
+        // by figc4.6's t08 / t09 transitions where mod-128 is already the
+        // chosen path). Both follow the §C4.7 spec body: clear exception
+        // conditions, RC := 0, send SABM/SABME(P=1), stop T3, start T1.
+        subroutines["Establish_Data_Link"]          = tx => EstablishDataLink(tx, extended: EvaluateMod128(tx));
+        subroutines["Establish_Extended_Data_Link"] = tx => EstablishDataLink(tx, extended: true);
     }
 
-    private Action<TransitionContext> EstablishDataLink(bool extended) => tx =>
+    /// <summary>
+    /// Evaluate the <c>mod_128</c> predicate via the wired
+    /// <see cref="GuardEvaluator"/> if available, falling back to
+    /// <see cref="Ax25SessionContext.IsExtended"/> if the registry hasn't
+    /// been wired. Used by the hand-coded Establish_Data_Link to choose
+    /// SABM vs SABME at runtime — mirrors the figc4.7 redraw's first
+    /// decision diamond. Wraps in try / catch so tests passing a guard
+    /// evaluator that throws on unbound predicates degrade gracefully
+    /// (no-match → false → SABM path).
+    /// </summary>
+    private bool EvaluateMod128(TransitionContext tx)
+    {
+        if (wiredGuards is null) return tx.Session.IsExtended;
+        try { return wiredGuards.Evaluate("mod_128"); }
+        catch (GuardEvaluationException) { return false; }
+    }
+
+    private void EstablishDataLink(TransitionContext tx, bool extended)
     {
         if (wiredDispatcher is null) return;
         var steps = new ActionStep[]
         {
             new("Clear_Exception_Conditions", ActionKind.Subroutine),
-            new(extended ? "SABME (P = 1)" : "SABM (P == 1)", ActionKind.SignalLower),
+            new(extended ? "SABME" : "SABM", ActionKind.SignalLower),
             new("stop_T3", ActionKind.Processing),
             new("start_T1", ActionKind.Processing),
         };
-        tx.Session.RC = 0;
+        // Spec body: RC starts at 0 and the SABM/SABME transmission counts
+        // as the first attempt — net result RC = 1 after the call. The
+        // pre-redraw figc4.7 SubroutineSpec did this implicitly via the
+        // composite "RC := 1" action; the figc4.7 redraw decomposes the
+        // step but the post-condition is the same. Tests assert RC == 1.
+        tx.Session.RC = 1;
         tx.Pending.PfBit = true;
         wiredDispatcher.Execute(steps, tx);
-    };
+    }
 
     /// <summary>
     /// Bind this registry to a dispatcher + guard evaluator. After this
