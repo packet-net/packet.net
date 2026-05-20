@@ -116,7 +116,7 @@ public class DataLinkConnectedSmokeTests
                 ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
                 ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
                 ["TimerRecovery"]        = Array.Empty<TransitionSpec>(),
-                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
             },
             initialState: "Connected");
         return (session, recorder, guards);

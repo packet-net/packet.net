@@ -51,7 +51,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t03_i_received_command_info_field_invalid_v22");
         t.On.Should().Be("I_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("command and not info_field_valid and version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_O");
@@ -81,7 +81,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t05_i_received_command_info_valid_nr_out_of_window_v22");
         t.On.Should().Be("I_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("command and info_field_valid and not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(1);
         t.Actions[0].Verb.Should().Be("N_r_Error_Recovery");
@@ -485,7 +485,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t29_dl_connect_request_v22");
         t.On.Should().Be("DL_CONNECT_request");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("discard_I_frame_queue");
@@ -523,7 +523,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t32_control_field_error_v22");
         t.On.Should().Be("control_field_error");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(4);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_L");
@@ -557,7 +557,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t34_info_not_permitted_in_frame_v22");
         t.On.Should().Be("info_not_permitted_in_frame");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(4);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_M");
@@ -591,7 +591,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t36_u_or_s_frame_length_error_v22");
         t.On.Should().Be("u_or_s_frame_length_error");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(4);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_N");
@@ -781,7 +781,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t44_frmr_received_v22");
         t.On.Should().Be("FRMR_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_K");
@@ -811,7 +811,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t46_ua_received_v22");
         t.On.Should().Be("UA_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("DL_ERROR_indication_K");
@@ -918,7 +918,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t53_rr_received_nr_out_of_window_v22");
         t.On.Should().Be("RR_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
@@ -963,7 +963,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t56_rnr_received_nr_out_of_window_v22");
         t.On.Should().Be("RNR_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("set_peer_receiver_busy");
@@ -1079,7 +1079,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t62_srej_received_nr_out_of_window_v22");
         t.On.Should().Be("SREJ_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");
@@ -1134,7 +1134,7 @@ public class DataLink_Connected_GeneratedTests
     {
         var t = DataLink_Connected.Transitions.Single(x => x.Id == "t65_rej_received_nr_out_of_window_v22");
         t.On.Should().Be("REJ_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Guard.Should().Be("not V_a_le_N_r_le_V_s and version_2_2");
         t.Actions.Count.Should().Be(3);
         t.Actions[0].Verb.Should().Be("clear_peer_receiver_busy");

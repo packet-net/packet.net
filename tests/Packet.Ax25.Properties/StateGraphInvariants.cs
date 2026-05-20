@@ -38,7 +38,7 @@ public class StateGraphInvariants
         yield return (nameof(DataLink_AwaitingConnection),   DataLink_AwaitingConnection.Transitions);
         yield return (nameof(DataLink_AwaitingRelease),      DataLink_AwaitingRelease.Transitions);
         yield return (nameof(DataLink_Connected),            DataLink_Connected.Transitions);
-        yield return (nameof(DataLink_AwaitingConnection22), DataLink_AwaitingConnection22.Transitions);
+        yield return (nameof(DataLink_AwaitingV22Connection), DataLink_AwaitingV22Connection.Transitions);
     }
 
     /// <summary>
@@ -53,7 +53,7 @@ public class StateGraphInvariants
         "AwaitingConnection",
         "AwaitingRelease",
         "Connected",
-        "AwaitingConnection22",
+        "AwaitingV22Connection",
 
         // Not-yet-transcribed Data-Link states, referenced as `next:` from
         // transcribed ones. Permitted destinations even though no table

@@ -104,11 +104,71 @@ public sealed class GuardEvaluator
         var ident = tokens[idx++];
         if (!bindings.TryGetValue(ident, out var pred))
         {
-            throw new GuardEvaluationException($"unbound identifier '{ident}' in '{original}' — add a binding before evaluating this guard");
+            // The codegen has historically emitted predicate names in two
+            // shapes: the early hand-authored style (`V_s_eq_V_a`,
+            // `acknowledge_pending`, `srej_enabled`) and the post-walker-
+            // normalisation style introduced in Packet.Ax25.Sdl v0.5.0
+            // (`vs_eq_va`, `ack_pending`, `SREJ_enabled`). Bindings get
+            // registered under the historic spelling; when a guard
+            // references the new spelling, fall back to the canonical name.
+            // If a caller has overridden the canonical binding (typical in
+            // smoke tests), that override is preserved — the alias resolves
+            // at evaluation time against whatever's in the dictionary now.
+            if (PredicateAliases.TryGetValue(ident, out var canonical)
+                && bindings.TryGetValue(canonical, out pred))
+            {
+                // matched via alias; fall through
+            }
+            else
+            {
+                throw new GuardEvaluationException($"unbound identifier '{ident}' in '{original}' — add a binding before evaluating this guard");
+            }
         }
         var value = pred();
         return negate ? !value : value;
     }
+
+    /// <summary>
+    /// Maps post-walker-normalisation predicate names (the spelling
+    /// <c>Packet.Ax25.Sdl</c> v0.5.0+ emits after operator-character
+    /// rewriting) to the historic canonical binding name registered by
+    /// <see cref="Ax25SessionBindings.CreateDefault"/>. Used as a fallback
+    /// when the literal name isn't in the bindings dictionary, so guards
+    /// from regenerated yamls resolve against the same closures the
+    /// original code expected — including any test-time overrides.
+    /// </summary>
+    private static readonly Dictionary<string, string> PredicateAliases =
+        new(StringComparer.Ordinal)
+        {
+            // Sequence-variable comparisons — post-normalisation drops the
+            // V_s / V_a / N_r etc. underscores and lowercases the lot.
+            ["vs_eq_va"]                                      = "V_s_eq_V_a",
+            ["vs_eq_va_plus_k"]                               = "V_s_eq_V_a_plus_k",
+            ["vs_eq_X"]                                       = "v_s_eq_x",
+            ["ns_eq_vr"]                                      = "N_s_eq_V_r",
+            ["ns_gt_vr_plus_1"]                               = "N_s_gt_V_r_plus_1",
+            ["va_le_nr_le_vs"]                                = "V_a_le_N_r_le_V_s",
+            ["nr_eq_vs"]                                      = "n_r_eq_v_s",
+            ["nr_eq_va"]                                      = "n_r_eq_v_a",
+
+            // Compound flags — operator-character substitution turns `&` /
+            // `||` into `_and_` / `_or_` and preserves spec-variable casing
+            // (so `P` and `F` stay capital).
+            ["command_and_P_eq_1"]                                              = "command_and_p_eq_1",
+            ["response_and_F_eq_1"]                                             = "response_and_f_eq_1",
+            ["F_eq_1_and_frame_eq_RR_or_frame_eq_RNR_or_frame_eq_I"]            = "f_eq_1_and_supervisory_or_i",
+            ["info_field_length_le_N1_and_content_is_octet_aligned"]            = "info_field_valid",
+
+            // Flag aliases.
+            ["peer_busy"]                                     = "peer_receiver_busy",
+            ["own_receive_busy"]                              = "own_receiver_busy",   // SDL typo: missing 'r'
+            ["ACK_pending"]                                   = "acknowledge_pending",
+            ["ack_pending"]                                   = "acknowledge_pending",
+            ["RC_eq_0"]                                       = "rc_eq_0",
+            ["T1_expired"]                                    = "t1_expired",
+            ["SREJ_enabled"]                                  = "srej_enabled",
+            ["sreject_exception_gt_0"]                        = "srej_exception_gt_0",
+        };
 }
 
 /// <summary>Thrown when a guard expression is malformed or references unbound identifiers.</summary>

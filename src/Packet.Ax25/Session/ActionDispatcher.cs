@@ -224,6 +224,17 @@ public sealed class ActionDispatcher : IActionDispatcher
         var ctx = tx.Session;
         var scheduler = tx.Scheduler;
 
+        // Resolve walker-emitted verb spellings (Packet.Ax25.Sdl v0.5.0+
+        // emits verbatim figure text — `"UI Check"`, `"DL-DISCONNECT Confirm"`,
+        // `"Set Own Receiver Busy"`, etc.) onto the canonical case-label
+        // form the switch below expects. The map is documentation of the
+        // codegen→runtime rename history; expand it as new verbs appear in
+        // future SDL pages rather than adding fallthrough cases inline.
+        if (ActionVerbAliases.TryGetValue(action, out var canonical))
+        {
+            action = canonical;
+        }
+
         switch (action)
         {
             // ─── Flag mutations ────────────────────────────────────────
@@ -964,4 +975,132 @@ public sealed class ActionDispatcher : IActionDispatcher
         }
         return reversed;
     }
+
+    /// <summary>
+    /// Maps verb spellings emitted by <c>Packet.Ax25.Sdl</c> v0.5.0+ (where
+    /// the walker preserves verbatim figure text — including spaces, parens,
+    /// hyphens, and the <c>:=</c> assignment operator) onto the canonical
+    /// case-label spellings the dispatcher's switch already handles.
+    /// Maintain this table as new SDL pages land rather than adding parallel
+    /// fallthrough cases; the runtime semantics for each alias is identical
+    /// to its canonical target.
+    /// </summary>
+    private static readonly Dictionary<string, string> ActionVerbAliases =
+        new(StringComparer.Ordinal)
+        {
+            // Subroutine call verbs (kind: subroutine). v0.5.0 emits the
+            // verb verbatim from the figure ("Title Case With Spaces");
+            // dispatcher case-labels use the underscored canonical form.
+            ["UI Check"]                          = "UI_Check",
+            ["UI Command"]                        = "UI_command",
+            ["Establish Data Link"]               = "Establish_Data_Link",
+            ["Establish Extended Data Link"]      = "Establish_Extended_Data_Link",
+            ["Clear Exception Conditions"]        = "Clear_Exception_Conditions",
+            ["Select T1 Value"]                   = "Select_T1_Value",
+            ["Select T1"]                         = "Select_T1_Value",
+            ["Check I Frame Acknowledged"]        = "Check_I_Frame_Acknowledged",
+            ["Check I Frames Acknowledged"]       = "Check_I_Frames_Acknowledged",
+            ["Check Need For Response"]           = "Check_Need_For_Response",
+            ["Check Need for Response"]           = "Check_Need_For_Response",
+            ["Transmit Enquiry"]                  = "Transmit_Enquiry",
+            ["Transmit Enquery"]                  = "Transmit_Enquiry",     // figure typo
+            ["Invoke Retransmission"]             = "Invoke_Retransmission",
+            ["N(r) Error Recovery"]               = "N_r_Error_Recovery",
+            ["N(r) Recovery"]                     = "N_r_Error_Recovery",
+            ["Enquiry Response (F = 0)"]          = "Enquiry_Response_F_0",
+            ["Enquiry Response (F = 1)"]          = "Enquiry_Response_F_1",
+            ["Set Version 2.0"]                   = "Set_Version_2_0",
+            ["Set Version 2.2"]                   = "Set_Version_2_2",
+
+            // Signal generation — figure spelling → snake_case where the
+            // dispatcher's canonical case-label is snake_case.
+            ["DL-CONNECT Indication"]             = "DL_CONNECT_indication",
+            ["DL Connect Indication"]             = "DL_CONNECT_indication",
+            ["DL-CONNECT Confirm"]                = "DL_CONNECT_confirm",
+            ["DL-DISCONNECT Indication"]          = "DL_DISCONNECT_indication",
+            ["DL-DISCONNECT indication"]          = "DL_DISCONNECT_indication",
+            ["DL-DISCONNECT Confirm"]             = "DL_DISCONNECT_confirm",
+            ["DL-DATA Indication"]                = "DL_DATA_indication",
+            ["DL-UNIT-DATA Indication"]           = "DL_UNIT_DATA_indication",
+            ["DL-ERROR Indication (C,D)"]         = "DL_ERROR_indication_C_D",
+            ["DL-ERROR Indication (D)"]           = "DL_ERROR_indication_D",
+            ["DL-ERROR indication (D)"]           = "DL_ERROR_indication_D",
+            ["DL-ERROR Indication (E)"]           = "DL_ERROR_indication_E",
+            ["DL-ERROR Indication (F)"]           = "DL_ERROR_indication_F",
+            ["DL-ERROR Indication (G)"]           = "DL_ERROR_indication_G",
+            ["DL-ERROR Indication (I)"]           = "DL_ERROR_indication_I",
+            ["DL-ERROR Indication (L)"]           = "DL_ERROR_indication_L",
+            ["DL-ERROR Indication (M)"]           = "DL_ERROR_indication_M",
+            ["DL-ERROR Indication (N)"]           = "DL_ERROR_indication_N",
+            ["DL-ERROR Indication (O)"]           = "DL_ERROR_indication_O",
+            ["DL-ERROR Indication (T)"]           = "DL_ERROR_indication_T",
+            ["DL-ERROR Indication (U)"]           = "DL_ERROR_indication_U",
+
+            // S/U-frame send verbs.
+            ["RR Command"]                        = "RR_command",
+            ["RR Command (P = 0)"]                = "RR_command",
+            ["RR Response"]                       = "RR",
+            ["RNR Command"]                       = "RNR_command",
+            ["RNR Response"]                      = "RNR_response",
+            ["RNR Response (F = 0)"]              = "RNR_response",
+            ["I Command"]                         = "I_command",
+            ["DM F = 1"]                          = "DM (F = 1)",
+            ["DM F=1"]                            = "DM (F = 1)",
+            ["DM Response (F = 0)"]               = "DM",
+
+            // LM/MDL primitives — figure includes the typo'd LM-SIEZE.
+            ["LM-SEIZE Request"]                  = "LM_seize_request",
+            ["LM-SIEZE Request"]                  = "LM_seize_request",
+            ["LM-RELEASE Request"]                = "LM_release_request",
+            ["LM_RELEASE Request"]                = "LM_release_request",
+            ["LM-DATA Request"]                   = "LM_data_request",
+            ["MDL-NEGOTIATE Request"]             = "MDL_NEGOTIATE_request",
+
+            // Flag mutations — figure: "Set/Clear Title Case". Dispatcher
+            // canonical cases are snake_case here; map title-case spellings
+            // emitted by v0.5.0 onto them. "Set Half Duplex", "Set Implicit
+            // Reject", "Set Selective Reject" already match the dispatcher
+            // case strings literally so no alias is needed.
+            ["Set Acknowledge Pending"]           = "set_acknowledge_pending",
+            ["Set Acknowledgement Pending"]       = "set_acknowledge_pending",
+            ["Set Own Receiver Busy"]             = "set_own_receiver_busy",
+            ["Set Peer Busy"]                     = "set_peer_receiver_busy",
+            ["Set Layer 3 Initiated"]             = "set_layer_3_initiated",
+            ["Set Reject Exception"]              = "set_reject_exception",
+            ["Increment Sreject Exception"]       = "increment_srej_exception",
+            ["Decrement Sreject Exception if > 0"] = "decrement_srej_exception_if_gt_0",
+
+            // Queue mutations — multiple figure spellings, single canonical.
+            ["Discard I Frame"]                   = "discard_I_frame",
+            ["Discard I Frame Queue"]             = "discard_I_frame_queue",
+            ["Discard Frame Queue"]               = "discard_frame_queue",
+            ["Discard Queue"]                     = "discard_frame_queue",
+            ["Discard I Queue Entries"]           = "discard_I_frame_queue",
+            ["Discard Contents of I Frame"]       = "discard_contents_of_I_frame",
+            ["Discard Primitive"]                 = "discard_primitive",
+            ["Save Contents of I Frame"]          = "save_contents_of_I_frame",
+            ["Push on I Frame Queue (note: word order?)"]          = "push_on_I_frame_queue",
+            ["Push on I Frame Queue"]                              = "push_on_I_frame_queue",
+            ["Push I Frame on I Queue"]           = "push_on_I_frame_queue",
+            ["Push Old I Frame N(r) on Queue"]    = "push_on_I_frame_queue",
+            ["Push Old I Frame onto Queue"]       = "push_on_I_frame_queue",
+            ["Push Frame on Queue"]               = "push_on_I_frame_queue",
+            ["Push Frame Onto Queue"]             = "push_on_I_frame_queue",
+
+            // Sequence-variable updates — figc4.5 uses `:=`; the dispatcher
+            // historically has `<-` cases for some of these. The runtime
+            // semantics are identical (the operator is just notation).
+            ["Modulo := 8"]                       = "Modulo <- 8",
+            ["Modulo := 128"]                     = "Modulo <- 128",
+            ["N1 := 2048"]                        = "N1 <- 2048",
+            ["N2 := 10"]                          = "N2 <- 10",
+            ["Next T1 := 2 * SRT"]                = "Next T1 <- 2 * SRT",
+            ["Next T1 := (RC*0.25)+SRT*2"]        = "Next T1 <- (RC*0.25)+SRT*2",
+            ["SRT := 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8"]
+                                                  = "SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8",
+            ["N(R) := V(r)"]                      = "N(r) := V(r)",        // figure spelling variant
+            ["k := 8"]                            = "k <- 8",
+            ["k := 32"]                           = "k <- 32",
+            ["T2 := 3000"]                        = "T2 <- 3000",          // dispatcher has the historic `<-` form
+        };
 }

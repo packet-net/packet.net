@@ -316,7 +316,7 @@ public class DataLink_AwaitingConnection_GeneratedTests
     {
         var t = DataLink_AwaitingConnection.Transitions.Single(x => x.Id == "t24_sabme_received");
         t.On.Should().Be("SABME_received");
-        t.Next.Should().Be("AwaitingConnection22");
+        t.Next.Should().Be("AwaitingV22Connection");
         t.Actions.Count.Should().Be(2);
         t.Actions[0].Verb.Should().Be("F := P");
         t.Actions[0].Kind.Should().Be(ActionKind.Processing);

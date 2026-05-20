@@ -85,7 +85,7 @@ public class DataLinkSessionLifecycleTests
             {
                 ["Disconnected"]         = DataLink_Disconnected.Transitions,
                 ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
-                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
                 ["Connected"]            = DataLink_Connected.Transitions,
                 ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
                 // TimerRecovery is referenced by some Connected transitions
@@ -273,9 +273,9 @@ public class DataLinkSessionLifecycleTests
         // With IsExtended = true at connect time, Establish_Data_Link's
         // mod_128 path runs (rather than the mod_8 SABM path), emitting
         // SABME. The figc4.1 transcription routes this column to
-        // AwaitingConnection (not AwaitingConnection22) — the version
+        // AwaitingConnection (not AwaitingV22Connection) — the version
         // distinction is in the subroutine's selected path, not in the
-        // transition target. AwaitingConnection22 is entered via a
+        // transition target. AwaitingV22Connection is entered via a
         // different figc4.x path; see the figc4.2 / Awaiting Connection
         // table for those primitives.
         var r = NewRig(isExtended: true);

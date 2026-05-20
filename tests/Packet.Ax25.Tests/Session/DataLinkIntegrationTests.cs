@@ -19,7 +19,7 @@ namespace Packet.Ax25.Tests.Session;
 /// </para>
 /// <list type="bullet">
 /// <item>A transition's <c>next:</c> string typo (e.g. "AwaitingConnection2"
-/// instead of "AwaitingConnection22") only surfaces when the orchestrator
+/// instead of "AwaitingV22Connection") only surfaces when the orchestrator
 /// actually has to route into that table.</item>
 /// <item>Decision-predicate name drift (e.g. <c>F_eq_1</c> vs <c>F_eq_one</c>)
 /// in one table is invisible until a transition from another table
@@ -126,7 +126,7 @@ public class DataLinkIntegrationTests
                 ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
                 ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
                 ["Connected"]            = DataLink_Connected.Transitions,
-                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
                 ["TimerRecovery"]        = Array.Empty<TransitionSpec>(),
             },
             initialState: initialState);
@@ -159,7 +159,7 @@ public class DataLinkIntegrationTests
             "UA(F=1) with layer_3_initiated should resolve AwaitingConnection → Connected");
     }
 
-    [Fact(DisplayName = "Peer-prefers-v2.2 negotiation: AwaitingConnection → AwaitingConnection22 → Connected")]
+    [Fact(DisplayName = "Peer-prefers-v2.2 negotiation: AwaitingConnection → AwaitingV22Connection → Connected")]
     public void V22_negotiation_via_sabme_response()
     {
         // We sent SABM (we're in AwaitingConnection); peer replies SABME.
@@ -168,27 +168,27 @@ public class DataLinkIntegrationTests
 
         // Hop 1: peer's SABME bumps us into the v2.2 awaiting state.
         s.PostEvent(new SabmeReceived(Frame()));
-        s.CurrentState.Should().Be("AwaitingConnection22",
-            "SABME during AwaitingConnection (figc4.2 t24) should hand off to AwaitingConnection22");
+        s.CurrentState.Should().Be("AwaitingV22Connection",
+            "SABME during AwaitingConnection (figc4.2 t24) should hand off to AwaitingV22Connection");
 
         // Hop 2: peer's UA(F=1) closes out v2.2 establish.
         guards.FEq1 = true;
         s.PostEvent(new UaReceived(Frame()));
         s.CurrentState.Should().Be("Connected",
-            "UA(F=1) in AwaitingConnection22 with layer_3_initiated should reach Connected");
+            "UA(F=1) in AwaitingV22Connection with layer_3_initiated should reach Connected");
     }
 
-    [Fact(DisplayName = "Peer refuses v2.2, drops back to v2.0: AwaitingConnection22 → AwaitingConnection")]
+    [Fact(DisplayName = "Peer refuses v2.2, drops back to v2.0: AwaitingV22Connection → AwaitingConnection")]
     public void V22_refused_falls_back_to_v20()
     {
-        var (s, _, guards) = NewSession("AwaitingConnection22",
+        var (s, _, guards) = NewSession("AwaitingV22Connection",
             new MutableGuards { Layer3Initiated = true });
 
         // figc4.6 t14: DM with F=0 → AwaitingConnection (v2.0 fallback).
         guards.FEq1 = false;
         s.PostEvent(new DmReceived(Frame()));
         s.CurrentState.Should().Be("AwaitingConnection",
-            "DM(F=0) in AwaitingConnection22 (figc4.6 t14) should drop to AwaitingConnection");
+            "DM(F=0) in AwaitingV22Connection (figc4.6 t14) should drop to AwaitingConnection");
     }
 
     [Fact(DisplayName = "Disconnect from Connected: Connected → AwaitingRelease → Disconnected")]
@@ -282,7 +282,7 @@ public class DataLinkIntegrationTests
 
         // 2. Peer responds SABME (wants v2.2).
         s.PostEvent(new SabmeReceived(Frame()));
-        s.CurrentState.Should().Be("AwaitingConnection22");
+        s.CurrentState.Should().Be("AwaitingV22Connection");
 
         // 3. Peer's UA(F=1) closes establish.
         guards.FEq1 = true;

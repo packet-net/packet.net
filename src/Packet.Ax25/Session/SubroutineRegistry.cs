@@ -76,6 +76,15 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             ["Enquiry_Response_F_0"] = "Enquiry_Response",
             ["Enquiry_Response_F_1"] = "Enquiry_Response",
+            // Packet.Ax25.Sdl v0.5.0 names the figc4.7 subroutine `Select_T1`
+            // (matching the figure heading); earlier transcriptions called
+            // it `Select_T1_Value`. Keep the longer historic name working.
+            ["Select_T1_Value"]      = "Select_T1",
+            // figc4.7 emits `Check_Need_for_Response` (lowercase 'for'); the
+            // calling pages spell the action verb `Check Need For Response`
+            // which normalises to `Check_Need_For_Response`. Alias the
+            // capital-F form so action-verb dispatch finds the body.
+            ["Check_Need_For_Response"] = "Check_Need_for_Response",
         };
 
     /// <summary>
@@ -113,14 +122,41 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             subroutines[spec.Name] = _ => { /* no-op until Wire() is called */ };
         }
-        // Legacy aliases (e.g. Enquiry_Response_F_0 / _F_1) — referenced
-        // by older transcriptions; resolved to the same body as their
+        // Legacy aliases (e.g. Enquiry_Response_F_0 / _F_1, Select_T1_Value)
+        // — referenced by older transcriptions or by paths that called the
+        // longer historic name; resolved to the same body as their
         // canonical target once Wire() runs.
         foreach (var alias in LegacyAliases.Keys)
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
+        // `Establish_Data_Link` and `Establish_Extended_Data_Link` aren't in
+        // the v0.5.0 DataLink_Subroutines because the source graphml is
+        // missing an outgoing edge on n50 (raised against the spec authors
+        // at m0lte/ax25sdl#11). Until that graphml is fixed, supply the
+        // hand-coded equivalent so figc4.x state-machine pages that call
+        // them have a working implementation rather than hitting "unknown
+        // SDL subroutine". Both bodies follow the §C4.7 spec text: clear
+        // exception conditions, reset RC, send SABM/SABME(P=1), start T1,
+        // stop T3. Replaced by the walker-generated walker once #11 lands.
+        subroutines["Establish_Data_Link"]          = EstablishDataLink(extended: false);
+        subroutines["Establish_Extended_Data_Link"] = EstablishDataLink(extended: true);
     }
+
+    private Action<TransitionContext> EstablishDataLink(bool extended) => tx =>
+    {
+        if (wiredDispatcher is null) return;
+        var steps = new ActionStep[]
+        {
+            new("Clear_Exception_Conditions", ActionKind.Subroutine),
+            new(extended ? "SABME (P = 1)" : "SABM (P == 1)", ActionKind.SignalLower),
+            new("stop_T3", ActionKind.Processing),
+            new("start_T1", ActionKind.Processing),
+        };
+        tx.Session.RC = 0;
+        tx.Pending.PfBit = true;
+        wiredDispatcher.Execute(steps, tx);
+    };
 
     /// <summary>
     /// Bind this registry to a dispatcher + guard evaluator. After this

@@ -196,52 +196,24 @@ public static class Ax25SessionBindings
                 return isIFrame || isRR || isRNR;
             };
 
-            // ─── 0.5.0-walker predicate name aliases ────────────────────
-            //
-            // The figc4.4 / figc4.5 / figc4.7 redraws emit predicate names
-            // via the post-#22 walker normalisation that fuses operator
-            // characters into word forms, so the on-wire spelling is
-            // `vs_eq_va` rather than `V_s_eq_V_a` and `command_and_P_eq_1`
-            // rather than `command_and_p_eq_1` (the second has a capital P
-            // because P is a spec-variable name preserved by the walker).
-            // The semantics are identical to the historic bindings above —
-            // each entry points the new spelling at the same closure.
-            bindings["vs_eq_va"]                  = bindings["V_s_eq_V_a"];
-            bindings["vs_eq_va_plus_k"]           = bindings["V_s_eq_V_a_plus_k"];
-            bindings["vs_eq_X"]                   = bindings["v_s_eq_x"];
-            bindings["ns_eq_vr"]                  = bindings["N_s_eq_V_r"];
-            bindings["ns_gt_vr_plus_1"]           = bindings["N_s_gt_V_r_plus_1"];
-            bindings["va_le_nr_le_vs"]            = bindings["V_a_le_N_r_le_V_s"];
-            bindings["nr_eq_vs"]                  = bindings["n_r_eq_v_s"];
-            bindings["nr_eq_va"]                  = bindings["n_r_eq_v_a"];
-            bindings["command_and_P_eq_1"]        = bindings["command_and_p_eq_1"];
-            bindings["response_and_F_eq_1"]       = bindings["response_and_f_eq_1"];
-            bindings["F_eq_1_and_frame_eq_RR_or_frame_eq_RNR_or_frame_eq_I"]
-                                                  = bindings["f_eq_1_and_supervisory_or_i"];
-            // info_field_length_le_N1_and_content_is_octet_aligned — the
-            // figc4.5 spelling of the historic `info_field_valid` predicate.
-            // Same semantic.
-            bindings["info_field_length_le_N1_and_content_is_octet_aligned"]
-                                                  = bindings["info_field_valid"];
-            // `response` (bare) — the figc4.5 SREJ-column decision.
-            // Lone-flag form of the existing IsCommand/IsResponse split.
+            // `response` (bare) — the figc4.5 SREJ-column decision. The
+            // lone-flag form of the IsCommand/IsResponse split. Doesn't
+            // correspond to any historic binding so it's registered as a
+            // proper entry rather than aliased through GuardEvaluator's
+            // alias map.
             bindings["response"]                  = () =>
                 GetIncomingFrame(currentTrigger())?.IsResponse == true;
         }
 
-        // Frame-aware-independent aliases for the 0.5.0 predicate names —
-        // safe to install even when the trigger is null, because they
-        // delegate to bindings that already handle null gracefully.
-        bindings["peer_busy"]              = bindings["peer_receiver_busy"];
-        bindings["own_receive_busy"]       = bindings["own_receiver_busy"];   // SDL typo: missing 'r'
-        bindings["ACK_pending"]            = bindings["acknowledge_pending"];
-        bindings["ack_pending"]            = bindings["acknowledge_pending"];
-        bindings["RC_eq_0"]                = bindings["rc_eq_0"];
-        bindings["T1_expired"]             = bindings["t1_expired"];
-        bindings["SREJ_enabled"]           = bindings["srej_enabled"];
-        bindings["sreject_exception_gt_0"] = bindings["srej_exception_gt_0"];
-
         return bindings;
+
+        // Note: Packet.Ax25.Sdl v0.5.0 emits predicate names in their
+        // walker-normalised forms (vs_eq_va, ack_pending, SREJ_enabled, …).
+        // Those aren't registered as bindings here — see
+        // GuardEvaluator.PredicateAliases for the rename table the
+        // evaluator consults on a miss. Keeping the alias resolution at
+        // evaluation time rather than build time means test-time overrides
+        // of the canonical name still apply to the new spelling.
     }
 
     /// <summary>

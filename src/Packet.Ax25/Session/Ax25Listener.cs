@@ -590,7 +590,7 @@ public sealed class Ax25Listener : IAsyncDisposable
     {
         ["Disconnected"]         = DataLink_Disconnected.Transitions,
         ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
-        ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+        ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
         ["Connected"]            = DataLink_Connected.Transitions,
         ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
         // TimerRecovery is referenced by some Connected transitions but

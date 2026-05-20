@@ -8,7 +8,7 @@ namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
 /// End-to-end smoke test for figc4.6 (Awaiting V2.2 Connection) — drives
-/// the codegen-emitted <see cref="DataLink_AwaitingConnection22"/>
+/// the codegen-emitted <see cref="DataLink_AwaitingV22Connection"/>
 /// transition table through <see cref="Ax25Session"/> with a recording
 /// dispatcher and stubbed decision predicates, asserting each of the 25
 /// transitions lands on its declared next state with its declared action
@@ -30,7 +30,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <c>ua_layer_3_initiated</c>).
 /// </para>
 /// </remarks>
-public class DataLinkAwaitingConnection22SmokeTests
+public class DataLinkAwaitingV22ConnectionSmokeTests
 {
     private sealed class RecordingActionDispatcher : IActionDispatcher
     {
@@ -73,12 +73,12 @@ public class DataLinkAwaitingConnection22SmokeTests
             ctx, scheduler, recorder, guards,
             transitionsByState: new Dictionary<string, IReadOnlyList<TransitionSpec>>
             {
-                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
                 ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
                 ["Disconnected"]         = DataLink_Disconnected.Transitions,
                 ["Connected"]            = DataLink_Connected.Transitions,
             },
-            initialState: "AwaitingConnection22");
+            initialState: "AwaitingV22Connection");
         return (session, recorder, guards);
     }
 
@@ -96,11 +96,11 @@ public class DataLinkAwaitingConnection22SmokeTests
     {
         var (s, r, guards) = NewSession(pEq1: pEq1, fEq1: fEq1, vsEqVa: vsEqVa, rcEqN2: rcEqN2, layer3Initiated: layer3Initiated);
         
-        var matching = DataLink_AwaitingConnection22.Transitions
+        var matching = DataLink_AwaitingV22Connection.Transitions
             .Where(x => x.On == evt.Name)
             .Where(x => guards.Evaluate(x.Guard))
             .ToList();
-        matching.Should().ContainSingle($"event '{evt.Name}' with the supplied guards should match exactly one transition in DataLink_AwaitingConnection22");
+        matching.Should().ContainSingle($"event '{evt.Name}' with the supplied guards should match exactly one transition in DataLink_AwaitingV22Connection");
         var expected = matching[0];
 
         s.PostEvent(evt);

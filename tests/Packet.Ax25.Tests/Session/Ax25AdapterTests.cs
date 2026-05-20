@@ -19,7 +19,7 @@ public class Ax25AdapterTests
     {
         ["Disconnected"]         = DataLink_Disconnected.Transitions,
         ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
-        ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+        ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
         ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
         ["Connected"]             = DataLink_Connected.Transitions,
     };

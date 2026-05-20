@@ -73,7 +73,7 @@ public class DataLinkAwaitingConnectionSmokeTests
                 ["AwaitingConnection"]   = DataLink_AwaitingConnection.Transitions,
                 ["Disconnected"]         = DataLink_Disconnected.Transitions,
                 ["Connected"]            = DataLink_Connected.Transitions,
-                ["AwaitingConnection22"] = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
             },
             initialState: "AwaitingConnection");
         return (session, recorder, guards);

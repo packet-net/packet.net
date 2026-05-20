@@ -73,16 +73,16 @@ public class DataLinkAwaitingV22ConnectionEndToEndTests
             {
                 ["Disconnected"]          = DataLink_Disconnected.Transitions,
                 ["AwaitingConnection"]    = DataLink_AwaitingConnection.Transitions,
-                ["AwaitingConnection22"]  = DataLink_AwaitingConnection22.Transitions,
+                ["AwaitingV22Connection"]  = DataLink_AwaitingV22Connection.Transitions,
                 ["Connected"]             = DataLink_Connected.Transitions,
             },
-            initialState: "AwaitingConnection22");
+            initialState: "AwaitingV22Connection");
 
         return (session, ctx, scheduler, uFrames, uiFrames, upward, internalSignals, subroutineCalls);
     }
 
     [Fact]
-    public void t01_DL_CONNECT_request_Discards_Queue_Sets_Layer_3_Initiated_Stays_AwaitingConnection22()
+    public void t01_DL_CONNECT_request_Discards_Queue_Sets_Layer_3_Initiated_Stays_AwaitingV22Connection()
     {
         var (s, ctx, _, _, _, _, _, _) = NewRig();
         ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
@@ -90,7 +90,7 @@ public class DataLinkAwaitingV22ConnectionEndToEndTests
 
         s.PostEvent(new DlConnectRequest());
 
-        s.CurrentState.Should().Be("AwaitingConnection22");
+        s.CurrentState.Should().Be("AwaitingV22Connection");
         ctx.IFrameQueue.Should().BeEmpty();
         ctx.Layer3Initiated.Should().BeTrue();
     }
@@ -103,7 +103,7 @@ public class DataLinkAwaitingV22ConnectionEndToEndTests
 
         s.PostEvent(new DlUnitDataRequest(payload));
 
-        s.CurrentState.Should().Be("AwaitingConnection22");
+        s.CurrentState.Should().Be("AwaitingV22Connection");
         uiFrames.Should().ContainSingle();
         uiFrames[0].Info.ToArray().Should().Equal(payload);
     }
