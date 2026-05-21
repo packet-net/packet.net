@@ -284,8 +284,11 @@ public sealed class ActionDispatcher : IActionDispatcher
             // by an earlier processing verb in the same chain.
             case "RR_command":                     sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx, action)); break;
             case "RR":                             sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx, action)); break;
+            case "RNR_command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: true,  tx, action)); break;
             case "RNR_response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
+            case "REJ_command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: true,  tx, action)); break;
             case "REJ":                            sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: false, tx, action)); break;
+            case "SREJ_command":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: true,  tx, action)); break;
             case "SREJ":                           sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: false, tx, action)); break;
 
             // ─── Unnumbered-frame transmissions ────────────────────────
@@ -1052,6 +1055,10 @@ public sealed class ActionDispatcher : IActionDispatcher
             ["RNR Command"]                       = "RNR_command",
             ["RNR Response"]                      = "RNR_response",
             ["RNR Response (F = 0)"]              = "RNR_response",
+            ["REJ Command"]                       = "REJ_command",
+            ["REJ Response"]                      = "REJ",
+            ["SREJ Command"]                      = "SREJ_command",
+            ["SREJ Response"]                     = "SREJ",
             ["I Command"]                         = "I_command",
             ["DM F = 1"]                          = "DM (F = 1)",
             ["DM F=1"]                            = "DM (F = 1)",
