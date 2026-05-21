@@ -836,6 +836,19 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-21 — FsCheck window invariants + no-stuck-TimerRecovery property
+
+Phase 2 exit criterion: *"FsCheck property tests prove window invariants (`V(A) ≤ V(S) ≤ V(A)+k`, no orphan transitions, no stuck Timer Recovery)"*.
+
+The "no orphan transitions" half was already covered by `StateGraphInvariants` (static check across all transition tables). Two updates land here:
+
+- **Housekeeping in `StateGraphInvariants`** — TimerRecovery's table joins `AllDataLinkTables()`; KnownStates' "not-yet-transcribed" comment is removed now that TimerRecovery ships in v0.5.3.
+- **New `SessionRuntimeInvariants`** with two property tests on a live `Ax25Session`:
+  - *Window invariant under arbitrary data requests* — generates random counts of DL-DATA-requests against a connected session and asserts `(V(s) - V(a)) mod Modulus ≤ K` after each (and at the end). With no peer to ack, V(a) stays at 0 and V(s) must plateau at K.
+  - *TimerRecovery exits within N2+1 T1 expiries* — generates random N2 ∈ [1, 10], drives the session into TimerRecovery via a data-request + sustained T1 expiries, asserts the session reaches a non-TimerRecovery state within N2+2 cycles (the +1 of slack lets the figc4.4 t12 "enter TimerRecovery" cycle precede figc4.5's N2 retry cycles).
+
+200 + 50 FsCheck iterations × 2 properties; full Properties suite now 60/60.
+
 ### 2026-05-21 — interop workflow: serialise via workflow-level concurrency singleton
 
 The interop matrix had been red across multiple PRs in a row (#209 rej-srej, #210 segmenter) despite #210 touching no runtime code. Investigation traced it to concurrent runs of the interop workflow on the same self-hosted-runner pool: the docker stack at `docker/compose.interop.yml` uses fixed container names and binds fixed host ports, so two parallel runs collide on docker resources. Symptoms were "rax25 is missing dependency netsim" (compose-up failing because containers from the other run were in the way) and downstream connection-refused / banner-missing / timeout cascades.

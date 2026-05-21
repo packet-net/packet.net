@@ -39,6 +39,7 @@ public class StateGraphInvariants
         yield return (nameof(DataLink_AwaitingRelease),      DataLink_AwaitingRelease.Transitions);
         yield return (nameof(DataLink_Connected),            DataLink_Connected.Transitions);
         yield return (nameof(DataLink_AwaitingV22Connection), DataLink_AwaitingV22Connection.Transitions);
+        yield return (nameof(DataLink_TimerRecovery),        DataLink_TimerRecovery.Transitions);
     }
 
     /// <summary>
@@ -54,10 +55,6 @@ public class StateGraphInvariants
         "AwaitingRelease",
         "Connected",
         "AwaitingV22Connection",
-
-        // Not-yet-transcribed Data-Link states, referenced as `next:` from
-        // transcribed ones. Permitted destinations even though no table
-        // exists yet.
         "TimerRecovery",
     };
 
