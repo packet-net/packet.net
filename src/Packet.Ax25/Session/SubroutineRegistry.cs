@@ -82,34 +82,42 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         };
 
     /// <summary>
-    /// Parameterised aliases — alias names that bind a parameter value on
-    /// the trigger context before walking the canonical body. Models the
-    /// figc4.7 spec's parameter-passing convention for subroutines: e.g.
-    /// figc4.7b page 102 draws <c>Check Need for Response</c>'s Yes branch as
-    /// <c>Enquiry Response (F = 1)</c>, where the <c>(F = 1)</c> is a
-    /// parameter binding, not an action inside the subroutine body.
+    /// Context-binding aliases — alias names that mutate the trigger
+    /// context before walking the canonical body. Used where the SDL
+    /// figure's call-site annotation on a subroutine implies an
+    /// out-of-band binding that the canonical body alone doesn't
+    /// produce.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The SDL DSL does not yet model subroutine parameters (a stated
-    /// limitation in <c>docs/adr/0001-sdl-dsl.md</c>). The walker / codegen
-    /// encodes the parameter value as a name-suffix alias (<c>Enquiry_Response_F_1</c>,
-    /// <c>_F_0</c>). This dictionary lifts the encoding back into a real
-    /// parameter binding — invoking <c>Enquiry_Response_F_1</c> sets
-    /// <see cref="PendingFrame.PfBit"/> to <c>true</c> before walking the
-    /// canonical <c>Enquiry_Response</c> body, so its response-emitting
-    /// verbs (<c>RR Response</c>, <c>RNR Response</c>, <c>SREJ</c>) emit
-    /// frames with F=1 as the figure intends.
+    /// Concrete case: figc4.7b page 102 draws <c>Check Need for Response</c>'s
+    /// Yes branch as <c>Enquiry Response (F = 1)</c>. The <c>(F = 1)</c>
+    /// annotation isn't explained in the spec prose (§C1.2 covers the
+    /// standard SDL symbols only); plausible readings include a formal
+    /// parameter binding, a frame-emission annotation analogous to the
+    /// <c>DM (F = 1)</c> shorthand used elsewhere, or a documentation
+    /// reminder. The <em>wire contract</em> is unambiguous either way:
+    /// AX.25 v2.2 §4.3 prose states *"the reply to this poll is indicated
+    /// by setting the response (final) bit in the appropriate frame"*, so
+    /// every response taking this code path must go out with F=1. The
+    /// canonical encoding of the annotation in the yaml DSL is the open
+    /// question — tracked at
+    /// <see href="https://github.com/M0LTE/ax25sdl/issues/45">m0lte/ax25sdl#45</see>.
     /// </para>
     /// <para>
-    /// Without this binding, polls received by a Connected peer get
-    /// responses with F=0, the polling side's TimerRecovery guard
-    /// <c>response_and_F_eq_1</c> never matches, and recovery-to-Connected
-    /// is unreachable. Surfaced on the figc4.5 integration work — see
-    /// <c>docs/plan.md</c> §17 2026-05-21 amendment.
+    /// The walker / codegen currently surfaces the annotation as a
+    /// name-suffix alias (<c>Enquiry_Response_F_1</c> / <c>_F_0</c>) of
+    /// the canonical <c>Enquiry_Response</c> body. Until the upstream
+    /// encoding settles, this dictionary mutates <see cref="PendingFrame.PfBit"/>
+    /// before walking the canonical body, so the response-emitting verbs
+    /// (<c>RR Response</c>, <c>RNR Response</c>, <c>SREJ</c>) emit frames
+    /// with the right F bit on the wire. Without the binding, polls
+    /// received by a Connected peer get responses with F=0, the polling
+    /// side's TimerRecovery guard <c>response_and_F_eq_1</c> never matches,
+    /// and recovery-to-Connected is unreachable.
     /// </para>
     /// </remarks>
-    private static readonly IReadOnlyDictionary<string, (string Canonical, Action<TransitionContext> Bind)> ParameterisedAliases =
+    private static readonly IReadOnlyDictionary<string, (string Canonical, Action<TransitionContext> Bind)> ContextBindingAliases =
         new Dictionary<string, (string, Action<TransitionContext>)>(StringComparer.Ordinal)
         {
             ["Enquiry_Response_F_1"] = ("Enquiry_Response", tx => tx.Pending.PfBit = true),
@@ -124,7 +132,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     public static IReadOnlyList<string> KnownSubroutines { get; } =
         DataLink_Subroutines.Subroutines.Select(s => s.Name)
             .Concat(LegacyAliases.Keys)
-            .Concat(ParameterisedAliases.Keys)
+            .Concat(ContextBindingAliases.Keys)
             .ToList();
 
     /// <summary>
@@ -159,10 +167,10 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
-        // Parameterised aliases (e.g. Enquiry_Response_F_0/F_1) — resolved
+        // Context-binding aliases (e.g. Enquiry_Response_F_0/F_1) — resolved
         // to the canonical body, but with a context-mutation applied first
-        // to model the figure's parameter-passing convention.
-        foreach (var alias in ParameterisedAliases.Keys)
+        // so the body's frame-emission verbs see the right Pending state.
+        foreach (var alias in ContextBindingAliases.Keys)
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
@@ -204,11 +212,11 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             var captured = spec;
             subroutines[alias] = tx => WalkSubroutine(captured, tx);
         }
-        // Each parameterised alias binds its parameter onto the trigger
-        // context, then walks the canonical body. This is how the runtime
-        // models the figc4.7 spec's "(F = 1)" parameter-passing convention
-        // (see ParameterisedAliases doc).
-        foreach (var (alias, (canonicalName, bind)) in ParameterisedAliases)
+        // Each context-binding alias mutates the trigger context then walks
+        // the canonical body — see ContextBindingAliases doc for why the
+        // mutation is needed and the open encoding question at
+        // m0lte/ax25sdl#45.
+        foreach (var (alias, (canonicalName, bind)) in ContextBindingAliases)
         {
             if (userOverridden.Contains(alias)) continue;
             if (!specsByName.TryGetValue(canonicalName, out var spec)) continue;

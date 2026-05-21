@@ -187,14 +187,14 @@ public class Figc47SubroutineBodyTests
     public void Enquiry_Response_F_1_Sets_F_Bit_On_Outbound_Response()
     {
         // figc4.7b page 102 draws Check_Need_for_Response's Yes branch as
-        // `Enquiry Response (F = 1)` — a parameter-passing convention to the
-        // subroutine. The SDL DSL doesn't model subroutine parameters yet, so
-        // the walker encodes the parameter as a name-suffix alias
-        // (Enquiry_Response_F_1). DefaultSubroutineRegistry binds the
-        // parameter via the ParameterisedAliases table — invoking the alias
-        // sets tx.Pending.PfBit before walking the canonical body, so the
-        // body's "RR Response" verb emits a frame with F=1 as the figure
-        // intends.
+        // `Enquiry Response (F = 1)`. The "(F = 1)" annotation isn't
+        // documented in §C1.2; canonical encoding tracked at m0lte/ax25sdl#45.
+        // The wire contract is unambiguous either way — §4.3 prose: "the
+        // reply to this poll is indicated by setting the response (final)
+        // bit in the appropriate frame". DefaultSubroutineRegistry honours
+        // that via ContextBindingAliases: invoking the F_1 alias sets
+        // tx.Pending.PfBit=true before walking the canonical body, so the
+        // body's "RR Response" verb emits the frame with F=1.
         var local  = new Callsign("M0LTE", 1);
         var remote = new Callsign("WB2OSZ", 0);
         var time = new FakeTimeProvider();
