@@ -1,0 +1,588 @@
+using System.Collections.Concurrent;
+using Packet.Ax25;
+using Packet.Ax25.Sdl;
+using Packet.Ax25.Session;
+using Packet.Core;
+using Packet.Kiss;
+using Packet.Kiss.NinoTnc;
+using Xunit;
+
+namespace Packet.Interop.Tests.Hardware;
+
+/// <summary>
+/// AX.25 session-level hardware-loop tests across two USB-attached
+/// NinoTNCs whose audio paths are cross-wired. Drives a full
+/// connect / 10 240-byte transfer / disconnect through two
+/// <see cref="Ax25Session"/> instances — one per TNC — against real
+/// wall-clock time. Phase 2 exit criterion: *"Hardware loop sustains
+/// 10 kB transfer across NinoTNCs with 0–30 % scripted loss."* per
+/// <c>docs/plan.md</c> §5.2 (and issue #213).
+/// </summary>
+/// <remarks>
+/// <para>
+/// The two NinoTNCs are expected to be set to MODE DIP=1111 ("Set
+/// from KISS") so the test can pick the mode at runtime via SETHW,
+/// and to have their TX-DELAY pots at zero so the KISS TXDELAY
+/// parameter takes effect. The mode and TXDELAY are applied with the
+/// <c>+16</c> non-persist offset (the driver default) so iterating
+/// the test matrix doesn't burn the TNC's flash. The analogue SIGNALS
+/// DIP block must be configured for the loopback profile documented
+/// in the NinoTNC manual (see
+/// <a href="https://wiki.oarc.uk/packet:ninotnc">oarc.uk/packet:ninotnc</a>) —
+/// the default field-radio profile decodes unreliably on the bench
+/// audio cross-wire because the receiver expects a discriminator-
+/// shaped signal that the partner TNC's TX isn't producing.
+/// </para>
+/// <para>
+/// The cross-wired audio path emulates a half-duplex FM link with no
+/// radios involved — no RF, no antenna. Scripted loss is injected by
+/// <see cref="LossyHardwareSender"/> at the TX side of each session
+/// so the partner TNC never hears the dropped frame — identical in
+/// shape to an RF channel where the frame was corrupted into nothing.
+/// </para>
+/// <para>
+/// <b>The bench audio path is not perfectly lossless</b> — occasional
+/// frame-level dropouts happen even with no scripted loss, especially
+/// for the slower modes whose longer airtime increases per-frame
+/// exposure. Each wire dropout hits the same
+/// <a href="https://github.com/m0lte/ax25sdl/issues/44">ax25sdl#44</a>
+/// Invoke_Retransmission gap as the scripted-loss path, so the
+/// no-loss matrix here is best-effort: each entry passes in the
+/// normal case, but a wire dropout during the ~60 s transfer can
+/// stall the link in a perpetual RR-poll cycle. Re-runs typically
+/// pass. The flakiness is a real-bench reality + a known SDL gap,
+/// not a stack regression; both will resolve when ax25sdl#44 ships.
+/// </para>
+/// <para>
+/// The Segmenter (PR #210) isn't yet wired into <see cref="Ax25Session"/>'s
+/// send path, so the 10 240-byte target is hit as 40 × 256-byte
+/// DL-DATA-requests. K-window (default 4) throttles outbound to the
+/// wire's pace via RR acks; <see cref="Ax25Session.DrainIFrameQueue"/>
+/// pops queued frames as V(a) advances. The transfer completes when
+/// the partner has seen 40 DL-DATA-indications totalling 10 240 bytes.
+/// </para>
+/// </remarks>
+[Trait("Category", "HardwareLoop")]
+[Collection(HardwareLoopCollection.Name)]
+public class HardwareLoop10KBTransfer
+{
+    private const int    PayloadBytes      = 10_240;
+    private const int    SegmentSize       = 256;
+    private const int    SegmentCount      = PayloadBytes / SegmentSize;  // 40
+    private const int    LossSeed          = unchecked((int)0xC0DEFEED);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // ─── Theories ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Clean (no scripted loss) 10 kB transfer across a representative
+    /// matrix of NinoTNC modes × TXDELAY values. Each mode is an
+    /// AX.25-native catalog entry — 9600 GFSK (mode 0) and 1200 AFSK
+    /// (mode 6) cover the fast and slow ends of the host's KISS frame
+    /// path. TXDELAY values span 50 ms – 400 ms so the audio-only loop
+    /// is exercised across the inter-frame pacing the production CSMA /
+    /// TX-keying path uses on real radios. The 1200 AFSK row starts at
+    /// 150 ms because tighter TXDELAYs cause back-to-back modem-receive
+    /// dropouts on the bench cross-wire (the modem needs longer to
+    /// re-lock between successive transmissions at that bit rate).
+    /// </summary>
+    [SkippableTheory]
+    [InlineData((byte)0, (byte)5)]    //  9600 GFSK AX.25, TXDELAY  50 ms
+    [InlineData((byte)0, (byte)15)]   //  9600 GFSK AX.25, TXDELAY 150 ms
+    [InlineData((byte)0, (byte)40)]   //  9600 GFSK AX.25, TXDELAY 400 ms
+    [InlineData((byte)6, (byte)15)]   //  1200 AFSK AX.25, TXDELAY 150 ms
+    [InlineData((byte)6, (byte)25)]   //  1200 AFSK AX.25, TXDELAY 250 ms
+    [InlineData((byte)6, (byte)40)]   //  1200 AFSK AX.25, TXDELAY 400 ms
+    public Task Ten_KB_Transfer_Across_Hardware_NinoTNC_Pair(byte modeId, byte txDelayTenMsUnits)
+        => RunTransferAsync(modeId, txDelayTenMsUnits, lossProbability: 0.0);
+
+    /// <summary>
+    /// 10 kB transfer survives 30 % scripted loss in each direction.
+    /// Loss is seeded so a regression is reproducible. Assertion shape:
+    /// the transfer completes within an inflated budget; the lossy
+    /// sender records non-zero drops; the session reaches Disconnected
+    /// cleanly; no FRMR fires; retransmits are observable in the frame
+    /// trace (REJ / SREJ or duplicate I-frames against the same N(s)).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Currently skipped — blocked on
+    /// <a href="https://github.com/m0lte/ax25sdl/issues/44">m0lte/ax25sdl#44</a>.</b>
+    /// The transcription of <c>Invoke_Retransmission</c> in
+    /// <c>Packet.Ax25.Sdl</c> encodes only a single iteration of the
+    /// figc4.7 retransmit loop — so the REJ-triggered "re-send all
+    /// I-frames between N(r) and V(s)" path doesn't actually re-emit
+    /// the missing frames. The runtime symptom on this hardware loop
+    /// is a perpetual RR-poll cycle: A enters TimerRecovery, B replies
+    /// RR(N(r)=missing_seq), A never retransmits, the link starves.
+    /// </para>
+    /// <para>
+    /// The test infrastructure is otherwise complete and verified
+    /// against the no-loss fact above. Removing the <see cref="Skip.If(bool, string)"/>
+    /// below once ax25sdl#44 lands and bumps into <c>Packet.Ax25.Sdl</c>
+    /// will re-enable the matrix; the assertion shape stays the same.
+    /// </para>
+    /// </remarks>
+    [SkippableTheory]
+    [InlineData((byte)0, (byte)15, 0.05)]
+    [InlineData((byte)0, (byte)15, 0.15)]
+    [InlineData((byte)0, (byte)15, 0.30)]
+    [InlineData((byte)6, (byte)15, 0.30)]
+    public Task Ten_KB_Transfer_Survives_Scripted_Loss(byte modeId, byte txDelayTenMsUnits, double lossProbability)
+    {
+        Skip.If(true,
+            "Blocked on upstream SDL gap m0lte/ax25sdl#44 (Invoke_Retransmission encodes only one loop iteration). " +
+            "REJ-triggered retransmits don't re-emit the missing I-frames; link starves in a perpetual RR-poll cycle. " +
+            "Remove this Skip.If once Packet.Ax25.Sdl ships the multi-iteration fix (tracked downstream by m0lte/packet.net#214).");
+        return RunTransferAsync(modeId, txDelayTenMsUnits, lossProbability);
+    }
+
+    // ─── Driver ───────────────────────────────────────────────────────
+
+    private static async Task RunTransferAsync(byte modeId, byte txDelayTenMsUnits, double lossProbability)
+    {
+        var ports = SelectTwoPorts();
+        var mode  = NinoTncCatalog.ByMode[modeId];
+        var transferBudget = ComputeTransferBudget(mode, lossProbability);
+        var totalBudget    = ConnectBudget + transferBudget + DisconnectBudget + TimeSpan.FromSeconds(20);
+
+        using var cts = new CancellationTokenSource(totalBudget);
+
+        await using var portA = NinoTncSerialPort.Open(ports[0]);
+        await using var portB = NinoTncSerialPort.Open(ports[1]);
+
+        await PrepareTncAsync(portA, modeId, txDelayTenMsUnits, cts.Token);
+        await PrepareTncAsync(portB, modeId, txDelayTenMsUnits, cts.Token);
+
+        // Mode and TXDELAY take a beat to settle in the NinoTNC after
+        // SETHW + KISS TXDELAY. The shorter (≤700 ms) waits the spike
+        // and UI-frame loopback tests get away with aren't enough for
+        // a sustained back-to-back I-frame stream — the first window
+        // of frames after a mode-switch decodes unreliably on the
+        // bench cross-wire. 2 s gives the modem fully time to lock.
+        await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
+
+        var aCall = new Callsign("PNLPA", 1);
+        var bCall = new Callsign("PNLPB", 2);
+
+        // Seed each side with a distinct stream so concurrent drops on
+        // the two transports don't collide on the same RNG sequence.
+        var senderA = new LossyHardwareSender(portA, lossProbability, LossSeed);
+        var senderB = new LossyHardwareSender(portB, lossProbability, LossSeed ^ 0x55AA55AA);
+
+        var trace = new ConcurrentQueue<TraceEntry>();
+        var rigA = BuildRig("A", aCall, bCall, senderA, trace);
+        var rigB = BuildRig("B", bCall, aCall, senderB, trace);
+
+        // Inbound pump: classify each AX.25 frame the partner TNC
+        // delivers and post it into our session. Address-filter so we
+        // ignore anything not addressed to our local callsign — the
+        // audio cross-wire is one-way (A-TX → B-RX, B-TX → A-RX) so
+        // there's no self-echo to worry about, but the filter keeps
+        // the code symmetric with Ax25Listener's pump.
+        portA.InboundEvent += (_, evt) => PumpInbound(evt, rigA, "A", trace);
+        portB.InboundEvent += (_, evt) => PumpInbound(evt, rigB, "B", trace);
+
+        // ─── Connect ────────────────────────────────────────────────
+        SafePost(rigA, new DlConnectRequest());
+        var connectConfirm = await WaitForSignalAsync<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, cts.Token);
+        connectConfirm.Should().NotBeNull(
+            $"node A must observe UA(F=1) from node B and emit DL-CONNECT-confirm " +
+            $"(mode={mode.Name}, txDelay={txDelayTenMsUnits * 10}ms, loss={lossProbability:P0})");
+        rigA.Session.CurrentState.Should().Be("Connected");
+        await WaitUntilAsync(() => rigB.Session.CurrentState == "Connected",
+            TimeSpan.FromSeconds(5), cts.Token);
+
+        // ─── Transfer ───────────────────────────────────────────────
+        // Drain any signals queued during connect on B (e.g. the
+        // DL-CONNECT-indication B emitted when SABM arrived) so the
+        // per-segment DL-DATA-indication assertions aren't confused
+        // by a leftover signal.
+        while (rigB.Signals.TryDequeue(out _)) { }
+
+        var receivedSegments = new List<byte[]>(SegmentCount);
+        var allBytesReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        rigB.Session.DataLinkSignalEmitted += (_, sig) =>
+        {
+            if (sig is not DataLinkDataIndication ind) return;
+            lock (receivedSegments)
+            {
+                receivedSegments.Add(ind.Info.ToArray());
+                if (receivedSegments.Sum(s => s.Length) >= PayloadBytes)
+                {
+                    allBytesReceived.TrySetResult(true);
+                }
+            }
+        };
+
+        var segments = BuildSegments();
+        foreach (var seg in segments)
+        {
+            SafePost(rigA, new DlDataRequest(seg, Ax25Frame.PidNoLayer3));
+        }
+
+        // Wait for the partner to surface every byte we sent.
+        var completed = await Task.WhenAny(
+            allBytesReceived.Task,
+            Task.Delay(transferBudget, cts.Token)).ConfigureAwait(false);
+        if (completed != allBytesReceived.Task)
+        {
+            int gotBytes;
+            int gotSegs;
+            lock (receivedSegments)
+            {
+                gotSegs = receivedSegments.Count;
+                gotBytes = receivedSegments.Sum(s => s.Length);
+            }
+            throw new TimeoutException(
+                $"transfer did not complete within {transferBudget.TotalSeconds:F0}s. " +
+                $"mode={mode.Name} txDelay={txDelayTenMsUnits * 10}ms loss={lossProbability:P0}. " +
+                $"Received {gotSegs}/{SegmentCount} segments ({gotBytes}/{PayloadBytes} bytes). " +
+                $"A sender: sent={senderA.SentCount} dropped={senderA.DroppedCount}; " +
+                $"B sender: sent={senderB.SentCount} dropped={senderB.DroppedCount}. " +
+                $"Trace ({trace.Count} entries): {TraceTail(trace, 40)}");
+        }
+
+        // Assert reception integrity — every byte arrived and in order.
+        byte[] reassembled;
+        lock (receivedSegments)
+        {
+            reassembled = receivedSegments.SelectMany(s => s).ToArray();
+        }
+        reassembled.Length.Should().Be(PayloadBytes,
+            $"every DL-DATA-request byte must surface as a DL-DATA-indication byte on the partner");
+        var sent = segments.SelectMany(s => s.ToArray()).ToArray();
+        reassembled.Should().Equal(sent, "payload must round-trip intact across the modem pair");
+
+        // ─── Lossy-only assertions ─────────────────────────────────
+        if (lossProbability > 0.0)
+        {
+            (senderA.DroppedCount + senderB.DroppedCount).Should().BeGreaterThan(0,
+                "scripted loss should have eliminated at least one outbound frame");
+            trace.Should().NotContain(t => t.Kind == TraceKind.Frmr,
+                "FRMR must never fire under recoverable loss — it indicates an unrecoverable protocol error");
+            var recovery = trace.Count(t => t.Kind is TraceKind.Rej or TraceKind.Srej or TraceKind.IFrameRetransmit);
+            recovery.Should().BeGreaterThan(0,
+                "retransmits / REJ / SREJ should appear in the trace under scripted loss");
+        }
+
+        // ─── Disconnect ─────────────────────────────────────────────
+        SafePost(rigA, new DlDisconnectRequest());
+        var disconnectConfirm = await WaitForSignalAsync<DataLinkDisconnectConfirm>(
+            rigA.Signals, DisconnectBudget, cts.Token);
+        disconnectConfirm.Should().NotBeNull(
+            "node A must emit DL-DISCONNECT-confirm after a clean DISC/UA exchange");
+        rigA.Session.CurrentState.Should().Be("Disconnected");
+        await WaitUntilAsync(() => rigB.Session.CurrentState == "Disconnected",
+            TimeSpan.FromSeconds(10), cts.Token);
+    }
+
+    // ─── Rig ──────────────────────────────────────────────────────────
+
+    private sealed record Rig(
+        string Label,
+        Ax25Session Session,
+        SystemTimerScheduler Scheduler,
+        ConcurrentQueue<DataLinkSignal> Signals,
+        object PostGate);
+
+    private static Rig BuildRig(
+        string label,
+        Callsign local,
+        Callsign remote,
+        LossyHardwareSender sender,
+        ConcurrentQueue<TraceEntry> trace)
+    {
+        var scheduler = new SystemTimerScheduler(TimeProvider.System);
+        var ctx       = new Ax25SessionContext
+        {
+            Local = local,
+            Remote = remote,
+            // Start with a generous initial T1V — the SRT IIR converges
+            // T1V toward observed RTT, but the SDL only updates SRT on
+            // successful ack windows. With K=4 and a fast hardware loop
+            // it takes a few cycles to settle; an overly small initial
+            // T1V triggers a TimerRecovery cycle on the *first* K-group.
+            T1V = TimeSpan.FromSeconds(8),
+            Srt = TimeSpan.FromSeconds(4),
+            // More retries: scripted loss makes the default N2=10 too
+            // close to the floor for a 40-segment transfer under 30%
+            // loss in each direction.
+            N2 = 20,
+        };
+        var signals   = new ConcurrentQueue<DataLinkSignal>();
+
+        // Track the most-recent N(s) observed in outbound I-frames so
+        // we can flag actual retransmits (same N(s) within a half-
+        // modulus window) without false-positiving on the mod-8 wrap
+        // of fresh frames. A retransmit always re-sends a *recent*
+        // N(s); a new frame's N(s) advances forward.
+        byte? lastSentNs = null;
+
+        void SendBytes(ReadOnlyMemory<byte> bytes)
+        {
+            if (Ax25Frame.TryParse(bytes.Span, out var parsed))
+            {
+                var kind = ClassifyForTrace(parsed);
+                if (kind == TraceKind.IFrame)
+                {
+                    byte ns = (byte)((parsed.Control >> 1) & 0x07);
+                    if (lastSentNs is byte prev)
+                    {
+                        // forward distance from previous N(s); 0 = same
+                        // frame (definite retransmit); 1..3 = normal
+                        // progress within a K=4 window; 4..7 = backward
+                        // (i.e. retransmit, modulo 8).
+                        int forward = (ns - prev + 8) % 8;
+                        if (forward == 0 || forward >= 4)
+                        {
+                            kind = TraceKind.IFrameRetransmit;
+                        }
+                    }
+                    lastSentNs = ns;
+                }
+                trace.Enqueue(new TraceEntry(DateTimeOffset.UtcNow, label, "TX", kind, parsed.Control));
+            }
+            _ = sender.SendFrameAsync(bytes);
+        }
+
+        Ax25Session? sessionRef = null;
+        var subroutines = new DefaultSubroutineRegistry();
+        var dispatcher = new ActionDispatcher(
+            onTimerExpiry: name => SafePost(sessionRef!, ToTimerEvent(name)),
+            sendSFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
+            sendUFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
+            sendUiFrame:   spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
+            sendIFrame:    spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
+            sendUpward:    sig =>
+            {
+                signals.Enqueue(sig);
+                sessionRef?.RaiseDataLinkSignal(sig);
+            },
+            sendLinkMux:   _ => { },
+            sendInternal:  _ => { },
+            subroutines:   subroutines)
+        {
+            // Fast ack delay: a 256-byte I-frame at 9600 baud rides the
+            // wire in ~225 ms; default T2 = 1500 ms is way too long
+            // and causes A's T1 (which shrinks toward the observed RTT
+            // via figc4.7's SRT IIR) to expire before B's piggyback ack
+            // arrives — manifests as a RR-poll cycle between every
+            // K-window. 200 ms keeps T2 well under any steady-state T1
+            // value we'd reasonably converge to on a back-to-back link.
+            T2Duration = TimeSpan.FromMilliseconds(200),
+            // Long-idle timer: connect / 40-segment transfer / disconnect
+            // can easily exceed 30 s under loss + slow modes. Bump high
+            // enough that T3 only fires if the link is genuinely stuck.
+            T3Duration = TimeSpan.FromMinutes(5),
+        };
+
+        var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => sessionRef?.CurrentTrigger);
+        var guards   = new GuardEvaluator(bindings);
+        var session  = new Ax25Session(ctx, scheduler, dispatcher, guards,
+            transitionsByState: TransitionMap(),
+            initialState: "Disconnected");
+        sessionRef = session;
+
+        return new Rig(label, session, scheduler, signals, new object());
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Per-session PostEvent serialiser. The inbound pump (driven by
+    /// <see cref="NinoTncSerialPort.InboundEvent"/> on the read-pump
+    /// thread) and the test thread (firing DL-DATA-requests / DL-CONNECT
+    /// / DL-DISCONNECT) both call into the same <see cref="Ax25Session"/>.
+    /// PostEvent mutates context state without locking, so we serialise
+    /// at the call site.
+    /// </summary>
+    private static void SafePost(Rig rig, Ax25Event evt)
+    {
+        lock (rig.PostGate) rig.Session.PostEvent(evt);
+    }
+
+    /// <summary>
+    /// Overload used by the dispatcher's timer-expiry callback, which
+    /// captures the session before the rig record exists.
+    /// </summary>
+    private static void SafePost(Ax25Session session, Ax25Event evt)
+    {
+        // Session-local lock — the dispatcher closure doesn't have a
+        // handle to the rig, so we lock on the session itself. The
+        // session is the same object the rig's PostGate is gating, so
+        // a single per-rig lock would be cleaner; this fallback path
+        // is rare (only fires on timer expiry) and serialises against
+        // itself, which is sufficient.
+        lock (session) session.PostEvent(evt);
+    }
+
+    private static Ax25Event ToTimerEvent(string name) => name switch
+    {
+        "T1" => new T1Expiry(),
+        "T2" => new T2Expiry(),
+        "T3" => new T3Expiry(),
+        _    => throw new InvalidOperationException($"unexpected timer expiry name '{name}'"),
+    };
+
+    private static void PumpInbound(KissInboundEvent evt, Rig rig, string label, ConcurrentQueue<TraceEntry> trace)
+    {
+        if (evt is not Ax25FrameReceivedEvent ax25) return;
+        var frame = ax25.Ax25;
+        if (!frame.Destination.Callsign.Equals(rig.Session.Context.Local)) return;
+
+        trace.Enqueue(new TraceEntry(DateTimeOffset.UtcNow, label, "RX", ClassifyForTrace(frame), frame.Control));
+        SafePost(rig, Ax25FrameClassifier.Classify(frame));
+    }
+
+    private static async Task<T?> WaitForSignalAsync<T>(
+        ConcurrentQueue<DataLinkSignal> signals,
+        TimeSpan budget,
+        CancellationToken outer) where T : DataLinkSignal
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(budget);
+        while (!cts.IsCancellationRequested)
+        {
+            while (signals.TryDequeue(out var sig))
+            {
+                if (sig is T match) return match;
+            }
+            try { await Task.Delay(25, cts.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return null; }
+        }
+        return null;
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan budget, CancellationToken outer)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(budget);
+        while (!cts.IsCancellationRequested)
+        {
+            if (condition()) return;
+            try { await Task.Delay(25, cts.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private static TimeSpan ComputeTransferBudget(NinoTncMode mode, double lossProbability)
+    {
+        // Walltime-equivalent of the raw payload at the mode's bit rate,
+        // padded for I-frame overhead (addr + ctrl + pid + FCS ≈ 18 bytes
+        // per 256-byte segment plus ack RR frames in the other direction),
+        // TXDELAY pacing, and the K-window stop-and-wait gaps. Lossy
+        // runs inflate further to absorb retransmits; loss-rate p means
+        // an expected-retransmits multiplier of 1/(1-p), squared since
+        // round-trip success is (1-p)² under bidirectional loss.
+        double airTimeSeconds = mode.BitRateHz > 0
+            ? (PayloadBytes + SegmentCount * 32.0) * 8.0 / mode.BitRateHz
+            : 60.0;
+        double lossMultiplier = lossProbability > 0
+            ? 1.0 / Math.Pow(1.0 - lossProbability, 2.0)
+            : 1.0;
+        double overheadMultiplier = 4.0;     // K-window stop-and-wait + TXDELAY + RR turnaround
+        double budget = airTimeSeconds * overheadMultiplier * lossMultiplier;
+        return TimeSpan.FromSeconds(Math.Max(90.0, budget));
+    }
+
+    private static List<ReadOnlyMemory<byte>> BuildSegments()
+    {
+        var segments = new List<ReadOnlyMemory<byte>>(SegmentCount);
+        for (int i = 0; i < SegmentCount; i++)
+        {
+            var buf = new byte[SegmentSize];
+            for (int j = 0; j < SegmentSize; j++)
+            {
+                // Deterministic pattern keyed by global byte offset so
+                // any reordering or truncation shows up in the assert.
+                int offset = i * SegmentSize + j;
+                buf[j] = (byte)((offset * 31 + i) & 0xFF);
+            }
+            segments.Add(buf);
+        }
+        return segments;
+    }
+
+    private static List<string> SelectTwoPorts()
+    {
+        var candidates = NinoTncPortDiscovery.EnumerateCandidates();
+        Skip.If(
+            candidates.Count < 2,
+            $"Hardware-loop test: expected ≥2 NinoTNC-class serial devices, " +
+            $"found {candidates.Count}. Connect both TNCs over USB and re-run, " +
+            $"or set {NinoTncPortDiscovery.PortsEnvVar}=\"<porta>,<portb>\" to pick explicitly.");
+        return candidates.Take(2).Select(c => c.PortName).ToList();
+    }
+
+    private static async Task PrepareTncAsync(NinoTncSerialPort tnc, byte modeId, byte txDelayTenMsUnits, CancellationToken ct)
+    {
+        // persistToFlash=false applies the +16 non-persist offset so the
+        // mode lives only for this power cycle — repeated theory
+        // invocations don't burn flash.
+        await tnc.SetModeAsync(modeId, persistToFlash: false, ct).ConfigureAwait(false);
+        await tnc.SetTxDelayAsync(txDelayTenMsUnits, ct).ConfigureAwait(false);
+    }
+
+    private static Dictionary<string, IReadOnlyList<TransitionSpec>> TransitionMap() => new()
+    {
+        ["Disconnected"]          = DataLink_Disconnected.Transitions,
+        ["AwaitingConnection"]    = DataLink_AwaitingConnection.Transitions,
+        ["AwaitingV22Connection"] = DataLink_AwaitingV22Connection.Transitions,
+        ["Connected"]             = DataLink_Connected.Transitions,
+        ["AwaitingRelease"]       = DataLink_AwaitingRelease.Transitions,
+        ["TimerRecovery"]         = DataLink_TimerRecovery.Transitions,
+    };
+
+    // ─── Trace ────────────────────────────────────────────────────────
+
+    private enum TraceKind
+    {
+        Sabm, Sabme, Disc, Ua, Dm, Frmr, Xid, Test, Ui,
+        IFrame, IFrameRetransmit,
+        Rr, Rnr, Rej, Srej,
+        Other,
+    }
+
+    private sealed record TraceEntry(DateTimeOffset At, string Label, string Direction, TraceKind Kind, byte Control);
+
+    private static TraceKind ClassifyForTrace(Ax25Frame frame)
+    {
+        byte ctrl = frame.Control;
+        if ((ctrl & 0x01) == 0) return TraceKind.IFrame;
+        if ((ctrl & 0x03) == 0x01)
+        {
+            return (ctrl & 0x0C) switch
+            {
+                0x00 => TraceKind.Rr,
+                0x04 => TraceKind.Rnr,
+                0x08 => TraceKind.Rej,
+                0x0C => TraceKind.Srej,
+                _    => TraceKind.Other,
+            };
+        }
+        byte uBase = (byte)(ctrl & 0xEF);
+        return uBase switch
+        {
+            0x2F => TraceKind.Sabm,
+            0x6F => TraceKind.Sabme,
+            0x43 => TraceKind.Disc,
+            0x63 => TraceKind.Ua,
+            0x0F => TraceKind.Dm,
+            0x87 => TraceKind.Frmr,
+            0xAF => TraceKind.Xid,
+            0xE3 => TraceKind.Test,
+            0x03 => TraceKind.Ui,
+            _    => TraceKind.Other,
+        };
+    }
+
+    private static string TraceTail(ConcurrentQueue<TraceEntry> trace, int max)
+    {
+        var entries = trace.ToArray();
+        var tail = entries.Skip(Math.Max(0, entries.Length - max));
+        return string.Join(", ",
+            tail.Select(t => $"{t.Label}-{t.Direction}:{t.Kind}(0x{t.Control:X2})"));
+    }
+}
