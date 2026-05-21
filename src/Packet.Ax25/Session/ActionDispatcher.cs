@@ -563,6 +563,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "Clear Peer Receiver Busy":       ctx.PeerReceiverBusy   = false; break;
             case "Clear Own Receiver Busy":        ctx.OwnReceiverBusy    = false; break;
             case "Clear Reject Condition":         ctx.RejectException    = false; break;
+            case "Clear Reject Exception":         ctx.RejectException    = false; break;
             case "Clear Sreject Condition":        ctx.SelectiveRejectException = false; ctx.SrejExceptionCount = 0; break;
             case "Clear Acknowledge Pending":      ctx.AcknowledgePending = false; break;
             case "Discard I Queue Entries":        ctx.IFrameQueue.Clear(); break;
