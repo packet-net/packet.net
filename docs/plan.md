@@ -836,6 +836,21 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-21 — AX.25 §6.6 Segmenter + Reassembler
+
+Phase 2 exit criterion: *"Segmenter reassembles a 1500-byte payload across multiple I-frames."*
+
+New `src/Packet.Ax25/Session/Segmenter.cs`:
+
+- `Segmenter.Segment(payload, maxInfoFieldBytes)` — splits a payload into I-frame info-field byte arrays, each prefixed with the segment control byte (bit 7 = First; bits 5:0 = remaining segments after this one).
+- `Reassembler.Push(infoField)` — accumulates segments until the final one (remaining == 0) arrives, then returns the completed payload. Throws on out-of-sequence or non-First-before-First protocol violations.
+
+Per `docs/plan.md` §5.2, the segment control byte is `F | seg-remaining(6)` — a 6-bit remaining count, capping a packet at 64 segments. At default N1=256 that's 64 × 255 = 16 320 bytes of upper-layer payload.
+
+Not yet wired into `Ax25Session`'s send path — kept standalone for now. Phase 2 still has the Management Data-Link XID layer pending, which negotiates N1; integration with Session will go through that path rather than guess at N1 here.
+
+Tests: 14 facts covering round-trip across payload sizes (0, 1, 100, 254, 255, 256, 1500, 16320), header format, capacity overflow, and Reassembler error paths.
+
 ### 2026-05-21 — REJ / SREJ retransmits visible end-to-end + fix dispatcher alias
 
 Phase 2 exit criterion: *"REJ and SREJ retransmits observed on the wire."* New file `DataLinkConnectedRetransmitTests.cs` drives the figc4.4 retransmit paths through an in-process two-session pipe with a frame-aware drop filter:
