@@ -836,6 +836,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-21 — REJ / SREJ retransmits visible end-to-end + fix dispatcher alias
+
+Phase 2 exit criterion: *"REJ and SREJ retransmits observed on the wire."* New file `DataLinkConnectedRetransmitTests.cs` drives the figc4.4 retransmit paths through an in-process two-session pipe with a frame-aware drop filter:
+
+- **REJ emission** — A sends three I-frames; the middle (N(s)=1) is dropped at the link. B's figc4.4 t26 path (the `not ns_eq_vr and not reject_exception and not SREJ_enabled` arm) fires and sends REJ back to A.
+- **SREJ emission** — same setup with `B.Context.SrejEnabled = true` and a single-frame gap. figc4.4's SREJ-enabled arm fires and sends SREJ back.
+- **REJ reception** — direct-injection unit test: post `RejReceived` with N(r) in window into A's session, assert `V(a) := N(r)` and state stays Connected.
+
+Surfaced and fixed a dispatcher alias bug: `Push Old I Frame N(r) on Queue` (figc4.4's REJ/SREJ retransmit verb that looks up the previously-sent I-frame at the incoming N(r)) was incorrectly aliased to `push_on_I_frame_queue` (the *new* I-frame queue-push, which requires the trigger to be `DL_DATA_request`). Now correctly aliased to `push_old_I_frame_N_r_on_queue`.
+
 ### 2026-05-21 — TimerRecovery end-to-end scenarios under simulated loss
 
 Follow-up to the same-day wire-up (#207): an in-process two-session integration test (`DataLinkTimerRecoveryIntegrationTests.cs`) drives both endpoints through the §C4.5 entry-and-disconnect cycle under controlled loss, with `FakeTimeProvider` advancing T1 deterministically. Two facts cover the canonical cycle:
