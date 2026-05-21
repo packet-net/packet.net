@@ -836,6 +836,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-21 — Enquiry_Response F-bit parameter binding (closes ax25sdl#43)
+
+figc4.7b page 102 draws `Check Need for Response`'s Yes branch as `Enquiry Response (F = 1)` — the `(F = 1)` is a parameter binding to the subroutine call, not an action inside the body. The figure intentionally omits an `F := 1` action because the parameter is meant to do the F-bit set. The SDL DSL doesn't yet model subroutine parameters, so the LLM-era walker encoded the parameter as a name-suffix alias (`Enquiry_Response_F_1`, `_F_0`).
+
+Until today, the runtime's `DefaultSubroutineRegistry` aliased `Enquiry_Response_F_1` → `Enquiry_Response` as a pure name rewrite. That left the F-bit unset on the wire — every poll response went out with F=0 — and the polling side's TimerRecovery `response_and_F_eq_1` guard never matched, blocking recovery-to-Connected even with the rest of figc4.5 working.
+
+Introduce a `ParameterisedAliases` table separate from `LegacyAliases`. Each entry maps an alias name to a `(canonical body, context-mutation)` pair. The `Wire()` step wraps the canonical walker with the mutation. `Enquiry_Response_F_1` sets `tx.Pending.PfBit = true` before walking; `_F_0` sets it false. The body's response verbs (`RR Response`, `RNR Response`, `SREJ`) already read `tx.Pending.PfBit`, so the frame goes out with the right F.
+
+Two new facts in `Figc47SubroutineBodyTests` cover both polarities. Closes ax25sdl#43 (the original framing as a graphml fix was wrong; the figure is faithful — fix belonged in the runtime).
+
 ### 2026-05-21 — Hardware loop: session-level 10 kB transfer across the NinoTNC pair
 
 Phase 2 exit criterion: *"Hardware loop sustains 10 kB transfer across NinoTNCs with 0–30 % scripted loss."* (closes [#213](https://github.com/m0lte/packet.net/issues/213), partial.)

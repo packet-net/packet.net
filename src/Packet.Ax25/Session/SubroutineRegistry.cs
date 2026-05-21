@@ -57,25 +57,19 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     private GuardEvaluator? wiredGuards;
 
     /// <summary>
-    /// Legacy subroutine names that remain referenced by older
-    /// state-machine YAML pages (e.g. <c>connected.sdl.yaml</c>'s
-    /// <c>Enquiry_Response_F_0</c> / <c>_F_1</c>) but aren't separate
-    /// subroutines in the redrawn <c>figc4.7</c> — both call the same
-    /// <c>Enquiry_Response</c> body, with the F-bit choice arising
-    /// naturally from the spec's first-decision predicate
-    /// <c>F == 1 &amp; (Frame==RR || Frame==RNR || Frame==I)?</c>.
+    /// Legacy subroutine names — pure name rewrites where the alias walks
+    /// the canonical body unchanged. Used when a YAML page calls a
+    /// subroutine under a name that the redrawn figc4.7 doesn't emit
+    /// directly.
     /// </summary>
     /// <remarks>
-    /// Each entry maps the legacy alias name to the canonical spec
-    /// name to walk. After <see cref="Wire"/>, invoking the legacy
-    /// alias runs the canonical body; the figure-faithful caller-side
-    /// name in <c>connected.sdl.yaml</c> stays unchanged.
+    /// After <see cref="Wire"/>, invoking the legacy alias runs the
+    /// canonical body; the figure-faithful caller-side name in the
+    /// state-machine YAMLs stays unchanged.
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, string> LegacyAliases =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["Enquiry_Response_F_0"] = "Enquiry_Response",
-            ["Enquiry_Response_F_1"] = "Enquiry_Response",
             // Packet.Ax25.Sdl v0.5.0 names the figc4.7 subroutine `Select_T1`
             // (matching the figure heading); earlier transcriptions called
             // it `Select_T1_Value`. Keep the longer historic name working.
@@ -88,6 +82,41 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         };
 
     /// <summary>
+    /// Parameterised aliases — alias names that bind a parameter value on
+    /// the trigger context before walking the canonical body. Models the
+    /// figc4.7 spec's parameter-passing convention for subroutines: e.g.
+    /// figc4.7b page 102 draws <c>Check Need for Response</c>'s Yes branch as
+    /// <c>Enquiry Response (F = 1)</c>, where the <c>(F = 1)</c> is a
+    /// parameter binding, not an action inside the subroutine body.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The SDL DSL does not yet model subroutine parameters (a stated
+    /// limitation in <c>docs/adr/0001-sdl-dsl.md</c>). The walker / codegen
+    /// encodes the parameter value as a name-suffix alias (<c>Enquiry_Response_F_1</c>,
+    /// <c>_F_0</c>). This dictionary lifts the encoding back into a real
+    /// parameter binding — invoking <c>Enquiry_Response_F_1</c> sets
+    /// <see cref="PendingFrame.PfBit"/> to <c>true</c> before walking the
+    /// canonical <c>Enquiry_Response</c> body, so its response-emitting
+    /// verbs (<c>RR Response</c>, <c>RNR Response</c>, <c>SREJ</c>) emit
+    /// frames with F=1 as the figure intends.
+    /// </para>
+    /// <para>
+    /// Without this binding, polls received by a Connected peer get
+    /// responses with F=0, the polling side's TimerRecovery guard
+    /// <c>response_and_F_eq_1</c> never matches, and recovery-to-Connected
+    /// is unreachable. Surfaced on the figc4.5 integration work — see
+    /// <c>docs/plan.md</c> §17 2026-05-21 amendment.
+    /// </para>
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<string, (string Canonical, Action<TransitionContext> Bind)> ParameterisedAliases =
+        new Dictionary<string, (string, Action<TransitionContext>)>(StringComparer.Ordinal)
+        {
+            ["Enquiry_Response_F_1"] = ("Enquiry_Response", tx => tx.Pending.PfBit = true),
+            ["Enquiry_Response_F_0"] = ("Enquiry_Response", tx => tx.Pending.PfBit = false),
+        };
+
+    /// <summary>
     /// Canonical names of every subroutine the transcribed pages reference.
     /// Sourced from the generated <see cref="DataLink_Subroutines.Subroutines"/>
     /// list plus the legacy aliases.
@@ -95,6 +124,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     public static IReadOnlyList<string> KnownSubroutines { get; } =
         DataLink_Subroutines.Subroutines.Select(s => s.Name)
             .Concat(LegacyAliases.Keys)
+            .Concat(ParameterisedAliases.Keys)
             .ToList();
 
     /// <summary>
@@ -121,11 +151,18 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         {
             subroutines[spec.Name] = _ => { /* no-op until Wire() is called */ };
         }
-        // Legacy aliases (e.g. Enquiry_Response_F_0 / _F_1, Select_T1_Value)
-        // — referenced by older transcriptions or by paths that called the
-        // longer historic name; resolved to the same body as their
-        // canonical target once Wire() runs.
+        // Legacy aliases (e.g. Select_T1_Value, Check_Need_For_Response with
+        // capital F) — referenced by older transcriptions or by paths that
+        // called the longer historic name; resolved to the same body as
+        // their canonical target once Wire() runs.
         foreach (var alias in LegacyAliases.Keys)
+        {
+            subroutines[alias] = _ => { /* no-op until Wire() is called */ };
+        }
+        // Parameterised aliases (e.g. Enquiry_Response_F_0/F_1) — resolved
+        // to the canonical body, but with a context-mutation applied first
+        // to model the figure's parameter-passing convention.
+        foreach (var alias in ParameterisedAliases.Keys)
         {
             subroutines[alias] = _ => { /* no-op until Wire() is called */ };
         }
@@ -166,6 +203,22 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
             if (!specsByName.TryGetValue(canonicalName, out var spec)) continue;
             var captured = spec;
             subroutines[alias] = tx => WalkSubroutine(captured, tx);
+        }
+        // Each parameterised alias binds its parameter onto the trigger
+        // context, then walks the canonical body. This is how the runtime
+        // models the figc4.7 spec's "(F = 1)" parameter-passing convention
+        // (see ParameterisedAliases doc).
+        foreach (var (alias, (canonicalName, bind)) in ParameterisedAliases)
+        {
+            if (userOverridden.Contains(alias)) continue;
+            if (!specsByName.TryGetValue(canonicalName, out var spec)) continue;
+            var captured = spec;
+            var capturedBind = bind;
+            subroutines[alias] = tx =>
+            {
+                capturedBind(tx);
+                WalkSubroutine(captured, tx);
+            };
         }
     }
 

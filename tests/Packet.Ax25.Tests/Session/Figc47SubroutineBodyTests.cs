@@ -184,6 +184,95 @@ public class Figc47SubroutineBodyTests
     }
 
     [Fact]
+    public void Enquiry_Response_F_1_Sets_F_Bit_On_Outbound_Response()
+    {
+        // figc4.7b page 102 draws Check_Need_for_Response's Yes branch as
+        // `Enquiry Response (F = 1)` — a parameter-passing convention to the
+        // subroutine. The SDL DSL doesn't model subroutine parameters yet, so
+        // the walker encodes the parameter as a name-suffix alias
+        // (Enquiry_Response_F_1). DefaultSubroutineRegistry binds the
+        // parameter via the ParameterisedAliases table — invoking the alias
+        // sets tx.Pending.PfBit before walking the canonical body, so the
+        // body's "RR Response" verb emits a frame with F=1 as the figure
+        // intends.
+        var local  = new Callsign("M0LTE", 1);
+        var remote = new Callsign("WB2OSZ", 0);
+        var time = new FakeTimeProvider();
+        var scheduler = new SystemTimerScheduler(time);
+        var ctx = new Ax25SessionContext { Local = local, Remote = remote };
+
+        SupervisoryFrameSpec? lastS = null;
+        var d = new ActionDispatcher(
+            onTimerExpiry: _ => { },
+            sendSFrame:    s => lastS = s,
+            sendUFrame:    _ => { },
+            sendUiFrame:   _ => { },
+            sendUpward:    _ => { },
+            sendLinkMux:   _ => { },
+            sendInternal:  _ => { },
+            sendIFrame:    _ => { });
+
+        // The trigger is what figc4.7's `F=1 & Frame=RR/RNR/I?` predicate
+        // reads — an RR Command with the P bit set (PollFinal=true). The
+        // PfBit binding mirrors that onto Pending so the response inherits
+        // F=1 when it goes out the wire.
+        var triggerFrame = Ax25Frame.Rr(
+            destination: local, source: remote,
+            nr: 0, isCommand: true, pollFinal: true);
+        var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => new RrReceived(triggerFrame));
+        var guards = new GuardEvaluator(bindings);
+        if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
+
+        var tx = new TransitionContext(ctx, scheduler, new RrReceived(triggerFrame));
+        d.Execute("Enquiry_Response_F_1", tx);
+
+        lastS.Should().NotBeNull("Enquiry_Response must emit an S-frame response");
+        lastS!.Value.Type.Should().Be(SupervisoryFrameType.Rr);
+        lastS.Value.IsCommand.Should().BeFalse("response form (not command)");
+        lastS.Value.PfBit.Should().BeTrue(
+            "the (F = 1) parameter binding on the Enquiry_Response_F_1 alias must put F=1 on the wire — without this, the polling side's TimerRecovery guard `response_and_F_eq_1` never matches");
+    }
+
+    [Fact]
+    public void Enquiry_Response_F_0_Clears_F_Bit_On_Outbound_Response()
+    {
+        // Symmetric variant: Enquiry_Response_F_0 binds F=0 onto the
+        // outbound response. Less common at call sites but it's the
+        // natural-pair version of _F_1; both aliases share the canonical
+        // body and only differ in the bound F-bit value.
+        var local  = new Callsign("M0LTE", 1);
+        var remote = new Callsign("WB2OSZ", 0);
+        var time = new FakeTimeProvider();
+        var scheduler = new SystemTimerScheduler(time);
+        var ctx = new Ax25SessionContext { Local = local, Remote = remote };
+
+        SupervisoryFrameSpec? lastS = null;
+        var d = new ActionDispatcher(
+            onTimerExpiry: _ => { },
+            sendSFrame:    s => lastS = s,
+            sendUFrame:    _ => { },
+            sendUiFrame:   _ => { },
+            sendUpward:    _ => { },
+            sendLinkMux:   _ => { },
+            sendInternal:  _ => { },
+            sendIFrame:    _ => { });
+
+        var triggerFrame = Ax25Frame.Rr(
+            destination: local, source: remote,
+            nr: 0, isCommand: true, pollFinal: true);
+        var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => new RrReceived(triggerFrame));
+        var guards = new GuardEvaluator(bindings);
+        if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
+
+        var tx = new TransitionContext(ctx, scheduler, new RrReceived(triggerFrame));
+        d.Execute("Enquiry_Response_F_0", tx);
+
+        lastS.Should().NotBeNull();
+        lastS!.Value.PfBit.Should().BeFalse(
+            "the (F = 0) parameter binding on the Enquiry_Response_F_0 alias must put F=0 on the wire");
+    }
+
+    [Fact]
     public void N_r_Error_Recovery_Emits_J_DL_Error_And_Clears_Layer3_Initiated()
     {
         var time = new FakeTimeProvider();
