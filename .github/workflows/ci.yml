@@ -33,7 +33,6 @@ jobs:
         project:
           - Packet.Agw.Tests
           - Packet.Aprs.Tests
-          - Packet.Ax25.Conformance.Tests
           - Packet.Ax25.Properties
           - Packet.Ax25.Tests
           - Packet.Axudp.Tests

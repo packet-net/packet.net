@@ -17,7 +17,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Packet.Agw.Tests/Packet.Agw.Tests.csproj" />
-    <Project Path="tests/Packet.Ax25.Conformance.Tests/Packet.Ax25.Conformance.Tests.csproj" />
     <Project Path="tests/Packet.Ax25.Properties/Packet.Ax25.Properties.csproj" />
     <Project Path="tests/Packet.Ax25.Tests/Packet.Ax25.Tests.csproj" />
     <Project Path="tests/Packet.Aprs.Tests/Packet.Aprs.Tests.csproj" />

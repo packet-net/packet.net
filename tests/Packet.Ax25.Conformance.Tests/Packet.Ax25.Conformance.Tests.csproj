@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
-    <PackageReference Include="Packet.Ax25.Sdl" />
-  </ItemGroup>
-
-</Project>
