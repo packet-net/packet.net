@@ -1101,7 +1101,11 @@ public sealed class ActionDispatcher : IActionDispatcher
             ["Push on I Frame Queue (note: word order?)"]          = "push_on_I_frame_queue",
             ["Push on I Frame Queue"]                              = "push_on_I_frame_queue",
             ["Push I Frame on I Queue"]           = "push_on_I_frame_queue",
-            ["Push Old I Frame N(r) on Queue"]    = "push_on_I_frame_queue",
+            // "Push Old I Frame N(r) on Queue" is figc4.4's REJ/SREJ retransmit
+            // verb — looks up the previously-sent I-frame at N(r) and re-queues
+            // it. Distinct from the unprefixed "Push Old I Frame onto Queue"
+            // which is the Invoke_Retransmission subroutine's loop body.
+            ["Push Old I Frame N(r) on Queue"]    = "push_old_I_frame_N_r_on_queue",
             ["Push Old I Frame onto Queue"]       = "push_on_I_frame_queue",
             ["Push Frame on Queue"]               = "push_on_I_frame_queue",
             ["Push Frame Onto Queue"]             = "push_on_I_frame_queue",
