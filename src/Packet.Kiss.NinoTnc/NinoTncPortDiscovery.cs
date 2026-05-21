@@ -194,7 +194,21 @@ public static class NinoTncPortDiscovery
             // Same — registry node visible but read-denied.
         }
 
+        // Filter against currently-present serial ports. The registry
+        // retains the PortName for every USB-serial device that has
+        // ever been plugged in on this host, so a stale COM5 from a
+        // previous NinoTNC can outlive the physical hardware and
+        // leak into the candidate list. SerialPort.GetPortNames()
+        // returns what the OS currently exposes — i.e. what the
+        // caller can actually open. Without this filter,
+        // EnumerateCandidates() handed a non-existent port to
+        // NinoTncSerialPort.Open() and threw FileNotFoundException.
+        var present = new HashSet<string>(
+            SerialPort.GetPortNames(),
+            StringComparer.OrdinalIgnoreCase);
+
         return results
+            .Where(c => present.Contains(c.PortName))
             .OrderBy(p => p.PortName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

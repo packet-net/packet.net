@@ -44,14 +44,18 @@ namespace Packet.Interop.Tests.Hardware;
 /// <b>The bench audio path is not perfectly lossless</b> — occasional
 /// frame-level dropouts happen even with no scripted loss, especially
 /// for the slower modes whose longer airtime increases per-frame
-/// exposure. Each wire dropout hits the same
+/// exposure. Each wire dropout hits the same upstream SDL gaps as
+/// the scripted-loss path — both
 /// <a href="https://github.com/m0lte/ax25sdl/issues/44">ax25sdl#44</a>
-/// Invoke_Retransmission gap as the scripted-loss path, so the
-/// no-loss matrix here is best-effort: each entry passes in the
-/// normal case, but a wire dropout during the ~60 s transfer can
-/// stall the link in a perpetual RR-poll cycle. Re-runs typically
-/// pass. The flakiness is a real-bench reality + a known SDL gap,
-/// not a stack regression; both will resolve when ax25sdl#44 ships.
+/// (<c>Invoke_Retransmission</c> single-iteration) and
+/// <a href="https://github.com/m0lte/ax25sdl/issues/43">ax25sdl#43</a>
+/// (<c>Enquiry_Response</c> doesn't set <c>F := 1</c>) — so the
+/// no-loss matrix is best-effort: each entry passes in the normal
+/// case, but a wire dropout during the ~60 s transfer can stall the
+/// link in a perpetual RR-poll cycle. Re-runs typically pass. The
+/// flakiness is a real-bench reality combined with known SDL gaps,
+/// not a stack regression; both will resolve when those upstream
+/// fixes ship.
 /// </para>
 /// <para>
 /// The Segmenter (PR #210) isn't yet wired into <see cref="Ax25Session"/>'s
@@ -107,21 +111,36 @@ public class HardwareLoop10KBTransfer
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Currently skipped — blocked on
-    /// <a href="https://github.com/m0lte/ax25sdl/issues/44">m0lte/ax25sdl#44</a>.</b>
-    /// The transcription of <c>Invoke_Retransmission</c> in
-    /// <c>Packet.Ax25.Sdl</c> encodes only a single iteration of the
-    /// figc4.7 retransmit loop — so the REJ-triggered "re-send all
-    /// I-frames between N(r) and V(s)" path doesn't actually re-emit
-    /// the missing frames. The runtime symptom on this hardware loop
-    /// is a perpetual RR-poll cycle: A enters TimerRecovery, B replies
-    /// RR(N(r)=missing_seq), A never retransmits, the link starves.
+    /// <b>Currently skipped — blocked on two upstream SDL gaps:</b>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <a href="https://github.com/m0lte/ax25sdl/issues/44">ax25sdl#44</a>
+    ///     — <c>Invoke_Retransmission</c> encodes only one iteration
+    ///     of the figc4.7 retransmit loop, so REJ-triggered (or
+    ///     post-TimerRecovery) retransmits never re-emit the
+    ///     I-frames between <c>N(r)</c> and <c>V(s)</c>.
+    ///   </item>
+    ///   <item>
+    ///     <a href="https://github.com/m0lte/ax25sdl/issues/43">ax25sdl#43</a>
+    ///     — <c>Enquiry_Response</c> response paths don't set
+    ///     <c>F := 1</c>, so B's reply to A's RR-poll goes out
+    ///     with F=0; A's TimerRecovery guard
+    ///     <c>response_and_F_eq_1</c> never matches and the
+    ///     recovery-to-Connected path can't be reached.
+    ///   </item>
+    /// </list>
+    /// The combined runtime symptom on this hardware loop is the
+    /// same RR-poll cycle either gap produces on its own: A enters
+    /// TimerRecovery, B replies RR(N(r)=missing_seq, F=0), A never
+    /// retransmits and never exits TimerRecovery, the link starves
+    /// until N2 retries exhaust and DM ends the session.
     /// </para>
     /// <para>
-    /// The test infrastructure is otherwise complete and verified
-    /// against the no-loss fact above. Removing the <see cref="Skip.If(bool, string)"/>
-    /// below once ax25sdl#44 lands and bumps into <c>Packet.Ax25.Sdl</c>
-    /// will re-enable the matrix; the assertion shape stays the same.
+    /// The test infrastructure is otherwise complete. Removing the
+    /// <see cref="Skip.If(bool, string)"/> below once
+    /// <c>Packet.Ax25.Sdl</c> ships the fixes will re-enable the
+    /// matrix; the assertion shape stays the same. Downstream
+    /// tracker for both unblocks: <see href="https://github.com/m0lte/packet.net/issues/214"/>.
     /// </para>
     /// </remarks>
     [SkippableTheory]
@@ -132,9 +151,11 @@ public class HardwareLoop10KBTransfer
     public Task Ten_KB_Transfer_Survives_Scripted_Loss(byte modeId, byte txDelayTenMsUnits, double lossProbability)
     {
         Skip.If(true,
-            "Blocked on upstream SDL gap m0lte/ax25sdl#44 (Invoke_Retransmission encodes only one loop iteration). " +
-            "REJ-triggered retransmits don't re-emit the missing I-frames; link starves in a perpetual RR-poll cycle. " +
-            "Remove this Skip.If once Packet.Ax25.Sdl ships the multi-iteration fix (tracked downstream by m0lte/packet.net#214).");
+            "Blocked on two upstream SDL gaps: " +
+            "m0lte/ax25sdl#44 (Invoke_Retransmission encodes only one loop iteration — REJ-triggered retransmits don't re-emit missing I-frames) and " +
+            "m0lte/ax25sdl#43 (Enquiry_Response paths don't set F:=1 — polls get F=0 responses, recovery guard never matches). " +
+            "Link starves in a perpetual RR-poll cycle until N2 retries exhaust. " +
+            "Remove this Skip.If once Packet.Ax25.Sdl ships both fixes (tracked downstream by m0lte/packet.net#214).");
         return RunTransferAsync(modeId, txDelayTenMsUnits, lossProbability);
     }
 
@@ -156,15 +177,17 @@ public class HardwareLoop10KBTransfer
         await PrepareTncAsync(portB, modeId, txDelayTenMsUnits, cts.Token);
 
         // Mode and TXDELAY take a beat to settle in the NinoTNC after
-        // SETHW + KISS TXDELAY. The shorter (≤700 ms) waits the spike
-        // and UI-frame loopback tests get away with aren't enough for
-        // a sustained back-to-back I-frame stream — the first window
-        // of frames after a mode-switch decodes unreliably on the
-        // bench cross-wire. 2 s gives the modem fully time to lock.
-        await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
-
+        // SETHW + KISS TXDELAY. A static wait alone isn't enough for
+        // a sustained back-to-back I-frame stream — observed empirically
+        // that the first window of session-level I-frames after a mode
+        // switch decodes unreliably on the bench cross-wire. Prime each
+        // modem with a handful of UI frames in both directions so the
+        // TX modulator and RX demodulator actually exercise the path
+        // (carrier lock, AGC settle, FCS-validated round-trips) before
+        // the session-level transfer hits the wire.
         var aCall = new Callsign("PNLPA", 1);
         var bCall = new Callsign("PNLPB", 2);
+        await PrimeModemPathAsync(portA, portB, aCall, bCall, cts.Token);
 
         // Seed each side with a distinct stream so concurrent drops on
         // the two transports don't collide on the same RNG sequence.
@@ -523,6 +546,79 @@ public class HardwareLoop10KBTransfer
         // invocations don't burn flash.
         await tnc.SetModeAsync(modeId, persistToFlash: false, ct).ConfigureAwait(false);
         await tnc.SetTxDelayAsync(txDelayTenMsUnits, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Run a brief UI-frame priming round-trip across the modem pair
+    /// after mode + TXDELAY are configured. Sends <c>PrimingFrames</c>
+    /// UI frames from A→B and again from B→A, waiting briefly for
+    /// each direction to be observed on the partner before continuing.
+    /// </summary>
+    /// <remarks>
+    /// A static <c>Task.Delay</c> after SETHW lets the firmware settle
+    /// the mode register but does <em>not</em> exercise the analogue
+    /// TX/RX path — the first session-level I-frame still hits a cold
+    /// modulator/demodulator. Priming with real frames forces a few
+    /// FCS-validated round-trips up front so the carrier-lock, AGC,
+    /// and clock-recovery loops are already at steady state when the
+    /// session-level transfer starts. Failures here are tolerated
+    /// (best-effort): if priming frames don't arrive, the test will
+    /// surface it as a session-level failure with the same diagnostic
+    /// trace shape.
+    /// </remarks>
+    private static async Task PrimeModemPathAsync(
+        NinoTncSerialPort portA, NinoTncSerialPort portB,
+        Callsign aCall, Callsign bCall, CancellationToken ct)
+    {
+        await PrimeOneDirectionAsync(portA, portB, aCall, bCall, "A->B", ct).ConfigureAwait(false);
+        await PrimeOneDirectionAsync(portB, portA, bCall, aCall, "B->A", ct).ConfigureAwait(false);
+    }
+
+    private const int PrimingFrames = 3;
+
+    private static async Task PrimeOneDirectionAsync(
+        NinoTncSerialPort tx, NinoTncSerialPort rx,
+        Callsign src, Callsign dst, string label, CancellationToken ct)
+    {
+        int observed = 0;
+        void OnRx(object? _, KissInboundEvent evt)
+        {
+            if (evt is Ax25FrameReceivedEvent ax25
+                && ax25.Ax25.Source.Callsign.Equals(src)
+                && ax25.Ax25.Destination.Callsign.Equals(dst))
+            {
+                Interlocked.Increment(ref observed);
+            }
+        }
+        rx.InboundEvent += OnRx;
+        try
+        {
+            for (int i = 0; i < PrimingFrames; i++)
+            {
+                var frame = Ax25Frame.Ui(
+                    destination: dst,
+                    source: src,
+                    info: System.Text.Encoding.ASCII.GetBytes($"PRIME-{label}-{i}"));
+                await tx.SendFrameAsync(frame.ToBytes(), ct).ConfigureAwait(false);
+                // Brief inter-frame gap so the partner's demodulator
+                // can finish the previous frame before the next one
+                // hits the wire. The exact value isn't load-bearing —
+                // anything in the 100–500 ms range gives the modem
+                // time to drop carrier and re-acquire.
+                await Task.Delay(300, ct).ConfigureAwait(false);
+            }
+            // Final settle so any in-flight inbound frame finishes
+            // dispatching before we move to the session transfer.
+            var settleDeadline = DateTime.UtcNow.AddSeconds(2);
+            while (Volatile.Read(ref observed) < PrimingFrames && DateTime.UtcNow < settleDeadline)
+            {
+                await Task.Delay(100, ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            rx.InboundEvent -= OnRx;
+        }
     }
 
     private static Dictionary<string, IReadOnlyList<TransitionSpec>> TransitionMap() => new()
