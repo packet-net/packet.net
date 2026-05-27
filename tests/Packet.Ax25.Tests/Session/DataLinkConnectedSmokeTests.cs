@@ -269,8 +269,8 @@ public class DataLinkConnectedSmokeTests
         AssertTransitionFires(new DlConnectRequest(), new Guards { Version22 = false });
 
     // ─── Column 9 ──────────────────────────────────────────────────────
-    [Fact] public void t31_all_other_primitives_from_lower_layer() =>
-        AssertTransitionFires(new AllOtherPrimitivesFromLowerLayer(), new Guards());
+    [Fact] public void t31_all_other_primitives_from_upper_layer() =>
+        AssertTransitionFires(new AllOtherPrimitivesFromUpperLayer(), new Guards());
 
     // ─── Columns 10-12 (frame-format errors) ───────────────────────────
     [Fact] public void t32_control_field_error_v22() =>

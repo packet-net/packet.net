@@ -41,7 +41,7 @@
 
     <!-- AX.25 SDL state machines — consumed from m0lte/ax25sdl as a NuGet
          package. Source repo: github.com/m0lte/ax25sdl. -->
-    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.5.3" />
+    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.6.0" />
 
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
