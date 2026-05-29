@@ -837,6 +837,16 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-28 — Fix figc4.5 stale recovery-complete guard found on the #214 bench (consumes Packet.Ax25.Sdl 0.7.1)
+
+The #214 hardware bench run surfaced ax25sdl#53: the Timer-Recovery recovery-complete decision (RR/RNR/REJ/SREJ response, F=1) guarded on the stale pre-action V(a) instead of the post-"V(a) := N(r)" value. The figure draws "V(s) = V(a)?" after "V(a) := N(r)", so it means V(s) = N(r); the codegen flattened it to a pre-action guard that read the old V(a). When a poll response acked everything (N(r) = V(s)) while V(a) still lagged, it mis-routed to Invoke Retransmission and recovery never completed (RC → N2 → DM) — blocking essentially every clean go-back-N recovery on-air.
+
+Fixed upstream in ax25sdl 0.7.1 (path-precise substitution in the Resolver: vs_eq_va → vs_eq_nr only on the 14 transitions where V(a) is actually updated; the 4 SREJ P=0 paths that share the same diamond keep vs_eq_va; loop continue-predicates left verbatim). This bumps the pin 0.7.0 → 0.7.1 and adds the runtime binding `vs_eq_nr` → the existing `n_r_eq_v_s` check in GuardEvaluator.
+
+Proof + coverage: new `SessionRuntimeInvariants.Poll_Response_Acking_All_Outstanding_Completes_Recovery_To_Connected` drives a session into TimerRecovery and feeds an F=1 RR that acks everything, asserting it returns to Connected (not Disconnected). The existing no-stuck-TimerRecovery property could not catch this — it accepts Disconnected as a valid termination, which is exactly the bug's failure mode. Full default-filter suite green.
+
+Phase 2 §5.2: this clears the #53 blocker the #214 bench hit; the recovery-via-RR-poll criterion still flips to ✅ once the loss matrix is re-confirmed on-air on the NinoTNC bench (#214).
+
 ### 2026-05-28 — Execute SDL LoopRange in the runtime (consumes Packet.Ax25.Sdl 0.7.0; unblocks recovery for #214)
 
 Packet.Ax25.Sdl 0.7.0 recovered the three data-link loops the codegen had been silently flattening (ax25sdl#44 Invoke_Retransmission, ax25sdl#48 / #49 the V(r) I Frame Stored? drains) as `loop_while` with a `TestAtEnd` flag. This bumps the pin 0.6.0 → 0.7.0 and makes the runtime actually iterate them.

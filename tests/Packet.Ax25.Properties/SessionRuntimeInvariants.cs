@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.Extensions.Time.Testing;
+using Packet.Ax25;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
@@ -84,6 +85,46 @@ public class SessionRuntimeInvariants
         // Loop fell through without exiting TimerRecovery within the bound.
         rig.Session.CurrentState.Should().NotBe("TimerRecovery",
             $"TimerRecovery must exit within N2+2={n2 + 2} T1 cycles; got stuck instead");
+    }
+
+    /// <summary>
+    /// Regression for ax25sdl#53. In Timer Recovery, an RR response with F=1
+    /// that acks every outstanding I-frame (N(r) = V(s)) must <b>complete
+    /// recovery and return to Connected</b>. The figc4.5 recovery-complete
+    /// decision is drawn after "V(a) := N(r)", so it tests V(s) = N(r); the
+    /// table used to test the stale V(a), mis-routing to Invoke Retransmission
+    /// so recovery never completed (RC → N2 → DM). The property above only
+    /// asserts TimerRecovery <i>terminates</i> — and Disconnected counts as
+    /// termination — so it could not catch this; this fact pins the success
+    /// outcome specifically. Found on-air via packet.net#214.
+    /// </summary>
+    [Fact]
+    public void Poll_Response_Acking_All_Outstanding_Completes_Recovery_To_Connected()
+    {
+        var rig = NewConnectedRig(t1vMs: 100);
+
+        // Send one I-frame: V(s)=1, V(a)=0, T1 armed; stays Connected.
+        rig.Session.PostEvent(new DlDataRequest(new byte[] { 0x42 }));
+        rig.Session.CurrentState.Should().Be("Connected");
+        rig.Context.VS.Should().Be(1);
+        rig.Context.VA.Should().Be(0);
+
+        // T1 expires with no ack → enter Timer Recovery (transmits an F/P=1 poll).
+        rig.Time.Advance(TimeSpan.FromMilliseconds(110));
+        rig.Session.CurrentState.Should().Be("TimerRecovery");
+
+        // Peer replies RR, response, F=1, N(r)=1 — acks the outstanding frame.
+        var rr = Ax25Frame.Rr(
+            destination: rig.Context.Local,
+            source:      rig.Context.Remote,
+            nr:          1,
+            isCommand:   false,
+            pollFinal:   true);
+        rig.Session.PostEvent(new RrReceived(rr));
+
+        rig.Session.CurrentState.Should().Be("Connected",
+            "an F=1 response that acks everything (N(r)=V(s)) completes recovery (ax25sdl#53)");
+        rig.Context.VA.Should().Be(1, "V(a) catches up to N(r)");
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────

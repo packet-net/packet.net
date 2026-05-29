@@ -149,6 +149,10 @@ public sealed class GuardEvaluator
             ["ns_gt_vr_plus_1"]                               = "N_s_gt_V_r_plus_1",
             ["va_le_nr_le_vs"]                                = "V_a_le_N_r_le_V_s",
             ["nr_eq_vs"]                                      = "n_r_eq_v_s",
+            // figc4.5 recovery-complete after "V(a) := N(r)": ax25sdl#53 emits
+            // the post-assignment guard `vs_eq_nr` (V(s) == N(r)), which is the
+            // same comparison as `nr_eq_vs`.
+            ["vs_eq_nr"]                                      = "n_r_eq_v_s",
             ["nr_eq_va"]                                      = "n_r_eq_v_a",
             // figc4.4 / figc4.5 stored-frame drain loop predicate. The
             // package preserves the spec variable `I`'s capital (V(r) I Frame
