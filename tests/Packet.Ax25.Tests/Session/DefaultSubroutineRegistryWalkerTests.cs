@@ -232,5 +232,7 @@ public class DefaultSubroutineRegistryWalkerTests
         public void Cancel(string name) { }
         public bool IsRunning(string name) => false;
         public TimeSpan TimeRemaining(string name) => TimeSpan.Zero;
+        public IReadOnlyList<ArmedTimer> CaptureState() => Array.Empty<ArmedTimer>();
+        public void RestoreState(IReadOnlyList<ArmedTimer> state) { }
     }
 }

@@ -189,9 +189,25 @@ public sealed class Ax25Session
                 return;
             }
 
-            var tx = new TransitionContext(Context, scheduler, evt);
-            SdlLoopExecutor.Execute(match.Actions, match.Loops, dispatcher, guards, tx);
-            CurrentState = match.Next;
+            // Capture the armed-timer set before running the actions. If an
+            // action throws part-way through (e.g. an unexpected verb for this
+            // trigger), the side-effects already applied stay, but we restore
+            // the pre-transition timers so a half-applied transition can't leave
+            // the link watchdog (T1) cancelled and the session silently wedged —
+            // it stays live so T1 / N2 drive recovery or a clean disconnect.
+            // CurrentState is only advanced on success. (m0lte/packet.net#225)
+            var timerState = scheduler.CaptureState();
+            try
+            {
+                var tx = new TransitionContext(Context, scheduler, evt);
+                SdlLoopExecutor.Execute(match.Actions, match.Loops, dispatcher, guards, tx);
+                CurrentState = match.Next;
+            }
+            catch
+            {
+                scheduler.RestoreState(timerState);
+                throw;
+            }
         }
         finally
         {

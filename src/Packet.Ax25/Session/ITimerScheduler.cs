@@ -1,6 +1,12 @@
 namespace Packet.Ax25.Session;
 
 /// <summary>
+/// One armed timer captured by <see cref="ITimerScheduler.CaptureState"/>:
+/// its name, the time remaining at capture, and its expiry callback.
+/// </summary>
+public sealed record ArmedTimer(string Name, TimeSpan Remaining, Action OnExpiry);
+
+/// <summary>
 /// Abstraction over the AX.25 timer set (T1 / T2 / T3 plus any phy-layer
 /// timers). The session uses one scheduler instance; implementations
 /// decide whether to drive timers off real wall-clock time
@@ -39,4 +45,20 @@ public interface ITimerScheduler
     /// remaining") but unhelpful for that formula.
     /// </remarks>
     TimeSpan TimeRemaining(string name);
+
+    /// <summary>
+    /// Capture the currently-armed timers (name, time remaining, expiry
+    /// callback) so the set can be restored with <see cref="RestoreState"/>.
+    /// </summary>
+    IReadOnlyList<ArmedTimer> CaptureState();
+
+    /// <summary>
+    /// Restore the armed-timer set to a previously <see cref="CaptureState"/>d
+    /// snapshot: cancel every currently-armed timer and re-arm exactly those in
+    /// <paramref name="state"/> with their captured remaining time. The session
+    /// uses this to undo a transition that threw part-way through, so a
+    /// half-applied transition can't leave the link watchdog (T1) cancelled —
+    /// which would wedge the session silently. (m0lte/packet.net#225)
+    /// </summary>
+    void RestoreState(IReadOnlyList<ArmedTimer> state);
 }

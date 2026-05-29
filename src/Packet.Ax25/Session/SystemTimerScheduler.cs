@@ -26,7 +26,7 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
     // the deadline so TimeRemaining can answer without poking at the
     // ITimer. Deadlines are absolute on TimeProvider's clock so they
     // tick correctly under FakeTimeProvider too.
-    private readonly Dictionary<string, (ITimer Timer, DateTimeOffset Deadline)> timers =
+    private readonly Dictionary<string, (ITimer Timer, DateTimeOffset Deadline, Action OnExpiry)> timers =
         new(StringComparer.Ordinal);
 
     /// <summary>
@@ -47,22 +47,7 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
 
         lock (gate)
         {
-            if (timers.TryGetValue(name, out var existing))
-            {
-                existing.Timer.Dispose();
-                timers.Remove(name);
-            }
-            var deadline = time.GetUtcNow() + duration;
-            // Capture `name` so the callback can self-remove on fire.
-            var timer = time.CreateTimer(_ =>
-            {
-                lock (gate)
-                {
-                    timers.Remove(name);
-                }
-                onExpiry();
-            }, state: null, dueTime: duration, period: Timeout.InfiniteTimeSpan);
-            timers[name] = (timer, deadline);
+            ArmLocked(name, duration, onExpiry);
         }
     }
 
@@ -97,6 +82,65 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
             var remaining = entry.Deadline - time.GetUtcNow();
             return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<ArmedTimer> CaptureState()
+    {
+        lock (gate)
+        {
+            var now = time.GetUtcNow();
+            return timers.Select(kv =>
+            {
+                var remaining = kv.Value.Deadline - now;
+                return new ArmedTimer(
+                    kv.Key,
+                    remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero,
+                    kv.Value.OnExpiry);
+            }).ToList();
+        }
+    }
+
+    /// <inheritdoc/>
+    public void RestoreState(IReadOnlyList<ArmedTimer> state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        lock (gate)
+        {
+            foreach (var entry in timers.Values)
+            {
+                entry.Timer.Dispose();
+            }
+            timers.Clear();
+            foreach (var t in state)
+            {
+                // Clamp to a minimal positive duration so a timer captured at
+                // (or past) its deadline still re-arms and fires promptly,
+                // rather than being silently dropped.
+                var duration = t.Remaining > TimeSpan.Zero ? t.Remaining : TimeSpan.FromTicks(1);
+                ArmLocked(t.Name, duration, t.OnExpiry);
+            }
+        }
+    }
+
+    // Arm body without taking the gate — caller already holds it.
+    private void ArmLocked(string name, TimeSpan duration, Action onExpiry)
+    {
+        if (timers.TryGetValue(name, out var existing))
+        {
+            existing.Timer.Dispose();
+            timers.Remove(name);
+        }
+        var deadline = time.GetUtcNow() + duration;
+        var timer = time.CreateTimer(_ =>
+        {
+            lock (gate)
+            {
+                timers.Remove(name);
+            }
+            onExpiry();
+        }, state: null, dueTime: duration, period: Timeout.InfiniteTimeSpan);
+        timers[name] = (timer, deadline, onExpiry);
     }
 
     /// <inheritdoc/>

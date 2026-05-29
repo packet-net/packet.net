@@ -837,6 +837,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-05-29 — Transition execution restores timers on a mid-transition throw (#225)
+
+A transition whose action sequence throws part-way through used to leave the session silently wedged: a path that ran "Stop T1" but threw before "Start T1" left T1 cancelled forever, so the session sat in TimerRecovery until the peer's N2 timeout killed the link. Surfaced by ax25sdl#55 — the figc4.5 SREJ erratum, where "Push Frame Onto Queue" on an SREJ_received trigger (which carries no DL-DATA payload) throws mid-transition.
+
+`Ax25Session` now captures the armed-timer set (`ITimerScheduler.CaptureState`) before running a transition's actions and restores it (`RestoreState`) if they throw, then rethrows. A half-applied transition can no longer cancel the link watchdog and leave it dead — the session stays live (`CurrentState` only advances on success) so T1 / N2 drive recovery or a clean disconnect. New `DataLinkTransitionRobustnessTests` cover the scheduler snapshot/restore and the mid-transition-throw case.
+
+This is runtime robustness only — the figc4.5 SREJ erratum itself is kept faithful and flagged `verification_pending` upstream in ax25sdl#55, pending a ruling from packethacking/ax25spec on the disputed (green/red) go-back-N-on-SREJ design.
+
 ### 2026-05-28 — Fix figc4.5 stale recovery-complete guard found on the #214 bench (consumes Packet.Ax25.Sdl 0.7.1)
 
 The #214 hardware bench run surfaced ax25sdl#53: the Timer-Recovery recovery-complete decision (RR/RNR/REJ/SREJ response, F=1) guarded on the stale pre-action V(a) instead of the post-"V(a) := N(r)" value. The figure draws "V(s) = V(a)?" after "V(a) := N(r)", so it means V(s) = N(r); the codegen flattened it to a pre-action guard that read the old V(a). When a poll response acked everything (N(r) = V(s)) while V(a) still lagged, it mis-routed to Invoke Retransmission and recovery never completed (RC → N2 → DM) — blocking essentially every clean go-back-N recovery on-air.
