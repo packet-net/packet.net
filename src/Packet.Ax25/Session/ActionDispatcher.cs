@@ -235,6 +235,25 @@ public sealed class ActionDispatcher : IActionDispatcher
             action = canonical;
         }
 
+        // Quirk Ax25Spec38SrejSelectiveRetransmit (default on): figc4.5 draws the
+        // SREJ-received retransmit as the generic fresh-DL-DATA push + go-back-N
+        // "Invoke Retransmission", contradicting §4.3.2.4/figc4.4 and every
+        // implementation (packethacking/ax25spec#38). On an SREJ trigger we do
+        // single-frame selective retransmit instead: redirect the push to the
+        // figc4.4 "Push Old I Frame N(r) on Queue" behaviour, and skip the
+        // go-back-N. Remove once ax25sdl ships a corrected figc4.5.
+        if (tx.Session.Quirks.Ax25Spec38SrejSelectiveRetransmit && tx.Trigger is SrejReceived)
+        {
+            if (action is "push_on_I_frame_queue" or "push_frame_on_queue")
+            {
+                action = "push_old_I_frame_N_r_on_queue";
+            }
+            else if (action is "Invoke_Retransmission")
+            {
+                return;
+            }
+        }
+
         switch (action)
         {
             // ─── Flag mutations ────────────────────────────────────────

@@ -169,6 +169,15 @@ public sealed class Ax25SessionContext
     /// </summary>
     public TimeSpan T1V { get; set; } = TimeSpan.FromMilliseconds(6000);
 
+    /// <summary>
+    /// Named deviations from the SDL figures where a figure is a confirmed
+    /// upstream spec defect (see <see cref="Ax25SessionQuirks"/>). Defaults to
+    /// the spec-correct behaviour (<see cref="Ax25SessionQuirks.Default"/>); set
+    /// <see cref="Ax25SessionQuirks.StrictlyFaithful"/> to run the figures
+    /// exactly as drawn for conformance testing.
+    /// </summary>
+    public Ax25SessionQuirks Quirks { get; set; } = Ax25SessionQuirks.Default;
+
     // ─── Queues ─────────────────────────────────────────────────────────
 
     /// <summary>

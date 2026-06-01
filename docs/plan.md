@@ -837,6 +837,12 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-01 — Session-quirk facility + figc4.5 SREJ go-back-N correction (#227)
+
+figc4.5 (Timer Recovery) draws SREJ-received as the generic fresh-DL-DATA "Push frame onto queue" + go-back-N "Invoke Retransmission", contradicting §4.3.2.4/§6.4.8, figc4.4, and every surveyed implementation (direwolf/linbpq do single-frame selective; linux/rax25 don't; direwolf's author flagged the exact box as a 2006-revision cut-n-paste erratum). Raised upstream as packethacking/ax25spec#38, with #39 on the broader red/green-annotation provenance (the colours are undocumented, ≥9 years old, and the maintainer didn't author them). ax25sdl deliberately stays *faithful* to the buggy figure — the canonical transcription tracks the in-progress draft — so the correction lives in the runtime as a named, documented quirk.
+
+New `Ax25SessionQuirks` record: the session-layer analogue of `Ax25ParseOptions`, for deliberate deviations from SDL figures that are confirmed upstream defects. Each flag is named `Ax25Spec<issue>…` after the `packethacking/ax25spec` issue it works around (greppable + removable once fixed) — a replicable pattern. Default preset = spec-correct (quirks on); `StrictlyFaithful` runs the figures exactly as drawn. First quirk: `Ax25Spec38SrejSelectiveRetransmit` (default true), held on `Ax25SessionContext.Quirks` and applied in `ActionDispatcher.Execute` — on an `SrejReceived` trigger it redirects the figure's push to the figc4.4 single-frame selective retransmit (`push_old_I_frame_N_r_on_queue`) and skips the go-back-N `Invoke Retransmission`. Paired test in `Ax25SessionQuirksTests` (on = single-frame selective; off = figure-as-drawn, throws). Documented in docs/strict-vs-pragmatic-audit.md; removal tracked at #227 (delete when ax25sdl ships a corrected figc4.5).
+
 ### 2026-05-29 — Transition execution restores timers on a mid-transition throw (#225)
 
 A transition whose action sequence throws part-way through used to leave the session silently wedged: a path that ran "Stop T1" but threw before "Start T1" left T1 cancelled forever, so the session sat in TimerRecovery until the peer's N2 timeout killed the link. Surfaced by ax25sdl#55 — the figc4.5 SREJ erratum, where "Push Frame Onto Queue" on an SREJ_received trigger (which carries no DL-DATA payload) throws mid-transition.

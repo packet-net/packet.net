@@ -156,3 +156,11 @@ discover specific quirks during interop testing.
 6. **CLAUDE.md update**: codify the rule "when accepting something
    the strict spec doesn't require, surface a named flag — don't
    silently widen the parser".
+
+## Session quirks (SDL-figure deviations — `Ax25SessionQuirks`)
+
+Distinct from the wire-parse pragmatism above: these are *session-layer* deviations from the AX.25 SDL **figures**, used where a figure is a confirmed upstream spec **defect**. The SDL tables (`Packet.Ax25.Sdl`, from `m0lte/ax25sdl`) stay faithful to the published figures — defects and all — so the canonical transcription tracks the in-progress draft; the runtime corrects provable figure errors here, behind named flags. Each flag is named `Ax25Spec<issue>…` after the `packethacking/ax25spec` issue it works around (greppable, removable once the spec is fixed). The default preset is spec-correct (quirks on); `Ax25SessionQuirks.StrictlyFaithful` runs the figures exactly as drawn for conformance testing.
+
+| Flag | What the figure draws | Correct behaviour | Evidence | Default | Remove when |
+|---|---|---|---|---|---|
+| `Ax25Spec38SrejSelectiveRetransmit` | figc4.5 SREJ-received: generic "Push frame onto queue" + go-back-N "Invoke Retransmission" | single-frame selective retransmit (figc4.4 "Push Old I Frame N(r) on Queue", no Invoke Retransmission) | §4.3.2.4/§6.4.8 + figc4.4 + all four surveyed impls (direwolf/linbpq selective; linux/rax25 none) + direwolf author's "2006 cut-n-paste" erratum. Upstream: ax25spec#38. | `true` | ax25sdl ships a corrected figc4.5 (tracked: packet.net#227) |
