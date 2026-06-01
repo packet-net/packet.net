@@ -779,9 +779,24 @@ public class ActionDispatcherTests
     }
 
     [Fact]
-    public void Push_Old_I_Frame_N_R_On_Queue_Re_Enqueues_Stored_Sent_Frame()
+    public void Push_Old_I_Frame_N_R_On_Queue_Retransmits_Stored_Frame_With_Its_Original_Ns()
     {
-        var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
+        // push_old_I_frame_N_r_on_queue retransmits the stored frame whose N(S)
+        // equals the incoming N(R). It must go out with its ORIGINAL N(s) — not
+        // be enqueued for the fresh-frame drain (which would renumber it to V(s)
+        // and break the peer's gap-fill). See m0lte/packet.net#231.
+        var sentI = new List<IFrameSpec>();
+        var time = new FakeTimeProvider();
+        var s = new SystemTimerScheduler(time);
+        var d = new ActionDispatcher(
+            onTimerExpiry: _ => { }, sendSFrame: _ => { }, sendUFrame: _ => { },
+            sendUiFrame: _ => { }, sendIFrame: sentI.Add, sendUpward: _ => { },
+            sendLinkMux: _ => { }, sendInternal: _ => { });
+        var ctx = new Ax25SessionContext
+        {
+            Local  = new Callsign("M0LTE", 0),
+            Remote = new Callsign("G7XYZ", 7),
+        };
         var oldPayload = "retransmit-me"u8.ToArray();
         // Pretend we sent an I-frame with N(S) = 3 a while ago.
         ctx.SentIFrames[3] = (oldPayload, Ax25Frame.PidNoLayer3);
@@ -796,8 +811,9 @@ public class ActionDispatcherTests
 
         d.Execute("push_old_I_frame_N_r_on_queue", tx);
 
-        ctx.IFrameQueue.Should().HaveCount(1);
-        ctx.IFrameQueue.Peek().Data.ToArray().Should().Equal(oldPayload);
+        sentI.Should().ContainSingle("the stored frame is retransmitted directly");
+        sentI[0].Ns.Should().Be((byte)3, "retransmitted with its ORIGINAL N(s)=3, not renumbered to V(s)");
+        sentI[0].Info.ToArray().Should().Equal(oldPayload);
     }
 
     // ─── Queue/exception/flag processing verbs ─────────────────────────

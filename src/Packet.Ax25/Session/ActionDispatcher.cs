@@ -665,12 +665,15 @@ public sealed class ActionDispatcher : IActionDispatcher
             case "Next T1 <- 2 * SRT":             ctx.T1V = ctx.Srt * 2; break;
             case "Next T1 <- (RC*0.25)+SRT*2":     ctx.T1V = TimeSpan.FromMilliseconds(ctx.RC * 250 + ctx.Srt.TotalMilliseconds * 2); ctx.T1HadExpired = false; break;
 
-            // Invoke_Retransmission body: figure-internal queue-push verb.
+            // Invoke_Retransmission body: figure-internal retransmit verb.
+            // figc4.7's loop rewinds V(s):=N(r) and re-sends each stored frame
+            // as V(s) climbs back to X. Each must go out with its ORIGINAL N(s)
+            // (= the current rewound V(s)); emit it directly rather than enqueue,
+            // because the fresh-frame drain (figc4.4 t03 "I frame pops off
+            // queue") would renumber it to the post-loop V(s) (=X). See
+            // EmitOldIFrame.
             case "Push Old I Frame onto Queue":
-                if (ctx.SentIFrames.TryGetValue(ctx.VS, out var stash))
-                {
-                    ctx.IFrameQueue.Enqueue((stash.Data, stash.Pid));
-                }
+                EmitOldIFrame(tx, ctx.VS);
                 break;
 
             // Enquiry_Response body: the DL-ERROR (add) annotation is
@@ -819,24 +822,44 @@ public sealed class ActionDispatcher : IActionDispatcher
     }
 
     /// <summary>
-    /// Implement <c>push_old_I_frame_N_r_on_queue</c>: find the
-    /// previously-sent I-frame whose N(S) equals the incoming frame's
-    /// N(R), and put it back on the transmit queue for retransmission.
-    /// Used in figc4.4's REJ/SREJ recovery paths.
+    /// Implement <c>push_old_I_frame_N_r_on_queue</c>: retransmit the
+    /// previously-sent I-frame whose N(S) equals the incoming frame's N(R).
+    /// Used in figc4.4/figc4.5's selective SREJ/REJ recovery paths.
     /// </summary>
     private void PushOldIFrameNrOnQueue(TransitionContext tx)
+        => EmitOldIFrame(tx, ExtractNr(tx));
+
+    /// <summary>
+    /// Retransmit a previously-sent I-frame, preserving its ORIGINAL N(S).
+    /// Used by figc4.4's selective SREJ/REJ recovery
+    /// (<c>push_old_I_frame_N_r_on_queue</c>) and figc4.7's go-back-N
+    /// <c>Invoke_Retransmission</c> loop (<c>Push Old I Frame onto Queue</c>).
+    /// </summary>
+    /// <remarks>
+    /// Emits directly rather than via <see cref="Ax25SessionContext.IFrameQueue"/>:
+    /// the queue + fresh-frame drain (figc4.4 t03 "I frame pops off queue")
+    /// assigns <c>N(S):=V(S)</c> and increments V(S) — correct for a *fresh*
+    /// frame, but it renumbers a *retransmitted* one to the current V(S), so the
+    /// peer never sees the missing sequence number and the gap never fills (the
+    /// figure assumes the push + transmit interleave; the runtime decoupled them
+    /// into push-now / drain-later, losing the N(S) semantics). Retransmits also
+    /// go out unconditionally — they are already-counted frames being replayed,
+    /// not new transmissions subject to the send window. N(S) is the supplied
+    /// original sequence; N(R) piggybacks the current V(R); P=0 (the poll, when
+    /// needed, is a separate enquiry). Silently skips if the frame has been
+    /// evicted from storage — matches linbpq/direwolf.
+    /// </remarks>
+    private void EmitOldIFrame(TransitionContext tx, byte ns)
     {
-        byte nr = ExtractNr(tx);
-        if (!tx.Session.SentIFrames.TryGetValue(nr, out var entry))
-        {
-            // figc4.4 assumes the frame is still in storage. Real impls
-            // (linbpq/direwolf) silently skip if it's been evicted; we do
-            // the same rather than throw, since the figure's behaviour
-            // here is implementation-defined when state is lost.
-            return;
-        }
-        tx.Session.IFrameQueue.Enqueue(entry);
-        sendInternal(new PushIFrameQueueSignal(entry.Data));
+        if (!tx.Session.SentIFrames.TryGetValue(ns, out var entry)) return;
+        sendIFrame(new IFrameSpec(
+            IsCommand: true,
+            PBit:      false,
+            Nr:        tx.Session.VR,
+            Ns:        ns,
+            Info:      entry.Data,
+            Pid:       entry.Pid,
+            Path:      ReversedTriggerPath(tx)));
     }
 
     /// <summary>

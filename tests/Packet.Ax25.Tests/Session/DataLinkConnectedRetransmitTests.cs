@@ -113,14 +113,14 @@ public class DataLinkConnectedRetransmitTests
     }
 
     [Fact]
-    public void Invoke_Retransmission_Requeues_Every_Unacked_Frame_Not_Just_One()
+    public void Invoke_Retransmission_Resends_Every_Unacked_Frame_With_Its_Original_Ns()
     {
-        // Regression for ax25sdl#44: the figc4.7 retransmit loop used to be
-        // flattened to a single iteration, so only ONE old I-frame was
-        // re-queued and V(s) drifted past V(a). With the loop recovered
-        // (Packet.Ax25.Sdl 0.7.0) and executed (SdlLoopExecutor as a
-        // do-while), Invoke_Retransmission must re-queue every unacked frame
-        // from N(r) up to X (= the saved V(s)) and restore V(s) to X.
+        // Regression for ax25sdl#44 (loop recovery) AND m0lte/packet.net#231
+        // (retransmit renumbering): the figc4.7 retransmit loop must resend
+        // every unacked frame from N(r) up to X (= the saved V(s)) — and each
+        // must go out with its ORIGINAL N(s), not a fresh V(s)-derived one.
+        // The renumbering bug (drained retransmits got N(s):=V(s)) made every
+        // resend unrecognisable to the peer, so a single loss was unrecoverable.
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
         var ctx = new Ax25SessionContext
@@ -128,13 +128,14 @@ public class DataLinkConnectedRetransmitTests
             Local  = new Callsign("M0LTEA", 1),
             Remote = new Callsign("M0LTEB", 2),
         };
+        var sent = new List<Ax25Frame>();
         var subroutines = new DefaultSubroutineRegistry();
         var dispatcher = new ActionDispatcher(
             onTimerExpiry: _ => { },
             sendSFrame:    _ => { },
             sendUFrame:    _ => { },
             sendUiFrame:   _ => { },
-            sendIFrame:    _ => { },
+            sendIFrame:    spec => sent.Add(spec.ToAx25Frame(ctx)),
             sendUpward:    _ => { },
             sendLinkMux:   _ => { },
             sendInternal:  _ => { },
@@ -143,8 +144,8 @@ public class DataLinkConnectedRetransmitTests
         subroutines.Wire(dispatcher, guards);
 
         // A has sent four I-frames (seq 0..3); V(s)=4, V(a)=0. The peer's REJ
-        // asks to go back to N(r)=1, so frames 1, 2 and 3 must be re-queued
-        // (X - N(r) = 4 - 1 = 3 frames).
+        // asks to go back to N(r)=1, so frames 1, 2 and 3 must be resent
+        // (X - N(r) = 4 - 1 = 3 frames), each carrying its own N(s).
         ctx.VS = 4;
         ctx.VA = 0;
         for (byte ns = 0; ns < 4; ns++)
@@ -157,8 +158,10 @@ public class DataLinkConnectedRetransmitTests
 
         dispatcher.Execute(new[] { new ActionStep("Invoke Retransmission", ActionKind.Subroutine) }, tx);
 
-        ctx.IFrameQueue.Count.Should().Be(3,
-            "frames at seq 1, 2 and 3 are all re-queued — the single-iteration bug re-queued only one");
+        sent.Select(f => f.GetIFrameNs(ctx.Modulus)!.Value).Should().Equal(new byte[] { 1, 2, 3 },
+            "go-back-N resends seq 1, 2 and 3 in order, each with its ORIGINAL N(s) — not renumbered to V(s)");
+        sent.Select(f => f.Info.ToArray()[0]).Should().Equal(new byte[] { 1, 2, 3 },
+            "each resent frame carries the payload originally stored under that sequence number");
         ctx.VS.Should().Be(4,
             "V(s) is restored to X (the saved V(s)) after the retransmit loop completes");
     }

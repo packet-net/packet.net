@@ -19,7 +19,7 @@ public class Ax25SessionQuirksTests
 {
     private const byte Pid = Ax25Frame.PidNoLayer3;
 
-    private static (ActionDispatcher dispatcher, Ax25SessionContext ctx, SystemTimerScheduler scheduler)
+    private static (ActionDispatcher dispatcher, Ax25SessionContext ctx, SystemTimerScheduler scheduler, List<Ax25Frame> sentI)
         NewRig(Ax25SessionQuirks quirks)
     {
         var time = new FakeTimeProvider();
@@ -36,14 +36,15 @@ public class Ax25SessionQuirksTests
         for (byte ns = 0; ns < 3; ns++)
             ctx.SentIFrames[ns] = (new byte[] { ns }, Pid);
 
+        var sentI = new List<Ax25Frame>();
         var subroutines = new DefaultSubroutineRegistry();
         var dispatcher = new ActionDispatcher(
             onTimerExpiry: _ => { }, sendSFrame: _ => { }, sendUFrame: _ => { },
-            sendUiFrame: _ => { }, sendIFrame: _ => { }, sendUpward: _ => { },
+            sendUiFrame: _ => { }, sendIFrame: spec => sentI.Add(spec.ToAx25Frame(ctx)), sendUpward: _ => { },
             sendLinkMux: _ => { }, sendInternal: _ => { }, subroutines: subroutines);
         var guards = new GuardEvaluator(Ax25SessionBindings.CreateDefault(ctx, scheduler));
         subroutines.Wire(dispatcher, guards);
-        return (dispatcher, ctx, scheduler);
+        return (dispatcher, ctx, scheduler, sentI);
     }
 
     private static TransitionContext SrejTrigger(Ax25SessionContext ctx, SystemTimerScheduler scheduler, byte nr)
@@ -55,7 +56,7 @@ public class Ax25SessionQuirksTests
     [Fact]
     public void Quirk_on_does_single_frame_selective_retransmit_not_go_back_N()
     {
-        var (dispatcher, ctx, scheduler) = NewRig(Ax25SessionQuirks.Default); // quirk on (default)
+        var (dispatcher, ctx, scheduler, sentI) = NewRig(Ax25SessionQuirks.Default); // quirk on (default)
         var tx = SrejTrigger(ctx, scheduler, nr: 1);
 
         // The figc4.5 SREJ-received retransmit verbs as the table draws them.
@@ -65,16 +66,18 @@ public class Ax25SessionQuirksTests
             new ActionStep("Invoke Retransmission", ActionKind.Subroutine),
         }, tx);
 
-        ctx.IFrameQueue.Count.Should().Be(1,
+        sentI.Should().ContainSingle(
             "SREJ must selectively retransmit only the single N(r) frame, not go-back-N the whole window");
-        ctx.IFrameQueue.Peek().Data.ToArray().Should().Equal(new byte[] { 1 },
-            "the re-queued frame is the requested N(r)=1");
+        sentI[0].GetIFrameNs(ctx.Modulus).Should().Be((byte)1,
+            "the resent frame is the requested N(r)=1, carrying its ORIGINAL N(s)");
+        sentI[0].Info.ToArray().Should().Equal(new byte[] { 1 },
+            "carrying frame 1's stored payload");
     }
 
     [Fact]
     public void Quirk_off_runs_the_figure_as_drawn_and_throws_on_the_payloadless_push()
     {
-        var (dispatcher, ctx, scheduler) = NewRig(Ax25SessionQuirks.StrictlyFaithful); // quirk off
+        var (dispatcher, ctx, scheduler, _) = NewRig(Ax25SessionQuirks.StrictlyFaithful); // quirk off
         var tx = SrejTrigger(ctx, scheduler, nr: 1);
 
         var act = () => dispatcher.Execute(
