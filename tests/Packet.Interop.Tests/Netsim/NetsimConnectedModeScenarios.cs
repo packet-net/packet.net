@@ -72,7 +72,11 @@ public class NetsimConnectedModeScenarios
         var nodeA = new Callsign("PNNODA", 1);
         var nodeB = new Callsign("PNNODB", 2);
 
-        using var cts = new CancellationTokenSource(ConnectBudget + DisconnectBudget + TimeSpan.FromSeconds(15));
+        // Outer token must exceed the sum of the inner step budgets so it
+        // can't cut an inner wait short and turn a slow-but-OK run into a
+        // confusing cancellation: connect + 2× state-settle + disconnect.
+        using var cts = new CancellationTokenSource(
+            ConnectBudget + DisconnectBudget + StateSettleBudget + StateSettleBudget + TimeSpan.FromSeconds(15));
 
         await using var kissA = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var kissB = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
@@ -142,9 +146,22 @@ public class NetsimConnectedModeScenarios
         var nodeA = new Callsign("PNIFRA", 1);
         var nodeB = new Callsign("PNIFRB", 2);
 
+        // dataBudget bounds each *frame-arrival* wait (the I-frame must
+        // cross the RF channel, possibly after a collision + T1 retransmit).
+        // The quiescence gates are local-state convergence checks that
+        // complete within one ack round-trip, so they get the smaller
+        // StateSettleBudget. The outer token is sized to exceed the sum of
+        // every inner step so it can never cut one short: connect + settle +
+        // two frame waits + four quiescence gates + disconnect + settle.
         var dataBudget = TimeSpan.FromSeconds(30);
         using var cts = new CancellationTokenSource(
-            ConnectBudget + dataBudget + dataBudget + DisconnectBudget + TimeSpan.FromSeconds(20));
+            ConnectBudget
+            + dataBudget + dataBudget                          // two I-frame arrivals
+            + StateSettleBudget + StateSettleBudget            // post-connect + post-disconnect settle
+            + StateSettleBudget + StateSettleBudget            // four quiescence gates…
+            + StateSettleBudget + StateSettleBudget            // …(2 after each direction)
+            + DisconnectBudget
+            + TimeSpan.FromSeconds(20));
 
         await using var kissA = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var kissB = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
@@ -194,8 +211,8 @@ public class NetsimConnectedModeScenarios
         // Let the A→B exchange settle: A's I-frame must be acknowledged by B
         // and any RR B owes must have flushed, so the channel is idle before
         // B transmits in the other direction.
-        await WaitForQuiescence(rigA.Session, dataBudget, pumps, cts.Token);
-        await WaitForQuiescence(rigB.Session, dataBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
 
         // ─── I-frame B → A ──────────────────────────────────────────
         while (rigA.Signals.TryDequeue(out _)) { }
@@ -209,8 +226,8 @@ public class NetsimConnectedModeScenarios
 
         // Settle the B→A exchange before tearing down so the DISC doesn't
         // race a still-in-flight RR/I-frame on the channel.
-        await WaitForQuiescence(rigB.Session, dataBudget, pumps, cts.Token);
-        await WaitForQuiescence(rigA.Session, dataBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
 
         // ─── Disconnect ─────────────────────────────────────────────
         rigA.Session.PostEvent(new DlDisconnectRequest());
