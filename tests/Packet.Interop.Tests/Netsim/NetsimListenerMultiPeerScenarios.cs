@@ -36,8 +36,16 @@ public class NetsimListenerMultiPeerScenarios
     private const string Host          = "127.0.0.1";
     private const int    ListenerPort  = 8100;
     private const int    PeerPort      = 8101;
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // Headroom for a local state mutation / SessionAccepted callback to
+    // settle after the remote signal implying it (e.g. the listener-side
+    // session reaching Connected once the peer's ConnectAsync has returned,
+    // or SessionAccepted having fired). Near-instant on an idle host;
+    // matters only under CPU contention. WaitUntil returns as soon as the
+    // predicate holds, so a generous budget costs nothing.
+    private static readonly TimeSpan StateSettleBudget = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Listener on node a accepts inbound from one peer on node b, then

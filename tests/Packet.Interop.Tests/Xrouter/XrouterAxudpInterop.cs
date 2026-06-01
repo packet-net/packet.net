@@ -57,7 +57,7 @@ public class XrouterAxudpInterop
 
         var before = await GetAxudpValidCount();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         // The peer port must match XROUTER.CFG's UDPREMOTE=8094, otherwise
         // XRouter classifies the inbound packets as unsolicited and drops them.
         using var socket = new Packet.Axudp.AxudpSocket(localPort: PeerPort);
@@ -69,10 +69,18 @@ public class XrouterAxudpInterop
 
         await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, includeFcs: true, cancellationToken: cts.Token);
 
-        // XRouter's stats counter takes a moment to tick.
-        await Task.Delay(500, cts.Token);
+        // XRouter's stats counter takes a moment to tick, and the latency
+        // varies under load — poll until it increments rather than betting
+        // on a single fixed delay being long enough.
+        var after = before;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            after = await GetAxudpValidCount();
+            if (after > before) break;
+            await Task.Delay(250, cts.Token);
+        }
 
-        var after = await GetAxudpValidCount();
         after.Should().BeGreaterThan(before, "XRouter's 'valid AXUDP received' counter should increment");
     }
 

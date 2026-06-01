@@ -46,8 +46,16 @@ public class LinbpqViaNetsimConnectedMode
     private static readonly Callsign OurCall = new("PNTEST", 0);
     private static readonly Callsign BpqCall = new("PN0TST", 0);
 
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // net-sim's afsk1200 channel is a shared half-duplex medium with
+    // collision_mode: silence (docker/netsim/network.yaml). Shorten our
+    // ack timer so our RR-acks turn the channel around quickly, reducing
+    // the window where our TX overlaps BPQ's and both get silenced. T1/T3
+    // keep spec defaults — retransmit recovery is unchanged. See the longer
+    // note in NetsimConnectedModeScenarios.
+    private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
     [Fact]
     public async Task Connect_Then_Disconnect_Against_Linbpq_Across_Netsim()
@@ -107,9 +115,12 @@ public class LinbpqViaNetsimConnectedMode
     [Fact]
     public async Task Connected_IFrame_RoundTrip_Against_Linbpq_Node_Prompt()
     {
+        var bannerWait   = TimeSpan.FromSeconds(30);
+        var responseWait = TimeSpan.FromSeconds(30);
         var totalBudget = ConnectBudget
-            + TimeSpan.FromSeconds(15)   // banner wait
-            + TimeSpan.FromSeconds(15)   // command response wait
+            + bannerWait
+            + TimeSpan.FromSeconds(15)   // banner-drain quiet-period settle
+            + responseWait
             + DisconnectBudget
             + TimeSpan.FromSeconds(15);  // slack
         using var cts = new CancellationTokenSource(totalBudget);
@@ -135,15 +146,20 @@ public class LinbpqViaNetsimConnectedMode
         // split it across multiple frames — we only require the first
         // to arrive; later frames will queue up behind it but we
         // don't gate on them.
-        var banner = await WaitForSignal<DataLinkDataIndication>(rig.Signals, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        var banner = await WaitForSignal<DataLinkDataIndication>(rig.Signals, bannerWait, pumps, cts.Token);
         banner.Should().NotBeNull("BPQ must emit its node-prompt welcome banner as an I-frame after the handshake completes");
         banner!.Info.Length.Should().BeGreaterThan(0, "banner payload should not be empty");
         banner.Pid.Should().Be(Ax25Frame.PidNoLayer3, "BPQ's node prompt uses PID 0xF0 (no layer 3)");
 
-        // Drain any follow-up banner frames so they don't surface as
-        // false matches when we wait for the command response below.
-        await Task.Delay(TimeSpan.FromSeconds(1), cts.Token);
-        DrainIndications(rig.Signals);
+        // Drain any follow-up banner frames so they don't surface as false
+        // matches when we wait for the command response below. BPQ may split
+        // the banner across several I-frames with variable inter-frame gaps,
+        // so instead of a fixed sleep we drain until the indication stream
+        // has been quiet for a settle window — adapts to BPQ's actual timing
+        // rather than guessing it lands within 1 s.
+        await DrainIndicationsUntilQuiet(rig.Signals,
+            quietFor: TimeSpan.FromSeconds(1.5),
+            budget:   TimeSpan.FromSeconds(15), pumps, cts.Token);
 
         // ─── Outbound command ───────────────────────────────────────
         // "P\r" is BPQ's "Ports" command at the node prompt — short,
@@ -151,7 +167,7 @@ public class LinbpqViaNetsimConnectedMode
         // BPQ's state.
         rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("P\r"), Ax25Frame.PidNoLayer3));
 
-        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps, cts.Token);
         response.Should().NotBeNull("BPQ must reply to our ports command with at least one I-frame");
         response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
         response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -168,14 +184,43 @@ public class LinbpqViaNetsimConnectedMode
         try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
-    private static void DrainIndications(ConcurrentQueue<DataLinkSignal> signals)
+    /// <summary>
+    /// Drain queued <see cref="DataLinkDataIndication"/>s (leaving any
+    /// non-data signals in place) until none has arrived for
+    /// <paramref name="quietFor"/>, or <paramref name="budget"/> elapses.
+    /// Used to consume BPQ's multi-frame welcome banner — which arrives as
+    /// a burst of I-frames with variable gaps — before issuing a command,
+    /// so a late banner chunk can't be mistaken for the command response.
+    /// </summary>
+    private static async Task DrainIndicationsUntilQuiet(
+        ConcurrentQueue<DataLinkSignal> signals,
+        TimeSpan quietFor,
+        TimeSpan budget,
+        IReadOnlyList<Task> backgroundTasks,
+        CancellationToken outer)
     {
-        var keep = new List<DataLinkSignal>();
-        while (signals.TryDequeue(out var s))
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(budget);
+        var lastActivity = DateTime.UtcNow;
+        while (!cts.IsCancellationRequested)
         {
-            if (s is not DataLinkDataIndication) keep.Add(s);
+            ThrowIfAnyFaulted(backgroundTasks);
+
+            var sawData = false;
+            var keep = new List<DataLinkSignal>();
+            while (signals.TryDequeue(out var s))
+            {
+                if (s is DataLinkDataIndication) sawData = true;
+                else keep.Add(s);
+            }
+            foreach (var s in keep) signals.Enqueue(s);
+
+            if (sawData) lastActivity = DateTime.UtcNow;
+            else if (DateTime.UtcNow - lastActivity >= quietFor) return;
+
+            try { await Task.Delay(50, cts.Token); }
+            catch (OperationCanceledException) { return; }
         }
-        foreach (var s in keep) signals.Enqueue(s);
     }
 
     // ─── Rig ────────────────────────────────────────────────────────
@@ -212,7 +257,12 @@ public class LinbpqViaNetsimConnectedMode
             sendUpward:    signals.Enqueue,
             sendLinkMux:   _ => { },
             sendInternal:  _ => { },
-            subroutines:   subroutines);
+            subroutines:   subroutines)
+        {
+            // Faster RR-ack turnaround on the shared half-duplex channel —
+            // see AckTimer remarks. T1/T3 keep spec defaults.
+            T2Duration = AckTimer,
+        };
 
         var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => sessionRef?.CurrentTrigger);
         var guards = new GuardEvaluator(bindings);

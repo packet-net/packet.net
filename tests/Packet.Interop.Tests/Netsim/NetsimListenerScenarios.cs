@@ -37,8 +37,16 @@ public class NetsimListenerScenarios
     private const string Host         = "127.0.0.1";
     private const int    NodeAKissPort = 8100;
     private const int    NodeBKissPort = 8101;
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // Headroom for a local state mutation to settle after the remote signal
+    // implying it has already been observed (e.g. the accepting side
+    // reaching Connected once ConnectAsync — which only resolves on
+    // DL-CONNECT-confirm — has returned). Resolves near-instantly on an idle
+    // host; the budget only bites under CPU contention. WaitUntil returns as
+    // soon as the predicate holds, so a generous value costs nothing.
+    private static readonly TimeSpan StateSettleBudget = TimeSpan.FromSeconds(10);
 
     [Fact]
     public async Task Listener_Connect_Then_Disconnect_Across_AFSK1200_Sim()

@@ -30,7 +30,10 @@ public class LinbpqAgwFidelityTests
 {
     private const string Host = "127.0.0.1";
     private const int    AgwPort = 8000;
-    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(15);
+    // BPQ's AGW listener binds a few seconds after HTTP goes healthy, and
+    // under host-CPU contention the first round-trip to it can lag. 30 s
+    // gives generous headroom; the calls return as soon as BPQ answers.
+    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(30);
 
     [Fact]
     public async Task Connects_To_Linbpq_Agw_Listener_And_Receives_Port_Info()

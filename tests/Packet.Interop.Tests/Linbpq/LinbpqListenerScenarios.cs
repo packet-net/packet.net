@@ -49,6 +49,19 @@ public class LinbpqListenerScenarios
     private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
+    // Headroom for a local state mutation to settle after the signal that
+    // implies it (SessionAccepted having fired, the DISC having been
+    // acknowledged). Near-instant on an idle host; matters only under CPU
+    // contention. WaitUntil returns as soon as the predicate holds.
+    private static readonly TimeSpan StateSettleBudget = TimeSpan.FromSeconds(15);
+
+    // Budget for each blocking read of a BPQ telnet prompt (user/password).
+    // BPQ prints these promptly once the socket is up, but under host
+    // contention the read can lag; a tight 5 s could spuriously give up and
+    // send credentials into a not-yet-ready prompt. Generous and harmless —
+    // ReadUntilAsync returns as soon as the needle is seen.
+    private static readonly TimeSpan TelnetReadBudget = TimeSpan.FromSeconds(15);
+
     [Fact]
     public async Task Listener_Accepts_Connect_From_Linbpq()
     {
@@ -93,7 +106,7 @@ public class LinbpqListenerScenarios
 
         // BPQ now SABMs us; the listener accepts and goes Connected.
         var session = await accepted.Task.WaitAsync(cts.Token);
-        await WaitUntil(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(10), cts.Token);
+        await WaitUntil(() => session.CurrentState == "Connected", StateSettleBudget, cts.Token);
         session.CurrentState.Should().Be("Connected");
 
         // Send a welcome I-frame so BPQ has something to acknowledge.
@@ -115,7 +128,7 @@ public class LinbpqListenerScenarios
         // -indication (BPQ initiated). Either is success here.
         await bpqDisconnected.Task.WaitAsync(DisconnectBudget, cts.Token);
         await WaitUntil(() => session.CurrentState == "Disconnected",
-            TimeSpan.FromSeconds(5), cts.Token);
+            StateSettleBudget, cts.Token);
         session.CurrentState.Should().Be("Disconnected");
     }
 
@@ -134,9 +147,9 @@ public class LinbpqListenerScenarios
         // It accepts the answers terminated by \r. The configured
         // credentials in docker/linbpq/bpq32.cfg are admin/admin
         // (sysop).
-        await ReadUntilAsync(stream, "user", TimeSpan.FromSeconds(5), ct);
+        await ReadUntilAsync(stream, "user", TelnetReadBudget, ct);
         await WriteLineAsync(stream, "admin", ct);
-        await ReadUntilAsync(stream, "password", TimeSpan.FromSeconds(5), ct);
+        await ReadUntilAsync(stream, "password", TelnetReadBudget, ct);
         await WriteLineAsync(stream, "admin", ct);
 
         // After login, BPQ shows the node banner + a "PN0TST}" or

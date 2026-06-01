@@ -67,8 +67,18 @@ public class Rax25ViaNetsimConnectedMode
     private static readonly Callsign OurCall   = new("PNTEST", 0);
     private static readonly Callsign Rax25Call = new("PN0RAX", 1);
 
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // net-sim's afsk1200 channel is a shared half-duplex medium with
+    // collision_mode: silence (docker/netsim/network.yaml). Shorten our
+    // ack timer so our RR-acks turn the channel around quickly, reducing
+    // the window where our TX overlaps rax25's and both get silenced.
+    // T1/T3 keep spec defaults. See the longer note in
+    // NetsimConnectedModeScenarios. (This test is SABM/UA/DISC-only, so it
+    // touches no I-frame ack path, but the shorter timer is harmless and
+    // keeps the rig consistent with the others.)
+    private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
     [Fact]
     public async Task Connect_Then_Disconnect_Against_Rax25_Across_Netsim()
@@ -142,7 +152,12 @@ public class Rax25ViaNetsimConnectedMode
             sendUpward:    signals.Enqueue,
             sendLinkMux:   _ => { },
             sendInternal:  _ => { },
-            subroutines:   subroutines);
+            subroutines:   subroutines)
+        {
+            // Faster RR-ack turnaround on the shared half-duplex channel —
+            // see AckTimer remarks. T1/T3 keep spec defaults.
+            T2Duration = AckTimer,
+        };
 
         var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => sessionRef?.CurrentTrigger);
         var guards = new GuardEvaluator(bindings);

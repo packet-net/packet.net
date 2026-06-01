@@ -41,8 +41,30 @@ public class NetsimConnectedModeScenarios
     private const string Host         = "127.0.0.1";
     private const int    NodeAKissPort = 8100;
     private const int    NodeBKissPort = 8101;
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // net-sim's afsk1200 channel is a single shared half-duplex medium with
+    // collision_mode: silence (see docker/netsim/network.yaml) — if both
+    // ends key up at once, BOTH transmissions are lost and recovery waits
+    // for a T1 retransmit cycle. The spec-default ack timer (T2 = 1500 ms)
+    // and retransmit timer (T1V = 6 s after connect) make each lost-frame
+    // recovery slow, so under host-CPU contention a couple of unlucky
+    // collisions can blow the per-direction budget before a frame lands.
+    // We shorten the ack timer here so the receiver turns the channel
+    // around quickly (smaller contention window, faster quiescence) without
+    // changing protocol semantics — a real TNC on a quiet channel runs a
+    // short FRACK/RESPTIME too. Retransmit (T1) recovery still happens via
+    // the normal SDL path; we just don't rely on burning many 6 s cycles.
+    private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
+
+    // Headroom for a *local* state mutation to settle after the remote
+    // signal that implies it has already been observed (e.g. B reaching
+    // Connected once A has its DL-CONNECT-confirm — B's UA must already be
+    // on the wire). These resolve near-instantly when the host is idle; the
+    // budget only matters under heavy CPU contention. WaitUntil returns as
+    // soon as the predicate holds, so a generous budget costs nothing.
+    private static readonly TimeSpan StateSettleBudget = TimeSpan.FromSeconds(10);
 
     [Fact]
     public async Task Connect_Then_Disconnect_Across_AFSK1200_Sim()
@@ -50,7 +72,11 @@ public class NetsimConnectedModeScenarios
         var nodeA = new Callsign("PNNODA", 1);
         var nodeB = new Callsign("PNNODB", 2);
 
-        using var cts = new CancellationTokenSource(ConnectBudget + DisconnectBudget + TimeSpan.FromSeconds(15));
+        // Outer token must exceed the sum of the inner step budgets so it
+        // can't cut an inner wait short and turn a slow-but-OK run into a
+        // confusing cancellation: connect + 2× state-settle + disconnect.
+        using var cts = new CancellationTokenSource(
+            ConnectBudget + DisconnectBudget + StateSettleBudget + StateSettleBudget + TimeSpan.FromSeconds(15));
 
         await using var kissA = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var kissB = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
@@ -88,7 +114,7 @@ public class NetsimConnectedModeScenarios
         // Node B saw SABM, replied UA, and transitioned. Give the
         // post-state mutations a beat to settle before asserting.
         await WaitUntil(() => rigB.Session.CurrentState == "Connected",
-            TimeSpan.FromSeconds(5), pumps, cts.Token);
+            StateSettleBudget, pumps, cts.Token);
         rigB.Session.CurrentState.Should().Be("Connected");
 
         // ─── Disconnect ─────────────────────────────────────────────
@@ -99,7 +125,7 @@ public class NetsimConnectedModeScenarios
         rigA.Session.CurrentState.Should().Be("Disconnected");
 
         await WaitUntil(() => rigB.Session.CurrentState == "Disconnected",
-            TimeSpan.FromSeconds(5), pumps, cts.Token);
+            StateSettleBudget, pumps, cts.Token);
         rigB.Session.CurrentState.Should().Be("Disconnected");
 
         cts.Cancel();
@@ -120,9 +146,22 @@ public class NetsimConnectedModeScenarios
         var nodeA = new Callsign("PNIFRA", 1);
         var nodeB = new Callsign("PNIFRB", 2);
 
-        var dataBudget = TimeSpan.FromSeconds(20);
+        // dataBudget bounds each *frame-arrival* wait (the I-frame must
+        // cross the RF channel, possibly after a collision + T1 retransmit).
+        // The quiescence gates are local-state convergence checks that
+        // complete within one ack round-trip, so they get the smaller
+        // StateSettleBudget. The outer token is sized to exceed the sum of
+        // every inner step so it can never cut one short: connect + settle +
+        // two frame waits + four quiescence gates + disconnect + settle.
+        var dataBudget = TimeSpan.FromSeconds(30);
         using var cts = new CancellationTokenSource(
-            ConnectBudget + dataBudget + DisconnectBudget + TimeSpan.FromSeconds(15));
+            ConnectBudget
+            + dataBudget + dataBudget                          // two I-frame arrivals
+            + StateSettleBudget + StateSettleBudget            // post-connect + post-disconnect settle
+            + StateSettleBudget + StateSettleBudget            // four quiescence gates…
+            + StateSettleBudget + StateSettleBudget            // …(2 after each direction)
+            + DisconnectBudget
+            + TimeSpan.FromSeconds(20));
 
         await using var kissA = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var kissB = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
@@ -143,7 +182,17 @@ public class NetsimConnectedModeScenarios
         (await WaitForSignal<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, pumps, cts.Token))
             .Should().NotBeNull("connect handshake should complete");
         await WaitUntil(() => rigB.Session.CurrentState == "Connected",
-            TimeSpan.FromSeconds(5), pumps, cts.Token);
+            StateSettleBudget, pumps, cts.Token);
+
+        // On a shared half-duplex channel (collision_mode: silence) we drive
+        // the two directions strictly one at a time, and between them wait
+        // for the *sending* side's link to go quiescent — every sent I-frame
+        // acknowledged (V(s) == V(a)) and no ack of its own still pending —
+        // before the other side keys up. That keeps the two endpoints from
+        // transmitting fresh I-frames into each other (which would collide
+        // and be silenced, then need slow T1 recovery). It also strengthens
+        // the test: reaching quiescence proves the V(s)/V(r)/V(a) bookkeeping
+        // actually converged end-to-end, not merely that one frame arrived.
 
         // ─── I-frame A → B ──────────────────────────────────────────
         // Drain any signals queued during connect (e.g. DL-CONNECT-indication
@@ -159,6 +208,12 @@ public class NetsimConnectedModeScenarios
         indicationAB!.Info.ToArray().Should().Equal(payloadAB);
         indicationAB.Pid.Should().Be(Ax25Frame.PidNoLayer3);
 
+        // Let the A→B exchange settle: A's I-frame must be acknowledged by B
+        // and any RR B owes must have flushed, so the channel is idle before
+        // B transmits in the other direction.
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
+
         // ─── I-frame B → A ──────────────────────────────────────────
         while (rigA.Signals.TryDequeue(out _)) { }
 
@@ -169,12 +224,17 @@ public class NetsimConnectedModeScenarios
         indicationBA.Should().NotBeNull("node A must observe the I-frame from node B");
         indicationBA!.Info.ToArray().Should().Equal(payloadBA);
 
+        // Settle the B→A exchange before tearing down so the DISC doesn't
+        // race a still-in-flight RR/I-frame on the channel.
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
+
         // ─── Disconnect ─────────────────────────────────────────────
         rigA.Session.PostEvent(new DlDisconnectRequest());
         (await WaitForSignal<DataLinkDisconnectConfirm>(rigA.Signals, DisconnectBudget, pumps, cts.Token))
             .Should().NotBeNull("disconnect handshake should complete");
         await WaitUntil(() => rigB.Session.CurrentState == "Disconnected",
-            TimeSpan.FromSeconds(5), pumps, cts.Token);
+            StateSettleBudget, pumps, cts.Token);
 
         cts.Cancel();
         try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
@@ -211,7 +271,12 @@ public class NetsimConnectedModeScenarios
             sendUpward:    signals.Enqueue,
             sendLinkMux:   _ => { },
             sendInternal:  _ => { },
-            subroutines:   subroutines);
+            subroutines:   subroutines)
+        {
+            // Shorten the ack timer so RR-acks turn the half-duplex channel
+            // around quickly — see AckTimer remarks. T1/T3 keep spec defaults.
+            T2Duration = AckTimer,
+        };
 
         var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => sessionRef?.CurrentTrigger);
         var guards = new GuardEvaluator(bindings);
@@ -304,6 +369,28 @@ public class NetsimConnectedModeScenarios
             catch (OperationCanceledException) { return; }
         }
     }
+
+    /// <summary>
+    /// Wait until <paramref name="session"/>'s connected-mode link is
+    /// quiescent: every I-frame it has sent is acknowledged
+    /// (V(s) == V(a)) and it owes no pending acknowledgement of its own
+    /// (<see cref="Ax25SessionContext.AcknowledgePending"/> is clear). On
+    /// the shared half-duplex sim this is the signal that the side has
+    /// finished talking and the channel is free for the other end — used
+    /// to serialise the two I-frame directions so they don't collide.
+    /// Reads are lock-free and eventually-consistent against the inbound
+    /// pump thread, which is fine for a poll: a stale read just costs one
+    /// extra 50 ms iteration.
+    /// </summary>
+    private static Task WaitForQuiescence(
+        Ax25Session session,
+        TimeSpan budget,
+        IReadOnlyList<Task> backgroundTasks,
+        CancellationToken outer)
+        => WaitUntil(
+            () => session.Context.VS == session.Context.VA
+                  && !session.Context.AcknowledgePending,
+            budget, backgroundTasks, outer);
 
     /// <summary>
     /// If any of the supplied background tasks has faulted, rethrow

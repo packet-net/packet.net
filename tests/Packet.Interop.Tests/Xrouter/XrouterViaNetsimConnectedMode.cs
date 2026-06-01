@@ -48,8 +48,16 @@ public class XrouterViaNetsimConnectedMode
     private static readonly Callsign OurCall    = new("PNTEST", 0);
     private static readonly Callsign XrouterCall = new("PN0XRT", 0);
 
-    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(20);
-    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan ConnectBudget    = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
+
+    // net-sim's afsk1200 channel is a shared half-duplex medium with
+    // collision_mode: silence (docker/netsim/network.yaml). Shorten our
+    // ack timer so our RR-acks turn the channel around quickly, reducing
+    // the window where our TX overlaps XRouter's and both get silenced.
+    // T1/T3 keep spec defaults — retransmit recovery is unchanged. See the
+    // longer note in NetsimConnectedModeScenarios.
+    private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
     [Fact]
     public async Task Connect_Then_Disconnect_Against_Xrouter_Across_Netsim()
@@ -121,8 +129,10 @@ public class XrouterViaNetsimConnectedMode
     [Fact]
     public async Task Connected_IFrame_RoundTrip_Against_Xrouter_Node_Prompt()
     {
+        var responseWait = TimeSpan.FromSeconds(30);
         var totalBudget = ConnectBudget
-            + TimeSpan.FromSeconds(15)   // command response wait
+            + TimeSpan.FromSeconds(15)   // post-handshake quiescence settle
+            + responseWait               // command response wait
             + DisconnectBudget
             + TimeSpan.FromSeconds(15);  // slack
         using var cts = new CancellationTokenSource(totalBudget);
@@ -148,10 +158,11 @@ public class XrouterViaNetsimConnectedMode
         // and /data/XROUTER.CFG.example: "Connection text, sent to anyone
         // connecting to the node alias"). The node prompt is engaged for
         // NODECALL connects, but it's silent until the first command
-        // arrives — there's no banner to gate on. We give the link a
-        // brief settle for the post-UA RR exchange to flow, then drive
-        // the command round-trip directly.
-        await Task.Delay(TimeSpan.FromSeconds(1), cts.Token);
+        // arrives — there's no banner to gate on. Instead of a fixed sleep,
+        // wait for our own link to go quiescent (the post-UA RR exchange
+        // settled: V(s) == V(a), no ack pending) so the channel is idle
+        // before we drive the command round-trip.
+        await WaitForQuiescence(rig.Session, TimeSpan.FromSeconds(15), pumps, cts.Token);
         DrainIndications(rig.Signals);
 
         // ─── Outbound command ───────────────────────────────────────
@@ -160,7 +171,7 @@ public class XrouterViaNetsimConnectedMode
         // on XRouter's state.
         rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("?\r"), Ax25Frame.PidNoLayer3));
 
-        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps, cts.Token);
         response.Should().NotBeNull("XRouter must reply to our help command with at least one I-frame");
         response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
         response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -221,7 +232,12 @@ public class XrouterViaNetsimConnectedMode
             sendUpward:    signals.Enqueue,
             sendLinkMux:   _ => { },
             sendInternal:  _ => { },
-            subroutines:   subroutines);
+            subroutines:   subroutines)
+        {
+            // Faster RR-ack turnaround on the shared half-duplex channel —
+            // see AckTimer remarks. T1/T3 keep spec defaults.
+            T2Duration = AckTimer,
+        };
 
         var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler, () => sessionRef?.CurrentTrigger);
         var guards = new GuardEvaluator(bindings);
@@ -289,6 +305,30 @@ public class XrouterViaNetsimConnectedMode
             catch (OperationCanceledException) { return null; }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Wait until our connected-mode link is quiescent — every I-frame we
+    /// sent is acknowledged (V(s) == V(a)) and we owe no pending ack — so
+    /// the shared half-duplex channel is idle before we transmit next.
+    /// Lock-free, eventually-consistent reads against the inbound pump
+    /// thread; a stale read just costs one extra poll iteration.
+    /// </summary>
+    private static async Task WaitForQuiescence(
+        Ax25Session session,
+        TimeSpan budget,
+        IReadOnlyList<Task> backgroundTasks,
+        CancellationToken outer)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(budget);
+        while (!cts.IsCancellationRequested)
+        {
+            ThrowIfAnyFaulted(backgroundTasks);
+            if (session.Context.VS == session.Context.VA && !session.Context.AcknowledgePending) return;
+            try { await Task.Delay(50, cts.Token); }
+            catch (OperationCanceledException) { return; }
+        }
     }
 
     private static void ThrowIfAnyFaulted(IReadOnlyList<Task> tasks)
