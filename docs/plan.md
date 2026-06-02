@@ -838,6 +838,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-02 — Conformance Phase H envelope: connect-direction + mod-128 + RNR (two findings filed)
+
+Extends the harness envelope (`EnvelopeConformanceTests` + harness `extended` / `ConnectFrom` / `SetBusy` / `ClearBusy`). Connect-initiated-by-B passes. Two scenarios surfaced real gaps and are skipped pending fixes (not papered over):
+- **mod-128 (extended) data transfer — packet.net#239.** Connect negotiates SABME fine (`IsExtended` true both ends) but the first I-frame throws `NotSupportedException` — `ExtractNr`/`ExtractNs` `RequireMod8` on the 2-byte control field. Connected-mode data is mod-8-only today; a known unimplemented feature.
+- **RNR flow control — ax25sdl#60.** figc4.4 `DL_FLOW_OFF_request` does nothing on the not-busy branch (the Set-Own-Receiver-Busy + RNR actions sit on the already-busy branch) — own-receiver-busy can't be entered via DL-FLOW-OFF from a clean state. Looks like a Yes/No swap vs the symmetric (correct) `DL_FLOW_ON`. Filed for figure verification.
+
+Segmentation/reassembly is *not* a session-level behaviour (the `Segmenter` is a separate layer, covered by `SegmenterTests`), so it's out of the conformance envelope. Next: Phase A1 — FsCheck generation over the harness. 675 tests (673 pass, 2 skip).
+
 ### 2026-06-02 — Conformance harness Phase H: reusable two-station rig + invariant oracle + happy-path suite
 
 First slice of the conformance/generative platform (docs/conformance-harness-plan.md). New `tests/Packet.Ax25.Tests/Session/Conformance/`: `TwoStationHarness` (two real sessions over a controllable in-process channel + shared FakeTimeProvider + ordered pump; tracks submitted-vs-delivered payloads; runs the oracle after every step), `InvariantChecker` (the oracle: defined-state, window/sequence sanity, reliable in-order gap-free duplicate-free delivery, and convergence-after-clean-tail), and `HappyPathConformanceTests` (connect/disconnect, single frame, full window, bidirectional, multi-window mod-8 wrap). All green (672/672); test-only, no runtime change.
