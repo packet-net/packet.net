@@ -155,6 +155,33 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec42SrejTargetsGap { get; init; } = true;
 
     /// <summary>
+    /// Work around <c>packethacking/ax25spec#43</c>: figc4.4's <c>DL-FLOW-OFF
+    /// Request</c> handler gates its action stack (<c>Set Own Receiver Busy</c> →
+    /// <c>RNR</c> → <c>Clear Acknowledge Pending</c>) on the <c>Own Receiver
+    /// Busy? = Yes</c> branch, with the <c>No</c> branch returning straight to
+    /// Connected. So a station that is <i>not</i> busy and receives DL-FLOW-OFF
+    /// does nothing — it never enters the busy condition and never sends RNR, so
+    /// the primitive can never establish flow control from a clean state (its
+    /// entire purpose). §6.4.10 ("whenever a TNC enters a busy condition it sends
+    /// an RNR response") and the mirror <c>DL-FLOW-ON</c> handler (correctly acting
+    /// on its <c>Yes</c>/busy branch) both say the actions belong on the <c>No</c>
+    /// (not-busy) branch.
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c> (default), the <c>own_receiver_busy</c> guard is inverted
+    /// for the <c>DL_FLOW_OFF_request</c> trigger only, so a not-busy station takes
+    /// the action branch (enter busy + RNR) and an already-busy one no-ops —
+    /// scoped to that trigger, inert elsewhere. When <c>false</c>, the figure runs
+    /// as drawn (DL-FLOW-OFF is a no-op from a clean state). Unlike the other
+    /// quirks this has <i>no de-facto corroboration</i> — neither direwolf nor
+    /// linbpq implements DL-FLOW-OFF — so it rests on the §6.4.10 prose and the
+    /// figure contradicting its own primitive. Delete once ax25sdl ships a figc4.4
+    /// with the branches corrected. Implemented in m0lte/packet.net ←
+    /// packethacking/ax25spec#43 (m0lte/ax25sdl#60, faithful figure).
+    /// </remarks>
+    public bool Ax25Spec43DlFlowOffEntersBusy { get; init; } = true;
+
+    /// <summary>
     /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
     /// what a session uses unless explicitly configured otherwise.
     /// </summary>
@@ -171,5 +198,6 @@ public sealed record Ax25SessionQuirks
         Ax25Spec40DiscardOutOfWindowIFrames = false,
         Ax25Spec41KarnSrtSampling = false,
         Ax25Spec42SrejTargetsGap = false,
+        Ax25Spec43DlFlowOffEntersBusy = false,
     };
 }

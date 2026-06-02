@@ -72,7 +72,12 @@ public class EnvelopeConformanceTests
         h.AssertConverged();
     }
 
-    [Fact(Skip = "DL-FLOW-OFF doesn't enter own-receiver-busy from a clean state (figc4.4 Yes/No branch swap) — ax25sdl#60; un-skip when resolved")]
+    // ax25spec#43: figc4.4 gated DL-FLOW-OFF's actions on the already-busy branch,
+    // so a not-busy station couldn't enter busy via DL-FLOW-OFF. With
+    // Ax25Spec43DlFlowOffEntersBusy on (default) the own-receiver-busy guard is
+    // inverted for that trigger, so DL-FLOW-OFF sets own-receiver-busy + sends RNR,
+    // the peer registers peer-busy and pauses, and DL-FLOW-ON resumes the flow.
+    [Fact]
     public void Rnr_flow_control_pauses_then_resumes_the_sender()
     {
         var h = TwoStationHarness.Build(k: 4);
