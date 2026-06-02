@@ -96,6 +96,29 @@ public class ConnectionLifecycleConformanceTests
         h.A.Signals.OfType<DataLinkDisconnectIndication>().Should().NotBeEmpty();
     }
 
+    [Fact]
+    public void DL_DATA_submitted_while_connecting_is_buffered_then_delivered()
+    {
+        var h = AInAwaitingConnection();
+
+        // Upper layer sends data before the connect completes. figc4.3 buffers it
+        // ("Push Frame on Queue"); it must NOT be transmitted while we're not yet
+        // connected (and must not throw — the drain previously popped it straight
+        // back as I_frame_pops_off_queue into a push verb with no DL-DATA trigger).
+        h.A.Session.PostEvent(new DlDataRequest(new byte[] { 0x42 }));
+        h.Settle();
+        h.A.State.Should().Be("AwaitingConnection", "data submitted mid-establish is buffered, not sent");
+        h.B.Delivered.Should().BeEmpty("nothing is delivered while the link is still coming up");
+
+        // Complete the establish: deliver the UA. A → Connected, and the
+        // post-dispatch drain (now in Connected) flushes the buffered frame.
+        h.InjectFrameBytes(h.A, UaTo(h.A, finalBit: true));
+
+        h.A.State.Should().Be("Connected", "the UA completes the establish");
+        h.B.Delivered.Select(p => p[0]).Should().Contain(0x42,
+            "the frame buffered while connecting is transmitted once the link is up");
+    }
+
     // ─── Awaiting Release ───────────────────────────────────────────────
 
     [Fact]

@@ -266,11 +266,26 @@ public sealed class Ax25Session
 
     /// <summary>
     /// True if the link conditions allow an I-frame to be sent right now —
-    /// peer not busy, send window not full. Mirrors the figc4.4 t19/t20
-    /// guards (<c>peer_receiver_busy=No</c> + <c>V_s_eq_V_a_plus_k=No</c>).
+    /// the link is in an information-transfer state, the peer isn't busy, and the
+    /// send window isn't full. Mirrors the figc4.4 t19/t20 guards
+    /// (<c>peer_receiver_busy=No</c> + <c>V_s_eq_V_a_plus_k=No</c>).
     /// </summary>
+    /// <remarks>
+    /// I-frames are only transmitted from <c>Connected</c> (figc4.4) and
+    /// <c>TimerRecovery</c> (figc4.5). In the establishment / release / disconnected
+    /// states, data handed down (DL-DATA-request) is *buffered* on the I-frame queue
+    /// and not sent until the link comes up — figc4.3's AwaitingConnection
+    /// <c>DL_DATA_request</c> / <c>I_frame_pops_off_queue</c> both just "Push Frame
+    /// on Queue". Without this state gate the drain would pop the just-queued frame
+    /// in AwaitingConnection, routing <c>I_frame_pops_off_queue</c> into a push verb
+    /// that has no DL-DATA trigger to read (it threw), and a faithful re-queue would
+    /// instead spin the drain. The buffered frames flush automatically: the
+    /// post-dispatch drain runs again after the UA_received transition advances the
+    /// state to Connected.
+    /// </remarks>
     private bool CanTransmitIFrame()
     {
+        if (CurrentState is not ("Connected" or "TimerRecovery")) return false;
         if (Context.PeerReceiverBusy) return false;
         int outstanding = (Context.VS - Context.VA + Context.Modulus) % Context.Modulus;
         return outstanding < Context.K;

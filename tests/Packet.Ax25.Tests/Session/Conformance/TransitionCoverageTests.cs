@@ -84,7 +84,7 @@ public class TransitionCoverageTests
         }
 
         // ── Assert: a floor on total behavioural coverage (regression guard) ──
-        hit.Should().BeGreaterThanOrEqualTo(44,
+        hit.Should().BeGreaterThanOrEqualTo(45,
             "the scenario battery should behaviourally exercise a substantial share of the 243 transitions; " +
             "if this drops, a scenario regressed or a path stopped being reached");
     }
@@ -224,6 +224,8 @@ public class TransitionCoverageTests
             {
                 h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: false).ToBytes());  // DM F=0 → stay
                 h.InjectFrameBytes(h.A, Ax25Frame.Disc(la, re).ToBytes());                 // DISC → stay
+                h.A.Session.PostEvent(new DlDataRequest(new byte[] { 0x01 }));             // buffered while connecting (t09)
+                h.Settle();
                 h.AdvanceT1();                                                             // T1 → retransmit SABM
                 h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: true).ToBytes());   // DM F=1 → Disconnected
             }
