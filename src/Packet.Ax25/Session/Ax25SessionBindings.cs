@@ -203,6 +203,33 @@ public static class Ax25SessionBindings
             // alias map.
             bindings["response"]                  = () =>
                 GetIncomingFrame(currentTrigger())?.IsResponse == true;
+
+            // ─── ax25spec#40 receive-window discard guard ──────────────
+            // figc4.4's out-of-sequence I_received path has no window guard:
+            // any N(S) ≠ V(R) is SREJ'd/REJ'd, including a duplicate behind
+            // V(R) — which provokes a re-send that's again out-of-window, ad
+            // infinitum (the SREJ livelock). X.25 §2.4.6.4 discards any frame
+            // whose N(S) is outside the receive window [V(r), V(r)+k). The
+            // figure's `reject_exception` decision IS its discard-vs-reject
+            // switch in that region, so we OR the out-of-window condition into
+            // it (when Ax25Spec40DiscardOutOfWindowIFrames is on): such a frame
+            // takes the figure's own discard path (process ack, discard data,
+            // RR(V(r)) only if P=1) ahead of the srej_enabled split, covering
+            // both REJ and SREJ modes. Scoped to IFrameReceived via the helper,
+            // so it's inert on every other trigger. See Ax25SessionQuirks.
+            if (context.Quirks.Ax25Spec40DiscardOutOfWindowIFrames)
+            {
+                bool IFrameOutOfWindow()
+                {
+                    if (currentTrigger() is not IFrameReceived) return false;
+                    if (IncomingNs(currentTrigger()) is not byte ns) return false;
+                    int offset = (ns - context.VR + context.Modulus) % context.Modulus;
+                    return offset >= context.K;   // N(S) outside [V(r), V(r)+k)
+                }
+
+                var baseRejectException = bindings["reject_exception"];
+                bindings["reject_exception"] = () => baseRejectException() || IFrameOutOfWindow();
+            }
         }
 
         return bindings;

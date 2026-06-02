@@ -72,6 +72,36 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec38SrejSelectiveRetransmit { get; init; } = true;
 
     /// <summary>
+    /// Work around <c>packethacking/ax25spec#40</c>: figc4.4's out-of-sequence
+    /// <c>I_received</c> handling has no receive-window guard. Any frame whose
+    /// N(S) ≠ V(R) is treated as a future gap and gets SREJ'd (or REJ'd) —
+    /// including a <i>duplicate</i> whose N(S) lies behind V(R), a frame the
+    /// receiver has already delivered. AX.25 inherits its sequencing from
+    /// ITU-T X.25 §2.4.6.4, which <i>discards</i> any I-frame whose N(S) falls
+    /// outside the receive window [V(R), V(R)+k) rather than rejecting it.
+    /// Without that guard a duplicate provokes an SREJ, the sender re-sends,
+    /// the re-send is again out-of-window, provokes another SREJ … a livelock
+    /// that never converges under multi-frame selective-reject recovery
+    /// (reproduced in <c>LossRecoveryProperties</c>).
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c> (default), an I-frame whose N(S) is outside the receive
+    /// window is routed to figc4.4's own discard path (the
+    /// <c>reject_exception:Yes</c> branch — process the acknowledgement, discard
+    /// the data, respond RR(V(R)) only if P=1) instead of the SREJ/REJ path. The
+    /// window predicate is OR'd into the figure's <c>reject_exception</c> decision
+    /// — the exact point where the figure already chooses discard-over-reject — so
+    /// no new transition or per-action rewrite is needed, and the fix covers both
+    /// the SREJ and REJ out-of-sequence branches (the decision precedes the
+    /// <c>srej_enabled</c> split). When <c>false</c>, the figure runs as drawn
+    /// (out-of-window frames are SREJ'd, reproducing the livelock for strict
+    /// conformance study). Delete once ax25sdl ships a figc4.4 carrying the
+    /// upstream window guard. Implemented in m0lte/packet.net#242 ←
+    /// packethacking/ax25spec#40.
+    /// </remarks>
+    public bool Ax25Spec40DiscardOutOfWindowIFrames { get; init; } = true;
+
+    /// <summary>
     /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
     /// what a session uses unless explicitly configured otherwise.
     /// </summary>
@@ -85,5 +115,6 @@ public sealed record Ax25SessionQuirks
     public static Ax25SessionQuirks StrictlyFaithful { get; } = new()
     {
         Ax25Spec38SrejSelectiveRetransmit = false,
+        Ax25Spec40DiscardOutOfWindowIFrames = false,
     };
 }

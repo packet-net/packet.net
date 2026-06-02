@@ -838,6 +838,14 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-02 — Ax25Spec40 receive-window discard guard: fixes the SREJ livelock (#242)
+
+Implements the `Ax25Spec40DiscardOutOfWindowIFrames` quirk (default on; off under `StrictlyFaithful`), closing the ax25spec#40 recovery livelock. figc4.4's out-of-sequence `I_received` path has no receive-window guard, so any N(S) ≠ V(R) — including a duplicate *behind* V(R) — is SREJ'd/REJ'd; the re-send is again out-of-window, ad infinitum. X.25 §2.4.6.4 discards any frame whose N(S) is outside [V(R), V(R)+k). The fix is minimal and faithful: the window predicate `((N(S) − V(R)) mod N) ≥ k` is OR'd into the figure's own `reject_exception` decision in `Ax25SessionBindings` — the exact point where figc4.4 already chooses discard-over-reject — so an out-of-window frame takes the figure's existing discard path (process the ack, discard the data, RR(V(R)) only if P=1) ahead of the `srej_enabled` split, covering both SREJ and REJ modes with no new transition or per-action rewrite. Scoped to `IFrameReceived`, inert on every other trigger.
+
+Result: multi-frame bidirectional SREJ recovery now converges where it used to spin to the pump's 256-round bound. Full Ax25 suite green (678 pass / 3 skip). The previously-skipped livelock property is un-skipped as a passing regression (`Srej_bidirectional_loss_burst_recovers_with_window_guard`, moderate budget).
+
+Coupling surfaced: with the storm gone, a *heavy* SREJ burst no longer livelocks but instead trips **#241** (SRT/T1V unbounded growth → `Next T1 <- 2*SRT` overflows `TimeSpan`) before recovery completes — split out as a skipped case (`Srej_heavy_..._blocked_on_t1v_overflow_241`) and as the immediate coupled next step. Root cause now pinned to Karn's-algorithm violation: the figc4.7 SRT IIR samples `T1V − RemainingWhenLastStopped`, which becomes the full backed-off T1V when a prior expiry left `RemainingWhenLastStopped = 0` but RC has since reset to 0 → positive feedback. The bidirectional generative sweep stays REJ-only until #241 lands, then `srej` becomes a fuzzed parameter there too. Closes #242.
+
 ### 2026-06-02 — Conformance Phase A1: connection lifecycle under loss (clean)
 
 `ConnectionLifecycleProperties` — a #40-independent fuzzing area: SABM/UA and DISC/UA handshakes under finite loss must always reach a terminal state, never hang in Awaiting*. Both properties pass (600 cases): connect-under-finite-loss always reaches Connected or Disconnected; disconnect-under-finite-loss always reaches Disconnected. No findings — confirms the handshake/recovery machinery is robust (the data-recovery space is where the bugs were). Test-only.
