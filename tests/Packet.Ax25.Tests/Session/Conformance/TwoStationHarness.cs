@@ -195,7 +195,11 @@ public sealed class TwoStationHarness
     /// fires any due timers and lets the resulting cascade settle.</summary>
     public void AdvanceT1(int extraMs = 20)
     {
-        Time.Advance(T1V + TimeSpan.FromMilliseconds(extraMs));
+        // Advance past whichever endpoint's *live* T1V is largest — T1V can grow
+        // (figc4.7 SRT backoff), and a fixed advance would stop firing an armed
+        // T1 once it grew past it, stalling recovery (and masking real bugs).
+        var t1 = A.Context.T1V > B.Context.T1V ? A.Context.T1V : B.Context.T1V;
+        Time.Advance(t1 + TimeSpan.FromMilliseconds(extraMs));
         PumpToQuiescence();
         if (CheckAfterEachStep) CheckInvariants();
     }

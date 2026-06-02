@@ -838,6 +838,13 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-02 — Conformance Phase A1: generative loss-recovery fuzzing (three findings)
+
+First adversarial phase (`LossRecoveryProperties`, FsCheck over the harness). The harness `AdvanceT1` now advances the *live* T1V (was a fixed 200ms) so it fires whatever T1 the session actually armed — a fixed advance silently stalled recovery once T1V grew, masking bugs. Properties: a single dropped I-frame always recovers (REJ + SREJ, 300 cases — passes); a finite bidirectional loss burst recovers under REJ go-back-N (400 cases — passes). Test-only, no runtime change. Findings:
+- **packet.net#241** — SRT/T1V grow unbounded under churning recovery → `Next T1 <- 2*SRT` throws `TimeSpan.OverflowException`. Root cause: the figc4.7 SRT IIR folds the full T1V back in on a *timeout* (sample = T1V − 0 = 2·SRT ⇒ 1.125×/cycle), compounded by the #40 storm. A blunt cap perturbs an existing SREJ test, so deferred; proper fix is the SRT-on-timeout logic.
+- **packethacking/ax25spec#40 — escalated** from "efficiency amplifier" to a genuine **recovery livelock**: SREJ + finite multi-frame bidirectional loss makes B SREJ out-of-window duplicates, A retransmit, repeat (>256 round-trips, V(a) frozen). The missing §2.4.6.4(a) discard guard is a liveness fix, not just bandwidth.
+- **packet.net#242** — add an `Ax25Spec40DiscardOutOfWindowIFrames` quirk (the runtime workaround); un-skips the SREJ bidirectional fuzzer + the pinned `Srej_bidirectional_loss_livelocks_pending_ax25spec40` repro.
+
 ### 2026-06-02 — Conformance Phase H envelope: connect-direction + mod-128 + RNR (two findings filed)
 
 Extends the harness envelope (`EnvelopeConformanceTests` + harness `extended` / `ConnectFrom` / `SetBusy` / `ClearBusy`). Connect-initiated-by-B passes. Two scenarios surfaced real gaps and are skipped pending fixes (not papered over):
