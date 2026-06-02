@@ -91,4 +91,57 @@ public class HappyPathConformanceTests
         // Sanity: V(s) wrapped (12 mod 8 = 4).
         h.A.Context.VS.Should().Be((byte)4);
     }
+
+    [Fact]
+    public void Stop_and_wait_k1_delivers_each_frame()
+    {
+        var h = TwoStationHarness.Build(k: 1);
+        h.Connect();
+
+        // k=1: at most one unacked frame outstanding — each must be acked
+        // before the next can go, the tightest window edge.
+        for (byte i = 0; i < 5; i++)
+        {
+            h.Submit(h.A, i);
+            h.FlushAcks();
+        }
+
+        h.B.Delivered.Select(p => p[0]).Should().Equal(new byte[] { 0, 1, 2, 3, 4 });
+        h.AssertConverged();
+    }
+
+    [Fact]
+    public void Max_window_k7_full_window_delivers()
+    {
+        var h = TwoStationHarness.Build(k: 7);   // largest mod-8 send window
+        h.Connect();
+
+        for (byte i = 0; i < 7; i++) h.Submit(h.A, i);
+        h.FlushAcks();
+
+        h.B.Delivered.Select(p => p[0]).Should().Equal(Enumerable.Range(0, 7).Select(i => (byte)i));
+        h.AssertConverged();
+        h.A.Context.VS.Should().Be((byte)7);
+    }
+
+    [Fact]
+    public void Sustained_transfer_wraps_the_modulus_repeatedly()
+    {
+        var h = TwoStationHarness.Build(k: 4);
+        h.Connect();
+
+        // 40 frames over a k=4 window = ten window cycles; V(s) laps the mod-8
+        // modulus five times. Exercises sustained operation + repeated wrap.
+        const int n = 40;
+        for (byte i = 0; i < n; i++)
+        {
+            h.Submit(h.A, i);
+            if ((i + 1) % 4 == 0) h.FlushAcks();
+        }
+        h.FlushAcks();
+
+        h.B.Delivered.Select(p => p[0]).Should().Equal(Enumerable.Range(0, n).Select(i => (byte)i));
+        h.AssertConverged();
+        h.A.Context.VS.Should().Be((byte)(n % 8));   // 40 mod 8 = 0
+    }
 }

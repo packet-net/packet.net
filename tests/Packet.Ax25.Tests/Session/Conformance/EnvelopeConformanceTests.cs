@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Packet.Ax25.Session;
 using Xunit;
 
 namespace Packet.Ax25.Tests.Session.Conformance;
@@ -34,6 +35,40 @@ public class EnvelopeConformanceTests
 
         h.Submit(h.B, 0xB0);
         h.A.Delivered.Should().ContainSingle().Which.Should().Equal(new byte[] { 0xB0 });
+        h.AssertConverged();
+    }
+
+    [Fact]
+    public void Segmentation_reassembly_roundtrips_a_large_payload()
+    {
+        var h = TwoStationHarness.Build(k: 4);
+        h.Connect();
+
+        // A 300-byte upper-layer payload split by §6.6 segmentation (info-field
+        // max 64 → 63 data bytes/segment → 5 segments), each carried as its own
+        // I-frame across the data link, then reassembled on the receiver.
+        var payload = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();
+        var segments = Segmenter.Segment(payload, maxInfoFieldBytes: 64);
+        segments.Count.Should().Be(5);
+
+        var sent = 0;
+        foreach (var seg in segments)
+        {
+            h.Submit(h.A, seg);
+            if (++sent % 4 == 0) h.FlushAcks();   // reopen the k=4 window mid-series
+        }
+        h.FlushAcks();
+
+        // Every segment delivered, in order; reassembly reconstructs the payload.
+        h.B.Delivered.Should().HaveCount(5);
+        var reassembler = new Reassembler();
+        byte[]? reassembled = null;
+        foreach (var info in h.B.Delivered)
+        {
+            var done = reassembler.Push(info);
+            if (done is not null) reassembled = done;
+        }
+        reassembled.Should().Equal(payload);
         h.AssertConverged();
     }
 
