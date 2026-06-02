@@ -518,6 +518,26 @@ hardware is available.
 Outputs all land in `artifacts/hardware-probe/<date>/` and feed into Phase
 10's adaptive-parameter tuning.
 
+### 5.Z AX.25 v2.2 completion arc ⬜ (mod-128 + SABME + XID + segmentation) — completes Phase 2 ([#168](https://github.com/m0lte/packet.net/issues/168))
+
+Phase 2 delivered the mod-8 connected-mode data-link state machine end-to-end (data transfer + REJ/SREJ loss recovery, both runtimes). The *v2.2-specific* feature set is only partly present, and this arc finishes it. **Why v2.2 matters:** SABME selects "version 2.2" mode, and v2.2 is a *bundle* — mod-128 extended sequence numbers (window up to 127, for throughput on high-latency / high-rate links where a 7-frame window stalls the pipe), **plus** negotiated SREJ and segmentation. SREJ and segmentation are gated on a v2.2 connection (§1419 / §1621), reached via SABME or XID. So "do v2.2 properly" = mod-128 framing + the SABME/XID negotiation that legitimately turns the feature set on with a peer.
+
+**Current state (the starting line).** Context plumbing for mod-128 exists (`IsExtended`, `Modulus`, byte-width V(S)/V(A)/V(R), k defaults 4/32); the `AwaitingV22Connection` state + `SABME` / `Establish_Extended_Data_Link` verbs are wired; SREJ recovery works **in mod-8** but is forced on by a config flag (`SrejEnabled`), not negotiated; `Segmenter`/`Reassembler` exist as **standalone utilities, unwired** into the DL-DATA path; XID is **frame-plumbing only** — the MDL negotiation FSM is unimplemented ("for now we use defaults"); and the wire codec (`Ax25Frame.Control`) is **1-byte only**, with `ActionDispatcher` throwing (`RequireMod8`) on extended N(S)/N(R). The coverage ledger shows `AwaitingV22Connection` at 0/25 because nothing drives a SABME connect.
+
+**Cross-cutting.** Every phase has an **ax25-ts parity leg** (the TS runtime mirrors the C# one — see `[[ax25-ecosystem-release-map]]`). **ax25sdl** involvement is small — figc4.6 (AwaitingV22Connection), XID handling, and segmentation are already transcribed; the one likely figure change is the connect-initiation SABM-vs-SABME branch (V2). And this arc adds verbs/events, so **SP-010 (typed verbs, [#260](https://github.com/m0lte/packet.net/issues/260)) is worth doing first or alongside** — it turns the spelling-drift risk of a big dispatcher change into compile errors.
+
+- **V1 — Extended (mod-128) frame codec** (high effort; the hard prerequisite; packet.net + ax25-ts). Model the 2-byte extended control field in `Ax25Frame` — I-frame (7-bit N(S)/N(R) + P/F) and S-frame (7-bit N(R) + SS + P/F); U-frames stay 1-byte in both modes. Encode + parse. **Key architectural change:** control-field width isn't derivable from the bytes alone, so parse/classify must become **mode-aware** — the receive path tells the decoder the link's negotiated modulo (a parse-option / session-level decode, replacing the stateless-on-control-byte classifier). Implement the extended N(S)/N(R) read/write (the `RequireMod8` sites). *Exit:* a mod-128 I/S frame round-trips encode→parse→classify with correct 7-bit sequence numbers, both runtimes.
+
+- **V2 — SABME establishment + version negotiation** (medium effort; can start in parallel with V1 — SABME/UA are 1-byte U-frames, no extended codec needed; packet.net + ax25-ts, maybe ax25sdl). Connect-initiation chooses SABM vs SABME from a "prefer v2.2" setting (figc4.2 `t03_dl_connect_request` is unguarded SABM today — needs a version branch to `Establish_Extended_Data_Link`, in the figure or as a runtime pre-dispatch choice). Drive the `AwaitingV22Connection` handshake end-to-end (SABME → UA → Connected-extended) **and the fallback**: a pre-v2.2 peer answers FRMR, a not-capable peer answers DM (§975) → retry with SABM/mod-8. Teach `TwoStationHarness` to drive a SABME connect → unlocks `AwaitingV22Connection` (0/25). *Exit:* two extended-capable stations connect mod-128; an extended station falls back to mod-8 against a v2.0 peer.
+
+- **V3 — XID parameter negotiation (the MDL)** (high effort; packet.net + ax25-ts). Implement the XID command/response info-field codec (§4.3.4.3 TLVs: classes of procedure, HDLC optional functions incl. modulo + SREJ, I-field length N1, window k, ack timer, retries) and the MDL/XID negotiation FSM the figures reference but we don't have. Negotiation applies the agreed params and **replaces the forced `SrejEnabled`/`IsExtended` config with negotiated values**; v2.0 fallback (peer FRMRs the XID → v2.0 defaults, §1419). *Exit:* SREJ + segmentation + modulo + window are enabled by an actual XID exchange, not a test flag.
+
+- **V4 — SREJ(mod-128) + segmentation integration** (medium effort; packet.net + ax25-ts). Extend the SREJ recovery (mod-8, done — #242/#241/#246) to the mod-128 sequence space. Wire the standalone `Segmenter`/`Reassembler` into the DL-DATA send/receive path (segment payloads > N1 on send, reassemble on receive, handle the segment-control byte + partial-reassembly state), gated on v2.2 (§1621). *Exit:* a > N1 payload segments + reassembles over a mod-128 link, and SREJ recovers a lost segment.
+
+- **V5 — Conformance + interop + parity** (medium effort; packet.net + ax25-ts). Behavioural coverage of `AwaitingV22Connection` (the 0/25), mod-128 data transfer + loss recovery, the XID negotiation paths, and segmentation — via the harness in extended mode; lift the transition-coverage ledger accordingly. Validate mod-128 + XID + SREJ + segmentation against **LinBPQ and direwolf** (both v2.2 stacks) in the interop matrix. Verify ax25-ts parity throughout and cut a coordinated release.
+
+**Sequencing.** V1 is the prerequisite for data-carrying mod-128 (V4) and most of V5; V2 can run in parallel with V1 (U-frame handshake only); V3 is largely independent and feeds V4's "negotiated enable." So: **V1 ∥ V2 → V3 → V4 → V5**, with SP-010 ideally landing before/at the start to de-risk the dispatcher churn. The single biggest risk is V1's mode-aware decode (the codec/parse boundary currently assumes 1-byte control everywhere — KISS in, AXUDP, the classifier, both runtimes).
+
 ---
 
 ## 6. SDL transcription discipline
@@ -839,6 +859,10 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+### 2026-06-02 — Roadmap: §5.Z AX.25 v2.2 completion arc (planned)
+
+Added §5.Z, a phased arc to finish AX.25 v2.2 (completes Phase 2 / #168): mod-128 extended framing, SABME establishment + version negotiation, XID parameter negotiation (the unimplemented MDL), and segmentation — turning today's mod-8 + forced-flag-SREJ into a fully negotiated v2.2 with both runtimes. Captures the current starting line (codec is 1-byte-only; XID is frame-plumbing-only; Segmenter unwired; SREJ forced not negotiated; AwaitingV22Connection 0/25) and sequences the work V1∥V2 → V3 → V4 → V5, with SP-010 (#260) recommended first to de-risk the dispatcher churn. Planning only — tracking issues to be filed.
 
 ### 2026-06-02 — Fix: DL-DATA-request while connecting crashed (drain not state-gated)
 
