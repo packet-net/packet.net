@@ -838,6 +838,12 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-02 — Conformance Phase A1: connection lifecycle under loss (clean)
+
+`ConnectionLifecycleProperties` — a #40-independent fuzzing area: SABM/UA and DISC/UA handshakes under finite loss must always reach a terminal state, never hang in Awaiting*. Both properties pass (600 cases): connect-under-finite-loss always reaches Connected or Disconnected; disconnect-under-finite-loss always reaches Disconnected. No findings — confirms the handshake/recovery machinery is robust (the data-recovery space is where the bugs were). Test-only.
+
+Note: the remaining high-value conformance space (SREJ data recovery, reorder, duplicates) is gated by the ax25spec#40 duplicate-SREJ livelock; un-blocking it needs the #242 `Ax25Spec40` discard-guard quirk (a core I_received interception). The connection-setup and REJ-recovery spaces are now covered and clean.
+
 ### 2026-06-02 — Conformance Phase A1: generative loss-recovery fuzzing (three findings)
 
 First adversarial phase (`LossRecoveryProperties`, FsCheck over the harness). The harness `AdvanceT1` now advances the *live* T1V (was a fixed 200ms) so it fires whatever T1 the session actually armed — a fixed advance silently stalled recovery once T1V grew, masking bugs. Properties: a single dropped I-frame always recovers (REJ + SREJ, 300 cases — passes); a finite bidirectional loss burst recovers under REJ go-back-N (400 cases — passes). Test-only, no runtime change. Findings:
