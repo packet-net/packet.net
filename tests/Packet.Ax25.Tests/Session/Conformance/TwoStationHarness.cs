@@ -58,7 +58,8 @@ public sealed class TwoStationHarness
     // ─── Construction ───────────────────────────────────────────────────
 
     public static TwoStationHarness Build(
-        bool srej = false, int k = 4, int t1Ms = DefaultT1Ms, int n2 = DefaultN2, int t2Ms = 40)
+        bool srej = false, int k = 4, int t1Ms = DefaultT1Ms, int n2 = DefaultN2, int t2Ms = 40,
+        bool extended = false)
     {
         var nodeA = new Callsign("M0LTEA", 1);
         var nodeB = new Callsign("M0LTEB", 2);
@@ -66,8 +67,8 @@ public sealed class TwoStationHarness
         var link  = new Channel();
         var t1v   = TimeSpan.FromMilliseconds(t1Ms);
 
-        var a = BuildEndpoint(nodeA, nodeB, time, link, srej, k, t1Ms, n2, t2Ms, out var aPeer);
-        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, out var bPeer);
+        var a = BuildEndpoint(nodeA, nodeB, time, link, srej, k, t1Ms, n2, t2Ms, extended, out var aPeer);
+        var b = BuildEndpoint(nodeB, nodeA, time, link, srej, k, t1Ms, n2, t2Ms, extended, out var bPeer);
         aPeer.Target = b.Inbound;          bPeer.Target = a.Inbound;
         aPeer.RxLog  = b.ReceivedFromPeer; bPeer.RxLog  = a.ReceivedFromPeer;
         return new TwoStationHarness(a, b, link, time, t1v, TimeSpan.FromMilliseconds(t2Ms));
@@ -75,7 +76,7 @@ public sealed class TwoStationHarness
 
     private static Endpoint BuildEndpoint(
         Callsign local, Callsign remote, FakeTimeProvider time, Channel link,
-        bool srej, int k, int t1Ms, int n2, int t2Ms, out PeerWiring peer)
+        bool srej, int k, int t1Ms, int n2, int t2Ms, bool extended, out PeerWiring peer)
     {
         peer = new PeerWiring { TargetLocal = remote };
         var peerLocal = peer;
@@ -88,6 +89,7 @@ public sealed class TwoStationHarness
             N2  = n2,
             K   = k,
             SrejEnabled = srej,
+            IsExtended  = extended,
         };
         var signals = new ConcurrentQueue<DataLinkSignal>();
         var inbound = new Queue<Ax25Event>();
@@ -139,13 +141,34 @@ public sealed class TwoStationHarness
 
     /// <summary>Establish the link from A. Asserts both reach Connected, then
     /// drains connect-time signals so delivery tracking starts clean.</summary>
-    public void Connect()
+    public void Connect() => ConnectFrom(A);
+
+    /// <summary>Establish the link from <paramref name="initiator"/>.</summary>
+    public void ConnectFrom(Endpoint initiator)
     {
-        A.Session.PostEvent(new DlConnectRequest());
+        initiator.Session.PostEvent(new DlConnectRequest());
         PumpToQuiescence();
         if (A.State != "Connected" || B.State != "Connected")
             throw new InvariantViolationException($"connect failed: A={A.State} B={B.State}");
         DrainSignals(A); DrainSignals(B);
+        if (CheckAfterEachStep) CheckInvariants();
+    }
+
+    /// <summary>Mark <paramref name="e"/> busy (DL-FLOW-OFF) — it sends RNR and
+    /// the peer must stop sending I-frames.</summary>
+    public void SetBusy(Endpoint e)
+    {
+        e.Session.PostEvent(new DlFlowOffRequest());
+        PumpToQuiescence();
+        if (CheckAfterEachStep) CheckInvariants();
+    }
+
+    /// <summary>Clear <paramref name="e"/>'s busy condition (DL-FLOW-ON) — it
+    /// sends RR and the peer may resume.</summary>
+    public void ClearBusy(Endpoint e)
+    {
+        e.Session.PostEvent(new DlFlowOnRequest());
+        PumpToQuiescence();
         if (CheckAfterEachStep) CheckInvariants();
     }
 
