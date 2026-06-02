@@ -66,7 +66,9 @@ public class DataLinkTransitionRobustnessTests
                     From: "TimerRecovery",
                     On: "T1_expiry",
                     Guard: null,
-                    Actions: new[] { new ActionStep("boom", ActionKind.Processing) },
+                    // The verb is immaterial — StopT1ThenThrowDispatcher ignores it
+                    // and throws after cancelling T1 (it never reaches the real switch).
+                    Actions: new[] { new ActionStep(Ax25ActionVerb.StopT1, ActionKind.Processing) },
                     Next: "Connected",
                     Notes: null,
                     References: Array.Empty<ImplementationReference>(),

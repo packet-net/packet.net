@@ -156,7 +156,7 @@ public class DataLinkConnectedRetransmitTests
             nr: 1, isCommand: false, pollFinal: false);
         var tx = new TransitionContext(ctx, scheduler, new RejReceived(rej));
 
-        dispatcher.Execute(new[] { new ActionStep("Invoke Retransmission", ActionKind.Subroutine) }, tx);
+        dispatcher.Execute(new[] { new ActionStep(Ax25ActionVerb.InvokeRetransmission, ActionKind.Subroutine) }, tx);
 
         sent.Select(f => f.GetIFrameNs(ctx.Modulus)!.Value).Should().Equal(new byte[] { 1, 2, 3 },
             "go-back-N resends seq 1, 2 and 3 in order, each with its ORIGINAL N(s) — not renumbered to V(s)");

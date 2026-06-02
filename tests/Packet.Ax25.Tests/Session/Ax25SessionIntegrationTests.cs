@@ -67,7 +67,7 @@ public class Ax25SessionIntegrationTests
         string from,
         string on,
         string next,
-        params (string verb, ActionKind kind)[] actions) =>
+        params (Ax25ActionVerb verb, ActionKind kind)[] actions) =>
         new(
             Id: id,
             From: from,
@@ -99,11 +99,11 @@ public class Ax25SessionIntegrationTests
             from: "S1",
             on: "DL_CONNECT_request",
             next: "S1",
-            ("V(s) := 0",           ActionKind.Processing),
-            ("V(r) := 0",           ActionKind.Processing),
-            ("V(a) := 0",           ActionKind.Processing),
-            ("RC := 0",             ActionKind.Processing),
-            ("set_layer_3_initiated", ActionKind.Processing));
+            (Ax25ActionVerb.VSAssign0,           ActionKind.Processing),
+            (Ax25ActionVerb.VRAssign0,           ActionKind.Processing),
+            (Ax25ActionVerb.VAAssign0,           ActionKind.Processing),
+            (Ax25ActionVerb.RCAssign0,             ActionKind.Processing),
+            (Ax25ActionVerb.SetLayer3Initiated, ActionKind.Processing));
 
         var (session, ctx, _, _, _) = NewSession(SingleStateMap("S1", t), "S1");
 
@@ -132,8 +132,8 @@ public class Ax25SessionIntegrationTests
             from: "S1",
             on: "DL_CONNECT_request",
             next: "S1",
-            ("V(s) := V(s) + 1", ActionKind.Processing),
-            ("V(r) := V(r) + 1", ActionKind.Processing));
+            (Ax25ActionVerb.VSAssignVSPlus1, ActionKind.Processing),
+            (Ax25ActionVerb.VRAssignVRPlus1, ActionKind.Processing));
 
         var (session, ctx, _, _, _) = NewSession(SingleStateMap("S1", t), "S1");
         ctx.VS = 7;
@@ -153,9 +153,9 @@ public class Ax25SessionIntegrationTests
             from: "S1",
             on: "DL_CONNECT_request",
             next: "S1",
-            ("RC := 0",      ActionKind.Processing),
-            ("start_T1",     ActionKind.Processing),
-            ("RR_command",   ActionKind.SignalLower));
+            (Ax25ActionVerb.RCAssign0,      ActionKind.Processing),
+            (Ax25ActionVerb.StartT1,     ActionKind.Processing),
+            (Ax25ActionVerb.RRCommand,   ActionKind.SignalLower));
 
         var (session, ctx, scheduler, _, sFrames) = NewSession(SingleStateMap("S1", t), "S1");
         ctx.RC = 9;
@@ -180,7 +180,7 @@ public class Ax25SessionIntegrationTests
             From: "S1",
             On: "DL_CONNECT_request",
             Guard: "layer_3_initiated",
-            Actions: new[] { new ActionStep("RC := 1", ActionKind.Processing) },
+            Actions: new[] { new ActionStep(Ax25ActionVerb.RCAssign1, ActionKind.Processing) },
             Next: "S1",
             Notes: null,
             References: Array.Empty<ImplementationReference>(),
@@ -191,7 +191,7 @@ public class Ax25SessionIntegrationTests
             From: "S1",
             On: "DL_CONNECT_request",
             Guard: "not layer_3_initiated",
-            Actions: new[] { new ActionStep("RC := 0", ActionKind.Processing) },
+            Actions: new[] { new ActionStep(Ax25ActionVerb.RCAssign0, ActionKind.Processing) },
             Next: "S1",
             Notes: null,
             References: Array.Empty<ImplementationReference>(),
@@ -226,7 +226,7 @@ public class Ax25SessionIntegrationTests
             from: "S1",
             on: "RR_received",
             next: "S1",
-            ("V(a) := N(r)", ActionKind.Processing));
+            (Ax25ActionVerb.VAAssignNR, ActionKind.Processing));
 
         var (session, ctx, _, _, _) = NewSession(SingleStateMap("S1", t), "S1");
 

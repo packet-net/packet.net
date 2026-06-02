@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
+using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
 
@@ -51,7 +52,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.OwnReceiverBusy.Should().BeFalse();
-        d.Execute("set_own_receiver_busy", ctx, s);
+        d.Execute(Ax25ActionVerb.SetOwnReceiverBusy, ctx, s);
         ctx.OwnReceiverBusy.Should().BeTrue();
     }
 
@@ -60,18 +61,18 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.OwnReceiverBusy = true;
-        d.Execute("clear_own_receiver_busy", ctx, s);
+        d.Execute(Ax25ActionVerb.ClearOwnReceiverBusy, ctx, s);
         ctx.OwnReceiverBusy.Should().BeFalse();
     }
 
     [Theory]
-    [InlineData("set_acknowledge_pending",   nameof(Ax25SessionContext.AcknowledgePending), true)]
-    [InlineData("clear_acknowledge_pending", nameof(Ax25SessionContext.AcknowledgePending), false)]
-    [InlineData("set_layer_3_initiated",     nameof(Ax25SessionContext.Layer3Initiated),    true)]
-    [InlineData("clear_layer_3_initiated",   nameof(Ax25SessionContext.Layer3Initiated),    false)]
-    [InlineData("set_peer_receiver_busy",    nameof(Ax25SessionContext.PeerReceiverBusy),   true)]
-    [InlineData("clear_peer_receiver_busy",  nameof(Ax25SessionContext.PeerReceiverBusy),   false)]
-    public void Flag_Verbs_Mutate_The_Right_Field(string action, string fieldName, bool expectedValue)
+    [InlineData(Ax25ActionVerb.SetAcknowledgePending,   nameof(Ax25SessionContext.AcknowledgePending), true)]
+    [InlineData(Ax25ActionVerb.ClearAcknowledgePending, nameof(Ax25SessionContext.AcknowledgePending), false)]
+    [InlineData(Ax25ActionVerb.SetLayer3Initiated,     nameof(Ax25SessionContext.Layer3Initiated),    true)]
+    [InlineData(Ax25ActionVerb.ClearLayer3Initiated,   nameof(Ax25SessionContext.Layer3Initiated),    false)]
+    [InlineData(Ax25ActionVerb.SetPeerReceiverBusy,    nameof(Ax25SessionContext.PeerReceiverBusy),   true)]
+    [InlineData(Ax25ActionVerb.ClearPeerReceiverBusy,  nameof(Ax25SessionContext.PeerReceiverBusy),   false)]
+    public void Flag_Verbs_Mutate_The_Right_Field(Ax25ActionVerb action, string fieldName, bool expectedValue)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         // Set the opposite to make the change observable
@@ -84,11 +85,13 @@ public class ActionDispatcherTests
 
     // ─── Timer operations ──────────────────────────────────────────────
 
+    // Only T1 and T3 have canonical SDL verbs (StartT1/StopT1/StartT3/StopT3);
+    // T2 has no Ax25ActionVerb member — no SDL figure arms or cancels it, so the
+    // dispatcher exposes no T2 timer verb to test.
     [Theory]
-    [InlineData("start_T1", "T1")]
-    [InlineData("start_T2", "T2")]
-    [InlineData("start_T3", "T3")]
-    public void Start_Timer_Arms_The_Named_Timer(string action, string timerName)
+    [InlineData(Ax25ActionVerb.StartT1, "T1")]
+    [InlineData(Ax25ActionVerb.StartT3, "T3")]
+    public void Start_Timer_Arms_The_Named_Timer(Ax25ActionVerb action, string timerName)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -96,17 +99,16 @@ public class ActionDispatcherTests
     }
 
     [Theory]
-    [InlineData("stop_T1", "T1")]
-    [InlineData("stop_T2", "T2")]
-    [InlineData("stop_T3", "T3")]
-    public void Stop_Timer_Cancels_The_Named_Timer(string action, string timerName)
+    [InlineData(Ax25ActionVerb.StartT1, Ax25ActionVerb.StopT1, "T1")]
+    [InlineData(Ax25ActionVerb.StartT3, Ax25ActionVerb.StopT3, "T3")]
+    public void Stop_Timer_Cancels_The_Named_Timer(Ax25ActionVerb startAction, Ax25ActionVerb stopAction, string timerName)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         // Arm first so cancel has something to clear
-        d.Execute("start_" + timerName, ctx, s);
+        d.Execute(startAction, ctx, s);
         s.IsRunning(timerName).Should().BeTrue();
 
-        d.Execute(action, ctx, s);
+        d.Execute(stopAction, ctx, s);
         s.IsRunning(timerName).Should().BeFalse();
     }
 
@@ -114,7 +116,7 @@ public class ActionDispatcherTests
     public void Timer_Expiry_Calls_The_Configured_Callback_With_The_Timer_Name()
     {
         var (d, ctx, s, time, expiries, _, _, _, _, _, _) = NewRig();
-        d.Execute("start_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StartT1, ctx, s);
 
         // start_T1 reads ctx.T1V (default 6s) — not dispatcher.T1Duration.
         time.Advance(ctx.T1V);
@@ -128,9 +130,9 @@ public class ActionDispatcherTests
         var (d, ctx, s, time, expiries, _, _, _, _, _, _) = NewRig();
         // Set a custom T1V via the SDL verb chain that figc4.1 t03 fires.
         ctx.Srt = TimeSpan.FromMilliseconds(1500);
-        d.Execute("T1V := 2 * SRT", ctx, s);
+        d.Execute(Ax25ActionVerb.T1VAssign2TimesSRT, ctx, s);
 
-        d.Execute("start_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StartT1, ctx, s);
 
         ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(3000));
         s.IsRunning("T1").Should().BeTrue();
@@ -161,7 +163,7 @@ public class ActionDispatcherTests
         ctx.IFrameQueue.Enqueue((new byte[] { 2 }, Ax25Frame.PidNoLayer3));
         ctx.IFrameQueue.Should().HaveCount(2);
 
-        d.Execute("discard_i_frame_queue", ctx, s);
+        d.Execute(Ax25ActionVerb.DiscardIFrameQueue, ctx, s);
 
         ctx.IFrameQueue.Should().BeEmpty();
     }
@@ -169,13 +171,13 @@ public class ActionDispatcherTests
     // ─── Supervisory-frame transmissions ───────────────────────────────
 
     [Theory]
-    [InlineData("RR_command",   SupervisoryFrameType.Rr,   true)]
-    [InlineData("RR",           SupervisoryFrameType.Rr,   false)]
-    [InlineData("RNR_response", SupervisoryFrameType.Rnr,  false)]
-    [InlineData("REJ",          SupervisoryFrameType.Rej,  false)]
-    [InlineData("SREJ",         SupervisoryFrameType.Srej, false)]
+    [InlineData(Ax25ActionVerb.RRCommand,   SupervisoryFrameType.Rr,   true)]
+    [InlineData(Ax25ActionVerb.RR,           SupervisoryFrameType.Rr,   false)]
+    [InlineData(Ax25ActionVerb.RNRResponse, SupervisoryFrameType.Rnr,  false)]
+    [InlineData(Ax25ActionVerb.REJ,          SupervisoryFrameType.Rej,  false)]
+    [InlineData(Ax25ActionVerb.SREJ,         SupervisoryFrameType.Srej, false)]
     public void Supervisory_Verbs_Signal_Outgoing_Frame_With_Right_Type_And_Role(
-        string action, SupervisoryFrameType expectedType, bool expectedIsCommand)
+        Ax25ActionVerb action, SupervisoryFrameType expectedType, bool expectedIsCommand)
     {
         var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -193,7 +195,7 @@ public class ActionDispatcherTests
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
         // Mimic a figc4.4-style RR response chain: set F, set N(r), emit RR.
-        d.Execute(new[] { "F := 1", "N(r) := V(r)", "RR" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.FAssign1, Ax25ActionVerb.NRAssignVR, Ax25ActionVerb.RR }, tx);
 
         sFrames.Should().ContainSingle();
         sFrames[0].Should().Be(new SupervisoryFrameSpec(
@@ -209,7 +211,7 @@ public class ActionDispatcherTests
         // applies the spec-implicit defaults: Nr = V(R), PfBit = false.
         var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
-        d.Execute("RNR_response", ctx, s);
+        d.Execute(Ax25ActionVerb.RNRResponse, ctx, s);
 
         sFrames.Should().ContainSingle();
         sFrames[0].Should().Be(new SupervisoryFrameSpec(
@@ -219,16 +221,16 @@ public class ActionDispatcherTests
     // ─── Unnumbered-frame transmissions ────────────────────────────────
 
     [Theory]
-    [InlineData("UA",              UFrameType.Ua,    false, false, false)]
-    [InlineData("DM",              UFrameType.Dm,    false, false, false)]
-    [InlineData("Expedited UA",    UFrameType.Ua,    false, false, true)]
-    [InlineData("Expedited DM",    UFrameType.Dm,    false, false, true)]
-    [InlineData("DM (F = 1)",      UFrameType.Dm,    false, true,  false)]
-    [InlineData("SABM (P == 1)",   UFrameType.Sabm,  true,  true,  false)]
-    [InlineData("SABME (P = 1)",   UFrameType.Sabme, true,  true,  false)]
-    [InlineData("DISC (P = 1)",    UFrameType.Disc,  true,  true,  false)]
+    [InlineData(Ax25ActionVerb.UA,              UFrameType.Ua,    false, false, false)]
+    [InlineData(Ax25ActionVerb.DM,              UFrameType.Dm,    false, false, false)]
+    [InlineData(Ax25ActionVerb.ExpeditedUA,    UFrameType.Ua,    false, false, true)]
+    [InlineData(Ax25ActionVerb.ExpeditedDM,    UFrameType.Dm,    false, false, true)]
+    [InlineData(Ax25ActionVerb.DMFEq1,      UFrameType.Dm,    false, true,  false)]
+    [InlineData(Ax25ActionVerb.SABMPEqEq1,   UFrameType.Sabm,  true,  true,  false)]
+    [InlineData(Ax25ActionVerb.SABMEPEq1,   UFrameType.Sabme, true,  true,  false)]
+    [InlineData(Ax25ActionVerb.DISCPEq1,    UFrameType.Disc,  true,  true,  false)]
     public void Unnumbered_Verbs_Signal_Outgoing_Frame_With_Right_Type_Role_PfBit_And_Expedite(
-        string action, UFrameType expectedType, bool expectedIsCommand, bool expectedPfBit, bool expectedExpedited)
+        Ax25ActionVerb action, UFrameType expectedType, bool expectedIsCommand, bool expectedPfBit, bool expectedExpedited)
     {
         var (d, ctx, s, _, _, _, uFrames, _, _, _, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -253,7 +255,7 @@ public class ActionDispatcherTests
 
         // figc4.1 t14: SABM received, "able to establish" Yes branch:
         //   F := P; <other actions>; UA
-        d.Execute(new[] { "F := P", "UA" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.FAssignP, Ax25ActionVerb.UA }, tx);
 
         uFrames.Should().ContainSingle();
         // The Ui factory leaves the P/F bit clear (PollFinal=false), so the
@@ -270,7 +272,7 @@ public class ActionDispatcherTests
 
         // Even with Pending.PfBit pre-set to false, an explicit (P == 1)
         // forces the value true.
-        d.Execute(new[] { "F := 0", "SABM (P == 1)" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.FAssign0, Ax25ActionVerb.SABMPEqEq1 }, tx);
 
         uFrames.Should().ContainSingle();
         uFrames[0].PfBit.Should().BeTrue();
@@ -285,7 +287,7 @@ public class ActionDispatcherTests
         var payload = "hello world"u8.ToArray();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest(payload, Pid: 0xCF));
 
-        d.Execute("UI_command", tx);
+        d.Execute(Ax25ActionVerb.UICommand, tx);
 
         uiFrames.Should().ContainSingle();
         var spec = uiFrames[0];
@@ -301,7 +303,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, uiFrames, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest("x"u8.ToArray()));
 
-        d.Execute("UI_command", tx);
+        d.Execute(Ax25ActionVerb.UICommand, tx);
 
         uiFrames.Should().ContainSingle();
         uiFrames[0].Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -313,7 +315,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, uiFrames, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlUnitDataRequest("x"u8.ToArray()));
 
-        d.Execute(new[] { "F := 1", "UI_command" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.FAssign1, Ax25ActionVerb.UICommand }, tx);
 
         uiFrames[0].PfBit.Should().BeTrue();
     }
@@ -324,7 +326,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        var act = () => d.Execute("UI_command", tx);
+        var act = () => d.Execute(Ax25ActionVerb.UICommand, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*UI_command*requires the trigger*DL_UNIT_DATA_request*DL_CONNECT_request*");
@@ -353,7 +355,7 @@ public class ActionDispatcherTests
         var tx = new TransitionContext(ctx, scheduler, new IFramePopsOffQueue(payload, Pid: 0xCC));
 
         // Replicate figc4.4 t20's chain: N(s):=V(s); N(r):=V(r); p:=0; I_command.
-        dispatcher.Execute(new[] { "N(s) := V(s)", "N(r) := V(r)", "p := 0", "I_command" }, tx);
+        dispatcher.Execute(new[] { Ax25ActionVerb.NSAssignVS, Ax25ActionVerb.NRAssignVR, Ax25ActionVerb.PAssign0, Ax25ActionVerb.ICommand }, tx);
 
         iFrames.Should().ContainSingle();
         var f = iFrames[0];
@@ -375,7 +377,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        var act = () => d.Execute("I_command", tx);
+        var act = () => d.Execute(Ax25ActionVerb.ICommand, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*I_command*requires the trigger*I_frame_pops_off_queue*");
@@ -384,11 +386,11 @@ public class ActionDispatcherTests
     // ─── DL upper-layer signals ────────────────────────────────────────
 
     [Theory]
-    [InlineData("DL_CONNECT_indication",    typeof(DataLinkConnectIndication))]
-    [InlineData("DL_CONNECT_confirm",       typeof(DataLinkConnectConfirm))]
-    [InlineData("DL_DISCONNECT_indication", typeof(DataLinkDisconnectIndication))]
-    [InlineData("DL_DISCONNECT_confirm",    typeof(DataLinkDisconnectConfirm))]
-    public void Simple_DL_Signals_Are_Raised_With_No_Payload(string action, Type expectedRecordType)
+    [InlineData(Ax25ActionVerb.DLCONNECTIndication,    typeof(DataLinkConnectIndication))]
+    [InlineData(Ax25ActionVerb.DLCONNECTConfirm,       typeof(DataLinkConnectConfirm))]
+    [InlineData(Ax25ActionVerb.DLDISCONNECTIndication, typeof(DataLinkDisconnectIndication))]
+    [InlineData(Ax25ActionVerb.DLDISCONNECTConfirm,    typeof(DataLinkDisconnectConfirm))]
+    public void Simple_DL_Signals_Are_Raised_With_No_Payload(Ax25ActionVerb action, Type expectedRecordType)
     {
         var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -398,17 +400,17 @@ public class ActionDispatcherTests
     }
 
     [Theory]
-    [InlineData("DL_ERROR_indication_C_D", "C_D")]
-    [InlineData("DL_ERROR_indication_D",   "D")]
-    [InlineData("DL_ERROR_indication_E",   "E")]
-    [InlineData("DL_ERROR_indication_F",   "F")]
-    [InlineData("DL_ERROR_indication_G",   "G")]
-    [InlineData("DL_ERROR_indication_K",   "K")]
-    [InlineData("DL_ERROR_indication_L",   "L")]
-    [InlineData("DL_ERROR_indication_M",   "M")]
-    [InlineData("DL_ERROR_indication_N",   "N")]
-    [InlineData("DL_ERROR_indication_O",   "O")]
-    public void DL_Error_Indication_Letters_Are_Raised_With_The_Code(string action, string expectedCode)
+    [InlineData(Ax25ActionVerb.DLERRORIndicationCD, "C_D")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationD,   "D")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationE,   "E")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationF,   "F")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationG,   "G")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationK,   "K")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationL,   "L")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationM,   "M")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationN,   "N")]
+    [InlineData(Ax25ActionVerb.DLERRORIndicationO,   "O")]
+    public void DL_Error_Indication_Letters_Are_Raised_With_The_Code(Ax25ActionVerb action, string expectedCode)
     {
         var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -433,7 +435,7 @@ public class ActionDispatcherTests
 
         var tx = new TransitionContext(ctx, s, new IFrameReceived(frame!));
 
-        d.Execute("DL_DATA_indication", tx);
+        d.Execute(Ax25ActionVerb.DLDATAIndication, tx);
 
         upward.Should().ContainSingle();
         var sig = upward[0].Should().BeOfType<DataLinkDataIndication>().Subject;
@@ -444,18 +446,19 @@ public class ActionDispatcherTests
     [Fact]
     public void DL_UnitData_Indication_From_UI_Frame_Raises_UnitDataIndication()
     {
-        // Regression: UI_Check emits the figure verb "DL-UNIT-DATA Indication";
-        // ActionVerbAliases normalises it to the snake_case canonical
-        // (DL_UNIT_DATA_indication), but the switch case had been left in display
-        // form, so the normalised verb fell through to the default throw and every
-        // UI reception crashed. Drive the exact walker-emitted spelling so the fix
-        // (snake_case case label) is exercised through the real alias path.
+        // Regression (m0lte/packet.net#258): UI_Check's figure verb
+        // "DL-UNIT-DATA Indication" used to be reconciled to a snake_case
+        // canonical via the runtime ActionVerbAliases map, but the dispatcher's
+        // case label was left in display form so the normalised verb fell through
+        // to the default throw and every UI reception crashed. The verb is now the
+        // typed Ax25ActionVerb.DLUNITDATAIndication — codegen is the sole
+        // canonicaliser and the exhaustive switch guarantees a handler exists.
         var (d, ctx, s, _, _, _, _, _, upward, _, _) = NewRig();
         var info = "ui-payload"u8.ToArray();
         var frame = Ax25Frame.Ui(new Callsign("M0LTE", 0), new Callsign("G7XYZ", 7), info: info);
         var tx = new TransitionContext(ctx, s, new UiReceived(frame));
 
-        d.Execute("DL-UNIT-DATA Indication", tx);
+        d.Execute(Ax25ActionVerb.DLUNITDATAIndication, tx);
 
         var sig = upward.Should().ContainSingle().Which.Should().BeOfType<DataLinkUnitDataIndication>().Subject;
         sig.Info.ToArray().Should().Equal(info);
@@ -467,7 +470,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new T1Expiry());
 
-        var act = () => d.Execute("DL_DATA_indication", tx);
+        var act = () => d.Execute(Ax25ActionVerb.DLDATAIndication, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*DL_DATA_indication*requires an incoming frame*T1_expiry*");
@@ -476,10 +479,10 @@ public class ActionDispatcherTests
     // ─── Sequence-variable assignments ─────────────────────────────────
 
     [Theory]
-    [InlineData("RC := 0", 7, 0)]
-    [InlineData("RC := 1", 7, 1)]
-    [InlineData("RC := RC + 1", 4, 5)]
-    public void RC_Assignment_Verbs_Mutate_RC(string action, int initial, int expected)
+    [InlineData(Ax25ActionVerb.RCAssign0, 7, 0)]
+    [InlineData(Ax25ActionVerb.RCAssign1, 7, 1)]
+    [InlineData(Ax25ActionVerb.RCAssignRCPlus1, 4, 5)]
+    public void RC_Assignment_Verbs_Mutate_RC(Ax25ActionVerb action, int initial, int expected)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.RC = initial;
@@ -492,7 +495,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VS = 5;
-        d.Execute("V(s) := 0", ctx, s);
+        d.Execute(Ax25ActionVerb.VSAssign0, ctx, s);
         ctx.VS.Should().Be((byte)0);
     }
 
@@ -501,7 +504,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VS = 7;
-        d.Execute("V(s) := V(s) + 1", ctx, s);
+        d.Execute(Ax25ActionVerb.VSAssignVSPlus1, ctx, s);
         ctx.VS.Should().Be((byte)0, "mod-8 by default; 7 + 1 wraps to 0");
     }
 
@@ -511,7 +514,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IsExtended = true;
         ctx.VS = 127;
-        d.Execute("V(s) := V(s) + 1", ctx, s);
+        d.Execute(Ax25ActionVerb.VSAssignVSPlus1, ctx, s);
         ctx.VS.Should().Be((byte)0, "mod-128 in extended mode; 127 + 1 wraps to 0");
     }
 
@@ -520,7 +523,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 5;
-        d.Execute("V(r) := 0", ctx, s);
+        d.Execute(Ax25ActionVerb.VRAssign0, ctx, s);
         ctx.VR.Should().Be((byte)0);
     }
 
@@ -529,7 +532,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VR = 7;
-        d.Execute("V(r) := V(r) + 1", ctx, s);
+        d.Execute(Ax25ActionVerb.VRAssignVRPlus1, ctx, s);
         ctx.VR.Should().Be((byte)0);
     }
 
@@ -538,7 +541,7 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.VA = 5;
-        d.Execute("V(a) := 0", ctx, s);
+        d.Execute(Ax25ActionVerb.VAAssign0, ctx, s);
         ctx.VA.Should().Be((byte)0);
     }
 
@@ -551,7 +554,7 @@ public class ActionDispatcherTests
         // figc4.4a col 5 (Yes branch).
         var (d, ctx, s, _, _, sFrames, _, _, _, _, _) = NewRig();
         d.Execute(
-            new[] { "set_own_receiver_busy", "RNR_response", "clear_acknowledge_pending" },
+            new[] { Ax25ActionVerb.SetOwnReceiverBusy, Ax25ActionVerb.RNRResponse, Ax25ActionVerb.ClearAcknowledgePending },
             ctx, s);
 
         ctx.OwnReceiverBusy.Should().BeTrue();
@@ -561,14 +564,10 @@ public class ActionDispatcherTests
         sFrames[0].IsCommand.Should().BeFalse();
     }
 
-    [Fact]
-    public void Unknown_Action_Throws()
-    {
-        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        var act = () => d.Execute("transmit_warp_drive", ctx, s);
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*unknown SDL action*transmit_warp_drive*");
-    }
+    // (The former "unknown action throws" test is gone: Verb is now the closed
+    // Ax25ActionVerb enum and the dispatcher's exhaustive switch handles every
+    // member, so there is no runtime "unknown verb" path to exercise — a missing
+    // or renamed verb is caught at compile time via CS8509 instead.)
 
     // ─── Reads from incoming frame ─────────────────────────────────────
 
@@ -595,7 +594,7 @@ public class ActionDispatcherTests
         var frame = BuildRrCommand(nr);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
 
-        d.Execute("V(a) := N(r)", tx);
+        d.Execute(Ax25ActionVerb.VAAssignNR, tx);
 
         ctx.VA.Should().Be(nr);
     }
@@ -607,7 +606,7 @@ public class ActionDispatcherTests
         // DlConnectRequest is an upper-layer primitive — no attached frame.
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        var act = () => d.Execute("V(a) := N(r)", tx);
+        var act = () => d.Execute(Ax25ActionVerb.VAAssignNR, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*DL_CONNECT_request*");
@@ -621,7 +620,7 @@ public class ActionDispatcherTests
         var frame = BuildRrCommand(3);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
 
-        var act = () => d.Execute("V(a) := N(r)", tx);
+        var act = () => d.Execute(Ax25ActionVerb.VAAssignNR, tx);
 
         // Mod-128 N(R) lives in a 2-byte control field that Ax25Frame doesn't
         // model yet — fail loudly until that's wired rather than silently
@@ -654,7 +653,7 @@ public class ActionDispatcherTests
         ctx.VR = 5;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        d.Execute("N(r) := V(r)", tx);
+        d.Execute(Ax25ActionVerb.NRAssignVR, tx);
 
         tx.Pending.Nr.Should().Be((byte)5);
         tx.Pending.Ns.Should().BeNull();
@@ -668,7 +667,7 @@ public class ActionDispatcherTests
         ctx.VS = 6;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        d.Execute("N(s) := V(s)", tx);
+        d.Execute(Ax25ActionVerb.NSAssignVS, tx);
 
         tx.Pending.Ns.Should().Be((byte)6);
     }
@@ -682,7 +681,7 @@ public class ActionDispatcherTests
         var frame = BuildIFrame(nr: 2, ns: 4, pollBit: false, info: "hello"u8.ToArray());
         var tx = new TransitionContext(ctx, s, new IFrameReceived(frame));
 
-        d.Execute("N(r) := N(s)", tx);
+        d.Execute(Ax25ActionVerb.NRAssignNS, tx);
 
         tx.Pending.Nr.Should().Be((byte)4);
     }
@@ -698,7 +697,7 @@ public class ActionDispatcherTests
         var frame = BuildIFrame(nr: 2, ns: 4, pollBit: false, info: "hello"u8.ToArray());
         var tx = new TransitionContext(ctx, s, new IFrameReceived(frame));
 
-        d.Execute("N(r) := N(s)", tx);
+        d.Execute(Ax25ActionVerb.NRAssignNS, tx);
 
         tx.Pending.Nr.Should().Be((byte)1, "retargeted from N(S)=4 to V(R)=1 — the missing gap");
     }
@@ -709,17 +708,17 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new T1Expiry());
 
-        var act = () => d.Execute("N(r) := N(s)", tx);
+        var act = () => d.Execute(Ax25ActionVerb.NRAssignNS, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*T1_expiry*");
     }
 
     [Theory]
-    [InlineData("F := 0", false)]
-    [InlineData("F := 1", true)]
-    [InlineData("p := 0", false)]
-    public void F_And_P_Bit_Constant_Assignments_Write_Pending_PfBit(string action, bool expected)
+    [InlineData(Ax25ActionVerb.FAssign0, false)]
+    [InlineData(Ax25ActionVerb.FAssign1, true)]
+    [InlineData(Ax25ActionVerb.PAssign0, false)]
+    public void F_And_P_Bit_Constant_Assignments_Write_Pending_PfBit(Ax25ActionVerb action, bool expected)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
@@ -738,7 +737,7 @@ public class ActionDispatcherTests
         var frame = BuildRrCommand(3, pollBit: pollBit);
         var tx = new TransitionContext(ctx, s, new RrReceived(frame));
 
-        d.Execute("F := P", tx);
+        d.Execute(Ax25ActionVerb.FAssignP, tx);
 
         tx.Pending.PfBit.Should().Be(pollBit);
     }
@@ -749,7 +748,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        var act = () => d.Execute("F := P", tx);
+        var act = () => d.Execute(Ax25ActionVerb.FAssignP, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*DL_CONNECT_request*");
@@ -766,7 +765,7 @@ public class ActionDispatcherTests
         ctx.VS = 6;
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
 
-        d.Execute(new[] { "N(s) := V(s)", "N(r) := V(r)", "F := 1" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.NSAssignVS, Ax25ActionVerb.NRAssignVR, Ax25ActionVerb.FAssign1 }, tx);
 
         tx.Pending.Ns.Should().Be((byte)6);
         tx.Pending.Nr.Should().Be((byte)5);
@@ -776,10 +775,10 @@ public class ActionDispatcherTests
     // ─── Link-multiplexer signals ──────────────────────────────────────
 
     [Theory]
-    [InlineData("LM_seize_request",   typeof(LinkMultiplexerSeizeRequest))]
-    [InlineData("LM_release_request", typeof(LinkMultiplexerReleaseRequest))]
-    [InlineData("LM_data_request",    typeof(LinkMultiplexerDataRequest))]
-    public void Link_Multiplexer_Verbs_Raise_The_Right_Signal(string action, Type expectedType)
+    [InlineData(Ax25ActionVerb.LMSeizeRequest,   typeof(LinkMultiplexerSeizeRequest))]
+    [InlineData(Ax25ActionVerb.LMReleaseRequest, typeof(LinkMultiplexerReleaseRequest))]
+    [InlineData(Ax25ActionVerb.LMDataRequest,    typeof(LinkMultiplexerDataRequest))]
+    public void Link_Multiplexer_Verbs_Raise_The_Right_Signal(Ax25ActionVerb action, Type expectedType)
     {
         var (d, ctx, s, _, _, _, _, _, _, linkMux, _) = NewRig();
         d.Execute(action, ctx, s);
@@ -794,16 +793,16 @@ public class ActionDispatcherTests
     public void MDL_Negotiate_Request_Raises_Internal_Signal()
     {
         var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
-        d.Execute("MDL_NEGOTIATE_request", ctx, s);
+        d.Execute(Ax25ActionVerb.MDLNEGOTIATERequest, ctx, s);
 
         internalSignals.Should().ContainSingle()
             .Which.Should().BeOfType<MdlNegotiateRequestSignal>();
     }
 
     [Theory]
-    [InlineData("push_on_I_frame_queue")]
-    [InlineData("push_frame_on_queue")]
-    public void Push_On_I_Frame_Queue_Enqueues_Trigger_Payload(string verb)
+    [InlineData(Ax25ActionVerb.PushOnIFrameQueue)]
+    [InlineData(Ax25ActionVerb.PushFrameOnQueue)]
+    public void Push_On_I_Frame_Queue_Enqueues_Trigger_Payload(Ax25ActionVerb verb)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, internalSignals) = NewRig();
         var payload = "hello"u8.ToArray();
@@ -847,7 +846,7 @@ public class ActionDispatcherTests
         Ax25Frame.TryParse(bytes, out var frame).Should().BeTrue();
         var tx = new TransitionContext(ctx, s, new RrReceived(frame!));
 
-        d.Execute("push_old_I_frame_N_r_on_queue", tx);
+        d.Execute(Ax25ActionVerb.PushOldIFrameNROnQueue, tx);
 
         sentI.Should().ContainSingle("the stored frame is retransmitted directly");
         sentI[0].Ns.Should().Be((byte)3, "retransmitted with its ORIGINAL N(s)=3, not renumbered to V(s)");
@@ -857,10 +856,10 @@ public class ActionDispatcherTests
     // ─── Queue/exception/flag processing verbs ─────────────────────────
 
     [Theory]
-    [InlineData("discard_frame_queue")]
-    [InlineData("discard_queue")]
-    [InlineData("discard_I_frame_queue")]
-    public void Discard_Queue_Verbs_All_Clear_IFrameQueue(string verb)
+    [InlineData(Ax25ActionVerb.DiscardFrameQueue)]
+    [InlineData(Ax25ActionVerb.DiscardQueue)]
+    [InlineData(Ax25ActionVerb.DiscardIFrameQueue)]
+    public void Discard_Queue_Verbs_All_Clear_IFrameQueue(Ax25ActionVerb verb)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IFrameQueue.Enqueue((new byte[] { 1 }, Ax25Frame.PidNoLayer3));
@@ -872,10 +871,10 @@ public class ActionDispatcherTests
     }
 
     [Theory]
-    [InlineData("discard_I_frame")]
-    [InlineData("discard_contents_of_I_frame")]
-    [InlineData("discard_primitive")]
-    public void No_Op_Discard_Verbs_Do_Not_Throw(string verb)
+    [InlineData(Ax25ActionVerb.DiscardIFrame)]
+    [InlineData(Ax25ActionVerb.DiscardContentsOfIFrame)]
+    [InlineData(Ax25ActionVerb.DiscardPrimitive)]
+    public void No_Op_Discard_Verbs_Do_Not_Throw(Ax25ActionVerb verb)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         var act = () => d.Execute(verb, ctx, s);
@@ -886,9 +885,9 @@ public class ActionDispatcherTests
     public void Set_And_Clear_Reject_Exception_Mutate_The_Flag()
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        d.Execute("set_reject_exception", ctx, s);
+        d.Execute(Ax25ActionVerb.SetRejectException, ctx, s);
         ctx.RejectException.Should().BeTrue();
-        d.Execute("clear_reject_exception", ctx, s);
+        d.Execute(Ax25ActionVerb.ClearRejectException, ctx, s);
         ctx.RejectException.Should().BeFalse();
     }
 
@@ -899,12 +898,12 @@ public class ActionDispatcherTests
         ctx.SrejExceptionCount.Should().Be(0);
         ctx.SelectiveRejectException.Should().BeFalse();
 
-        d.Execute("increment_srej_exception", ctx, s);
+        d.Execute(Ax25ActionVerb.IncrementSrejectException, ctx, s);
 
         ctx.SrejExceptionCount.Should().Be(1);
         ctx.SelectiveRejectException.Should().BeTrue();
 
-        d.Execute("increment_srej_exception", ctx, s);
+        d.Execute(Ax25ActionVerb.IncrementSrejectException, ctx, s);
         ctx.SrejExceptionCount.Should().Be(2);
     }
 
@@ -915,22 +914,22 @@ public class ActionDispatcherTests
         ctx.SrejExceptionCount = 2;
         ctx.SelectiveRejectException = true;
 
-        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        d.Execute(Ax25ActionVerb.DecrementSrejectExceptionIf0, ctx, s);
         ctx.SrejExceptionCount.Should().Be(1);
         ctx.SelectiveRejectException.Should().BeTrue("count > 0 still");
 
-        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        d.Execute(Ax25ActionVerb.DecrementSrejectExceptionIf0, ctx, s);
         ctx.SrejExceptionCount.Should().Be(0);
         ctx.SelectiveRejectException.Should().BeFalse("count reached 0 — flag cleared");
 
-        d.Execute("decrement_srej_exception_if_gt_0", ctx, s);
+        d.Execute(Ax25ActionVerb.DecrementSrejectExceptionIf0, ctx, s);
         ctx.SrejExceptionCount.Should().Be(0, "no negative values");
     }
 
     [Theory]
-    [InlineData("set_version_2_0", false)]
-    [InlineData("set_version_2_2", true)]
-    public void Set_Version_Verbs_Toggle_IsExtended(string verb, bool expectedExtended)
+    [InlineData(Ax25ActionVerb.SetVersion20, false)]
+    [InlineData(Ax25ActionVerb.SetVersion22, true)]
+    public void Set_Version_Verbs_Toggle_IsExtended(Ax25ActionVerb verb, bool expectedExtended)
     {
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.IsExtended = !expectedExtended;
@@ -946,7 +945,7 @@ public class ActionDispatcherTests
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.Srt = TimeSpan.FromMinutes(99);
 
-        d.Execute("SRT := Initial Default", ctx, s);
+        d.Execute(Ax25ActionVerb.SRTAssignInitialDefault, ctx, s);
 
         ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(3000));
     }
@@ -958,7 +957,7 @@ public class ActionDispatcherTests
         ctx.Srt = TimeSpan.FromMilliseconds(2500);
         ctx.T1V = TimeSpan.FromMinutes(99);
 
-        d.Execute("T1V := 2 * SRT", ctx, s);
+        d.Execute(Ax25ActionVerb.T1VAssign2TimesSRT, ctx, s);
 
         ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(5000));
     }
@@ -970,10 +969,10 @@ public class ActionDispatcherTests
     {
         var (d, ctx, s, time, _, _, _, _, _, _, _) = NewRig();
         ctx.T1V = TimeSpan.FromMilliseconds(6000);
-        d.Execute("start_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StartT1, ctx, s);
 
         time.Advance(TimeSpan.FromMilliseconds(2300));
-        d.Execute("stop_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StopT1, ctx, s);
 
         // The sample stashed onto the context should be what was left
         // on T1 at the moment of cancel, not zero (which is what
@@ -991,11 +990,11 @@ public class ActionDispatcherTests
         var (d, ctx, s, time, _, _, _, _, _, _, _) = NewRig();
         ctx.Srt = TimeSpan.FromMilliseconds(3000);
         ctx.T1V = TimeSpan.FromMilliseconds(6000);
-        d.Execute("start_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StartT1, ctx, s);
         time.Advance(TimeSpan.FromMilliseconds(2000));
-        d.Execute("stop_T1", ctx, s);
+        d.Execute(Ax25ActionVerb.StopT1, ctx, s);
 
-        d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+        d.Execute(Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8, ctx, s);
 
         ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(2875));
         ctx.T1RemainingWhenLastStopped.Should().Be(TimeSpan.Zero, "consumed by the IIR — next call starts fresh");
@@ -1014,7 +1013,7 @@ public class ActionDispatcherTests
         ctx.T1V = TimeSpan.FromMilliseconds(6000);
         ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;   // T1 expired — no measurement
 
-        d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+        d.Execute(Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8, ctx, s);
 
         ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(3000), "Karn: no RTT sample is taken from a timed-out round-trip");
     }
@@ -1031,7 +1030,7 @@ public class ActionDispatcherTests
         ctx.T1V = TimeSpan.FromMilliseconds(6000);
         ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;
 
-        d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+        d.Execute(Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8, ctx, s);
 
         ctx.Srt.Should().Be(TimeSpan.FromMilliseconds(3375));
     }
@@ -1050,10 +1049,10 @@ public class ActionDispatcherTests
 
         for (int i = 0; i < 50; i++)
         {
-            d.Execute("start_T1", ctx, s);
+            d.Execute(Ax25ActionVerb.StartT1, ctx, s);
             time.Advance(TimeSpan.FromMilliseconds(800));
-            d.Execute("stop_T1", ctx, s);
-            d.Execute("SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8", ctx, s);
+            d.Execute(Ax25ActionVerb.StopT1, ctx, s);
+            d.Execute(Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8, ctx, s);
         }
 
         // 50 iterations of (7/8)^n decay: residual = 2200 * 0.875^50 ≈ 3ms.
@@ -1076,7 +1075,7 @@ public class ActionDispatcherTests
         Ax25Frame.TryParse(bytes, out var frame).Should().BeTrue();
         var tx = new TransitionContext(ctx, s, new IFrameReceived(frame!));
 
-        d.Execute("save_contents_of_I_frame", tx);
+        d.Execute(Ax25ActionVerb.SaveContentsOfIFrame, tx);
 
         ctx.StoredReceivedIFrames.Should().ContainKey((byte)4);
         ctx.StoredReceivedIFrames[4].Info.ToArray().Should().Equal(info);
@@ -1095,7 +1094,7 @@ public class ActionDispatcherTests
         ctx.StoredReceivedIFrames[5] = ("delayed-payload"u8.ToArray(), Ax25Frame.PidNoLayer3);
 
         var tx = new TransitionContext(ctx, s, new DlConnectRequest());
-        d.Execute(new[] { "Retrieve Stored V(r) I Frame", "DL-DATA Indication" }, tx);
+        d.Execute(new[] { Ax25ActionVerb.RetrieveStoredVRIFrame, Ax25ActionVerb.DLDATAIndication }, tx);
 
         ctx.StoredReceivedIFrames.Should().NotContainKey((byte)5, "retrieval consumes the stored frame");
         upward.Should().ContainSingle("the staged frame is delivered by the following DL-DATA Indication");
@@ -1110,7 +1109,7 @@ public class ActionDispatcherTests
         ctx.VR = 5;
         // No stored frame for V(R) == 5.
 
-        d.Execute("retrieve_stored_V_r_I_frame", ctx, s);
+        d.Execute(Ax25ActionVerb.RetrieveStoredVRIFrame, ctx, s);
 
         upward.Should().BeEmpty();
     }
@@ -1142,8 +1141,12 @@ public class ActionDispatcherTests
     [InlineData("Enquiry_Response_F_1")]
     public void Known_Subroutine_Verbs_Are_Stubbed_NoOp_By_Default(string verb)
     {
+        // Subroutines are dispatched by name through the registry (the
+        // dispatcher's subroutine-call verbs route there); on an un-wired
+        // registry every known name resolves to a no-op stub.
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
-        var act = () => d.Execute(verb, ctx, s);
+        var tx = new TransitionContext(ctx, s, new DlConnectRequest());
+        var act = () => d.Subroutines.Invoke(verb, tx);
         act.Should().NotThrow();
     }
 
@@ -1161,8 +1164,10 @@ public class ActionDispatcherTests
             sendSFrame: _ => { },
             subroutines: registry);
         var ctx = new Ax25SessionContext { Local = new Callsign("M0LTE", 0), Remote = new Callsign("G7XYZ", 7) };
+        var tx = new TransitionContext(ctx, scheduler, new DlConnectRequest());
 
-        dispatcher.Execute("Establish_Data_Link", ctx, scheduler);
+        // Establish_Data_Link reaches the registry via the EstablishDataLink verb.
+        dispatcher.Execute(Ax25ActionVerb.EstablishDataLink, tx);
 
         called.Should().ContainSingle().Which.Should().Be("Establish_Data_Link");
     }
@@ -1183,7 +1188,8 @@ public class ActionDispatcherTests
         var ctx = new Ax25SessionContext { Local = new Callsign("M0LTE", 0), Remote = new Callsign("G7XYZ", 7) };
         var tx = new TransitionContext(ctx, scheduler, new DlConnectRequest());
 
-        dispatcher.Execute("Select_T1_Value", tx);
+        // Select_T1_Value reaches the registry via the SelectT1Value verb.
+        dispatcher.Execute(Ax25ActionVerb.SelectT1Value, tx);
 
         captured.Should().NotBeNull();
         captured!.Trigger.Should().BeOfType<DlConnectRequest>();

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using AwesomeAssertions;
+using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Xunit;
@@ -449,7 +450,7 @@ public class Ax25ListenerRejectAndEdgeTests
         var tx = new TransitionContext(ctx, scheduler, trigger);
 
         // figc4.1 t14's UA emit, simplified — just the UA verb.
-        dispatcher.Execute(new[] { "F := P", "UA" }, tx);
+        dispatcher.Execute(new[] { Ax25ActionVerb.FAssignP, Ax25ActionVerb.UA }, tx);
 
         captured.Should().NotBeNull();
         captured!.Value.Type.Should().Be(UFrameType.Ua);

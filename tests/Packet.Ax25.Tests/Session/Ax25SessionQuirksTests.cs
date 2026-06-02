@@ -62,8 +62,8 @@ public class Ax25SessionQuirksTests
         // The figc4.5 SREJ-received retransmit verbs as the table draws them.
         dispatcher.Execute(new[]
         {
-            new ActionStep("Push Frame Onto Queue", ActionKind.InternalOut),
-            new ActionStep("Invoke Retransmission", ActionKind.Subroutine),
+            new ActionStep(Ax25ActionVerb.PushFrameOnQueue, ActionKind.InternalOut),
+            new ActionStep(Ax25ActionVerb.InvokeRetransmission, ActionKind.Subroutine),
         }, tx);
 
         sentI.Should().ContainSingle(
@@ -88,7 +88,7 @@ public class Ax25SessionQuirksTests
         var (dispatcher, ctx, scheduler, sentI) = NewRig(Ax25SessionQuirks.Default); // quirk on
         var tx = SrejTrigger(ctx, scheduler, nr: 1);
 
-        dispatcher.Execute(new[] { new ActionStep("Invoke Retransmission", ActionKind.Subroutine) }, tx);
+        dispatcher.Execute(new[] { new ActionStep(Ax25ActionVerb.InvokeRetransmission, ActionKind.Subroutine) }, tx);
 
         sentI.Should().BeEmpty(
             "a command-form SREJ path carries only the go-back-N Invoke_Retransmission, which the quirk skips — SREJ is response-only (§4.3.2.4), so nothing is retransmitted");
@@ -101,7 +101,7 @@ public class Ax25SessionQuirksTests
         var tx = SrejTrigger(ctx, scheduler, nr: 1);
 
         var act = () => dispatcher.Execute(
-            new[] { new ActionStep("Push Frame Onto Queue", ActionKind.InternalOut) }, tx);
+            new[] { new ActionStep(Ax25ActionVerb.PushFrameOnQueue, ActionKind.InternalOut) }, tx);
 
         act.Should().Throw<InvalidOperationException>(
             "with the quirk off the figc4.5 figure runs as drawn — the fresh-DL-DATA push carries no payload on an SREJ trigger and throws (the #38 defect, faithfully reproduced)");

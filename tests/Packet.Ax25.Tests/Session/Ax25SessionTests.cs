@@ -23,9 +23,9 @@ public class Ax25SessionTests
             Guard: "own_receiver_busy",
             Actions: new ActionStep[]
             {
-                new("set_own_receiver_busy",      ActionKind.Processing),
-                new("RNR_response",                ActionKind.SignalLower),
-                new("clear_acknowledge_pending",   ActionKind.Processing),
+                new(Ax25ActionVerb.SetOwnReceiverBusy,      ActionKind.Processing),
+                new(Ax25ActionVerb.RNRResponse,                ActionKind.SignalLower),
+                new(Ax25ActionVerb.ClearAcknowledgePending,   ActionKind.Processing),
             },
             Next: "Connected",
             Notes: null,
@@ -58,11 +58,11 @@ public class Ax25SessionTests
             Guard: "own_receiver_busy and not T1_running",
             Actions: new ActionStep[]
             {
-                new("clear_own_receiver_busy",    ActionKind.Processing),
-                new("RR_command",                  ActionKind.SignalLower),
-                new("clear_acknowledge_pending",   ActionKind.Processing),
-                new("stop_T3",                     ActionKind.Processing),
-                new("start_T1",                    ActionKind.Processing),
+                new(Ax25ActionVerb.ClearOwnReceiverBusy,    ActionKind.Processing),
+                new(Ax25ActionVerb.RRCommand,                  ActionKind.SignalLower),
+                new(Ax25ActionVerb.ClearAcknowledgePending,   ActionKind.Processing),
+                new(Ax25ActionVerb.StopT3,                     ActionKind.Processing),
+                new(Ax25ActionVerb.StartT1,                    ActionKind.Processing),
             },
             Next: "Connected",
             Notes: null,
@@ -75,9 +75,9 @@ public class Ax25SessionTests
             Guard: "own_receiver_busy and T1_running",
             Actions: new ActionStep[]
             {
-                new("clear_own_receiver_busy",    ActionKind.Processing),
-                new("RR_command",                  ActionKind.SignalLower),
-                new("clear_acknowledge_pending",   ActionKind.Processing),
+                new(Ax25ActionVerb.ClearOwnReceiverBusy,    ActionKind.Processing),
+                new(Ax25ActionVerb.RRCommand,                  ActionKind.SignalLower),
+                new(Ax25ActionVerb.ClearAcknowledgePending,   ActionKind.Processing),
             },
             Next: "Connected",
             Notes: null,
