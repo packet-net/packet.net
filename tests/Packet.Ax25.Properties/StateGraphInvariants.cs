@@ -115,14 +115,17 @@ public class StateGraphInvariants
         offenders.Should().BeEmpty("ids must match 't##_<snake_case>'");
     }
 
-    [Property(DisplayName = "Every action has a non-empty Verb")]
-    public void AllActionsHaveNonEmptyVerb()
+    [Property(DisplayName = "Every action's Verb is a defined Ax25ActionVerb value")]
+    public void AllActionsHaveDefinedVerb()
     {
+        // Verb is the generated Ax25ActionVerb enum (Packet.Ax25.Sdl 0.8.0+),
+        // so "non-empty" is now "a defined enum member" — a table carrying an
+        // out-of-range cast would be a codegen bug.
         var offenders = AllDataLinkTables()
             .SelectMany(t => t.Transitions.SelectMany(tx =>
                 tx.Actions.Select((a, i) => (Table: t.Name, Id: tx.Id, Index: i, Verb: a.Verb))))
-            .Where(x => string.IsNullOrWhiteSpace(x.Verb))
-            .Select(x => $"{x.Table}::{x.Id}.actions[{x.Index}] has empty verb")
+            .Where(x => !Enum.IsDefined(x.Verb))
+            .Select(x => $"{x.Table}::{x.Id}.actions[{x.Index}] has undefined verb '{x.Verb}'")
             .ToArray();
 
         offenders.Should().BeEmpty();

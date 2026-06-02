@@ -57,7 +57,7 @@ public class DefaultSubroutineRegistryWalkerTests
     [Fact]
     public void Walker_Executes_Generated_Actions_When_Wired()
     {
-        var actionsExecuted = new List<string>();
+        var actionsExecuted = new List<Ax25ActionVerb>();
         var dispatcher = new RecordingDispatcher(actionsExecuted);
         var guards = MakeGuards(_ => true);   // every guard holds
         var registry = new DefaultSubroutineRegistry();
@@ -71,13 +71,13 @@ public class DefaultSubroutineRegistryWalkerTests
         // transcribed as one action per line.
         actionsExecuted.Should().Equal(new[]
         {
-            "Set Half Duplex",
-            "Set Implicit Reject",
-            "Modulo := 8",
-            "N1 := 2048",
-            "k := 8",
-            "T2 := 3000",
-            "N2 := 10",
+            Ax25ActionVerb.SetHalfDuplex,
+            Ax25ActionVerb.SetImplicitReject,
+            Ax25ActionVerb.ModuloAssign8,
+            Ax25ActionVerb.N1Assign2048,
+            Ax25ActionVerb.KAssign8,
+            Ax25ActionVerb.T2Assign3000,
+            Ax25ActionVerb.N2Assign10,
         });
     }
 
@@ -85,7 +85,7 @@ public class DefaultSubroutineRegistryWalkerTests
     public void Register_Override_Survives_Wire()
     {
         var recorder = new List<string>();
-        var dispatcher = new RecordingDispatcher(new List<string>());
+        var dispatcher = new RecordingDispatcher(new List<Ax25ActionVerb>());
         var guards = MakeGuards(_ => true);
 
         var registry = new DefaultSubroutineRegistry();
@@ -102,15 +102,15 @@ public class DefaultSubroutineRegistryWalkerTests
         // Establish_Data_Link has two paths: t01_mod_8_sabm (guard:
         // !mod_128) and t02_mod_128_sabme (guard: mod_128). Wire a guard
         // evaluator that says mod_128 is true → the SABME path fires.
-        var actionsExecuted = new List<string>();
+        var actionsExecuted = new List<Ax25ActionVerb>();
         var dispatcher = new RecordingDispatcher(actionsExecuted);
         var guards = MakeGuards(p => p == "mod_128");
         var registry = new DefaultSubroutineRegistry();
         registry.Wire(dispatcher, guards);
 
         registry.Invoke("Establish_Data_Link", MakeContext());
-        actionsExecuted.Should().Contain("SABME");
-        actionsExecuted.Should().NotContain("SABM");
+        actionsExecuted.Should().Contain(Ax25ActionVerb.SABME);
+        actionsExecuted.Should().NotContain(Ax25ActionVerb.SABM);
     }
 
     [Theory]
@@ -128,7 +128,7 @@ public class DefaultSubroutineRegistryWalkerTests
         // poll_supervisory_or_i is false (the simplest path:
         // t01_not_polled_rr_response → N(r) <- V(r); RR Response;
         // Clear Acknowledge Pending).
-        var actionsExecuted = new List<string>();
+        var actionsExecuted = new List<Ax25ActionVerb>();
         var dispatcher = new RecordingDispatcher(actionsExecuted);
         var guards = MakeGuards(_ => false);   // every predicate false → t01 path
         var registry = new DefaultSubroutineRegistry();
@@ -138,9 +138,9 @@ public class DefaultSubroutineRegistryWalkerTests
 
         actionsExecuted.Should().Equal(new[]
         {
-            "N(r) := V(r)",
-            "RR Response",
-            "Clear Acknowledge Pending",
+            Ax25ActionVerb.NRAssignVR,
+            Ax25ActionVerb.RRResponse,
+            Ax25ActionVerb.ClearAcknowledgePending,
         });
     }
 
@@ -150,7 +150,7 @@ public class DefaultSubroutineRegistryWalkerTests
         // GuardEvaluator throws GuardEvaluationException when a predicate
         // isn't bound; the walker should treat that as "path doesn't
         // match" and continue rather than crashing the caller.
-        var actionsExecuted = new List<string>();
+        var actionsExecuted = new List<Ax25ActionVerb>();
         var dispatcher = new RecordingDispatcher(actionsExecuted);
         var guards = MakeGuards(_ =>
             throw new GuardEvaluationException("unbound predicate (test)"));
@@ -212,17 +212,12 @@ public class DefaultSubroutineRegistryWalkerTests
 
     private sealed class RecordingDispatcher : IActionDispatcher
     {
-        private readonly List<string> recorder;
-        public RecordingDispatcher(List<string> recorder) => this.recorder = recorder;
+        private readonly List<Ax25ActionVerb> recorder;
+        public RecordingDispatcher(List<Ax25ActionVerb> recorder) => this.recorder = recorder;
         public void Execute(IEnumerable<ActionStep> actions, TransitionContext tx)
         {
             foreach (var a in actions) recorder.Add(a.Verb);
         }
-        public void Execute(IEnumerable<string> actions, TransitionContext tx)
-        {
-            foreach (var a in actions) recorder.Add(a);
-        }
-        public void Execute(string action, TransitionContext tx) => recorder.Add(action);
     }
 
     private sealed class NullScheduler : ITimerScheduler

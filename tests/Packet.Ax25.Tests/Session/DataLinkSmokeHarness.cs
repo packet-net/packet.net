@@ -167,7 +167,7 @@ internal static class DataLinkSmokeHarness
 
     private sealed class RecordingActionDispatcher : IActionDispatcher
     {
-        public List<(string Verb, ActionKind Kind)> Recorded { get; } = new();
+        public List<(Ax25ActionVerb Verb, ActionKind Kind)> Recorded { get; } = new();
 
         public void Execute(IEnumerable<ActionStep> actions, TransitionContext tx)
         {

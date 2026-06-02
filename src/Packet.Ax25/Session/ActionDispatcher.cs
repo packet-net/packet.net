@@ -174,14 +174,14 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// supplied transition context. Used by hand-rolled test fixtures and
     /// ad-hoc consumers that don't need shape-class metadata.
     /// </summary>
-    public void Execute(IEnumerable<string> actions, TransitionContext tx)
+    public void Execute(IEnumerable<Ax25ActionVerb> actions, TransitionContext tx)
     {
         ArgumentNullException.ThrowIfNull(actions);
         ArgumentNullException.ThrowIfNull(tx);
 
-        foreach (var action in actions)
+        foreach (var verb in actions)
         {
-            Execute(action, tx);
+            Execute(verb, tx);
         }
     }
 
@@ -192,14 +192,14 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// require <see cref="TransitionContext.IncomingFrame"/> (e.g.
     /// <c>V(a) := N(r)</c>) throw when invoked through this path.
     /// </summary>
-    public void Execute(string action, Ax25SessionContext context, ITimerScheduler scheduler)
-        => Execute(action, new TransitionContext(context, scheduler, SyntheticTrigger.Instance));
+    public void Execute(Ax25ActionVerb verb, Ax25SessionContext context, ITimerScheduler scheduler)
+        => Execute(verb, new TransitionContext(context, scheduler, SyntheticTrigger.Instance));
 
     /// <summary>
     /// Test-ergonomics overload: execute multiple verbs with no triggering
-    /// frame. See <see cref="Execute(string, Ax25SessionContext, ITimerScheduler)"/>.
+    /// frame. See <see cref="Execute(Ax25ActionVerb, Ax25SessionContext, ITimerScheduler)"/>.
     /// </summary>
-    public void Execute(IEnumerable<string> actions, Ax25SessionContext context, ITimerScheduler scheduler)
+    public void Execute(IEnumerable<Ax25ActionVerb> actions, Ax25SessionContext context, ITimerScheduler scheduler)
         => Execute(actions, new TransitionContext(context, scheduler, SyntheticTrigger.Instance));
 
     /// <summary>
@@ -214,26 +214,35 @@ public sealed class ActionDispatcher : IActionDispatcher
     }
 
     /// <summary>
-    /// Execute a single action verb. Throws on unknown actions so a typo
-    /// in the SDL transcription doesn't get silently swallowed.
+    /// Execute a single action verb against the transition context.
     /// </summary>
-    public void Execute(string action, TransitionContext tx)
+    /// <remarks>
+    /// <para>
+    /// The verb is a generated <see cref="Ax25ActionVerb"/> — the codegen
+    /// in <c>Packet.Ax25.Sdl</c> (0.8.0+) is the SOLE canonicaliser, so
+    /// every figure-spelling variant has already been folded to one typed
+    /// member before it reaches us (no runtime alias map, no string
+    /// normalisation). The dispatch below is a switch <em>expression</em>
+    /// over that closed set: a new or renamed verb that lands without a
+    /// matching arm is a compile error (CS8509), which with
+    /// <c>TreatWarningsAsErrors</c> on fails the build — killing the
+    /// verb-vs-dispatch bug class (UI-reception #258, DL-DATA-while-
+    /// connecting #263) at compile time rather than at runtime.
+    /// </para>
+    /// <para>
+    /// Each arm has side effects (mutate ctx, arm/cancel timers, send
+    /// frames, raise signals, call subroutines) and most call void
+    /// methods, so they are wrapped in the <see cref="Do"/> helper to
+    /// yield a value; the whole switch is assigned to a discard. Behaviour
+    /// is a 1:1 port of the prior string switch — keep each arm identical.
+    /// </para>
+    /// </remarks>
+    public void Execute(Ax25ActionVerb verb, TransitionContext tx)
     {
         ArgumentNullException.ThrowIfNull(tx);
 
         var ctx = tx.Session;
         var scheduler = tx.Scheduler;
-
-        // Resolve walker-emitted verb spellings (Packet.Ax25.Sdl v0.5.0+
-        // emits verbatim figure text — `"UI Check"`, `"DL-DISCONNECT Confirm"`,
-        // `"Set Own Receiver Busy"`, etc.) onto the canonical case-label
-        // form the switch below expects. The map is documentation of the
-        // codegen→runtime rename history; expand it as new verbs appear in
-        // future SDL pages rather than adding fallthrough cases inline.
-        if (ActionVerbAliases.TryGetValue(action, out var canonical))
-        {
-            action = canonical;
-        }
 
         // Quirk Ax25Spec38SrejSelectiveRetransmit (default on): figc4.5 draws the
         // SREJ-received retransmit as the generic fresh-DL-DATA push + go-back-N
@@ -251,13 +260,20 @@ public sealed class ActionDispatcher : IActionDispatcher
         // deployed stack sends or acts on an SREJ command (direwolf omits the
         // command path; linbpq gates resend on RESP). The command-SREJ form is
         // vestigial errata; see Ax25SessionQuirks and DataLinkSrejUnderLossTests.
-        if (tx.Session.Quirks.Ax25Spec38SrejSelectiveRetransmit && tx.Trigger is SrejReceived)
+        //
+        // The push family (push_on_I_frame_queue / push_frame_on_queue and the
+        // figure word-order variants) all collapse to the same enum members; any
+        // of them on an SREJ trigger redirects to the single-frame retransmit.
+        if (ctx.Quirks.Ax25Spec38SrejSelectiveRetransmit && tx.Trigger is SrejReceived)
         {
-            if (action is "push_on_I_frame_queue" or "push_frame_on_queue")
+            if (verb is Ax25ActionVerb.PushOnIFrameQueue
+                     or Ax25ActionVerb.PushOnIFrameQueueNoteWordOrder
+                     or Ax25ActionVerb.PushFrameOnQueue
+                     or Ax25ActionVerb.PushIFrameOnIQueue)
             {
-                action = "push_old_I_frame_N_r_on_queue";
+                verb = Ax25ActionVerb.PushOldIFrameNROnQueue;
             }
-            else if (action is "Invoke_Retransmission")
+            else if (verb is Ax25ActionVerb.InvokeRetransmission)
             {
                 return;
             }
@@ -272,24 +288,38 @@ public sealed class ActionDispatcher : IActionDispatcher
         // frame. `N(r) := N(s)` appears only in this one I_received figure path, so
         // gating on the I_received trigger scopes the rewrite precisely. Remove once
         // ax25sdl ships a corrected figc4.4. m0lte/packet.net#246.
-        if (tx.Session.Quirks.Ax25Spec42SrejTargetsGap
+        if (ctx.Quirks.Ax25Spec42SrejTargetsGap
             && tx.Trigger is IFrameReceived
-            && action == "N(r) := N(s)")
+            && verb == Ax25ActionVerb.NRAssignNS)
         {
-            action = "N(r) := V(r)";
+            verb = Ax25ActionVerb.NRAssignVR;
         }
 
-        switch (action)
+        // Exhaustive dispatch. Every arm yields a value (via Do for the
+        // void-returning ones) so the compiler enforces completeness; the
+        // result is discarded. A missing or renamed enum member fails the
+        // build with CS8509 (an error here, TreatWarningsAsErrors) — that is
+        // the whole point: a new verb cannot ship without a handler.
+        //
+        // CS8524 is the *separate* "you didn't handle an out-of-band integer
+        // cast of the enum" diagnostic. We suppress only that one: the verb
+        // always originates from the generated Packet.Ax25.Sdl tables, so it
+        // is only ever a defined member; an `(Ax25ActionVerb)999` cast is
+        // unreachable. Suppressing CS8524 here (and deliberately NOT adding a
+        // `_ =>` wildcard arm, which would swallow future named members) keeps
+        // CS8509's named-member exhaustiveness fully active.
+#pragma warning disable CS8524
+        _ = verb switch
         {
             // ─── Flag mutations ────────────────────────────────────────
-            case "set_own_receiver_busy":          ctx.OwnReceiverBusy    = true;  break;
-            case "clear_own_receiver_busy":        ctx.OwnReceiverBusy    = false; break;
-            case "set_peer_receiver_busy":         ctx.PeerReceiverBusy   = true;  break;
-            case "clear_peer_receiver_busy":       ctx.PeerReceiverBusy   = false; break;
-            case "set_acknowledge_pending":        ctx.AcknowledgePending = true;  break;
-            case "clear_acknowledge_pending":      ctx.AcknowledgePending = false; break;
-            case "set_layer_3_initiated":          ctx.Layer3Initiated    = true;  break;
-            case "clear_layer_3_initiated":        ctx.Layer3Initiated    = false; break;
+            Ax25ActionVerb.SetOwnReceiverBusy     => Do(() => ctx.OwnReceiverBusy    = true),
+            Ax25ActionVerb.ClearOwnReceiverBusy   => Do(() => ctx.OwnReceiverBusy    = false),
+            Ax25ActionVerb.SetPeerReceiverBusy    => Do(() => ctx.PeerReceiverBusy   = true),
+            Ax25ActionVerb.ClearPeerReceiverBusy  => Do(() => ctx.PeerReceiverBusy   = false),
+            Ax25ActionVerb.SetAcknowledgePending  => Do(() => ctx.AcknowledgePending = true),
+            Ax25ActionVerb.ClearAcknowledgePending => Do(() => ctx.AcknowledgePending = false),
+            Ax25ActionVerb.SetLayer3Initiated     => Do(() => ctx.Layer3Initiated    = true),
+            Ax25ActionVerb.ClearLayer3Initiated   => Do(() => ctx.Layer3Initiated    = false),
 
             // ─── Timer operations ──────────────────────────────────────
             //
@@ -298,122 +328,128 @@ public sealed class ActionDispatcher : IActionDispatcher
             // subroutine and by figc4.1/4.2's link-establishment paths
             // (SRT := Initial Default; T1V := 2 * SRT). T2 and T3 stay on
             // the dispatcher's static defaults until per-session values
-            // get wired (the SDL pages don't currently mutate them).
-            case "start_T1":                       scheduler.Arm("T1", ctx.T1V,     () => onTimerExpiry("T1")); break;
-            case "start_T2":                       scheduler.Arm("T2", T2Duration, () => onTimerExpiry("T2")); break;
-            case "start_T3":                       scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3")); break;
-            case "stop_T1":
-                // Capture remaining time BEFORE cancelling so the next
-                // Select_T1_Value gets a real round-trip sample for its
-                // IIR. The spec calls this "Remaining Time on T1 When
-                // Last Stopped"; after Cancel the timer is gone and
-                // queries return zero.
+            // get wired (the SDL pages don't currently mutate them). The
+            // figc4.7 title-case spellings (Start T1 / Stop T3 / …) fold to
+            // the same enum members as the snake_case state-page forms.
+            Ax25ActionVerb.StartT1                => Do(() => scheduler.Arm("T1", ctx.T1V,    () => onTimerExpiry("T1"))),
+            Ax25ActionVerb.StartT3                => Do(() => scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3"))),
+            // stop_T1: capture remaining time BEFORE cancelling so the next
+            // Select_T1_Value gets a real round-trip sample for its IIR. The
+            // spec calls this "Remaining Time on T1 When Last Stopped"; after
+            // Cancel the timer is gone and queries return zero.
+            Ax25ActionVerb.StopT1                 => Do(() =>
+            {
                 ctx.T1RemainingWhenLastStopped = scheduler.TimeRemaining("T1");
                 scheduler.Cancel("T1");
-                break;
-            case "stop_T2":                        scheduler.Cancel("T2"); break;
-            case "stop_T3":                        scheduler.Cancel("T3"); break;
-
-            // ─── Queue operations ──────────────────────────────────────
-            case "discard_i_frame_queue":          ctx.IFrameQueue.Clear(); break;
+            }),
+            Ax25ActionVerb.StopT3                 => Do(() => scheduler.Cancel("T3")),
 
             // ─── Supervisory-frame transmissions ───────────────────────
             //
-            // Verb spellings here are figure-canonical (`RR_command`,
-            // `RR`, `RNR_response`, `REJ`, `SREJ`) — what figc4.4 draws.
-            // The bare verbs (`RR`, `REJ`, `SREJ`) are response-form per
-            // SDL convention; the `_command` / `_response` suffixed verbs
-            // are explicit. Each emission consumes `tx.Pending.Nr` and
-            // `tx.Pending.PfBit`, both of which must have been populated
-            // by an earlier processing verb in the same chain.
-            case "RR_command":                     sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx, action)); break;
-            case "RR":                             sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx, action)); break;
-            case "RNR_command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: true,  tx, action)); break;
-            case "RNR_response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
-            case "REJ_command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: true,  tx, action)); break;
-            case "REJ":                            sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: false, tx, action)); break;
-            case "SREJ_command":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: true,  tx, action)); break;
-            case "SREJ":                           sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: false, tx, action)); break;
+            // The bare verbs (RR, REJ, SREJ) are response-form per SDL
+            // convention; the Command/Response-suffixed verbs are explicit.
+            // Each emission consumes tx.Pending.Nr and tx.Pending.PfBit,
+            // both of which must have been populated by an earlier
+            // processing verb in the same chain. The figc4.7 full-word
+            // spellings (RR Command, RNR Response, …) and the qualifier
+            // variants (RR Command (P = 0), RNR Response (F = 0)) collapse
+            // to these same members.
+            Ax25ActionVerb.RRCommand              => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx))),
+            Ax25ActionVerb.RRCommandPEq0          => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx))),
+            Ax25ActionVerb.RR                     => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx))),
+            Ax25ActionVerb.RRResponse             => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx))),
+            Ax25ActionVerb.RNRCommand             => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: true,  tx))),
+            Ax25ActionVerb.RNR                    => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx))),
+            Ax25ActionVerb.RNRResponse            => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx))),
+            Ax25ActionVerb.RNRResponseFEq0        => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx))),
+            Ax25ActionVerb.REJ                    => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Rej,  isCommand: false, tx))),
+            Ax25ActionVerb.SREJ                   => Do(() => sendSFrame(BuildSFrame(SupervisoryFrameType.Srej, isCommand: false, tx))),
 
             // ─── Unnumbered-frame transmissions ────────────────────────
             //
-            // Verb spellings track the figure as drawn. Spellings with an
-            // explicit poll/final qualifier (`SABM (P == 1)`,
-            // `SABME (P = 1)`, `DISC (P = 1)`, `DM (F = 1)`) force the P/F
-            // bit to 1 regardless of `tx.Pending`. Bare verbs (`UA`,
-            // `DM`, `Expedited UA`, `Expedited DM`) consume
-            // `tx.Pending.PfBit`, defaulting to false.
+            // Spellings with an explicit poll/final qualifier (SABM (P == 1),
+            // SABME (P = 1), DISC (P = 1), DM (F = 1)) force the P/F bit to 1
+            // regardless of tx.Pending. Bare verbs (UA, DM, Expedited UA,
+            // Expedited DM, DM Response (F = 0)) consume tx.Pending.PfBit,
+            // defaulting to false. The figc4.7 bare SABM / SABME spellings
+            // force P=1 (they are command frames soliciting a response).
             //
-            // The `DM (F = 1)` cluster (figc4.2 `DM F=1`, figc4.3
-            // `DM F = 1`, figc4.6 `DM (F = 1)`) is normalised to the
-            // parenthesised canonical by spec-sdl/actions.yaml.
-            //
-            // `Expedited UA` / `Expedited DM` from figc4.3 hint that the
-            // frame should jump ahead of the normal TX queue. The bit
-            // pattern on the wire is identical to UA / DM; the wire-
-            // translation layer reads <see cref="UFrameSpec.IsExpedited"/>
-            // to prioritise transmission.
-            case "UA":                             sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: false, tx)); break;
-            case "DM":                             sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: false, tx)); break;
-            case "DM (F = 1)":                     sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: true, isExpedited: false, tx)); break;
-            case "Expedited UA":                   sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx)); break;
-            case "Expedited DM":                   sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx)); break;
-            case "SABM (P == 1)":                  sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
-            case "SABME (P = 1)":                  sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
-            case "DISC (P = 1)":                   sendUFrame(BuildUFrame(UFrameType.Disc,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
+            // Expedited UA / Expedited DM (figc4.3) hint the frame should
+            // jump ahead of the normal TX queue. The wire bit pattern is
+            // identical to UA / DM; the wire-translation layer reads
+            // <see cref="UFrameSpec.IsExpedited"/> to prioritise it.
+            Ax25ActionVerb.UA                     => Do(() => sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: false, tx))),
+            Ax25ActionVerb.DM                     => Do(() => sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: false, tx))),
+            Ax25ActionVerb.DMResponseFEq0         => Do(() => sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: false, tx))),
+            Ax25ActionVerb.DMFEq1                 => Do(() => sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: true, isExpedited: false, tx))),
+            Ax25ActionVerb.ExpeditedUA            => Do(() => sendUFrame(BuildUFrame(UFrameType.Ua,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx))),
+            Ax25ActionVerb.ExpeditedDM            => Do(() => sendUFrame(BuildUFrame(UFrameType.Dm,    isCommand: false, pfBitOverride: null, isExpedited: true,  tx))),
+            Ax25ActionVerb.SABM                   => Do(() => sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx))),
+            Ax25ActionVerb.SABMPEqEq1             => Do(() => sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx))),
+            Ax25ActionVerb.SABME                  => Do(() => sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx))),
+            Ax25ActionVerb.SABMEPEq1              => Do(() => sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx))),
+            Ax25ActionVerb.DISCPEq1               => Do(() => sendUFrame(BuildUFrame(UFrameType.Disc,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx))),
 
             // ─── UI-frame transmissions ────────────────────────────────
             //
-            // `UI_command` is drawn in every state's DL_UNIT_DATA_request
-            // column (figc4.1 t02, figc4.2 t12, figc4.3 t07, figc4.4 t23,
-            // figc4.6 t02). The payload + PID come from the triggering
-            // DL_UNIT_DATA_request primitive; the P/F bit defaults to
-            // false unless populated via `tx.Pending.PfBit` by a
-            // preceding processing verb.
-            case "UI_command":                     sendUiFrame(BuildUiFrame(isCommand: true, tx)); break;
+            // UI Command is drawn in every state's DL_UNIT_DATA_request
+            // column. The payload + PID come from the triggering
+            // DL_UNIT_DATA_request primitive; the P/F bit defaults to false
+            // unless populated via tx.Pending.PfBit by a preceding verb.
+            Ax25ActionVerb.UICommand              => Do(() => sendUiFrame(BuildUiFrame(isCommand: true, tx))),
 
             // ─── I-frame transmission ─────────────────────────────────
             //
-            // `I_command` is figc4.4's signal_lower verb for I-frame
-            // emission. The action chain preceding it (`N(s) := V(s);
-            // N(r) := V(r); p := 0`) sets pending fields; this verb
-            // reads them along with the payload + PID from the
-            // triggering <see cref="IFramePopsOffQueue"/> event. The
-            // emitted I-frame's payload is also stored in
-            // <see cref="Ax25SessionContext.SentIFrames"/> keyed by
-            // N(S), so figc4.4's REJ/SREJ recovery paths can retrieve
-            // it via <c>push_old_I_frame_N_r_on_queue</c>.
-            case "I_command":                      EmitIFrame(tx); break;
+            // I Command is figc4.4's signal_lower verb for I-frame emission.
+            // The action chain preceding it (N(s):=V(s); N(r):=V(r); p:=0)
+            // sets pending fields; this verb reads them along with the
+            // payload + PID from the triggering IFramePopsOffQueue event.
+            // The emitted I-frame's payload is also stored in
+            // <see cref="Ax25SessionContext.SentIFrames"/> keyed by N(S), so
+            // figc4.4's REJ/SREJ recovery paths can retrieve it via
+            // Push Old I Frame N(r) on Queue.
+            Ax25ActionVerb.ICommand               => Do(() => EmitIFrame(tx)),
 
             // ─── DL upper-layer signals (signal_upper) ────────────────
             //
             // Pure event-out. Each verb maps to a DataLinkSignal record
-            // forwarded via `sendUpward` to the upper-layer consumer.
-            // DL_DATA_indication carries the triggering I-frame's Info
-            // and Pid; the others have no payload.
-            case "DL_CONNECT_indication":          sendUpward(new DataLinkConnectIndication()); break;
-            case "DL_CONNECT_confirm":             sendUpward(new DataLinkConnectConfirm()); break;
-            case "DL_DISCONNECT_indication":       sendUpward(new DataLinkDisconnectIndication()); break;
-            case "DL_DISCONNECT_confirm":          sendUpward(new DataLinkDisconnectConfirm()); break;
-            case "DL_DATA_indication":             sendUpward(BuildDataIndication(tx)); break;
+            // forwarded via sendUpward to the upper-layer consumer.
+            // DL_DATA_indication carries the triggering I-frame's Info and
+            // Pid; the simple ones have no payload.
+            Ax25ActionVerb.DLCONNECTIndication    => Do(() => sendUpward(new DataLinkConnectIndication())),
+            Ax25ActionVerb.DLCONNECTConfirm       => Do(() => sendUpward(new DataLinkConnectConfirm())),
+            Ax25ActionVerb.DLDISCONNECTIndication => Do(() => sendUpward(new DataLinkDisconnectIndication())),
+            Ax25ActionVerb.DLDISCONNECTConfirm    => Do(() => sendUpward(new DataLinkDisconnectConfirm())),
+            Ax25ActionVerb.DLDATAIndication       => Do(() => sendUpward(BuildDataIndication(tx))),
+            // DL_UNIT_DATA_indication delivers a received UI frame's payload
+            // upward. Previously the case label was left in display form so
+            // the normalised verb fell through to the default throw — every
+            // UI reception (UI_Check → DL-UNIT-DATA Indication) crashed
+            // (m0lte/packet.net#258). The typed verb makes that impossible.
+            Ax25ActionVerb.DLUNITDATAIndication   => Do(() => sendUpward(new DataLinkUnitDataIndication(ExtractIncomingInfo(tx), ExtractIncomingPid(tx)))),
 
-            // DL_ERROR_indication_* — per §C5 error-code letter table.
-            // The suffix after `DL_ERROR_indication_` is the code:
-            // single letters C/D/E/F/G/K/L/M/N/O, plus the C_D pair
-            // (figure draws the combined code on one event).
-            case "DL_ERROR_indication_C_D":        sendUpward(new DataLinkErrorIndication("C_D")); break;
-            case "DL_ERROR_indication_D":          sendUpward(new DataLinkErrorIndication("D"));   break;
-            case "DL_ERROR_indication_E":          sendUpward(new DataLinkErrorIndication("E"));   break;
-            case "DL_ERROR_indication_F":          sendUpward(new DataLinkErrorIndication("F"));   break;
-            case "DL_ERROR_indication_G":          sendUpward(new DataLinkErrorIndication("G"));   break;
-            case "DL_ERROR_indication_I":          sendUpward(new DataLinkErrorIndication("I"));   break;
-            case "DL_ERROR_indication_K":          sendUpward(new DataLinkErrorIndication("K"));   break;
-            case "DL_ERROR_indication_L":          sendUpward(new DataLinkErrorIndication("L"));   break;
-            case "DL_ERROR_indication_M":          sendUpward(new DataLinkErrorIndication("M"));   break;
-            case "DL_ERROR_indication_N":          sendUpward(new DataLinkErrorIndication("N"));   break;
-            case "DL_ERROR_indication_O":          sendUpward(new DataLinkErrorIndication("O"));   break;
-            case "DL_ERROR_indication_T":          sendUpward(new DataLinkErrorIndication("T"));   break;
-            case "DL_ERROR_indication_U":          sendUpward(new DataLinkErrorIndication("U"));   break;
+            // DL_ERROR_indication_* — per §C5 error-code letter table. The
+            // letter (or the C_D pair / the (add) annotation) is surfaced as
+            // the error code. The §C5 forms (C_D, D, E, F, G, I, K, L, M, N,
+            // O, T, U) and the figc4.7 verbatim forms (A, J, K, Q, add)
+            // collapse onto distinct members per letter.
+            Ax25ActionVerb.DLERRORIndicationCD    => Do(() => sendUpward(new DataLinkErrorIndication("C_D"))),
+            Ax25ActionVerb.DLERRORIndicationD     => Do(() => sendUpward(new DataLinkErrorIndication("D"))),
+            Ax25ActionVerb.DLERRORIndicationE     => Do(() => sendUpward(new DataLinkErrorIndication("E"))),
+            Ax25ActionVerb.DLERRORIndicationF     => Do(() => sendUpward(new DataLinkErrorIndication("F"))),
+            Ax25ActionVerb.DLERRORIndicationG     => Do(() => sendUpward(new DataLinkErrorIndication("G"))),
+            Ax25ActionVerb.DLERRORIndicationI     => Do(() => sendUpward(new DataLinkErrorIndication("I"))),
+            Ax25ActionVerb.DLERRORIndicationK     => Do(() => sendUpward(new DataLinkErrorIndication("K"))),
+            Ax25ActionVerb.DLERRORIndicationL     => Do(() => sendUpward(new DataLinkErrorIndication("L"))),
+            Ax25ActionVerb.DLERRORIndicationM     => Do(() => sendUpward(new DataLinkErrorIndication("M"))),
+            Ax25ActionVerb.DLERRORIndicationN     => Do(() => sendUpward(new DataLinkErrorIndication("N"))),
+            Ax25ActionVerb.DLERRORIndicationO     => Do(() => sendUpward(new DataLinkErrorIndication("O"))),
+            Ax25ActionVerb.DLERRORIndicationT     => Do(() => sendUpward(new DataLinkErrorIndication("T"))),
+            Ax25ActionVerb.DLERRORIndicationU     => Do(() => sendUpward(new DataLinkErrorIndication("U"))),
+            Ax25ActionVerb.DLERRORIndicationA     => Do(() => sendUpward(new DataLinkErrorIndication("A"))),
+            Ax25ActionVerb.DLERRORIndicationJ     => Do(() => sendUpward(new DataLinkErrorIndication("J"))),
+            Ax25ActionVerb.DLERRORIndicationQ     => Do(() => sendUpward(new DataLinkErrorIndication("Q"))),
+            Ax25ActionVerb.DLERRORIndicationAdd   => Do(() => sendUpward(new DataLinkErrorIndication("add"))),
 
             // ─── Link-multiplexer signals (signal_lower) ──────────────
             //
@@ -421,269 +457,149 @@ public sealed class ActionDispatcher : IActionDispatcher
             // medium-access arbiter), not directly to the radio. See
             // figc4.4 t53–t59 for the seize/release/data flow that
             // implements P-persistence on the channel.
-            case "LM_seize_request":               sendLinkMux(new LinkMultiplexerSeizeRequest()); break;
-            case "LM_release_request":             sendLinkMux(new LinkMultiplexerReleaseRequest()); break;
-            case "LM_data_request":                sendLinkMux(new LinkMultiplexerDataRequest()); break;
+            Ax25ActionVerb.LMSeizeRequest         => Do(() => sendLinkMux(new LinkMultiplexerSeizeRequest())),
+            Ax25ActionVerb.LMReleaseRequest       => Do(() => sendLinkMux(new LinkMultiplexerReleaseRequest())),
+            Ax25ActionVerb.LMDataRequest          => Do(() => sendLinkMux(new LinkMultiplexerDataRequest())),
 
             // ─── Internal-out signals ──────────────────────────────────
             //
             // MDL_NEGOTIATE_request triggers the management data-link to
             // start XID negotiation with the peer (figc4.6). The push_*
-            // verbs enqueue an I-frame onto the internal TX queue, which
-            // the session pops via I_frame_pops_off_queue events.
-            case "MDL_NEGOTIATE_request":          sendInternal(new MdlNegotiateRequestSignal()); break;
-            case "push_on_I_frame_queue":          PushOnIFrameQueue(tx); break;
-            case "push_frame_on_queue":            PushOnIFrameQueue(tx); break;
-            case "push_old_I_frame_N_r_on_queue":  PushOldIFrameNrOnQueue(tx); break;
+            // verbs enqueue an I-frame onto the internal TX queue, which the
+            // session pops via I_frame_pops_off_queue events. The push-fresh
+            // family (Push on I Frame Queue and its word-order / spelling
+            // variants) all enqueue from the triggering DL_DATA_request.
+            Ax25ActionVerb.MDLNEGOTIATERequest    => Do(() => sendInternal(new MdlNegotiateRequestSignal())),
+            Ax25ActionVerb.PushOnIFrameQueue      => Do(() => PushOnIFrameQueue(tx)),
+            Ax25ActionVerb.PushOnIFrameQueueNoteWordOrder => Do(() => PushOnIFrameQueue(tx)),
+            Ax25ActionVerb.PushFrameOnQueue       => Do(() => PushOnIFrameQueue(tx)),
+            Ax25ActionVerb.PushIFrameOnIQueue     => Do(() => PushOnIFrameQueue(tx)),
+            // Push Old I Frame N(r) on Queue (figc4.4 REJ/SREJ retransmit):
+            // re-emit the previously-sent I-frame at the incoming N(R).
+            Ax25ActionVerb.PushOldIFrameNROnQueue => Do(() => PushOldIFrameNrOnQueue(tx)),
 
             // ─── Processing verbs (queue / storage / flags / counters) ─
             //
-            // Two "discard queue" spellings exist across figures — both
-            // clear the I-frame transmit queue. `discard_I_frame_queue`
-            // is a third spelling (figc4.4); kept as a separate case so
-            // the catalogue can record all three as canonical names
-            // referring to the same operation.
-            case "discard_frame_queue":            ctx.IFrameQueue.Clear(); break;
-            case "discard_queue":                  ctx.IFrameQueue.Clear(); break;
-            case "discard_I_frame_queue":          ctx.IFrameQueue.Clear(); break;
+            // Multiple "discard queue" spellings exist across figures
+            // (discard_frame_queue, discard_queue, discard_I_frame_queue,
+            // Discard I Queue Entries) — all clear the I-frame transmit
+            // queue.
+            Ax25ActionVerb.DiscardFrameQueue      => Do(() => ctx.IFrameQueue.Clear()),
+            Ax25ActionVerb.DiscardQueue           => Do(() => ctx.IFrameQueue.Clear()),
+            Ax25ActionVerb.DiscardIFrameQueue     => Do(() => ctx.IFrameQueue.Clear()),
+            Ax25ActionVerb.DiscardIQueueEntries   => Do(() => ctx.IFrameQueue.Clear()),
 
-            // `discard_I_frame` and `discard_contents_of_I_frame` drop
-            // the current incoming frame's payload — explicit "we are
-            // not delivering this upward". No context mutation required;
-            // we just don't fire DL_DATA_indication for this trigger.
-            case "discard_I_frame":                /* no-op: incoming not stored anywhere */ break;
-            case "discard_contents_of_I_frame":    /* no-op: incoming not stored anywhere */ break;
+            // discard_I_frame / discard_contents_of_I_frame drop the current
+            // incoming frame's payload — explicit "we are not delivering this
+            // upward". No context mutation; we just don't fire a
+            // DL_DATA_indication for this trigger.
+            Ax25ActionVerb.DiscardIFrame          => Do(() => { /* no-op: incoming not stored anywhere */ }),
+            Ax25ActionVerb.DiscardContentsOfIFrame => Do(() => { /* no-op: incoming not stored anywhere */ }),
 
-            // `discard_primitive` is the catch-all "drop the trigger and
-            // do nothing" verb (figc4.1 t06: all-other-primitives-from-
-            // upper-layer column).
-            case "discard_primitive":              /* no-op */ break;
+            // discard_primitive is the catch-all "drop the trigger and do
+            // nothing" verb (figc4.1 t06: all-other-primitives-from-upper-
+            // layer column).
+            Ax25ActionVerb.DiscardPrimitive       => Do(() => { /* no-op */ }),
 
-            // SREJ exception bookkeeping. SrejExceptionCount tracks the
-            // number of outstanding SREJ exceptions per §C4.3. The
+            // SREJ exception bookkeeping. SrejExceptionCount tracks the number
+            // of outstanding SREJ exceptions per §C4.3. The
             // SelectiveRejectException bool flag is set when the count
-            // transitions 0 → 1+ and cleared on 1+ → 0.
-            case "set_reject_exception":           ctx.RejectException = true; break;
-            case "clear_reject_exception":         ctx.RejectException = false; break;
-            case "increment_srej_exception":
+            // transitions 0 → 1+ and cleared on 1+ → 0. The figc4.7 title-case
+            // "Clear Sreject Condition" clears both.
+            Ax25ActionVerb.SetRejectException     => Do(() => ctx.RejectException = true),
+            Ax25ActionVerb.ClearRejectException   => Do(() => ctx.RejectException = false),
+            Ax25ActionVerb.ClearRejectCondition   => Do(() => ctx.RejectException = false),
+            Ax25ActionVerb.ClearSrejectCondition  => Do(() =>
+            {
+                ctx.SelectiveRejectException = false;
+                ctx.SrejExceptionCount = 0;
+            }),
+            Ax25ActionVerb.IncrementSrejectException => Do(() =>
+            {
                 ctx.SrejExceptionCount++;
                 ctx.SelectiveRejectException = true;
-                break;
-            case "decrement_srej_exception_if_gt_0":
+            }),
+            Ax25ActionVerb.DecrementSrejectExceptionIf0 => Do(() =>
+            {
                 if (ctx.SrejExceptionCount > 0)
                 {
                     ctx.SrejExceptionCount--;
                     if (ctx.SrejExceptionCount == 0) ctx.SelectiveRejectException = false;
                 }
-                break;
+            }),
+            // Sreject := Sreject + 1 (figc4.x SREJ-exception spelling variant) —
+            // same bookkeeping as increment_srej_exception.
+            Ax25ActionVerb.SrejectAssignSrejectPlus1 => Do(() =>
+            {
+                ctx.SrejExceptionCount++;
+                ctx.SelectiveRejectException = true;
+            }),
 
-            // Out-of-sequence I-frame storage. `save_contents_of_I_frame`
-            // stashes the trigger I-frame's Info + Pid keyed by its N(S);
-            // `retrieve_stored_V_r_I_frame` pulls back the frame whose
-            // N(S) == V(r) (i.e. the next expected) when V(r) advances
-            // and ships it upward as DL_DATA_indication.
-            case "save_contents_of_I_frame":       SaveIncomingIFrame(tx); break;
-            case "retrieve_stored_V_r_I_frame":    RetrieveStoredVrIFrame(tx); break;
+            // Out-of-sequence I-frame storage. Save Contents of I Frame stashes
+            // the trigger I-frame's Info + Pid keyed by its N(S); Retrieve
+            // Stored V(r) I Frame pulls back the frame whose N(S) == V(r) (the
+            // next expected) when V(r) advances and stages it for delivery.
+            Ax25ActionVerb.SaveContentsOfIFrame   => Do(() => SaveIncomingIFrame(tx)),
+            Ax25ActionVerb.RetrieveStoredVRIFrame => Do(() => RetrieveStoredVrIFrame(tx)),
 
-            // Modulus selection. figc4.1 / figc4.4's SABM(E) paths use
-            // these to lock in mod-8 vs mod-128 once the peer accepts.
-            case "set_version_2_0":                ctx.IsExtended = false; break;
-            case "set_version_2_2":                ctx.IsExtended = true;  break;
+            // ─── Set_Version_2_0 / Set_Version_2_2 (modulus + link params) ─
+            //
+            // set_version_2_0 / Set Version 2.2 are the figc4.1 / figc4.4
+            // SABM(E) processing verbs that lock in mod-8 vs mod-128 once the
+            // peer accepts. They are emitted as Processing-kind verbs (not
+            // subroutine calls) by the state tables.
+            Ax25ActionVerb.SetVersion20           => Do(() => ctx.IsExtended = false),
+            Ax25ActionVerb.SetVersion22           => Do(() => ctx.IsExtended = true),
+
+            // Individual Set_Version_2_x body verbs (figc4.7), used inside the
+            // subroutine bodies via the walker.
+            Ax25ActionVerb.SetHalfDuplex          => Do(() => ctx.HalfDuplex = true),
+            Ax25ActionVerb.SetImplicitReject      => Do(() =>
+            {
+                ctx.ImplicitReject = true;
+                ctx.SrejEnabled = false;
+            }),
+            Ax25ActionVerb.SetSelectiveReject     => Do(() =>
+            {
+                ctx.ImplicitReject = false;
+                ctx.SrejEnabled = true;
+            }),
+            Ax25ActionVerb.ModuloAssign8          => Do(() => ctx.IsExtended = false),
+            Ax25ActionVerb.ModuloAssign128        => Do(() => ctx.IsExtended = true),
+            Ax25ActionVerb.N1Assign2048           => Do(() => ctx.N1 = 2048),
+            Ax25ActionVerb.KAssign8               => Do(() => ctx.K = 8),
+            Ax25ActionVerb.KAssign32              => Do(() => ctx.K = 32),
+            Ax25ActionVerb.T2Assign3000           => Do(() => ctx.T2 = TimeSpan.FromMilliseconds(3000)),
+            Ax25ActionVerb.N2Assign10             => Do(() => ctx.N2 = 10),
 
             // ─── Link-parameter assignments (SRT, T1V) ────────────────
             //
-            // Smoothed Round-Trip Time and T1 timeout value per §6.7.1.
-            // The dispatcher's <see cref="T1Duration"/> property is the
-            // *initial* T1V for new sessions; <c>ctx.T1V</c> is the
-            // *current* per-session value mutated by these verbs and
-            // (in production) by RTT smoothing in figc4.7's
-            // Select_T1_Value subroutine.
-            case "SRT := Initial Default":         ctx.Srt = TimeSpan.FromMilliseconds(3000); break;
-            case "T1V := 2 * SRT":                 ctx.T1V = ctx.Srt + ctx.Srt; break;
-
-            // ─── Subroutine calls ──────────────────────────────────────
-            //
-            // Each routes through the registry. DefaultSubroutineRegistry
-            // pre-populates with no-op stubs for every known name — the
-            // figc4.7 transcription will eventually replace those with
-            // real action chains. Tests can register custom impls to
-            // observe / mock subroutine invocations.
-            case "Establish_Data_Link":            subroutines.Invoke("Establish_Data_Link", tx); break;
-            case "Establish_Extended_Data_Link":   subroutines.Invoke("Establish_Extended_Data_Link", tx); break;
-            case "Clear_Exception_Conditions":     subroutines.Invoke("Clear_Exception_Conditions", tx); break;
-            case "UI_Check":                       subroutines.Invoke("UI_Check", tx); break;
-            case "Select_T1_Value":                subroutines.Invoke("Select_T1_Value", tx); break;
-            case "Check_I_Frame_Acknowledged":     subroutines.Invoke("Check_I_Frame_Acknowledged", tx); break;
-            case "Check_I_Frames_Acknowledged":    subroutines.Invoke("Check_I_Frames_Acknowledged", tx); break;
-            case "Check_Need_For_Response":        subroutines.Invoke("Check_Need_For_Response", tx); break;
-            case "Transmit_Enquiry":               subroutines.Invoke("Transmit_Enquiry", tx); break;
-            case "Invoke_Retransmission":          subroutines.Invoke("Invoke_Retransmission", tx); break;
-            case "N_r_Error_Recovery":             subroutines.Invoke("N_r_Error_Recovery", tx); break;
-            case "Enquiry_Response":               subroutines.Invoke("Enquiry_Response", tx); break;
-            case "Set_Version_2_0":                subroutines.Invoke("Set_Version_2_0", tx); break;
-            case "Set_Version_2_2":                subroutines.Invoke("Set_Version_2_2", tx); break;
-            // Legacy names that still appear in connected.sdl.yaml — kept
-            // distinct from Enquiry_Response so existing tests / transitions
-            // continue to record them under their own names. The registry
-            // adds them as no-op stubs alongside the generated specs; a
-            // follow-up PR can update connected.sdl.yaml to call
-            // Enquiry_Response directly and retire these.
-            case "Enquiry_Response_F_0":           subroutines.Invoke("Enquiry_Response_F_0", tx); break;
-            case "Enquiry_Response_F_1":           subroutines.Invoke("Enquiry_Response_F_1", tx); break;
-
-            // ─── Sequence-variable assignments (pure context) ──────────
-            //
-            // Verb spellings here track the figure-canonical lowercase form
-            // (`V(s)`, `V(r)`, `V(a)`) used in /spec-sdl/*.sdl.yaml. The
-            // catalogue (`spec-sdl/actions.yaml`) reserves these as the
-            // canonical names.
-            case "V(s) := 0":                      ctx.VS = 0; break;
-            case "V(s) := V(s) + 1":               ctx.VS = ctx.IncrementSeq(ctx.VS); break;
-            case "V(r) := 0":                      ctx.VR = 0; break;
-            case "V(r) := V(r) + 1":               ctx.VR = ctx.IncrementSeq(ctx.VR); break;
-            // figc4.5 Timer Recovery draws the stored-frame drain with
-            // V(r) := V(r) - 1. The decrement is surprising for a drain and
-            // is flagged for spec-author confirmation (ax25sdl#49); encoded
-            // faithfully here pending that review.
-            case "V(r) := V(r) - 1":               ctx.VR = ctx.DecrementSeq(ctx.VR); break;
-            case "V(a) := 0":                      ctx.VA = 0; break;
-            case "RC := 0":                        ctx.RC = 0; break;
-            case "RC := 1":                        ctx.RC = 1; break;
-            case "RC := RC + 1":                   ctx.RC++; break;
-
-            // ─── Sequence-variable assignments (reads from incoming frame) ─
-            //
-            // `V(a) := N(r)` advances the acknowledge state to the N(R) of
-            // the just-received frame. Only valid when the trigger is a
-            // frame-receipt event; throws otherwise.
-            case "V(a) := N(r)":                   ctx.VA = ExtractNr(tx); break;
-
-            // ─── Pending-frame field assignments (write side) ──────────
-            //
-            // These populate <see cref="TransitionContext.Pending"/>; the
-            // signal_lower verb that follows in the same chain consumes
-            // pending state to build a complete outgoing frame spec.
-            //
-            // For F := P / N(r) := N(s) the right-hand side is a field of
-            // the triggering incoming frame; the helper throws cleanly if
-            // the trigger doesn't carry one. For constant assignments
-            // (F := 0, F := 1, p := 0) no incoming frame is required.
-            //
-            // `p` (lowercase) is the spec's spelling of the outgoing P bit
-            // on a command frame. Treated as the same bit as F on the wire
-            // — both end up in <see cref="PendingFrame.PfBit"/>.
-            case "N(r) := V(r)":                   tx.Pending.Nr = ctx.VR; break;
-            case "N(s) := V(s)":                   tx.Pending.Ns = ctx.VS; break;
-            case "N(r) := N(s)":                   tx.Pending.Nr = ExtractNs(tx); break;
-            case "F := 0":                         tx.Pending.PfBit = false; break;
-            case "F := 1":                         tx.Pending.PfBit = true;  break;
-            case "F := P":                         tx.Pending.PfBit = ExtractPollFinal(tx); break;
-            // figc4.5 outbound-frame paths use `P := 0` / `P := 1` for the
-            // poll-bit on the *frame being sent* — semantically the same
-            // operation as `F := 0` / `F := 1` because the runtime stores
-            // both bits in the single PfBit field on Pending. (Inbound
-            // frames distinguish P vs F via IsCommand; outbound frames
-            // set the bit unilaterally regardless of nomenclature.)
-            case "P := 0":                         tx.Pending.PfBit = false; break;
-            case "P := 1":                         tx.Pending.PfBit = true;  break;
-            case "p := 0":                         tx.Pending.PfBit = false; break;
-
-            // ─── figc4.7 processing verbs (subroutine bodies) ──────────────
-            //
-            // The subroutines in figc4.7 use figure-verbatim verb spellings
-            // (title-case, mathematical-style assignments). Most map to the
-            // existing snake_case primitives the state-page transitions
-            // already use; we add per-spelling case arms here rather than
-            // adding aliases to actions.yaml because the spellings only
-            // ever appear in the subroutine YAML and routing them at
-            // dispatch time keeps the spec text faithful to the figure.
-
-            // Exception-condition clears (Clear_Exception_Conditions body).
-            //
-            // figc4.7's Establish_Data_Link draws "Clear Exception
-            // Conditions" as the first line of a multi-line processing
-            // box (not a subroutine call shape). Per the runbook's
-            // multi-line-box rule we transcribe it as a single processing
-            // verb; here it expands to the same six clears the
-            // Clear_Exception_Conditions subroutine performs.
-            case "Clear Exception Conditions":
-                ctx.PeerReceiverBusy = false;
-                ctx.OwnReceiverBusy  = false;
-                ctx.RejectException  = false;
-                ctx.SelectiveRejectException = false;
-                ctx.SrejExceptionCount = 0;
-                ctx.AcknowledgePending = false;
-                ctx.IFrameQueue.Clear();
-                break;
-            case "Clear Peer Receiver Busy":       ctx.PeerReceiverBusy   = false; break;
-            case "Clear Own Receiver Busy":        ctx.OwnReceiverBusy    = false; break;
-            case "Clear Reject Condition":         ctx.RejectException    = false; break;
-            case "Clear Reject Exception":         ctx.RejectException    = false; break;
-            case "Clear Sreject Condition":        ctx.SelectiveRejectException = false; ctx.SrejExceptionCount = 0; break;
-            case "Clear Acknowledge Pending":      ctx.AcknowledgePending = false; break;
-            case "Discard I Queue Entries":        ctx.IFrameQueue.Clear(); break;
-            case "Clear Layer 3 Initiated":        ctx.Layer3Initiated    = false; break;
-
-            // Pending-frame field assignments (figc4.7 title-case spellings
-            // for the same operations the snake_case forms handle above).
-            case "P <- 1":                         tx.Pending.PfBit = true; break;
-            case "N(r) <- V(r)":                   tx.Pending.Nr = ctx.VR; break;
-            case "V(a) <- N(r)":                   ctx.VA = ExtractNr(tx); break;
-
-            // Invoke_Retransmission body.
-            case "Backtrack":                      /* informational marker */ break;
-            case "X <- V(s)":                      ctx.X = ctx.VS; break;
-            case "V(s) <- N(r)":                   ctx.VS = ExtractNr(tx); break;
-            case "V(s) <- V(s) + 1":               ctx.VS = ctx.IncrementSeq(ctx.VS); break;
-
-            // Establish_Data_Link body.
-            case "RC <- 1":                        ctx.RC = 1; break;
-            case "Stop T3":                        scheduler.Cancel("T3"); break;
-            case "Start T1":                       scheduler.Arm("T1", ctx.T1V, () => onTimerExpiry("T1")); break;
-            case "Start T3":                       scheduler.Arm("T3", T3Duration, () => onTimerExpiry("T3")); break;
-            case "Stop T1":
-                ctx.T1RemainingWhenLastStopped = scheduler.TimeRemaining("T1");
-                scheduler.Cancel("T1");
-                break;
-
-            // Set_Version_2_0 / Set_Version_2_2 bodies.
-            case "Set Half Duplex":                ctx.HalfDuplex      = true; break;
-            case "Set Implicit Reject":            ctx.ImplicitReject  = true;  ctx.SrejEnabled = false; break;
-            case "Set Selective Reject":           ctx.ImplicitReject  = false; ctx.SrejEnabled = true;  break;
-            case "Modulo <- 8":                    ctx.IsExtended = false; break;
-            case "Modulo <- 128":                  ctx.IsExtended = true;  break;
-            case "N1 <- 2048":                     ctx.N1 = 2048; break;
-            case "k <- 8":                         ctx.K  = 8;    break;
-            case "k <- 32":                        ctx.K  = 32;   break;
-            case "T2 <- 3000":                     ctx.T2 = TimeSpan.FromMilliseconds(3000); break;
-            case "N2 <- 10":                       ctx.N2 = 10;   break;
-
-            // Outbound frame verbs that figc4.7 spells with full-word
-            // labels rather than the snake_case shorthands.
-            case "RR Command":                     sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: true,  tx, action)); break;
-            case "RR Response":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rr,   isCommand: false, tx, action)); break;
-            case "RNR Command":                    sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: true,  tx, action)); break;
-            case "RNR Response":                   sendSFrame(BuildSFrame(SupervisoryFrameType.Rnr,  isCommand: false, tx, action)); break;
-            case "SABM":                           sendUFrame(BuildUFrame(UFrameType.Sabm,  isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
-            case "SABME":                          sendUFrame(BuildUFrame(UFrameType.Sabme, isCommand: true,  pfBitOverride: true, isExpedited: false, tx)); break;
-
-            // Select_T1_Value body. The SRT formula is figure-verbatim;
-            // we treat it as a single named verb that runs the IIR
-            // update (1/8 weight on the new round-trip sample, 7/8 on
-            // history). The new-sample term is (T1V - remaining_when_stopped):
-            // the elapsed portion of T1 from arm to stop, which is what
-            // the spec calls "Remaining Time on T1 When Last Stopped"
-            // subtracted from T1V. T1RemainingWhenLastStopped is
-            // captured on stop_T1. The sample is a valid round-trip ONLY when T1
-            // was stopped by an acknowledgement of the frame that armed it — i.e.
-            // it was running, so remaining > 0. On a timeout/retransmit (or any
-            // reach without a fresh ack-driven stop) remaining is 0, the sample
-            // degenerates to the full T1V (= 2·SRT), and since T1V derives from
-            // SRT the IIR self-amplifies (SRT' = 1.125·SRT) → unbounded growth →
-            // overflow. Karn's algorithm: skip the update when there is no clean
-            // measurement. packethacking/ax25spec#41 (figc4.7 omits the guard);
-            // gated behind Ax25Spec41KarnSrtSampling (m0lte/packet.net#241).
-            case "SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8":
+            // Smoothed Round-Trip Time and T1 timeout value per §6.7.1. The
+            // dispatcher's <see cref="T1Duration"/> property is the *initial*
+            // T1V for new sessions; ctx.T1V is the *current* per-session value
+            // mutated by these verbs and (in production) by RTT smoothing in
+            // figc4.7's Select_T1_Value subroutine. T1V := 2 * SRT and the
+            // figc4.7 Next T1 := 2 * SRT spelling fold to distinct members.
+            Ax25ActionVerb.SRTAssignInitialDefault => Do(() => ctx.Srt = TimeSpan.FromMilliseconds(3000)),
+            Ax25ActionVerb.T1VAssign2TimesSRT     => Do(() => ctx.T1V = ctx.Srt + ctx.Srt),
+            Ax25ActionVerb.NextT1Assign2TimesSRT  => Do(() => ctx.T1V = ctx.Srt * 2),
+            Ax25ActionVerb.NextT1AssignRCTimes025PlusSRTTimes2 => Do(() =>
+            {
+                ctx.T1V = TimeSpan.FromMilliseconds(ctx.RC * 250 + ctx.Srt.TotalMilliseconds * 2);
+                ctx.T1HadExpired = false;
+            }),
+            // Select_T1_Value IIR (figc4.7). The SRT formula is figure-verbatim;
+            // the new-sample term is (T1V - remaining_when_stopped): the elapsed
+            // portion of T1 from arm to stop. The sample is a valid round-trip
+            // ONLY when T1 was stopped by an acknowledgement of the frame that
+            // armed it — i.e. it was running, so remaining > 0. On a
+            // timeout/retransmit remaining is 0, the sample degenerates to the
+            // full T1V (= 2·SRT), and since T1V derives from SRT the IIR
+            // self-amplifies (SRT' = 1.125·SRT) → unbounded growth → overflow.
+            // Karn's algorithm: skip the update when there is no clean
+            // measurement. packethacking/ax25spec#41; gated behind
+            // Ax25Spec41KarnSrtSampling (m0lte/packet.net#241).
+            Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8 => Do(() =>
             {
                 var sample = ctx.T1V - ctx.T1RemainingWhenLastStopped;
                 if (sample < TimeSpan.Zero) sample = TimeSpan.Zero;
@@ -695,48 +611,117 @@ public sealed class ActionDispatcher : IActionDispatcher
                 }
                 ctx.T1HadExpired = false;
                 ctx.T1RemainingWhenLastStopped = TimeSpan.Zero;
-                break;
-            }
-            case "Next T1 <- 2 * SRT":             ctx.T1V = ctx.Srt * 2; break;
-            case "Next T1 <- (RC*0.25)+SRT*2":     ctx.T1V = TimeSpan.FromMilliseconds(ctx.RC * 250 + ctx.Srt.TotalMilliseconds * 2); ctx.T1HadExpired = false; break;
+            }),
 
-            // Invoke_Retransmission body: figure-internal retransmit verb.
-            // figc4.7's loop rewinds V(s):=N(r) and re-sends each stored frame
-            // as V(s) climbs back to X. Each must go out with its ORIGINAL N(s)
-            // (= the current rewound V(s)); emit it directly rather than enqueue,
-            // because the fresh-frame drain (figc4.4 t03 "I frame pops off
-            // queue") would renumber it to the post-loop V(s) (=X). See
-            // EmitOldIFrame.
-            case "Push Old I Frame onto Queue":
-                EmitOldIFrame(tx, ctx.VS);
-                break;
+            // ─── Subroutine calls ──────────────────────────────────────
+            //
+            // Each routes through the registry. DefaultSubroutineRegistry
+            // pre-populates with no-op stubs for every known name, upgraded to
+            // figc4.7-walking implementations by Wire(). Tests can register
+            // custom impls. The (F = 0)/(F = 1) Enquiry_Response variants and
+            // the legacy N(r) Recovery / Select_T1_Value spellings map onto the
+            // registry's alias names; Establish_Extended_Data_Link is no longer
+            // emitted as a verb (the codegen folds it away) so it isn't dispatched
+            // here, only walked by name from within a subroutine body.
+            Ax25ActionVerb.EstablishDataLink      => Do(() => subroutines.Invoke("Establish_Data_Link", tx)),
+            // Clear Exception Conditions appears both as a subroutine call and as
+            // a multi-line processing box (figc4.7's Establish_Data_Link draws it
+            // inline). Both collapse to this member; routing through the registry
+            // runs the canonical six-clear body either way (clear peer/own RX
+            // busy, clear reject + sreject conditions, clear ack pending, discard
+            // I-queue entries).
+            Ax25ActionVerb.ClearExceptionConditions => Do(() => subroutines.Invoke("Clear_Exception_Conditions", tx)),
+            Ax25ActionVerb.UICheck                => Do(() => subroutines.Invoke("UI_Check", tx)),
+            Ax25ActionVerb.SelectT1Value          => Do(() => subroutines.Invoke("Select_T1_Value", tx)),
+            Ax25ActionVerb.CheckIFrameAcknowledged => Do(() => subroutines.Invoke("Check_I_Frame_Acknowledged", tx)),
+            Ax25ActionVerb.CheckNeedForResponse   => Do(() => subroutines.Invoke("Check_Need_For_Response", tx)),
+            Ax25ActionVerb.TransmitEnquiry        => Do(() => subroutines.Invoke("Transmit_Enquiry", tx)),
+            // "Transmit Enquery" is the figure's typo spelling; same subroutine.
+            Ax25ActionVerb.TransmitEnquery        => Do(() => subroutines.Invoke("Transmit_Enquiry", tx)),
+            Ax25ActionVerb.InvokeRetransmission   => Do(() => subroutines.Invoke("Invoke_Retransmission", tx)),
+            Ax25ActionVerb.NRErrorRecovery        => Do(() => subroutines.Invoke("N_r_Error_Recovery", tx)),
+            // "N(r) Recovery" is a figure spelling variant of N(r) Error Recovery.
+            Ax25ActionVerb.NRRecovery             => Do(() => subroutines.Invoke("N_r_Error_Recovery", tx)),
+            Ax25ActionVerb.EnquiryResponseFEq0    => Do(() => subroutines.Invoke("Enquiry_Response_F_0", tx)),
+            Ax25ActionVerb.EnquiryResponseF1      => Do(() => subroutines.Invoke("Enquiry_Response_F_1", tx)),
 
-            // Enquiry_Response body: the DL-ERROR (add) annotation is
-            // a figure shorthand we surface upward as the (add) letter
-            // so callers can distinguish it from other DL-ERROR letters.
-            case "DL-ERROR Indication (add)":
-                sendUpward(new DataLinkErrorIndication("add"));
-                break;
-            // Direct DL-ERROR letter forms used by figc4.7 (callers in
-            // figc4.x may spell them differently; these are the figc4.7
-            // verbatim spellings).
-            case "DL-ERROR Indication (A)":        sendUpward(new DataLinkErrorIndication("A")); break;
-            case "DL-ERROR Indication (J)":        sendUpward(new DataLinkErrorIndication("J")); break;
-            case "DL-ERROR Indication (K)":        sendUpward(new DataLinkErrorIndication("K")); break;
-            case "DL-ERROR Indication (Q)":        sendUpward(new DataLinkErrorIndication("Q")); break;
-            // Canonical snake_case to match DL_DATA_indication / DL_CONNECT_indication /
-            // DL_DISCONNECT_indication and the `ActionVerbAliases` entry that
-            // normalises the figure spelling "DL-UNIT-DATA Indication" onto it. The
-            // case label was previously left in display form, so the normalised verb
-            // fell through to the default throw — every UI reception (UI_Check →
-            // DL-UNIT-DATA Indication) crashed. (m0lte/packet.net)
-            case "DL_UNIT_DATA_indication":        sendUpward(new DataLinkUnitDataIndication(ExtractIncomingInfo(tx), ExtractIncomingPid(tx))); break;
+            // ─── Sequence-variable assignments (pure context) ──────────
+            //
+            // The figure-canonical lowercase forms (V(s), V(r), V(a)) and the
+            // figc4.7 arrow forms (X <- V(s), V(s) <- N(r), …) collapse to these
+            // members.
+            Ax25ActionVerb.VSAssign0              => Do(() => ctx.VS = 0),
+            Ax25ActionVerb.VSAssignVSPlus1        => Do(() => ctx.VS = ctx.IncrementSeq(ctx.VS)),
+            Ax25ActionVerb.VRAssign0              => Do(() => ctx.VR = 0),
+            Ax25ActionVerb.VRAssignVRPlus1        => Do(() => ctx.VR = ctx.IncrementSeq(ctx.VR)),
+            // figc4.5 Timer Recovery draws the stored-frame drain with
+            // V(r) := V(r) - 1. The decrement is surprising for a drain and is
+            // flagged for spec-author confirmation (ax25sdl#49); encoded
+            // faithfully here pending that review.
+            Ax25ActionVerb.VRAssignVR1            => Do(() => ctx.VR = ctx.DecrementSeq(ctx.VR)),
+            Ax25ActionVerb.VAAssign0              => Do(() => ctx.VA = 0),
+            Ax25ActionVerb.XAssignVS              => Do(() => ctx.X = ctx.VS),
+            Ax25ActionVerb.VSAssignNR             => Do(() => ctx.VS = ExtractNr(tx)),
+            Ax25ActionVerb.RCAssign0              => Do(() => ctx.RC = 0),
+            Ax25ActionVerb.RCAssign1              => Do(() => ctx.RC = 1),
+            Ax25ActionVerb.RCAssignRCPlus1        => Do(() => ctx.RC++),
 
-            default:
-                throw new InvalidOperationException(
-                    $"unknown SDL action: '{action}'. " +
-                    "If this verb appears in a new transcription, add a case in ActionDispatcher.Execute.");
-        }
+            // ─── Sequence-variable assignments (reads from incoming frame) ─
+            //
+            // V(a) := N(r) advances the acknowledge state to the N(R) of the
+            // just-received frame. Only valid when the trigger is a frame-receipt
+            // event; throws otherwise. The figc4.7 arrow form folds here too.
+            Ax25ActionVerb.VAAssignNR             => Do(() => ctx.VA = ExtractNr(tx)),
+
+            // ─── Pending-frame field assignments (write side) ──────────
+            //
+            // These populate <see cref="TransitionContext.Pending"/>; the
+            // signal_lower verb that follows in the same chain consumes pending
+            // state to build a complete outgoing frame spec. For F := P /
+            // N(r) := N(s) the right-hand side is a field of the triggering
+            // incoming frame; the helper throws cleanly if the trigger doesn't
+            // carry one. For constant assignments no incoming frame is required.
+            //
+            // P / F / p spellings (and figc4.5's P := 0/1 for the poll-bit on the
+            // frame being sent) are the same operation: the runtime stores both
+            // bits in the single PfBit field on Pending. Inbound frames
+            // distinguish P vs F via IsCommand; outbound frames set the bit
+            // unilaterally regardless of nomenclature.
+            Ax25ActionVerb.NRAssignVR             => Do(() => tx.Pending.Nr = ctx.VR),
+            Ax25ActionVerb.NSAssignVS             => Do(() => tx.Pending.Ns = ctx.VS),
+            Ax25ActionVerb.NRAssignNS             => Do(() => tx.Pending.Nr = ExtractNs(tx)),
+            Ax25ActionVerb.FAssign0               => Do(() => tx.Pending.PfBit = false),
+            Ax25ActionVerb.FAssign1               => Do(() => tx.Pending.PfBit = true),
+            Ax25ActionVerb.FAssignP               => Do(() => tx.Pending.PfBit = ExtractPollFinal(tx)),
+            Ax25ActionVerb.PAssign0               => Do(() => tx.Pending.PfBit = false),
+            Ax25ActionVerb.PAssign1               => Do(() => tx.Pending.PfBit = true),
+
+            // ─── Invoke_Retransmission body markers ────────────────────
+            //
+            // Backtrack is an informational marker in figc4.7's
+            // Invoke_Retransmission loop (no state effect).
+            Ax25ActionVerb.Backtrack              => Do(() => { /* informational marker */ }),
+            // Push Old I Frame onto Queue (the Invoke_Retransmission loop body):
+            // figc4.7 rewinds V(s):=N(r) and re-sends each stored frame as V(s)
+            // climbs back to X. Each must go out with its ORIGINAL N(s) (= the
+            // current rewound V(s)); emit it directly rather than enqueue, because
+            // the fresh-frame drain (figc4.4 t03 "I frame pops off queue") would
+            // renumber it to the post-loop V(s) (=X). See EmitOldIFrame.
+            Ax25ActionVerb.PushOldIFrameOntoQueue => Do(() => EmitOldIFrame(tx, ctx.VS)),
+        };
+#pragma warning restore CS8524
+    }
+
+    /// <summary>
+    /// Run a side-effecting action arm and yield a value, so a switch
+    /// <em>expression</em> (which requires every arm to produce a result and
+    /// thereby gives compile-time exhaustiveness) can wrap the dispatcher's
+    /// void-returning verb handlers. The returned value is always discarded.
+    /// </summary>
+    private static bool Do(Action action)
+    {
+        action();
+        return true;
     }
 
     /// <summary>
@@ -813,7 +798,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// </para>
     /// </remarks>
     private static SupervisoryFrameSpec BuildSFrame(
-        SupervisoryFrameType type, bool isCommand, TransitionContext tx, string verb)
+        SupervisoryFrameType type, bool isCommand, TransitionContext tx)
     {
         byte nr     = tx.Pending.Nr    ?? tx.Session.VR;
         bool pfBit  = tx.Pending.PfBit ?? false;
@@ -1086,148 +1071,4 @@ public sealed class ActionDispatcher : IActionDispatcher
         }
         return reversed;
     }
-
-    /// <summary>
-    /// Maps verb spellings emitted by <c>Packet.Ax25.Sdl</c> v0.5.0+ (where
-    /// the walker preserves verbatim figure text — including spaces, parens,
-    /// hyphens, and the <c>:=</c> assignment operator) onto the canonical
-    /// case-label spellings the dispatcher's switch already handles.
-    /// Maintain this table as new SDL pages land rather than adding parallel
-    /// fallthrough cases; the runtime semantics for each alias is identical
-    /// to its canonical target.
-    /// </summary>
-    private static readonly Dictionary<string, string> ActionVerbAliases =
-        new(StringComparer.Ordinal)
-        {
-            // Subroutine call verbs (kind: subroutine). v0.5.0 emits the
-            // verb verbatim from the figure ("Title Case With Spaces");
-            // dispatcher case-labels use the underscored canonical form.
-            ["UI Check"]                          = "UI_Check",
-            ["UI Command"]                        = "UI_command",
-            ["Establish Data Link"]               = "Establish_Data_Link",
-            ["Establish Extended Data Link"]      = "Establish_Extended_Data_Link",
-            ["Clear Exception Conditions"]        = "Clear_Exception_Conditions",
-            ["Select T1 Value"]                   = "Select_T1_Value",
-            ["Select T1"]                         = "Select_T1_Value",
-            ["Check I Frame Acknowledged"]        = "Check_I_Frame_Acknowledged",
-            ["Check I Frames Acknowledged"]       = "Check_I_Frames_Acknowledged",
-            ["Check Need For Response"]           = "Check_Need_For_Response",
-            ["Check Need for Response"]           = "Check_Need_For_Response",
-            ["Transmit Enquiry"]                  = "Transmit_Enquiry",
-            ["Transmit Enquery"]                  = "Transmit_Enquiry",     // figure typo
-            ["Invoke Retransmission"]             = "Invoke_Retransmission",
-            ["N(r) Error Recovery"]               = "N_r_Error_Recovery",
-            ["N(r) Recovery"]                     = "N_r_Error_Recovery",
-            ["Enquiry Response (F = 0)"]          = "Enquiry_Response_F_0",
-            ["Enquiry Response (F = 1)"]          = "Enquiry_Response_F_1",
-            ["Set Version 2.0"]                   = "Set_Version_2_0",
-            ["Set Version 2.2"]                   = "Set_Version_2_2",
-
-            // Signal generation — figure spelling → snake_case where the
-            // dispatcher's canonical case-label is snake_case.
-            ["DL-CONNECT Indication"]             = "DL_CONNECT_indication",
-            ["DL Connect Indication"]             = "DL_CONNECT_indication",
-            ["DL-CONNECT Confirm"]                = "DL_CONNECT_confirm",
-            ["DL-DISCONNECT Indication"]          = "DL_DISCONNECT_indication",
-            ["DL-DISCONNECT indication"]          = "DL_DISCONNECT_indication",
-            ["DL-DISCONNECT Confirm"]             = "DL_DISCONNECT_confirm",
-            ["DL-DATA Indication"]                = "DL_DATA_indication",
-            ["DL-UNIT-DATA Indication"]           = "DL_UNIT_DATA_indication",
-            ["DL-ERROR Indication (C,D)"]         = "DL_ERROR_indication_C_D",
-            ["DL-ERROR Indication (D)"]           = "DL_ERROR_indication_D",
-            ["DL-ERROR indication (D)"]           = "DL_ERROR_indication_D",
-            ["DL-ERROR Indication (E)"]           = "DL_ERROR_indication_E",
-            ["DL-ERROR Indication (F)"]           = "DL_ERROR_indication_F",
-            ["DL-ERROR Indication (G)"]           = "DL_ERROR_indication_G",
-            ["DL-ERROR Indication (I)"]           = "DL_ERROR_indication_I",
-            ["DL-ERROR Indication (L)"]           = "DL_ERROR_indication_L",
-            ["DL-ERROR Indication (M)"]           = "DL_ERROR_indication_M",
-            ["DL-ERROR Indication (N)"]           = "DL_ERROR_indication_N",
-            ["DL-ERROR Indication (O)"]           = "DL_ERROR_indication_O",
-            ["DL-ERROR Indication (T)"]           = "DL_ERROR_indication_T",
-            ["DL-ERROR Indication (U)"]           = "DL_ERROR_indication_U",
-
-            // S/U-frame send verbs.
-            ["RR Command"]                        = "RR_command",
-            ["RR Command (P = 0)"]                = "RR_command",
-            ["RR Response"]                       = "RR",
-            ["RNR Command"]                       = "RNR_command",
-            ["RNR Response"]                      = "RNR_response",
-            ["RNR Response (F = 0)"]              = "RNR_response",
-            ["REJ Command"]                       = "REJ_command",
-            ["REJ Response"]                      = "REJ",
-            ["SREJ Command"]                      = "SREJ_command",
-            ["SREJ Response"]                     = "SREJ",
-            ["I Command"]                         = "I_command",
-            ["DM F = 1"]                          = "DM (F = 1)",
-            ["DM F=1"]                            = "DM (F = 1)",
-            ["DM Response (F = 0)"]               = "DM",
-
-            // LM/MDL primitives — figure includes the typo'd LM-SIEZE.
-            ["LM-SEIZE Request"]                  = "LM_seize_request",
-            ["LM-SIEZE Request"]                  = "LM_seize_request",
-            ["LM-RELEASE Request"]                = "LM_release_request",
-            ["LM_RELEASE Request"]                = "LM_release_request",
-            ["LM-DATA Request"]                   = "LM_data_request",
-            ["MDL-NEGOTIATE Request"]             = "MDL_NEGOTIATE_request",
-
-            // Flag mutations — figure: "Set/Clear Title Case". Dispatcher
-            // canonical cases are snake_case here; map title-case spellings
-            // emitted by v0.5.0 onto them. "Set Half Duplex", "Set Implicit
-            // Reject", "Set Selective Reject" already match the dispatcher
-            // case strings literally so no alias is needed.
-            ["Set Acknowledge Pending"]           = "set_acknowledge_pending",
-            ["Set Acknowledgement Pending"]       = "set_acknowledge_pending",
-            ["Set Own Receiver Busy"]             = "set_own_receiver_busy",
-            ["Set Peer Busy"]                     = "set_peer_receiver_busy",
-            ["Set Layer 3 Initiated"]             = "set_layer_3_initiated",
-            ["Set Reject Exception"]              = "set_reject_exception",
-            ["Increment Sreject Exception"]       = "increment_srej_exception",
-            ["Decrement Sreject Exception if > 0"] = "decrement_srej_exception_if_gt_0",
-
-            // Queue mutations — multiple figure spellings, single canonical.
-            ["Discard I Frame"]                   = "discard_I_frame",
-            ["Discard I Frame Queue"]             = "discard_I_frame_queue",
-            ["Discard Frame Queue"]               = "discard_frame_queue",
-            ["Discard Queue"]                     = "discard_frame_queue",
-            ["Discard I Queue Entries"]           = "discard_I_frame_queue",
-            ["Discard Contents of I Frame"]       = "discard_contents_of_I_frame",
-            ["Discard Primitive"]                 = "discard_primitive",
-            ["Save Contents of I Frame"]          = "save_contents_of_I_frame",
-            ["Push on I Frame Queue (note: word order?)"]          = "push_on_I_frame_queue",
-            ["Push on I Frame Queue"]                              = "push_on_I_frame_queue",
-            ["Push I Frame on I Queue"]           = "push_on_I_frame_queue",
-            // "Push Old I Frame N(r) on Queue" is figc4.4's REJ/SREJ retransmit
-            // verb — looks up the previously-sent I-frame at N(r) and re-queues
-            // it. Distinct from the unprefixed "Push Old I Frame onto Queue"
-            // (the Invoke_Retransmission loop body), which has its own dedicated
-            // case re-queuing the sent I-frame at the current V(s) — it must NOT
-            // alias to push_on_I_frame_queue (that verb pushes a *new* I-frame
-            // from a DL-DATA request and requires that trigger).
-            ["Push Old I Frame N(r) on Queue"]    = "push_old_I_frame_N_r_on_queue",
-            ["Push Frame on Queue"]               = "push_on_I_frame_queue",
-            ["Push Frame Onto Queue"]             = "push_on_I_frame_queue",
-
-            // Sequence-variable updates — figc4.5 uses `:=`; the dispatcher
-            // historically has `<-` cases for some of these. The runtime
-            // semantics are identical (the operator is just notation).
-            ["Modulo := 8"]                       = "Modulo <- 8",
-            ["Modulo := 128"]                     = "Modulo <- 128",
-            ["N1 := 2048"]                        = "N1 <- 2048",
-            ["N2 := 10"]                          = "N2 <- 10",
-            // Invoke_Retransmission (figc4.7) set-up verbs.
-            ["X := V(s)"]                         = "X <- V(s)",
-            ["V(s) := N(r)"]                      = "V(s) <- N(r)",
-            ["V(a) := N(r)"]                      = "V(a) <- N(r)",
-            // Stored-frame drain (figc4.4 / figc4.5).
-            ["Retrieve Stored V(r) I Frame"]      = "retrieve_stored_V_r_I_frame",
-            ["Next T1 := 2 * SRT"]                = "Next T1 <- 2 * SRT",
-            ["Next T1 := (RC*0.25)+SRT*2"]        = "Next T1 <- (RC*0.25)+SRT*2",
-            ["SRT := 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8"]
-                                                  = "SRT <- 7(SRT)/8 + (T1)/8 - (Remaining Time on T1 When Last Stopped)/8",
-            ["N(R) := V(r)"]                      = "N(r) := V(r)",        // figure spelling variant
-            ["k := 8"]                            = "k <- 8",
-            ["k := 32"]                           = "k <- 32",
-            ["T2 := 3000"]                        = "T2 <- 3000",          // dispatcher has the historic `<-` form
-        };
 }

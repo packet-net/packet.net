@@ -2,6 +2,7 @@ using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
+using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
 
@@ -171,13 +172,13 @@ public class FlagMutationProperties
     // Tested via reflection-style strings so the property table stays close
     // to the dispatcher's case arms (any drift fails the test rather than
     // silently going untested).
-    private static readonly (string SetVerb, string ClearVerb, Func<Ax25SessionContext, bool> Read)[] FlagVerbs =
+    private static readonly (Ax25ActionVerb SetVerb, Ax25ActionVerb ClearVerb, Func<Ax25SessionContext, bool> Read)[] FlagVerbs =
     {
-        ("set_own_receiver_busy",         "clear_own_receiver_busy",         c => c.OwnReceiverBusy),
-        ("set_peer_receiver_busy",        "clear_peer_receiver_busy",        c => c.PeerReceiverBusy),
-        ("set_acknowledge_pending",       "clear_acknowledge_pending",       c => c.AcknowledgePending),
-        ("set_layer_3_initiated",         "clear_layer_3_initiated",         c => c.Layer3Initiated),
-        ("set_reject_exception",          "clear_reject_exception",          c => c.RejectException),
+        (Ax25ActionVerb.SetOwnReceiverBusy,         Ax25ActionVerb.ClearOwnReceiverBusy,         c => c.OwnReceiverBusy),
+        (Ax25ActionVerb.SetPeerReceiverBusy,        Ax25ActionVerb.ClearPeerReceiverBusy,        c => c.PeerReceiverBusy),
+        (Ax25ActionVerb.SetAcknowledgePending,       Ax25ActionVerb.ClearAcknowledgePending,       c => c.AcknowledgePending),
+        (Ax25ActionVerb.SetLayer3Initiated,         Ax25ActionVerb.ClearLayer3Initiated,         c => c.Layer3Initiated),
+        (Ax25ActionVerb.SetRejectException,          Ax25ActionVerb.ClearRejectException,          c => c.RejectException),
     };
 
     [Property(MaxTest = 200)]
@@ -288,7 +289,7 @@ public class FlagMutationProperties
         rig.Context.SrejExceptionCount = safeStart;
         rig.Context.SelectiveRejectException = safeStart > 0;
 
-        rig.Dispatcher.Execute("increment_srej_exception", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.IncrementSrejectException, rig.Context, rig.Scheduler);
 
         rig.Context.SrejExceptionCount.Should().Be(safeStart + 1);
         rig.Context.SelectiveRejectException.Should().BeTrue();
@@ -303,7 +304,7 @@ public class FlagMutationProperties
         rig.Context.SrejExceptionCount = safeStart;
         rig.Context.SelectiveRejectException = safeStart > 0;
 
-        rig.Dispatcher.Execute("decrement_srej_exception_if_gt_0", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.DecrementSrejectExceptionIf0, rig.Context, rig.Scheduler);
 
         if (safeStart == 0)
         {
@@ -339,7 +340,7 @@ public class SequenceVariableProperties
 
         for (int i = 0; i < n; i++)
         {
-            rig.Dispatcher.Execute("V(s) := V(s) + 1", rig.Context, rig.Scheduler);
+            rig.Dispatcher.Execute(Ax25ActionVerb.VSAssignVSPlus1, rig.Context, rig.Scheduler);
         }
 
         rig.Context.VS.Should().Be((byte)((initial + n) % 8),
@@ -357,7 +358,7 @@ public class SequenceVariableProperties
 
         for (int i = 0; i < n; i++)
         {
-            rig.Dispatcher.Execute("V(s) := V(s) + 1", rig.Context, rig.Scheduler);
+            rig.Dispatcher.Execute(Ax25ActionVerb.VSAssignVSPlus1, rig.Context, rig.Scheduler);
         }
 
         rig.Context.VS.Should().Be((byte)((initial + n) % 128),
@@ -375,7 +376,7 @@ public class SequenceVariableProperties
 
         for (int i = 0; i < n; i++)
         {
-            rig.Dispatcher.Execute("V(r) := V(r) + 1", rig.Context, rig.Scheduler);
+            rig.Dispatcher.Execute(Ax25ActionVerb.VRAssignVRPlus1, rig.Context, rig.Scheduler);
         }
 
         rig.Context.VR.Should().Be((byte)((initial + n) % 8));
@@ -391,9 +392,9 @@ public class SequenceVariableProperties
 
         for (int i = 0; i < n; i++)
         {
-            rig.Dispatcher.Execute("V(s) := V(s) + 1", rig.Context, rig.Scheduler);
+            rig.Dispatcher.Execute(Ax25ActionVerb.VSAssignVSPlus1, rig.Context, rig.Scheduler);
         }
-        rig.Dispatcher.Execute("V(s) := 0", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.VSAssign0, rig.Context, rig.Scheduler);
 
         rig.Context.VS.Should().Be((byte)0,
             "V(s) := 0 must reset regardless of prior accumulation");
@@ -409,7 +410,7 @@ public class SequenceVariableProperties
         var safeStart = Math.Clamp(startingRc, -1_000, 1_000);
         rig.Context.RC = safeStart;
 
-        rig.Dispatcher.Execute("RC := RC + 1", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.RCAssignRCPlus1, rig.Context, rig.Scheduler);
 
         rig.Context.RC.Should().Be(safeStart + 1);
     }
@@ -420,10 +421,10 @@ public class SequenceVariableProperties
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         rig.Context.RC = Math.Clamp(startingRc, -1_000, 1_000);
 
-        rig.Dispatcher.Execute("RC := 0", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.RCAssign0, rig.Context, rig.Scheduler);
         rig.Context.RC.Should().Be(0);
 
-        rig.Dispatcher.Execute("RC := 1", rig.Context, rig.Scheduler);
+        rig.Dispatcher.Execute(Ax25ActionVerb.RCAssign1, rig.Context, rig.Scheduler);
         rig.Context.RC.Should().Be(1);
     }
 
@@ -441,7 +442,7 @@ public class SequenceVariableProperties
         var frame = ActionDispatcherPropertyHelpers.BuildRrFrame(nr, pollBit: false);
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new RrReceived(frame));
 
-        rig.Dispatcher.Execute("V(a) := N(r)", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.VAAssignNR, tx);
 
         rig.Context.VA.Should().Be(nr);
     }
@@ -452,7 +453,7 @@ public class SequenceVariableProperties
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new T1Expiry());
 
-        var act = () => rig.Dispatcher.Execute("V(a) := N(r)", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.VAAssignNR, tx);
 
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*T1_expiry*");
@@ -475,7 +476,7 @@ public class PendingFrameAssignmentProperties
         rig.Context.VR = safeVr;
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
-        rig.Dispatcher.Execute("N(r) := V(r)", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.NRAssignVR, tx);
 
         tx.Pending.Nr.Should().Be(safeVr);
         tx.Pending.Ns.Should().BeNull("N(s) untouched");
@@ -490,7 +491,7 @@ public class PendingFrameAssignmentProperties
         rig.Context.VS = safeVs;
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
-        rig.Dispatcher.Execute("N(s) := V(s)", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.NSAssignVS, tx);
 
         tx.Pending.Ns.Should().Be(safeVs);
     }
@@ -511,7 +512,7 @@ public class PendingFrameAssignmentProperties
             nr: nr, ns: ns, pollBit: pollBit, info: [1, 2, 3], pid: Ax25Frame.PidNoLayer3);
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new IFrameReceived(frame));
 
-        rig.Dispatcher.Execute("N(r) := N(s)", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.NRAssignNS, tx);
 
         tx.Pending.Nr.Should().Be(ns);
     }
@@ -521,7 +522,7 @@ public class PendingFrameAssignmentProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new T1Expiry());
-        var act = () => rig.Dispatcher.Execute("N(r) := N(s)", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.NRAssignNS, tx);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*T1_expiry*");
     }
@@ -532,7 +533,7 @@ public class PendingFrameAssignmentProperties
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
-        rig.Dispatcher.Execute(which ? "F := 1" : "F := 0", tx);
+        rig.Dispatcher.Execute(which ? Ax25ActionVerb.FAssign1 : Ax25ActionVerb.FAssign0, tx);
 
         tx.Pending.PfBit.Should().Be(which);
     }
@@ -544,8 +545,8 @@ public class PendingFrameAssignmentProperties
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
         // Use F := 1 first so the prior value is non-default.
-        if (prior) rig.Dispatcher.Execute("F := 1", tx);
-        rig.Dispatcher.Execute("p := 0", tx);
+        if (prior) rig.Dispatcher.Execute(Ax25ActionVerb.FAssign1, tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.PAssign0, tx);
 
         tx.Pending.PfBit.Should().BeFalse(
             "p := 0 must overwrite any prior PfBit assignment");
@@ -559,7 +560,7 @@ public class PendingFrameAssignmentProperties
         var frame = ActionDispatcherPropertyHelpers.BuildRrFrame(nr, pollBit: pollBit);
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new RrReceived(frame));
 
-        rig.Dispatcher.Execute("F := P", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.FAssignP, tx);
 
         tx.Pending.PfBit.Should().Be(pollBit);
     }
@@ -569,7 +570,7 @@ public class PendingFrameAssignmentProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new T1Expiry());
-        var act = () => rig.Dispatcher.Execute("F := P", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.FAssignP, tx);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*requires an incoming frame*T1_expiry*");
     }
@@ -584,17 +585,17 @@ public class PendingFrameAssignmentProperties
 /// </summary>
 public class FrameEmissionProperties
 {
-    private static readonly (string Verb, SupervisoryFrameType Type, bool IsCommand)[] SupervisoryVerbs =
+    private static readonly (Ax25ActionVerb Verb, SupervisoryFrameType Type, bool IsCommand)[] SupervisoryVerbs =
     {
-        ("RR_command",   SupervisoryFrameType.Rr,   true),
-        ("RR",           SupervisoryFrameType.Rr,   false),
-        ("RNR_response", SupervisoryFrameType.Rnr,  false),
-        ("REJ",          SupervisoryFrameType.Rej,  false),
-        ("SREJ",         SupervisoryFrameType.Srej, false),
-        ("RR Command",   SupervisoryFrameType.Rr,   true),
-        ("RR Response",  SupervisoryFrameType.Rr,   false),
-        ("RNR Command",  SupervisoryFrameType.Rnr,  true),
-        ("RNR Response", SupervisoryFrameType.Rnr,  false),
+        (Ax25ActionVerb.RRCommand,   SupervisoryFrameType.Rr,   true),
+        (Ax25ActionVerb.RR,           SupervisoryFrameType.Rr,   false),
+        (Ax25ActionVerb.RNRResponse, SupervisoryFrameType.Rnr,  false),
+        (Ax25ActionVerb.REJ,          SupervisoryFrameType.Rej,  false),
+        (Ax25ActionVerb.SREJ,         SupervisoryFrameType.Srej, false),
+        (Ax25ActionVerb.RRCommand,   SupervisoryFrameType.Rr,   true),
+        (Ax25ActionVerb.RRResponse,  SupervisoryFrameType.Rr,   false),
+        (Ax25ActionVerb.RNRCommand,  SupervisoryFrameType.Rnr,  true),
+        (Ax25ActionVerb.RNRResponse, SupervisoryFrameType.Rnr,  false),
     };
 
     [Property(MaxTest = 200)]
@@ -608,7 +609,7 @@ public class FrameEmissionProperties
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
-        var setF = pfBit ? "F := 1" : "F := 0";
+        var setF = pfBit ? Ax25ActionVerb.FAssign1 : Ax25ActionVerb.FAssign0;
         rig.Dispatcher.Execute(setF, tx);
         tx.Pending.Nr = nr;
         rig.Dispatcher.Execute(verb, tx);
@@ -639,18 +640,18 @@ public class FrameEmissionProperties
         rig.SFrames[0].PfBit.Should().BeFalse("no F := * verb — default false");
     }
 
-    private static readonly (string Verb, UFrameType Type, bool IsCommand, bool? PfOverride, bool IsExpedited)[] UVerbs =
+    private static readonly (Ax25ActionVerb Verb, UFrameType Type, bool IsCommand, bool? PfOverride, bool IsExpedited)[] UVerbs =
     {
-        ("UA",            UFrameType.Ua,    false, null, false),
-        ("DM",            UFrameType.Dm,    false, null, false),
-        ("DM (F = 1)",    UFrameType.Dm,    false, true, false),
-        ("Expedited UA",  UFrameType.Ua,    false, null, true),
-        ("Expedited DM",  UFrameType.Dm,    false, null, true),
-        ("SABM (P == 1)", UFrameType.Sabm,  true,  true, false),
-        ("SABME (P = 1)", UFrameType.Sabme, true,  true, false),
-        ("DISC (P = 1)",  UFrameType.Disc,  true,  true, false),
-        ("SABM",          UFrameType.Sabm,  true,  true, false),
-        ("SABME",         UFrameType.Sabme, true,  true, false),
+        (Ax25ActionVerb.UA,            UFrameType.Ua,    false, null, false),
+        (Ax25ActionVerb.DM,            UFrameType.Dm,    false, null, false),
+        (Ax25ActionVerb.DMFEq1,    UFrameType.Dm,    false, true, false),
+        (Ax25ActionVerb.ExpeditedUA,  UFrameType.Ua,    false, null, true),
+        (Ax25ActionVerb.ExpeditedDM,  UFrameType.Dm,    false, null, true),
+        (Ax25ActionVerb.SABMPEqEq1, UFrameType.Sabm,  true,  true, false),
+        (Ax25ActionVerb.SABMEPEq1, UFrameType.Sabme, true,  true, false),
+        (Ax25ActionVerb.DISCPEq1,  UFrameType.Disc,  true,  true, false),
+        (Ax25ActionVerb.SABM,          UFrameType.Sabm,  true,  true, false),
+        (Ax25ActionVerb.SABME,         UFrameType.Sabme, true,  true, false),
     };
 
     [Property(MaxTest = 200)]
@@ -664,7 +665,7 @@ public class FrameEmissionProperties
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
 
         // Seed Pending.PfBit so we can confirm overrides win.
-        rig.Dispatcher.Execute(pendingPfBit ? "F := 1" : "F := 0", tx);
+        rig.Dispatcher.Execute(pendingPfBit ? Ax25ActionVerb.FAssign1 : Ax25ActionVerb.FAssign0, tx);
         rig.Dispatcher.Execute(verb, tx);
 
         rig.UFrames.Should().ContainSingle();
@@ -694,7 +695,7 @@ public class FrameEmissionProperties
         tx.Pending.Ns = ns;
         tx.Pending.Nr = nr;
         tx.Pending.PfBit = pBit;
-        rig.Dispatcher.Execute("I_command", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.ICommand, tx);
 
         rig.IFrames.Should().ContainSingle();
         var spec = rig.IFrames[0];
@@ -716,7 +717,7 @@ public class FrameEmissionProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
-        var act = () => rig.Dispatcher.Execute("I_command", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.ICommand, tx);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*I_command*requires the trigger*I_frame_pops_off_queue*DL_CONNECT_request*");
     }
@@ -729,8 +730,8 @@ public class FrameEmissionProperties
         var tx = new TransitionContext(rig.Context, rig.Scheduler,
             new DlUnitDataRequest(info, Pid: pid));
 
-        if (pendingPf) rig.Dispatcher.Execute("F := 1", tx);
-        rig.Dispatcher.Execute("UI_command", tx);
+        if (pendingPf) rig.Dispatcher.Execute(Ax25ActionVerb.FAssign1, tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.UICommand, tx);
 
         rig.UiFrames.Should().ContainSingle();
         var spec = rig.UiFrames[0];
@@ -745,7 +746,7 @@ public class FrameEmissionProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new DlConnectRequest());
-        var act = () => rig.Dispatcher.Execute("UI_command", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.UICommand, tx);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*UI_command*requires the trigger*DL_UNIT_DATA_request*DL_CONNECT_request*");
     }
@@ -760,12 +761,12 @@ public class FrameEmissionProperties
 /// </summary>
 public class UpwardSignalProperties
 {
-    private static readonly (string Verb, Type ExpectedRecord)[] SimpleSignals =
+    private static readonly (Ax25ActionVerb Verb, Type ExpectedRecord)[] SimpleSignals =
     {
-        ("DL_CONNECT_indication",    typeof(DataLinkConnectIndication)),
-        ("DL_CONNECT_confirm",       typeof(DataLinkConnectConfirm)),
-        ("DL_DISCONNECT_indication", typeof(DataLinkDisconnectIndication)),
-        ("DL_DISCONNECT_confirm",    typeof(DataLinkDisconnectConfirm)),
+        (Ax25ActionVerb.DLCONNECTIndication,    typeof(DataLinkConnectIndication)),
+        (Ax25ActionVerb.DLCONNECTConfirm,       typeof(DataLinkConnectConfirm)),
+        (Ax25ActionVerb.DLDISCONNECTIndication, typeof(DataLinkDisconnectIndication)),
+        (Ax25ActionVerb.DLDISCONNECTConfirm,    typeof(DataLinkDisconnectConfirm)),
     };
 
     [Property(MaxTest = 200)]
@@ -781,18 +782,18 @@ public class UpwardSignalProperties
         rig.Upward[0].Should().BeOfType(expectedType);
     }
 
-    private static readonly (string Verb, string ExpectedCode)[] ErrorCodes =
+    private static readonly (Ax25ActionVerb Verb, string ExpectedCode)[] ErrorCodes =
     {
-        ("DL_ERROR_indication_C_D", "C_D"),
-        ("DL_ERROR_indication_D",   "D"),
-        ("DL_ERROR_indication_E",   "E"),
-        ("DL_ERROR_indication_F",   "F"),
-        ("DL_ERROR_indication_G",   "G"),
-        ("DL_ERROR_indication_K",   "K"),
-        ("DL_ERROR_indication_L",   "L"),
-        ("DL_ERROR_indication_M",   "M"),
-        ("DL_ERROR_indication_N",   "N"),
-        ("DL_ERROR_indication_O",   "O"),
+        (Ax25ActionVerb.DLERRORIndicationCD, "C_D"),
+        (Ax25ActionVerb.DLERRORIndicationD,   "D"),
+        (Ax25ActionVerb.DLERRORIndicationE,   "E"),
+        (Ax25ActionVerb.DLERRORIndicationF,   "F"),
+        (Ax25ActionVerb.DLERRORIndicationG,   "G"),
+        (Ax25ActionVerb.DLERRORIndicationK,   "K"),
+        (Ax25ActionVerb.DLERRORIndicationL,   "L"),
+        (Ax25ActionVerb.DLERRORIndicationM,   "M"),
+        (Ax25ActionVerb.DLERRORIndicationN,   "N"),
+        (Ax25ActionVerb.DLERRORIndicationO,   "O"),
     };
 
     [Property(MaxTest = 200)]
@@ -817,13 +818,13 @@ public class UpwardSignalProperties
     [Property(MaxTest = 200)]
     public void DL_Error_Indication_FigC47_Variants_Emit_Single_Signal_With_Code(byte verbIdx)
     {
-        var spellings = new (string Verb, string Code)[]
+        var spellings = new (Ax25ActionVerb Verb, string Code)[]
         {
-            ("DL-ERROR Indication (add)", "add"),
-            ("DL-ERROR Indication (A)",   "A"),
-            ("DL-ERROR Indication (J)",   "J"),
-            ("DL-ERROR Indication (K)",   "K"),
-            ("DL-ERROR Indication (Q)",   "Q"),
+            (Ax25ActionVerb.DLERRORIndicationAdd, "add"),
+            (Ax25ActionVerb.DLERRORIndicationA,   "A"),
+            (Ax25ActionVerb.DLERRORIndicationJ,   "J"),
+            (Ax25ActionVerb.DLERRORIndicationK,   "K"),
+            (Ax25ActionVerb.DLERRORIndicationQ,   "Q"),
         };
         var idx = verbIdx % spellings.Length;
         var (verb, expectedCode) = spellings[idx];
@@ -848,7 +849,7 @@ public class UpwardSignalProperties
         var frame = ActionDispatcherPropertyHelpers.BuildIFrame(nr, ns, pollBit, info, pid);
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new IFrameReceived(frame));
 
-        rig.Dispatcher.Execute("DL_DATA_indication", tx);
+        rig.Dispatcher.Execute(Ax25ActionVerb.DLDATAIndication, tx);
 
         rig.Upward.Should().ContainSingle();
         var sig = rig.Upward[0].Should().BeOfType<DataLinkDataIndication>().Subject;
@@ -861,7 +862,7 @@ public class UpwardSignalProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var tx = new TransitionContext(rig.Context, rig.Scheduler, new T1Expiry());
-        var act = () => rig.Dispatcher.Execute("DL_DATA_indication", tx);
+        var act = () => rig.Dispatcher.Execute(Ax25ActionVerb.DLDATAIndication, tx);
         act.Should().Throw<InvalidOperationException>()
            .WithMessage("*DL_DATA_indication*requires an incoming frame*T1_expiry*");
     }
@@ -879,9 +880,9 @@ public class TimerProperties
     [Property(MaxTest = 200)]
     public void Start_Then_Stop_Returns_Timer_To_Not_Running(byte timerIdx)
     {
-        var timers = new[] { ("start_T1", "stop_T1", "T1"),
-                             ("start_T2", "stop_T2", "T2"),
-                             ("start_T3", "stop_T3", "T3") };
+        // T2 has no Ax25ActionVerb member (no SDL figure arms/cancels it).
+        var timers = new[] { (Ax25ActionVerb.StartT1, Ax25ActionVerb.StopT1, "T1"),
+                             (Ax25ActionVerb.StartT3, Ax25ActionVerb.StopT3, "T3") };
         var (startVerb, stopVerb, timerName) = timers[timerIdx % timers.Length];
 
         var rig = ActionDispatcherPropertyHelpers.NewRig();
@@ -897,9 +898,9 @@ public class TimerProperties
     [Property(MaxTest = 200)]
     public void Start_Then_Stop_Then_Start_Re_Arms(byte timerIdx)
     {
-        var timers = new[] { ("start_T1", "stop_T1", "T1"),
-                             ("start_T2", "stop_T2", "T2"),
-                             ("start_T3", "stop_T3", "T3") };
+        // T2 has no Ax25ActionVerb member (no SDL figure arms/cancels it).
+        var timers = new[] { (Ax25ActionVerb.StartT1, Ax25ActionVerb.StopT1, "T1"),
+                             (Ax25ActionVerb.StartT3, Ax25ActionVerb.StopT3, "T3") };
         var (startVerb, stopVerb, timerName) = timers[timerIdx % timers.Length];
 
         var rig = ActionDispatcherPropertyHelpers.NewRig();
@@ -913,9 +914,9 @@ public class TimerProperties
     [Property(MaxTest = 200)]
     public void Stop_Without_Start_Is_Safe_NoOp(byte timerIdx)
     {
-        var timers = new[] { ("stop_T1", "T1"),
-                             ("stop_T2", "T2"),
-                             ("stop_T3", "T3") };
+        // T2 has no Ax25ActionVerb member (no SDL figure arms/cancels it).
+        var timers = new[] { (Ax25ActionVerb.StopT1, "T1"),
+                             (Ax25ActionVerb.StopT3, "T3") };
         var (stopVerb, timerName) = timers[timerIdx % timers.Length];
 
         var rig = ActionDispatcherPropertyHelpers.NewRig();
@@ -935,8 +936,8 @@ public class TimerProperties
     {
         var rig = ActionDispatcherPropertyHelpers.NewRig();
         var (startVerb, stopVerb, timerName) = which
-            ? ("Start T1", "Stop T1", "T1")
-            : ("Start T3", "Stop T3", "T3");
+            ? (Ax25ActionVerb.StartT1, Ax25ActionVerb.StopT1, "T1")
+            : (Ax25ActionVerb.StartT3, Ax25ActionVerb.StopT3, "T3");
 
         rig.Dispatcher.Execute(startVerb, rig.Context, rig.Scheduler);
         rig.Scheduler.IsRunning(timerName).Should().BeTrue();
@@ -953,13 +954,12 @@ public class TimerProperties
 /// </summary>
 public class QueueClearProperties
 {
-    private static readonly string[] ClearVerbs =
+    private static readonly Ax25ActionVerb[] ClearVerbs =
     {
-        "discard_frame_queue",
-        "discard_queue",
-        "discard_I_frame_queue",
-        "discard_i_frame_queue",
-        "Discard I Queue Entries",
+        Ax25ActionVerb.DiscardFrameQueue,
+        Ax25ActionVerb.DiscardQueue,
+        Ax25ActionVerb.DiscardIFrameQueue,
+        Ax25ActionVerb.DiscardIQueueEntries,
     };
 
     [Property(MaxTest = 200)]
@@ -982,7 +982,7 @@ public class QueueClearProperties
     [Property(MaxTest = 200)]
     public void NoOp_Discard_Verbs_Leave_Context_Unchanged(byte verbIdx, byte queueDepth)
     {
-        var noOpVerbs = new[] { "discard_I_frame", "discard_contents_of_I_frame", "discard_primitive" };
+        var noOpVerbs = new[] { Ax25ActionVerb.DiscardIFrame, Ax25ActionVerb.DiscardContentsOfIFrame, Ax25ActionVerb.DiscardPrimitive };
         var verb = noOpVerbs[verbIdx % noOpVerbs.Length];
         var safeCount = queueDepth % 8;
 
@@ -997,50 +997,5 @@ public class QueueClearProperties
 
         rig.Context.IFrameQueue.Count.Should().Be(depthBefore,
             "{0} should not mutate the I-frame queue", verb);
-    }
-}
-
-// ─── 8. Unknown verb ─────────────────────────────────────────────────────
-
-/// <summary>
-/// Property: any string not in the dispatcher's known-verb set throws
-/// <see cref="InvalidOperationException"/>, with a message that names
-/// the offending verb so transcription typos can be traced quickly.
-/// </summary>
-public class UnknownVerbProperties
-{
-    [Property(MaxTest = 200)]
-    public void Unknown_Verb_Throws_With_Verb_Name_In_Message(NonEmptyString rawVerb)
-    {
-        // Sanitise to a string that is highly unlikely to collide with a
-        // real verb name: prefix with "__unknown__" and drop any whitespace
-        // / control chars. (FsCheck's NonEmptyString sometimes generates
-        // strings containing "set_" etc., which would happen to be real
-        // verbs.)
-        var verb = "__unknown__" + new string(rawVerb.Get.Where(c =>
-            char.IsLetterOrDigit(c) || c == '_').Take(40).ToArray());
-
-        var rig = ActionDispatcherPropertyHelpers.NewRig();
-        var act = () => rig.Dispatcher.Execute(verb, rig.Context, rig.Scheduler);
-
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage($"*unknown SDL action*{verb}*");
-    }
-
-    [Property(MaxTest = 200)]
-    public void Empty_Or_Whitespace_Verb_Throws(byte whichKind)
-    {
-        var verb = (whichKind % 3) switch
-        {
-            0 => "",
-            1 => " ",
-            _ => "\t\n",
-        };
-
-        var rig = ActionDispatcherPropertyHelpers.NewRig();
-        var act = () => rig.Dispatcher.Execute(verb, rig.Context, rig.Scheduler);
-
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*unknown SDL action*");
     }
 }

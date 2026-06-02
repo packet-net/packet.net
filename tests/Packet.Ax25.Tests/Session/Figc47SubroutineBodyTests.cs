@@ -56,7 +56,7 @@ public class Figc47SubroutineBodyTests
         ctx.SrejEnabled = true;
         ctx.HalfDuplex = false;
 
-        d.Execute("Set_Version_2_0", ctx, new SystemTimerScheduler(new FakeTimeProvider()));
+        d.Subroutines.Invoke("Set_Version_2_0", new TransitionContext(ctx, new SystemTimerScheduler(new FakeTimeProvider()), new DlConnectRequest()));
 
         ctx.HalfDuplex.Should().BeTrue();
         ctx.ImplicitReject.Should().BeTrue();
@@ -76,7 +76,7 @@ public class Figc47SubroutineBodyTests
         ctx.K = 4;
         ctx.SrejEnabled = false;
 
-        d.Execute("Set_Version_2_2", ctx, new SystemTimerScheduler(new FakeTimeProvider()));
+        d.Subroutines.Invoke("Set_Version_2_2", new TransitionContext(ctx, new SystemTimerScheduler(new FakeTimeProvider()), new DlConnectRequest()));
 
         ctx.HalfDuplex.Should().BeTrue();
         ctx.ImplicitReject.Should().BeFalse();
@@ -100,7 +100,7 @@ public class Figc47SubroutineBodyTests
         ctx.AcknowledgePending = true;
         ctx.IFrameQueue.Enqueue((new byte[] { 1, 2, 3 }, Ax25Frame.PidNoLayer3));
 
-        d.Execute("Clear_Exception_Conditions", ctx, new SystemTimerScheduler(new FakeTimeProvider()));
+        d.Subroutines.Invoke("Clear_Exception_Conditions", new TransitionContext(ctx, new SystemTimerScheduler(new FakeTimeProvider()), new DlConnectRequest()));
 
         ctx.PeerReceiverBusy.Should().BeFalse();
         ctx.OwnReceiverBusy.Should().BeFalse();
@@ -142,7 +142,7 @@ public class Figc47SubroutineBodyTests
         ctx.AcknowledgePending = true;
         ctx.RC = 0;
 
-        d.Execute("Establish_Data_Link", ctx, scheduler);
+        d.Subroutines.Invoke("Establish_Data_Link", new TransitionContext(ctx, scheduler, new DlConnectRequest()));
 
         lastUFrame.Should().NotBeNull();
         lastUFrame!.Value.Type.Should().Be(UFrameType.Sabm);
@@ -177,7 +177,7 @@ public class Figc47SubroutineBodyTests
         var guards   = new GuardEvaluator(bindings);
         if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
 
-        d.Execute("Establish_Data_Link", ctx, scheduler);
+        d.Subroutines.Invoke("Establish_Data_Link", new TransitionContext(ctx, scheduler, new DlConnectRequest()));
 
         lastUFrame.Should().NotBeNull();
         lastUFrame!.Value.Type.Should().Be(UFrameType.Sabme);
@@ -224,7 +224,7 @@ public class Figc47SubroutineBodyTests
         if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
 
         var tx = new TransitionContext(ctx, scheduler, new RrReceived(triggerFrame));
-        d.Execute("Enquiry_Response_F_1", tx);
+        d.Subroutines.Invoke("Enquiry_Response_F_1", tx);
 
         lastS.Should().NotBeNull("Enquiry_Response must emit an S-frame response");
         lastS!.Value.Type.Should().Be(SupervisoryFrameType.Rr);
@@ -265,7 +265,7 @@ public class Figc47SubroutineBodyTests
         if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
 
         var tx = new TransitionContext(ctx, scheduler, new RrReceived(triggerFrame));
-        d.Execute("Enquiry_Response_F_0", tx);
+        d.Subroutines.Invoke("Enquiry_Response_F_0", tx);
 
         lastS.Should().NotBeNull();
         lastS!.Value.PfBit.Should().BeFalse(
@@ -297,7 +297,7 @@ public class Figc47SubroutineBodyTests
         var guards   = new GuardEvaluator(bindings);
         if (d.Subroutines is DefaultSubroutineRegistry reg) reg.Wire(d, guards);
 
-        d.Execute("N_r_Error_Recovery", ctx, scheduler);
+        d.Subroutines.Invoke("N_r_Error_Recovery", new TransitionContext(ctx, scheduler, new DlConnectRequest()));
 
         upward.OfType<DataLinkErrorIndication>().Should().ContainSingle().Which.Code.Should().Be("J");
         ctx.Layer3Initiated.Should().BeFalse();
