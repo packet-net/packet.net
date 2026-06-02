@@ -840,6 +840,12 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-02 — Behavioural connection-lifecycle coverage (AwaitingConnection / AwaitingRelease)
+
+Continues lifting behavioural coverage off the ledger's miss-map. New `ConnectionLifecycleConformanceTests` drives a station *into* each transient establishment/teardown state — held there by dropping the peer's UA — and exercises its receive column through the real dispatcher + oracle: AwaitingConnection abandons on a DM(F=1) and, under sustained loss, retransmits the SABM each T1 and gives up at N2 with DL-ERROR(G) + DL-DISCONNECT indication; AwaitingRelease completes on a UA(F=1) or DM(F=1) with a DL-DISCONNECT confirm, and retransmits the DISC each T1 to N2. The ledger battery's lifecycle scenarios were broadened to match (DM F=0 / DISC / SABM / UA non-terminal receives + the T1 retransmits + N2 exhaustion), lifting measured behavioural coverage **40 → 48 / 243** (AwaitingConnection 4→8, AwaitingRelease 2→6; floor raised to 44). 708 pass / 1 skip.
+
+Finding (noted, not fixed): a `DL-DATA request` posted while in **AwaitingConnection** queues the I-frame, the drain pops it (`I_frame_pops_off_queue`), and the resulting push verb throws `requires the trigger to be DL_DATA_request` — the same verb-vs-trigger fragility class as the UI bug, on the data-while-connecting path. Dropped from the battery for now; candidate for a focused look (relates to SP-010).
+
 ### 2026-06-02 — Backlog: SP-010 strongly-typed action verbs (proposal)
 
 Added SP-010 to the §5.X spike backlog. The UI-reception crash (fixed in the entry below) is the latest of a recurring stringly-typed-dispatch bug class — figure-text verb strings reconciled to dispatcher cases via an alias map (and ax25-ts's `normaliseSubroutineName`), with mismatches caught only at runtime (a throw, or a silent no-op). SP-010 proposes generating a *closed* verb type from the ax25sdl IR (C# enum/sealed type + TS union), canonicalising spellings at codegen and switching exhaustively in both dispatchers so a new/renamed verb is a compile error rather than an on-air failure, deleting the runtime alias layers. Cross-repo (ax25sdl → packet.net + ax25-ts); proposal only, not yet scheduled — tracking issue [#260](https://github.com/m0lte/packet.net/issues/260).

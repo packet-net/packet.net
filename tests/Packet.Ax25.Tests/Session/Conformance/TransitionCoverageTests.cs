@@ -84,7 +84,7 @@ public class TransitionCoverageTests
         }
 
         // ── Assert: a floor on total behavioural coverage (regression guard) ──
-        hit.Should().BeGreaterThanOrEqualTo(38,
+        hit.Should().BeGreaterThanOrEqualTo(44,
             "the scenario battery should behaviourally exercise a substantial share of the 243 transitions; " +
             "if this drops, a scenario regressed or a path stopped being reached");
     }
@@ -99,9 +99,9 @@ public class TransitionCoverageTests
         // Coverage measurement only — correctness is asserted by the dedicated
         // conformance suites, so suspend the per-step oracle (injection scenarios
         // post frames outside the submitted/delivered model).
-        TwoStationHarness New(bool srej = false, int k = 4, bool extended = false)
+        TwoStationHarness New(bool srej = false, int k = 4, bool extended = false, int n2 = 12)
         {
-            var h = TwoStationHarness.Build(srej: srej, k: k, extended: extended);
+            var h = TwoStationHarness.Build(srej: srej, k: k, extended: extended, n2: n2);
             h.CheckAfterEachStep = false;
             return h;
         }
@@ -211,27 +211,51 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
-        // 12. AwaitingConnection receive column: hold A there by dropping B's UA,
-        // then deliver a DM(F=1) so A abandons the connect attempt.
+        // 12. AwaitingConnection receive column: hold A there (drop B's UA), then
+        // walk the non-terminal receives (DM F=0, DISC, a queued DL-DATA, a T1
+        // retransmit of the SABM) and finish by abandoning on a DM(F=1).
         {
             var h = New();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
             h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63; // B's UA
             h.A.Session.PostEvent(new DlConnectRequest());
             h.Settle();
             if (h.A.State == "AwaitingConnection")
-                h.InjectFrameBytes(h.A, Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true).ToBytes());
+            {
+                h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: false).ToBytes());  // DM F=0 → stay
+                h.InjectFrameBytes(h.A, Ax25Frame.Disc(la, re).ToBytes());                 // DISC → stay
+                h.AdvanceT1();                                                             // T1 → retransmit SABM
+                h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: true).ToBytes());   // DM F=1 → Disconnected
+            }
+            Collect(h);
+        }
+        // 12b. AwaitingConnection T1 → N2 exhaustion (give up → Disconnected).
+        {
+            var h = New(n2: 2);
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63;
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            for (int r = 0; r < 6 && h.A.State == "AwaitingConnection"; r++) h.AdvanceT1();
             Collect(h);
         }
 
-        // 13. AwaitingRelease receive column: hold A there by dropping B's UA to
-        // the DISC, then deliver a DM(F=1) so A completes the release.
+        // 13. AwaitingRelease receive column: hold A there (drop B's UA to the
+        // DISC), walk the non-terminal receives (UA F=0, DISC, SABM, a T1
+        // retransmit of the DISC) and finish on a UA(F=1).
         {
             var h = New(); h.Connect();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
             h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63; // B's UA
             h.A.Session.PostEvent(new DlDisconnectRequest());
             h.Settle();
             if (h.A.State == "AwaitingRelease")
-                h.InjectFrameBytes(h.A, Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true).ToBytes());
+            {
+                h.InjectFrameBytes(h.A, Ax25Frame.Ua(la, re, finalBit: false).ToBytes());  // UA F=0 → stay
+                h.InjectFrameBytes(h.A, Ax25Frame.Disc(la, re).ToBytes());                 // DISC → stay
+                h.InjectFrameBytes(h.A, Ax25Frame.Sabm(la, re).ToBytes());                 // SABM → stay
+                h.AdvanceT1();                                                             // T1 → retransmit DISC
+                h.InjectFrameBytes(h.A, Ax25Frame.Ua(la, re, finalBit: true).ToBytes());   // UA F=1 → Disconnected
+            }
             Collect(h);
         }
 
