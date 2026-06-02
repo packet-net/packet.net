@@ -51,6 +51,16 @@ public static class Ax25FrameClassifier
         // affect classification. N(R) bits 7-5 likewise.
         if ((ctrl & 0x03) == 0x01)
         {
+            // S frames carry no information field (§3.5). One present — accepted
+            // only under a lenient parse; Ax25ParseOptions.Strict rejects it at
+            // decode — is the data-link "information not permitted in frame" error
+            // (DL-ERROR M), surfaced here so the figc4.x error-input transition
+            // fires rather than the frame being silently processed as a plain RR.
+            if (!frame.Info.IsEmpty)
+            {
+                return new InfoNotPermittedInFrame();
+            }
+
             return (ctrl & 0x0C) switch
             {
                 0x00 => new RrReceived(frame),      // 0001
@@ -65,13 +75,21 @@ public static class Ax25FrameClassifier
         // identify the subtype (P/F bit at 4 is ignored here).
         // Mask out P/F: ctrl & ~0x10 = base control octet.
         byte uBase = (byte)(ctrl & 0xEF);
+        bool hasInfo = !frame.Info.IsEmpty;
         return uBase switch
         {
-            0x2F => new SabmReceived(frame),    // SABM
-            0x6F => new SabmeReceived(frame),   // SABME
-            0x43 => new DiscReceived(frame),    // DISC
-            0x63 => new UaReceived(frame),      // UA
-            0x0F => new DmReceived(frame),      // DM
+            // SABM/SABME/DISC/UA/DM carry no information field (§3.5; e.g. "an
+            // information field is not permitted in a DISC command frame"). One
+            // present — accepted only under a lenient parse — is the data-link
+            // "information not permitted in frame" error (DL-ERROR M), so the
+            // figc4.x error-input transition fires instead of the frame being
+            // silently processed as a plain SABM/UA/DM/etc.
+            0x2F => hasInfo ? new InfoNotPermittedInFrame() : new SabmReceived(frame),   // SABM
+            0x6F => hasInfo ? new InfoNotPermittedInFrame() : new SabmeReceived(frame),  // SABME
+            0x43 => hasInfo ? new InfoNotPermittedInFrame() : new DiscReceived(frame),   // DISC
+            0x63 => hasInfo ? new InfoNotPermittedInFrame() : new UaReceived(frame),     // UA
+            0x0F => hasInfo ? new InfoNotPermittedInFrame() : new DmReceived(frame),     // DM
+            // FRMR/XID/TEST/UI legitimately carry an information field.
             0x87 => new FrmrReceived(frame),    // FRMR
             0xAF => new XidReceived(frame),     // XID
             0xE3 => new TestReceived(frame),    // TEST

@@ -167,4 +167,55 @@ public class Ax25FrameClassifierTests
         Ax25Frame.TryParse(bytes, out var roundTripped).Should().BeTrue();
         Ax25FrameClassifier.Classify(roundTripped!).Should().BeOfType<SabmReceived>();
     }
+
+    // ─── Information not permitted in U/S frame (§3.5 / DL-ERROR M) ─────
+
+    private static byte[] WithTrailingInfo(Ax25Frame frame, params byte[] info) =>
+        frame.ToBytes().Concat(info).ToArray();
+
+    [Fact]
+    public void S_Frame_Carrying_An_Information_Field_Classifies_To_InfoNotPermitted()
+    {
+        // An RR with a trailing info field is malformed — S frames carry no info
+        // (§3.5). Strict rejects it at parse; Lenient lets it through to the
+        // data-link layer, where the classifier surfaces it as the "information
+        // not permitted in frame" error (DL-ERROR M) rather than a plain RR.
+        var bytes = WithTrailingInfo(Ax25Frame.Rr(Local, Remote, nr: 0, isCommand: false, pollFinal: false), 0x01, 0x02);
+
+        Ax25Frame.TryParse(bytes, Ax25ParseOptions.Strict, out _).Should().BeFalse("Strict rejects info on an S frame at decode");
+        Ax25Frame.TryParse(bytes, Ax25ParseOptions.Lenient, out var frame).Should().BeTrue("Lenient passes it through to the data-link machine");
+        Ax25FrameClassifier.Classify(frame!).Should().BeOfType<InfoNotPermittedInFrame>();
+    }
+
+    [Fact]
+    public void No_Info_U_Frame_Carrying_An_Information_Field_Classifies_To_InfoNotPermitted()
+    {
+        // SABM/SABME/DISC/UA/DM carry no info field; one present is DL-ERROR M.
+        foreach (var frame in new[]
+                 {
+                     Ax25Frame.Sabm(Local, Remote),
+                     Ax25Frame.Disc(Local, Remote),
+                     Ax25Frame.Ua(Local, Remote),
+                     Ax25Frame.Dm(Local, Remote),
+                 })
+        {
+            var bytes = WithTrailingInfo(frame, 0x99);
+            Ax25Frame.TryParse(bytes, Ax25ParseOptions.Lenient, out var parsed).Should().BeTrue();
+            Ax25FrameClassifier.Classify(parsed!).Should().BeOfType<InfoNotPermittedInFrame>(
+                $"a U-frame with control 0x{frame.Control:X2} carrying info is DL-ERROR M");
+        }
+    }
+
+    [Fact]
+    public void Info_Bearing_U_Frames_Are_Unaffected_By_The_Info_Check()
+    {
+        // FRMR/XID/TEST/UI legitimately carry an information field — the M check
+        // must not misfire on them (regression guard for the classifier change).
+        Ax25FrameClassifier.Classify(Ax25Frame.Frmr(Local, Remote, info: stackalloc byte[] { 0, 0, 0 }))
+            .Should().BeOfType<FrmrReceived>();
+        Ax25FrameClassifier.Classify(Ax25Frame.Test(Local, Remote, info: "echo"u8, isCommand: true))
+            .Should().BeOfType<TestReceived>();
+        Ax25FrameClassifier.Classify(Ax25Frame.Ui(Local, Remote, info: "hi"u8))
+            .Should().BeOfType<UiReceived>();
+    }
 }

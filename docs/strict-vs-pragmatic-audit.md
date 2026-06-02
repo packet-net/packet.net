@@ -40,7 +40,7 @@ should be tracked.
 
 | Location | What we accept | Strict spec says | Driver | Flag name | Default |
 |---|---|---|---|---|---|
-| `Ax25Frame.cs:344–348` `TryParse` else-branch | Capture trailing bytes as `Info` on **any** non-I/UI frame, including S frames | §3.5 "The Information Field follows the Control Field in I-frames, and the Control or PID field in UI, FRMR, XID and TEST frames." S frames are not in that list — they have no info field. | Defensive: corrupted S frames sometimes carry trailing bytes; FRMR/XID/TEST legitimately have info. Capturing-all sidesteps "which U-frame is allowed an info field" classification. | `AllowInfoOnSupervisoryFrames` | `true` |
+| `Ax25Frame.cs:344–348` `TryParse` else-branch | Capture trailing bytes as `Info` on **any** non-I/UI frame, including S frames | §3.5 "The Information Field follows the Control Field in I-frames, and the Control or PID field in UI, FRMR, XID and TEST frames." S frames are not in that list — they have no info field. | Defensive: corrupted S frames sometimes carry trailing bytes; FRMR/XID/TEST legitimately have info. Capturing-all sidesteps "which U-frame is allowed an info field" classification. **Note (2026-06-02):** accepting the info at parse no longer means silently processing the frame as valid — `Ax25FrameClassifier` now classifies an info-bearing S frame or no-info U frame (SABM/SABME/DISC/UA/DM) as `InfoNotPermittedInFrame` (DL-ERROR M), so the figc4.x "information not permitted" error-input transition fires at the data-link layer. Strict still rejects the frame outright at decode. | `AllowInfoOnSupervisoryFrames` | `true` |
 
 ### Spec interpretations (not pragmatic)
 

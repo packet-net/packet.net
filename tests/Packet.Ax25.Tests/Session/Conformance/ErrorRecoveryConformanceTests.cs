@@ -136,4 +136,27 @@ public class ErrorRecoveryConformanceTests
         h.A.State.Should().Be("Disconnected", "DM in TimerRecovery also tears the connection down");
         h.A.Signals.OfType<DataLinkDisconnectIndication>().Should().NotBeEmpty();
     }
+
+    // ─── Information not permitted (DL-ERROR M) over the wire ───────────
+
+    [Fact]
+    public void Info_bearing_supervisory_frame_in_Connected_is_info_not_permitted_and_reestablishes()
+    {
+        var h = TwoStationHarness.Build(k: 4);
+        h.Connect();
+
+        // A bare DM tears the link down (t20). A DM *carrying an information field*
+        // is instead the "information not permitted in frame" error (DL-ERROR M) —
+        // the classifier surfaces InfoNotPermittedInFrame, and figc4.4
+        // t10_info_not_permitted_in_frame (mod-8) runs Establish_Data_Link → a
+        // fresh SABM → re-establishment. Same frame type, opposite outcome, decided
+        // purely by the forbidden info field: end-to-end proof the M detection fires
+        // through the real codec + classifier + dispatcher on the wire.
+        var dmWithInfo = DmTo(h.A).Concat(new byte[] { 0xDE, 0xAD }).ToArray();
+        h.InjectFrameBytes(h.A, dmWithInfo);
+
+        SawSabmFrom(h.B).Should().BeTrue("info-not-permitted in Connected re-establishes via a fresh SABM, not a teardown");
+        h.A.State.Should().Be("Connected", "the link re-establishes (contrast a bare DM, which disconnects)");
+        h.B.State.Should().Be("Connected");
+    }
 }
