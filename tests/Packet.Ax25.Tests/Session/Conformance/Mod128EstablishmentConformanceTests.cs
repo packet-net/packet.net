@@ -114,42 +114,35 @@ public class Mod128EstablishmentConformanceTests
         h.B.Context.IsExtended.Should().BeTrue();
     }
 
-    /// <summary>3 — a pre-v2.2 peer answers a SABME with FRMR (§975). figc4.6
-    /// t14_frmr_received sets Version 2.0, re-establishes the data link, and falls
-    /// back to the mod-8 AwaitingConnection state. The redirect this V2 work adds is
-    /// what makes this handler reachable in the first place — figc4.2's
-    /// AwaitingConnection (where a mod-128 connect used to land) has no FRMR handler
-    /// at all, so the §975 fallback could never fire.</summary>
+    /// <summary>3 — a pre-v2.2 peer answers a SABME with FRMR (§975): the initiator
+    /// falls back to v2.0 and re-establishes with a <b>SABM</b>, completing a mod-8
+    /// connection. figc4.6 t14_frmr_received forces Version 2.0 and re-establishes;
+    /// the #44 redirect is what makes that handler reachable (figc4.2's
+    /// AwaitingConnection, where a mod-128 connect used to land, has no FRMR handler
+    /// at all). The re-establish-as-SABM half depends on the second fix below.</summary>
     /// <remarks>
-    /// FINDING (out of scope for V2 — flagged, not fixed): figc4.6 t14 lists
-    /// <c>Establish Data Link</c> BEFORE <c>Set Version 2.0</c> (confirmed in the
-    /// authoritative awaiting_v22_connection.sdl.yaml). Because the figc4.7
-    /// <c>Establish_Data_Link</c> subroutine branches on <c>mod_128</c>, the
-    /// re-establish frame is emitted while the link is STILL extended — so the
-    /// §975 fallback re-sends a <b>SABME</b>, not a SABM, before flipping to v2.0.
-    /// Against a real v2.0-only peer that would just FRMR/DM again; against a v2.2
-    /// peer it produces a modulo split (initiator mod-8, responder mod-128).
-    /// direwolf's author independently corrected exactly this: <c>ax25_link.c</c>
-    /// <c>frmr_frame</c> case state_5 runs <c>set_version_2_0</c> ("Need to force
-    /// v2.0. This is not in flow chart") BEFORE <c>establish_data_link</c>, so its
-    /// re-establish is a SABM. That is a SECOND figc4.6 figure defect (action
-    /// ordering), distinct from the figc4.2 routing defect this PR fixes; it wants
-    /// its own ax25spec issue + quirk. To keep this test scoped to the routing fix,
-    /// we drop the re-establish frame so the initiator parks cleanly in
-    /// AwaitingConnection and we assert only the in-scope effects (FRMR handled,
-    /// version forced to 2.0, routed to the mod-8 state).
+    /// figc4.6 t14 draws <c>Establish Data Link</c> BEFORE <c>Set Version 2.0</c>
+    /// (confirmed in awaiting_v22_connection.sdl.yaml). Because figc4.7
+    /// <c>Establish_Data_Link</c> branches on <c>mod_128</c>, the figure as drawn
+    /// re-establishes with a <b>SABME</b> while still extended — useless against the
+    /// pre-v2.2 peer that just FRMR'd. <see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>
+    /// (default on; ax25spec#45) forces Version 2.0 before the t14 actions run, so the
+    /// re-establish is a SABM — matching direwolf's <c>frmr_frame</c> case state_5,
+    /// which runs <c>set_version_2_0</c> ("Erratum: Need to force v2.0. This is not in
+    /// flow chart") before <c>establish_data_link</c>. This test therefore drops only
+    /// the initiator's SABME (so the v2.2 peer never adopts mod-128) and lets the SABM
+    /// re-establish through, asserting the complete v2.0 fallback.
     /// </remarks>
     [Fact]
-    public void FRMR_to_a_SABME_falls_back_to_v20_and_routes_to_AwaitingConnection()
+    public void FRMR_to_a_SABME_falls_back_to_v20_and_reestablishes_with_SABM()
     {
         var h = TwoStationHarness.Build(extended: true, k: 8);
 
-        // Model a v2.0-only peer: swallow every establishment frame from the
-        // initiator (both the original SABME and — per the finding above — the
-        // SABME the fallback re-sends) so the harness peer never auto-answers and
-        // the initiator parks where the figc4.6 fallback leaves it. We inject the
-        // FRMR the legacy peer would have sent.
-        h.Link.Drop = f => (IsSabme(f) || IsSabm(f)) && f.Source.Callsign.Equals(h.A.Context.Local);
+        // Drop only the initiator's SABME, so the v2.2 peer never sees it (never
+        // adopts mod-128); the SABM the fallback re-establishes with passes through
+        // and completes a mod-8 connection. We inject the FRMR a pre-v2.2 peer would
+        // have sent in response to that (dropped-here) SABME.
+        h.Link.Drop = f => IsSabme(f) && f.Source.Callsign.Equals(h.A.Context.Local);
 
         h.A.Session.PostEvent(new DlConnectRequest());
         h.Settle();
@@ -161,10 +154,16 @@ public class Mod128EstablishmentConformanceTests
             Ax25Frame.Frmr(h.A.Context.Local, h.A.Context.Remote, info: stackalloc byte[] { 0x00, 0x00, 0x00 })));
 
         h.FiredTransitions.Should().Contain(("AwaitingV22Connection", "t14_frmr_received"),
-            "the FRMR runs the figc4.6 §975 fallback transition — reachable only because the redirect parked the connect here");
-        h.A.Context.IsExtended.Should().BeFalse("the FRMR fallback forces Version 2.0 (mod-8)");
-        h.A.State.Should().Be("AwaitingConnection",
-            "the §975 fallback drops out of the v2.2 establishment state to the mod-8 one, where a v2.0 SABM connect proceeds");
+            "the FRMR runs the figc4.6 §975 fallback transition — reachable only because the #44 redirect parked the connect here");
+        // ax25spec#45 fix: Version 2.0 forced before Establish, so the re-establish is a SABM.
+        h.B.ReceivedFromPeer.Should().Contain(f => IsSabm(f),
+            "the fallback re-establishes with SABM (v2.0), not SABME — ax25spec#45");
+        h.B.ReceivedFromPeer.Should().NotContain(f => IsSabme(f),
+            "no SABME reaches the peer: the initial one was dropped and the re-establish is a SABM");
+        h.A.Context.IsExtended.Should().BeFalse("fell back to mod-8");
+        h.A.State.Should().Be("Connected", "the v2.0 SABM re-establish completed the connection");
+        h.B.State.Should().Be("Connected");
+        h.B.Context.IsExtended.Should().BeFalse("the peer adopted mod-8 from the SABM (figc4.1 SABM-received → Set Version 2.0)");
     }
 
     /// <summary>4 — a not-capable peer answers a SABME with DM (§975 DM case).

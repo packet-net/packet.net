@@ -215,6 +215,7 @@ public sealed class Ax25Session
             try
             {
                 var tx = new TransitionContext(Context, scheduler, evt);
+                ApplyPreExecutionQuirks(match);
                 SdlLoopExecutor.Execute(match.Actions, match.Loops, dispatcher, guards, tx);
                 CurrentState = ResolveNextState(match);
             }
@@ -278,6 +279,36 @@ public sealed class Ax25Session
         }
 
         return match.Next;
+    }
+
+    /// <summary>
+    /// Apply quirks that must take effect <em>before</em> a transition's actions
+    /// run. Currently just the figc4.6 t14 FRMR-fallback ordering fix
+    /// (<see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>).
+    /// </summary>
+    /// <remarks>
+    /// figc4.6's <c>FRMR received</c> handler (t14) draws <c>Establish Data Link</c>
+    /// <em>before</em> <c>Set Version 2.0</c>. <c>Establish_Data_Link</c> (figc4.7)
+    /// branches on <c>mod_128</c>, so while the link is still extended the §975 v2.0
+    /// fallback re-establishes with a <i>SABME</i> — the opposite of what a FRMR
+    /// (which only a pre-v2.2 peer sends) calls for. Forcing version 2.0
+    /// (<c>IsExtended=false</c>) up front — before the actions — makes
+    /// <c>Establish_Data_Link</c> emit a <i>SABM</i>; the figure's later
+    /// <c>Set Version 2.0</c> action then re-applies it as a no-op. This mirrors
+    /// direwolf's FRMR handler, which calls <c>set_version_2_0</c> before
+    /// <c>establish_data_link</c> ("Erratum: Need to force v2.0. This is not in flow
+    /// chart."). Scoped to the <c>AwaitingV22Connection</c> <c>FRMR_received</c>
+    /// transition; inert otherwise.
+    /// </remarks>
+    private void ApplyPreExecutionQuirks(TransitionSpec match)
+    {
+        if (Context.Quirks.Ax25Spec45FrmrFallbackReestablishesV20
+            && Context.IsExtended
+            && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal)
+            && string.Equals(match.On, "FRMR_received", StringComparison.Ordinal))
+        {
+            Context.IsExtended = false;
+        }
     }
 
     // Loop expansion (SDL loop_while, Packet.Ax25.Sdl 0.7.0+) lives in

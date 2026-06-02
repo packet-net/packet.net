@@ -182,9 +182,7 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec43DlFlowOffEntersBusy { get; init; } = true;
 
     /// <summary>
-    /// Work around <c>packethacking/ax25spec#&lt;TODO&gt;</c> (issue not yet filed —
-    /// see the PR's "Prepared upstream issue" section; substitute the real number
-    /// here and in the flag name once filed): figc4.2 routes the <c>Disconnected</c>
+    /// Work around <c>packethacking/ax25spec#44</c>: figc4.1/figc4.2 route the <c>Disconnected</c>
     /// <c>DL-CONNECT request</c> path <i>unconditionally</i> to
     /// <c>"1 Awaiting Connection"</c> — <c>Establish Data Link</c> &#8594;
     /// <c>Set Layer 3 Initiated</c> &#8594; <b>Awaiting Connection</b> — with <b>no
@@ -235,6 +233,32 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec44Mod128ConnectRoutesToV22 { get; init; } = true;
 
     /// <summary>
+    /// Work around <c>packethacking/ax25spec#45</c>: figc4.6's <c>FRMR received</c>
+    /// handler (t14) draws <c>Establish Data Link</c> <i>before</i>
+    /// <c>Set Version 2.0</c>. <c>Establish_Data_Link</c> (figc4.7) branches on
+    /// <c>mod_128</c>, so while the link is still extended the §975 v2.0 fallback
+    /// re-establishes with a <b>SABME</b> — but a FRMR (which only a pre-v2.2 peer
+    /// sends) is precisely the signal to drop to v2.0/SABM. So the fallback as drawn
+    /// fails against a real v2.0 peer (it re-sends SABME → another FRMR/DM) and
+    /// produces a modulo split against a v2.2 peer (re-establish SABME, but the
+    /// initiator proceeds mod-8 via the later <c>Set Version 2.0</c>).
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c> (default), the <c>AwaitingV22Connection</c>
+    /// <c>FRMR_received</c> transition forces version 2.0 (<c>IsExtended=false</c>)
+    /// <i>before</i> its actions run (in <see cref="Ax25Session"/>'s dispatch path),
+    /// so <c>Establish_Data_Link</c> emits a <b>SABM</b> and the fallback genuinely
+    /// re-establishes as v2.0; the figure's own later <c>Set Version 2.0</c> is then
+    /// a no-op. When <c>false</c>, the figure runs as drawn (re-establish SABME).
+    /// De-facto corroboration: direwolf's FRMR handler calls <c>set_version_2_0</c>
+    /// before <c>establish_data_link</c> ("Erratum: Need to force v2.0. This is not
+    /// in flow chart." — <c>ax25_link.c</c>, state_5 ~L234). Only meaningful once
+    /// <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/> makes figc4.6 reachable by an
+    /// initiator. Delete once ax25sdl ships a figc4.6 t14 with the actions reordered.
+    /// </remarks>
+    public bool Ax25Spec45FrmrFallbackReestablishesV20 { get; init; } = true;
+
+    /// <summary>
     /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
     /// what a session uses unless explicitly configured otherwise.
     /// </summary>
@@ -253,5 +277,6 @@ public sealed record Ax25SessionQuirks
         Ax25Spec42SrejTargetsGap = false,
         Ax25Spec43DlFlowOffEntersBusy = false,
         Ax25Spec44Mod128ConnectRoutesToV22 = false,
+        Ax25Spec45FrmrFallbackReestablishesV20 = false,
     };
 }
