@@ -18,7 +18,8 @@ public class SegmenterTests
     [InlineData(255)]     // exactly one segment, payload fills info field
     [InlineData(256)]     // overflows into a 2nd segment by 1 byte
     [InlineData(1500)]    // Phase 2 exit criterion size
-    [InlineData(16320)]   // exactly MaxSegments × (N1-1) bytes at N1=256
+    [InlineData(16320)]   // 64 segments at N1=256 (mid-range)
+    [InlineData(32640)]   // exactly MaxSegments (128) × (N1-1=255) bytes at N1=256 — the 7-bit boundary
     public void Roundtrip_Through_Segmenter_And_Reassembler_Recovers_Original(int payloadSize)
     {
         var payload = new byte[payloadSize];
@@ -55,9 +56,9 @@ public class SegmenterTests
     [Fact]
     public void Segment_Throws_If_Payload_Exceeds_Capacity()
     {
-        // MaxSegments (64) × (N1-1=255) = 16320 is the limit; one more byte overflows.
-        var act = () => Segmenter.Segment(new byte[16321], maxInfoFieldBytes: 256);
-        act.Should().Throw<ArgumentException>().WithMessage("*64*");
+        // MaxSegments (128) × (N1-1=255) = 32640 is the limit; one more byte overflows.
+        var act = () => Segmenter.Segment(new byte[32641], maxInfoFieldBytes: 256);
+        act.Should().Throw<ArgumentException>().WithMessage("*128*");
     }
 
     [Fact]

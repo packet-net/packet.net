@@ -870,6 +870,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-06-03 — Fix: Segmenter uses 7-bit segment count per Figure 6.2 (was 6-bit)
+
+Resolves the fidelity flag raised by the V4 work. The standalone `Segmenter`/`Reassembler` (plan §5.2) modelled the segment-control byte's remaining-count field as **6 bits** (`CountMask=0x3F`, bit 6 "unused", `MaxSegments=64`), but AX.25 v2.2 **Figure 6.2** draws the octet as `FXXXXXXX` with value `F*128+X` — i.e. X is the full **7-bit** count (bits 6:0), so a payload may span up to **128** segments. De-facto corroboration: direwolf masks the reassembly count with `0x7f` (`ax25_link.c` lines ~2020/2053/2064) and its header comment says "in lower 7 bits, means … more segments to follow." Both spec and de-facto agree it's 7-bit. Fix is `CountMask 0x3F→0x7F`, `MaxSegments 64→128`, and the doc; `SegmenterTests` gains the 32 640-byte (128-segment) boundary case and its overflow-throws case moves to 32 641 (`*128*`). Wire-compatible with prior output for ≤64-segment payloads (bit 6 was 0 there anyway); the fix matters for >63-remaining counts (large payloads) and for receiving them from a spec-correct peer — relevant to V5 segmentation interop vs LinBPQ/direwolf. 829 Ax25 pass.
+
 ### 2026-06-03 — v2.2 arc V4: SREJ(mod-128) + segmentation integration
 
 Fourth leg of the §5.Z v2.2 completion arc, in two parts.
