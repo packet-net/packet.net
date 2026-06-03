@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AwesomeAssertions;
 using Packet.Ax25.Session;
 using Packet.Core;
@@ -170,5 +171,86 @@ public class Ax25ListenerSegmentationTests
 
         var act = () => listener.SendData(alienSession, new byte[10]);
         act.Should().Throw<ArgumentException>().WithMessage("*not owned by this listener*");
+    }
+
+    /// <summary>
+    /// Accept an inbound SABM and return the Connected session, additionally
+    /// wiring a DL-DATA-indication observer onto the session's signal stream
+    /// (before any events flow) so the test can see exactly what the receive-side
+    /// segmentation seam delivers upward.
+    /// </summary>
+    private static async Task<(Ax25Listener Listener, LoopbackModem Modem, Ax25Session Session,
+        ConcurrentQueue<DataLinkDataIndication> Delivered)>
+        AcceptedSessionObservingData(Action<Ax25SessionContext> configure)
+    {
+        var delivered = new ConcurrentQueue<DataLinkDataIndication>();
+        var modem = new LoopbackModem();
+        var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            ConfigureSession = s =>
+            {
+                configure(s.Context);
+                s.DataLinkSignalEmitted += (_, sig) =>
+                {
+                    if (sig is DataLinkDataIndication d) delivered.Enqueue(d);
+                };
+            },
+        });
+
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
+
+        await listener.StartAsync();
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCall));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));   // the UA
+        session.CurrentState.Should().Be("Connected");
+        return (listener, modem, session, delivered);
+    }
+
+    /// <summary>
+    /// The receive-path hardening (FINDINGS.md 2026-06-03): a malformed PID-0x08
+    /// segment arriving off the wire through the real <see cref="Ax25Listener"/>
+    /// pump is dropped cleanly at the <see cref="SegmentationLayer"/> seam — no
+    /// DL-DATA indication surfaces, the pump survives, and (the reset half) a valid
+    /// segmented series delivered immediately afterwards still reassembles intact.
+    /// This proves the fix does not lean on the listener's inbound catch-all.
+    /// </summary>
+    [Fact]
+    public async Task Receive_drops_a_malformed_segment_off_the_wire_then_reassembles_a_following_valid_series()
+    {
+        var (listener, modem, _, delivered) = await AcceptedSessionObservingData(ctx =>
+        {
+            ctx.N1 = 16;
+            ctx.SegmenterReassemblerEnabled = true;
+            ctx.Quirks = Ax25SessionQuirks.StrictlyFaithful;   // figure-literal: no inner-PID octet
+        });
+        await using var _ = listener;
+
+        // A malformed segment off the wire: a non-First (First bit clear) segment
+        // with no in-progress series. Carried as a normal I-frame, PID 0x08, N(S)=0.
+        // The I-frame is sequence-valid (so V(R) advances), but its info field is a
+        // protocol-violating segment — it must be dropped at the seam, delivering
+        // nothing upward, without throwing through the pump.
+        modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 0,
+            info: new byte[] { 0x05, 0xAA, 0xBB }, pid: Ax25Frame.PidSegmented));
+
+        // A valid single-segment series immediately afterwards (N(S)=1): First bit
+        // set, remaining 0, one data byte 0x42. If the malformed segment had
+        // poisoned the reassembler — or thrown through the pump and wedged it —
+        // this would not reassemble.
+        modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 1,
+            info: new byte[] { Segmenter.FirstBit | 0, 0x42 }, pid: Ax25Frame.PidSegmented));
+
+        await ListenerTestSupport.WaitFor(() => !delivered.IsEmpty, TimeSpan.FromSeconds(2),
+            "the valid series after the dropped malformed segment must reassemble and surface");
+
+        delivered.Should().HaveCount(1,
+            "only the valid series is delivered — the malformed segment surfaced nothing");
+        delivered.TryPeek(out var ind).Should().BeTrue();
+        ind!.Info.ToArray().Should().Equal(new byte[] { 0x42 },
+            "the reassembled payload is exactly the valid series' data — no leakage from the malformed one");
+        ind.Pid.Should().Be(SegmentationLayer.FigureLiteralReassembledPid);
     }
 }

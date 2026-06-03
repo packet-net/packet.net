@@ -150,9 +150,35 @@ public sealed class SegmentationLayer
     /// <item>Otherwise return the indication unchanged (pass-through).</item>
     /// </list>
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Malformed / protocol-violating segments are dropped cleanly at this
+    /// seam.</b> The wire is untrusted: a hostile peer or RF corruption can deliver
+    /// a PID-0x08 indication that is empty, a non-First segment with no prior First,
+    /// an inner-PID First missing its PID octet, or an out-of-sequence continuation.
+    /// <see cref="Reassembler.Push"/> rejects each of these by throwing
+    /// (its strict, documented contract — see <see cref="Reassembler"/>). This
+    /// boundary process is the right place to turn that strict contract into a
+    /// graceful drop: it catches the documented
+    /// <see cref="ArgumentException"/> / <see cref="InvalidOperationException"/>,
+    /// <b>resets any in-progress reassembly</b> (so a corrupt series can't poison
+    /// the next valid one), and returns <c>null</c> — the same "nothing to deliver
+    /// yet" signal as a legitimate mid-series segment. Nothing propagates to the
+    /// caller and nothing relies on <see cref="Ax25Listener"/>'s inbound catch-all.
+    /// This matches the §6.6 / Fig C5.2 reassembler treating a bad segment as a
+    /// discardable error, and Dire Wolf (the only known v2.2 segmenter), whose
+    /// reassembler logs a "Reassembler Protocol Error" and drops.
+    /// </para>
+    /// <para>
+    /// The low-level <see cref="Reassembler.Push"/> contract is deliberately
+    /// <i>unchanged</i> — direct callers still get the strict throw; only this
+    /// wire-facing seam softens it to a drop.
+    /// </para>
+    /// </remarks>
     /// <param name="indication">The indication the session raised.</param>
     /// <returns>The indication to deliver upward, or <c>null</c> when a
-    /// segment was consumed but the series is incomplete.</returns>
+    /// segment was consumed but the series is incomplete — or when a malformed
+    /// segment was dropped (and the reassembler reset).</returns>
     public DataLinkDataIndication? OnDataIndication(DataLinkDataIndication indication)
     {
         ArgumentNullException.ThrowIfNull(indication);
@@ -167,7 +193,23 @@ public sealed class SegmentationLayer
         // a ConfigureSession hook that ran after this shim was constructed).
         reassembler ??= new Reassembler(expectInnerPid: InnerPidFormat);
 
-        var completed = reassembler.Push(indication.Info.Span);
+        byte[]? completed;
+        try
+        {
+            completed = reassembler.Push(indication.Info.Span);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            // Malformed / protocol-violating segment off the wire. Drop it cleanly
+            // and discard any partially-accumulated series so a corrupt run can't
+            // poison the next valid one — the dropped reassembler is replaced lazily
+            // on the next segment, back in the "waiting for a First" state. We
+            // swallow *only* Push's two documented contract exceptions; any other
+            // (crash-class) exception would be a genuine bug and is left to surface.
+            reassembler = null;
+            return null;
+        }
+
         if (completed is null) return null;   // mid-series segment — nothing to deliver yet
 
         // With the inner-PID quirk on, the reassembler recovered the original L3
