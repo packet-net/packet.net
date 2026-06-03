@@ -288,6 +288,26 @@ public sealed class TwoStationHarness
         if (CheckAfterEachStep) CheckInvariants();
     }
 
+    /// <summary>Submit a back-to-back BURST of one-byte payloads at
+    /// <paramref name="from"/> for its peer, settling only once at the end so every
+    /// frame is in flight together (V(S) advances across the whole burst before any
+    /// ack returns). This is the regime the per-frame <see cref="Submit"/> never
+    /// reaches — it pumps to quiescence after each frame, serialising the transfer —
+    /// and it is what surfaces the mod-8 SREJ sequence-ring-wrap bug: only when ≥ k
+    /// frames fly together does N(S) wrap mid-recovery and a stale retransmit alias
+    /// an already-delivered number. Each payload is recorded as its own logical
+    /// submission so the convergence oracle expects one delivery per byte.</summary>
+    public void SubmitBurst(Endpoint from, params byte[] payloads)
+    {
+        foreach (var b in payloads)
+        {
+            from.Submitted.Add(new[] { b });
+            from.Session.PostEvent(new DlDataRequest(new[] { b }));
+        }
+        PumpToQuiescence();
+        if (CheckAfterEachStep) CheckInvariants();
+    }
+
     /// <summary>Submit one (possibly &gt; N1) upper-layer payload through the §6.6
     /// segmentation shim at <paramref name="from"/>, carrying Layer-3 PID
     /// <paramref name="pid"/>. Records the WHOLE payload as a single logical
