@@ -26,13 +26,20 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// ones does the real runtime actually run when driven through realistic traffic?
 /// The battery runs both mod-8 and mod-128 (extended) scenarios — bidirectional
 /// data incl. a 127→0 window-wrap, REJ/SREJ loss recovery, RNR flow, T3 keepalive,
-/// the TimerRecovery receive columns by frame-injection, XID negotiation, and
-/// segmentation over a mod-128 link. The miss-list (written to test output) is the
-/// map of where behavioural coverage still has gaps — most remaining misses are
-/// genuinely unreachable end-to-end (documented in plan §17: the never-produced
-/// error inputs t07/t08/t09-class, the N(R)-out-of-window collision/re-establish
-/// branches, the responder-never-parks-here AwaitingV22Connection branches), the
-/// rest are future scenario work.
+/// the full Connected / TimerRecovery / establishment / release receive columns by
+/// frame-injection (every command-vs-response × P/F × N(R)-window arm, both moduli),
+/// the figc-input error/catch-all columns by direct event injection, XID
+/// negotiation, and segmentation over a mod-128 link. After the W3 coverage
+/// campaign the battery exercises 238/250 transitions — every one that is reachable
+/// end-to-end. The remaining 12 are genuinely unreachable through this runtime and
+/// are documented at the foot of the battery (block 41) with the exact mechanism
+/// for each: the IFramePopsOffQueue branches the queue-drain synthesiser cannot emit
+/// (it only pops in Connected/TimerRecovery, and only when the peer is not busy, the
+/// window is not full, and — in TimerRecovery — T1 is running, which it always is
+/// there) and the layer_3_initiated=No data arms of the initiator-only establishment
+/// states (the responder goes straight Disconnected→Connected on SABM/SABME and
+/// never parks there). The miss-list (written to test output) is the live map of
+/// that residue.
 /// </remarks>
 public class TransitionCoverageTests
 {
@@ -78,25 +85,34 @@ public class TransitionCoverageTests
 
         // ── Assert: each reachable state is behaviourally exercised (a curated,
         // robust must-hit — confirmed-fired ids the battery is built to drive).
-        // AwaitingV22Connection is driven extensively since v2.2 arc V5a (the
-        // Ax25Spec44 redirect routes a mod-128 connect through figc4.6, and the
-        // extended-mode battery walks its receive + catch-all columns): now 20/25
-        // — the residual 5 misses are the never-produced error inputs (t08/t09)
-        // and the not-layer-3-initiated branches (t04_no / t05; the responder
-        // never parks here, it goes straight Disconnected→Connected on SABME),
-        // the same hard-to-reach classes as the other states. The MDL
-        // (management_data_link) machine is now on the ledger too (Ready /
-        // Negotiating, both fully exercised). See the report + §17. ──
+        // The W3 lift (this PR) walks every REACHABLE receive / primitive /
+        // catch-all column across all six data-link states, both moduli, so
+        // Disconnected and AwaitingRelease are now fully exercised (17/17, 20/20),
+        // AwaitingConnection / AwaitingV22Connection sit at 22/25 (only the
+        // genuinely-unreachable residue left — see block 41), Connected at 64/66
+        // and TimerRecovery at 86/90 (each minus the unreachable IFramePopsOffQueue
+        // / T1-not-running branches). The MDL (management_data_link) machine is on
+        // the ledger too (Ready / Negotiating, both fully exercised). See the
+        // report, block 41, and §17. The must-hit below is a representative,
+        // deterministically-driven slice across that whole space (it does NOT list
+        // every covered id — the floor below guards the total). ──
         (string State, string Id)[] mustHit =
         {
             ("Disconnected",          "t03_dl_connect_request"),    // A initiates a connect
             ("Disconnected",          "t13_sabm_received_yes"),      // B accepts an incoming SABM
+            ("Disconnected",          "t13_sabm_received_no"),       // W3: SABM refused (able_to_establish=No) → DM
+            ("Disconnected",          "t05_all_other_commands"),     // W3: stray command at a sessionless station → DM
+            ("Disconnected",          "t11_ui_received_yes"),        // W3: UI with P=1
             ("AwaitingConnection",    "t04_ua_received_yes_yes"),    // connect completes
+            ("AwaitingConnection",    "t04_ua_received_no"),         // W3: UA with F=0 → DL-ERROR D
+            ("AwaitingConnection",    "t16_sabm_received"),          // W3: SABM collision while connecting
+            ("AwaitingConnection",    "t17_sabme_received"),         // W3: SABME arrives → AwaitingV22Connection
             ("AwaitingV22Connection", "t12_ua_received_yes_yes"),    // mod-128 connect completes (figc4.6)
             ("AwaitingV22Connection", "t13_t1_expiry_no"),           // lost SABME retried as SABME
             ("AwaitingV22Connection", "t14_frmr_received"),          // §975 v2.0 fallback
             ("AwaitingV22Connection", "t11_dm_received_yes"),        // §975 DM teardown
             ("AwaitingV22Connection", "t07_control_field_error"),    // V5a: malformed frame while v2.2-pending
+            ("AwaitingV22Connection", "t08_info_not_permitted_in_frame"),       // W3: info-not-permitted while v2.2-pending
             ("AwaitingV22Connection", "t06_all_other_primitives__from_upper_layer"), // V5a: catch-all upper
             ("AwaitingV22Connection", "t18_all_other_primitives__from_lower_layer"), // V5a: catch-all lower
             ("Connected",             "t02_dl_data_request"),        // upper layer sends data
@@ -105,13 +121,25 @@ public class TransitionCoverageTests
             ("Connected",             "t16_frmr_received_yes"),      // V5a: extended-link FRMR → re-establish (v2.2 branch)
             ("Connected",             "t18_ui_received_yes"),        // V5a: connectionless UI on an established link
             ("Connected",             "t26_i_received_yes_no_yes"),  // V5a: over-N1 I-frame (info too long, v2.2 branch)
+            ("Connected",             "t26_i_received_no"),          // W3: I arriving as a response (command=No) error column
+            ("Connected",             "t21_rr_received_no_no"),      // W3: mod-8 RR N(R)-out-of-window → re-establish (v2.0)
+            ("Connected",             "t07_dl_connect_request_no"),  // W3: redundant connect on a v2.0 link
+            ("Connected",             "t26_i_received_yes_yes_yes_yes_yes"), // W3: in-seq I while own-busy, P=1
             ("AwaitingRelease",       "t03_ua_received_yes"),         // disconnect completes
+            ("AwaitingRelease",       "t02_t1_expiry_yes"),          // W3: DISC retried to N2 exhaustion → Disconnected
+            ("AwaitingRelease",       "t15_i_or_s_command_received_yes"), // W3: grouped I/S-command column, P=1
+            ("AwaitingRelease",       "t13_dm_received_no"),         // W3: DM with F=0 → stay
             ("TimerRecovery",         "t15_frmr_received"),           // FRMR during recovery
             ("TimerRecovery",         "t18_rr_received_yes_yes_yes"), // V5a: poll/final RR completes mod-128 recovery
             ("TimerRecovery",         "t24_srej_received_yes_yes_yes_yes"), // V5a: SREJ selective recovery (7-bit)
             ("TimerRecovery",         "t12_dm_received"),            // V5a: DM teardown while recovering
             ("TimerRecovery",         "t20_lm_seize_confirm_yes"),   // V5a: LM-SEIZE-confirm with ack pending
             ("TimerRecovery",         "t14_sabme_received_no"),      // V5a: SABME collision while recovering
+            ("TimerRecovery",         "t22_i_received_no"),          // W3: I arriving as a response (command=No) while recovering
+            ("TimerRecovery",         "t18_rr_received_yes_no_no"),  // W3: RR response F=1, N(R)-out-of-window, mod-8 → re-establish
+            ("TimerRecovery",         "t23_rej_received_yes_yes_yes"), // W3: REJ response F=1 completes recovery
+            ("TimerRecovery",         "t13_sabm_received_no"),       // W3: SABM collision (V(s)≠V(a)) → resync to Connected
+            ("TimerRecovery",         "t21_t1_expiry_yes_yes_no"),   // W3: idle recovery N2 exhaustion, peer not busy → Disconnected
             // MDL (management_data_link) — XID negotiation FSM, on the ledger via V5a.
             ("Ready",                 "t01_mdl_negotiate_request"),  // XID command sent on a v2.2 connect
             ("Negotiating",           "t01_xid_response_received_yes"), // negotiation completes (F=1)
@@ -131,8 +159,21 @@ public class TransitionCoverageTests
         // 21 → 38, TimerRecovery 6 → 40, AwaitingV22Connection 15 → 20, plus the
         // MDL Ready 2/2 + Negotiating 5/5). The denominator grew 243 → 250 when the
         // MDL machine joined the tracked set.
-        hit.Should().BeGreaterThanOrEqualTo(122,
-            "the scenario battery should behaviourally exercise a substantial share of the 250 transitions; " +
+        //
+        // Then 122 → 238 (W3 test-coverage campaign, this PR): the battery now
+        // drives every REACHABLE receive / primitive / catch-all column across all
+        // six data-link states at both moduli — Disconnected 7 → 17 (full),
+        // AwaitingConnection 9 → 22, AwaitingV22Connection 20 → 22, Connected
+        // 38 → 64, AwaitingRelease 6 → 20 (full), TimerRecovery 40 → 86. The 12
+        // still-uncovered transitions are GENUINELY unreachable end-to-end through
+        // this runtime (documented in block 41 with the exact mechanism for each):
+        // the IFramePopsOffQueue branches the synthesiser can't emit (no pop outside
+        // Connected/TimerRecovery; no pop when peer-busy / window-full / T1-stopped),
+        // and the layer_3_initiated=No data arms of the initiator-only establishment
+        // states. 238 + those 12 = 250, i.e. full coverage of the reachable set.
+        hit.Should().BeGreaterThanOrEqualTo(238,
+            "the scenario battery should behaviourally exercise every reachable one of the 250 transitions " +
+            "(the 12 remaining are documented-unreachable in block 41); " +
             "if this drops, a scenario regressed or a path stopped being reached");
     }
 
@@ -801,6 +842,455 @@ public class TransitionCoverageTests
             Collect(h);
         }
 
+        // ──────────────────────────────────────────────────────────────────
+        // Workstream-3 lift — drive the remaining REACHABLE receive / primitive
+        // / catch-all columns across every state, by the same injection idiom
+        // the blocks above already use (raw-frame injection for receive columns,
+        // direct event injection for the figc-input columns the listener/codec
+        // synthesises: ControlFieldError, InfoNotPermittedInFrame,
+        // UOrSFrameLengthError, AllOtherCommands, IOrSCommandReceived, the two
+        // AllOtherPrimitives). The genuinely-unreachable residue is documented at
+        // the foot of this method (block 41) rather than forced.
+        // ──────────────────────────────────────────────────────────────────
+
+        // 29. Disconnected (figc4.1) receive + primitive + catch-all columns.
+        // 29a. Primitives + catch-alls that all keep a session-less station parked.
+        {
+            var h = New();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.A.Session.PostEvent(new DlDisconnectRequest());                       // t01 → DL-DISCONNECT confirm
+            h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));      // t02 → UI command
+            h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());         // t04 — catch-all upper
+            h.Settle();
+            h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());                 // t06 — catch-all lower
+            h.Inject(h.A, new ControlFieldError());                               // t07 — control-field error
+            h.Inject(h.A, new UOrSFrameLengthError());                            // t09 — U/S length error
+            h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "p"u8, pollFinal: true).ToBytes()); // t11_ui_received_yes
+            // t05 all_other_commands: the listener reclassifies an RR/I/FRMR/… that
+            // arrives at a disconnected station into AllOtherCommands → DM.
+            h.Inject(h.A, new AllOtherCommands(Ax25Frame.Rr(la, re, 0, isCommand: true, pollFinal: true)));
+            Collect(h);
+        }
+        // 29b. SABM / SABME arriving when the node won't accept (able_to_establish=No
+        // → DM): t13_sabm_received_no, t14_sabme_received_no.
+        {
+            var h = New();
+            h.A.Context.AcceptIncoming = false;
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.InjectFrameBytes(h.A, Ax25Frame.Sabm(la, re).ToBytes());            // t13_sabm_received_no
+            h.InjectFrameBytes(h.A, Ax25Frame.Sabme(la, re).ToBytes());           // t14_sabme_received_no
+            Collect(h);
+        }
+
+        // 30. AwaitingConnection (figc4.2) full column. Hold A there (drop B's UA)
+        // and walk every non-terminal receive + primitive + catch-all + error
+        // column that keeps it parked, plus the UA-with-F=0 (DL-ERROR D), the SABM
+        // collision, and the SABME-while-awaiting (→ AwaitingV22Connection).
+        {
+            var h = New();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63; // B's UA
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingConnection")
+            {
+                h.A.Session.PostEvent(new DlConnectRequest());                     // t07 — redundant connect
+                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t08 — UI command
+                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t11 — catch-all upper
+                h.Settle();
+                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t06 — catch-all lower
+                h.Inject(h.A, new ControlFieldError());                           // t13 — control-field error
+                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t14 — info-not-permitted
+                h.Inject(h.A, new UOrSFrameLengthError());                        // t15 — U/S length error
+                h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "y"u8).ToBytes());                    // t12_ui_received_no
+                h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "z"u8, pollFinal: true).ToBytes());    // t12_ui_received_yes
+                h.InjectFrameBytes(h.A, Ax25Frame.Ua(la, re, finalBit: false).ToBytes());                 // t04_ua_received_no → DL-ERROR D
+                h.InjectFrameBytes(h.A, Ax25Frame.Sabm(la, re).ToBytes());                                // t16_sabm_received
+            }
+            Collect(h);
+        }
+        // 30b. DL-DISCONNECT request while connecting (t01 → still AwaitingConnection,
+        // it just discards the queue). Fresh rig so 30's terminal SABM doesn't matter.
+        {
+            var h = New();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63;
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingConnection") h.A.Session.PostEvent(new DlDisconnectRequest());   // t01
+            Collect(h);
+        }
+        // 30c. SABME arriving while in AwaitingConnection → AwaitingV22Connection
+        // (t17_sabme_received). Fresh rig — this one leaves the state.
+        {
+            var h = New();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63;
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingConnection")
+                h.InjectFrameBytes(h.A, Ax25Frame.Sabme(h.A.Context.Local, h.A.Context.Remote).ToBytes()); // t17
+            Collect(h);
+        }
+
+        // 31. AwaitingRelease (figc4.3) full column — extend block 13. Hold A there
+        // (drop B's UA to the DISC) and walk the remaining primitive / catch-all /
+        // error columns, the SABME / DM(F=0) receives, the UI receives, and the
+        // grouped "I, RR, RNR, REJ or SREJ command" column (P=0 and P=1).
+        {
+            var h = New(); h.Connect();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && (f.Control & 0xEF) == 0x63; // B's UA
+            h.A.Session.PostEvent(new DlDisconnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingRelease")
+            {
+                h.A.Session.PostEvent(new DlDisconnectRequest());                  // t01 — redundant disconnect
+                h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));  // t05 — UI command
+                h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());     // t06 — catch-all upper
+                h.Settle();
+                h.Inject(h.A, new AllOtherPrimitivesFromLowerLayer());             // t04 — catch-all lower
+                h.Inject(h.A, new ControlFieldError());                           // t07 — control-field error
+                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t08 — info-not-permitted
+                h.Inject(h.A, new UOrSFrameLengthError());                        // t09 — U/S length error
+                h.InjectFrameBytes(h.A, Ax25Frame.Sabme(la, re).ToBytes());                              // t11_sabme_received
+                h.InjectFrameBytes(h.A, Ax25Frame.Dm(la, re, finalBit: false).ToBytes());                // t13_dm_received_no
+                h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "y"u8).ToBytes());                    // t14_ui_received_no
+                h.InjectFrameBytes(h.A, Ax25Frame.Ui(la, re, info: "z"u8, pollFinal: true).ToBytes());    // t14_ui_received_yes
+                // The grouped "I, RR, RNR, REJ or SREJ Commands" input column (P=0 / P=1).
+                h.Inject(h.A, new IOrSCommandReceived(Ax25Frame.Rr(la, re, 0, isCommand: true, pollFinal: false))); // t15_no
+                h.Inject(h.A, new IOrSCommandReceived(Ax25Frame.Rr(la, re, 0, isCommand: true, pollFinal: true)));  // t15_yes
+            }
+            Collect(h);
+        }
+        // 31b. AwaitingRelease T1 → N2 exhaustion (RC==N2 → Disconnected,
+        // t02_t1_expiry_yes). Drop ALL of B's frames so only T1 drives the retry.
+        {
+            var h = New(n2: 2); h.Connect();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local);
+            h.A.Session.PostEvent(new DlDisconnectRequest());
+            h.Settle();
+            for (int r = 0; r < 8 && h.A.State == "AwaitingRelease"; r++) h.AdvanceT1();   // t02_t1_expiry_no … then _yes
+            Collect(h);
+        }
+
+        // 32. AwaitingV22Connection error columns reachable only by injection:
+        // t08_info_not_permitted_in_frame, t09_u_or_s_frame_length_error. (t07
+        // control-field-error is already in the must-hit; these complete the trio.)
+        {
+            var h = New(extended: true);
+            h.Link.Drop = f => ((f.Control & 0xEF) == 0x6F || (f.Control & 0xEF) == 0x2F) && f.Source.Callsign.Equals(h.A.Context.Local);
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingV22Connection")
+            {
+                h.Inject(h.A, new InfoNotPermittedInFrame());                     // t08
+                h.Inject(h.A, new UOrSFrameLengthError());                        // t09
+            }
+            Collect(h);
+        }
+
+        // 33. Connected (figc4.4) — the mod-8 (version 2.0) receive columns. The
+        // extended battery routes every connect through AwaitingV22Connection, so
+        // the version_2_2=No branches of the receive columns never fire there. A
+        // plain mod-8 connect stays version 2.0, so out-of-window supervisory
+        // frames re-establish to AwaitingConnection (the _no_no / _no branches),
+        // and the connect/error columns take their version-2.0 arm.
+        // 33a. Out-of-window supervisory frames (N(R)=5, V(a)=V(s)=0): each
+        // re-establishes via figc4.4 to AwaitingConnection. Fresh rig each (they
+        // leave Connected).
+        { var h = New(k: 4); h.Connect(); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }    // t21_rr_received_no_no
+        { var h = New(srej: true, k: 4); h.Connect(); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }  // t22_rnr_received_no_no
+        { var h = New(srej: true, k: 4); h.Connect(); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); } // t24_srej_received_no_no
+        { var h = New(srej: true, k: 4); h.Connect(); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }  // t25_rej_received_no_no
+        // 33b. mod-128 out-of-window supervisory → AwaitingV22Connection (the
+        // version_2_2=Yes arm of the same columns): t21_no_yes (already covered),
+        // t22_no_yes, t24_no_yes, t25_no_yes.
+        { var h = New(extended: true, srej: true, k: 8); h.Connect(); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }  // t22_rnr_received_no_yes
+        { var h = New(extended: true, srej: true, k: 8); h.Connect(); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); } // t24_srej_received_no_yes
+        { var h = New(extended: true, srej: true, k: 8); h.Connect(); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }  // t25_rej_received_no_yes
+        // 33c. mod-8 connect/error/SABME/UA columns (version 2.0 arm) + the
+        // unit-data, flow, catch-all-upper, and own-busy I-received columns.
+        {
+            var h = New(k: 4); h.Connect();
+            h.A.Session.PostEvent(new DlUnitDataRequest(new byte[] { 0x01 }));     // t04_dl_unit_data_request
+            h.A.Session.PostEvent(new DlFlowOffRequest());                        // t05_yes (own busy on)
+            h.A.Session.PostEvent(new DlFlowOffRequest());                        // t05_no (already busy; Spec43-inverted guard)
+            h.A.Session.PostEvent(new DlFlowOnRequest());                         // clear busy
+            h.A.Session.PostEvent(new DlFlowOnRequest());                         // t06_dl_flow_on_request_no (not busy)
+            h.A.Session.PostEvent(new AllOtherPrimitivesFromUpperLayer());        // t08_all_other_primitives__from_upper_layer
+            h.Settle();
+            h.Inject(h.A, new ControlFieldError());                               // t09_control_field_error_no (v2.0)
+            h.Inject(h.A, new UOrSFrameLengthError());                            // t11_u_or_s_frame_length_error_no (v2.0)
+            // An I-frame arriving as a RESPONSE (command=No) → t26_i_received_no.
+            // (The t15_sabme_received_no V(s)≠V(a) arm is driven in 33d below.)
+            h.InjectFrameBytes(h.A, IResponse(h.A, nr: 0, ns: 0, payload: 0x22, pf: false, ext: false)); // t26_i_received_no
+            Collect(h);
+        }
+        // 33d. mod-8 Connected with a frame outstanding (V(s)≠V(a)) then a SABME
+        // collision (t15_sabme_received_no) + a redundant DL-CONNECT (t07_no, v2.0).
+        {
+            var h = New(k: 4); h.Connect();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && Ax25FrameClassifier.Classify(f) is RrReceived or RnrReceived;
+            h.Submit(h.A, 0x01);
+            if (h.A.Context.VS != h.A.Context.VA)
+            {
+                h.Link.Drop = null;
+                h.InjectFrameBytes(h.A, Ax25Frame.Sabme(la, re).ToBytes());       // t15_sabme_received_no (vs≠va)
+            }
+            h.A.Session.PostEvent(new DlConnectRequest());                        // t07_dl_connect_request_no (v2.0 → AwaitingConnection)
+            Collect(h);
+        }
+        // 33e. mod-8 Connected, own receiver busy, I-frame received P=1 / P=0
+        // (t26_i_received_yes_yes_yes_yes_yes / _yes_no) + a UA(F=0) collision
+        // (t17_ua_received_no, v2.0).
+        {
+            var h = New(k: 4); h.Connect();
+            var la = h.A.Context.Local; var re = h.A.Context.Remote;
+            h.A.Session.PostEvent(new DlFlowOffRequest());                        // own receiver busy
+            h.InjectFrameBytes(h.A, Ax25Frame.I(la, re, nr: 0, ns: 0, info: new byte[] { 0x44 }, pollBit: true).ToBytes());  // t26_…_yes_yes (own busy, P=1)
+            h.InjectFrameBytes(h.A, Ax25Frame.I(la, re, nr: 0, ns: 0, info: new byte[] { 0x45 }, pollBit: false).ToBytes()); // t26_…_yes_no (own busy, P=0)
+            h.InjectFrameBytes(h.A, Ax25Frame.Ua(la, re, finalBit: false).ToBytes());                                        // t17_ua_received_no
+            Collect(h);
+        }
+
+        // 34. Connected mod-128 — the info-not-permitted / U-or-S-length columns'
+        // version_2_2=Yes arm (t10_info_not_permitted_in_frame_yes,
+        // t11_u_or_s_frame_length_error_yes), reachable by direct injection.
+        {
+            var h = New(extended: true, k: 8); h.Connect();
+            h.Inject(h.A, new InfoNotPermittedInFrame());                         // t10_info_not_permitted_in_frame_yes
+            h.Inject(h.A, new UOrSFrameLengthError());                            // t11_u_or_s_frame_length_error_yes
+            Collect(h);
+        }
+
+        // 34b. Connected — the remaining figc4.4 columns the blocks above miss.
+        // DL-CONNECT on a v2.2 (extended) link → AwaitingV22Connection (t07_yes).
+        { var h = New(extended: true, k: 8); h.Connect(); h.A.Session.PostEvent(new DlConnectRequest()); Collect(h); }
+        // DL-FLOW-ON while own-busy AND T1 running (an I-frame outstanding) →
+        // t06_dl_flow_on_request_yes_yes. Drop B's acks so V(s)≠V(a) keeps T1 armed.
+        {
+            var h = New(extended: true, k: 8); h.Connect();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && Ax25FrameClassifier.Classify(f) is RrReceived or RnrReceived;
+            h.Submit(h.A, 0x01);                       // one outstanding ⇒ T1 running
+            h.A.Session.PostEvent(new DlFlowOffRequest());   // own busy
+            h.A.Session.PostEvent(new DlFlowOnRequest());    // own busy ∧ T1 running → t06_yes_yes
+            Collect(h);
+        }
+        // I command, info field too long, mod-8 (version 2.0) → t26_i_received_yes_no_no.
+        {
+            var h = New(k: 4); h.Connect();
+            var big = new byte[h.A.Context.N1 + 8];
+            h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: big, pollBit: false).ToBytes()); // t26_i_received_yes_no_no
+            Collect(h);
+        }
+        // I command, info valid, N(R) out of window, mod-8 (version 2.0) →
+        // t26_i_received_yes_yes_no_no (re-establish to AwaitingConnection).
+        {
+            var h = New(k: 4); h.Connect();
+            h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 5, ns: 0, info: new byte[] { 0x33 }, pollBit: false).ToBytes()); // t26_i_received_yes_yes_no_no
+            Collect(h);
+        }
+        // Out-of-sequence I with a reject_exception already pending, P=1 (go-back-N,
+        // SREJ off) → t26_i_received_yes_yes_yes_no_no_yes_yes. The first gap frame
+        // sets reject_exception; the second (P=1) takes the rejectexc∧P=1 arm.
+        {
+            var h = New(k: 4); h.Connect();
+            h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 2, info: new byte[] { 0x47 }, pollBit: false).ToBytes()); // gap → reject_exception
+            h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 3, info: new byte[] { 0x48 }, pollBit: true).ToBytes());  // rejectexc ∧ P=1
+            Collect(h);
+        }
+
+        // ──────────────────────────────────────────────────────────────────
+        // 35–38. TimerRecovery (figc4.5) receive columns, both moduli. The mod-128
+        // injection block (18b–18d) already drives many of these; here we fill the
+        // command-vs-response × P/F × N(R)-window matrix the well-behaved peer can't
+        // produce on cue, including the mod-8 (version 2.0) re-establish arms.
+        // ──────────────────────────────────────────────────────────────────
+
+        // Drive A into TimerRecovery holding `outstanding` unacked I-frames, mod-8
+        // OR mod-128. Mirrors InTimerRecovery128 but parametric on the modulus, so
+        // the version_2_2=No (mod-8) receive arms are reachable.
+        TwoStationHarness InTimerRecovery(byte outstanding, bool srej = false, bool extended = false, int k = 4)
+        {
+            var h = New(srej: srej, k: k, extended: extended, n2: 40); h.Connect();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.A.Context.Local) && Ax25FrameClassifier.Classify(f) is IFrameReceived;
+            for (byte i = 0; i < outstanding; i++) h.Submit(h.A, i);
+            h.AdvanceT1();                 // unacked I-frame's T1 → poll → TimerRecovery
+            h.Link.Drop = null;
+            return h;
+        }
+        // Idle TimerRecovery (V(s)=V(a)) reached via a T3 poll, with B's supervisory
+        // reply dropped so A stays recovering with an empty window. Mirrors
+        // IdleInTimerRecovery128 but parametric on the modulus.
+        TwoStationHarness IdleInTimerRecovery(bool srej = false, bool extended = false, int k = 4)
+        {
+            var h = New(srej: srej, k: k, extended: extended); h.Connect();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local) && Ax25FrameClassifier.Classify(f) is RrReceived or RnrReceived;
+            h.Inject(h.A, new T3Expiry());          // idle poll → TimerRecovery, V(s)=V(a)
+            h.Link.Drop = null;
+            return h;
+        }
+
+        // 35. TimerRecovery RR receive column (figc4.5 t18) — the branches the
+        // mod-128 block doesn't reach. N(R)=5 with V(a)=V(s)=0..2 is out of window.
+        // bare RR response F=0, N(R) out of window → t18_rr_received_no_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // RR command P=1, N(R) out of window, mod-8 → re-establish (t18_rr_received_no_yes_no_no).
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: true, pf: true, ext: false)); Collect(h); }
+        // RR command P=1, N(R) out of window, mod-128 → t18_rr_received_no_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: true, pf: true, ext: true)); Collect(h); }
+        // RR response F=1, N(R) out of window, mod-8 → t18_rr_received_yes_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }
+        // RR response F=1, N(R) out of window, mod-128 → t18_rr_received_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rr(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }
+
+        // 36. TimerRecovery RNR receive column (figc4.5 t19).
+        // bare RNR response F=0, N(R) in window → t19_rnr_received_no_no_yes.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 1, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // bare RNR response F=0, N(R) out of window → t19_rnr_received_no_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // RNR command P=1, N(R) out of window, mod-8 → t19_rnr_received_no_yes_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: true, pf: true, ext: false)); Collect(h); }
+        // RNR command P=1, N(R) out of window, mod-128 → t19_rnr_received_no_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: true, pf: true, ext: true)); Collect(h); }
+        // RNR response F=1, N(R) out of window, mod-8 → t19_rnr_received_yes_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }
+        // RNR response F=1, N(R) out of window, mod-128 → t19_rnr_received_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }
+        // RNR response F=1, N(R) in window but V(s)≠N(R) (partial ack) → t19_rnr_received_yes_yes_no.
+        { var h = InTimerRecovery(3); h.InjectFrameBytes(h.A, Rnr(h.A, nr: 1, isCmd: false, pf: true, ext: false)); Collect(h); }
+
+        // 37. TimerRecovery REJ receive column (figc4.5 t23).
+        // REJ command P=1, N(R) out of window, mod-128 → t23_rej_received_no_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: true, pf: true, ext: true)); Collect(h); }
+        // REJ command P=1, N(R) out of window, mod-8 → t23_rej_received_no_yes_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: true, pf: true, ext: false)); Collect(h); }
+        // bare REJ response F=0, N(R) in window, V(s)≠N(R) → t23_rej_received_no_no_yes_no.
+        { var h = InTimerRecovery(3); h.InjectFrameBytes(h.A, Rej(h.A, nr: 1, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // bare REJ response F=0, N(R) out of window, mod-8 → t23_rej_received_no_no_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: false, pf: false, ext: false)); Collect(h); }
+        // REJ response F=1, N(R) out of window, mod-128 → t23_rej_received_yes_no_yes.
+        { var h = InTimerRecovery(2, extended: true, k: 8); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }
+        // REJ response F=1, N(R) out of window, mod-8 → t23_rej_received_yes_no_no.
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Rej(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }
+        // REJ response F=1, N(R) in window, V(s)==N(R) (complete) → t23_rej_received_yes_yes_yes.
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Rej(h.A, nr: 1, isCmd: false, pf: true, ext: false)); Collect(h); }
+
+        // 38. TimerRecovery SREJ receive column (figc4.5 t24) — the branches the
+        // mod-128 block doesn't reach.
+        // SREJ command (response=No), N(R) in window, P=1, V(s)==N(R) → t24_srej_received_no_yes_yes_yes.
+        { var h = InTimerRecovery(1, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 1, isCmd: true, pf: true, ext: false)); Collect(h); }
+        // SREJ command, N(R) in window, P=0, V(s)≠V(a) → t24_srej_received_no_yes_no_no.
+        { var h = InTimerRecovery(2, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 1, isCmd: true, pf: false, ext: false)); Collect(h); }
+        // SREJ command, N(R) out of window, mod-8 → t24_srej_received_no_no_no.
+        { var h = InTimerRecovery(2, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: true, pf: true, ext: false)); Collect(h); }
+        // SREJ command, N(R) out of window, mod-128 → t24_srej_received_no_no_yes.
+        { var h = InTimerRecovery(2, srej: true, extended: true, k: 8); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: true, pf: true, ext: true)); Collect(h); }
+        // SREJ response, N(R) out of window, mod-8 → t24_srej_received_yes_no_no.
+        { var h = InTimerRecovery(2, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: false, pf: true, ext: false)); Collect(h); }
+        // SREJ response, N(R) out of window, mod-128 → t24_srej_received_yes_no_yes.
+        { var h = InTimerRecovery(2, srej: true, extended: true, k: 8); h.InjectFrameBytes(h.A, Srej(h.A, nr: 5, isCmd: false, pf: true, ext: true)); Collect(h); }
+        // SREJ response, N(R) in window, F=1, V(s)≠N(R) → t24_srej_received_yes_yes_yes_no.
+        { var h = InTimerRecovery(3, srej: true); h.InjectFrameBytes(h.A, Srej(h.A, nr: 1, isCmd: false, pf: true, ext: false)); Collect(h); }
+        // SREJ command / response, N(R) in window, P/F=0, V(s)==V(a): need IDLE
+        // TimerRecovery (empty window) so vs_eq_va holds → t24_srej_received_no_yes_no_yes
+        // (command) and t24_srej_received_yes_yes_no_yes (response).
+        { var h = IdleInTimerRecovery(srej: true); if (h.A.State == "TimerRecovery") h.InjectFrameBytes(h.A, Srej(h.A, nr: 0, isCmd: true, pf: false, ext: false)); Collect(h); }
+        { var h = IdleInTimerRecovery(srej: true); if (h.A.State == "TimerRecovery") h.InjectFrameBytes(h.A, Srej(h.A, nr: 0, isCmd: false, pf: false, ext: false)); Collect(h); }
+
+        // 39. TimerRecovery I-received column (figc4.5 t22) — the branches the
+        // mod-128 block doesn't reach (all driven mod-8 here; ids are mode-independent).
+        // I arriving as a RESPONSE (command=No) → t22_i_received_no.
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, IResponse(h.A, nr: 0, ns: 0, payload: 0x22, pf: false, ext: false)); Collect(h); }
+        // I command with info field too long (info_field_length invalid) → t22_i_received_yes_no.
+        { var h = InTimerRecovery(1); var big = new byte[h.A.Context.N1 + 8]; h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: big, pollBit: false).ToBytes()); Collect(h); }
+        // I command valid, N(R) out of window (V(a)≤N(R)≤V(s) = No) → t22_i_received_yes_yes_no.
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 5, ns: 0, info: new byte[] { 0x33 }, pollBit: false).ToBytes()); Collect(h); }
+        // In-sequence I, own receiver busy, P=1 / P=0 → t22_i_received_yes_yes_yes_yes_yes / _yes_no.
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlFlowOffRequest()); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: new byte[] { 0x44 }, pollBit: true).ToBytes()); Collect(h); }
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlFlowOffRequest()); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: new byte[] { 0x45 }, pollBit: false).ToBytes()); Collect(h); }
+        // In-sequence I, NOT own-busy, P=0, ACK-pending=No: clear the pending ack
+        // first by sending our own data (piggybacks the ack via the LM-SEIZE flush),
+        // then deliver a fresh in-sequence I → t22_i_received_yes_yes_yes_no_yes_no_no.
+        {
+            var h = InTimerRecovery(2);
+            h.A.Session.PostEvent(new DlDataRequest(new byte[] { 0x55 }));    // piggyback flushes any pending ack
+            if (h.A.State == "TimerRecovery" && !h.A.Context.AcknowledgePending)
+                h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 0, info: new byte[] { 0x56 }, pollBit: false).ToBytes());
+            Collect(h);
+        }
+        // Out-of-sequence I with a reject_exception already set, P=1 / P=0 (go-back-N,
+        // SREJ off) → t22_i_received_yes_yes_yes_no_no_yes_yes / _no_no_yes_no.
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 2, info: new byte[] { 0x47 }, pollBit: false).ToBytes()); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 3, info: new byte[] { 0x48 }, pollBit: true).ToBytes()); Collect(h); }
+        { var h = InTimerRecovery(1); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 2, info: new byte[] { 0x49 }, pollBit: false).ToBytes()); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 3, info: new byte[] { 0x4A }, pollBit: false).ToBytes()); Collect(h); }
+        // Out-of-sequence I, SREJ enabled, srej_exception=0, gap of exactly 1
+        // (N(S) ≤ V(R)+1) → t22_i_received_yes_yes_yes_no_no_no_yes_no_no.
+        { var h = InTimerRecovery(1, srej: true); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 1, info: new byte[] { 0x4B }, pollBit: false).ToBytes()); Collect(h); }
+        // Out-of-sequence I, SREJ enabled, with srej_exception already > 0 → the
+        // t22_i_received_yes_yes_yes_no_no_no_yes_yes (SrejectExceptionGt0) branch.
+        { var h = InTimerRecovery(1, srej: true); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 1, info: new byte[] { 0x60 }, pollBit: false).ToBytes()); h.InjectFrameBytes(h.A, Ax25Frame.I(h.A.Context.Local, h.A.Context.Remote, nr: 0, ns: 3, info: new byte[] { 0x61 }, pollBit: false).ToBytes()); Collect(h); }
+
+        // 40. TimerRecovery remaining primitive / error / collision / data columns.
+        // 40a. DL-DISCONNECT request while recovering → AwaitingRelease (t01).
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlDisconnectRequest()); Collect(h); }
+        // 40b. DL-DATA request while recovering, window open → I pops (t02 + the
+        // already-covered t03_no_no_yes pop). A fresh rig keeps V(s) known.
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlDataRequest(new byte[] { 0x71 })); Collect(h); }
+        // 40c. DL-FLOW-OFF while already own-busy → t05_dl_flow_off_request_no
+        // (Spec43-inverted guard: a second flow-off when busy takes the No arm).
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlFlowOffRequest()); h.A.Session.PostEvent(new DlFlowOffRequest()); Collect(h); }
+        // 40d. DL-FLOW-ON while NOT own-busy → t06_dl_flow_on_request_no.
+        { var h = InTimerRecovery(1); h.A.Session.PostEvent(new DlFlowOnRequest()); Collect(h); }
+        // 40e. The three figc-input error columns, each from a fresh rig (some leave
+        // TimerRecovery): control_field_error (t08), info_not_permitted (t09),
+        // U/S-length (t10).
+        { var h = InTimerRecovery(1); h.Inject(h.A, new ControlFieldError()); Collect(h); }
+        { var h = InTimerRecovery(1); h.Inject(h.A, new InfoNotPermittedInFrame()); Collect(h); }
+        { var h = InTimerRecovery(1); h.Inject(h.A, new UOrSFrameLengthError()); Collect(h); }
+        // 40f. SABM collision while recovering with V(s)≠V(a) (vs_eq_va=No branch) →
+        // t13_sabm_received_no (resync to Connected).
+        { var h = InTimerRecovery(2); h.InjectFrameBytes(h.A, Ax25Frame.Sabm(h.A.Context.Local, h.A.Context.Remote).ToBytes()); Collect(h); }
+        // 40g. T1 → N2 exhaustion from an IDLE TimerRecovery (V(s)=V(a)), peer NOT
+        // busy → t21_t1_expiry_yes_yes_no. Drop ALL of B's frames so the T3-poll
+        // never completes and only T1/RC drive it to give-up.
+        {
+            var h = New(n2: 2); h.Connect();
+            h.Link.Drop = f => f.Source.Callsign.Equals(h.B.Context.Local);
+            h.Inject(h.A, new T3Expiry());          // idle poll → TimerRecovery, V(s)=V(a)
+            for (int r = 0; r < 8 && h.A.State == "TimerRecovery"; r++) h.AdvanceT1();   // RC→N2 → DL-ERROR + disconnect
+            Collect(h);
+        }
+
+        // ──────────────────────────────────────────────────────────────────
+        // 41. GENUINELY-UNREACHABLE residue (documented, not forced). These 13
+        // transitions exist in the figc4.x figures but cannot fire end-to-end
+        // through this runtime — driving them would require an artificial poke that
+        // contradicts the runtime's own invariants, so they are deliberately left
+        // as documented misses rather than papered over:
+        //
+        //  • The IFramePopsOffQueue synthesiser (Ax25Session.DrainIFrameQueue) only
+        //    emits a pop in Connected / TimerRecovery, and only when the peer is
+        //    NOT busy and the send window is NOT full (CanTransmitIFrame). So:
+        //      AwaitingConnection/t10_i_frame_pops_off_queue_yes, _no       — no pop outside Conn/TR
+        //      AwaitingV22Connection/t05_i_frame_pops_off_queue_yes, _no    — ditto
+        //      Connected/t03_i_frame_pops_off_queue_yes                     — peer-busy at pop never synthesised
+        //      Connected/t03_i_frame_pops_off_queue_no_yes                  — window-full at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_yes                 — peer-busy at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_no_yes              — window-full at pop never synthesised
+        //      TimerRecovery/t03_i_frame_pops_off_queue_no_no_no           — T1 is always running in TR, so the
+        //                                                                     T1-not-running pop arm can't fire
+        //  • Layer3Initiated is set true by the only transition that ENTERS each of
+        //    these initiator-only establishment states (figc4.1/4.2's DL-CONNECT
+        //    handler runs Set_Layer_3_Initiated; the responder goes straight
+        //    Disconnected→Connected on SABM/SABME and never parks here), so the
+        //    layer_3_initiated=No data arm is unreachable:
+        //      AwaitingConnection/t09_dl_data_request_no
+        //      AwaitingV22Connection/t04_dl_data_request_no
+        //  • TimerRecovery/t06_dl_flow_on_request_yes_no needs own_receiver_busy ∧
+        //    ¬T1_running — but T1 is, by definition, always running while recovering,
+        //    so the T1-not-running arm of the flow-on column can't fire there.
+        // ──────────────────────────────────────────────────────────────────
+
         return fired;
     }
 
@@ -837,4 +1327,39 @@ public class TransitionCoverageTests
 
     private static byte[] IExt(TwoStationHarness.Endpoint t, byte nr, byte ns, byte payload, bool pf) =>
         Ax25Frame.I(t.Context.Local, t.Context.Remote, nr, ns, info: new[] { payload }, pollBit: pf, extended: true).ToBytes();
+
+    // ─── Mode-parametric supervisory / I frame builders (addressed to the target
+    // as if its peer sent them). The TimerRecovery / Connected receive columns
+    // split on command-vs-response and P/F as well as N(R)-window, so the ledger
+    // needs to build each variant explicitly — a well-behaved peer never sends a
+    // bare RR-response-F=0, an RR-command-P=1 with N(R) out of window, etc. on
+    // cue, but the figc4.4/figc4.5 figures all have a column for it. ──
+
+    private static byte[] Rr(TwoStationHarness.Endpoint t, byte nr, bool isCmd, bool pf, bool ext) =>
+        Ax25Frame.Rr(t.Context.Local, t.Context.Remote, nr, isCommand: isCmd, pollFinal: pf, extended: ext).ToBytes();
+
+    private static byte[] Rnr(TwoStationHarness.Endpoint t, byte nr, bool isCmd, bool pf, bool ext) =>
+        Ax25Frame.Rnr(t.Context.Local, t.Context.Remote, nr, isCommand: isCmd, pollFinal: pf, extended: ext).ToBytes();
+
+    private static byte[] Rej(TwoStationHarness.Endpoint t, byte nr, bool isCmd, bool pf, bool ext) =>
+        Ax25Frame.Rej(t.Context.Local, t.Context.Remote, nr, isCommand: isCmd, pollFinal: pf, extended: ext).ToBytes();
+
+    private static byte[] Srej(TwoStationHarness.Endpoint t, byte nr, bool isCmd, bool pf, bool ext) =>
+        Ax25Frame.Srej(t.Context.Local, t.Context.Remote, nr, isCommand: isCmd, pollFinal: pf, extended: ext).ToBytes();
+
+    // An I-frame addressed to the target but encoded as a RESPONSE (C/R bits
+    // flipped). §4.3.1 makes I-frames always commands, so the factory hardcodes
+    // command=Yes and a conformant peer never sends an I-response — but figc4.4
+    // t26_i_received_no / figc4.5 t22_i_received_no are exactly the "I arrived as
+    // a response" (command=No) error column, reachable only by crafting the bytes.
+    private static byte[] IResponse(TwoStationHarness.Endpoint t, byte nr, byte ns, byte payload, bool pf, bool ext)
+    {
+        var bytes = Ax25Frame.I(t.Context.Local, t.Context.Remote, nr, ns, info: new[] { payload }, pollBit: pf, extended: ext).ToBytes().ToArray();
+        // AX.25 §2.4.1.2 C/R encoding: command = destination C-bit 1 / source C-bit 0;
+        // response = destination C-bit 0 / source C-bit 1. The SSID octets are at
+        // byte 6 (destination) and byte 13 (source); the C-bit is 0x80.
+        bytes[6]  &= 0x7F;   // destination C-bit → 0
+        bytes[13] |= 0x80;   // source C-bit      → 1   ⇒ response
+        return bytes;
+    }
 }
