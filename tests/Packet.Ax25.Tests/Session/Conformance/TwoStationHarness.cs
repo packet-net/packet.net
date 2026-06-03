@@ -288,15 +288,16 @@ public sealed class TwoStationHarness
     }
 
     /// <summary>Submit one (possibly &gt; N1) upper-layer payload through the §6.6
-    /// segmentation shim at <paramref name="from"/>. Records the WHOLE payload as a
-    /// single logical submission (so the oracle expects one reassembled delivery),
-    /// then posts each segment-request the shim produces as its own I-frame. With
-    /// the segmenter disabled this posts a single un-segmented request (and throws
-    /// if the payload exceeds N1, per the shim's strict reject).</summary>
-    public void SubmitLarge(Endpoint from, byte[] payload)
+    /// segmentation shim at <paramref name="from"/>, carrying Layer-3 PID
+    /// <paramref name="pid"/>. Records the WHOLE payload as a single logical
+    /// submission (so the oracle expects one reassembled delivery), then posts each
+    /// segment-request the shim produces as its own I-frame. With the segmenter
+    /// disabled this posts a single un-segmented request (and throws if the payload
+    /// exceeds N1, per the shim's strict reject).</summary>
+    public void SubmitLarge(Endpoint from, byte[] payload, byte pid = Ax25Frame.PidNoLayer3)
     {
         from.Submitted.Add(payload);
-        foreach (var request in from.Segmentation.BuildSendRequests(payload))
+        foreach (var request in from.Segmentation.BuildSendRequests(payload, pid))
         {
             from.Session.PostEvent(request);
         }
@@ -542,6 +543,14 @@ public sealed class TwoStationHarness
         /// in order.</summary>
         public IReadOnlyList<byte[]> Delivered =>
             Signals.OfType<DataLinkDataIndication>().Select(s => s.Info.ToArray()).ToList();
+
+        /// <summary>Layer-3 PIDs this station delivered upward (DL-DATA-indication),
+        /// in order — paired one-to-one with <see cref="Delivered"/>. For a
+        /// reassembled series this reflects the §6.6 reassembly's recovered PID
+        /// (the original L3 PID under the default inner-PID format; PidNoLayer3
+        /// under the figure-literal StrictlyFaithful format).</summary>
+        public IReadOnlyList<byte> DeliveredPids =>
+            Signals.OfType<DataLinkDataIndication>().Select(s => s.Pid).ToList();
     }
 
     private sealed class PeerWiring

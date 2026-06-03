@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Packet.Ax25;
 using Packet.Ax25.Session;
 using Xunit;
 
@@ -118,5 +119,47 @@ public class SegmentationIntegrationConformanceTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*segmenter/reassembler has not been negotiated*");
+    }
+
+    // Default format (SegmentFirstCarriesL3Pid on) — the wired round-trip must
+    // PRESERVE the original L3 PID through the segmented series (Dire Wolf's
+    // first-segment inner-PID format), not flatten it to PidNoLayer3.
+    [Fact]
+    public void Default_wired_segmentation_preserves_the_original_L3_PID()
+    {
+        var h = TwoStationHarness.Build(k: 8, segmenter: true, n1: 64);   // default quirks
+        h.Connect();
+
+        var payload = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();
+        h.SubmitLarge(h.A, payload, Ax25Frame.PidNetRom);   // a non-default L3 PID
+        h.FlushAcks();
+
+        h.B.Delivered.Should().ContainSingle("the segments reassemble into ONE upper-layer payload");
+        h.B.Delivered[0].Should().Equal(payload);
+        h.B.DeliveredPids.Should().ContainSingle().Which.Should().Be(Ax25Frame.PidNetRom,
+            "the default inner-PID format carries the original L3 PID on the first segment and recovers it on reassembly");
+        h.AssertConverged();
+    }
+
+    // StrictlyFaithful (SegmentFirstCarriesL3Pid off) — the wired round-trip uses
+    // the figure-literal format: payload still reassembles intact, but the L3 PID
+    // is NOT recovered and the reassembled payload is delivered as PidNoLayer3.
+    // Pins Figure 6.2 exactly as drawn alongside the default.
+    [Fact]
+    public void StrictlyFaithful_wired_segmentation_is_figure_literal_and_delivers_PidNoLayer3()
+    {
+        var h = TwoStationHarness.Build(k: 8, segmenter: true, n1: 64,
+            quirks: Ax25SessionQuirks.StrictlyFaithful);
+        h.Connect();
+
+        var payload = Enumerable.Range(0, 300).Select(i => (byte)(i * 5 + 2)).ToArray();
+        h.SubmitLarge(h.A, payload, Ax25Frame.PidNetRom);   // send a non-default L3 PID …
+        h.FlushAcks();
+
+        h.B.Delivered.Should().ContainSingle("the figure-literal segments still reassemble into ONE payload");
+        h.B.Delivered[0].Should().Equal(payload);
+        h.B.DeliveredPids.Should().ContainSingle().Which.Should().Be(Ax25Frame.PidNoLayer3,
+            "… but the figure-literal format carries no inner PID, so it is lost and the payload is delivered as PidNoLayer3");
+        h.AssertConverged();
     }
 }

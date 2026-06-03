@@ -270,48 +270,59 @@ public class DirewolfMod128Interop
     }
 
     /// <summary>
-    /// Case (d) — segmentation. <b>BLOCKED by a spec-figure divergence, not a
-    /// defect in our segmenter.</b> Our <see cref="Segmenter"/> follows AX.25
-    /// v2.2 Figure 6.2 literally: each segment's info field is one F/X control
-    /// octet (<c>FXXXXXXX</c>) followed by payload, carried in an I-frame whose
-    /// PID is 0x08. Dire Wolf 1.8.1 (<c>ax25_link.c</c> <c>dl_data_request</c>,
-    /// L1320–1336, and the reassembler at <c>dl_data_indication</c> L2016–2025)
-    /// uses a <i>different</i> first-segment layout: its first segment's info
-    /// field is <c>[F/X octet][original inner PID octet][payload]</c> — it
-    /// stuffs the original Layer-3 PID as an extra octet at the front of the
-    /// first segment so the reassembler can recover it. The §6.6 prose ("a
-    /// two-octet header", L1623) is ambiguous enough to admit both readings;
-    /// our repo took the Figure-6.2 reading (no inner-PID octet, reassembled
-    /// PID = 0xF0 — see <see cref="SegmentationLayer.ReassembledPid"/>), Dire
-    /// Wolf took the inner-PID reading. The two are therefore wire-incompatible
-    /// for segmentation:
+    /// Case (d) — segmentation round-trip, <b>both directions</b>. Now GREEN via
+    /// the default-on <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/>
+    /// quirk: our <see cref="SegmentationLayer"/> interoperates with Dire Wolf's
+    /// segmentation format out of the box. AX.25 v2.2 Figure 6.2 draws a segment's
+    /// info field as one F/X control octet (<c>FXXXXXXX</c>) followed directly by
+    /// payload — with <b>no field carrying the original Layer-3 PID</b>. Dire Wolf
+    /// 1.8.1 — the only known v2.2 segmenter — reads §6.6's "two-octet header"
+    /// prose to mean its <b>first</b> segment carries an extra <b>inner-PID
+    /// octet</b> (the original L3 PID) between the F/X octet and the data
+    /// (<c>ax25_link.c</c> <c>dl_data_request</c> ~L1330–1410 / <c>dl_data_indication</c>
+    /// ~L2010–2030: first segment <c>[F/X][original PID][data]</c>, subsequent
+    /// <c>[F/X][data]</c>; the inner octet counts toward the segment budget via
+    /// <c>DIVROUNDUP(len + 1, N1 − 1)</c>). The repo defaults to matching Dire
+    /// Wolf's format (de-facto interop) and reproduces the figure-literal format
+    /// only under <see cref="Ax25SessionQuirks.StrictlyFaithful"/>. With the quirk
+    /// on (default) both directions are wire-compatible:
     /// <list type="bullet">
-    /// <item>Forward (us → Dire Wolf): Dire Wolf consumes our first payload
-    /// octet as the "inner PID" and reassembles a payload one byte short /
-    /// shifted (observed empirically: a 220-byte send arrives as 219 corrupted
-    /// bytes at the echo helper).</item>
-    /// <item>Reverse (Dire Wolf → us): Dire Wolf's first segment carries an
-    /// extra inner-PID octet our reassembler treats as payload.</item>
+    /// <item>Forward (us → Dire Wolf): our segmenter emits Dire Wolf's format
+    /// (our N1=64 forces several segments), Dire Wolf reassembles the exact
+    /// payload and the echo helper bounces it back.</item>
+    /// <item>Reverse (Dire Wolf → us): Dire Wolf re-segments the 220-byte echo
+    /// (its PACLEN/N1 = 128 forces it), and our reassembler — now reading the
+    /// first-segment inner-PID octet — reconstructs the exact original payload.</item>
     /// </list>
-    /// Per the repo's strict-vs-pragmatic policy, the spec (Figure 6.2) is
-    /// canonical and Dire Wolf is an interop target — we do NOT bend our
-    /// segmenter to match Dire Wolf. The forward leg (our segmenter emits
-    /// multiple 0x08 I-frames that reach Dire Wolf's reassembler) is exercised
-    /// here; the exact-payload round-trip is then skipped with this divergence
-    /// as the reason. (A candidate ax25spec clarification, deliberately not
-    /// filed from this work.)
+    /// We assert the exact-payload round-trip via our own receive-side
+    /// <see cref="SegmentationLayer"/> reassembling Dire Wolf's segment I-frames.
+    /// (The §6.6 / Figure 6.2 spec gap — the two-octet header loses the L3 PID and
+    /// Dire Wolf fills it non-standardly — remains a candidate ax25spec
+    /// clarification, deliberately not filed from this work.)
     /// </summary>
     [SkippableFact]
-    public async Task Segmentation_Mod128_ForwardSegmentsReachDirewolf_RoundTripBlockedByFirstSegmentPidDivergence()
+    public async Task Segmentation_Mod128_RoundTripsBothDirections_ViaDirewolfInnerPidQuirk()
     {
         using var cts = new CancellationTokenSource(ConnectBudget + DataBudget + DisconnectBudget + TimeSpan.FromSeconds(20));
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
 
-        // N1 = 64 keeps the oversize payload small while still forcing several
-        // segments; the segmenter must be enabled for the over-N1 send path.
+        // N1 = 128 to MATCH Dire Wolf's responder PACLEN=128 (its config). N1 is a
+        // symmetric link parameter, so our receiver must accept Dire Wolf's
+        // ≤128-byte segments — set lower (e.g. 64) and the in-frame "info field ≤
+        // N1" check (timer_recovery t22 / connected) trips DL-ERROR(O) +
+        // re-establish on Dire Wolf's 128-byte echo segments. With N1=128 a >128B
+        // payload still forces US to segment on the forward leg, and Dire Wolf's
+        // PACLEN=128 forces it to segment the echo on the reverse leg — so both
+        // directions exercise real segmentation while staying within N1.
         var rig = BuildRig(local: OurCall, remote: ConnectSeg, kiss: kiss,
-            configure: ctx => { ctx.N1 = 64; ctx.SegmenterReassemblerEnabled = true; });
-        var segmentation = new SegmentationLayer(rig.Session.Context);
+            configure: ctx => { ctx.N1 = 128; ctx.K = 16; ctx.SegmenterReassemblerEnabled = true; });
+
+        // Send-side and receive-side §6.6 shims over the same session context (so
+        // both honour the default SegmentFirstCarriesL3Pid quirk). The send shim
+        // emits Dire Wolf's format; the receive shim reassembles Dire Wolf's
+        // segments back into the original payload.
+        var sendSeg = new SegmentationLayer(rig.Session.Context);
+        var recvSeg = new SegmentationLayer(rig.Session.Context);
 
         var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
         await Task.Delay(500, cts.Token);
@@ -320,41 +331,28 @@ public class DirewolfMod128Interop
         var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake first");
 
-        // ~3.5 segments at N1=64.
         var payload = new byte[220];
         for (int i = 0; i < payload.Length; i++) payload[i] = (byte)('A' + (i % 26));
 
-        var requests = segmentation.BuildSendRequests(payload, Ax25Frame.PidNoLayer3);
+        var requests = sendSeg.BuildSendRequests(payload, Ax25Frame.PidNoLayer3);
         requests.Count.Should().BeGreaterThan(1, "the test payload must exceed N1 so our segmenter splits it into multiple I-frames");
         foreach (var req in requests) rig.Session.PostEvent(req);
 
-        // Forward leg: our segments must be transmitted as multiple 0x08-PID
-        // I-frames AND reach Dire Wolf's connected-mode engine. Proof that the
-        // full forward path works (Dire Wolf received every segment I-frame,
-        // its reassembler completed, the echo helper got the payload, and Dire
-        // Wolf transmitted an echo back): Dire Wolf sends us at least one
-        // I-frame in response. (Its echo bytes are mangled by the first-segment
-        // PID divergence, so we don't assert their content — only that the
-        // forward delivery + reassembly + echo happened at all.)
-        var forwardReached = await WaitForCondition(
-            () => rig.Observed.Any(f => f.Destination.Callsign.Equals(OurCall) && f.Pid.HasValue),
-            DataBudget, pumps, cts.Token);
-        forwardReached.Should().BeTrue(
-            "our 0x08 segment I-frames must reach Dire Wolf's reassembler — proven by Dire Wolf reassembling them, " +
-            "handing the payload to the echo helper, and echoing an I-frame back to us");
+        // Round-trip both directions: Dire Wolf reassembles our segments, the echo
+        // helper bounces the payload, Dire Wolf re-segments the echo, and our
+        // receive-side shim reassembles it back to the exact original payload. The
+        // session surfaces each inbound 0x08 segment as its own DL-DATA indication
+        // (PID 0x08); we feed them through recvSeg until it yields the reassembly.
+        var reassembled = await WaitForReassembledPayload(rig, recvSeg, payload, DataBudget, pumps, cts.Token);
+        reassembled.Should().NotBeNull(
+            "Dire Wolf must reassemble our segments (forward), echo the payload, re-segment it (reverse), and our " +
+            "reassembler must reconstruct the exact original payload — the default inner-PID quirk makes both legs wire-compatible");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
         await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
 
         cts.Cancel();
         try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
-
-        Skip.If(true,
-            "Segmentation round-trip is blocked by a spec-figure divergence: Dire Wolf's first segment carries an " +
-            "extra inner-PID octet (ax25_link.c dl_data_request) that AX.25 v2.2 Figure 6.2 does not define and our " +
-            "spec-faithful Segmenter does not emit/expect. Forward delivery of our 0x08 segment I-frames to Dire Wolf " +
-            "is verified above; the exact-payload round trip is not wire-compatible. We do not bend our segmenter to " +
-            "match Dire Wolf (spec is canonical; Dire Wolf is an interop target). See the method doc for detail.");
     }
 
     /// <summary>
@@ -541,19 +539,33 @@ public class DirewolfMod128Interop
         return null;
     }
 
-    private static async Task<bool> WaitForCondition(
-        Func<bool> predicate, TimeSpan budget, IReadOnlyList<Task> bg, CancellationToken outer)
+    /// <summary>
+    /// Drain DL-DATA indications the session raises and feed each through the
+    /// receive-side <see cref="SegmentationLayer"/> shim (which reassembles 0x08
+    /// segment series and passes non-segment indications through). Returns the
+    /// reassembled payload once the shim yields one equal to <paramref name="expected"/>,
+    /// or <c>null</c> on timeout. (Dire Wolf segments its 220-byte echo because its
+    /// PACLEN=128, so the inbound arrives as several 0x08 indications.)
+    /// </summary>
+    private static async Task<byte[]?> WaitForReassembledPayload(
+        Rig rig, SegmentationLayer recvSeg, byte[] expected, TimeSpan budget, IReadOnlyList<Task> bg, CancellationToken outer)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
         cts.CancelAfter(budget);
         while (!cts.IsCancellationRequested)
         {
             ThrowIfAnyFaulted(bg);
-            if (predicate()) return true;
+            while (rig.Signals.TryDequeue(out var sig))
+            {
+                if (sig is not DataLinkDataIndication ind) continue;
+                var reassembled = recvSeg.OnDataIndication(ind);
+                if (reassembled is not null && reassembled.Info.Span.SequenceEqual(expected))
+                    return reassembled.Info.ToArray();
+            }
             try { await Task.Delay(50, cts.Token); }
-            catch (OperationCanceledException) { return false; }
+            catch (OperationCanceledException) { return null; }
         }
-        return predicate();
+        return null;
     }
 
     private static async Task<bool> WaitForObserved(

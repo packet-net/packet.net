@@ -33,36 +33,56 @@ namespace Packet.Ax25.Session;
 /// oversize frame.
 /// </para>
 /// <para>
-/// <b>Inner PID on reassembly.</b> Figure 6.2 defines the segment header as
-/// the 0x08 PID octet plus one F/X octet — there is <b>no field carrying the
-/// original Layer-3 PID</b> through a segmented series. So a reassembled
-/// payload is delivered with PID <see cref="Ax25Frame.PidNoLayer3"/> (0xF0):
-/// the spec's §6.6 reassembly has no PID-recovery mechanism, and 0xF0 ("no
-/// Layer 3 protocol") is the faithful "PID unknown / raw" value. A future
-/// revision that carries the inner PID (some stacks prepend it as the first
-/// reassembled byte) would change <see cref="ReassembledPid"/>.
+/// <b>Inner PID on reassembly — gated by
+/// <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/> (default on).</b>
+/// Figure 6.2 defines the segment header as the 0x08 PID octet plus one F/X
+/// octet — there is <b>no field carrying the original Layer-3 PID</b> through a
+/// segmented series. Dire Wolf, the only known v2.2 segmenter, prepends the
+/// original PID as an extra octet on the first segment so its reassembler can
+/// recover it (the §6.6 "two-octet header" prose admits this reading). This shim
+/// matches Dire Wolf by <b>default</b>:
+/// <list type="bullet">
+/// <item><b>Quirk on (default):</b> the first segment carries the inner-PID octet
+/// (<see cref="Segmenter"/> writes it on send; the <see cref="Reassembler"/> reads
+/// it on receive). A reassembled payload is delivered with that <b>original L3
+/// PID</b> — so segmentation no longer loses it.</item>
+/// <item><b>Quirk off (<see cref="Ax25SessionQuirks.StrictlyFaithful"/>):</b> the
+/// figure-literal format — no inner-PID octet, and a reassembled payload is
+/// delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0), the faithful "PID
+/// unknown / raw" value (<see cref="FigureLiteralReassembledPid"/>).</item>
+/// </list>
 /// </para>
 /// </remarks>
 public sealed class SegmentationLayer
 {
     private readonly Ax25SessionContext context;
-    private readonly Reassembler reassembler = new();
+    private Reassembler? reassembler;
 
     /// <summary>
-    /// PID delivered with a reassembled payload. Per §6.6 / Figure 6.2 the
-    /// segment header carries no inner Layer-3 PID, so reassembled data is
-    /// delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0).
+    /// PID delivered with a reassembled payload under the <i>figure-literal</i>
+    /// format (the <see cref="Ax25SessionQuirks.SegmentFirstCarriesL3Pid"/> quirk
+    /// off). Per §6.6 / Figure 6.2 the segment header carries no inner Layer-3 PID,
+    /// so figure-literal reassembled data is delivered as
+    /// <see cref="Ax25Frame.PidNoLayer3"/> (0xF0). With the quirk on (default) the
+    /// inner-PID octet recovers the original L3 PID instead.
     /// </summary>
-    public const byte ReassembledPid = Ax25Frame.PidNoLayer3;
+    public const byte FigureLiteralReassembledPid = Ax25Frame.PidNoLayer3;
 
     /// <summary>Construct a shim over the supplied session context.</summary>
     /// <param name="context">The session's context — read for the negotiated
-    /// segmenter-enabled flag and N1.</param>
+    /// segmenter-enabled flag, N1, and the segmentation-format quirk. The quirk is
+    /// read <i>lazily</i> (at first send/receive), because callers such as
+    /// <see cref="Ax25Listener"/> construct the shim before their
+    /// <c>ConfigureSession</c> hook has set <see cref="Ax25SessionContext.Quirks"/>.</param>
     public SegmentationLayer(Ax25SessionContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         this.context = context;
     }
+
+    /// <summary>Whether the Dire-Wolf first-segment inner-PID format is in effect
+    /// for this session — read live from the context's quirks (default on).</summary>
+    private bool InnerPidFormat => context.Quirks.SegmentFirstCarriesL3Pid;
 
     /// <summary>
     /// Send-side shim. Given an upper-layer payload + its Layer-3 PID, return
@@ -104,9 +124,12 @@ public sealed class SegmentationLayer
                 "the request rather than truncating or producing an oversize frame.");
         }
 
-        // Segment into PID-0x08 info fields (segment-control byte + ≤ N1−1
-        // payload bytes each) and post each as its own I-frame request.
-        var segments = Segmenter.Segment(data.Span, context.N1);
+        // Segment into PID-0x08 info fields and post each as its own I-frame
+        // request. With the inner-PID quirk on (default), the first segment also
+        // carries the original L3 PID after the F/X byte (Dire Wolf's format) so
+        // the receiver can recover it; with the quirk off (StrictlyFaithful) the
+        // figure-literal format is emitted (no inner PID).
+        var segments = Segmenter.Segment(data.Span, context.N1, InnerPidFormat ? pid : (byte?)null);
         var requests = new DlDataRequest[segments.Count];
         for (int i = 0; i < segments.Count; i++)
         {
@@ -139,9 +162,18 @@ public sealed class SegmentationLayer
             return indication;   // not a segment — pass through transparently
         }
 
+        // Construct the per-session reassembler lazily on first use, reading the
+        // segmentation-format quirk live (the context's Quirks may have been set by
+        // a ConfigureSession hook that ran after this shim was constructed).
+        reassembler ??= new Reassembler(expectInnerPid: InnerPidFormat);
+
         var completed = reassembler.Push(indication.Info.Span);
-        return completed is null
-            ? null
-            : new DataLinkDataIndication(completed, ReassembledPid);
+        if (completed is null) return null;   // mid-series segment — nothing to deliver yet
+
+        // With the inner-PID quirk on, the reassembler recovered the original L3
+        // PID off the first segment — deliver with it. With the quirk off
+        // (figure-literal) there is no inner PID, so deliver as PidNoLayer3.
+        var pid = reassembler.LastRecoveredPid ?? FigureLiteralReassembledPid;
+        return new DataLinkDataIndication(completed, pid);
     }
 }

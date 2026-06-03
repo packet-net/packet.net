@@ -2,7 +2,10 @@ namespace Packet.Ax25.Session;
 
 /// <summary>
 /// Per-session toggles for deliberate, documented deviations from the AX.25
-/// SDL figures, used where a figure is a confirmed upstream spec defect.
+/// SDL figures, used where a figure is a confirmed upstream spec defect — and,
+/// distinctly, where the published <i>wire format</i> is under-specified and we
+/// match the only known interoperating implementation by default (see
+/// <see cref="SegmentFirstCarriesL3Pid"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -20,16 +23,75 @@ namespace Packet.Ax25.Session;
 /// exactly as drawn (defects and all) for strict conformance testing.
 /// </para>
 /// <para>
-/// <b>Pattern for adding a quirk</b> (replicable): name the flag
-/// <c>Ax25Spec&lt;issue&gt;…</c> after the <c>packethacking/ax25spec</c> issue it
-/// works around — so it is greppable and removable once the spec is fixed —
-/// default it to the corrected behaviour, document the spec prose + the de-facto
-/// implementation evidence, and open a packet.net tracking issue to delete it
-/// when ax25sdl ships a figure carrying the upstream resolution.
+/// <b>Two flavours of quirk live here.</b>
+/// </para>
+/// <para>
+/// (1) <b>Figure-defect quirks</b> — name the flag <c>Ax25Spec&lt;issue&gt;…</c>
+/// after the <c>packethacking/ax25spec</c> issue it works around (so it is
+/// greppable and removable once the spec is fixed), default it to the corrected
+/// behaviour, document the spec prose + the de-facto implementation evidence, and
+/// open a packet.net tracking issue to delete it when ax25sdl ships a figure
+/// carrying the upstream resolution.
+/// </para>
+/// <para>
+/// (2) <b>De-facto-interop quirks</b> — where the spec text is genuinely ambiguous
+/// or silent and a single real implementation establishes the de-facto wire
+/// format. These are <i>not</i> tied to a filed figure-defect issue, so they do
+/// <b>not</b> take the <c>Ax25Spec&lt;NN&gt;</c> prefix; name them descriptively
+/// after what they do (e.g. <see cref="SegmentFirstCarriesL3Pid"/>). Default them
+/// on (interoperate out of the box) and turn them off under
+/// <see cref="StrictlyFaithful"/> (reproduce the figure-literal reading).
 /// </para>
 /// </remarks>
 public sealed record Ax25SessionQuirks
 {
+    /// <summary>
+    /// <b>De-facto-interop quirk (not a figure-defect — no ax25spec issue).</b>
+    /// Controls the §6.6 segmentation wire format. AX.25 v2.2 Figure 6.2 draws a
+    /// segmented I-frame's info field as the 0x08 segmented-PID octet plus a single
+    /// <c>FXXXXXXX</c> F/X octet (First-indicator + 7-bit remaining-count) followed
+    /// directly by the segment data — there is <b>no field carrying the original
+    /// Layer-3 PID</b> through a segmented series, so a figure-literal reassembly has
+    /// no way to recover it and must deliver the payload as
+    /// <see cref="Ax25Frame.PidNoLayer3"/> (0xF0). The §6.6 prose ("a two-octet
+    /// header") is ambiguous enough to admit a second reading, and <b>Dire Wolf
+    /// (WB2OSZ) — the only known v2.2 segmenter — takes it</b>: its <i>first</i>
+    /// segment carries an extra <b>inner-PID octet</b> (the original L3 PID) between
+    /// the F/X octet and the data, which its reassembler reads back so the
+    /// reassembled payload keeps its original PID (verified byte-exact against
+    /// <c>ax25_link.c</c> <c>dl_data_request</c> ~L1330–1410 + <c>dl_data_indication</c>
+    /// ~L2010–2030, and on the wire via the #177 docker stack).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When <c>true</c> (default), the runtime emits and expects Dire Wolf's format:
+    /// the first segment's info field is
+    /// <c>[F/X octet][inner-PID = original L3 PID][segment data…]</c> and subsequent
+    /// segments are <c>[F/X octet][segment data…]</c>; the reassembler reads the
+    /// inner PID off the first segment and delivers the reassembled payload with that
+    /// <b>original L3 PID</b>. The inner-PID octet counts toward the segment budget —
+    /// it occupies one of the first segment's N1−1 payload slots, leaving N1−2 for
+    /// data (Dire Wolf's <c>DIVROUNDUP(len + 1, N1 − 1)</c> "+1 for the original
+    /// PID"). This interoperates with Dire Wolf out of the box <i>and</i> fixes the
+    /// figure-literal limitation that the L3 PID is lost across a segmented series.
+    /// </para>
+    /// <para>
+    /// When <c>false</c> (<see cref="StrictlyFaithful"/>), the runtime emits and
+    /// expects the figure-literal format: every segment is
+    /// <c>[F/X octet][segment data…]</c> with no inner-PID octet, and a reassembled
+    /// payload is delivered as <see cref="Ax25Frame.PidNoLayer3"/> (0xF0) — Figure 6.2
+    /// exactly as drawn, for strict conformance study.
+    /// </para>
+    /// <para>
+    /// This is a wire-format de-facto-interop quirk, <b>not</b> a figc figure defect:
+    /// there is no filed <c>ax25spec</c> issue and it does not take the
+    /// <c>Ax25Spec&lt;NN&gt;</c> prefix. The underlying spec gap (Figure 6.2 / §6.6's
+    /// two-octet header drops the L3 PID; Dire Wolf fills it non-standardly) is a
+    /// candidate <c>ax25spec</c> clarification.
+    /// </para>
+    /// </remarks>
+    public bool SegmentFirstCarriesL3Pid { get; init; } = true;
+
     /// <summary>
     /// Work around <c>packethacking/ax25spec#38</c>: figc4.5 (Timer Recovery)
     /// draws the SREJ-received retransmit path as the generic fresh-DL-DATA
@@ -271,6 +333,7 @@ public sealed record Ax25SessionQuirks
     /// </summary>
     public static Ax25SessionQuirks StrictlyFaithful { get; } = new()
     {
+        SegmentFirstCarriesL3Pid = false,
         Ax25Spec38SrejSelectiveRetransmit = false,
         Ax25Spec40DiscardOutOfWindowIFrames = false,
         Ax25Spec41KarnSrtSampling = false,

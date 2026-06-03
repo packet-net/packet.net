@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Packet.Ax25;
 using Packet.Ax25.Session;
 
 namespace Packet.Ax25.Tests.Session;
@@ -8,6 +9,16 @@ namespace Packet.Ax25.Tests.Session;
 /// criterion: *"Segmenter reassembles a 1500-byte payload across
 /// multiple I-frames."*
 /// </summary>
+/// <remarks>
+/// The <see cref="Segmenter"/>/<see cref="Reassembler"/> support two formats:
+/// the figure-literal one (no inner-PID octet — pass <c>innerPid: null</c> /
+/// construct <c>new Reassembler()</c>) and Dire Wolf's de-facto one (the first
+/// segment carries the original L3 PID after the F/X byte — pass an
+/// <c>innerPid</c> / construct <c>new Reassembler(expectInnerPid: true)</c>). The
+/// session picks between them via
+/// <c>Ax25SessionQuirks.SegmentFirstCarriesL3Pid</c> (default on); these tests
+/// pin both formats directly at the utility level.
+/// </remarks>
 public class SegmenterTests
 {
     [Theory]
@@ -20,12 +31,12 @@ public class SegmenterTests
     [InlineData(1500)]    // Phase 2 exit criterion size
     [InlineData(16320)]   // 64 segments at N1=256 (mid-range)
     [InlineData(32640)]   // exactly MaxSegments (128) × (N1-1=255) bytes at N1=256 — the 7-bit boundary
-    public void Roundtrip_Through_Segmenter_And_Reassembler_Recovers_Original(int payloadSize)
+    public void Roundtrip_Figure_Literal_Recovers_Original(int payloadSize)
     {
         var payload = new byte[payloadSize];
         for (int i = 0; i < payloadSize; i++) payload[i] = (byte)((i * 31) & 0xFF);  // deterministic non-trivial pattern
 
-        var segments = Segmenter.Segment(payload, maxInfoFieldBytes: 256);
+        var segments = Segmenter.Segment(payload, maxInfoFieldBytes: 256);   // innerPid: null = figure-literal
 
         byte[]? completed = null;
         var reassembler = new Reassembler();
@@ -35,6 +46,53 @@ public class SegmenterTests
         completed.Should().NotBeNull($"the last segment must produce a completed payload for size {payloadSize}");
         completed!.Length.Should().Be(payloadSize);
         completed.Should().Equal(payload);
+        reassembler.LastRecoveredPid.Should().BeNull("the figure-literal format carries no inner PID to recover");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(100)]
+    [InlineData(254)]     // exactly one segment with the inner-PID format (F/X + inner-PID + 254 data = 256 = N1)
+    [InlineData(255)]     // overflows into a 2nd segment (the inner PID stole the last slot of segment 0)
+    [InlineData(1500)]    // Phase 2 exit criterion size
+    [InlineData(16320)]   // mid-range
+    [InlineData(32639)]   // largest payload at MaxSegments with the inner-PID format: ceil((32639+1)/255) = 128
+    public void Roundtrip_Inner_Pid_Recovers_Original_And_The_L3_Pid(int payloadSize)
+    {
+        var payload = new byte[payloadSize];
+        for (int i = 0; i < payloadSize; i++) payload[i] = (byte)((i * 31 + 7) & 0xFF);
+        const byte l3Pid = Ax25Frame.PidNetRom;   // a non-default L3 PID, to prove it survives
+
+        var segments = Segmenter.Segment(payload, maxInfoFieldBytes: 256, innerPid: l3Pid);
+
+        byte[]? completed = null;
+        var reassembler = new Reassembler(expectInnerPid: true);
+        foreach (var seg in segments)
+            completed = reassembler.Push(seg);
+
+        completed.Should().NotBeNull($"the last segment must produce a completed payload for size {payloadSize}");
+        completed!.Length.Should().Be(payloadSize);
+        completed.Should().Equal(payload);
+        reassembler.LastRecoveredPid.Should().Be(l3Pid,
+            "the inner-PID format carries the original L3 PID on the first segment, recovered on reassembly");
+    }
+
+    [Fact]
+    public void Inner_Pid_Format_Matches_DireWolfs_Worked_Example_Byte_For_Byte()
+    {
+        // Dire Wolf's own worked example (ax25_link.c dl_data_request comment block):
+        // N1 = 4, payload "ABCDEF", PID = 0xF0 →
+        //   seg0 = 0x82 0xF0 'A' 'B'   (First + 2-to-follow, inner PID, N1-2 = 2 data bytes)
+        //   seg1 = 0x01 'C' 'D' 'E'    (1-to-follow, N1-1 = 3 data bytes)
+        //   seg2 = 0x00 'F'            (0-to-follow, last byte)
+        var payload = "ABCDEF"u8.ToArray();
+        var segments = Segmenter.Segment(payload, maxInfoFieldBytes: 4, innerPid: Ax25Frame.PidNoLayer3);
+
+        segments.Should().HaveCount(3, "Dire Wolf's ceil((6+1)/(4-1)) = 3 segments");
+        segments[0].Should().Equal(new byte[] { 0x82, 0xF0, (byte)'A', (byte)'B' });
+        segments[1].Should().Equal(new byte[] { 0x01, (byte)'C', (byte)'D', (byte)'E' });
+        segments[2].Should().Equal(new byte[] { 0x00, (byte)'F' });
     }
 
     [Fact]
@@ -54,7 +112,7 @@ public class SegmenterTests
     }
 
     [Fact]
-    public void Segment_Throws_If_Payload_Exceeds_Capacity()
+    public void Segment_FigureLiteral_Throws_If_Payload_Exceeds_Capacity()
     {
         // MaxSegments (128) × (N1-1=255) = 32640 is the limit; one more byte overflows.
         var act = () => Segmenter.Segment(new byte[32641], maxInfoFieldBytes: 256);
@@ -62,9 +120,27 @@ public class SegmenterTests
     }
 
     [Fact]
-    public void Segment_Throws_If_MaxInfoFieldBytes_Too_Small()
+    public void Segment_InnerPid_Throws_If_Payload_Exceeds_Capacity()
+    {
+        // With the inner-PID octet stealing one slot, the limit is one byte lower:
+        // ceil((32639+1)/255) = 128 is OK; 32640 needs 129 segments.
+        var act = () => Segmenter.Segment(new byte[32640], maxInfoFieldBytes: 256, innerPid: 0xF0);
+        act.Should().Throw<ArgumentException>().WithMessage("*128*");
+    }
+
+    [Fact]
+    public void Segment_FigureLiteral_Throws_If_MaxInfoFieldBytes_Too_Small()
     {
         var act = () => Segmenter.Segment(new byte[10], maxInfoFieldBytes: 1);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void Segment_InnerPid_Throws_If_MaxInfoFieldBytes_Below_3()
+    {
+        // The inner-PID first segment needs room for the F/X octet, the inner-PID
+        // octet, and at least one data byte — so N1 must be at least 3.
+        var act = () => Segmenter.Segment(new byte[10], maxInfoFieldBytes: 2, innerPid: 0xF0);
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
 

@@ -13,12 +13,13 @@ namespace Packet.Ax25.Tests.Session;
 /// </summary>
 public class SegmentationLayerTests
 {
-    private static Ax25SessionContext Ctx(int n1, bool segmenterEnabled) => new()
+    private static Ax25SessionContext Ctx(int n1, bool segmenterEnabled, Ax25SessionQuirks? quirks = null) => new()
     {
         Local = new Callsign("M0LTEA", 1),
         Remote = new Callsign("M0LTEB", 2),
         N1 = n1,
         SegmenterReassemblerEnabled = segmenterEnabled,
+        Quirks = quirks ?? Ax25SessionQuirks.Default,
     };
 
     [Fact]
@@ -133,16 +134,16 @@ public class SegmentationLayerTests
     }
 
     [Fact]
-    public void Reassembled_payload_is_delivered_with_PidNoLayer3()
+    public void Default_quirk_preserves_the_original_L3_PID_through_a_segmented_series()
     {
-        // §6.6 / Figure 6.2: the segment header carries the 0x08 PID + the F/X
-        // byte — there is NO field carrying the original Layer-3 PID through a
-        // segmented series. So reassembled data is delivered as PidNoLayer3 (the
-        // faithful "PID unknown / raw" value). Pin that contract.
+        // Default (SegmentFirstCarriesL3Pid on): the first segment carries the
+        // original L3 PID after the F/X byte (Dire Wolf's format), so the
+        // reassembler recovers it and delivers the reassembled payload with that
+        // ORIGINAL PID — not PidNoLayer3. This both interoperates with Dire Wolf
+        // and fixes the figure-literal PID-loss limitation. Pin that contract.
         var n1 = 16;
-        var send = new SegmentationLayer(Ctx(n1, segmenterEnabled: true));
+        var send = new SegmentationLayer(Ctx(n1, segmenterEnabled: true));   // default quirks
         var recv = new SegmentationLayer(Ctx(n1, segmenterEnabled: true));
-        // Send with a non-default L3 PID to show it is NOT recovered on reassembly.
         var payload = new byte[40];
 
         var segments = send.BuildSendRequests(payload, Ax25Frame.PidNetRom);
@@ -150,9 +151,42 @@ public class SegmentationLayerTests
         foreach (var s in segments)
             final = recv.OnDataIndication(new DataLinkDataIndication(s.Data, s.Pid)) ?? final;
 
-        SegmentationLayer.ReassembledPid.Should().Be(Ax25Frame.PidNoLayer3);
+        final.Should().NotBeNull();
+        final!.Pid.Should().Be(Ax25Frame.PidNetRom,
+            "with the inner-PID quirk on (default) the original L3 PID is carried on the first segment and recovered on reassembly");
+        final.Info.ToArray().Should().Equal(payload);
+    }
+
+    [Fact]
+    public void StrictlyFaithful_uses_the_figure_literal_format_and_delivers_PidNoLayer3()
+    {
+        // StrictlyFaithful (SegmentFirstCarriesL3Pid off): Figure 6.2 literally —
+        // no inner-PID octet, so the original L3 PID cannot be recovered and the
+        // reassembled payload is delivered as PidNoLayer3. The first segment's
+        // info field is [F/X][data] (no inner-PID octet between them). Pin the
+        // strict figure-literal contract alongside the default.
+        var n1 = 16;
+        var quirks = Ax25SessionQuirks.StrictlyFaithful;
+        var send = new SegmentationLayer(Ctx(n1, segmenterEnabled: true, quirks));
+        var recv = new SegmentationLayer(Ctx(n1, segmenterEnabled: true, quirks));
+        var payload = new byte[40];
+
+        var segments = send.BuildSendRequests(payload, Ax25Frame.PidNetRom);
+
+        // The first segment's second byte is the start of PAYLOAD (figure-literal),
+        // NOT the inner PID. (payload[0] == 0, distinct from PidNetRom 0xCF.)
+        ((segments[0].Data.Span[0] & Segmenter.FirstBit) != 0).Should().BeTrue("segment 0 is the First segment");
+        segments[0].Data.Span[1].Should().Be((byte)0,
+            "figure-literal: byte after the F/X octet is the first payload byte, not an inner-PID octet");
+
+        DataLinkDataIndication? final = null;
+        foreach (var s in segments)
+            final = recv.OnDataIndication(new DataLinkDataIndication(s.Data, s.Pid)) ?? final;
+
+        SegmentationLayer.FigureLiteralReassembledPid.Should().Be(Ax25Frame.PidNoLayer3);
         final.Should().NotBeNull();
         final!.Pid.Should().Be(Ax25Frame.PidNoLayer3,
-            "the inner L3 PID is not carried by §6.6 segmentation, so reassembled data is delivered as PidNoLayer3");
+            "the figure-literal format carries no inner L3 PID, so reassembled data is delivered as PidNoLayer3");
+        final.Info.ToArray().Should().Equal(payload);
     }
 }

@@ -56,7 +56,8 @@ public class Ax25ListenerSegmentationTests
         var ua = modem.SentFrames.Count;   // frames already sent (the UA)
         var payload = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();   // 5 segments at N1=64
 
-        listener.SendData(session, payload);
+        // A non-default L3 PID so we can see it carried as the first-segment inner PID.
+        listener.SendData(session, payload, Ax25Frame.PidNetRom);
 
         // Five I-frames, each carrying PID 0x08, should hit the modem.
         await modem.SentFrames.WaitForCountAsync(ua + 5, TimeSpan.FromSeconds(2));
@@ -69,6 +70,48 @@ public class Ax25ListenerSegmentationTests
             "each segment goes out as a normal I-frame");
         iFrames.Should().OnlyContain(f => f.Pid == Ax25Frame.PidSegmented,
             "every segment I-frame carries the segmented PID 0x08");
+
+        // Default quirk (SegmentFirstCarriesL3Pid on): the FIRST segment's info
+        // field is [F/X = First|count][inner-PID = original L3 PID][data…]. So the
+        // first segment's second info octet is the original L3 PID, and subsequent
+        // segments do NOT carry it.
+        var firstInfo = iFrames[0].Info.ToArray();
+        (firstInfo[0] & Segmenter.FirstBit).Should().NotBe(0, "segment 0 must be the First segment");
+        firstInfo[1].Should().Be(Ax25Frame.PidNetRom,
+            "the first segment carries the original L3 PID as the inner-PID octet (Dire Wolf's default format)");
+    }
+
+    [Fact]
+    public async Task SendData_under_StrictlyFaithful_emits_the_figure_literal_format_without_an_inner_PID()
+    {
+        var (listener, modem, session) = await AcceptedSession(ctx =>
+        {
+            ctx.N1 = 64;
+            ctx.K = 16;
+            ctx.SegmenterReassemblerEnabled = true;
+            ctx.Quirks = Ax25SessionQuirks.StrictlyFaithful;
+        });
+        await using var _ = listener;
+
+        var ua = modem.SentFrames.Count;
+        // payload[0] = 0, distinct from PidNetRom (0xCF), so we can tell the
+        // first segment's second octet is payload, not an inner PID.
+        var payload = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();
+
+        listener.SendData(session, payload, Ax25Frame.PidNetRom);
+
+        await modem.SentFrames.WaitForCountAsync(ua + 5, TimeSpan.FromSeconds(2));
+        var iFrames = modem.SentFrames.SnapshotList().Skip(ua)
+            .Select(b => { Ax25Frame.TryParse(b.Span, out var f); return f!; })
+            .ToList();
+
+        iFrames.Should().HaveCount(5, "figure-literal: 300 bytes / (N1-1=63) = 5 segments (no inner-PID octet stealing a slot)");
+        iFrames.Should().OnlyContain(f => f.Pid == Ax25Frame.PidSegmented);
+
+        var firstInfo = iFrames[0].Info.ToArray();
+        (firstInfo[0] & Segmenter.FirstBit).Should().NotBe(0, "segment 0 must be the First segment");
+        firstInfo[1].Should().Be((byte)0,
+            "figure-literal: the byte after the F/X octet is the first PAYLOAD byte (payload[0]=0), not an inner-PID octet");
     }
 
     [Fact]
