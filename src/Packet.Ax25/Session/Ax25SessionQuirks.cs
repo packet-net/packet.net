@@ -321,6 +321,40 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec45FrmrFallbackReestablishesV20 { get; init; } = true;
 
     /// <summary>
+    /// Work around <c>packethacking/ax25spec#47</c>: figc4.5 (Timer Recovery) draws the
+    /// in-sequence <c>I_received</c> stored-frame drain loop with
+    /// <c>V(r) := V(r) - 1</c> in its body, where the structurally-identical
+    /// figc4.4 (Connected) handler — same path, same pre-loop <c>V(r) := V(r) + 1</c>
+    /// — uses <c>V(r) := V(r) + 1</c>. The drain delivers each consecutively-stored
+    /// (previously SREJ-gap-filled) frame and must <i>advance</i> V(R) past it; a
+    /// decrement makes V(R) net-stationary (or regress) the moment one stored frame
+    /// is drained, so a station recovering in Timer Recovery delivers the gap-filled
+    /// frames but leaves V(R) pointing back at an already-delivered sequence number.
+    /// The peer's next (genuine, still-unacknowledged-window) retransmit is then
+    /// taken as new data and <b>re-delivered</b>, and the link fails to converge —
+    /// reproduced under simultaneous bidirectional SREJ at low n (k = 4): A delivers
+    /// the peer's two-frame stream twice (<c>[0x80,0x81,0x80,0x81]</c>).
+    /// </summary>
+    /// <remarks>
+    /// When <c>true</c> (default), the figc4.5 stored-frame drain advances V(R)
+    /// (the loop-body <c>V(r) := V(r) - 1</c> verb is rewritten to
+    /// <c>V(r) := V(r) + 1</c> in <see cref="ActionDispatcher"/>), matching figc4.4
+    /// and §6.4.2.1 ("accepts the received I frame, increments its receive state
+    /// variable"), so a Timer-Recovery stored-frame drain leaves V(R) correctly past
+    /// the delivered frames. The verb <c>V(r) := V(r) - 1</c> appears <i>only</i> in
+    /// these three figc4.5 drain loops (no other transition uses it), so the rewrite
+    /// is inert everywhere else. When <c>false</c>, the figure runs as drawn (the
+    /// decrement, reproducing the duplicate-delivery / non-convergence for strict
+    /// conformance study). De-facto corroboration: direwolf's
+    /// <c>dl_data_indication</c> drain (<c>ax25_link.c</c>) advances <c>state-&gt;vr</c>
+    /// as it pulls each stored frame off <c>rxdata_by_ns[]</c> — it never decrements.
+    /// Delete once ax25sdl ships a figc4.5 carrying the corrected increment
+    /// (packethacking/ax25spec#47). The figc4.4 (Connected) handler is already correct, so no
+    /// quirk is needed there.
+    /// </remarks>
+    public bool Ax25Spec47TimerRecoveryDrainAdvancesVR { get; init; } = true;
+
+    /// <summary>
     /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
     /// what a session uses unless explicitly configured otherwise.
     /// </summary>
@@ -341,5 +375,6 @@ public sealed record Ax25SessionQuirks
         Ax25Spec43DlFlowOffEntersBusy = false,
         Ax25Spec44Mod128ConnectRoutesToV22 = false,
         Ax25Spec45FrmrFallbackReestablishesV20 = false,
+        Ax25Spec47TimerRecoveryDrainAdvancesVR = false,
     };
 }
