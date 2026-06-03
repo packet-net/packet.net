@@ -758,7 +758,24 @@ public sealed class ActionDispatcher : IActionDispatcher
             // V(a) := N(r) advances the acknowledge state to the N(R) of the
             // just-received frame. Only valid when the trigger is a frame-receipt
             // event; throws otherwise. The figc4.7 arrow form folds here too.
-            Ax25ActionVerb.VAAssignNR             => Do(() => ctx.VA = ExtractNr(tx)),
+            // Pruning the just-acknowledged frames out of SentIFrames here keeps a
+            // later stale/duplicate REJ/SREJ from replaying an already-acked frame
+            // (the mod-8 SREJ ring-wrap duplicate; #231-class) — direwolf deletes
+            // each acknowledged txdata_by_ns[ns] at the same point (ax25_link.c).
+            Ax25ActionVerb.VAAssignNR             => Do(() =>
+            {
+                byte previousVa = ctx.VA;
+                ctx.VA = ExtractNr(tx);
+                if (ctx.VA != previousVa)
+                {
+                    // Genuine acknowledgement progress: this is a new recovery
+                    // cycle, so a frame may be selectively retransmitted again if
+                    // re-requested. Prune the now-acked frames out of SentIFrames
+                    // too (direwolf deletes the acknowledged txdata_by_ns[ns] here).
+                    ctx.SelectivelyRetransmittedSinceAck.Clear();
+                    ctx.PruneAcknowledgedSentIFrames();
+                }
+            }),
 
             // ─── Pending-frame field assignments (write side) ──────────
             //
@@ -929,7 +946,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// Used in figc4.4/figc4.5's selective SREJ/REJ recovery paths.
     /// </summary>
     private void PushOldIFrameNrOnQueue(TransitionContext tx)
-        => EmitOldIFrame(tx, ExtractNr(tx));
+        => EmitOldIFrame(tx, ExtractNr(tx), selectiveReplay: true);
 
     /// <summary>
     /// Retransmit a previously-sent I-frame, preserving its ORIGINAL N(S).
@@ -938,21 +955,44 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>Invoke_Retransmission</c> loop (<c>Push Old I Frame onto Queue</c>).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Emits directly rather than via <see cref="Ax25SessionContext.IFrameQueue"/>:
     /// the queue + fresh-frame drain (figc4.4 t03 "I frame pops off queue")
     /// assigns <c>N(S):=V(S)</c> and increments V(S) — correct for a *fresh*
     /// frame, but it renumbers a *retransmitted* one to the current V(S), so the
     /// peer never sees the missing sequence number and the gap never fills (the
     /// figure assumes the push + transmit interleave; the runtime decoupled them
-    /// into push-now / drain-later, losing the N(S) semantics). Retransmits also
-    /// go out unconditionally — they are already-counted frames being replayed,
-    /// not new transmissions subject to the send window. N(S) is the supplied
+    /// into push-now / drain-later, losing the N(S) semantics). N(S) is the supplied
     /// original sequence; N(R) piggybacks the current V(R); P=0 (the poll, when
     /// needed, is a separate enquiry). Silently skips if the frame has been
     /// evicted from storage — matches linbpq/direwolf.
+    /// </para>
+    /// <para>
+    /// For the SREJ-driven selective replay (<paramref name="selectiveReplay"/> =
+    /// true) only an <em>outstanding</em> frame (N(S) ∈ [V(a), V(s))) is re-sent,
+    /// and at most once per recovery cycle. A REJ/SREJ that names an already-
+    /// acknowledged N(S) — a stale or duplicated supervisory frame arriving after
+    /// V(a) has moved past it, or a redundant SREJ for a frame already in flight —
+    /// must NOT cause a resend: that copy becomes a duplicate once the peer's V(R)
+    /// has wrapped around the ring and is then mis-delivered as new data (the mod-8
+    /// SREJ ring-wrap bug; #231-class). direwolf deletes each
+    /// <c>txdata_by_ns[ns]</c> on acknowledgement (and de-duplicates SREJ requests)
+    /// for the same reason. The go-back-N <c>Invoke_Retransmission</c> replay
+    /// (<paramref name="selectiveReplay"/> = false) is exempt: it deliberately
+    /// rewinds V(S) and re-sends the whole outstanding tail, so the live-window and
+    /// once-per-cycle tests don't apply.
+    /// </para>
     /// </remarks>
-    private void EmitOldIFrame(TransitionContext tx, byte ns)
+    private void EmitOldIFrame(TransitionContext tx, byte ns, bool selectiveReplay = false)
     {
+        // SREJ selective replay only: re-send an outstanding frame at most once per
+        // recovery cycle, so a stale/duplicate/redundant SREJ can't put a copy on
+        // the wire that the peer mis-delivers after its V(R) wraps. See the remarks.
+        if (selectiveReplay)
+        {
+            if (!tx.Session.IsOutstanding(ns)) return;
+            if (!tx.Session.SelectivelyRetransmittedSinceAck.Add(ns)) return;
+        }
         if (!tx.Session.SentIFrames.TryGetValue(ns, out var entry)) return;
         sendIFrame(new IFrameSpec(
             IsCommand: true,
@@ -990,6 +1030,10 @@ public sealed class ActionDispatcher : IActionDispatcher
             Pid:       popped.Pid,
             Path:      ReversedTriggerPath(tx)));
         tx.Session.SentIFrames[ns] = (popped.Data, popped.Pid);
+        // A freshly transmitted frame at this N(S) is genuinely new data, so any
+        // stale "already selectively retransmitted" mark from a prior ring cycle
+        // must not suppress a future SREJ-driven replay of THIS frame.
+        tx.Session.SelectivelyRetransmittedSinceAck.Remove(ns);
     }
 
     /// <summary>

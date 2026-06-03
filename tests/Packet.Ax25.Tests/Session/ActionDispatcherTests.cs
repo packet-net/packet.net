@@ -834,9 +834,15 @@ public class ActionDispatcherTests
         {
             Local  = new Callsign("M0LTE", 0),
             Remote = new Callsign("G7XYZ", 7),
+            // Frame 3 must be genuinely OUTSTANDING for a selective replay to fire:
+            // V(a)=3, V(s)=4 ⇒ the single unacked frame is N(S)=3. A peer only ever
+            // requests an outstanding frame; replaying a non-outstanding (already-
+            // acked) one is the mod-8 SREJ ring-wrap bug the guard now blocks.
+            VA = 3,
+            VS = 4,
         };
         var oldPayload = "retransmit-me"u8.ToArray();
-        // Pretend we sent an I-frame with N(S) = 3 a while ago.
+        // Pretend we sent an I-frame with N(S) = 3 (still outstanding, see above).
         ctx.SentIFrames[3] = (oldPayload, Ax25Frame.PidNoLayer3);
 
         // Now an RR comes in with N(R) = 3 — meaning "I want frame 3 again".

@@ -213,6 +213,22 @@ public sealed class Ax25SessionContext
     /// </summary>
     public Dictionary<byte, (ReadOnlyMemory<byte> Info, byte Pid)> StoredReceivedIFrames { get; } = new();
 
+    /// <summary>
+    /// N(S) values that have already been selectively retransmitted (in response
+    /// to an SREJ) since V(a) last advanced — i.e. within the current recovery
+    /// cycle. A burst of redundant SREJs for the same still-outstanding gap (the
+    /// figc4.4 over-SREJ: one SREJ per out-of-sequence frame) must not spawn one
+    /// wire copy each — the surplus copies become stale once the receiver's V(R)
+    /// wraps past them and get mis-delivered as new (the mod-8 SREJ ring-wrap
+    /// duplicate). Cleared on every V(a) advance (genuine progress = new cycle, see
+    /// <see cref="PruneAcknowledgedSentIFrames"/>) and per-N(S) when a fresh I-frame
+    /// is emitted at that N(S). A genuinely lost retransmit is still recovered — via
+    /// the T1/TimerRecovery <c>Invoke_Retransmission</c> path, which does not consult
+    /// this set. direwolf reaches the same effect by deleting acknowledged
+    /// <c>txdata_by_ns[ns]</c> + de-duplicating SREJ requests (ax25_link.c).
+    /// </summary>
+    public HashSet<byte> SelectivelyRetransmittedSinceAck { get; } = new();
+
     // ─── Helpers ────────────────────────────────────────────────────────
 
     /// <summary>Modulus used for sequence-variable arithmetic (8 or 128).</summary>
@@ -223,6 +239,45 @@ public sealed class Ax25SessionContext
 
     /// <summary>Decrement a sequence variable, wrapping at <see cref="Modulus"/>.</summary>
     public byte DecrementSeq(byte value) => (byte)((value + Modulus - 1) % Modulus);
+
+    /// <summary>
+    /// True if <paramref name="ns"/> is an <em>outstanding</em> (sent-but-not-yet-
+    /// acknowledged) send sequence number — i.e. it lies in the half-open window
+    /// <c>[V(a), V(s))</c> in mod-<see cref="Modulus"/> arithmetic. A frame whose
+    /// N(S) is outside this window has already been acknowledged (behind V(a)) or
+    /// was never sent (at/after V(s)); replaying it during recovery would put a
+    /// stale sequence number on the wire that the peer can mis-deliver once its
+    /// V(R) has wrapped past it (the mod-8 SREJ ring-wrap duplicate, #231-class).
+    /// </summary>
+    public bool IsOutstanding(byte ns)
+    {
+        int span   = (VS - VA + Modulus) % Modulus;   // count of outstanding frames
+        int offset = (ns - VA + Modulus) % Modulus;   // position of ns within the window
+        return offset < span;
+    }
+
+    /// <summary>
+    /// Drop every entry in <see cref="SentIFrames"/> whose N(S) is no longer
+    /// outstanding (i.e. has been acknowledged — it now lies behind V(a) per
+    /// <see cref="IsOutstanding"/>). Called whenever V(a) advances so a stale or
+    /// duplicate REJ/SREJ cannot make the recovery path replay an already-acked
+    /// frame. Mirrors direwolf's <c>cdata_delete(txdata_by_ns[...])</c> on
+    /// acknowledgement (ax25_link.c).
+    /// </summary>
+    public void PruneAcknowledgedSentIFrames()
+    {
+        if (SentIFrames.Count == 0) return;
+        List<byte>? toRemove = null;
+        foreach (var ns in SentIFrames.Keys)
+        {
+            if (!IsOutstanding(ns))
+            {
+                (toRemove ??= new List<byte>()).Add(ns);
+            }
+        }
+        if (toRemove is null) return;
+        foreach (var ns in toRemove) SentIFrames.Remove(ns);
+    }
 
     /// <summary>Reset all session state to "freshly connected" defaults.</summary>
     public void ResetState()
@@ -242,5 +297,6 @@ public sealed class Ax25SessionContext
         IFrameQueue.Clear();
         SentIFrames.Clear();
         StoredReceivedIFrames.Clear();
+        SelectivelyRetransmittedSinceAck.Clear();
     }
 }
