@@ -6,6 +6,7 @@ using Packet.Ax25.Session;
 using Packet.Ax25.Xid;
 using Packet.Core;
 using Packet.Kiss;
+using Packet.Node.Core.Console;
 using SharpFuzz;
 
 namespace Packet.Fuzz;
@@ -88,6 +89,7 @@ public static class Program
             "ax25ext"        => RunAx25ExtendedFuzzer(args),
             "xid"            => RunXidFuzzer(args),
             "segment"        => RunSegmentFuzzer(args),
+            "command"        => RunCommandFuzzer(args),
             "--help"
                 or "-h"      => RunHelp(),
             _ => UnknownCommand(args[0]),
@@ -119,6 +121,7 @@ public static class Program
         Console.WriteLine("  Packet.Fuzz ax25ext [corpus-dir]   AFL/libfuzzer harness for Ax25Frame.TryParse (extended/mod-128).");
         Console.WriteLine("  Packet.Fuzz xid [corpus-dir]       AFL/libfuzzer harness for XidInfoField.TryParse.");
         Console.WriteLine("  Packet.Fuzz segment [corpus-dir]   AFL/libfuzzer harness for Reassembler.Push + SegmentationLayer.");
+        Console.WriteLine("  Packet.Fuzz command [corpus-dir]   AFL/libfuzzer harness for the node console command parser.");
     }
 
     // ─── seed corpus ──────────────────────────────────────────────────
@@ -133,6 +136,7 @@ public static class Program
         Directory.CreateDirectory(Path.Combine(root, "ax25ext"));
         Directory.CreateDirectory(Path.Combine(root, "xid"));
         Directory.CreateDirectory(Path.Combine(root, "segment"));
+        Directory.CreateDirectory(Path.Combine(root, "command"));
 
         Console.WriteLine($"Writing seed corpus under {root}…");
 
@@ -203,6 +207,17 @@ public static class Program
             string path = Path.Combine(root, "segment", name);
             File.WriteAllBytes(path, bytes);
             Console.WriteLine($"  segment/{name} — {bytes.Length} bytes");
+        }
+
+        // ── Node console command seeds ───────────────────────────────
+        // The valid command lines (ASCII) the parser must classify; the
+        // command fuzzer mutates around them and the structured generator
+        // produces near-valid verb+callsign lines.
+        foreach (var (name, bytes) in CommandSeeds())
+        {
+            string path = Path.Combine(root, "command", name);
+            File.WriteAllBytes(path, bytes);
+            Console.WriteLine($"  command/{name} — {bytes.Length} bytes");
         }
 
         return 0;
@@ -342,6 +357,7 @@ public static class Program
         var extSeeds  = LoadCorpus("ax25ext");
         var xidSeeds  = LoadCorpus("xid");
         var segSeeds  = LoadCorpus("segment");
+        var cmdSeeds  = LoadCorpus("command");
 
         var ax25 = SmokeOne("Ax25Frame.TryParse", iterations, FuzzAx25Bytes, ax25Seeds, seed);
         Console.WriteLine();
@@ -361,6 +377,14 @@ public static class Program
         // NRE, …), not on the contractual protocol-violation throw.
         var seg = SmokeOne("Reassembler.Push / SegmentationLayer", iterations, FuzzSegmentBytes, segSeeds, seed,
             structuredGenerator: HostileSegmentSequence);
+        Console.WriteLine();
+        // The node console command parser is total by contract — it must never
+        // throw on any byte sequence, must bound its work, and must never produce
+        // a spurious Connect/Bye from non-command bytes. FuzzCommandBytes asserts
+        // all three; any violation is recorded as a finding (no exception is
+        // expected at all here, unlike the segment target).
+        var cmd = SmokeOne("NodeCommandParser.Parse", iterations, FuzzCommandBytes, cmdSeeds, seed,
+            structuredGenerator: MostlyValidCommand);
 
         Console.WriteLine();
         Console.WriteLine("════════ Summary ════════");
@@ -369,9 +393,11 @@ public static class Program
         Report(ext);
         Report(xid);
         Report(seg);
+        Report(cmd);
 
         int totalFindings = ax25.Findings.Count + kiss.Findings.Count
-                          + ext.Findings.Count + xid.Findings.Count + seg.Findings.Count;
+                          + ext.Findings.Count + xid.Findings.Count + seg.Findings.Count
+                          + cmd.Findings.Count;
         return totalFindings == 0 ? 0 : 2;
     }
 
@@ -927,6 +953,117 @@ public static class Program
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
             FuzzSegmentBytes(ms.ToArray());
+        });
+        return 0;
+    }
+
+    // ─── Node console command-parser target ──────────────────────────────
+
+    /// <summary>
+    /// Drive the node console command parser with arbitrary bytes, asserting its
+    /// three contract invariants: (1) it never throws; (2) every result is a
+    /// bounded, typed command — an over-long line is truncated to
+    /// <see cref="NodeCommandParser.MaxLineLength"/>; (3) a result is never a
+    /// spurious <c>Connect</c> carrying an unparseable callsign, nor a <c>Connect</c>
+    /// /<c>Bye</c> from a line whose first token can't be that verb. Both the
+    /// one-shot <see cref="NodeCommandParser.Parse(ReadOnlySpan{byte})"/> and the
+    /// streamed <see cref="LineAssembler"/> → parse path are exercised. A
+    /// violation is surfaced as a thrown exception (recorded as a finding by
+    /// <c>TryRun</c>); the target itself is expected to be exception-free.
+    /// </summary>
+    private static void FuzzCommandBytes(byte[] bytes)
+    {
+        // (1) one-shot parse never throws.
+        var direct = NodeCommandParser.Parse(bytes.AsSpan());
+        AssertCommandContract(direct);
+
+        // (2) streamed line assembly is bounded + each line parses to a typed
+        //     command. Feed the whole buffer as one chunk; the assembler bounds
+        //     each line internally.
+        var assembler = new LineAssembler();
+        foreach (var line in assembler.Push(bytes))
+        {
+            if (line.Length > NodeCommandParser.MaxLineLength)
+            {
+                throw new InvalidOperationException(
+                    $"LineAssembler emitted a {line.Length}-byte line exceeding the {NodeCommandParser.MaxLineLength} cap.");
+            }
+            AssertCommandContract(NodeCommandParser.Parse(line));
+        }
+    }
+
+    private static void AssertCommandContract(NodeCommand command)
+    {
+        switch (command)
+        {
+            case ConnectCommand connect:
+                if (!Packet.Core.Callsign.TryParse(connect.Target.ToString(), out _))
+                {
+                    throw new InvalidOperationException(
+                        $"parser produced a Connect with an invalid callsign '{connect.Target}'.");
+                }
+                break;
+            case UnknownCommand unknown when unknown.Raw.Length > NodeCommandParser.MaxLineLength:
+                throw new InvalidOperationException(
+                    $"Unknown command echo exceeded the {NodeCommandParser.MaxLineLength} cap ({unknown.Raw.Length}).");
+        }
+    }
+
+    /// <summary>
+    /// Near-valid command line bytes: a verb (full or abbreviated, random case)
+    /// optionally followed by a callsign-ish token, terminated by CR/LF. Mixes in
+    /// junk so the parser's classification + the connect-arg path are both
+    /// exercised more than raw random bytes would.
+    /// </summary>
+    private static byte[] MostlyValidCommand(Random rng)
+    {
+        string[] verbs = ["C", "CONNECT", "Conn", "c", "B", "BYE", "D", "DISC", "N", "NODES", "I", "INFO", "H", "HELP", "?", "BOGUS"];
+        var verb = verbs[rng.Next(verbs.Length)];
+        var sb = new StringBuilder(verb);
+        if (rng.Next(2) == 0)
+        {
+            sb.Append(' ');
+            int len = rng.Next(0, 9);
+            for (int i = 0; i < len; i++)
+            {
+                // Mostly callsign chars, sometimes a stray byte.
+                sb.Append(rng.Next(8) == 0
+                    ? (char)rng.Next(33, 127)
+                    : "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"[rng.Next(37)]);
+            }
+        }
+        sb.Append(rng.Next(2) == 0 ? "\r" : "\r\n");
+        return Encoding.ASCII.GetBytes(sb.ToString());
+    }
+
+    /// <summary>Known-valid console command lines (the smoke seed corpus).</summary>
+    private static IEnumerable<(string Name, byte[] Bytes)> CommandSeeds()
+    {
+        (string, string)[] lines =
+        [
+            ("connect.bin",   "C M0LTE-1\r"),
+            ("connect-full.bin", "CONNECT G7XYZ\r"),
+            ("bye.bin",       "B\r"),
+            ("disconnect.bin", "DISCONNECT\r"),
+            ("nodes.bin",     "N\r"),
+            ("info.bin",      "INFO\r"),
+            ("help.bin",      "?\r"),
+            ("empty.bin",     "\r"),
+            ("unknown.bin",   "frobnicate the gadget\r"),
+        ];
+        foreach (var (name, text) in lines)
+        {
+            yield return (name, Encoding.ASCII.GetBytes(text));
+        }
+    }
+
+    private static int RunCommandFuzzer(string[] args)
+    {
+        Fuzzer.OutOfProcess.Run(stream =>
+        {
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            FuzzCommandBytes(ms.ToArray());
         });
         return 0;
     }

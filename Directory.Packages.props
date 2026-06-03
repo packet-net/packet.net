@@ -28,6 +28,18 @@
     <PackageVersion Include="FluentValidation" Version="11.11.0" />
     <PackageVersion Include="FluentValidation.AspNetCore" Version="11.3.0" />
 
+    <!-- Node host config — the YAML config blob (Phase 4 slice 1). The file is
+         the blob today; a later slice stores the same YAML in a SQLite column
+         behind the IConfigProvider seam, so nothing couples to the format. -->
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+
+    <!-- Generic Host abstractions for Packet.Node.Core (BackgroundService,
+         IHostApplicationLifetime, ILogger). The host shell (Packet.Node) pulls
+         the full hosting stack via Microsoft.NET.Sdk.Web; the core library
+         depends only on the abstractions. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
 

@@ -18,6 +18,8 @@
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
+    <!-- Node console command parser — the node-host slice-1 fuzz target. -->
+    <ProjectReference Include="..\..\src\Packet.Node.Core\Packet.Node.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
