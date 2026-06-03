@@ -321,7 +321,7 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec45FrmrFallbackReestablishesV20 { get; init; } = true;
 
     /// <summary>
-    /// Work around <c>m0lte/ax25sdl#49</c>: figc4.5 (Timer Recovery) draws the
+    /// Work around <c>packethacking/ax25spec#47</c>: figc4.5 (Timer Recovery) draws the
     /// in-sequence <c>I_received</c> stored-frame drain loop with
     /// <c>V(r) := V(r) - 1</c> in its body, where the structurally-identical
     /// figc4.4 (Connected) handler — same path, same pre-loop <c>V(r) := V(r) + 1</c>
@@ -349,10 +349,10 @@ public sealed record Ax25SessionQuirks
     /// <c>dl_data_indication</c> drain (<c>ax25_link.c</c>) advances <c>state-&gt;vr</c>
     /// as it pulls each stored frame off <c>rxdata_by_ns[]</c> — it never decrements.
     /// Delete once ax25sdl ships a figc4.5 carrying the corrected increment
-    /// (m0lte/ax25sdl#49). The figc4.4 (Connected) handler is already correct, so no
+    /// (packethacking/ax25spec#47). The figc4.4 (Connected) handler is already correct, so no
     /// quirk is needed there.
     /// </remarks>
-    public bool Ax25Spec49TimerRecoveryDrainAdvancesVR { get; init; } = true;
+    public bool Ax25Spec47TimerRecoveryDrainAdvancesVR { get; init; } = true;
 
     /// <summary>
     /// Default preset — spec-<i>correct</i> behaviour (all quirks on). This is
@@ -375,6 +375,6 @@ public sealed record Ax25SessionQuirks
         Ax25Spec43DlFlowOffEntersBusy = false,
         Ax25Spec44Mod128ConnectRoutesToV22 = false,
         Ax25Spec45FrmrFallbackReestablishesV20 = false,
-        Ax25Spec49TimerRecoveryDrainAdvancesVR = false,
+        Ax25Spec47TimerRecoveryDrainAdvancesVR = false,
     };
 }

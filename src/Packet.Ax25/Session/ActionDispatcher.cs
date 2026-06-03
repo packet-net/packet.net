@@ -346,18 +346,18 @@ public sealed class ActionDispatcher : IActionDispatcher
             verb = Ax25ActionVerb.NRAssignVR;
         }
 
-        // Quirk Ax25Spec49TimerRecoveryDrainAdvancesVR (default on): figc4.5's
+        // Quirk Ax25Spec47TimerRecoveryDrainAdvancesVR (default on): figc4.5's
         // in-sequence I_received stored-frame drain loop body draws
         // `V(r) := V(r) - 1`, where the structurally-identical figc4.4 (Connected)
         // handler uses `V(r) := V(r) + 1`. The drain must ADVANCE V(R) past each
         // consecutively-stored (SREJ-gap-filled) frame it delivers; the decrement
         // leaves V(R) under-advanced, so the peer's next genuine window retransmit
         // is re-accepted and re-delivered and the link fails to converge
-        // (m0lte/ax25sdl#49; direwolf's dl_data_indication drain advances vr). The
+        // (packethacking/ax25spec#47; direwolf's dl_data_indication drain advances vr). The
         // verb `V(r) := V(r) - 1` (VRAssignVR1) appears ONLY in these three figc4.5
         // drain loops, so rewriting it to VRAssignVRPlus1 is precisely scoped — no
         // trigger gate needed. Remove once ax25sdl ships a corrected figc4.5.
-        if (ctx.Quirks.Ax25Spec49TimerRecoveryDrainAdvancesVR
+        if (ctx.Quirks.Ax25Spec47TimerRecoveryDrainAdvancesVR
             && verb == Ax25ActionVerb.VRAssignVR1)
         {
             verb = Ax25ActionVerb.VRAssignVRPlus1;
@@ -760,7 +760,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.VRAssignVRPlus1        => Do(() => ctx.VR = ctx.IncrementSeq(ctx.VR)),
             // figc4.5 Timer Recovery draws the stored-frame drain with
             // V(r) := V(r) - 1. The decrement is surprising for a drain and is
-            // flagged for spec-author confirmation (ax25sdl#49); encoded
+            // flagged for spec-author confirmation (ax25spec#47); encoded
             // faithfully here pending that review.
             Ax25ActionVerb.VRAssignVR1            => Do(() => ctx.VR = ctx.DecrementSeq(ctx.VR)),
             Ax25ActionVerb.VAAssign0              => Do(() => ctx.VA = 0),

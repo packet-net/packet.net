@@ -16,7 +16,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// <remarks>
 /// <para>
 /// <b>R1 — figc4.5 Timer-Recovery stored-frame drain decremented V(R)
-/// (m0lte/ax25sdl#49).</b> figc4.5's in-sequence <c>I_received</c> stored-frame
+/// (packethacking/ax25spec#47).</b> figc4.5's in-sequence <c>I_received</c> stored-frame
 /// drain loop body drew <c>V(r) := V(r) - 1</c> where the structurally-identical
 /// figc4.4 (Connected) handler uses <c>V(r) := V(r) + 1</c>. The drain delivers
 /// each consecutively-stored (SREJ-gap-filled) frame and must <i>advance</i> V(R)
@@ -26,7 +26,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 /// peer's next genuine (still-unacknowledged) window retransmit was then taken for
 /// new data and <b>re-delivered</b>. Reproduced identically on this C# reference
 /// and on ax25-ts at the merged #285 commit. Fixed by
-/// <see cref="Ax25SessionQuirks.Ax25Spec49TimerRecoveryDrainAdvancesVR"/> (default
+/// <see cref="Ax25SessionQuirks.Ax25Spec47TimerRecoveryDrainAdvancesVR"/> (default
 /// on, off under <see cref="Ax25SessionQuirks.StrictlyFaithful"/>). The same fix is
 /// mirrored to ax25-ts.
 /// </para>
@@ -101,7 +101,7 @@ public class BidirectionalSrejRecoveryTests
         }
     }
 
-    // ─── R1: figc4.5 drain decrement (ax25sdl#49) ───────────────────────────
+    // ─── R1: figc4.5 drain decrement (ax25spec#47) ───────────────────────────
 
     /// <summary>The headline R1 minimal repro, the exact ax25-ts case-1 shape:
     /// mod-8 SREJ, k=4, A submits one payload while B submits two, finite LCG(1)
@@ -128,7 +128,7 @@ public class BidirectionalSrejRecoveryTests
     }
 
     /// <summary>Quirk-isolation tripwire: with <i>only</i>
-    /// <see cref="Ax25SessionQuirks.Ax25Spec49TimerRecoveryDrainAdvancesVR"/> turned
+    /// <see cref="Ax25SessionQuirks.Ax25Spec47TimerRecoveryDrainAdvancesVR"/> turned
     /// off (every other correction still on), the same scenario reproduces the
     /// figc4.5-drain defect exactly — A delivers B's stream twice and the link does
     /// not converge. This proves the figc4.5 decrement is the sole cause of R1 (not
@@ -136,9 +136,9 @@ public class BidirectionalSrejRecoveryTests
     /// stops reproducing, the figure has likely been corrected upstream and the quirk
     /// can be retired.</summary>
     [Fact]
-    public void Bidirectional_mod8_srej_lowN_reproduces_defect_with_only_spec49_off()
+    public void Bidirectional_mod8_srej_lowN_reproduces_defect_with_only_spec47_off()
     {
-        var quirks = Ax25SessionQuirks.Default with { Ax25Spec49TimerRecoveryDrainAdvancesVR = false };
+        var quirks = Ax25SessionQuirks.Default with { Ax25Spec47TimerRecoveryDrainAdvancesVR = false };
         var h = TwoStationHarness.Build(srej: true, k: 4, n2: 80, quirks: quirks);
         h.Connect();
         h.CheckAfterEachStep = false;
