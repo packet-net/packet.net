@@ -25,6 +25,7 @@ Once everything is healthy:
 | net-sim KISS A | localhost:8100 | afsk1200 node A |
 | net-sim KISS B | localhost:8101 | afsk1200 node B |
 | rax25 | (no host port) | Habets's Rust AX.25 engine; dials netsim:8104 as a KISS-TCP client (built from source at image-build time) |
+| direwolf | localhost:8106 | Dire Wolf mod-128 peer — KISS-TCP of an internal "gateway" Dire Wolf; our session dials this. NOT on net-sim (see `direwolf/Dockerfile`); built from pinned source |
 
 Tear down:
 
@@ -73,6 +74,13 @@ docker/
     XROUTER.CFG            minimal XRouter config
   rax25/
     Dockerfile             builds Habets's rax25 async_server example from source
+  direwolf/
+    Dockerfile             builds Dire Wolf (mod-128 peer) from pinned source; runs the two-direwolf audio-loopback path
+    direwolf-resp.conf     responder instance — connected-mode engine, AGW server
+    direwolf-gw.conf        gateway instance — transparent KISS-TCP modem (our session dials this)
+    asound.conf            routes ALSA's default device to the PulseAudio null sink (the shared RF channel)
+    agw_echo.py            minimal AGW accept/echo helper: register callsign, accept inbound connect, echo data
+    entrypoint.sh          launches PulseAudio + both Dire Wolf instances + the echo helper
   netsim/
     network.yaml           multi-node topology for interop tests
 ```

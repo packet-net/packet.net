@@ -115,6 +115,49 @@ services:
       rfnet:
         ipv4_address: 172.30.0.13
 
+  direwolf:
+    # Dire Wolf (WB2OSZ) — the only mod-128-capable peer in the matrix
+    # (LinBPQ FRMRs SABME, see packet.net#276). Built from a pinned source
+    # rev (1.8.1) like rax25; local-only, never pushed. GPL-2.0-or-later.
+    #
+    # NOT attached to net-sim. Dire Wolf's connected-mode engine
+    # (ax25_link.c) is reachable only via AGW on a real (audio) radio
+    # channel, and net-sim exposes no external audio ingress, so an
+    # external Dire Wolf modem cannot join net-sim's RF mixer. Instead the
+    # container runs the issue's two-direwolf audio-loopback path
+    # internally: two Dire Wolf radio channels share one PulseAudio null
+    # sink as the simulated AFSK1200 RF channel — direwolf-gw is a
+    # transparent KISS modem (our Ax25Session dials its KISS-TCP on 8001,
+    # exposed on host 8106) and direwolf-resp runs the connected-mode
+    # engine, driven by the in-container AGW echo helper which registers
+    # the called callsigns below, accepts the inbound connect, and echoes
+    # connected data. See docker/direwolf/Dockerfile for the full rationale.
+    build:
+      context: ./direwolf
+    container_name: pn-direwolf
+    restart: unless-stopped
+    environment:
+      # Callsigns the AGW echo helper registers — i.e. the callsigns the
+      # C# interop tests connect TO. Distinct per test class (mirroring the
+      # BPQ tests) so a torn-down link from one test can't be confused with
+      # another in the serialised Interop collection.
+      AGW_REGISTER: "PNDW28,PNDWBI,PNDWSR,PNDWSG,PNDWXI"
+    ports:
+      - "127.0.0.1:8106:8001"   # direwolf-gw KISS-TCP (our session attaches here)
+    healthcheck:
+      # Healthy once the AGW echo helper has had both Dire Wolf instances
+      # come up and registered its callsigns (the gateway KISS port is the
+      # one our tests dial). bash isn't installed; use a tiny python probe
+      # of the gateway KISS listener plus a registration-ack grep.
+      test: ["CMD-SHELL", "python3 -c \"import socket; socket.create_connection(('127.0.0.1',8001),2).close()\" && grep -q 'registration ack' /tmp/agw-echo.log"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+    networks:
+      rfnet:
+        ipv4_address: 172.30.0.14
+
   netsim:
     # ghcr.io/packethacking/net-sim:main @ 2026-05-12
     image: ghcr.io/packethacking/net-sim@sha256:71aed5bf5224966a4a640a20bc2bdb8ae5f45f601b0d8e2614c1463504d78417
