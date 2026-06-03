@@ -4,6 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The deployable node binary. -->
+    <OutputType>Exe</OutputType>
+    <AssemblyName>packetnet</AssemblyName>
+    <RootNamespace>Packet.Node</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The host shell is thin: all node logic lives in Packet.Node.Core. -->
+    <ProjectReference Include="..\Packet.Node.Core\Packet.Node.Core.csproj" />
+  </ItemGroup>
 
 </Project>

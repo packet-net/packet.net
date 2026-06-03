@@ -1,11 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="FsCheck.Xunit" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <!-- Boots the real Packet.Node composition root for the host component test. -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- System under test: all node logic lives in Packet.Node.Core. -->
+    <ProjectReference Include="..\..\src\Packet.Node.Core\Packet.Node.Core.csproj" />
+    <!-- The host shell, for the WebApplicationFactory-driven boot test. -->
     <ProjectReference Include="..\..\src\Packet.Node\Packet.Node.csproj" />
+    <!-- AX.25 engine — the integration tests drive real Ax25Listeners over an
+         in-memory IKissModem (the TwoStationHarness shape). -->
+    <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
   </ItemGroup>
 
 </Project>

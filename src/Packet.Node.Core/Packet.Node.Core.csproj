@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Node config records, the command parser, and the SDL-vocabulary event
+         types this library wraps mirror the spec's naming (e.g. PortConfig.Id,
+         the TNC2 command verbs). The collection-suffix analyzer rule would
+         mangle some of that; suppress it as the AX.25 library does. -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+    <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
+    <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
+    <ProjectReference Include="..\Packet.Kiss.Serial\Packet.Kiss.Serial.csproj" />
+    <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The test project drives NodeHostedService.ReconcileOnceAsync (an internal
+         deterministic reconcile seam) so the host component test isn't racing the
+         debounce/semaphore. -->
+    <InternalsVisibleTo Include="Packet.Node.Tests" />
+  </ItemGroup>
+
+</Project>
