@@ -57,13 +57,13 @@ public class DataLinkAwaitingV22ConnectionEndToEndTests
             sendInternal:  internalSignals.Add,
             subroutines:   registry);
 
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
-            ["P_eq_1"]     = () => pEq1,
-            ["F_eq_1"]     = () => fEq1,
-            ["V_s_eq_V_a"] = () => vsEqVa,
-            ["RC_eq_N2"]   = () => rcEqN2,
+            [Ax25Guard.PEq1]     = () => pEq1,
+            [Ax25Guard.FEq1]     = () => fEq1,
+            [Ax25Guard.VsEqVa] = () => vsEqVa,
+            [Ax25Guard.RCEqN2]   = () => rcEqN2,
         };
         var guards = new GuardEvaluator(bindings);
 

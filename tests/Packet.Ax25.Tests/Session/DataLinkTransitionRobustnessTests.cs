@@ -64,7 +64,7 @@ public class DataLinkTransitionRobustnessTests
                 new(
                     Id: "t_boom",
                     From: "TimerRecovery",
-                    On: "T1_expiry",
+                    On: Packet.Ax25.Sdl.Ax25Event.T1Expiry,
                     Guard: null,
                     // The verb is immaterial — StopT1ThenThrowDispatcher ignores it
                     // and throws after cancelling T1 (it never reaches the real switch).

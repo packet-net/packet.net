@@ -3,6 +3,8 @@ using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
+using SdlEvent = Packet.Ax25.Sdl.Ax25Event;
 
 namespace Packet.Ax25.Tests.Session;
 
@@ -26,7 +28,7 @@ namespace Packet.Ax25.Tests.Session;
 /// declared <c>Next</c> state having recorded the declared action sequence in
 /// order. Decisions/actions are stubbed (a recording dispatcher that mutates
 /// nothing, predicates bound to fixed booleans), so this catches orchestrator
-/// routing, guard parsing, action order/kind, and next-state — but not whether
+/// routing, guard evaluation, action order/kind, and next-state — but not whether
 /// the YAML transcription faithfully reflects the figure (human review) nor that
 /// the actions do the right thing to live context (the behavioural conformance
 /// suite). The generalised form of the per-state pattern first written by hand in
@@ -48,13 +50,13 @@ internal static class DataLinkSmokeHarness
 
         // Bind every atom mentioned anywhere on the page to false, then apply the
         // target transition's satisfying overrides. Binding the siblings lets the
-        // uniqueness check evaluate their guards without unbound-identifier errors.
+        // uniqueness check evaluate their guards meaningfully.
         var assignment = table
-            .SelectMany(t => GuardsThatSatisfy(t.Guard ?? "").Keys)
-            .ToHashSet(StringComparer.Ordinal)
-            .ToDictionary(a => a, _ => false, StringComparer.Ordinal);
-        foreach (var (name, value) in GuardsThatSatisfy(transition.Guard ?? ""))
-            assignment[name] = value;
+            .SelectMany(t => GuardsThatSatisfy(t.Guard).Keys)
+            .ToHashSet()
+            .ToDictionary(a => a, _ => false);
+        foreach (var (atom, value) in GuardsThatSatisfy(transition.Guard))
+            assignment[atom] = value;
 
         var (session, recorder, guards) = NewSession(assignment, initialState);
 
@@ -92,72 +94,70 @@ internal static class DataLinkSmokeHarness
     // ─── Guard derivation ──────────────────────────────────────────────
 
     /// <summary>
-    /// Parse a guard expression into a <c>name → value</c> map that satisfies it.
-    /// The data-link figures only ever compose atoms with <c>and</c> / <c>not</c>
-    /// (verified across all six pages — no <c>or</c>, no parentheses), and each
-    /// guard string spells out the full root-to-leaf decision path, so setting
-    /// exactly its atoms makes only that leaf true.
+    /// Reduce a typed guard (a conjunction of <see cref="GuardTerm"/>s) to an
+    /// <c>atom → value</c> map that satisfies it: each term's atom must equal
+    /// <c>!Negate</c> for the conjunction to hold. The data-link figures only
+    /// ever compose atoms with <c>and</c> / <c>not</c> (no top-level <c>or</c>,
+    /// which the package's GuardExpression parser refuses anyway), and each guard
+    /// spells out the full root-to-leaf decision path, so setting exactly its
+    /// atoms makes only that leaf true. A <c>null</c> / empty guard contributes
+    /// nothing (unguarded).
     /// </summary>
-    private static Dictionary<string, bool> GuardsThatSatisfy(string guard)
+    private static Dictionary<Ax25Guard, bool> GuardsThatSatisfy(IReadOnlyList<GuardTerm>? guard)
     {
-        var result = new Dictionary<string, bool>(StringComparer.Ordinal);
-        if (string.IsNullOrWhiteSpace(guard)) return result;
-
-        foreach (var raw in guard.Split(new[] { " and " }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var t = raw.Trim();
-            var negated = t.StartsWith("not ", StringComparison.Ordinal);
-            var atom = negated ? t.Substring(4).Trim() : t;
-            result[atom] = !negated;
-        }
+        var result = new Dictionary<Ax25Guard, bool>();
+        if (guard is null) return result;
+        foreach (var term in guard)
+            result[term.Atom] = !term.Negate;
         return result;
     }
 
     // ─── Event factory ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Construct the <see cref="Ax25Event"/> for an <c>on</c> name. The
-    /// orchestrator routes by event name and the smoke harness stubs every guard
-    /// atom, so frame contents are immaterial — received-frame events all carry a
-    /// stand-in UI frame. Covers the union of <c>on</c> names across all six
-    /// data-link pages; an unmapped name throws so a new upstream event surfaces.
+    /// Construct the runtime <see cref="Ax25Event"/> for a typed
+    /// <see cref="SdlEvent"/>. The orchestrator routes by event type and the
+    /// smoke harness stubs every guard atom, so frame contents are immaterial —
+    /// received-frame events all carry a stand-in UI frame. Covers the union of
+    /// <c>on</c> events across all six data-link pages; an unmapped event throws
+    /// so a new upstream event surfaces.
     /// </summary>
-    private static Ax25Event EventFor(string onName) => onName switch
+    private static Ax25Event EventFor(SdlEvent on) => on switch
     {
-        "DL_DISCONNECT_request"                  => new DlDisconnectRequest(),
-        "DL_CONNECT_request"                     => new DlConnectRequest(),
-        "DL_DATA_request"                        => new DlDataRequest("x"u8.ToArray()),
-        "DL_UNIT_DATA_request"                   => new DlUnitDataRequest("x"u8.ToArray()),
-        "DL_FLOW_OFF_request"                    => new DlFlowOffRequest(),
-        "DL_FLOW_ON_request"                     => new DlFlowOnRequest(),
-        "I_frame_pops_off_queue"                 => new IFramePopsOffQueue("x"u8.ToArray()),
-        "I_received"                             => new IFrameReceived(Frame()),
-        "RR_received"                            => new RrReceived(Frame()),
-        "RNR_received"                           => new RnrReceived(Frame()),
-        "REJ_received"                           => new RejReceived(Frame()),
-        "SREJ_received"                          => new SrejReceived(Frame()),
-        "SABM_received"                          => new SabmReceived(Frame()),
-        "SABME_received"                         => new SabmeReceived(Frame()),
-        "DISC_received"                          => new DiscReceived(Frame()),
-        "UA_received"                            => new UaReceived(Frame()),
-        "DM_received"                            => new DmReceived(Frame()),
-        "FRMR_received"                          => new FrmrReceived(Frame()),
-        "UI_received"                            => new UiReceived(Frame()),
-        "i_or_s_command_received"                => new IOrSCommandReceived(Frame()),
-        "all_other_commands"                     => new AllOtherCommands(Frame()),
-        "LM_SEIZE_confirm"                       => new LmSeizeConfirm(),
-        "T1_expiry"                              => new T1Expiry(),
-        "T3_expiry"                              => new T3Expiry(),
-        "control_field_error"                    => new ControlFieldError(),
-        "info_not_permitted_in_frame"            => new InfoNotPermittedInFrame(),
-        "u_or_s_frame_length_error"              => new UOrSFrameLengthError(),
-        "all_other_primitives__from_lower_layer" => new AllOtherPrimitivesFromLowerLayer(),
-        "all_other_primitives__from_upper_layer" => new AllOtherPrimitivesFromUpperLayer(),
-        _ => throw new InvalidOperationException($"no event factory for on='{onName}' (add a case)"),
+        SdlEvent.DLDISCONNECTRequest                  => new DlDisconnectRequest(),
+        SdlEvent.DLCONNECTRequest                     => new DlConnectRequest(),
+        SdlEvent.DLDATARequest                        => new DlDataRequest("x"u8.ToArray()),
+        SdlEvent.DLUNITDATARequest                    => new DlUnitDataRequest("x"u8.ToArray()),
+        SdlEvent.DLFLOWOFFRequest                     => new DlFlowOffRequest(),
+        SdlEvent.DLFLOWONRequest                      => new DlFlowOnRequest(),
+        SdlEvent.IFramePopsOffQueue                   => new IFramePopsOffQueue("x"u8.ToArray()),
+        SdlEvent.IReceived                            => new IFrameReceived(Frame()),
+        SdlEvent.RRReceived                           => new RrReceived(Frame()),
+        SdlEvent.RNRReceived                          => new RnrReceived(Frame()),
+        SdlEvent.REJReceived                          => new RejReceived(Frame()),
+        SdlEvent.SREJReceived                         => new SrejReceived(Frame()),
+        SdlEvent.SABMReceived                         => new SabmReceived(Frame()),
+        SdlEvent.SABMEReceived                        => new SabmeReceived(Frame()),
+        SdlEvent.DISCReceived                         => new DiscReceived(Frame()),
+        SdlEvent.UAReceived                           => new UaReceived(Frame()),
+        SdlEvent.DMReceived                           => new DmReceived(Frame()),
+        SdlEvent.FRMRReceived                         => new FrmrReceived(Frame()),
+        SdlEvent.UIReceived                           => new UiReceived(Frame()),
+        SdlEvent.IOrSCommandReceived                  => new IOrSCommandReceived(Frame()),
+        SdlEvent.AllOtherCommands                     => new AllOtherCommands(Frame()),
+        SdlEvent.LMSEIZEConfirm                       => new LmSeizeConfirm(),
+        SdlEvent.T1Expiry                             => new T1Expiry(),
+        SdlEvent.T3Expiry                             => new T3Expiry(),
+        SdlEvent.ControlFieldError                    => new ControlFieldError(),
+        SdlEvent.InfoNotPermittedInFrame              => new InfoNotPermittedInFrame(),
+        SdlEvent.UOrSFrameLengthError                 => new UOrSFrameLengthError(),
+        SdlEvent.AllOtherPrimitivesFromLowerLayer     => new AllOtherPrimitivesFromLowerLayer(),
+        SdlEvent.AllOtherPrimitivesFromUpperLayer     => new AllOtherPrimitivesFromUpperLayer(),
+        _ => throw new InvalidOperationException($"no event factory for on='{on}' (add a case)"),
     };
 
     /// <summary>Stand-in frame for received-frame events; the orchestrator routes
-    /// by event name and the harness stubs every guard, so contents don't matter.</summary>
+    /// by event type and the harness stubs every guard, so contents don't matter.</summary>
     private static Ax25Frame Frame() => Ax25Frame.Ui(
         destination: new Callsign("M0LTE", 0),
         source:      new Callsign("G7XYZ", 7),
@@ -177,7 +177,7 @@ internal static class DataLinkSmokeHarness
     }
 
     private static (Ax25Session session, RecordingActionDispatcher recorder, GuardEvaluator guards) NewSession(
-        Dictionary<string, bool> guardValues, string initialState)
+        Dictionary<Ax25Guard, bool> guardValues, string initialState)
     {
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
@@ -186,12 +186,12 @@ internal static class DataLinkSmokeHarness
             Local  = new Callsign("M0LTE", 0),
             Remote = new Callsign("G7XYZ", 7),
         };
-        // Start from the runtime defaults (so timer-state / counter predicates have
+        // Start from the runtime defaults (so timer-state / counter atoms have
         // sensible bindings) then override with the atoms named by this page.
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal);
-        foreach (var (name, value) in guardValues)
-            bindings[name] = () => value;
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler));
+        foreach (var (atom, value) in guardValues)
+            bindings[atom] = () => value;
 
         var guards = new GuardEvaluator(bindings);
         var recorder = new RecordingActionDispatcher();

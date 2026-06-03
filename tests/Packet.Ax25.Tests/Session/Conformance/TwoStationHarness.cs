@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
 using Packet.Ax25.Xid;
 using Packet.Core;
 

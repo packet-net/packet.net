@@ -53,11 +53,12 @@ public sealed class Ax25Adapter
     /// <param name="initialState">Starting state (typically <c>"Disconnected"</c>).</param>
     /// <param name="sendBytes">Sink for outbound AX.25 bytes. The caller is responsible for KISS / AXUDP framing.</param>
     /// <param name="bindings">
-    /// Guard predicate bindings. If <c>null</c>, the default bindings
-    /// from <see cref="Ax25SessionBindings.CreateDefault"/> are used.
-    /// Production code should extend the defaults with any
-    /// figure-specific predicates the transition tables reference (e.g.
-    /// <c>P_eq_1</c>, <c>command</c>, etc.).
+    /// Guard atom bindings, keyed by the typed <see cref="Ax25Guard"/> closed
+    /// set. If <c>null</c>, the default exhaustive bindings from
+    /// <see cref="Ax25SessionBindings.CreateDefault"/> are used (every atom is
+    /// bound, including the frame-aware ones wired to this adapter's session).
+    /// Callers that need custom predicate behaviour can supply their own
+    /// exhaustive map.
     /// </param>
     /// <param name="subroutines">
     /// Optional registry of subroutine implementations. Defaults to a
@@ -71,7 +72,7 @@ public sealed class Ax25Adapter
         IReadOnlyDictionary<string, IReadOnlyList<TransitionSpec>> transitions,
         string initialState,
         Action<ReadOnlyMemory<byte>> sendBytes,
-        IReadOnlyDictionary<string, Func<bool>>? bindings = null,
+        IReadOnlyDictionary<Ax25Guard, Func<bool>>? bindings = null,
         ISubroutineRegistry? subroutines = null)
     {
         ArgumentNullException.ThrowIfNull(context);

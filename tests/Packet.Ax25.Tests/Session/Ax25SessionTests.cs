@@ -2,6 +2,8 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
+using SdlEvent = Packet.Ax25.Sdl.Ax25Event;
 using Packet.Core;
 
 namespace Packet.Ax25.Tests.Session;
@@ -19,8 +21,8 @@ public class Ax25SessionTests
         new(
             Id: "t01_dl_flow_off_when_own_receiver_busy",
             From: "Connected",
-            On: "DL_FLOW_OFF_request",
-            Guard: "own_receiver_busy",
+            On: SdlEvent.DLFLOWOFFRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.OwnReceiverBusy, false) },
             Actions: new ActionStep[]
             {
                 new(Ax25ActionVerb.SetOwnReceiverBusy,      ActionKind.Processing),
@@ -34,8 +36,8 @@ public class Ax25SessionTests
         new(
             Id: "t02_dl_flow_off_when_own_receiver_not_busy",
             From: "Connected",
-            On: "DL_FLOW_OFF_request",
-            Guard: "not own_receiver_busy",
+            On: SdlEvent.DLFLOWOFFRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.OwnReceiverBusy, true) },
             Actions: Array.Empty<ActionStep>(),
             Next: "Connected",
             Notes: null,
@@ -44,8 +46,8 @@ public class Ax25SessionTests
         new(
             Id: "t03_dl_flow_on_when_own_receiver_not_busy",
             From: "Connected",
-            On: "DL_FLOW_ON_request",
-            Guard: "not own_receiver_busy",
+            On: SdlEvent.DLFLOWONRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.OwnReceiverBusy, true) },
             Actions: Array.Empty<ActionStep>(),
             Next: "Connected",
             Notes: null,
@@ -54,8 +56,8 @@ public class Ax25SessionTests
         new(
             Id: "t04_dl_flow_on_when_busy_and_T1_not_running",
             From: "Connected",
-            On: "DL_FLOW_ON_request",
-            Guard: "own_receiver_busy and not T1_running",
+            On: SdlEvent.DLFLOWONRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.OwnReceiverBusy, false), new(Ax25Guard.T1Running, true) },
             Actions: new ActionStep[]
             {
                 new(Ax25ActionVerb.ClearOwnReceiverBusy,    ActionKind.Processing),
@@ -71,8 +73,8 @@ public class Ax25SessionTests
         new(
             Id: "t05_dl_flow_on_when_busy_and_T1_running",
             From: "Connected",
-            On: "DL_FLOW_ON_request",
-            Guard: "own_receiver_busy and T1_running",
+            On: SdlEvent.DLFLOWONRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.OwnReceiverBusy, false), new(Ax25Guard.T1Running, false) },
             Actions: new ActionStep[]
             {
                 new(Ax25ActionVerb.ClearOwnReceiverBusy,    ActionKind.Processing),

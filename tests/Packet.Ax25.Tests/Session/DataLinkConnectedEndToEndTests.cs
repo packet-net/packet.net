@@ -74,22 +74,24 @@ public class DataLinkConnectedEndToEndTests
             sendInternal:  internalSignals.Add,
             subroutines:   registry);
 
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
-            ["P_eq_1"]            = () => pEq1,
-            ["F_eq_1"]             = () => fEq1,
-            ["P_or_F_eq_1"]        = () => pOrFEq1,
-            ["command"]            = () => command,
-            ["nr_in_window"]       = () => nrInWindow,
-            ["N_s_eq_V_r"]         = () => nsEqVr,
-            ["info_field_valid"]   = () => infoFieldValid,
-            ["V_a_le_N_r_le_V_s"]  = () => vaLeNrLeVs,
-            ["version_2_2"]        = () => false,
-            ["srej_exception_gt_0"] = () => false,
-            ["N_s_gt_V_r_plus_1"]  = () => false,
-            ["V_s_eq_V_a_plus_k"]  = () => false,
-            ["V_s_eq_V_a"]         = () => false,
+            [Ax25Guard.PEq1]            = () => pEq1,
+            [Ax25Guard.FEq1]             = () => fEq1,
+            [Ax25Guard.POrFEq1]        = () => pOrFEq1,
+            [Ax25Guard.Command]            = () => command,
+            // nr_in_window and V_a_le_N_r_le_V_s were distinct legacy spellings of
+            // the same predicate; they collapse to the single Ax25Guard.VaLeNrLeVs
+            // atom. Both params still gate it (they're equal in practice).
+            [Ax25Guard.VaLeNrLeVs]     = () => nrInWindow && vaLeNrLeVs,
+            [Ax25Guard.NsEqVr]         = () => nsEqVr,
+            [Ax25Guard.InfoFieldLengthLeN1AndContentIsOctetAligned]   = () => infoFieldValid,
+            [Ax25Guard.Version22]        = () => false,
+            [Ax25Guard.SrejectExceptionGt0] = () => false,
+            [Ax25Guard.NsGtVrPlus1]  = () => false,
+            [Ax25Guard.VsEqVaPlusK]  = () => false,
+            [Ax25Guard.VsEqVa]         = () => false,
         };
         var guards = new GuardEvaluator(bindings);
 
@@ -232,22 +234,21 @@ public class DataLinkConnectedEndToEndTests
             onTimerExpiry: _ => { },
             sendSFrame: _ => { },
             sendIFrame: iFrames.Add);
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx2, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx2, scheduler))
         {
-            ["P_eq_1"]            = () => false,
-            ["F_eq_1"]             = () => false,
-            ["P_or_F_eq_1"]        = () => false,
-            ["command"]            = () => false,
-            ["nr_in_window"]       = () => true,
-            ["N_s_eq_V_r"]         = () => false,
-            ["info_field_valid"]   = () => true,
-            ["V_a_le_N_r_le_V_s"]  = () => true,
-            ["version_2_2"]        = () => false,
-            ["srej_exception_gt_0"] = () => false,
-            ["N_s_gt_V_r_plus_1"]  = () => false,
-            ["V_s_eq_V_a_plus_k"]  = () => false,
-            ["V_s_eq_V_a"]         = () => false,
+            [Ax25Guard.PEq1]            = () => false,
+            [Ax25Guard.FEq1]             = () => false,
+            [Ax25Guard.POrFEq1]        = () => false,
+            [Ax25Guard.Command]            = () => false,
+            [Ax25Guard.VaLeNrLeVs]     = () => true,   // was nr_in_window + V_a_le_N_r_le_V_s (same atom)
+            [Ax25Guard.NsEqVr]         = () => false,
+            [Ax25Guard.InfoFieldLengthLeN1AndContentIsOctetAligned]   = () => true,
+            [Ax25Guard.Version22]        = () => false,
+            [Ax25Guard.SrejectExceptionGt0] = () => false,
+            [Ax25Guard.NsGtVrPlus1]  = () => false,
+            [Ax25Guard.VsEqVaPlusK]  = () => false,
+            [Ax25Guard.VsEqVa]         = () => false,
         };
         var guards = new GuardEvaluator(bindings);
         var session = new Ax25Session(

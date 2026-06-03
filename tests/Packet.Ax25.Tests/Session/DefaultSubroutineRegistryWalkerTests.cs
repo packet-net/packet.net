@@ -104,7 +104,7 @@ public class DefaultSubroutineRegistryWalkerTests
         // evaluator that says mod_128 is true → the SABME path fires.
         var actionsExecuted = new List<Ax25ActionVerb>();
         var dispatcher = new RecordingDispatcher(actionsExecuted);
-        var guards = MakeGuards(p => p == "mod_128");
+        var guards = MakeGuards(p => p == Ax25Guard.Mod128);
         var registry = new DefaultSubroutineRegistry();
         registry.Wire(dispatcher, guards);
 
@@ -175,27 +175,17 @@ public class DefaultSubroutineRegistryWalkerTests
     /// thunks. The catch-all bindings dictionary delegates each
     /// requested name to the supplied function.
     /// </summary>
-    private static GuardEvaluator MakeGuards(Func<string, bool> lookup)
+    private static GuardEvaluator MakeGuards(Func<Ax25Guard, bool> lookup)
     {
-        // The codegen-produced guards reference these specific identifiers;
-        // pre-populate the dictionary with all of them. Tests can also pass
-        // a lookup that throws to exercise the walker's unbound-predicate
-        // tolerance path.
-        var identifiers = new[]
+        // Bind every Ax25Guard atom through the supplied lookup. Tests pass a
+        // lookup that returns a fixed bool (to drive a specific subroutine path)
+        // or one that throws (to exercise the walker's tolerance of a closure
+        // that signals it can't evaluate — see Walker_Tolerates_*).
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>();
+        foreach (Ax25Guard atom in Enum.GetValues<Ax25Guard>())
         {
-            "mod_128", "mod_8", "own_receiver_busy", "srej_enabled",
-            "out_of_sequence_frames_in_receive_buffer",
-            "f_eq_1_and_supervisory_or_i", "v_s_eq_x",
-            "peer_receiver_busy", "n_r_eq_v_s", "t1_running", "n_r_eq_v_a",
-            "command_and_p_eq_1", "response_and_f_eq_1",
-            "incoming_is_command", "ui_info_field_valid",
-            "rc_eq_0", "t1_expired",
-        };
-        var bindings = new Dictionary<string, Func<bool>>(StringComparer.Ordinal);
-        foreach (var id in identifiers)
-        {
-            string captured = id;
-            bindings[id] = () => lookup(captured);
+            var captured = atom;
+            bindings[atom] = () => lookup(captured);
         }
         return new GuardEvaluator(bindings);
     }

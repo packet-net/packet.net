@@ -35,12 +35,11 @@ public class Ax25AdapterTests
     {
         var emittedBytes = new List<byte[]>();
         var ctx = NewContext(local: "M0LTE", remote: "G7XYZ");
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, new SystemTimerScheduler(new FakeTimeProvider())),
-            StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, new SystemTimerScheduler(new FakeTimeProvider())))
         {
-            ["P_eq_1"]            = () => false,
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.PEq1]            = () => false,
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
@@ -51,10 +50,10 @@ public class Ax25AdapterTests
             transitions:  RealTransitions,
             initialState: "Disconnected",
             sendBytes:    b => emittedBytes.Add(b.ToArray()),
-            bindings:     new Dictionary<string, Func<bool>>(Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+            bindings:     new Dictionary<Ax25Guard, Func<bool>>(Ax25SessionBindings.CreateDefault(ctx, scheduler))
             {
-                ["P_eq_1"]            = () => false,
-                ["able_to_establish"] = () => true,
+                [Ax25Guard.PEq1]            = () => false,
+                [Ax25Guard.AbleToEstablish] = () => true,
             });
 
         adapter.Session.PostEvent(new DlUnitDataRequest("test"u8.ToArray(), Pid: 0xCF));
@@ -75,11 +74,11 @@ public class Ax25AdapterTests
         var ctx = NewContext(local: "M0LTE", remote: "G7XYZ");
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
-            ["P_eq_1"]            = () => false,
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.PEq1]            = () => false,
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
         var registry = new DefaultSubroutineRegistry();
         registry.Register("UI_Check", _ => receivedFromSubroutine.Add("UI_Check fired"));
@@ -161,17 +160,17 @@ public class Ax25AdapterTests
         });
 
         // P_eq_1 etc. — bindings the figures' predicates need.
-        var bindingsA = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctxA, schedA), StringComparer.Ordinal)
+        var bindingsA = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctxA, schedA))
         {
-            ["P_eq_1"]            = () => false,
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.PEq1]            = () => false,
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
-        var bindingsB = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctxB, schedB), StringComparer.Ordinal)
+        var bindingsB = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctxB, schedB))
         {
-            ["P_eq_1"]            = () => true,  // SABM came in with P=1
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.PEq1]            = () => true,  // SABM came in with P=1
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
 
         a = new Ax25Adapter(ctxA, schedA, RealTransitions, "Disconnected",

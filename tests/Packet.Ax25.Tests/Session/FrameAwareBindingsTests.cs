@@ -1,25 +1,28 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
+using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
 using Packet.Core;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
 
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Tests for the frame-aware predicate bindings in
-/// <see cref="Ax25SessionBindings.CreateDefault"/>. Predicates like
-/// <c>P_eq_1</c>, <c>command</c>, <c>N_s_eq_V_r</c>, and
-/// <c>nr_in_window</c> need to read from the current trigger event's
-/// attached frame rather than constructor-time constants — otherwise
-/// figc4.4's I-receive paths can never be evaluated in production.
+/// Tests for the frame-aware atom bindings in
+/// <see cref="Ax25SessionBindings.CreateDefault"/>. Atoms like
+/// <see cref="Ax25Guard.PEq1"/>, <see cref="Ax25Guard.Command"/>,
+/// <see cref="Ax25Guard.NsEqVr"/>, and <see cref="Ax25Guard.VaLeNrLeVs"/> read
+/// from the current trigger event's attached frame rather than
+/// constructor-time constants — otherwise figc4.4's I-receive paths can never
+/// be evaluated in production.
 /// </summary>
 public class FrameAwareBindingsTests
 {
     private static readonly Callsign Local  = new("M0LTE", 0);
     private static readonly Callsign Remote = new("G7XYZ", 7);
 
-    private static (IReadOnlyDictionary<string, Func<bool>> bindings,
+    private static (IReadOnlyDictionary<Ax25Guard, Func<bool>> bindings,
                     Ax25SessionContext ctx,
                     Action<Ax25Event?> setTrigger) NewBindings()
     {
@@ -43,16 +46,16 @@ public class FrameAwareBindingsTests
             info: "x"u8, pollFinal: pollBit);
         setTrigger(new UiReceived(frame));
 
-        b["P_eq_1"]().Should().Be(pollBit);
-        b["F_eq_1"]().Should().Be(pollBit, "F_eq_1 is the same wire bit as P_eq_1");
-        b["P_or_F_eq_1"]().Should().Be(pollBit);
+        b[Ax25Guard.PEq1]().Should().Be(pollBit);
+        b[Ax25Guard.FEq1]().Should().Be(pollBit, "F_eq_1 is the same wire bit as P_eq_1");
+        b[Ax25Guard.POrFEq1]().Should().Be(pollBit);
     }
 
     [Fact]
     public void P_eq_1_Returns_False_When_No_Trigger_Frame()
     {
         var (b, _, _) = NewBindings();
-        b["P_eq_1"]().Should().BeFalse("no trigger set");
+        b[Ax25Guard.PEq1]().Should().BeFalse("no trigger set");
     }
 
     [Fact]
@@ -60,7 +63,7 @@ public class FrameAwareBindingsTests
     {
         var (b, _, setTrigger) = NewBindings();
         setTrigger(new DlConnectRequest());
-        b["P_eq_1"]().Should().BeFalse();
+        b[Ax25Guard.PEq1]().Should().BeFalse();
     }
 
     [Theory]
@@ -78,7 +81,7 @@ public class FrameAwareBindingsTests
         }
         setTrigger(new SabmReceived(frame));
 
-        b["command"]().Should().Be(isCommand);
+        b[Ax25Guard.Command]().Should().Be(isCommand);
     }
 
     [Fact]
@@ -89,11 +92,11 @@ public class FrameAwareBindingsTests
 
         // I-frame with N(S)=4 — should match.
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 4, info: "x"u8)));
-        b["N_s_eq_V_r"]().Should().BeTrue();
+        b[Ax25Guard.NsEqVr]().Should().BeTrue();
 
         // I-frame with N(S)=5 — shouldn't match.
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 5, info: "x"u8)));
-        b["N_s_eq_V_r"]().Should().BeFalse();
+        b[Ax25Guard.NsEqVr]().Should().BeFalse();
     }
 
     [Theory]
@@ -113,8 +116,7 @@ public class FrameAwareBindingsTests
         // S-frame carries N(R); use RR.
         setTrigger(new RrReceived(Ax25Frame.Rr(Local, Remote, nr: incomingNr, isCommand: false)));
 
-        b["nr_in_window"]().Should().Be(expectedInWindow);
-        b["V_a_le_N_r_le_V_s"]().Should().Be(expectedInWindow, "both predicates are the same check");
+        b[Ax25Guard.VaLeNrLeVs]().Should().Be(expectedInWindow, "va_le_nr_le_vs is the in-window check");
     }
 
     [Fact]
@@ -123,10 +125,10 @@ public class FrameAwareBindingsTests
         var (b, ctx, setTrigger) = NewBindings();
         ctx.N1 = 256;
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 0, info: new byte[256])));
-        b["info_field_valid"]().Should().BeTrue();
+        b[Ax25Guard.InfoFieldLengthLeN1AndContentIsOctetAligned]().Should().BeTrue();
 
         setTrigger(new IFrameReceived(Ax25Frame.I(Local, Remote, nr: 0, ns: 0, info: new byte[257])));
-        b["info_field_valid"]().Should().BeFalse("exceeds ctx.N1");
+        b[Ax25Guard.InfoFieldLengthLeN1AndContentIsOctetAligned]().Should().BeFalse("exceeds ctx.N1");
     }
 
     // ─── Non-frame-aware bindings still work ───────────────────────────
@@ -138,24 +140,30 @@ public class FrameAwareBindingsTests
         ctx.OwnReceiverBusy = true;
         ctx.Layer3Initiated = false;
 
-        b["own_receiver_busy"]().Should().BeTrue();
-        b["layer_3_initiated"]().Should().BeFalse();
+        b[Ax25Guard.OwnReceiverBusy]().Should().BeTrue();
+        b[Ax25Guard.Layer3Initiated]().Should().BeFalse();
     }
 
     [Fact]
-    public void Frame_Aware_Bindings_Absent_When_CurrentTrigger_Not_Wired()
+    public void Binding_Table_Is_Exhaustive_Over_Ax25Guard()
     {
+        // The typed table binds every Ax25Guard atom (the whole point of the
+        // SP-010 retype — see Ax25SessionBindings.CreateDefault). This holds
+        // even with no currentTrigger wired: the frame-aware atoms are present,
+        // bound to closures that return safe defaults on a null trigger.
         var ctx = new Ax25SessionContext { Local = Local, Remote = Remote };
         var time = new FakeTimeProvider();
         var scheduler = new SystemTimerScheduler(time);
 
-        // Default — no currentTrigger thunk.
         var bindings = Ax25SessionBindings.CreateDefault(ctx, scheduler);
 
-        bindings.Should().NotContainKey("P_eq_1");
-        bindings.Should().NotContainKey("command");
-        bindings.Should().NotContainKey("N_s_eq_V_r");
-        // Existing bindings still present:
-        bindings.Should().ContainKey("own_receiver_busy");
+        foreach (Ax25Guard atom in Enum.GetValues<Ax25Guard>())
+            bindings.Should().ContainKey(atom);
+
+        // Frame-aware atoms with no trigger wired evaluate to safe defaults.
+        bindings[Ax25Guard.PEq1]().Should().BeFalse("no trigger → no poll bit");
+        bindings[Ax25Guard.Command]().Should().BeFalse("no trigger → not a command");
+        bindings[Ax25Guard.NsEqVr]().Should().BeFalse("no trigger → no incoming N(S)");
+        bindings[Ax25Guard.VaLeNrLeVs]().Should().BeFalse("no trigger → out of window");
     }
 }

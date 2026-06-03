@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
 using Packet.Core;
 
 namespace Packet.Ax25.Properties;

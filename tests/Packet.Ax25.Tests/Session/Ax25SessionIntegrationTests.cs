@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using SdlEvent = Packet.Ax25.Sdl.Ax25Event;
 using Packet.Core;
 
 namespace Packet.Ax25.Tests.Session;
@@ -65,7 +66,7 @@ public class Ax25SessionIntegrationTests
     private static TransitionSpec Tr(
         string id,
         string from,
-        string on,
+        SdlEvent on,
         string next,
         params (Ax25ActionVerb verb, ActionKind kind)[] actions) =>
         new(
@@ -97,7 +98,7 @@ public class Ax25SessionIntegrationTests
         var t = Tr(
             id: "t01_synth",
             from: "S1",
-            on: "DL_CONNECT_request",
+            on: SdlEvent.DLCONNECTRequest,
             next: "S1",
             (Ax25ActionVerb.VSAssign0,           ActionKind.Processing),
             (Ax25ActionVerb.VRAssign0,           ActionKind.Processing),
@@ -130,7 +131,7 @@ public class Ax25SessionIntegrationTests
         var t = Tr(
             id: "t01_inc",
             from: "S1",
-            on: "DL_CONNECT_request",
+            on: SdlEvent.DLCONNECTRequest,
             next: "S1",
             (Ax25ActionVerb.VSAssignVSPlus1, ActionKind.Processing),
             (Ax25ActionVerb.VRAssignVRPlus1, ActionKind.Processing));
@@ -151,7 +152,7 @@ public class Ax25SessionIntegrationTests
         var t = Tr(
             id: "t01_send_rr",
             from: "S1",
-            on: "DL_CONNECT_request",
+            on: SdlEvent.DLCONNECTRequest,
             next: "S1",
             (Ax25ActionVerb.RCAssign0,      ActionKind.Processing),
             (Ax25ActionVerb.StartT1,     ActionKind.Processing),
@@ -178,8 +179,8 @@ public class Ax25SessionIntegrationTests
         var tYes = new TransitionSpec(
             Id: "t01_yes",
             From: "S1",
-            On: "DL_CONNECT_request",
-            Guard: "layer_3_initiated",
+            On: SdlEvent.DLCONNECTRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.Layer3Initiated, false) },
             Actions: new[] { new ActionStep(Ax25ActionVerb.RCAssign1, ActionKind.Processing) },
             Next: "S1",
             Notes: null,
@@ -189,8 +190,8 @@ public class Ax25SessionIntegrationTests
         var tNo = new TransitionSpec(
             Id: "t02_no",
             From: "S1",
-            On: "DL_CONNECT_request",
-            Guard: "not layer_3_initiated",
+            On: SdlEvent.DLCONNECTRequest,
+            Guard: new GuardTerm[] { new(Ax25Guard.Layer3Initiated, true) },
             Actions: new[] { new ActionStep(Ax25ActionVerb.RCAssign0, ActionKind.Processing) },
             Next: "S1",
             Notes: null,
@@ -224,7 +225,7 @@ public class Ax25SessionIntegrationTests
         var t = Tr(
             id: "t01_va_from_nr",
             from: "S1",
-            on: "RR_received",
+            on: SdlEvent.RRReceived,
             next: "S1",
             (Ax25ActionVerb.VAAssignNR, ActionKind.Processing));
 

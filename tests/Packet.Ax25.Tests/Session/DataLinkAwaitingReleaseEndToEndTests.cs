@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Ax25Event = Packet.Ax25.Session.Ax25Event;
 using Packet.Core;
 
 namespace Packet.Ax25.Tests.Session;
@@ -51,12 +52,12 @@ public class DataLinkAwaitingReleaseEndToEndTests
             sendUpward:    upward.Add,
             subroutines:   registry);
 
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
-            ["F_eq_1"]   = () => fEq1,
-            ["P_eq_1"]   = () => pEq1,
-            ["RC_eq_N2"] = () => rcEqN2,
+            [Ax25Guard.FEq1]   = () => fEq1,
+            [Ax25Guard.PEq1]   = () => pEq1,
+            [Ax25Guard.RCEqN2] = () => rcEqN2,
         };
         var guards = new GuardEvaluator(bindings);
 

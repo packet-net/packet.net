@@ -62,10 +62,10 @@ public class KissAx25BridgeTests
 
         var adapter = KissAx25Bridge.CreateOutbound(
             modem, ctx, scheduler, Transitions, "Disconnected",
-            bindings: new Dictionary<string, Func<bool>>(
-                Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+            bindings: new Dictionary<Ax25Guard, Func<bool>>(
+                Ax25SessionBindings.CreateDefault(ctx, scheduler))
             {
-                ["P_eq_1"] = () => false,
+                [Ax25Guard.PEq1] = () => false,
             });
 
         adapter.Session.PostEvent(new DlUnitDataRequest("hello"u8.ToArray(), Pid: Ax25Frame.PidNoLayer3));
@@ -193,17 +193,15 @@ public class KissAx25BridgeTests
             schedA.Arm("T1", tx.Session.T1V, () => { });
         });
 
-        var bindingsA = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctxA, schedA, () => aRef?.Session.CurrentTrigger),
-            StringComparer.Ordinal)
+        var bindingsA = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctxA, schedA, () => aRef?.Session.CurrentTrigger))
         {
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
-        var bindingsB = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctxB, schedB, () => bRef?.Session.CurrentTrigger),
-            StringComparer.Ordinal)
+        var bindingsB = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctxB, schedB, () => bRef?.Session.CurrentTrigger))
         {
-            ["able_to_establish"] = () => true,
+            [Ax25Guard.AbleToEstablish] = () => true,
         };
 
         aRef = KissAx25Bridge.CreateOutbound(modemA, ctxA, schedA, Transitions, "Disconnected",

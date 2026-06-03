@@ -64,13 +64,13 @@ public class DataLinkAwaitingConnectionEndToEndTests
             sendInternal:  internalSignals.Add,
             subroutines:   registry);
 
-        var bindings = new Dictionary<string, Func<bool>>(
-            Ax25SessionBindings.CreateDefault(ctx, scheduler), StringComparer.Ordinal)
+        var bindings = new Dictionary<Ax25Guard, Func<bool>>(
+            Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
-            ["F_eq_1"]            = () => fEq1,
-            ["P_eq_1"]            = () => pEq1,
-            ["V_s_eq_V_a"]        = () => vsEqVa,
-            ["RC_eq_N2"]          = () => rcEqN2,
+            [Ax25Guard.FEq1]            = () => fEq1,
+            [Ax25Guard.PEq1]            = () => pEq1,
+            [Ax25Guard.VsEqVa]        = () => vsEqVa,
+            [Ax25Guard.RCEqN2]          = () => rcEqN2,
             // `layer_3_initiated` and several others are bound via the default
             // table to the ctx flag — but the figc4.2 decisions intentionally
             // distinguish "the layer_3_initiated branch of UA decision" vs

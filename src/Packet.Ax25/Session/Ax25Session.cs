@@ -1,4 +1,5 @@
 using Packet.Ax25.Sdl;
+using SdlEvent = Packet.Ax25.Sdl.Ax25Event;
 
 namespace Packet.Ax25.Session;
 
@@ -11,7 +12,8 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// The session is fed events via <see cref="PostEvent"/>. For each event
 /// it looks up the codegen-emitted transition table for the current
-/// state, filters by event name, evaluates guards, picks the matching
+/// state, filters by the typed <see cref="SdlEvent"/> the event maps to,
+/// evaluates guards, picks the matching
 /// transition, executes its action chain, and updates the current state.
 /// </para>
 /// <para>
@@ -106,7 +108,7 @@ public sealed class Ax25Session
     /// <param name="context">Mutable session state — sequence variables, flags, queues.</param>
     /// <param name="scheduler">Timer scheduler the dispatcher arms / cancels.</param>
     /// <param name="dispatcher">Action interpreter — turns action strings into context mutations and frame-send signals.</param>
-    /// <param name="guards">Guard evaluator — turns expression strings into booleans against the session state.</param>
+    /// <param name="guards">Guard evaluator — evaluates a transition's typed <see cref="GuardTerm"/> conjunction against the session state.</param>
     /// <param name="transitionsByState">
     /// Lookup of state name → transitions out of that state. Typically populated
     /// from the codegen's static tables (e.g.
@@ -160,9 +162,10 @@ public sealed class Ax25Session
 
     /// <summary>
     /// Drive one event through the state machine. Looks up transitions for
-    /// the current state, picks the first whose <c>On</c> matches the
-    /// event's <see cref="Ax25Event.Name"/> and whose guard evaluates true,
-    /// runs its actions, and advances to <c>Next</c>.
+    /// the current state, picks the first whose typed <c>On</c>
+    /// (<see cref="SdlEvent"/>) matches the event (via <c>ToSdlEvent</c>) and
+    /// whose guard evaluates true, runs its actions, and advances to
+    /// <c>Next</c>.
     /// </summary>
     /// <remarks>
     /// Events with no matching transition are passed to
@@ -189,10 +192,11 @@ public sealed class Ax25Session
         CurrentTrigger = evt;
         try
         {
+            var on = ToSdlEvent(evt);
             TransitionSpec? match = null;
             foreach (var t in stateTransitions)
             {
-                if (!string.Equals(t.On, evt.Name, StringComparison.Ordinal)) continue;
+                if (t.On != on) continue;
                 if (!guards.Evaluate(t.Guard)) continue;
                 match = t;
                 break;
@@ -272,7 +276,7 @@ public sealed class Ax25Session
         if (Context.Quirks.Ax25Spec44Mod128ConnectRoutesToV22
             && Context.IsExtended
             && string.Equals(match.From, "Disconnected", StringComparison.Ordinal)
-            && string.Equals(match.On, "DL_CONNECT_request", StringComparison.Ordinal)
+            && match.On == SdlEvent.DLCONNECTRequest
             && string.Equals(match.Next, "AwaitingConnection", StringComparison.Ordinal))
         {
             return "AwaitingV22Connection";
@@ -305,7 +309,7 @@ public sealed class Ax25Session
         if (Context.Quirks.Ax25Spec45FrmrFallbackReestablishesV20
             && Context.IsExtended
             && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal)
-            && string.Equals(match.On, "FRMR_received", StringComparison.Ordinal))
+            && match.On == SdlEvent.FRMRReceived)
         {
             Context.IsExtended = false;
         }
@@ -366,4 +370,66 @@ public sealed class Ax25Session
         int outstanding = (Context.VS - Context.VA + Context.Modulus) % Context.Modulus;
         return outstanding < Context.K;
     }
+
+    /// <summary>
+    /// Map a runtime <see cref="Ax25Event"/> (the in-memory event record the
+    /// orchestrator dispatches, carrying any attached frame/payload) to the
+    /// typed <see cref="SdlEvent"/> the codegen-emitted
+    /// <see cref="TransitionSpec.On"/> carries. The mapping is on the event's
+    /// CLR type — exhaustive over the runtime event vocabulary, no string
+    /// comparison or name normalisation — so dispatch is a pure enum compare.
+    /// </summary>
+    private static SdlEvent ToSdlEvent(Ax25Event evt) => evt switch
+    {
+        // ─── Upper-layer (Layer-3 → Data-Link) primitives ──────────────
+        DlConnectRequest        => SdlEvent.DLCONNECTRequest,
+        DlDisconnectRequest     => SdlEvent.DLDISCONNECTRequest,
+        DlDataRequest           => SdlEvent.DLDATARequest,
+        DlUnitDataRequest       => SdlEvent.DLUNITDATARequest,
+        DlFlowOffRequest        => SdlEvent.DLFLOWOFFRequest,
+        DlFlowOnRequest         => SdlEvent.DLFLOWONRequest,
+
+        // ─── Management Data-Link primitives ────────────────────────────
+        MdlNegotiateRequest     => SdlEvent.MDLNEGOTIATERequest,
+        MdlNegotiateConfirm     => SdlEvent.MDLNEGOTIATEConfirm,
+        MdlErrorIndicate        => SdlEvent.MDLERRORIndicate,
+
+        // ─── Frame-received events ──────────────────────────────────────
+        IFrameReceived          => SdlEvent.IReceived,
+        RrReceived              => SdlEvent.RRReceived,
+        RnrReceived             => SdlEvent.RNRReceived,
+        RejReceived             => SdlEvent.REJReceived,
+        SrejReceived            => SdlEvent.SREJReceived,
+        UiReceived              => SdlEvent.UIReceived,
+        SabmReceived            => SdlEvent.SABMReceived,
+        SabmeReceived           => SdlEvent.SABMEReceived,
+        DiscReceived            => SdlEvent.DISCReceived,
+        UaReceived              => SdlEvent.UAReceived,
+        DmReceived              => SdlEvent.DMReceived,
+        FrmrReceived            => SdlEvent.FRMRReceived,
+        XidReceived             => SdlEvent.XIDReceived,
+        XidResponseReceived     => SdlEvent.XIDResponseReceived,
+        TestReceived            => SdlEvent.TESTReceived,
+        IOrSCommandReceived     => SdlEvent.IOrSCommandReceived,
+
+        // ─── Internal + catch-all events ────────────────────────────────
+        IFramePopsOffQueue      => SdlEvent.IFramePopsOffQueue,
+        AllOtherCommands        => SdlEvent.AllOtherCommands,
+        AllOtherPrimitivesFromLowerLayer => SdlEvent.AllOtherPrimitivesFromLowerLayer,
+        AllOtherPrimitivesFromUpperLayer => SdlEvent.AllOtherPrimitivesFromUpperLayer,
+        ControlFieldError       => SdlEvent.ControlFieldError,
+        InfoNotPermittedInFrame => SdlEvent.InfoNotPermittedInFrame,
+        UOrSFrameLengthError    => SdlEvent.UOrSFrameLengthError,
+
+        // ─── Link-multiplexer + timer expiries ──────────────────────────
+        LmSeizeConfirm          => SdlEvent.LMSEIZEConfirm,
+        Tm201Expiry             => SdlEvent.TM201Expiry,
+        T1Expiry                => SdlEvent.T1Expiry,
+        T2Expiry                => SdlEvent.T2Expiry,
+        T3Expiry                => SdlEvent.T3Expiry,
+
+        _ => throw new InvalidOperationException(
+            $"no SDL-event mapping for runtime event '{evt.GetType().Name}' ('{evt.Name}') — " +
+            "add a case to Ax25Session.ToSdlEvent."),
+    };
 }

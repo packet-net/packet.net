@@ -155,7 +155,7 @@ public class StateGraphInvariants
 
         foreach (var (name, transitions) in AllDataLinkTables())
         {
-            var byEvent = transitions.GroupBy(t => t.On, StringComparer.Ordinal);
+            var byEvent = transitions.GroupBy(t => t.On);
             foreach (var group in byEvent)
             {
                 if (group.Count() == 1) continue;

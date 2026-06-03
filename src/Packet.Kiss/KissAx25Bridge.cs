@@ -56,7 +56,7 @@ public static class KissAx25Bridge
         ITimerScheduler scheduler,
         IReadOnlyDictionary<string, IReadOnlyList<TransitionSpec>> transitions,
         string initialState,
-        IReadOnlyDictionary<string, Func<bool>>? bindings = null,
+        IReadOnlyDictionary<Ax25Guard, Func<bool>>? bindings = null,
         ISubroutineRegistry? subroutines = null)
     {
         ArgumentNullException.ThrowIfNull(modem);

@@ -174,20 +174,13 @@ public sealed class Ax25ManagementDataLink
         // negotiation outcome is independent of the retry cadence; only the
         // give-up timing depends on TM201, and 3000 ms is the spec's T1 default.
 
-        var bindings = new Dictionary<string, Func<bool>>(StringComparer.Ordinal)
-        {
-            // figc5.2's TM201-expiry retry-limit diamond: RC == NM201 (NM201 in
-            // the MDL context's N2).
-            ["RC_eq_NM201"] = () => mdlContext.RC == mdlContext.N2,
-        };
-        // F_eq_1 (the figc5.2 XID-response final-bit diamond) and the rest of the
-        // frame-aware predicates come from the standard binding table, reading
-        // the MDL machine's current trigger frame.
-        foreach (var (key, value) in Ax25SessionBindings.CreateDefault(
-                     mdlContext, scheduler, () => selfRef?.CurrentTrigger))
-        {
-            bindings[key] = value;
-        }
+        // The standard exhaustive binding table over the MDL context: it binds
+        // every Ax25Guard atom, including RC_eq_NM201 (figc5.2's TM201-expiry
+        // retry-limit diamond — RC == NM201, with NM201 carried in the MDL
+        // context's N2) and F_eq_1 (the figc5.2 XID-response final-bit diamond,
+        // reading the MDL machine's current trigger frame).
+        var bindings = Ax25SessionBindings.CreateDefault(
+            mdlContext, scheduler, () => selfRef?.CurrentTrigger);
         var guards = new GuardEvaluator(bindings);
 
         machine = new Ax25Session(
