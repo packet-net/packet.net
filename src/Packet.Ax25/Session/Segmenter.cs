@@ -9,17 +9,20 @@ namespace Packet.Ax25.Session;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Segment control byte format (per docs/plan.md §5.2):
+/// Segment control byte format (AX.25 v2.2 Figure 6.2 — <c>FXXXXXXX</c>,
+/// value <c>F*128+X</c>):
 /// <code>
-/// bit 7 = First indicator (1 on the first segment of a series)
-/// bits 6:0 — bit 6 unused, bits 5:0 = number of segments still to come
+/// bit 7   = First indicator (1 on the first segment of a series)
+/// bits 6:0 = X, the 7-bit count of segments still to come
 /// </code>
 /// </para>
 /// <para>
-/// With 6 bits of remaining-count, a packet may span at most 64
+/// With 7 bits of remaining-count, a packet may span at most 128
 /// segments. At the default N1=256 the per-segment payload is 255
 /// bytes, so the maximum upper-layer payload through the Segmenter is
-/// 64 × 255 = 16 320 bytes.
+/// 128 × 255 = 32 640 bytes. (Figure 6.2 makes X a 7-bit field; direwolf
+/// masks the count with <c>0x7f</c> — <c>ax25_link.c</c> reassembler — so
+/// both spec and de-facto agree the count is 7-bit, not 6.)
 /// </para>
 /// <para>
 /// Layer-3 packets segmented this way travel as I-frames with PID
@@ -32,11 +35,11 @@ public static class Segmenter
     /// <summary>First-segment indicator (bit 7 of the segment control byte).</summary>
     public const byte FirstBit = 0x80;
 
-    /// <summary>Six-bit mask for the remaining-count field (bits 5:0).</summary>
-    public const byte CountMask = 0x3F;
+    /// <summary>Seven-bit mask for the remaining-count field (bits 6:0), per Figure 6.2.</summary>
+    public const byte CountMask = 0x7F;
 
-    /// <summary>Maximum number of segments a single upper-layer payload may span.</summary>
-    public const int MaxSegments = 64;
+    /// <summary>Maximum number of segments a single upper-layer payload may span (7-bit count → 128).</summary>
+    public const int MaxSegments = 128;
 
     /// <summary>
     /// Split a payload into I-frame info fields. Each info field is
