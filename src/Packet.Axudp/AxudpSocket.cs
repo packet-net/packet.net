@@ -5,36 +5,50 @@ using Packet.Ax25;
 namespace Packet.Axudp;
 
 /// <summary>
-/// A bidirectional AXUDP endpoint. AXUDP is UDP encapsulation of raw AX.25
-/// frames — the UDP payload is the AX.25 frame body (no opening / closing
-/// HDLC flag, no FCS). Each peer maintains its own UDP socket and addresses
+/// A bidirectional AXUDP endpoint. AXUDP is UDP encapsulation of AX.25 frames
+/// per the RFC-1226 "AX.25 over IP" convention — the UDP payload is the AX.25
+/// frame body (no opening / closing HDLC flag, no bit-stuffing) followed by the
+/// 2-octet AX.25 FCS. Each peer maintains its own UDP socket and addresses
 /// remotes by <see cref="IPEndPoint"/>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Two on-the-wire forms exist, selected by the <c>includeFcs</c> flag on
-/// <see cref="SendAsync"/>: the AX.25 body alone, or the body followed by the
-/// 2-octet CRC-16/X.25 FCS (low byte first). Future work may add header-prefix
-/// variants if real-world interop requires them.
+/// <see cref="SendAsync"/>: the standard body-plus-FCS form (<b>the default</b>),
+/// or the FCS-less body alone. Future work may add header-prefix variants if
+/// real-world interop requires them.
 /// </para>
 /// <para>
-/// FCS handling — verified against the reference peers, NOT assumed:
+/// <b>The FCS is part of the de-facto wire format — included by default.</b>
+/// Settled by a citation survey of every real AXIP/AXUDP implementation
+/// (see <c>docs/strict-vs-pragmatic-audit.md</c> § "AXUDP / AXIP-over-IP FCS framing"):
 /// <list type="bullet">
-///   <item><b>LinBPQ's BPQAXIP driver over UDP REQUIRES the FCS.</b> Source-
-///   verified in <c>bpqaxip.c</c> (LinBPQ 6.0.25.23) and confirmed on the wire:
-///   its UDP receive path computes the FCS over the whole datagram and drops
-///   anything whose residue isn't <c>0xf0b8</c> ("BPQAXIP Invalid CRC"), and its
-///   send path appends the 2-octet FCS. There is no per-MAP "no CRC" knob — the
-///   FCS is unconditional on the UDP path. A peer talking to BPQAXIP/UDP must
-///   therefore <c>includeFcs: true</c> and must tolerate the FCS on receive.</item>
-///   <item><b>XRouter's AXUDP likewise requires the FCS</b> (it rejects FCS-less
-///   bodies as "non-AXUDP").</item>
-///   <item>The FCS-less form (<c>includeFcs: false</c>, the default) is the
-///   minimal "raw body" variant — used for pdn↔pdn tunnels and any peer that
-///   explicitly wants no FCS. It is NOT what the de-facto reference peers above
-///   accept, so do not assume it for BPQ/XRouter interop.</item>
+///   <item><b>RFC 1226</b> (and the modern <c>rfc1226-bis</c> draft), the AX.25-over-IP
+///   standard: "The 16-bit CRC-CCITT frame check sequence … is included" — mandatory,
+///   with no FCS-less option.</item>
+///   <item><b>ax25ipd</b> (the classic Linux AXIP daemon, <c>ax25-apps</c>): appends the
+///   FCS unconditionally on transmit (<c>process.c</c> <c>add_crc</c>) and drops any
+///   received datagram whose FCS residue isn't <c>0xf0b8</c> (<c>process.c</c>
+///   <c>ok_crc</c>). No CRC config knob exists.</item>
+///   <item><b>LinBPQ's BPQAXIP driver over UDP REQUIRES the FCS.</b> Source-verified
+///   in <c>bpqaxip.c</c> (LinBPQ 6.0.25.23) and confirmed on the wire: its UDP receive
+///   path computes the FCS over the whole datagram and drops anything whose residue
+///   isn't <c>0xf0b8</c> ("BPQAXIP Invalid CRC"); its send path appends the 2-octet FCS.
+///   There is no per-MAP "no CRC" knob.</item>
+///   <item><b>XRouter's AXUDP likewise requires the FCS</b> (it counts FCS-less bodies
+///   as "non-AXUDP ignored" — verified on the wire).</item>
 /// </list>
-/// <see cref="SendAsync"/> writes the body, plus the FCS when asked;
+/// All four compute the identical CRC (poly 0x1021, init 0xffff, ^0xffff, low byte
+/// first, good residue 0xf0b8) — byte-for-byte our <see cref="Packet.Core.Crc16Ccitt"/>.
+/// </para>
+/// <para>
+/// <b>The FCS-less form (<c>includeFcs: false</c>) is non-standard.</b> No surveyed
+/// real implementation sends or accepts it; it is a pdn-only minimal variant kept
+/// solely for a symmetric pdn↔pdn tunnel that explicitly opts out of the FCS on
+/// both ends. Do <b>not</b> use it for interop with any third-party peer.
+/// </para>
+/// <para>
+/// <see cref="SendAsync"/> writes the body, plus the FCS unless asked not to;
 /// <see cref="ReceiveAsync"/> returns the raw datagram bytes (a session-aware
 /// consumer strips the FCS — see <c>AxudpKissModem</c>).
 /// </para>
@@ -62,16 +76,16 @@ public sealed class AxudpSocket : IDisposable
     /// <param name="remote">The remote endpoint to send to.</param>
     /// <param name="frame">Frame to send.</param>
     /// <param name="includeFcs">
-    /// If <c>true</c>, append the CRC-16-CCITT (X.25) FCS, low-byte first —
-    /// required by LinBPQ's BPQAXIP driver over UDP (source-verified: it drops
-    /// FCS-less datagrams as "Invalid CRC"), by XRouter's AXUDP listener, and by
-    /// the AXIP-with-CRC variant. Use <c>true</c> for any of those reference
-    /// peers. If <c>false</c> (the default), send the FCS-less "raw body" form —
-    /// the minimal variant for a peer that explicitly wants no FCS (e.g. a
-    /// pdn↔pdn tunnel); the de-facto reference peers above reject it.
+    /// If <c>true</c> (<b>the default</b>), append the CRC-16-CCITT (X.25) FCS,
+    /// low-byte first — the standard RFC-1226 AXIP/AXUDP wire form that every real
+    /// peer expects: LinBPQ's BPQAXIP over UDP (source-verified: drops FCS-less
+    /// datagrams as "Invalid CRC"), XRouter's AXUDP listener, ax25ipd, and JNOS.
+    /// Set <c>false</c> only for the non-standard FCS-less "raw body" form, which
+    /// no surveyed real implementation accepts — kept solely for a symmetric
+    /// pdn↔pdn tunnel that opts out on both ends.
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task<int> SendAsync(IPEndPoint remote, Ax25Frame frame, bool includeFcs = false, CancellationToken cancellationToken = default)
+    public async Task<int> SendAsync(IPEndPoint remote, Ax25Frame frame, bool includeFcs = true, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frame);
         var bytes = includeFcs ? frame.ToBytesWithFcs() : frame.ToBytes();

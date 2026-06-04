@@ -192,7 +192,11 @@ public class NodeConfigYamlTests
 
         var axudp = NodeConfigYaml.Parse(yaml).Ports[0].Transport.Should().BeOfType<AxudpTransport>().Subject;
         axudp.LocalPort.Should().Be(0, "localPort defaults to 0 (ephemeral) when omitted");
-        axudp.IncludeFcs.Should().BeFalse("includeFcs defaults to false (LinBPQ BPQAXIP form)");
+        // The de-facto interoperable default: every real AXIP/AXUDP peer (LinBPQ BPQAXIP,
+        // XRouter, ax25ipd, JNOS, per RFC 1226) REQUIRES the 2-octet FCS, so an
+        // out-of-the-box AXUDP port includes it. FCS-less is pdn↔pdn-only and must be
+        // opted into explicitly. See docs/strict-vs-pragmatic-audit.md.
+        axudp.IncludeFcs.Should().BeTrue("includeFcs defaults to true — the standard RFC-1226 AXIP/AXUDP wire form");
     }
 
     [Fact]

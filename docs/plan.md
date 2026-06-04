@@ -6,6 +6,7 @@
 
 **As of:** 2026-05-17
 **Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, adaptive-parameter scaffolding, adaptive-transport glue, and a first soak campaign producing [`docs/nino-tnc-characterisation.md`](nino-tnc-characterisation.md). Next: more SDL pages, plus a real-RF soak campaign once we have field data to compare against the bench.
+**Latest amendment:** [§17 entry 2026-06-04 — AXUDP FCS framing: citation survey settles that FCS-less is pdn-invented/self-only (RFC 1226 + ax25ipd + BPQAXIP + XRouter + JNOS all mandate the FCS); flip the AXUDP default to FCS-ON so an out-of-the-box port talks to BPQ (PR #304)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Read-only "NET/ROM aware" slice: a hand-written `Packet.NetRom` (NODES wire parse + L3 routing table) + a node-level `NetRomService` that hears NODES via the existing frame tap and surfaces the learned routes in `Nodes`; pure read-only, can't disturb a QSO; named divergence flags, interop-proven vs XRouter NODES over net-sim (PR #303)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Package the pdn node host as self-contained `.deb`s (amd64/arm64/armhf, cross-published from x64) installed by a hardened systemd unit, with a `node-v*` GitHub-Release workflow; validated end-to-end on the box via a clean `apt install` (PR #296)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Node kiss-tcp ports self-heal across a TNC/softmodem bounce: `ReconnectingKissModem` (backoff + KISS-param replay), so a dropped link reconnects instead of the port silently dying (PR #295)](#17-amendment-log)
@@ -928,6 +929,33 @@ The design-ahead recommendation from the NET/ROM research (`/home/tf/netrom-rese
 **Tests.** `Packet.NetRom.Tests` (39): the NODES parser (signature gate, multi-entry, 11-cap, alias trim, totality on random/short bytes, the paired Strict-rejects/Lenient-accepts cases for trailing-partial + empty-list), the quality maths (the research doc's worked examples — two hops of a 200 link ≈ 156, three ≈ 78 — plus the per-hop monotonic-decrease invariant), and the routing table (merge, 3-best cap, obsolescence decay→purge + refresh, trivial-loop guard, MINQUAL floor strict-vs-default, destination cap, snapshot ordering). `NetRomAwareIntegrationTests` (4, in `Packet.Node.Tests`): over the in-memory radio bus, a third station's NODES broadcast is heard + learned, the `Nodes` command surfaces it, a **NODES storm mid-QSO leaves the live session Connected + still carrying data** (the read-only guarantee), and a disabled service hears nothing. **`Category=Interop` (`NetRomNodesIngestViaNetsim`):** over net-sim, pdn (a real `Ax25Listener` + `NetRomService` on KISS-TCP) hears **XRouter's real NODES broadcast** and learns `PN0XRT`/`PNXRT` as a neighbour with the assumed direct route — proven end-to-end (`Learned 1 neighbour PNXRT:PN0XRT qual 192` / `dest PNXRT:PN0XRT via PN0XRT q192 obs6`). The fixture pins `NODESINTERVAL=1` on both LinBPQ + XRouter (`docker/{linbpq,xrouter}` configs) so a NODES broadcast is heard within seconds; XRouter broadcasts a steady ~75 s cadence, LinBPQ only with a non-empty table (silent on the isolated topology, recorded not required). Existing LinBPQ/XRouter connect interop tests stay green with the cadence change.
 
 **Validation.** Built under `TreatWarningsAsErrors` (0 errors across `src/`). Full default-filtered suite green — `Packet.NetRom.Tests` 39, `Packet.Node.Tests` 176 (up from 169), every other project unchanged. Interop `NetRomNodesIngestViaNetsim` green locally (`docker compose -f docker/compose.interop.yml up -d --wait` + `dotnet test --filter Category=Interop`), confirmed reliable across repeated runs, and coexists with #301's AXUDP interop tests on the shared LinBPQ fixture (both pass together). `ci.yml` gains `Packet.NetRom.Tests` in the test matrix; `interop.yml` gains the `src/Packet.NetRom/**` + `src/Packet.Node.Core/**` path triggers (the interop test exercises them). All jobs stay `[self-hosted, Linux, X64]`.
+
+### 2026-06-04 — AXUDP FCS framing: settle the de-facto with a citation survey, flip the default to FCS-ON (PR #304)
+
+**The question (#299→#301→here).** #299 added the AXUDP transport defaulting **FCS-off** "for a pdn↔pdn tunnel"; #301 source-verified that LinBPQ's BPQAXIP/UDP actually *requires* the FCS, fixed the docs, but left the default FCS-off. Open challenge: does **any** real third-party AXIP/AXUDP implementation send/accept FCS-**less** frames, or did pdn invent a self-only wire format? Per §2 ("any implementation is an interop target, not reference truth; survey the real ones") this is settled by a citation survey, not by assertion.
+
+**Verdict: FCS-less is a pdn-invented, self-only wire format. Every real AXIP/AXUDP implementation surveyed mandates the 2-octet AX.25 FCS; none omits it or offers an FCS-less mode.** The interoperable default is therefore **FCS-ON**, now flipped across `AxudpSocket.SendAsync`, `AxudpKissModem`, and `AxudpTransport.IncludeFcs` (`false`→`true`). The de-facto survey (full table + citations in [`docs/strict-vs-pragmatic-audit.md` § "AXUDP / AXIP-over-IP FCS framing"](strict-vs-pragmatic-audit.md)):
+
+| Implementation | FCS in payload? | Configurable? | Citation |
+|---|---|---|---|
+| **RFC 1226** (the AX.25-over-IP standard) | Included, **mandatory** | No | "The 16-bit CRC-CCITT frame check sequence … is included." <https://www.rfc-editor.org/rfc/rfc1226> |
+| **rfc1226-bis** (modern revision draft) | Included, **mandatory** | No | "The CRC-16-CCITT frame check sequence … is included trailing the information field." |
+| **ax25ipd** (classic Linux AXIP daemon, `ax25-apps`) — *the key data point* | Included, **mandatory** both ways | **No** — no `crc` keyword exists (route flags are only `b`/`d`); hard-coded | `process.c`: `from_kiss` calls `add_crc` unconditionally before `send_ip` (L113/124); `from_ip` does `if (!ok_crc(buf,l)) {…dumped - CRC incorrect!…} l-=2` (L154-159). `crc.c`: init 0xffff ^0xffff, good residue 0xf0b8 — identical to ours. (`eblanton/ax25-apps`@52056a0; man `ax25ipd.conf(5)`.) |
+| **LinBPQ BPQAXIP** (over UDP) — dominant peer | Included, **mandatory** both ways | **No** per-MAP knob | `bpqaxip.c` (6.0.25.23): UDP RX `compute_crc(&rxbuff[0],len); if (crc==0xf0b8){len-=2…} else "BPQAXIP Invalid CRC"` (L498-576); TX appends FCS low-byte-first (L619-623). On the wire: `LinbpqViaAxudpConnectedMode` (#301). |
+| **XRouter** AXUDP | Included, **required** | (treats FCS-less as "non-AXUDP") | plan §17 2026-05-12 + on-the-wire `XrouterAxudpInterop`. |
+| **JNOS** axip/axudp | Included (RFC-1226) | — | AX.25-HOWTO §"AX.25 over IP". |
+| **Linux kernel `ax25_ip.c`** | n/a — it's **IP-over-AX.25** (reverse), not AXIP; AXIP framing is userspace `ax25ipd` | n/a | `net/ax25/ax25_ip.c` `ax25_hard_header`. |
+| **Dire Wolf / soundmodem** | n/a — **no AXIP/AXUDP** (KISS + AGW only) | n/a | exhaustive grep of `direwolf/src`. |
+
+All real peers compute the **identical** CRC (poly 0x1021, init 0xffff, ^0xffff, low byte first, good residue 0xf0b8) — byte-for-byte our `Packet.Core.Crc16Ccitt`, so the FCSes interoperate exactly.
+
+**The fix.** `IncludeFcs` stays a *named* flag (§2) — only its default flips to the interoperable value. So an out-of-the-box AXUDP port now talks to LinBPQ/XRouter/ax25ipd/JNOS by default; the YAML deserialization default, the record default, the `AxudpSocket`/`AxudpKissModem` ctor defaults, and the config-template example are all FCS-on. **FCS-less is kept only as a documented opt-out for a symmetric pdn↔pdn tunnel** (the one place it is real — both ends pdn, both opting out), explicitly marked non-standard ("no surveyed real implementation accepts it") in every docstring + the audit doc. Corrected the last self-contradictory docstring #301 missed: `AxudpTransport.IncludeFcs` still claimed "leave false (the default) for LinBPQ's BPQAXIP driver, which accepts the FCS-less form" — exactly backwards.
+
+**Where it's captured.** Although this is a transport-config matter (not an `Ax25ParseOptions`/`AprsParseOptions` parser-leniency one, as #301 argued — the parser never sees the FCS; `AxudpKissModem` strips it), the de-facto framing/peer-expectations/flag/new-default/citations are recorded durably in [`docs/strict-vs-pragmatic-audit.md`](strict-vs-pragmatic-audit.md) (new § "AXUDP / AXIP-over-IP FCS framing"), since the strict-vs-pragmatic + survey discipline is identical and the docstrings point there.
+
+**Tests.** Pinned the new default: `AxudpKissModemTests.Default_includeFcs_is_true…` (out-of-the-box modem appends the FCS) + `NodeConfigYamlTests.Axudp_localPort_and_includeFcs_default_when_omitted` (YAML default is now true). Flipped the pdn↔pdn `AxudpNodeToNodeIntegrationTests` to FCS-on both ends (proves the new default round-trips end-to-end, RR/RNR acks survive the strip). The #301 BPQ `Category=Interop` tests (`LinbpqViaAxudpConnectedMode`, incl. the `FcsLess_Sabm_IsDropped_FcsBearing_Sabm_GetsUa` on-the-wire guard) already use FCS-on and are unchanged — they remain the live proof against a future "BPQ is FCS-less" regression. (No new infra: an `ax25ipd` interop container would be the gold-standard FCS-less-is-not-real proof, but the source survey is conclusive — its `add_crc`/`ok_crc` are unconditional — so it's cited rather than stood up.) Two raw-`AxudpSocket` tests that decode the datagram directly were pinned to `includeFcs: false` (that layer deliberately doesn't strip the FCS — the session-aware modem does), with a note.
+
+Build + full default-filtered suite green locally before CI; jobs stay `[self-hosted, Linux, X64]`.
 
 ### 2026-06-04 — Interop-test the node AXUDP transport against a real LinBPQ (the gap #299 left); fix the FCS default-doc and prove both directions (PR #301)
 
@@ -6621,9 +6649,13 @@ Adds XRouter to the cohort of peers we have working interop tests against.
   host-originated traffic appears from inside the container).
 - **XRouter requires FCS on AXUDP frames** ("AXUDP with CRC" per its
   docs). Frames without a trailing CRC-16 are counted as "other
-  non-AXUDP ignored". LinBPQ's BPQAXIP driver accepts the FCS-less form
-  too, so the two listeners aren't directly compatible — encoders need
-  to know which they're talking to.
+  non-AXUDP ignored". ~~LinBPQ's BPQAXIP driver accepts the FCS-less form
+  too, so the two listeners aren't directly compatible~~ — **Correction
+  (§17 2026-06-04, #301/#304): this was wrong.** BPQAXIP/UDP *also*
+  requires the FCS (source-verified `bpqaxip.c`; it drops FCS-less as
+  "Invalid CRC"). FCS-on is the de-facto wire form for *both* listeners
+  (and ax25ipd/JNOS/RFC 1226) — they are directly compatible after all;
+  FCS-less is pdn-only.
 - **FCS byte order on the wire = low byte first, then high byte.** AX.25
   v2.2 §3.8 says "the FCS shall be transmitted MSB first" but that
   refers to the bit-stream order on the radio, not the byte order in

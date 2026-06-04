@@ -43,6 +43,33 @@ public sealed class AxudpKissModemTests
     }
 
     [Fact]
+    public async Task Default_includeFcs_is_true_so_an_out_of_the_box_modem_appends_the_fcs()
+    {
+        // Pin the de-facto interoperable default: an AXUDP modem constructed WITHOUT
+        // specifying includeFcs must put the 2-octet FCS on the wire, so it talks to
+        // LinBPQ BPQAXIP / XRouter / ax25ipd out of the box. (Survey verdict: every
+        // real AXIP/AXUDP peer REQUIRES the FCS; FCS-less is pdn-only — see
+        // docs/strict-vs-pragmatic-audit.md.)
+        using var peer = new AxudpSocket(localPort: 0);
+        var frame = Ui("x");
+        var body = frame.ToBytes();
+        ushort fcs = Crc16Ccitt.Compute(body);
+
+        await using var modem = new AxudpKissModem(
+            new IPEndPoint(IPAddress.Loopback, peer.LocalPort), localPort: 0);   // <- no includeFcs arg
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var receiveTask = peer.ReceiveAsync(cts.Token);
+        await modem.SendFrameAsync(body, cts.Token);
+        var result = await receiveTask;
+
+        result.RawFrame.Length.Should().Be(body.Length + 2, "the default carries the 2-octet FCS");
+        result.RawFrame.AsSpan(0, body.Length).SequenceEqual(body).Should().BeTrue();
+        result.RawFrame[body.Length].Should().Be((byte)(fcs & 0xFF), "FCS low byte first");
+        result.RawFrame[body.Length + 1].Should().Be((byte)((fcs >> 8) & 0xFF));
+    }
+
+    [Fact]
     public async Task Send_with_includeFcs_appends_the_two_octet_fcs_low_byte_first()
     {
         using var peer = new AxudpSocket(localPort: 0);
@@ -67,8 +94,12 @@ public sealed class AxudpKissModemTests
     [Fact]
     public async Task ReadFrames_surfaces_each_inbound_datagram_as_a_kiss_data_frame()
     {
+        // FCS-less link (includeFcs: false) — the raw sender below transmits a bare
+        // frame body with no FCS, so the modem must be on the matching FCS-less setting
+        // (includeFcs is a symmetric link parameter). The FCS-on receive path is covered
+        // by the strip/corrupt-drop tests below.
         await using var modem = new AxudpKissModem(
-            new IPEndPoint(IPAddress.Loopback, 1), localPort: 0);    // remote irrelevant for RX
+            new IPEndPoint(IPAddress.Loopback, 1), localPort: 0, includeFcs: false);    // remote irrelevant for RX
         using var sender = new AxudpSocket(localPort: 0);
 
         var frame = Ui("inbound");

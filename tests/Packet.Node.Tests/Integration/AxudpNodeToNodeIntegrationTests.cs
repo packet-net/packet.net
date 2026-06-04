@@ -87,7 +87,11 @@ public sealed class AxudpNodeToNodeIntegrationTests
                     Host = "127.0.0.1",
                     Port = remotePort,
                     LocalPort = localPort,
-                    IncludeFcs = false,
+                    // FCS-on both ends — the new interoperable default (this is the same
+                    // wire form pdn uses against LinBPQ/XRouter/ax25ipd). The receiver
+                    // strips+validates the FCS, so the listener parses a clean frame and
+                    // RR/RNR acks survive (an unstripped FCS tail would drop every S-frame).
+                    IncludeFcs = true,
                 },
                 // Small N2 bounds the node-to-node connect backstop at 30 s instead of
                 // the 66 s spec default, so a starved handshake fails fast under CI

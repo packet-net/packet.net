@@ -41,7 +41,13 @@ public class AxudpSocketTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
         var receiveTask = receiver.ReceiveAsync(cts.Token);
-        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, cancellationToken: cts.Token);
+        // includeFcs: false here on purpose. AxudpSocket.ReceiveAsync does a best-effort
+        // raw decode and deliberately does NOT strip the FCS (that's the session-aware
+        // AxudpKissModem's job — see its docstring). With the FCS on, TryParse would slurp
+        // the 2 trailing FCS octets into a UI frame's Info, so the bare-decode assertions
+        // below need the FCS-less form. (The default-on FCS path is covered end-to-end by
+        // AxudpKissModemTests + the integration/interop tests.)
+        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, includeFcs: false, cancellationToken: cts.Token);
 
         var result = await receiveTask;
         result.DecodedFrame.Should().NotBeNull();

@@ -83,7 +83,9 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 Host = Required(fields, "host", kind, start),
                 Port = Int(fields, "port", 0, start),
                 LocalPort = Int(fields, "localport", 0, start),
-                IncludeFcs = Bool(fields, "includefcs", false, start),
+                // Default true: the FCS is the de-facto AXIP/AXUDP wire form (RFC 1226 +
+                // ax25ipd + BPQAXIP + XRouter all require it) — see AxudpTransport.IncludeFcs.
+                IncludeFcs = Bool(fields, "includefcs", true, start),
             },
             _ => throw new YamlException(start, start,
                 $"unknown transport kind '{kind}' (expected one of: " +

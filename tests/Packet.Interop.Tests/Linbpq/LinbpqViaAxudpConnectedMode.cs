@@ -44,13 +44,16 @@ namespace Packet.Interop.Tests.Linbpq;
 /// FCS on every datagram: <c>bpqaxip.c</c>'s UDP receive path computes the FCS
 /// over the whole datagram and drops anything whose residue isn't <c>0xf0b8</c>
 /// ("BPQAXIP Invalid CRC"), and its send path appends the FCS. There is no
-/// per-MAP "no CRC" knob. So pdn's <c>AxudpKissModem</c> must run with
-/// <c>IncludeFcs = true</c> here — its FCS-less default (which the pre-#299 docs
-/// wrongly claimed "matches BPQAXIP") is silently dropped by BPQ.
+/// per-MAP "no CRC" knob. So pdn's <c>AxudpKissModem</c> runs with
+/// <c>IncludeFcs = true</c> here — which since #304 is also the default, because a
+/// citation survey found FCS-on is the de-facto AXIP/AXUDP wire form everywhere
+/// (RFC 1226 + ax25ipd + BPQAXIP + XRouter + JNOS) and FCS-less is pdn-only; the
+/// pre-#299 docs wrongly claimed FCS-less "matches BPQAXIP", and an FCS-less
+/// datagram is in fact silently dropped by BPQ.
 /// <see cref="FcsLess_Sabm_IsDropped_FcsBearing_Sabm_GetsUa"/> locks this in on
-/// the wire so a regression (e.g. flipping the default) is caught. BPQ is an
-/// interop target, not the spec — the FCS is gated behind the named
-/// <c>IncludeFcs</c> flag, not baked in as a silent default (plan §2).
+/// the wire so a regression (e.g. flipping the default back to FCS-less) is caught.
+/// BPQ is an interop target, not the spec — the FCS stays gated behind the named
+/// <c>IncludeFcs</c> flag (only its default changed), per plan §2.
 /// </para>
 /// <para>
 /// Serialised into <see cref="NetsimCollection"/>: these tests talk to the same

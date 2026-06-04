@@ -14,9 +14,10 @@ namespace Packet.Node.Core.Transports;
 /// <remarks>
 /// <para>
 /// AXUDP is not KISS — there is no SLIP framing, no command byte, no CSMA. A
-/// datagram's payload <em>is</em> the AX.25 frame body (the same FCS-less
-/// KISS-form octets <c>Ax25Frame.ToBytes()</c> / <c>Ax25Listener</c> produce),
-/// optionally followed by a 2-octet FCS. The adapter therefore:
+/// datagram's payload <em>is</em> the AX.25 frame body (the same KISS-form octets
+/// <c>Ax25Frame.ToBytes()</c> / <c>Ax25Listener</c> produce), followed by the
+/// 2-octet AX.25 FCS (the RFC-1226 AXIP/AXUDP wire form — included by default).
+/// The adapter therefore:
 /// </para>
 /// <list type="bullet">
 /// <item><b>Send</b> (<see cref="SendFrameAsync"/>): the bytes the listener hands
@@ -42,13 +43,15 @@ namespace Packet.Node.Core.Transports;
 /// as pointing a serial KISS link at one modem.
 /// </para>
 /// <para>
-/// <b>FCS / <c>includeFcs</c> — set it to match the peer, source-verified:</b>
-/// LinBPQ's BPQAXIP driver over UDP and XRouter's AXUDP listener both REQUIRE
-/// the FCS (BPQAXIP drops FCS-less datagrams as "Invalid CRC" — <c>bpqaxip.c</c>,
-/// confirmed on the wire), so those reference peers need <c>includeFcs: true</c>.
-/// The FCS-less default is the minimal raw-body form for a peer that explicitly
-/// wants no FCS (e.g. a pdn↔pdn tunnel). Stripping the FCS on receive is
-/// mandatory, not cosmetic, when the link uses one — see <see cref="ReadFramesAsync"/>.
+/// <b>FCS / <c>includeFcs</c> — included by default; this is the de-facto wire
+/// format.</b> A citation survey of every real AXIP/AXUDP implementation
+/// (RFC 1226 + rfc1226-bis, ax25ipd, LinBPQ's BPQAXIP, XRouter — see
+/// <c>docs/strict-vs-pragmatic-audit.md</c>) found the 2-octet FCS is mandatory
+/// in all of them and FCS-less is accepted by none. So an out-of-the-box AXUDP
+/// port talks to LinBPQ/XRouter/ax25ipd/JNOS by default. <c>includeFcs: false</c>
+/// is the non-standard FCS-less raw-body form, kept only for a symmetric pdn↔pdn
+/// tunnel that opts out on both ends. Stripping the FCS on receive is mandatory,
+/// not cosmetic, when the link uses one — see <see cref="ReadFramesAsync"/>.
 /// </para>
 /// </remarks>
 public sealed class AxudpKissModem : IKissModem, IAsyncDisposable
@@ -69,11 +72,12 @@ public sealed class AxudpKissModem : IKissModem, IAsyncDisposable
     /// <param name="remote">The remote AXUDP peer every frame is sent to.</param>
     /// <param name="localPort">Local UDP port to bind for receive (0 = ephemeral).</param>
     /// <param name="includeFcs">Append (and, on receive, strip+validate) the
-    /// 2-octet CRC-16/X.25 FCS. Set <c>true</c> for the de-facto reference peers
-    /// that require it — LinBPQ's BPQAXIP over UDP (source-verified) and XRouter's
-    /// AXUDP. <c>false</c> (the default) is the FCS-less raw-body form for a peer
-    /// that explicitly wants no FCS (e.g. a pdn↔pdn tunnel).</param>
-    public AxudpKissModem(IPEndPoint remote, int localPort = 0, bool includeFcs = false)
+    /// 2-octet CRC-16/X.25 FCS. <c>true</c> (the default) is the standard RFC-1226
+    /// AXIP/AXUDP wire form that every real peer expects — LinBPQ's BPQAXIP over UDP
+    /// (source-verified), XRouter's AXUDP, ax25ipd, JNOS. Set <c>false</c> only for
+    /// the non-standard FCS-less raw-body form (a symmetric pdn↔pdn tunnel that opts
+    /// out on both ends); no surveyed real implementation accepts it.</param>
+    public AxudpKissModem(IPEndPoint remote, int localPort = 0, bool includeFcs = true)
     {
         this.remote = remote ?? throw new ArgumentNullException(nameof(remote));
         this.includeFcs = includeFcs;
