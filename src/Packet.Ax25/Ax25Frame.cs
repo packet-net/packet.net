@@ -233,15 +233,15 @@ public sealed partial class Ax25Frame
     /// <remarks>
     /// <para>
     /// This is the standard RFC-1226 AXIP / AXUDP wire form — what every real peer
-    /// expects. Settled by a citation survey (see
-    /// <c>docs/strict-vs-pragmatic-audit.md</c>): RFC 1226 + rfc1226-bis mandate the
-    /// FCS ("is included", no FCS-less option); ax25ipd appends/checks it
+    /// expects, and what AXUDP unconditionally carries. Settled by a citation survey
+    /// (see <c>docs/strict-vs-pragmatic-audit.md</c>): RFC 1226 + rfc1226-bis mandate
+    /// the FCS ("is included", no FCS-less option); ax25ipd appends/checks it
     /// unconditionally (<c>process.c</c>); LinBPQ's BPQAXIP over UDP REQUIRES it (its
     /// UDP receive path drops anything whose CRC residue isn't <c>0xf0b8</c> —
     /// <c>bpqaxip.c</c>, confirmed on the wire); XRouter requires it; and real-on-air
-    /// HDLC frames carry it. The FCS-less <see cref="ToBytes"/> form is non-standard —
-    /// no surveyed real implementation accepts it; it exists only for a symmetric
-    /// pdn↔pdn tunnel that opts out of the FCS on both ends.
+    /// HDLC frames carry it. The plain <see cref="ToBytes"/> form (no FCS) is the
+    /// KISS-layer serialisation — a KISS TNC computes the FCS itself, so the KISS
+    /// transports never carry one on the wire; it is <b>not</b> an AXUDP form.
     /// </para>
     /// <para>
     /// FCS byte-order note: AX.25 v2.2 §3.8 says "the FCS shall be transmitted

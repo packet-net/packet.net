@@ -81,9 +81,9 @@ public static class NodeConfigTemplate
         #      host: 10.0.0.2      # remote peer to send frames to
         #      port: 10093         # remote UDP port
         #      localPort: 10093    # local UDP port to receive on (match for a symmetric tunnel)
-        #      includeFcs: true    # default; the FCS is the de-facto wire form — required by
-        #                          # LinBPQ BPQAXIP, XRouter, ax25ipd & JNOS. Only set false for
-        #                          # a pdn↔pdn tunnel that opts out of the FCS on both ends.
+        #                          # AXUDP always carries the 2-octet AX.25 FCS (the de-facto
+        #                          # wire form — required by LinBPQ BPQAXIP, XRouter, ax25ipd
+        #                          # & JNOS). No FCS option.
         #    # No profile here: a UDP tunnel is fast + reliable, so the spec
         #    # defaults are correct. Don't apply a slow-channel profile to AXUDP.
 

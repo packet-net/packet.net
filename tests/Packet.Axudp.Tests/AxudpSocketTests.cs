@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using Packet.Ax25;
 using Packet.Axudp;
 using Packet.Core;
@@ -8,10 +9,14 @@ namespace Packet.Axudp.Tests;
 public class AxudpSocketTests
 {
     [Fact]
-    public async Task Loopback_Send_With_Fcs_Appends_Two_Bytes_Before_Body()
+    public async Task Send_Always_Appends_The_Two_Octet_Fcs_On_The_Wire()
     {
-        using var receiver = new AxudpSocket(localPort: 0);
-        using var sender   = new AxudpSocket(localPort: 0);
+        // AXUDP unconditionally carries the FCS. Observe the raw datagram with a
+        // plain UdpClient (not AxudpSocket, which strips the FCS on receive) to
+        // confirm SendAsync put body + 2-octet FCS, low byte first, on the wire.
+        using var rawReceiver = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var receivePort = ((IPEndPoint)rawReceiver.Client.LocalEndPoint!).Port;
+        using var sender = new AxudpSocket(localPort: 0);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
         var frame = Ax25Frame.Ui(
@@ -19,16 +24,20 @@ public class AxudpSocketTests
             source:      new Callsign("G7XYZ", 0),
             info:        "x"u8);
 
-        var receiveTask = receiver.ReceiveAsync(cts.Token);
-        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, includeFcs: true, cancellationToken: cts.Token);
-        var result = await receiveTask;
+        var receiveTask = rawReceiver.ReceiveAsync(cts.Token);
+        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receivePort), frame, cts.Token);
+        var datagram = (await receiveTask).Buffer;
 
-        result.RawFrame.Length.Should().Be(frame.RequiredBytesWithFcs);
-        result.RawFrame.AsSpan(0, frame.RequiredBytes).SequenceEqual(frame.ToBytes()).Should().BeTrue();
+        var body = frame.ToBytes();
+        ushort fcs = Crc16Ccitt.Compute(body);
+        datagram.Length.Should().Be(body.Length + 2, "AXUDP always appends the 2-octet FCS");
+        datagram.AsSpan(0, body.Length).SequenceEqual(body).Should().BeTrue();
+        datagram[body.Length].Should().Be((byte)(fcs & 0xFF), "FCS low byte first");
+        datagram[body.Length + 1].Should().Be((byte)((fcs >> 8) & 0xFF));
     }
 
     [Fact]
-    public async Task Two_Loopback_Sockets_Exchange_A_UI_Frame()
+    public async Task Two_Loopback_Sockets_Exchange_A_UI_Frame_Fcs_Stripped_On_Receive()
     {
         using var receiver = new AxudpSocket(localPort: 0);
         using var sender = new AxudpSocket(localPort: 0);
@@ -41,15 +50,12 @@ public class AxudpSocketTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
         var receiveTask = receiver.ReceiveAsync(cts.Token);
-        // includeFcs: false here on purpose. AxudpSocket.ReceiveAsync does a best-effort
-        // raw decode and deliberately does NOT strip the FCS (that's the session-aware
-        // AxudpKissModem's job — see its docstring). With the FCS on, TryParse would slurp
-        // the 2 trailing FCS octets into a UI frame's Info, so the bare-decode assertions
-        // below need the FCS-less form. (The default-on FCS path is covered end-to-end by
-        // AxudpKissModemTests + the integration/interop tests.)
-        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, includeFcs: false, cancellationToken: cts.Token);
+        // SendAsync always appends the FCS; ReceiveAsync strips + validates it, so the
+        // decoded frame is clean — the 2 trailing FCS octets are NOT slurped into Info.
+        await sender.SendAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), frame, cts.Token);
 
         var result = await receiveTask;
+        result.RawFrame.Should().Equal(frame.ToBytes(), "the FCS is stripped, leaving the bare frame body");
         result.DecodedFrame.Should().NotBeNull();
         result.DecodedFrame!.Source.Callsign.Should().Be(new Callsign("G7XYZ", 7));
         result.DecodedFrame.Destination.Callsign.Should().Be(new Callsign("APRS", 0));
@@ -57,22 +63,30 @@ public class AxudpSocketTests
     }
 
     [Fact]
-    public async Task Raw_Bytes_Sent_Are_Received_Verbatim()
+    public async Task Receive_Drops_A_Datagram_With_A_Bad_Fcs()
     {
+        // A datagram whose trailing FCS doesn't validate is dropped (as every real
+        // peer drops a bad-CRC datagram); the next valid one is delivered — proving
+        // the drop, not a hang.
         using var receiver = new AxudpSocket(localPort: 0);
         using var sender = new AxudpSocket(localPort: 0);
-
-        // Junk that isn't a valid AX.25 frame — DecodedFrame should be null
-        // but RawFrame should still survive transport.
-        var junk = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
-
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var to = new IPEndPoint(IPAddress.Loopback, receiver.LocalPort);
+
+        var good = Ax25Frame.Ui(destination: new Callsign("APRS", 0), source: new Callsign("G7XYZ", 7), info: "good"u8);
+        var goodBody = good.ToBytes();
+        var corrupt = new byte[goodBody.Length + 2];   // valid body, wrong FCS
+        goodBody.CopyTo(corrupt, 0);
+        corrupt[^2] = 0xFF;
+        corrupt[^1] = 0xFF;
+
         var receiveTask = receiver.ReceiveAsync(cts.Token);
-        await sender.SendRawAsync(new IPEndPoint(IPAddress.Loopback, receiver.LocalPort), junk, cts.Token);
+        await sender.SendRawAsync(to, corrupt, cts.Token);     // dropped (bad FCS)
+        await sender.SendAsync(to, good, cts.Token);           // delivered
 
         var result = await receiveTask;
-        result.RawFrame.Should().Equal(junk);
-        result.DecodedFrame.Should().BeNull("4 random bytes are too short to parse as an AX.25 frame");
+        result.RawFrame.Should().Equal(goodBody, "the bad-FCS datagram is dropped; the next valid one is delivered, FCS stripped");
+        result.DecodedFrame!.Info.ToArray().Should().Equal("good"u8.ToArray());
     }
 
     [Fact]

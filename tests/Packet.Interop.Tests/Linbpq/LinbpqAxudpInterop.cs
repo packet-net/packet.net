@@ -26,8 +26,8 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <para>
 /// <b>FCS is mandatory on BPQAXIP/UDP</b> (source-verified in <c>bpqaxip.c</c>;
 /// see <see cref="LinbpqViaAxudpConnectedMode"/> for the detail and the on-the-
-/// wire regression guard). So the UI-frame smoke below sends the FCS-bearing
-/// form (<c>includeFcs: true</c>). An FCS-less datagram would be silently dropped
+/// wire regression guard). AXUDP always carries it, so the UI-frame smoke below
+/// sends the FCS-bearing form. An FCS-less datagram would be silently dropped
 /// by BPQ as "Invalid CRC" — sending one and asserting "no client-side
 /// exception" (what a pre-#299 revision did) proved nothing, because the drop is
 /// invisible to the sender. UDP is fire-and-forget, so this remains a framing /
@@ -73,11 +73,11 @@ public class LinbpqAxudpSmoke
             source: new Callsign("PN0TST", 9),
             info: "Packet.NET v0 hello (AXUDP)"u8);
 
-        // includeFcs: true — the form BPQAXIP/UDP requires (it drops FCS-less
-        // datagrams as "Invalid CRC"). UDP is fire-and-forget; this is a framing
-        // smoke. Real acceptance (UA / I-frame replies) is asserted in
+        // AXUDP always appends the 2-octet FCS — the form BPQAXIP/UDP requires (it
+        // drops FCS-less datagrams as "Invalid CRC"). UDP is fire-and-forget; this is
+        // a framing smoke. Real acceptance (UA / I-frame replies) is asserted in
         // LinbpqViaAxudpConnectedMode.
-        await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, includeFcs: true, cancellationToken: cts.Token);
+        await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, cts.Token);
     }
 
     private static async Task<bool> IsTcpPortReachable(string host, int port)

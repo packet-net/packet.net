@@ -83,9 +83,11 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 Host = Required(fields, "host", kind, start),
                 Port = Int(fields, "port", 0, start),
                 LocalPort = Int(fields, "localport", 0, start),
-                // Default true: the FCS is the de-facto AXIP/AXUDP wire form (RFC 1226 +
-                // ax25ipd + BPQAXIP + XRouter all require it) — see AxudpTransport.IncludeFcs.
-                IncludeFcs = Bool(fields, "includefcs", true, start),
+                // AXUDP always carries the 2-octet AX.25 FCS (the de-facto wire form —
+                // RFC 1226 + ax25ipd + BPQAXIP + XRouter all require it; see
+                // AxudpTransport). There is no FCS knob. A stale 'includeFcs:' key from
+                // an old config lands in 'fields' unread (harmless), so a pre-removal
+                // config still loads.
             },
             _ => throw new YamlException(start, start,
                 $"unknown transport kind '{kind}' (expected one of: " +
@@ -120,7 +122,6 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 EmitField(emitter, "host", a.Host);
                 EmitField(emitter, "port", a.Port.ToString(CultureInfo.InvariantCulture));
                 EmitField(emitter, "localPort", a.LocalPort.ToString(CultureInfo.InvariantCulture));
-                EmitField(emitter, "includeFcs", a.IncludeFcs ? "true" : "false");
                 break;
             case null:
                 break;
@@ -163,18 +164,5 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             return parsed;
         }
         throw new YamlException(mark, mark, $"transport field '{key}' must be an integer (got '{v}').");
-    }
-
-    private static bool Bool(Dictionary<string, string?> fields, string key, bool fallback, Mark mark)
-    {
-        if (!fields.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v))
-        {
-            return fallback;
-        }
-        if (bool.TryParse(v, out var parsed))
-        {
-            return parsed;
-        }
-        throw new YamlException(mark, mark, $"transport field '{key}' must be true or false (got '{v}').");
     }
 }

@@ -105,9 +105,11 @@ public sealed record KissTcpTransport : TransportConfig
 /// <summary>
 /// AXUDP — AX.25 frames encapsulated in UDP datagrams (the RFC-1226 AXIP/AXUDP /
 /// BPQAXIP transport). Each datagram payload is one AX.25 frame body (the same
-/// KISS-form octets the listener produces) followed by the 2-octet AX.25 FCS (the
-/// de-facto wire form — see <see cref="IncludeFcs"/>). Driven by the
-/// <c>AxudpKissModem</c> adapter over a <see cref="Packet.Axudp.AxudpSocket"/>.
+/// KISS-form octets the listener produces) followed by the 2-octet AX.25 FCS.
+/// The FCS is unconditional — it is the de-facto wire form that every real peer
+/// (LinBPQ's BPQAXIP, XRouter, ax25ipd, JNOS, per RFC 1226) requires; see
+/// <c>docs/strict-vs-pragmatic-audit.md</c>. Driven by the <c>AxudpKissModem</c>
+/// adapter over a <see cref="Packet.Axudp.AxudpSocket"/>.
 /// </summary>
 /// <remarks>
 /// AXUDP is a point-to-point UDP tunnel, not a shared RF channel: a port sends
@@ -134,19 +136,6 @@ public sealed record AxudpTransport : TransportConfig
     /// bind unless it learns the source port).
     /// </summary>
     public int LocalPort { get; init; }
-
-    /// <summary>
-    /// Append the CRC-16-CCITT FCS (low byte first) to each datagram, and
-    /// strip+validate it on receive. Defaults to <c>true</c> — the standard
-    /// RFC-1226 AXIP/AXUDP wire form that every real peer requires (LinBPQ's
-    /// BPQAXIP over UDP, XRouter, ax25ipd, JNOS; the FCS-less default that
-    /// pre-#301 docs claimed "matches BPQAXIP" was wrong — BPQAXIP/UDP drops
-    /// FCS-less datagrams as "Invalid CRC", source-verified in <c>bpqaxip.c</c>).
-    /// Set <c>false</c> only for the non-standard FCS-less raw-body form — a
-    /// symmetric pdn↔pdn tunnel that opts out on both ends; no surveyed real
-    /// implementation accepts it. See <c>docs/strict-vs-pragmatic-audit.md</c>.
-    /// </summary>
-    public bool IncludeFcs { get; init; } = true;
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"axudp:{Host}:{Port}(local:{LocalPort})";

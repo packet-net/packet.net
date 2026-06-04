@@ -67,7 +67,7 @@ public class XrouterAxudpInterop
             source:      new Callsign("PN0TST", 9),
             info:        "Packet.NET → XRouter (with FCS)"u8);
 
-        await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, includeFcs: true, cancellationToken: cts.Token);
+        await socket.SendAsync(new IPEndPoint(IPAddress.Loopback, AxudpPort), frame, cts.Token);
 
         // XRouter's stats counter takes a moment to tick, and the latency
         // varies under load — poll until it increments rather than betting

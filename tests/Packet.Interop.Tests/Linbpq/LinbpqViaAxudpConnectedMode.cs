@@ -44,16 +44,14 @@ namespace Packet.Interop.Tests.Linbpq;
 /// FCS on every datagram: <c>bpqaxip.c</c>'s UDP receive path computes the FCS
 /// over the whole datagram and drops anything whose residue isn't <c>0xf0b8</c>
 /// ("BPQAXIP Invalid CRC"), and its send path appends the FCS. There is no
-/// per-MAP "no CRC" knob. So pdn's <c>AxudpKissModem</c> runs with
-/// <c>IncludeFcs = true</c> here — which since #304 is also the default, because a
-/// citation survey found FCS-on is the de-facto AXIP/AXUDP wire form everywhere
-/// (RFC 1226 + ax25ipd + BPQAXIP + XRouter + JNOS) and FCS-less is pdn-only; the
-/// pre-#299 docs wrongly claimed FCS-less "matches BPQAXIP", and an FCS-less
-/// datagram is in fact silently dropped by BPQ.
+/// per-MAP "no CRC" knob. AXUDP therefore unconditionally carries the FCS —
+/// settled by a citation survey that found FCS-on is the de-facto AXIP/AXUDP wire
+/// form everywhere (RFC 1226 + ax25ipd + BPQAXIP + XRouter + JNOS) and FCS-less is
+/// pdn-only (the pre-#299 docs wrongly claimed FCS-less "matches BPQAXIP", and an
+/// FCS-less datagram is in fact silently dropped by BPQ; the FCS-less opt-out
+/// interoperated with nothing and was removed).
 /// <see cref="FcsLess_Sabm_IsDropped_FcsBearing_Sabm_GetsUa"/> locks this in on
-/// the wire so a regression (e.g. flipping the default back to FCS-less) is caught.
-/// BPQ is an interop target, not the spec — the FCS stays gated behind the named
-/// <c>IncludeFcs</c> flag (only its default changed), per plan §2.
+/// the wire so a regression (e.g. emitting FCS-less datagrams again) is caught.
 /// </para>
 /// <para>
 /// Serialised into <see cref="NetsimCollection"/>: these tests talk to the same
@@ -102,9 +100,9 @@ public sealed class LinbpqViaAxudpConnectedMode
     private static readonly Callsign PdnFcsCall     = new("PNAXFC", 1);   // FCS guard
 
     /// <summary>
-    /// Direction A — pdn → LinBPQ. A pdn node host with an AXUDP port
-    /// (<c>IncludeFcs = true</c>) dials BPQ's NODECALL through its own outbound
-    /// connector (the exact path the node console's <c>Connect</c> command uses):
+    /// Direction A — pdn → LinBPQ. A pdn node host with an AXUDP port dials BPQ's
+    /// NODECALL through its own outbound connector (the exact path the node
+    /// console's <c>Connect</c> command uses):
     /// SABM crosses the UDP tunnel, BPQ replies UA (the connect only returns on
     /// DL-CONNECT-confirm), then an I-frame round-trip — we send the <c>P</c>
     /// (ports) command and read BPQ's reply back over the tunnel — and a clean
@@ -122,7 +120,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         // Distinct callsign + distinct fixed local port: AUTOADDMAP gives BPQ the
         // reply route (no static MAP needed) and this test is its own isolated BPQ
         // link; the fixed port keeps BPQ's AUTOADD cache valid across re-runs.
-        await using var pdn = BuildPdn(includeFcs: true, call: PdnDialOutCall, localPort: PdnDialOutPort);
+        await using var pdn = BuildPdn(call: PdnDialOutCall, localPort: PdnDialOutPort);
         await pdn.StartAsync(cts.Token);
         await WaitForAsync(() => pdn.RunningPortIds.Contains("axudp"),
             "pdn's AXUDP port should come up", cts.Token);
@@ -157,8 +155,8 @@ public sealed class LinbpqViaAxudpConnectedMode
 
     /// <summary>
     /// Direction B — LinBPQ → pdn. A pdn node host listens as PNAX25-1 on the
-    /// AXUDP port (<c>IncludeFcs = true</c>); we then drive BPQ's own telnet node
-    /// prompt to <c>C 2 PNAX25-1</c> (connect out on its AXIP port to pdn). BPQ
+    /// AXUDP port; we then drive BPQ's own telnet node prompt to
+    /// <c>C 2 PNAX25-1</c> (connect out on its AXIP port to pdn). BPQ
     /// originates the SABM over AXIP, pdn accepts it (its <c>SessionAccepted</c>
     /// fires and the supervisor runs the node console against the inbound
     /// session), and pdn's banner+prompt are relayed back to the BPQ telnet user.
@@ -177,7 +175,6 @@ public sealed class LinbpqViaAxudpConnectedMode
         // BPQ originates this connect, so pdn MUST be at the static MAP target
         // (callsign + fixed port) — there's no inbound for AUTOADDMAP to learn.
         await using var pdn = BuildPdn(
-            includeFcs: true,
             call: PdnMappedCall,
             localPort: PdnMappedPort,
             banner: "Packet.NET node reached via AXUDP",
@@ -214,10 +211,16 @@ public sealed class LinbpqViaAxudpConnectedMode
     /// in <c>bpqaxip.c</c> and proven here against the live container: an FCS-less
     /// SABM is silently dropped by BPQ's BPQAXIP UDP receive path ("Invalid CRC")
     /// → no reply; the same SABM with the 2-octet CRC-16/X.25 FCS appended is
-    /// accepted → BPQ answers UA. This is why pdn's <c>AxudpKissModem</c> needs
-    /// <c>IncludeFcs = true</c> for BPQ; if anyone flips the default thinking
-    /// "BPQAXIP is FCS-less", this fails.
+    /// accepted → BPQ answers UA. This is why AXUDP unconditionally carries the
+    /// FCS; if anyone makes AXUDP emit FCS-less datagrams again, this fails.
     /// </summary>
+    /// <remarks>
+    /// The FCS-less leg is sent via <see cref="AxudpSocket.SendRawAsync"/> (the raw
+    /// escape hatch, which appends no FCS) since <see cref="AxudpSocket.SendAsync"/>
+    /// always appends the FCS. The FCS-bearing reply is received through
+    /// <see cref="AxudpSocket.ReceiveAsync"/>, which strips + validates the FCS — so
+    /// a non-null result already proves BPQ's reply carried a valid FCS.
+    /// </remarks>
     [SkippableFact]
     public async Task FcsLess_Sabm_IsDropped_FcsBearing_Sabm_GetsUa()
     {
@@ -234,33 +237,34 @@ public sealed class LinbpqViaAxudpConnectedMode
         // Drain any stray datagram already queued before we start (belt + braces).
         await DrainDatagramsAsync(sock, TimeSpan.FromMilliseconds(300), cts.Token);
 
-        // FCS-less SABM → BPQ drops it as "Invalid CRC" → no reply.
+        // FCS-less SABM (raw send — no FCS appended) → BPQ drops it as "Invalid CRC"
+        // → no reply.
         var sabm = Ax25Frame.Sabm(destination: BpqCall, source: PdnFcsCall, pollBit: true);
-        await sock.SendAsync(bpq, sabm, includeFcs: false, cts.Token);
+        await sock.SendRawAsync(bpq, sabm.ToBytes(), cts.Token);
         var fcsLessReply = await ReceiveOneAsync(sock, TimeSpan.FromSeconds(5), cts.Token);
         fcsLessReply.Should().BeNull(
             "BPQ's BPQAXIP UDP driver drops an FCS-less datagram as 'Invalid CRC' (bpqaxip.c) — no reply");
 
-        // FCS-bearing SABM → BPQ accepts it → replies UA.
-        await sock.SendAsync(bpq, sabm, includeFcs: true, cts.Token);
+        // FCS-bearing SABM (SendAsync always appends the FCS) → BPQ accepts it →
+        // replies UA. ReceiveAsync strips + validates the FCS, so a non-null body
+        // already proves BPQ's UA carried a valid FCS (an unstripped tail would
+        // otherwise make TryParse reject acks — the whole reason AXUDP strips it).
+        await sock.SendAsync(bpq, sabm, cts.Token);
         var fcsReply = await ReceiveOneAsync(sock, TimeSpan.FromSeconds(10), cts.Token);
-        fcsReply.Should().NotBeNull("BPQ accepts the FCS-bearing SABM and replies");
-        IsUa(fcsReply!.Value.body).Should().BeTrue(
-            $"BPQ's reply to the FCS-bearing SABM is a UA (got control 0x{ControlOf(fcsReply.Value.body):X2})");
-        // BPQ's UA itself carries an FCS that validates — proving BPQ also SENDS
-        // the FCS, so a receiver must strip+validate it (AxudpKissModem does when
-        // IncludeFcs=true; an unstripped tail would make TryParse reject acks).
-        FcsValidates(fcsReply.Value.datagram).Should().BeTrue("BPQ appends a valid FCS to its UA reply");
+        fcsReply.Should().NotBeNull(
+            "BPQ accepts the FCS-bearing SABM and replies with a UA whose FCS validates (ReceiveAsync would drop a bad-FCS datagram)");
+        IsUa(fcsReply!).Should().BeTrue(
+            $"BPQ's reply to the FCS-bearing SABM is a UA (got control 0x{ControlOf(fcsReply):X2})");
 
         // Cleanly close BPQ's now half-open link so it doesn't retransmit UA into
         // a later run (FCS-bearing, so BPQ accepts the DISC).
-        await sock.SendAsync(bpq, Ax25Frame.Disc(destination: BpqCall, source: PdnFcsCall, pollBit: true), includeFcs: true, cts.Token);
+        await sock.SendAsync(bpq, Ax25Frame.Disc(destination: BpqCall, source: PdnFcsCall, pollBit: true), cts.Token);
         await DrainDatagramsAsync(sock, TimeSpan.FromMilliseconds(500), cts.Token);
     }
 
     // ── pdn node-host rig ───────────────────────────────────────────────
 
-    private static PortSupervisor BuildPdn(bool includeFcs, Callsign call, int localPort, string? banner = null, string? prompt = null)
+    private static PortSupervisor BuildPdn(Callsign call, int localPort, string? banner = null, string? prompt = null)
     {
         var config = new NodeConfig
         {
@@ -283,7 +287,6 @@ public sealed class LinbpqViaAxudpConnectedMode
                         Host = Host,
                         Port = BpqAxudpPort,
                         LocalPort = localPort,
-                        IncludeFcs = includeFcs,
                     },
                 },
             ],
@@ -310,19 +313,20 @@ public sealed class LinbpqViaAxudpConnectedMode
         }
     }
 
-    // ── raw-wire helpers (FCS regression guard) ─────────────────────────
+    // ── wire helpers (FCS regression guard) ─────────────────────────────
 
-    // Wait up to <paramref name="budget"/> for one datagram; null on timeout.
-    private static async Task<(byte[] datagram, byte[] body)?> ReceiveOneAsync(AxudpSocket sock, TimeSpan budget, CancellationToken outer)
+    // Wait up to <paramref name="budget"/> for one valid datagram; null on timeout.
+    // AxudpSocket.ReceiveAsync has already stripped + validated the FCS, so the
+    // returned bytes are the bare AX.25 frame body (and a bad-FCS datagram never
+    // surfaces — it's dropped inside ReceiveAsync).
+    private static async Task<byte[]?> ReceiveOneAsync(AxudpSocket sock, TimeSpan budget, CancellationToken outer)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
         cts.CancelAfter(budget);
         try
         {
             var r = await sock.ReceiveAsync(cts.Token);
-            // An FCS-bearing reply's body is the datagram minus the 2 FCS octets.
-            var body = r.RawFrame.Length >= 2 ? r.RawFrame[..^2] : r.RawFrame;
-            return (r.RawFrame, body);
+            return r.RawFrame;
         }
         catch (OperationCanceledException) { return null; }
     }
@@ -342,15 +346,6 @@ public sealed class LinbpqViaAxudpConnectedMode
 
     private static bool IsUa(byte[] body) =>
         Ax25Frame.TryParse(body, out var f) && (f.Control & 0xEF) == 0x63;   // UA, PF masked
-
-    private static bool FcsValidates(byte[] datagram)
-    {
-        if (datagram.Length < 2) return false;
-        var body = datagram.AsSpan(0, datagram.Length - 2);
-        ushort calc = Crc16Ccitt.Compute(body);
-        ushort onWire = (ushort)(datagram[^2] | (datagram[^1] << 8));
-        return calc == onWire;
-    }
 
     // ── helpers ─────────────────────────────────────────────────────────
 

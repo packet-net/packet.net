@@ -63,7 +63,7 @@ public sealed class TransportFactory : ITransportFactory
             case AxudpTransport a:
             {
                 var remote = await ResolveAsync(a.Host, a.Port, cancellationToken).ConfigureAwait(false);
-                return new AxudpKissModem(remote, a.LocalPort, a.IncludeFcs);
+                return new AxudpKissModem(remote, a.LocalPort);
             }
 
             default:

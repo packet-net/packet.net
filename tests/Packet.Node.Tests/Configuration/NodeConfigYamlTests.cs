@@ -129,7 +129,7 @@ public class NodeConfigYamlTests
         {
             "serial-kiss" => new SerialKissTransport { Device = "/dev/ttyUSB0", Baud = 115200 },
             "nino-tnc" => new NinoTncTransport { Device = "/dev/ttyACM3", Baud = 57600, Mode = 9 },
-            "axudp" => new AxudpTransport { Host = "peer.local", Port = 10093, LocalPort = 10093, IncludeFcs = true },
+            "axudp" => new AxudpTransport { Host = "peer.local", Port = 10093, LocalPort = 10093 },
             _ => new KissTcpTransport { Host = "modem.local", Port = 8100 },
         };
         var original = new NodeConfig
@@ -161,7 +161,6 @@ public class NodeConfigYamlTests
                   host: 10.0.0.2
                   port: 10093
                   localPort: 10093
-                  includeFcs: true
             """;
 
         var config = NodeConfigYaml.Parse(yaml);
@@ -171,12 +170,11 @@ public class NodeConfigYamlTests
         axudp.Host.Should().Be("10.0.0.2");
         axudp.Port.Should().Be(10093);
         axudp.LocalPort.Should().Be(10093);
-        axudp.IncludeFcs.Should().BeTrue();
         axudp.DescribeEndpoint().Should().Be("axudp:10.0.0.2:10093(local:10093)");
     }
 
     [Fact]
-    public void Axudp_localPort_and_includeFcs_default_when_omitted()
+    public void Axudp_localPort_defaults_to_ephemeral_when_omitted()
     {
         const string yaml = """
             schemaVersion: 1
@@ -192,11 +190,36 @@ public class NodeConfigYamlTests
 
         var axudp = NodeConfigYaml.Parse(yaml).Ports[0].Transport.Should().BeOfType<AxudpTransport>().Subject;
         axudp.LocalPort.Should().Be(0, "localPort defaults to 0 (ephemeral) when omitted");
-        // The de-facto interoperable default: every real AXIP/AXUDP peer (LinBPQ BPQAXIP,
-        // XRouter, ax25ipd, JNOS, per RFC 1226) REQUIRES the 2-octet FCS, so an
-        // out-of-the-box AXUDP port includes it. FCS-less is pdn↔pdn-only and must be
-        // opted into explicitly. See docs/strict-vs-pragmatic-audit.md.
-        axudp.IncludeFcs.Should().BeTrue("includeFcs defaults to true — the standard RFC-1226 AXIP/AXUDP wire form");
+    }
+
+    [Fact]
+    public void Axudp_tolerates_a_stale_includeFcs_key_from_a_pre_removal_config()
+    {
+        // 'includeFcs' was removed (AXUDP always carries the FCS — the FCS-less
+        // opt-out interoperated with nothing; see docs/strict-vs-pragmatic-audit.md).
+        // A config carrying the now-defunct key must still load: the transport
+        // converter reads only the fields it knows, so a stale 'includeFcs:' is
+        // ignored, not a parse error.
+        const string yaml = """
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: tunnel
+                transport:
+                  kind: axudp
+                  host: 10.0.0.2
+                  port: 10093
+                  localPort: 10093
+                  includeFcs: false
+            """;
+
+        var act = () => NodeConfigYaml.Parse(yaml);
+        act.Should().NotThrow("a stale includeFcs key is ignored, so a pre-removal config still loads");
+        var axudp = act().Ports[0].Transport.Should().BeOfType<AxudpTransport>().Subject;
+        axudp.Host.Should().Be("10.0.0.2");
+        axudp.Port.Should().Be(10093);
+        axudp.LocalPort.Should().Be(10093);
     }
 
     [Fact]
