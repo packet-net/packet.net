@@ -906,7 +906,7 @@ What changed, why, where to look for details.
 ```
 
 
-### 2026-06-04 — Audit the establishment path for other silently-clobbered per-port params (the #292/#300 class); seed the remaining two hard-coded init verbs (T2, mod-8 k) (PR #PRNUM)
+### 2026-06-04 — Audit the establishment path for other silently-clobbered per-port params (the #292/#300 class); seed the remaining two hard-coded init verbs (T2, mod-8 k) (PR #302)
 
 A full audit of the AX.25 connection-establishment path for *any* operator-configurable per-port session parameter that a hard-coded establishment constant could silently clobber, generalising #292 (`InitialSrt` — figc4.x's `SRT := Initial Default` reset a configured T1V) and #300 (`InitialN2` — `N2 := 10` reset a configured N2). Both were fixed identically: a configurable seed on `ActionDispatcher` defaulting to the spec value, seeded from the listener. The question was whether OTHERS exist.
 
