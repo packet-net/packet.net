@@ -52,6 +52,7 @@ jobs:
           - Packet.Kiss.NinoTnc.Tests
           - Packet.Kiss.Serial.Tests
           - Packet.Kiss.Tests
+          - Packet.NetRom.Tests
           - Packet.Node.Tests
           - Packet.Rhp2.Tests
     steps:

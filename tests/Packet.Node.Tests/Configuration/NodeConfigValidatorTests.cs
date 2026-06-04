@@ -196,4 +196,28 @@ public class NodeConfigValidatorTests
         };
         Validator.Validate(config).IsValid.Should().BeFalse();
     }
+
+    [Fact]
+    public void Accepts_netrom_knobs_in_range_and_rejects_out_of_range()
+    {
+        var ok = Valid() with
+        {
+            NetRom = new NetRomConfig
+            {
+                Enabled = true,
+                DefaultNeighbourQuality = 203,
+                MinQuality = 150,
+                ObsoleteInitial = 6,
+                SweepIntervalSeconds = 1800,
+            },
+        };
+        Validator.Validate(ok).IsValid.Should().BeTrue();
+
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { MinQuality = 256 } })
+            .IsValid.Should().BeFalse("quality must be in 0..255");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { ObsoleteInitial = 0 } })
+            .IsValid.Should().BeFalse("OBSINIT must be positive");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { SweepIntervalSeconds = -1 } })
+            .IsValid.Should().BeFalse("sweep interval must be positive");
+    }
 }

@@ -9,8 +9,8 @@
     <Project Path="src/Packet.Kiss.NinoTnc/Packet.Kiss.NinoTnc.csproj" />
     <Project Path="src/Packet.Kiss.Serial/Packet.Kiss.Serial.csproj" />
     <Project Path="src/Packet.Kiss/Packet.Kiss.csproj" />
-    <Project Path="src/Packet.L3/Packet.L3.csproj" />
     <Project Path="src/Packet.Mcp/Packet.Mcp.csproj" />
+    <Project Path="src/Packet.NetRom/Packet.NetRom.csproj" />
     <Project Path="src/Packet.Node.Core/Packet.Node.Core.csproj" />
     <Project Path="src/Packet.Node.Extensions/Packet.Node.Extensions.csproj" />
     <Project Path="src/Packet.Node/Packet.Node.csproj" />
@@ -28,6 +28,7 @@
     <Project Path="tests/Packet.Kiss.NinoTnc.Tests/Packet.Kiss.NinoTnc.Tests.csproj" />
     <Project Path="tests/Packet.Kiss.Serial.Tests/Packet.Kiss.Serial.Tests.csproj" />
     <Project Path="tests/Packet.Kiss.Tests/Packet.Kiss.Tests.csproj" />
+    <Project Path="tests/Packet.NetRom.Tests/Packet.NetRom.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
   </Folder>

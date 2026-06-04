@@ -119,6 +119,61 @@ intent.
 - `AprsObjectDecoder` apart from the `h` timestamp (which is an
   interpretation, not pragmatism).
 
+## Packet.NetRom (read-only "NET/ROM aware" slice)
+
+NET/ROM has **no single normative standard** — the closest thing to
+canonical is the original protocol appendix, and in practice
+**G8BPQ/LinBPQ is the de-facto reference** (XRouter and the Linux
+kernel `netrom` family diverge). So this is the trap the project's
+whole "don't take an implementation as the spec" discipline exists for.
+The read-only slice (`Packet.NetRom`) is faithful to the canonical
+appendix by default, and every accommodation is a named flag —
+`NetRomParseOptions` for the wire parse, `NetRomRoutingOptions` for the
+route-maintenance knobs — never a silent BPQ-/XRouter-ism. Default-on
+flags are chosen because this is promiscuous read-only ingest of
+third-party broadcasts, where resilience beats rejecting a stray byte.
+
+### Pragmatic accommodations (wire parse — `NetRomParseOptions`)
+
+| Location | What we accept | Strict (canonical appendix) says | Driver | Flag name | Default |
+|---|---|---|---|---|---|
+| `NodesBroadcast.TryParse` | A routing-info region whose length isn't an exact multiple of 21 bytes: parse the whole entries, ignore a short remainder | Canonical NODES dumps emit only whole 21-byte entries; a remainder is trailing pad or truncation | Real nodes (BPQ included) pad the final UI frame of a multi-frame dump; a noisy RF link clips the tail. Dropping every learned route over a stray tail is hostile | `AllowTrailingPartialEntry` | `true` |
+| `NodesBroadcast.TryParse` | A broadcast carrying zero destination entries (signature + 6-byte sender alias only, info field exactly 7 B) | The appendix frames the entry list as "repeated up to 11 times" — zero is in range, but a contentless broadcast carries no routes | XRouter (PN0XRT, the interop bed's reference node) broadcasts a **header-only** NODES on its cadence regardless of table contents — observed on the wire | `AllowEmptyDestinationList` | `true` |
+
+The parameterless `TryParse` overload uses `NetRomParseOptions.Lenient`
+(both flags on) for promiscuous ingest. `NetRomParseOptions.Strict`
+turns both off (whole entries + at least one entry required). `Bpq`
+and `Xrouter` presets currently equal `Lenient`; XRouter's notable
+divergence is the **quality** it advertises (its RTT→quality is
+deliberately lower — the "British notion of quality"), which is a
+routing-table concern, not a wire-parse one — the bytes parse the same.
+
+### Route-maintenance knobs (not pragmatism — configurable canonical defaults; `NetRomRoutingOptions`)
+
+These exist because the canonical *defaults* are agreed (OBSINIT 6,
+three routes/destination, the multiplicative quality formula) but the
+*floors and caps* vary per real node (BPQ's per-port MINQUAL, XRouter's
+lower qualities). They default to the canonical/most-interoperable
+value and are operator-overridable via the node's `netRom:` config:
+`DefaultNeighbourQuality` (192), `MinQuality` (0 — keep everything above
+zero), `ObsoleteInitial` (6), `MaxRoutesPerDestination` (3),
+`MaxDestinations` (1024 — a memory-safety cap, not a NET/ROM concept).
+The trivial-loop guard (advertised best-neighbour == us → quality 0 →
+never kept) and the "quality-0 is never usable" rule are correctness
+features, always on, independent of the floor.
+
+### Interop fixture (de-facto, documented — not baked into the library)
+
+The interop bed nudges the reference nodes to broadcast NODES promptly
+for the read-only ingest test, in the docker fixtures (not the library):
+`docker/xrouter/XROUTER.CFG` and `docker/linbpq/bpq32.cfg` both pin
+`NODESINTERVAL=1` (the 1-minute minimum). With it pinned, XRouter
+broadcasts on a steady ~75 s cadence (measured); LinBPQ broadcasts only
+when its table is non-empty, which on the deliberately-isolated netsim
+topology it never is, so the test asserts the reliable XRouter ingest
+and records BPQ opportunistically. This is fixture tuning, openly
+documented in those files — the parser is not specialised to either node.
+
 ## Summary table: flags × presets
 
 The presets we agreed to seed are `Strict`, `Bpq`, `Xrouter`,

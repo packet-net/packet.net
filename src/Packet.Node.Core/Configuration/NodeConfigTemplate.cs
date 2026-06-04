@@ -100,5 +100,19 @@ public static class NodeConfigTemplate
             bind: 127.0.0.1
             port: 8080
 
+        # NET/ROM awareness (READ-ONLY): hear NODES routing broadcasts on the
+        # AX.25 ports and build a routing table you can see with the `N` (Nodes)
+        # command. The node ORIGINATES nothing — no NODES broadcasts, no circuits —
+        # so it cannot disturb a QSO. On by default (hearing is free + harmless).
+        # NET/ROM has no single normative standard (BPQ is the de-facto reference),
+        # so the routing knobs below default to the canonical values; override only
+        # to match a specific network's conventions.
+        netRom:
+          enabled: true
+          # defaultNeighbourQuality: 192  # assumed quality of a directly-heard link
+          # minQuality: 0                 # drop routes below this (raise to reject mislabelled qualities)
+          # obsoleteInitial: 6            # obsolescence count a route starts at (OBSINIT)
+          # sweepIntervalSeconds: 3600    # how often routes decay (the NODES interval)
+
         """;
 }

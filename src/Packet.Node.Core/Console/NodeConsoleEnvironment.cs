@@ -1,4 +1,5 @@
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.NetRom;
 
 namespace Packet.Node.Core.Console;
 
@@ -21,10 +22,18 @@ public sealed class NodeConsoleEnvironment
     /// </summary>
     public IOutboundConnector? OutboundConnector { get; }
 
-    public NodeConsoleEnvironment(IConfigProvider config, IOutboundConnector? outboundConnector)
+    /// <summary>
+    /// The read-only view of the node's learned NET/ROM routing table, surfaced by
+    /// the <c>Nodes</c> command. Null when NET/ROM awareness isn't wired (older
+    /// call sites / tests); the command then shows ports only.
+    /// </summary>
+    public INetRomRoutingView? NetRom { get; }
+
+    public NodeConsoleEnvironment(IConfigProvider config, IOutboundConnector? outboundConnector, INetRomRoutingView? netRom = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         OutboundConnector = outboundConnector;
+        NetRom = netRom;
     }
 
     /// <summary>The node identity (callsign + alias + grid).</summary>

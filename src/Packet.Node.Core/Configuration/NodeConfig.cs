@@ -35,6 +35,10 @@ public sealed record NodeConfig
     /// <summary>Management surfaces: the local telnet console and the (slice-1
     /// inert) web server bind.</summary>
     public ManagementConfig Management { get; init; } = new();
+
+    /// <summary>NET/ROM awareness (read-only): hear NODES broadcasts and build a
+    /// routing table. Pure consumer — never transmits. See <see cref="NetRomConfig"/>.</summary>
+    public NetRomConfig NetRom { get; init; } = new();
 }
 
 /// <summary>
@@ -199,4 +203,43 @@ public sealed record HttpConfig
 
     /// <summary>TCP port for the web server.</summary>
     public int Port { get; init; } = 8080;
+}
+
+/// <summary>
+/// NET/ROM awareness configuration. This is the <b>read-only "NET/ROM aware"</b>
+/// slice: when enabled, the node hears NODES routing broadcasts (UI frames to
+/// dest <c>NODES</c>, PID 0xCF) heard on its AX.25 ports via the existing
+/// frame-trace tap, parses them, and builds a routing table it surfaces in
+/// <c>Nodes</c> / a future MCP tool. It <b>originates nothing</b> — no NODES
+/// broadcasts, no L4 circuits — and cannot disturb a QSO.
+/// </summary>
+/// <remarks>
+/// The routing knobs (quality floor, obsolescence init, table caps) are exposed
+/// because NET/ROM has no single normative standard — the canonical defaults are
+/// used unless the operator overrides, never a silent BPQ-ism. Default
+/// <see cref="Enabled"/> is <c>true</c>: hearing NODES is free and harmless, so a
+/// stock node is NET/ROM-aware out of the box.
+/// </remarks>
+public sealed record NetRomConfig
+{
+    /// <summary>Whether to listen for NODES broadcasts and maintain the routing
+    /// table. Default <c>true</c> (read-only, harmless). Set <c>false</c> to make
+    /// the node deaf to NET/ROM entirely.</summary>
+    public bool Enabled { get; init; } = true;
+
+    /// <summary>Path quality assumed for a directly-heard neighbour (the canonical
+    /// default-port quality). Null = canonical default (192).</summary>
+    public int? DefaultNeighbourQuality { get; init; }
+
+    /// <summary>Worst quality a learned route may have and still be kept (MINQUAL).
+    /// Null = canonical default (0 — keep everything above zero).</summary>
+    public int? MinQuality { get; init; }
+
+    /// <summary>Obsolescence count a route is (re)initialised to on a broadcast
+    /// (OBSINIT). Null = canonical default (6).</summary>
+    public int? ObsoleteInitial { get; init; }
+
+    /// <summary>Seconds between obsolescence sweeps (the broadcast-interval decay
+    /// tick). Null = default (3600 — once an hour, the canonical NODES interval).</summary>
+    public int? SweepIntervalSeconds { get; init; }
 }

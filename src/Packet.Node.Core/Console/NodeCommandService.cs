@@ -236,17 +236,70 @@ public sealed partial class NodeCommandService
         if (ports.Count == 0)
         {
             sb.Append("Ports: (none configured)");
-            return sb.ToString();
         }
-        sb.Append("Ports:");
-        foreach (var p in ports)
+        else
         {
-            sb.Append('\n').Append("  ").Append(p.Id)
-              .Append(' ').Append(p.Enabled ? "[up]" : "[down]")
-              .Append(' ').Append(p.Transport.DescribeEndpoint());
+            sb.Append("Ports:");
+            foreach (var p in ports)
+            {
+                sb.Append('\n').Append("  ").Append(p.Id)
+                  .Append(' ').Append(p.Enabled ? "[up]" : "[down]")
+                  .Append(' ').Append(p.Transport.DescribeEndpoint());
+            }
         }
+
+        AppendNetRom(sb);
         return sb.ToString();
     }
+
+    // Surface the learned NET/ROM routing table (read-only). Shows the directly-
+    // heard neighbours and, for each known destination, its best route(s):
+    // alias:callsign via best-neighbour at quality (obsolescence). This is the
+    // same model a future MCP network_topology tool / web monitor reads.
+    private void AppendNetRom(StringBuilder sb)
+    {
+        var view = env.NetRom;
+        if (view is null || !view.Enabled)
+        {
+            return;
+        }
+
+        var snap = view.Snapshot();
+        if (snap.NeighbourCount == 0 && snap.DestinationCount == 0)
+        {
+            sb.Append('\n').Append("NET/ROM: no nodes heard yet");
+            return;
+        }
+
+        if (snap.NeighbourCount > 0)
+        {
+            sb.Append('\n').Append("NET/ROM neighbours:");
+            foreach (var n in snap.Neighbours)
+            {
+                sb.Append('\n').Append("  ").Append(Label(n.Alias, n.Neighbour))
+                  .Append(" port ").Append(n.PortId)
+                  .Append(" qual ").Append(n.PathQuality);
+            }
+        }
+
+        if (snap.DestinationCount > 0)
+        {
+            sb.Append('\n').Append("NET/ROM routes:");
+            foreach (var d in snap.Destinations)
+            {
+                sb.Append('\n').Append("  ").Append(Label(d.Alias, d.Destination)).Append(':');
+                foreach (var r in d.Routes)
+                {
+                    sb.Append(" via ").Append(r.Neighbour)
+                      .Append('(').Append(r.Quality).Append(',').Append(r.Obsolescence).Append(')');
+                }
+            }
+        }
+    }
+
+    // "ALIAS:CALL" when an alias is known, else just the callsign.
+    private static string Label(string alias, Packet.Core.Callsign call)
+        => string.IsNullOrEmpty(alias) ? call.ToString() : $"{alias}:{call}";
 
     private static string HelpText() =>
         "Commands:\n" +

@@ -71,15 +71,34 @@ public static class NodeConfigArbitraries
             Kiss = kiss,
         };
 
+    private static Gen<NetRomConfig> NetRomGen() =>
+        Gen.OneOf(
+            Gen.Constant(new NetRomConfig()),
+            from enabled in Gen.Elements(false, true)
+            from defQ in Gen.Choose(0, 255)
+            from minQ in Gen.Choose(0, 255)
+            from obs in Gen.Choose(1, 12)
+            from sweep in Gen.Choose(1, 7200)
+            select new NetRomConfig
+            {
+                Enabled = enabled,
+                DefaultNeighbourQuality = defQ,
+                MinQuality = minQ,
+                ObsoleteInitial = obs,
+                SweepIntervalSeconds = sweep,
+            });
+
     private static Gen<NodeConfig> NodeConfigGen() =>
         from call in CallsignGen()
         from nPorts in Gen.Choose(0, 4)
         from ports in Gen.CollectToList(Enumerable.Range(0, nPorts).Select(PortGen))
+        from netrom in NetRomGen()
         select new NodeConfig
         {
             SchemaVersion = 1,
             Identity = new Identity { Callsign = call },
             Ports = ports.ToList(),
+            NetRom = netrom,
         };
 
     public static Arbitrary<NodeConfig> NodeConfig() => Arb.From(NodeConfigGen());

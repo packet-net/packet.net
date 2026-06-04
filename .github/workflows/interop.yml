@@ -12,6 +12,8 @@ on:
       - 'src/Packet.Rhp2.Server/**'
       - 'src/Packet.Agw/**'
       - 'src/Packet.Node/**'
+      - 'src/Packet.Node.Core/**'
+      - 'src/Packet.NetRom/**'
       - 'tests/Packet.Interop.Tests/**'
       - 'docker/**'
       - '.github/workflows/interop.yml'

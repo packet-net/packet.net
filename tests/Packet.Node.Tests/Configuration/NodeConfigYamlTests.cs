@@ -76,6 +76,46 @@ public class NodeConfigYamlTests
 
         config.Management.Telnet.Port.Should().Be(8011);
         config.Management.Http.Bind.Should().Be("0.0.0.0");
+
+        // No netrom: block → the default (enabled, canonical knobs).
+        config.NetRom.Enabled.Should().BeTrue();
+        config.NetRom.MinQuality.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parses_a_netrom_block_with_overridden_knobs()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            netRom:
+              enabled: true
+              defaultNeighbourQuality: 203
+              minQuality: 150
+              obsoleteInitial: 5
+              sweepIntervalSeconds: 1800
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+
+        config.NetRom.Enabled.Should().BeTrue();
+        config.NetRom.DefaultNeighbourQuality.Should().Be(203);
+        config.NetRom.MinQuality.Should().Be(150);
+        config.NetRom.ObsoleteInitial.Should().Be(5);
+        config.NetRom.SweepIntervalSeconds.Should().Be(1800);
+    }
+
+    [Fact]
+    public void Netrom_can_be_disabled()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            netRom:
+              enabled: false
+            """;
+
+        NodeConfigYaml.Parse(yaml).NetRom.Enabled.Should().BeFalse();
     }
 
     [Theory]

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- The NET/ROM wire types mirror the protocol's own naming (NodesBroadcast,
+         a RoutingInfo "list", a Neighbours collection). The collection-suffix
+         analyzer would mangle that vocabulary; suppress it as the AX.25 and node
+         libraries do. -->
+    <NoWarn>$(NoWarn);CA1711</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+    <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -38,6 +38,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .WithMessage("Two ports may not share the same transport device / endpoint.");
 
         RuleFor(c => c.Management).NotNull().SetValidator(new ManagementValidator());
+
+        RuleFor(c => c.NetRom).NotNull().SetValidator(new NetRomValidator());
     }
 
     private static bool HaveUniqueIds(IReadOnlyList<PortConfig> ports)
@@ -162,6 +164,31 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
             .WithMessage("WindowSize (k) must be in 1..127.");
         RuleFor(p => p.MaxCachedPeers!.Value).GreaterThan(0).When(p => p.MaxCachedPeers.HasValue)
             .WithMessage("MaxCachedPeers must be positive.");
+    }
+}
+
+/// <summary>
+/// Validates the optional NET/ROM (read-only) routing knobs. Qualities are
+/// 0..255 (the NET/ROM quality range); OBSINIT + sweep interval are positive. A
+/// typo'd value is rejected here rather than silently clamped, matching the
+/// per-port tuning discipline.
+/// </summary>
+public sealed class NetRomValidator : AbstractValidator<NetRomConfig>
+{
+    public NetRomValidator()
+    {
+        RuleFor(c => c.DefaultNeighbourQuality!.Value).InclusiveBetween(0, 255)
+            .When(c => c.DefaultNeighbourQuality.HasValue)
+            .WithMessage("netrom.defaultNeighbourQuality must be in 0..255.");
+        RuleFor(c => c.MinQuality!.Value).InclusiveBetween(0, 255)
+            .When(c => c.MinQuality.HasValue)
+            .WithMessage("netrom.minQuality must be in 0..255.");
+        RuleFor(c => c.ObsoleteInitial!.Value).GreaterThan(0)
+            .When(c => c.ObsoleteInitial.HasValue)
+            .WithMessage("netrom.obsoleteInitial must be positive.");
+        RuleFor(c => c.SweepIntervalSeconds!.Value).GreaterThan(0)
+            .When(c => c.SweepIntervalSeconds.HasValue)
+            .WithMessage("netrom.sweepIntervalSeconds must be positive.");
     }
 }
 

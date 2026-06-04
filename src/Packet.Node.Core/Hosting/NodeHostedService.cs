@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
+using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Core.Hosting;
@@ -28,6 +29,7 @@ public sealed partial class NodeHostedService : BackgroundService
 
     private PortSupervisor? supervisor;
     private TelnetConsoleListener? telnet;
+    private NetRomService? netRom;
     private IDisposable? changeSubscription;
     private NodeConfig appliedConfig;
     private int pendingReconcile;
@@ -49,6 +51,10 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <summary>The port supervisor — exposed for component tests.</summary>
     public PortSupervisor? Supervisor => supervisor;
 
+    /// <summary>The NET/ROM read-only routing service — exposed for component tests
+    /// (and any future read surface). Null until <see cref="ExecuteAsync"/> runs.</summary>
+    public NetRomService? NetRom => netRom;
+
     /// <summary>The telnet listener — exposed for component tests (e.g. to read
     /// the bound port).</summary>
     public TelnetConsoleListener? Telnet => telnet;
@@ -59,7 +65,12 @@ public sealed partial class NodeHostedService : BackgroundService
         var startConfig = config.Current;
         LogStarting(startConfig.Identity.Callsign, startConfig.Ports.Count);
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory);
+        // The NET/ROM read-only service is created once at start from the initial
+        // config. It's a pure consumer of each port's frame-trace tap (subscribed
+        // by the supervisor as ports come up), so it can never disturb a session.
+        netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>());
+
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom);
         await supervisor.StartAsync(stoppingToken).ConfigureAwait(false);
 
         StartTelnet(startConfig.Management.Telnet, stoppingToken);
@@ -80,6 +91,7 @@ public sealed partial class NodeHostedService : BackgroundService
             changeSubscription = null;
             if (telnet is not null) await telnet.DisposeAsync().ConfigureAwait(false);
             if (supervisor is not null) await supervisor.DisposeAsync().ConfigureAwait(false);
+            netRom?.Dispose();
         }
     }
 
@@ -200,7 +212,7 @@ public sealed partial class NodeHostedService : BackgroundService
             // up, Connect reports "not available". Resolved per session so it
             // reflects the live port set.
             var connector = supervisor?.ResolveDefaultConnector();
-            var env = new NodeConsoleEnvironment(config, connector);
+            var env = new NodeConsoleEnvironment(config, connector, netRom);
             return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
         };
     }

@@ -6,6 +6,7 @@
 
 **As of:** 2026-05-17
 **Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, adaptive-parameter scaffolding, adaptive-transport glue, and a first soak campaign producing [`docs/nino-tnc-characterisation.md`](nino-tnc-characterisation.md). Next: more SDL pages, plus a real-RF soak campaign once we have field data to compare against the bench.
+**Latest amendment:** [§17 entry 2026-06-04 — Read-only "NET/ROM aware" slice: a hand-written `Packet.NetRom` (NODES wire parse + L3 routing table) + a node-level `NetRomService` that hears NODES via the existing frame tap and surfaces the learned routes in `Nodes`; pure read-only, can't disturb a QSO; named divergence flags, interop-proven vs XRouter NODES over net-sim (PR #303)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Package the pdn node host as self-contained `.deb`s (amd64/arm64/armhf, cross-published from x64) installed by a hardened systemd unit, with a `node-v*` GitHub-Release workflow; validated end-to-end on the box via a clean `apt install` (PR #296)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Node kiss-tcp ports self-heal across a TNC/softmodem bounce: `ReconnectingKissModem` (backoff + KISS-param replay), so a dropped link reconnects instead of the port silently dying (PR #295)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Telnet connected-mode relay: line-buffer telnet→AX.25 so Connect sends one I-frame per line, not per keystroke (PR #294)](#17-amendment-log)
@@ -151,7 +152,7 @@ These were settled during the initial planning round and have not been revisited
 | Persistence | SQLite via raw SQL + Dapper (no EF Core). Two DBs: `config.db`, `packets.db` | Single binary, zero ops; hot path isolated |
 | License | MIT | Permissive, low friction |
 | SDL handling | YAML DSL in `/spec-sdl/`, codegen → C# + conformance tests; per-SDL PR review | [ADR-0001](adr/0001-sdl-dsl.md) |
-| NET/ROM | Out of v1; L3 routing abstraction in v1; NET/ROM ships as `Packet.NetRom` later (Phase 9) | Focus v1 on rock-solid AX.25 |
+| NET/ROM | Out of v1 for the full L3+L4 node (Phase 9); the **read-only "NET/ROM aware" slice** (hear NODES, build routing table, surface it) landed early in `Packet.NetRom` as a pure consumer of the existing frame tap. Hand-written, **not** via ax25sdl (no SDL, no normative standard) | Focus v1 on rock-solid AX.25; de-risk the divergence-prone L3 data model early |
 | MCP scope | Ops + diagnostics + network exploration; read-mostly with explicit write tools | Useful without being scary |
 | Telemetry | **None by default.** Opt-in OpenTelemetry endpoint configurable by operator | Amateur radio privacy norms |
 | Reference plugin | [DAPPS](https://m0lte.github.io/dapps/) — out-of-tree, drives plugin API design | Existing community work |
@@ -177,7 +178,7 @@ These were settled during the initial planning round and have not been revisited
   Packet.Kiss/                        KISS SLIP, commands, ACKMODE, multi-drop, port-nibble
   Packet.Kiss.NinoTnc/                NinoTNC mode catalog 0-15, SETHW byte, TX-test parsing
   Packet.Axudp/                       AXUDP transport
-  Packet.L3/                          routing/forwarding abstraction (NET/ROM future home)
+  Packet.NetRom/                      NET/ROM L3 wire + routing table (read-only slice; Phase 9 home). Replaced the empty Packet.L3 stub.
   Packet.Rhp2/                        RHPv2 framing + messages (shared)
   Packet.Rhp2.Server/                 TCP + WebSocket listener, auth gate
   Packet.Agw/                         AGW server (loopback-only by default)
@@ -229,8 +230,9 @@ These were settled during the initial planning round and have not been revisited
                                   └────────────────┬────────────────────┘
                                                    ▼
                                   ┌─────────────────────────────────────┐
-                                  │ Packet.L3 (routing abstraction,     │
-                                  │ NET/ROM hook for Phase 9)           │
+                                  │ Packet.NetRom (NET/ROM L3 wire +    │
+                                  │ routing table; read-only consumer   │
+                                  │ of the FrameTraced tap today)        │
                                   └──┬──────────────────┬───────────────┘
                                      ▼                  ▼
                           Packet.Rhp2.Server      Packet.Agw
@@ -248,7 +250,7 @@ These were settled during the initial planning round and have not been revisited
                           (React SPA)  (rolling)     (Claude Code, etc.)
 ```
 
-Plugins attach at `Packet.L3` (for AX.25 sessions) and at ASP.NET Core (for REST + UI + MCP tools).
+Plugins attach at the L3 seam (`Packet.NetRom` / the node's routing service, for AX.25 sessions) and at ASP.NET Core (for REST + UI + MCP tools).
 
 ---
 
@@ -384,6 +386,8 @@ The full phase target: ASP.NET Core 10 minimal-API host. `Konscious.Security.Cry
 - **Slice 4 — MCP + monitoring.** `Packet.Mcp` over stdio + SSE (read-mostly ops/diagnostics/network-exploration tools, write tools behind a separate scope); live packet monitor v2 + link troubleshooting beyond plain frame tracing (per-link RTT/retries/REJ-SREJ counts).
 - **Slice 5 — React web UI.** Vite + React + TS + Tailwind + shadcn/ui (Decision §3); the routes in §5.5; zero-file-editing config.
 
+**Read-only NET/ROM awareness 🟡 (landed alongside the node host; full detail in [§5.9](#59-phase-9--plugin-api--netrom--hardening--post-v1-174) + [§17](#17-amendment-log)).** A node-level `NetRomService` subscribes every port's `Ax25Listener.FrameTraced` tap, hears NODES broadcasts (UI, PID 0xCF, dest `NODES`), and builds a routing table (in the new hand-written `Packet.NetRom` library) it surfaces in the `Nodes` command. Pure read-only consumer — opt-in via the `netRom:` config block (on by default; harmless), incapable of disturbing a session. This is the design-ahead slice from the NET/ROM research, front-loading the divergence-prone L3 data model; the Phase-9 body (TX, L4, interlinks, INP3) is unchanged.
+
 ### 5.5 Phase 5 — Web UI ⬜ ([#170](https://github.com/m0lte/packet.net/issues/170))
 
 Vite + React + TS + Tailwind + shadcn/ui. Routes: Ports, Sessions, Live Monitor, TNC2 Prompt, Users, Link Troubleshoot. OpenAPI client via `openapi-typescript` + `@tanstack/react-query`.
@@ -403,6 +407,8 @@ Self-contained `dotnet publish` matrix for linux-x64/arm64/arm (v7), win-x64, os
 ### 5.9 Phase 9 — Plugin API + NET/ROM + hardening ⬜ (post-v1) ([#174](https://github.com/m0lte/packet.net/issues/174))
 
 `Packet.Node.Extensions/IApplicationModule.cs` — REST routes, MCP tools, frontend bundle, AX.25 session handler. Loaded from `/var/lib/packetnet/plugins/*.dll` in isolated `AssemblyLoadContext`. DAPPS validates the API design. `Packet.NetRom` ships as a separate package. SharpFuzz harnesses + 72 h soak vs LinBPQ.
+
+**NET/ROM — read-only "NET/ROM aware" slice 🟡 (landed early, alongside the node host; see [§17](#17-amendment-log)).** Per the NET/ROM design-ahead research, the read-only slice was pulled forward off the Phase-9 body because it's a pure consumer of the existing `Ax25Listener.FrameTraced` tap and writes nothing to the air. Shipped: a hand-written `Packet.NetRom` library (NODES wire parse + the L3 routing table — quality decay, obsolescence, 3-best routes, trivial-loop guard, MINQUAL floor, table caps) and a node-level `NetRomService` above `PortSupervisor` that hears NODES broadcasts on every port and surfaces the learned table in the `Nodes` console command (structured so a future MCP `network_topology` tool / web monitor read the same model). It is incapable of disturbing a QSO. NET/ROM is **not** routed through ax25sdl (no SDL figures, no single normative standard — BPQ is the de-facto reference); divergences are handled with named flags (`NetRomParseOptions`, `NetRomRoutingOptions`), never silent BPQ-isms, and documented in the strict-vs-pragmatic audit. **The Phase-9 body remains:** originating NODES broadcasts (needs a TX path), the L4 circuit layer, interlink management + forwarding, the `connect <alias>` bridge, and INP3 as an opt-in overlay.
 
 ### 5.10 Phase 10 — Hardware ecosystem & adaptive RF ⬜ (post-v1) ([#175](https://github.com/m0lte/packet.net/issues/175))
 
@@ -908,6 +914,20 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-04 — Read-only "NET/ROM aware" slice: hear NODES, build a routing table, surface it in `Nodes` (PR #303)
+
+The design-ahead recommendation from the NET/ROM research (`/home/tf/netrom-research.md`): a **strictly read-only** slice that hears NODES routing broadcasts, parses them, builds a routing table, and surfaces it — landing early (alongside the node host) because it is a pure consumer of the existing frame tap and writes nothing to the air. No TX, no L4 circuits, no NODES origination. Updates §3 (NET/ROM decision), §4.1/§4.2 (the `Packet.L3` stub is replaced by a real `Packet.NetRom`), §5.4 (slice note), §5.9 (the Phase-9 body that remains), and `docs/strict-vs-pragmatic-audit.md` (the named NET/ROM divergence flags).
+
+**New library `Packet.NetRom` (hand-written — deliberately NOT through ax25sdl).** NET/ROM has no SDL figures and no single normative standard, so per the research it does not belong in the formal-derivation pipeline — the same BPQ-is-the-de-facto-reference trap the AX.25 codegen exists to avoid. Two areas: **Wire** — `NodesBroadcast`/`NodesRoutingEntry` parse the L3 NODES info field (0xFF signature + 6-byte sender alias + up-to-11 × 21-byte entries: 7-byte shifted dest callsign, 6-byte dest alias, 7-byte shifted best-neighbour callsign, 1-byte quality), reusing `Ax25Address.Read` for the shifted callsign so there is one source of truth for the shift/SSID semantics. **L3** — `NetRomQuality` (the multiplicative `(bq×pq+128)/256` per-hop decay) and `NetRomRoutingTable` (destination list ≤3 routes/dest sorted best-first, neighbour list, obsolescence OBSINIT/decay/purge, the trivial-loop guard → quality 0, MINQUAL floor, MAXNODES/MAXROUTES caps), handing out an immutable `NetRomRoutingSnapshot`. Time via injected `TimeProvider` (§2.7); thread-safe under one lock so every port's tap can feed it concurrently.
+
+**Divergences handled with NAMED flags, never silent BPQ-isms.** `NetRomParseOptions` (mirroring `Ax25ParseOptions`: `Strict`/`Lenient`/`Bpq`/`Xrouter` presets) gates wire tolerances — `AllowTrailingPartialEntry` (a padded/clipped final frame keeps the whole entries it can read) and `AllowEmptyDestinationList` (XRouter broadcasts header-only NODES). `NetRomRoutingOptions` exposes the floors/caps that vary per node (MINQUAL, OBSINIT, default neighbour quality, table caps) at canonical defaults, operator-overridable. Documented as a new `Packet.NetRom` section in the strict-vs-pragmatic audit.
+
+**Node-host wiring — `NetRomService` above `PortSupervisor`, incapable of disturbing a QSO.** A node-level singleton subscribes every port's **existing** `Ax25Listener.FrameTraced` event (confirmed in the code: `InboundPumpAsync` calls `TraceFrame` *before* `DispatchInbound`'s address filter, so it hears NODES — dest `NODES`, not us — with **no engine change**). The tap handler is observation-only: it filters inbound UI/PID-0xCF/dest-`NODES` frames, parses, and ingests into the table; it sends nothing and posts into no session. The supervisor attaches/detaches the tap as ports come up/down (so it follows hot reconfiguration); a `TimeProvider` timer runs the obsolescence sweep. Opt-in via a new `netRom:` config block (`Enabled` default true — hearing is free + harmless — plus the routing knobs; validated + round-tripped). The `Nodes` console command now surfaces the learned NET/ROM neighbours + routes, via a new read-only `INetRomRoutingView` on the console environment, structured so a future MCP `network_topology` tool / web monitor read the same model.
+
+**Tests.** `Packet.NetRom.Tests` (39): the NODES parser (signature gate, multi-entry, 11-cap, alias trim, totality on random/short bytes, the paired Strict-rejects/Lenient-accepts cases for trailing-partial + empty-list), the quality maths (the research doc's worked examples — two hops of a 200 link ≈ 156, three ≈ 78 — plus the per-hop monotonic-decrease invariant), and the routing table (merge, 3-best cap, obsolescence decay→purge + refresh, trivial-loop guard, MINQUAL floor strict-vs-default, destination cap, snapshot ordering). `NetRomAwareIntegrationTests` (4, in `Packet.Node.Tests`): over the in-memory radio bus, a third station's NODES broadcast is heard + learned, the `Nodes` command surfaces it, a **NODES storm mid-QSO leaves the live session Connected + still carrying data** (the read-only guarantee), and a disabled service hears nothing. **`Category=Interop` (`NetRomNodesIngestViaNetsim`):** over net-sim, pdn (a real `Ax25Listener` + `NetRomService` on KISS-TCP) hears **XRouter's real NODES broadcast** and learns `PN0XRT`/`PNXRT` as a neighbour with the assumed direct route — proven end-to-end (`Learned 1 neighbour PNXRT:PN0XRT qual 192` / `dest PNXRT:PN0XRT via PN0XRT q192 obs6`). The fixture pins `NODESINTERVAL=1` on both LinBPQ + XRouter (`docker/{linbpq,xrouter}` configs) so a NODES broadcast is heard within seconds; XRouter broadcasts a steady ~75 s cadence, LinBPQ only with a non-empty table (silent on the isolated topology, recorded not required). Existing LinBPQ/XRouter connect interop tests stay green with the cadence change.
+
+**Validation.** Built under `TreatWarningsAsErrors` (0 errors across `src/`). Full default-filtered suite green — `Packet.NetRom.Tests` 39, `Packet.Node.Tests` 176 (up from 169), every other project unchanged. Interop `NetRomNodesIngestViaNetsim` green locally (`docker compose -f docker/compose.interop.yml up -d --wait` + `dotnet test --filter Category=Interop`), confirmed reliable across repeated runs, and coexists with #301's AXUDP interop tests on the shared LinBPQ fixture (both pass together). `ci.yml` gains `Packet.NetRom.Tests` in the test matrix; `interop.yml` gains the `src/Packet.NetRom/**` + `src/Packet.Node.Core/**` path triggers (the interop test exercises them). All jobs stay `[self-hosted, Linux, X64]`.
 
 ### 2026-06-04 — Interop-test the node AXUDP transport against a real LinBPQ (the gap #299 left); fix the FCS default-doc and prove both directions (PR #301)
 
