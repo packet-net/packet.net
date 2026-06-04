@@ -969,6 +969,113 @@ public class ActionDispatcherTests
         ctx.T1V.Should().Be(TimeSpan.FromMilliseconds(5000));
     }
 
+    // ─── Establishment link-param seeds (the #292/#300 clobber class) ───
+    //
+    // figc4.7's Set_Version_2_0 / Set_Version_2_2 bodies carry `N2 := 10`,
+    // `T2 := 3000`, and (mod-8) `k := 8`. Mirroring the InitialSrt (#292) /
+    // InitialN2 (#300) pattern, each writes a CONFIGURABLE dispatcher seed
+    // defaulting to the spec value — so a per-port configured N2/T2/k survives
+    // establishment if a future SDL ever runs Set_Version on the connect path,
+    // and the default stays exactly the spec constant. The mod-128 `k := 32`
+    // stays the spec mod-128 default (XID-negotiated), intentionally un-seeded.
+
+    [Fact]
+    public void Establishment_Seed_Defaults_Match_The_Spec_Constants()
+    {
+        var (d, _, _, _, _, _, _, _, _, _, _) = NewRig();
+        d.InitialN2.Should().Be(10, "§6.7.1.3 N2 default");
+        d.InitialT2.Should().Be(TimeSpan.FromMilliseconds(3000), "§6.7.1.1 T2 default");
+        d.InitialK.Should().Be(8, "§6.7.1.4 mod-8 k default");
+        ActionDispatcher.DefaultInitialN2.Should().Be(10);
+        ActionDispatcher.DefaultInitialT2.Should().Be(TimeSpan.FromMilliseconds(3000));
+        ActionDispatcher.DefaultInitialK.Should().Be(8);
+    }
+
+    [Fact]
+    public void N2_Assign_10_Writes_The_Spec_Default_When_Unseeded()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.N2 = 99;
+        d.Execute(Ax25ActionVerb.N2Assign10, ctx, s);
+        ctx.N2.Should().Be(10, "an unseeded dispatcher reproduces the spec N2 default");
+    }
+
+    [Fact]
+    public void N2_Assign_10_Reproduces_The_Configured_InitialN2()
+    {
+        var (_, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var d = NewSeededDispatcher(initialN2: 4);
+        ctx.N2 = 99;
+        d.Execute(Ax25ActionVerb.N2Assign10, ctx, s);
+        ctx.N2.Should().Be(4, "the verb must reproduce the configured N2, not hard-code 10 (#300)");
+    }
+
+    [Fact]
+    public void T2_Assign_3000_Writes_The_Spec_Default_When_Unseeded()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.T2 = TimeSpan.FromMinutes(99);
+        d.Execute(Ax25ActionVerb.T2Assign3000, ctx, s);
+        ctx.T2.Should().Be(TimeSpan.FromMilliseconds(3000), "an unseeded dispatcher reproduces the spec T2 default");
+    }
+
+    [Fact]
+    public void T2_Assign_3000_Reproduces_The_Configured_InitialT2()
+    {
+        var (_, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var d = NewSeededDispatcher(initialT2: TimeSpan.FromMilliseconds(4000));
+        ctx.T2 = TimeSpan.FromMinutes(99);
+        d.Execute(Ax25ActionVerb.T2Assign3000, ctx, s);
+        ctx.T2.Should().Be(TimeSpan.FromMilliseconds(4000), "the verb must reproduce the configured T2, not hard-code 3000 ms");
+    }
+
+    [Fact]
+    public void K_Assign_8_Writes_The_Spec_Mod8_Default_When_Unseeded()
+    {
+        var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        ctx.K = 99;
+        d.Execute(Ax25ActionVerb.KAssign8, ctx, s);
+        ctx.K.Should().Be(8, "an unseeded dispatcher reproduces the spec mod-8 k default");
+    }
+
+    [Fact]
+    public void K_Assign_8_Reproduces_The_Configured_InitialK()
+    {
+        var (_, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var d = NewSeededDispatcher(initialK: 6);
+        ctx.K = 99;
+        d.Execute(Ax25ActionVerb.KAssign8, ctx, s);
+        ctx.K.Should().Be(6, "the mod-8 k verb must reproduce the configured WindowSize, not hard-code 8");
+    }
+
+    [Fact]
+    public void K_Assign_32_Stays_The_Spec_Mod128_Default_Even_When_Seeded()
+    {
+        // mod-128 k is the spec 32, then XID-negotiated — it is NOT the operator's
+        // mod-8 WindowSize knob, so the configured InitialK must not leak into it.
+        var (_, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
+        var d = NewSeededDispatcher(initialK: 6);
+        ctx.K = 99;
+        d.Execute(Ax25ActionVerb.KAssign32, ctx, s);
+        ctx.K.Should().Be(32, "mod-128 k stays the spec default (XID-negotiated), independent of the mod-8 seed");
+    }
+
+    private static ActionDispatcher NewSeededDispatcher(
+        int? initialN2 = null, TimeSpan? initialT2 = null, int? initialK = null)
+        => new(
+            onTimerExpiry: _ => { },
+            sendSFrame: _ => { },
+            sendUFrame: _ => { },
+            sendUiFrame: _ => { },
+            sendUpward: _ => { },
+            sendLinkMux: _ => { },
+            sendInternal: _ => { })
+        {
+            InitialN2 = initialN2 ?? ActionDispatcher.DefaultInitialN2,
+            InitialT2 = initialT2 ?? ActionDispatcher.DefaultInitialT2,
+            InitialK = initialK ?? ActionDispatcher.DefaultInitialK,
+        };
+
     // ─── SRT IIR formula (figc4.7 Select_T1_Value) ─────────────────────
 
     [Fact]

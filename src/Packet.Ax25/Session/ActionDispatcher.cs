@@ -81,6 +81,18 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <summary>Spec-default N2 (retry count) — the fallback for <see cref="InitialN2"/> (§6.7.1.3 ⇒ 10).</summary>
     public const int DefaultInitialN2 = 10;
 
+    /// <summary>
+    /// Spec-default acknowledgement-timer T2 written by the <c>T2 := 3000</c>
+    /// establishment verb — the fallback for <see cref="InitialT2"/> (§6.7.1.1
+    /// ⇒ 3000 ms). Distinct from <see cref="DefaultT2"/> (1500 ms), which is the
+    /// dispatcher's <see cref="T2Duration"/> fallback for arming a T2 timer; the
+    /// figure's <c>Set_Version</c> establishment constant is 3000 ms.
+    /// </summary>
+    public static readonly TimeSpan DefaultInitialT2 = TimeSpan.FromMilliseconds(3000);
+
+    /// <summary>Spec-default mod-8 send-window k written by the <c>k := 8</c> establishment verb — the fallback for <see cref="InitialK"/> (§6.7.1.4 ⇒ 8).</summary>
+    public const int DefaultInitialK = 8;
+
     /// <summary>Default acknowledgement timer (T1).</summary>
     public TimeSpan T1Duration { get; init; } = TimeSpan.FromMilliseconds(3000);
 
@@ -124,6 +136,51 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>(N2+1)·T1V</c> connect backstop was always the 66 s spec maximum.
     /// </remarks>
     public int InitialN2 { get; init; } = DefaultInitialN2;
+
+    /// <summary>
+    /// The acknowledgement-timer T2 written by the <c>T2 := 3000</c> verb inside
+    /// figc4.7's <c>Set_Version_2_0</c> / <c>Set_Version_2_2</c> link-parameter
+    /// bodies. Defaults to the AX.25 v2.2 §6.7.1.1 value (3000 ms).
+    /// </summary>
+    /// <remarks>
+    /// §6.7.1.1 names T2 a configurable timer, not a wire constant — the figure's
+    /// <c>T2 := 3000</c> just seeds the default. The hard-coded 3000 ms previously
+    /// written by this verb would silently overwrite any
+    /// <see cref="Ax25SessionContext.T2"/> seeded on the session — the same defect
+    /// class as the SRT/T1V clobber (m0lte/packet.net#292) and the N2 clobber
+    /// (#300). Today the data-link establishment path does not invoke
+    /// <c>Set_Version</c> as a subroutine (so the verb is inert on connect, and a
+    /// configured T2 already survives), but threading the configured value through
+    /// here keeps the verb consistent with <see cref="InitialSrt"/> /
+    /// <see cref="InitialN2"/> and forecloses a re-introduced clobber if an upstream
+    /// <c>Packet.Ax25.Sdl</c> revision puts <c>Set_Version</c> back on the
+    /// establishment path. (No T2 timer is armed from this in the current figures —
+    /// the delayed-ack flush is LM-SEIZE-driven — but the value is the per-session
+    /// T2 the day a real T2 timer lands.)
+    /// </remarks>
+    public TimeSpan InitialT2 { get; init; } = DefaultInitialT2;
+
+    /// <summary>
+    /// The mod-8 send-window size k written by the <c>k := 8</c> verb inside
+    /// figc4.7's <c>Set_Version_2_0</c> link-parameter body. Defaults to the
+    /// AX.25 v2.2 §6.7.1.4 mod-8 value (8).
+    /// </summary>
+    /// <remarks>
+    /// §6.7.1.4 names k a configurable window, not a wire constant — the figure's
+    /// <c>k := 8</c> just seeds the mod-8 default. The hard-coded 8 previously
+    /// written by this verb would silently overwrite any
+    /// <see cref="Ax25SessionContext.K"/> seeded on the session — the same defect
+    /// class as #292 / #300. Today the data-link establishment path does not invoke
+    /// <c>Set_Version</c> as a subroutine (so the verb is inert on connect, and a
+    /// configured k already survives), but threading the configured value through
+    /// here keeps the verb consistent with <see cref="InitialN2"/> and forecloses a
+    /// re-introduced clobber if an upstream <c>Packet.Ax25.Sdl</c> revision puts
+    /// <c>Set_Version</c> back on the establishment path. This is the <em>mod-8</em>
+    /// window only — the mod-128 <c>k := 32</c> verb stays the spec mod-128 default
+    /// (32), which is then legitimately narrowed by XID negotiation, so it is
+    /// intentionally <b>not</b> seeded here.
+    /// </remarks>
+    public int InitialK { get; init; } = DefaultInitialK;
 
     /// <summary>
     /// Management retry timer (TM201) duration — armed by the MDL machine's
@@ -718,9 +775,16 @@ public sealed class ActionDispatcher : IActionDispatcher
             Ax25ActionVerb.ModuloAssign8          => Do(() => ctx.IsExtended = false),
             Ax25ActionVerb.ModuloAssign128        => Do(() => ctx.IsExtended = true),
             Ax25ActionVerb.N1Assign2048           => Do(() => ctx.N1 = 2048),
-            Ax25ActionVerb.KAssign8               => Do(() => ctx.K = 8),
+            // k := 8 seeds the mod-8 send-window from the configurable
+            // <see cref="InitialK"/> (§6.7.1.4; default 8) so a configured WindowSize
+            // survives establishment, mirroring InitialN2 (#300). The mod-128 k := 32
+            // stays the spec default (32), narrowed only by XID — intentionally not seeded.
+            Ax25ActionVerb.KAssign8               => Do(() => ctx.K = InitialK),
             Ax25ActionVerb.KAssign32              => Do(() => ctx.K = 32),
-            Ax25ActionVerb.T2Assign3000           => Do(() => ctx.T2 = TimeSpan.FromMilliseconds(3000)),
+            // T2 := 3000 seeds the response-delay timer from the configurable
+            // <see cref="InitialT2"/> (§6.7.1.1; default 3000 ms), same clobber class
+            // as InitialSrt (#292) / InitialN2 (#300).
+            Ax25ActionVerb.T2Assign3000           => Do(() => ctx.T2 = InitialT2),
             Ax25ActionVerb.N2Assign10             => Do(() => ctx.N2 = InitialN2),
 
             // ─── Link-parameter assignments (SRT, T1V) ────────────────

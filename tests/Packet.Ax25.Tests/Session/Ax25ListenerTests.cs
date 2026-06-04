@@ -365,4 +365,98 @@ public class Ax25ListenerTests
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10),
             "the connect backstop must honour the configured N2/T1V, not the 66 s spec default");
     }
+
+    // ─── T2 / k(mod-8) establishment seeds (the #292/#300 clobber class) ─────
+    //
+    // Audit (m0lte/packet.net) of the establishment path for OTHER configured
+    // per-port params that a hard-coded establishment constant could clobber, the
+    // same way figc4.x's `SRT := Initial Default` clobbered T1V (#292) and `N2 := 10`
+    // clobbered N2 (#300). The figc4.7 `Set_Version` bodies carry `T2 := 3000` and
+    // (mod-8) `k := 8` as the remaining hard-coded init verbs. In the current
+    // Packet.Ax25.Sdl package the data-link establishment path does NOT invoke
+    // Set_Version as a subroutine, so a configured T2 / k already survives a
+    // connect — these tests pin that survival as a behavioural regression — and the
+    // verbs now read a configurable seed (InitialT2 / InitialK) defaulting to the
+    // spec value, so the survival is structural rather than incidental and a future
+    // SDL revision that re-introduces Set_Version on the connect path cannot
+    // re-open the clobber. Default-stays-spec is covered in ActionDispatcherTests.
+
+    [Fact]
+    public async Task Configured_T2_Survives_The_Inbound_Accept_Handshake()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            T2 = TimeSpan.FromMilliseconds(4000),
+        });
+
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
+        await listener.StartAsync();
+
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        await ListenerTestSupport.WaitFor(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(2));
+
+        session.Context.T2.Should().Be(TimeSpan.FromMilliseconds(4000),
+            "the configured T2 must survive the figc4.1 SABM-accept establishment path");
+    }
+
+    [Fact]
+    public async Task Default_T2_Is_The_Spec_Value_After_Establishment()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
+
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
+        await listener.StartAsync();
+
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        await ListenerTestSupport.WaitFor(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(2));
+
+        session.Context.T2.Should().Be(TimeSpan.FromMilliseconds(3000),
+            "with no override the session keeps the spec-default T2 (no silent default change, §2)");
+    }
+
+    [Fact]
+    public async Task Configured_Window_K_Survives_The_Outbound_Connect_Handshake()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            K = 6,
+        });
+        await listener.StartAsync();
+
+        var connectTask = listener.ConnectAsync(PeerCallA);
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2)); // SABM
+        modem.InjectInbound(Ax25Frame.Ua(LocalCall, PeerCallA, finalBit: true));
+
+        var session = await connectTask.WithTimeout(TimeSpan.FromSeconds(2));
+        session.CurrentState.Should().Be("Connected");
+        session.Context.K.Should().Be(6,
+            "the configured mod-8 window k must survive the figc4.2 outbound-connect establishment path");
+    }
+
+    [Fact]
+    public async Task Default_Window_K_Is_The_Spec_Value_After_Establishment()
+    {
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
+
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
+        await listener.StartAsync();
+
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        await ListenerTestSupport.WaitFor(() => session.CurrentState == "Connected", TimeSpan.FromSeconds(2));
+
+        session.Context.K.Should().Be(4,
+            "with no override the mod-8 session keeps the spec-default window k=4 (no silent default change, §2)");
+    }
 }

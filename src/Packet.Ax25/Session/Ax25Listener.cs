@@ -732,6 +732,15 @@ public sealed class Ax25Listener : IAsyncDisposable
             // the same clobber class as InitialSrt above (#292). Without this the
             // listener's (N2+1)·T1V connect backstop is always the 66 s spec maximum.
             InitialN2   = sp.N2 ?? ActionDispatcher.DefaultInitialN2,
+            // Seed the establishment-path `T2 := 3000` and (mod-8) `k := 8` link-param
+            // verbs from the configured values so they survive a connect that runs
+            // Set_Version — the same #292/#300 clobber class. These verbs are inert on
+            // the connect path in the current SDL (Set_Version isn't invoked there, so
+            // the BuildSession ctx seeds already survive), but seeding them here keeps
+            // every establishment-init verb consistent and forecloses a re-introduced
+            // clobber if an upstream SDL revision puts Set_Version back on the path.
+            InitialT2   = sp.T2 ?? ActionDispatcher.DefaultInitialT2,
+            InitialK    = sp.K  ?? ActionDispatcher.DefaultInitialK,
             T3Duration  = sp.T3 ?? ActionDispatcher.DefaultT3,
             T2Duration  = sp.T2 ?? ActionDispatcher.DefaultT2,
         };
