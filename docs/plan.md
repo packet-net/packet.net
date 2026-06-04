@@ -6,6 +6,7 @@
 
 **As of:** 2026-05-17
 **Current phase:** Phase 2 in progress — `Ax25Session` runner online. First transcribed transitions (figc4.4a cols 5+6) drive end-to-end through the orchestrator. Phase 3 (KISS hardening) pulled partially forward overnight on 2026-05-14 against the live NinoTNC pair: serial driver, ACKMODE round-trip, TX-Test frame parser, adaptive-parameter scaffolding, adaptive-transport glue, and a first soak campaign producing [`docs/nino-tnc-characterisation.md`](nino-tnc-characterisation.md). Next: more SDL pages, plus a real-RF soak campaign once we have field data to compare against the bench.
+**Latest amendment:** [§17 entry 2026-06-04 — Package the pdn node host as self-contained `.deb`s (amd64/arm64/armhf, cross-published from x64) installed by a hardened systemd unit, with a `node-v*` GitHub-Release workflow; validated end-to-end on the box via a clean `apt install` (PR #296)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Node kiss-tcp ports self-heal across a TNC/softmodem bounce: `ReconnectingKissModem` (backoff + KISS-param replay), so a dropped link reconnects instead of the port silently dying (PR #295)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Telnet connected-mode relay: line-buffer telnet→AX.25 so Connect sends one I-frame per line, not per keystroke (PR #294)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-04 — Telnet relay output: complete bare-CR line endings to CR-LF so relayed node banners don't overtype the terminal (PR #294, building on #291)](#17-amendment-log)
@@ -698,6 +699,8 @@ The probe at [`tests/Packet.Interop.Tests/Hardware/NinoTncEnumeration.cs`](../te
 
 ## 9. Packaging & onboarding
 
+**Status (2026-06-04):** the first real packaging path is shipped — pdn builds as a self-contained `.deb` for amd64/arm64/armhf (`scripts/build-deb.sh`, hardened systemd unit + conffile in `packaging/`), released via `publish-node.yml` on `node-v*` tags and validated end-to-end on the box (see §17). The signed-tarball installer, cosign verification, multi-arch Docker image, `packetnet ctl`, and one-click signed update below remain the eventual onboarding vision; OARC/reprepro apt-repo distribution is the near-term next step.
+
 - `curl -sSL https://packet.net/install.sh | sudo bash` → detect distro/arch → fetch signed tar → cosign-verify → install systemd unit → generate admin bootstrap URL → print URL.
 - `systemctl enable --now packetnet` left to the installer; service runs as unprivileged `packetnet` user; stateful dirs `/var/lib/packetnet`, `/etc/packetnet`.
 - Docker image multi-arch via `buildx`; healthcheck on `/api/system/health`.
@@ -705,7 +708,7 @@ The probe at [`tests/Packet.Interop.Tests/Hardware/NinoTncEnumeration.cs`](../te
 - `packetnet ctl` subcommands for ops (reset admin password, dump diag bundle, regenerate cert, run migrations).
 - `POST /api/system/update` for one-click signed update with auto-rollback on health failure.
 
-Targets: linux-x64, linux-arm64, linux-arm (v7), win-x64, osx-arm64, osx-x64. Self-contained binaries unless armhf size > 80 MB (fallback FDD).
+Targets: linux-x64, linux-arm64, linux-arm (v7), win-x64, osx-arm64, osx-x64. Self-contained binaries unless armhf size > 80 MB (fallback FDD) — measured: the linux-* `.deb`s are all self-contained, armhf ~40 MB (comfortably under), so no FDD fallback is needed.
 
 ---
 
@@ -897,6 +900,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-04 — Package the pdn node host as self-contained `.deb`s (amd64/arm64/armhf) with a release workflow (PR #296)
+
+First real distribution path for the node host, ahead of cutting `node-v0.1.0`. `scripts/build-deb.sh <rid> <version>` publishes pdn self-contained — single-file + ReadyToRun + `InvariantGlobalization` (no system .NET runtime, no libicu) — for one RID and packages it with `dpkg-deb` in one call; `arm64`/`armhf` cross-publish from x64 via crossgen2, so all three arches build on the single self-hosted x64 runner with no arch-native machine or cross C-toolchain (all three binaries verified genuinely their target arch — x86-64 / ARM aarch64 / ARM EABI5). `packaging/` holds the install tree: a hardened systemd unit (`Packet.Node` is a plain WebApplication, so `Type=exec` for now — a later `UseSystemd()` upgrades it to `Type=notify`; `ProtectSystem=strict`, unprivileged `packetnet` user, `StateDirectory=/var/lib/packetnet`), the config template as a dpkg conffile at `/etc/packetnet/packetnet.yaml` (pattern B — the node only reads root-owned config, cleaner under the sandbox), and the maintainer scripts (postinst creates the user + `enable --now`; postrm purges user/state). Maintainer baked in as Tom Fanning <tom@m0lte.uk>, `Section: hamradio`. `.github/workflows/publish-node.yml` builds the matrix on a `node-v*` tag — deliberately distinct from the `lib-v*` tag that drives the NuGet library publish — and attaches the three `.deb`s + a `SHA256SUMS` to a GitHub Release. Validated end-to-end by aligning the live packetdotnet net-sim lab box to the real package (nuking the ad-hoc rsync setup): a clean `apt install` boots the service idle on the N0CALL template first-try, configured it brings `gb7rdg` up against net-sim and a `telnet → C GB7RDG → ?` round-trips, and a clean purge removes user/state/conffile. The alignment immediately caught a real bug only a real install surfaces — the single-file binary's native-lib self-extraction fails under `ProtectSystem=strict` because the default extract dir (the service user's home) isn't writable; fixed by pointing `DOTNET_BUNDLE_EXTRACT_BASE_DIR` + `HOME` at the writable `StateDirectory` (plus `DOTNET_gcServer=0` to keep memory modest on small/Pi targets). The fast `deploy-node.sh` dev loop still works on top of the packaged box (it rsyncs into the same `/opt/packetnet/app` and restarts the same unit), so the box now dogfoods the package without losing the quick loop. Distribution is two planned paths, both gated on Tom: the GitHub Release (this workflow), and the OARC apt repo (reprepro, signed by hibby) once the package is validated.
 
 ### 2026-06-04 — Telnet connected-mode relay: line-buffer telnet→AX.25 so Connect sends one I-frame per line, not per keystroke (resolves #51)
 
