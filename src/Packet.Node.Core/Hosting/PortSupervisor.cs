@@ -223,6 +223,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             return;
         }
 
+        // kiss-tcp ports self-heal across a TNC/softmodem bounce: wrap the connected
+        // modem so a dropped link reconnects (backoff + KISS-param replay) instead of
+        // the port silently dying. The eager connect above preserves initial fault
+        // isolation; this only adds reconnect-after-drop. (#50)
+        if (port.Transport is KissTcpTransport)
+        {
+            modem = new ReconnectingKissModem(
+                modem,
+                token => transportFactory.CreateAsync(port.Transport, token),
+                endpointText,
+                loggerFactory.CreateLogger<ReconnectingKissModem>(),
+                timeProvider);
+        }
+
         var options = BuildListenerOptions(port, myCall);
         var listener = new Ax25Listener(modem, options, timeProvider);
         var connector = new Ax25OutboundConnector(port.Id, listener, r => ClaimOutbound(r));
