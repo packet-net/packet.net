@@ -214,6 +214,54 @@ public sealed class NetRomRoutingTable
         }
     }
 
+    /// <summary>
+    /// Build the destination entries to advertise in our own NODES broadcast — the
+    /// L3-origination view of the table. For each known destination we advertise its
+    /// best route's quality via its best next-hop neighbour, gated by
+    /// <paramref name="obsoleteMinimum"/> (OBSMIN: a route whose obsolescence has
+    /// decayed below this is still kept but no longer advertised — it ages out of
+    /// broadcasts before it is purged). Quality-0 routes are never advertised.
+    /// </summary>
+    /// <param name="obsoleteMinimum">The OBSMIN advertise-gate (routes with
+    /// obsolescence &lt; this are not advertised). 0 advertises everything kept.</param>
+    /// <returns>The advertisable entries, best quality first.</returns>
+    public IReadOnlyList<Wire.NodesBroadcastBuilder.Entry> BuildAdvertisement(int obsoleteMinimum)
+    {
+        lock (gate)
+        {
+            var entries = new List<(Wire.NodesBroadcastBuilder.Entry Entry, byte Quality)>();
+            foreach (var (destCall, dest) in destinations)
+            {
+                var best = dest.Routes.Values
+                    .OrderByDescending(r => r.Quality)
+                    .ThenByDescending(r => r.Obsolescence)
+                    .FirstOrDefault();
+                if (best is null)
+                {
+                    continue;
+                }
+                if (best.Quality <= NetRomQuality.Min)
+                {
+                    continue;   // never advertise a quality-0 / loop-guarded route
+                }
+                if (best.Obsolescence < obsoleteMinimum)
+                {
+                    continue;   // OBSMIN: decayed below the advertise threshold
+                }
+
+                entries.Add((
+                    new Wire.NodesBroadcastBuilder.Entry(destCall, dest.Alias, best.Neighbour, best.Quality),
+                    best.Quality));
+            }
+
+            return entries
+                .OrderByDescending(e => e.Quality)
+                .ThenBy(e => e.Entry.Destination.ToString(), StringComparer.Ordinal)
+                .Select(e => e.Entry)
+                .ToList();
+        }
+    }
+
     // ─── Internals ────────────────────────────────────────────────────
 
     // Add or refresh a route to `destination` via `viaNeighbour`. Applies the

@@ -65,11 +65,62 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         logger = this.loggerFactory.CreateLogger<PortSupervisor>();
-        // Optional node-level NET/ROM read-only consumer. When present, each port
-        // that comes up has its frame-trace tap subscribed (and unsubscribed on
-        // teardown) so the service hears NODES broadcasts. It can never disturb a
-        // session — the tap is observation-only.
+        // Optional node-level NET/ROM consumer. When present, each port that comes up
+        // has its frame-trace tap subscribed (and unsubscribed on teardown) so the
+        // service hears NODES broadcasts; with connect-routing enabled it also taps
+        // interlink sessions + drives L4 circuits. Hearing can never disturb a
+        // session — the frame tap is observation-only.
         this.netRom = netRom;
+
+        // When NET/ROM connect-routing is on, an inbound L4 circuit (a user routed to
+        // us across the network) is bridged to a fresh node console — the same prompt
+        // an AX.25/telnet user gets. The service raises this hook with the circuit
+        // wrapped as an INodeConnection.
+        if (this.netRom is not null)
+        {
+            this.netRom.RunInboundConsole = RunNodeConsoleAsync;
+            this.netRom.OpenInterlink = OpenInterlinkAsync;
+        }
+    }
+
+    // Dial an interlink AX.25 session to a neighbour with the outbound claim held, so
+    // OnSessionAccepted does NOT start a node console against the dialled neighbour
+    // (an interlink is NET/ROM datagrams, not console text). Mirrors how
+    // Ax25OutboundConnector claims a console connect-out.
+    private async Task<Ax25Session> OpenInterlinkAsync(string portId, Callsign neighbour, CancellationToken ct)
+    {
+        RunningPort? port;
+        lock (ports) ports.TryGetValue(portId, out port);
+        var listener = port?.Listener
+            ?? throw new InvalidOperationException($"NET/ROM interlink: port '{portId}' is not running.");
+
+        using var ticket = ClaimOutbound(neighbour);
+        return await listener.ConnectAsync(neighbour, ct).ConfigureAwait(false);
+    }
+
+    // Run the node command service over an inbound connection (used for NET/ROM L4
+    // circuits that reach our prompt). The dialling user can itself `connect`
+    // onward, so the console gets a NET/ROM-routing connector with no AX.25
+    // fallback (the local-channel dial doesn't apply to a network-arrived user).
+    private async Task RunNodeConsoleAsync(INodeConnection connection, CancellationToken ct)
+    {
+        Callsign user = Callsign.TryParse(connection.PeerId, out var u) ? u : default;
+        var connector = netRom is not null ? new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, fallback: null, user) : null;
+        var env = new NodeConsoleEnvironment(config, connector, netRom);
+        var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifecycle.Token);
+        await service.RunAsync(connection, linked.Token).ConfigureAwait(false);
+    }
+
+    // Wrap a same-port AX.25 connector with NET/ROM routing when connect-routing is
+    // enabled; otherwise return the AX.25 connector unchanged.
+    private IOutboundConnector? WrapWithNetRom(IOutboundConnector? ax25Connector, Callsign originatingUser)
+    {
+        if (netRom is { ConnectEnabled: true })
+        {
+            return new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, ax25Connector, originatingUser);
+        }
+        return ax25Connector;
     }
 
     /// <summary>The ids of the ports currently up (for tests + the Nodes command
@@ -98,7 +149,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         {
             first = ports.Values.OrderBy(p => p.Id, StringComparer.Ordinal).FirstOrDefault();
         }
-        return first is null ? null : new Ax25OutboundConnector(first.Id, first.Listener, r => ClaimOutbound(r));
+        var ax25 = first is null ? null : new Ax25OutboundConnector(first.Id, first.Listener, r => ClaimOutbound(r));
+
+        // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
+        // originates on behalf of this node. Wrap with NET/ROM routing when enabled
+        // (it still falls back to the same-port AX.25 dial for a local callsign).
+        if (netRom is { ConnectEnabled: true })
+        {
+            Callsign nodeCall = Callsign.TryParse(config.Current.Identity.Callsign, out var nc) ? nc : default;
+            return new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, ax25, nodeCall);
+        }
+        return ax25;
     }
 
     // Mark a remote as an in-flight outbound connect (refcounted); the returned
@@ -441,7 +502,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             {
                 try
                 {
-                    var env = new NodeConsoleEnvironment(config, connector, netRom);
+                    // Wrap the same-port AX.25 connector with NET/ROM routing (when
+                    // enabled) so `connect <alias>` reaches a distant node; the
+                    // dialling user is this inbound peer.
+                    var routed = WrapWithNetRom(connector, session.Context.Remote);
+                    var env = new NodeConsoleEnvironment(config, routed, netRom);
                     var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
                     await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
                 }

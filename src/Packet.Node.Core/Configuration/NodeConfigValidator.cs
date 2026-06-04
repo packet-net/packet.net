@@ -168,10 +168,11 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
 }
 
 /// <summary>
-/// Validates the optional NET/ROM (read-only) routing knobs. Qualities are
-/// 0..255 (the NET/ROM quality range); OBSINIT + sweep interval are positive. A
-/// typo'd value is rejected here rather than silently clamped, matching the
-/// per-port tuning discipline.
+/// Validates the optional NET/ROM knobs. Qualities are 0..255 (the NET/ROM quality
+/// range); OBSINIT/OBSMIN, the sweep interval, the L4 window/timeout/retries, and
+/// the TTL are positive (TTL ≤ 255 — a 1-octet header field). Broadcast/connect
+/// require the service enabled. A typo'd value is rejected here rather than
+/// silently clamped, matching the per-port tuning discipline.
 /// </summary>
 public sealed class NetRomValidator : AbstractValidator<NetRomConfig>
 {
@@ -186,9 +187,30 @@ public sealed class NetRomValidator : AbstractValidator<NetRomConfig>
         RuleFor(c => c.ObsoleteInitial!.Value).GreaterThan(0)
             .When(c => c.ObsoleteInitial.HasValue)
             .WithMessage("netrom.obsoleteInitial must be positive.");
+        RuleFor(c => c.ObsoleteMinimum!.Value).GreaterThanOrEqualTo(0)
+            .When(c => c.ObsoleteMinimum.HasValue)
+            .WithMessage("netrom.obsoleteMinimum must be zero or positive.");
         RuleFor(c => c.SweepIntervalSeconds!.Value).GreaterThan(0)
             .When(c => c.SweepIntervalSeconds.HasValue)
             .WithMessage("netrom.sweepIntervalSeconds must be positive.");
+        RuleFor(c => c.Window!.Value).InclusiveBetween(1, 127)
+            .When(c => c.Window.HasValue)
+            .WithMessage("netrom.window must be in 1..127 (the 8-bit sequence space).");
+        RuleFor(c => c.TransportTimeoutSeconds!.Value).GreaterThan(0)
+            .When(c => c.TransportTimeoutSeconds.HasValue)
+            .WithMessage("netrom.transportTimeoutSeconds must be positive.");
+        RuleFor(c => c.TransportRetries!.Value).GreaterThan(0)
+            .When(c => c.TransportRetries.HasValue)
+            .WithMessage("netrom.transportRetries must be positive.");
+        RuleFor(c => c.TimeToLive!.Value).InclusiveBetween(1, 255)
+            .When(c => c.TimeToLive.HasValue)
+            .WithMessage("netrom.timeToLive must be in 1..255.");
+        RuleFor(c => c)
+            .Must(c => !(c.Broadcast && !c.Enabled))
+            .WithMessage("netrom.broadcast requires netrom.enabled.");
+        RuleFor(c => c)
+            .Must(c => !(c.Connect && !c.Enabled))
+            .WithMessage("netrom.connect requires netrom.enabled.");
     }
 }
 

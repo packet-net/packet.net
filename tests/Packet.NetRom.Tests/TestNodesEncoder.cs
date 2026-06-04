@@ -16,7 +16,7 @@ namespace Packet.NetRom.Tests;
 /// a round-trip proves the shift/SSID handling, not a tautology against a
 /// hand-rolled encoder.
 /// </remarks>
-internal static class NodesBroadcastBuilder
+internal static class TestNodesEncoder
 {
     /// <summary>Build a NODES info field: 0xFF signature + 6-byte alias + the entries.</summary>
     public static byte[] Build(string senderAlias, params (Callsign Dest, string DestAlias, Callsign Neighbour, byte Quality)[] entries)

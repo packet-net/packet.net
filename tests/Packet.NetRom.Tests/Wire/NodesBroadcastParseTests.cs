@@ -14,7 +14,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Parses_signature_and_sender_alias()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ");
+        var info = TestNodesEncoder.Build("RDGBPQ");
 
         NodesBroadcast.TryParse(info, out var bc).Should().BeTrue();
         bc!.SenderAlias.Should().Be("RDGBPQ");
@@ -24,7 +24,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Rejects_a_frame_whose_first_octet_is_not_the_signature()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ");
+        var info = TestNodesEncoder.Build("RDGBPQ");
         info[0] = 0x00;   // canonical "wrong signature → ignore"
 
         NodesBroadcast.TryParse(info, out var bc).Should().BeFalse();
@@ -34,7 +34,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Parses_a_single_destination_entry_with_all_fields()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ",
+        var info = TestNodesEncoder.Build("RDGBPQ",
             (Gb7Sot, "SOT", Gb7Xyz, 200));
 
         NodesBroadcast.TryParse(info, out var bc).Should().BeTrue();
@@ -49,7 +49,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Parses_several_entries_in_order()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ",
+        var info = TestNodesEncoder.Build("RDGBPQ",
             (Gb7Sot, "SOT", Gb7Xyz, 200),
             (Gb7Xyz, "XYZ", Gb7Xyz, 192),
             (Gb7Rdg, "RDG", Gb7Rdg, 255));
@@ -67,7 +67,7 @@ public class NodesBroadcastParseTests
         var entries = Enumerable.Range(0, 13)
             .Select(_ => (Gb7Sot, "SOT", Gb7Xyz, (byte)200))
             .ToArray();
-        var info = NodesBroadcastBuilder.Build("RDGBPQ", entries);
+        var info = TestNodesEncoder.Build("RDGBPQ", entries);
 
         NodesBroadcast.TryParse(info, out var bc).Should().BeTrue();
         bc!.Entries.Should().HaveCount(NodesBroadcast.MaxEntriesPerFrame);
@@ -78,7 +78,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Trailing_partial_entry_is_rejected_by_strict_but_accepted_by_lenient()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ",
+        var info = TestNodesEncoder.Build("RDGBPQ",
             (Gb7Sot, "SOT", Gb7Xyz, 200)).ToList();
         info.AddRange(new byte[] { 0x01, 0x02, 0x03 });   // 3 trailing octets (< 21)
         var bytes = info.ToArray();
@@ -92,7 +92,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Empty_destination_list_is_rejected_by_strict_but_accepted_by_lenient()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ");   // header only
+        var info = TestNodesEncoder.Build("RDGBPQ");   // header only
 
         NodesBroadcast.TryParse(info, NetRomParseOptions.Strict, out _).Should().BeFalse();
         NodesBroadcast.TryParse(info, NetRomParseOptions.Lenient, out var lenient).Should().BeTrue();
@@ -102,7 +102,7 @@ public class NodesBroadcastParseTests
     [Fact]
     public void Bpq_and_xrouter_presets_accept_a_padded_dump_like_lenient()
     {
-        var info = NodesBroadcastBuilder.Build("RDGBPQ",
+        var info = TestNodesEncoder.Build("RDGBPQ",
             (Gb7Sot, "SOT", Gb7Xyz, 200)).ToList();
         info.Add(0x00);   // one pad octet on the final frame
         var bytes = info.ToArray();
@@ -147,7 +147,7 @@ public class NodesBroadcastParseTests
     public void Alias_is_trimmed_of_trailing_spaces()
     {
         // "RDG" packed into a 6-byte field is "RDG   "; the parser trims it.
-        var info = NodesBroadcastBuilder.Build("RDG");
+        var info = TestNodesEncoder.Build("RDG");
         NodesBroadcast.TryParse(info, out var bc).Should().BeTrue();
         bc!.SenderAlias.Should().Be("RDG");
     }

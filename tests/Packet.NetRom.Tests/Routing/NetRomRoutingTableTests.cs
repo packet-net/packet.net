@@ -17,7 +17,7 @@ public class NetRomRoutingTableTests
 
     private static NodesBroadcast Broadcast(string senderAlias, params (Callsign Dest, string Alias, Callsign Via, byte Q)[] entries)
     {
-        var info = NodesBroadcastBuilder.Build(senderAlias, entries);
+        var info = TestNodesEncoder.Build(senderAlias, entries);
         NodesBroadcast.TryParse(info, out var bc).Should().BeTrue();
         return bc!;
     }

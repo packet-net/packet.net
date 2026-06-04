@@ -220,4 +220,32 @@ public class NodeConfigValidatorTests
         Validator.Validate(Valid() with { NetRom = new NetRomConfig { SweepIntervalSeconds = -1 } })
             .IsValid.Should().BeFalse("sweep interval must be positive");
     }
+
+    [Fact]
+    public void Accepts_netrom_l3l4_knobs_in_range_and_rejects_out_of_range()
+    {
+        var ok = Valid() with
+        {
+            NetRom = new NetRomConfig
+            {
+                Enabled = true, Broadcast = true, Connect = true, Alias = "NODE",
+                ObsoleteMinimum = 4, Window = 7, TransportTimeoutSeconds = 8,
+                TransportRetries = 5, TimeToLive = 30,
+            },
+        };
+        Validator.Validate(ok).IsValid.Should().BeTrue();
+
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { Window = 0 } })
+            .IsValid.Should().BeFalse("window must be in 1..127");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { Window = 200 } })
+            .IsValid.Should().BeFalse("window must be in 1..127 (8-bit sequence space)");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { TimeToLive = 0 } })
+            .IsValid.Should().BeFalse("TTL must be in 1..255");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { TransportRetries = 0 } })
+            .IsValid.Should().BeFalse("retries must be positive");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { Enabled = false, Broadcast = true } })
+            .IsValid.Should().BeFalse("broadcast requires the service enabled");
+        Validator.Validate(Valid() with { NetRom = new NetRomConfig { Enabled = false, Connect = true } })
+            .IsValid.Should().BeFalse("connect requires the service enabled");
+    }
 }

@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Packet.Ax25;
 using Packet.Ax25.Session;
 
 namespace Packet.Node.Core.Console;
@@ -57,7 +58,14 @@ public sealed class Ax25NodeConnection : INodeConnection
         switch (sig)
         {
             case DataLinkDataIndication di:
-                inbound.Writer.TryWrite(di.Info);
+                // The console carries node-text data (PID 0xF0 / no-Layer-3). A
+                // session may ALSO carry NET/ROM (PID 0xCF interlink datagrams),
+                // which the NetRomService taps separately — those must not leak into
+                // the console as garbage text, so filter them out here.
+                if (di.Pid != Ax25Frame.PidNetRom)
+                {
+                    inbound.Writer.TryWrite(di.Info);
+                }
                 break;
             case DataLinkDisconnectIndication:
             case DataLinkDisconnectConfirm:

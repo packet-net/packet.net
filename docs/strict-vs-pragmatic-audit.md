@@ -119,19 +119,23 @@ intent.
 - `AprsObjectDecoder` apart from the `h` timestamp (which is an
   interpretation, not pragmatism).
 
-## Packet.NetRom (read-only "NET/ROM aware" slice)
+## Packet.NetRom (full vanilla L3+L4 stack)
 
 NET/ROM has **no single normative standard** — the closest thing to
 canonical is the original protocol appendix, and in practice
 **G8BPQ/LinBPQ is the de-facto reference** (XRouter and the Linux
 kernel `netrom` family diverge). So this is the trap the project's
 whole "don't take an implementation as the spec" discipline exists for.
-The read-only slice (`Packet.NetRom`) is faithful to the canonical
-appendix by default, and every accommodation is a named flag —
-`NetRomParseOptions` for the wire parse, `NetRomRoutingOptions` for the
-route-maintenance knobs — never a silent BPQ-/XRouter-ism. Default-on
-flags are chosen because this is promiscuous read-only ingest of
-third-party broadcasts, where resilience beats rejecting a stray byte.
+`Packet.NetRom` is faithful to the canonical appendix by default, and
+every accommodation is a named flag/knob — `NetRomParseOptions` for the
+wire parse, `NetRomRoutingOptions` for route maintenance, and
+`NetRomCircuitOptions` for the L4 transport — never a silent
+BPQ-/XRouter-ism. Default-on parse flags are chosen because NODES ingest
+is promiscuous read-only consumption of third-party broadcasts, where
+resilience beats rejecting a stray byte; the **outbound** paths (NODES
+origination via `NodesBroadcastBuilder`, the L4 circuit datagrams) stay
+strictly spec-faithful — we never emit a frame that violates the
+canonical format.
 
 ### Pragmatic accommodations (wire parse — `NetRomParseOptions`)
 
@@ -156,11 +160,41 @@ three routes/destination, the multiplicative quality formula) but the
 lower qualities). They default to the canonical/most-interoperable
 value and are operator-overridable via the node's `netRom:` config:
 `DefaultNeighbourQuality` (192), `MinQuality` (0 — keep everything above
-zero), `ObsoleteInitial` (6), `MaxRoutesPerDestination` (3),
-`MaxDestinations` (1024 — a memory-safety cap, not a NET/ROM concept).
-The trivial-loop guard (advertised best-neighbour == us → quality 0 →
-never kept) and the "quality-0 is never usable" rule are correctness
-features, always on, independent of the floor.
+zero), `ObsoleteInitial` (6), `ObsoleteMinimum` (4 — OBSMIN, the
+advertise-gate: a faded route stops being advertised before it is purged
+at 0), `MaxRoutesPerDestination` (3), `MaxDestinations` (1024 — a
+memory-safety cap, not a NET/ROM concept). The trivial-loop guard
+(advertised best-neighbour == us → quality 0 → never kept) and the
+"quality-0 is never usable" rule are correctness features, always on,
+independent of the floor.
+
+### L4 transport knobs (not pragmatism — configurable de-facto defaults; `NetRomCircuitOptions`)
+
+The L4 circuit transport (`NetRomCircuit` / `CircuitManager`) is
+hand-written (no SDL, no normative state machine) with a textbook
+sliding-window FSM. The canonical *message set* (the six opcodes + the
+choke/NAK/more-follows flags) is universal and not configurable; the
+*timers, window, retries, and TTL* come from the de-facto reference
+(BPQ's `L4*` knobs / the Linux `transport_*` tunables) and so are named
+knobs defaulted to a widely-interoperable value, operator-overridable via
+the node's `netRom:` config: `WindowSize` (4 — `L4WINDOW`; negotiated
+down to the responder's ceiling), `RetransmitTimeout` (5 s — `L4TIMEOUT`),
+`MaxRetries` (3 — `L4RETRIES`), `TimeToLive` (25 — `L3TIMETOLIVE`, the L3
+hop limit), `FragmentSize` (236 — the canonical 256 − 20 header maximum),
+`ChokeThreshold` (0 — the receiver self-chokes only when a host can stall
+its reader; the node bridge drains synchronously). The 8-bit sequence
+space (window ≤ 127) is canonical, not a knob.
+
+### TX-bearing behaviours are opt-in (safe-by-default, not pragmatism)
+
+NODES origination (`netRom.broadcast`) and L4 connect-routing
+(`netRom.connect`) default **off**. This is not a spec accommodation — a
+stock node *hears* NET/ROM (the read-only table, on by default, harmless)
+but does not *transmit* NODES or open interlinks/circuits until the
+operator opts in. Transmitting on a shared RF channel and opening
+sessions to neighbours are operator decisions; defaulting them off keeps
+a freshly-installed node from injecting traffic onto the air or the
+network without intent.
 
 ### Interop fixture (de-facto, documented — not baked into the library)
 

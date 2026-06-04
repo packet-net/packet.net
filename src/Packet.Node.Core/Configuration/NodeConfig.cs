@@ -206,26 +206,51 @@ public sealed record HttpConfig
 }
 
 /// <summary>
-/// NET/ROM awareness configuration. This is the <b>read-only "NET/ROM aware"</b>
-/// slice: when enabled, the node hears NODES routing broadcasts (UI frames to
-/// dest <c>NODES</c>, PID 0xCF) heard on its AX.25 ports via the existing
-/// frame-trace tap, parses them, and builds a routing table it surfaces in
-/// <c>Nodes</c> / a future MCP tool. It <b>originates nothing</b> — no NODES
-/// broadcasts, no L4 circuits — and cannot disturb a QSO.
+/// NET/ROM configuration. The node always <b>hears</b> NODES routing broadcasts
+/// (UI frames to dest <c>NODES</c>, PID 0xCF) via the frame-trace tap, parses
+/// them, and builds a routing table surfaced in <c>Nodes</c> / a future MCP tool —
+/// the read-only awareness slice. With <see cref="Broadcast"/> on it also
+/// <b>originates</b> its own NODES broadcast on the NODESINTERVAL schedule, and
+/// with <see cref="Connect"/> on it can establish <b>L4 virtual circuits</b> over
+/// connected-mode AX.25 interlinks so <c>connect &lt;alias&gt;</c> routes a user to
+/// a distant node across the network.
 /// </summary>
 /// <remarks>
-/// The routing knobs (quality floor, obsolescence init, table caps) are exposed
-/// because NET/ROM has no single normative standard — the canonical defaults are
-/// used unless the operator overrides, never a silent BPQ-ism. Default
-/// <see cref="Enabled"/> is <c>true</c>: hearing NODES is free and harmless, so a
-/// stock node is NET/ROM-aware out of the box.
+/// The knobs are exposed because NET/ROM has no single normative standard — the
+/// canonical defaults apply unless the operator overrides, never a silent BPQ-ism.
+/// Default <see cref="Enabled"/> is <c>true</c> (hearing is free + harmless), but
+/// the TX-bearing options (<see cref="Broadcast"/>, <see cref="Connect"/>) default
+/// <c>false</c>: a stock node does not transmit on the air or open circuits until
+/// the operator opts in (spec-faithful + safe-by-default).
 /// </remarks>
 public sealed record NetRomConfig
 {
     /// <summary>Whether to listen for NODES broadcasts and maintain the routing
     /// table. Default <c>true</c> (read-only, harmless). Set <c>false</c> to make
-    /// the node deaf to NET/ROM entirely.</summary>
+    /// the node deaf to NET/ROM entirely (also disables broadcast + connect).</summary>
     public bool Enabled { get; init; } = true;
+
+    /// <summary>
+    /// Whether to <b>originate</b> our own NODES routing broadcast (and so advertise
+    /// our presence + learned routes to neighbours). Default <c>false</c> —
+    /// transmitting on the air is opt-in. Requires <see cref="Enabled"/>.
+    /// </summary>
+    public bool Broadcast { get; init; }
+
+    /// <summary>
+    /// Whether <c>connect &lt;alias&gt;</c> may route across the network via NET/ROM
+    /// L4 circuits (open an interlink to the best neighbour + originate a circuit to
+    /// the distant node). Default <c>false</c> — opening interlinks is opt-in.
+    /// Requires <see cref="Enabled"/>.
+    /// </summary>
+    public bool Connect { get; init; }
+
+    /// <summary>
+    /// Our NET/ROM node alias / mnemonic, advertised in our NODES broadcast (the
+    /// 6-char field). Null/empty = fall back to the node identity alias (then the
+    /// callsign). Only the first 6 characters reach the wire.
+    /// </summary>
+    public string? Alias { get; init; }
 
     /// <summary>Path quality assumed for a directly-heard neighbour (the canonical
     /// default-port quality). Null = canonical default (192).</summary>
@@ -239,7 +264,28 @@ public sealed record NetRomConfig
     /// (OBSINIT). Null = canonical default (6).</summary>
     public int? ObsoleteInitial { get; init; }
 
-    /// <summary>Seconds between obsolescence sweeps (the broadcast-interval decay
-    /// tick). Null = default (3600 — once an hour, the canonical NODES interval).</summary>
+    /// <summary>The obsolescence advertise-gate (OBSMIN): a route below this is kept
+    /// but no longer included in our outgoing broadcasts. Null = canonical default (4).</summary>
+    public int? ObsoleteMinimum { get; init; }
+
+    /// <summary>Seconds between obsolescence sweeps + (when <see cref="Broadcast"/>)
+    /// NODES broadcasts — the canonical NODESINTERVAL. Null = default (3600 — once an
+    /// hour).</summary>
     public int? SweepIntervalSeconds { get; init; }
+
+    /// <summary>The L4 circuit send-window we propose / accept (BPQ <c>L4WINDOW</c>).
+    /// Null = canonical default (4).</summary>
+    public int? Window { get; init; }
+
+    /// <summary>The L4 retransmit timeout in seconds (BPQ <c>L4TIMEOUT</c>-ish). Null
+    /// = default (5 s).</summary>
+    public int? TransportTimeoutSeconds { get; init; }
+
+    /// <summary>Max L4 retransmit attempts before a circuit fails (BPQ
+    /// <c>L4RETRIES</c>). Null = default (3).</summary>
+    public int? TransportRetries { get; init; }
+
+    /// <summary>Initial L3 network-header time-to-live (hop limit) on circuits we
+    /// originate (BPQ <c>L3TIMETOLIVE</c>). Null = default (25).</summary>
+    public int? TimeToLive { get; init; }
 }

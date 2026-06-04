@@ -50,6 +50,15 @@ public sealed record NetRomRoutingOptions
     public int ObsoleteInitial { get; init; } = 6;
 
     /// <summary>
+    /// The obsolescence advertise-gate (BPQ's OBSMIN): a route whose obsolescence
+    /// has decayed <em>below</em> this is still kept + usable but is no longer
+    /// included in our outgoing NODES broadcasts — so a fading route stops being
+    /// advertised before it is finally purged at 0. Canonical / BPQ default
+    /// <b>4</b>; a value ≤ 1 advertises every kept route.
+    /// </summary>
+    public int ObsoleteMinimum { get; init; } = 4;
+
+    /// <summary>
     /// Maximum routes retained per destination (sorted by quality, best first).
     /// Canonical default <b>3</b>.
     /// </summary>

@@ -92,4 +92,47 @@ public static class NetRomCallsign
 
         return new string(chars[..len]).TrimEnd();
     }
+
+    /// <summary>
+    /// Encode a callsign into a 7-octet AX.25 shifted callsign field (the form a
+    /// NODES entry / L3 network header uses for a callsign). Delegates to
+    /// <see cref="Ax25Address.Write"/> so the shift/SSID encoding has one source
+    /// of truth with the frame layer. The end-of-address and command/H bits are
+    /// written clear — inside a NODES entry / L3 header these fields are payload,
+    /// not an AX.25 address chain.
+    /// </summary>
+    /// <param name="callsign">The callsign to encode.</param>
+    /// <param name="destination">At least <see cref="ShiftedLength"/> octets of room.</param>
+    public static void WriteShifted(Callsign callsign, Span<byte> destination)
+    {
+        if (destination.Length < ShiftedLength)
+        {
+            throw new ArgumentException($"shifted callsign needs {ShiftedLength} bytes of room (got {destination.Length})", nameof(destination));
+        }
+
+        new Ax25Address(callsign, CrhBit: false, ExtensionBit: false).Write(destination[..ShiftedLength]);
+    }
+
+    /// <summary>
+    /// Encode a NET/ROM alias / mnemonic into a 6-octet field: plain ASCII,
+    /// right-padded with spaces, no shift and no SSID. Only the first
+    /// <see cref="AliasLength"/> characters are written; non-printable characters
+    /// are replaced with a space so a stray control char can never reach the wire.
+    /// </summary>
+    /// <param name="alias">The alias to encode (may be empty).</param>
+    /// <param name="destination">At least <see cref="AliasLength"/> octets of room.</param>
+    public static void WriteAlias(string alias, Span<byte> destination)
+    {
+        ArgumentNullException.ThrowIfNull(alias);
+        if (destination.Length < AliasLength)
+        {
+            throw new ArgumentException($"alias needs {AliasLength} bytes of room (got {destination.Length})", nameof(destination));
+        }
+
+        for (int i = 0; i < AliasLength; i++)
+        {
+            char c = i < alias.Length ? alias[i] : ' ';
+            destination[i] = (byte)(c is >= ' ' and <= '~' ? c : ' ');
+        }
+    }
 }

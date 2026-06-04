@@ -102,19 +102,32 @@ public static class NodeConfigTemplate
             bind: 127.0.0.1
             port: 8080
 
-        # NET/ROM awareness (READ-ONLY): hear NODES routing broadcasts on the
-        # AX.25 ports and build a routing table you can see with the `N` (Nodes)
-        # command. The node ORIGINATES nothing — no NODES broadcasts, no circuits —
-        # so it cannot disturb a QSO. On by default (hearing is free + harmless).
+        # NET/ROM. By default the node only HEARS NODES routing broadcasts on the
+        # AX.25 ports and builds a routing table you can see with the `N` (Nodes)
+        # command — it originates nothing on the air and cannot disturb a QSO.
+        # The TX-bearing features are OPT-IN:
+        #   broadcast: true  -> also originate your own NODES broadcast (advertise
+        #                       your node + learned routes to neighbours).
+        #   connect:   true  -> `connect <alias>` may route across the network via
+        #                       NET/ROM L4 circuits (open an interlink to the best
+        #                       neighbour + establish an end-to-end circuit).
         # NET/ROM has no single normative standard (BPQ is the de-facto reference),
-        # so the routing knobs below default to the canonical values; override only
-        # to match a specific network's conventions.
+        # so the knobs default to the canonical values; override only to match a
+        # specific network's conventions.
         netRom:
           enabled: true
+          # broadcast: false              # originate NODES (TX is opt-in)
+          # connect: false                # allow connect <alias> across the network (opt-in)
+          # alias: NODE                   # your NET/ROM alias in broadcasts (defaults to the identity alias)
           # defaultNeighbourQuality: 192  # assumed quality of a directly-heard link
           # minQuality: 0                 # drop routes below this (raise to reject mislabelled qualities)
           # obsoleteInitial: 6            # obsolescence count a route starts at (OBSINIT)
-          # sweepIntervalSeconds: 3600    # how often routes decay (the NODES interval)
+          # obsoleteMinimum: 4            # stop advertising a route below this (OBSMIN) before it is purged
+          # sweepIntervalSeconds: 3600    # route decay + NODES broadcast interval (NODESINTERVAL)
+          # window: 4                     # L4 circuit send window (L4WINDOW)
+          # transportTimeoutSeconds: 5    # L4 retransmit timeout (L4TIMEOUT)
+          # transportRetries: 3           # L4 max retransmits before a circuit fails (L4RETRIES)
+          # timeToLive: 25                # L3 hop limit on circuits we originate (L3TIMETOLIVE)
 
         """;
 }

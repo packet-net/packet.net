@@ -70,4 +70,38 @@ public sealed record NetRomRoutingSnapshot(
 
     /// <summary>Total directly-heard neighbours.</summary>
     public int NeighbourCount => Neighbours.Count;
+
+    /// <summary>
+    /// Resolve a connect target — an <em>alias</em> (e.g. <c>SOT</c>) or a
+    /// <em>callsign</em> (e.g. <c>GB7SOT</c>, with or without SSID) — to the known
+    /// destination, or <c>null</c> if the table has no route to it. Alias match is
+    /// case-insensitive; callsign match is exact. This is what <c>connect &lt;alias&gt;</c>
+    /// consults to find the best next hop across the network.
+    /// </summary>
+    public NetRomDestination? ResolveDestination(string aliasOrCallsign)
+    {
+        if (string.IsNullOrWhiteSpace(aliasOrCallsign))
+        {
+            return null;
+        }
+        var needle = aliasOrCallsign.Trim();
+
+        // Prefer an exact alias match (the human-friendly name a user types).
+        var byAlias = Destinations.FirstOrDefault(d =>
+            !string.IsNullOrEmpty(d.Alias) && string.Equals(d.Alias, needle, StringComparison.OrdinalIgnoreCase));
+        if (byAlias is not null)
+        {
+            return byAlias;
+        }
+
+        // Else a callsign match (exact text, e.g. GB7SOT or GB7SOT-2).
+        return Destinations.FirstOrDefault(d =>
+            string.Equals(d.Destination.ToString(), needle, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The directly-heard neighbour entry for <paramref name="neighbour"/>,
+    /// or <c>null</c> if it is not a known neighbour. Used to find the port an
+    /// interlink to that neighbour should run on.</summary>
+    public NetRomNeighbour? NeighbourFor(Callsign neighbour)
+        => Neighbours.FirstOrDefault(n => n.Neighbour.Equals(neighbour));
 }

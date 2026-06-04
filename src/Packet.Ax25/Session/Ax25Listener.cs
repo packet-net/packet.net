@@ -344,6 +344,34 @@ public sealed class Ax25Listener : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Send a connectionless UI (unproto) frame on this port's modem — the send
+    /// path connected-mode <see cref="SendData"/> is not: it bypasses the session
+    /// layer entirely. This is what an upper layer uses to transmit
+    /// promiscuously-heard broadcasts (NET/ROM NODES routing broadcasts ride a UI
+    /// frame: PID 0xCF, AX.25 destination the literal text callsign
+    /// <c>NODES</c>). The source callsign is this listener's <see cref="MyCall"/>;
+    /// the frame is built via the strict <see cref="Ax25Frame.Ui"/> factory (the
+    /// outbound construction path stays spec-faithful) and traced as
+    /// <see cref="FrameDirection.Transmitted"/> so the monitor sees it.
+    /// </summary>
+    /// <param name="destination">The UI frame's AX.25 destination (e.g. the literal
+    /// <c>NODES</c> callsign for a NET/ROM routing broadcast).</param>
+    /// <param name="info">The UI frame's information field.</param>
+    /// <param name="pid">The Layer-3 PID (e.g. <see cref="Ax25Frame.PidNetRom"/>).</param>
+    /// <param name="ct">Cancellation for the modem send.</param>
+    public async Task SendUiAsync(
+        Callsign destination, ReadOnlyMemory<byte> info, byte pid = Ax25Frame.PidNoLayer3, CancellationToken ct = default)
+    {
+        EnsureNotDisposed();
+        var frame = Ax25Frame.Ui(destination, MyCall, info.Span, pid, isCommand: true);
+        var bytes = frame.ToBytes();
+        await modem.SendFrameAsync(bytes, ct).ConfigureAwait(false);
+        // Trace AFTER the send so the monitor's TX order matches the wire (mirrors
+        // the per-session SendBytes ordering).
+        TraceFrame(frame, FrameDirection.Transmitted);
+    }
+
     /// <summary>Stop the inbound pump without disposing.</summary>
     public async ValueTask StopAsync()
     {

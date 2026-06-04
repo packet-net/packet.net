@@ -90,19 +90,45 @@ public class NodeConfigYamlTests
               callsign: M0LTE-1
             netRom:
               enabled: true
+              broadcast: true
+              connect: true
+              alias: NODE
               defaultNeighbourQuality: 203
               minQuality: 150
               obsoleteInitial: 5
+              obsoleteMinimum: 3
               sweepIntervalSeconds: 1800
+              window: 7
+              transportTimeoutSeconds: 8
+              transportRetries: 5
+              timeToLive: 30
             """;
 
         var config = NodeConfigYaml.Parse(yaml);
 
         config.NetRom.Enabled.Should().BeTrue();
+        config.NetRom.Broadcast.Should().BeTrue();
+        config.NetRom.Connect.Should().BeTrue();
+        config.NetRom.Alias.Should().Be("NODE");
         config.NetRom.DefaultNeighbourQuality.Should().Be(203);
         config.NetRom.MinQuality.Should().Be(150);
         config.NetRom.ObsoleteInitial.Should().Be(5);
+        config.NetRom.ObsoleteMinimum.Should().Be(3);
         config.NetRom.SweepIntervalSeconds.Should().Be(1800);
+        config.NetRom.Window.Should().Be(7);
+        config.NetRom.TransportTimeoutSeconds.Should().Be(8);
+        config.NetRom.TransportRetries.Should().Be(5);
+        config.NetRom.TimeToLive.Should().Be(30);
+    }
+
+    [Fact]
+    public void Netrom_broadcast_and_connect_default_off()
+    {
+        // TX-bearing NET/ROM is opt-in: a stock node hears but does not transmit
+        // NODES or open circuits until the operator turns them on.
+        var config = NodeConfigYaml.Parse("identity:\n  callsign: M0LTE-1\n");
+        config.NetRom.Broadcast.Should().BeFalse();
+        config.NetRom.Connect.Should().BeFalse();
     }
 
     [Fact]

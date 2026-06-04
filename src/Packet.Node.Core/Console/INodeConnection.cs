@@ -51,4 +51,7 @@ public enum NodeTransportKind
 
     /// <summary>A local telnet dial-in over TCP.</summary>
     Telnet,
+
+    /// <summary>An end-to-end NET/ROM L4 virtual circuit (across the network).</summary>
+    NetRom,
 }
