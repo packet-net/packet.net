@@ -56,6 +56,13 @@ jobs:
           name: deb-${{ matrix.rid }}
           path: artifacts/packetnet_*.deb
           if-no-files-found: error
+          # Transient build->release hand-off only: the release job downloads these
+          # in the SAME run, and the published .debs then live on the GitHub Release.
+          # Expire them fast so they don't pile up against the Actions artifact-
+          # storage quota and block a future release's upload (observed 2026-06-05: a
+          # node release build hit the ~500 MB free-tier quota, all of it stale
+          # deb-* build artifacts from prior releases that are also on the Releases).
+          retention-days: 1
 
   smoke:
     # Gate: a .deb that won't install cleanly must never reach the release.
