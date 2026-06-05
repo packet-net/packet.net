@@ -199,8 +199,11 @@ used by both the sender (`NetRomCircuit.SendConnectRequest`) and the
 inbound demux (`CircuitManager.MintInbound`).
 
 It is recorded here because it was **verified on the wire against a real
-LinBPQ 6.0.25.23** (the #308 interop follow-up, `NetRomL4CircuitViaNetsim`)
-and because it *corrected an earlier divergence*: `NetRomCircuit` had
+LinBPQ 6.0.25.23** (the #308 interop follow-up; now asserted frame-perfectly
+over AXUDP in `NetRomL4CircuitViaAxudp` — the original net-sim
+`NetRomL4CircuitViaNetsim` was re-homed to the modem-less Tier-2 transport,
+see docs/plan.md §7) and because it *corrected an earlier divergence*:
+`NetRomCircuit` had
 placed the proposed window in the transport-header TX byte (with the
 callsigns at info offset 0). BPQ originates `[window][user][node]` + a
 2-octet BPQ extension (a real `PN0TST` connect on the wire was `04
