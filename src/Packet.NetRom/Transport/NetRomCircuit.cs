@@ -527,24 +527,22 @@ public sealed class NetRomCircuit
     private void SendConnectRequest()
     {
         // Connect Request: index/id are OUR own (so the peer learns how to address
-        // us); TX = proposed window; payload = originating user + originating node.
+        // us). The PROPOSED WINDOW and the originating user/node callsigns travel in
+        // the INFO field, NOT the transport header — see ConnectRequestInfo for the
+        // wire layout (this is the de-facto NET/ROM form LinBPQ originates + accepts,
+        // verified on the wire; #308 interop follow-up).
         var t = new NetRomTransportHeader
         {
             CircuitIndex = localIndex,
             CircuitId = localId,
-            TxSequence = (byte)Math.Clamp(options.WindowSize, 1, 127),
+            TxSequence = 0,
             RxSequence = 0,
             Opcode = NetRomOpcode.ConnectRequest,
             Flags = NetRomTransportFlags.None,
         };
 
-        // Payload: originating-user callsign then originating-node callsign, both
-        // AX.25 shifted (the canonical connect-request info).
-        var payload = new byte[NetRomCallsign.ShiftedLength * 2];
-        NetRomCallsign.WriteShifted(connectUser.Base.Length == 0 ? localNode : connectUser, payload);
-        NetRomCallsign.WriteShifted(localNode, payload.AsSpan(NetRomCallsign.ShiftedLength));
-
-        Emit(t, payload);
+        var user = connectUser.Base.Length == 0 ? localNode : connectUser;
+        Emit(t, ConnectRequestInfo.Build((byte)Math.Clamp(options.WindowSize, 1, 127), user, localNode));
     }
 
     private void SendConnectAcknowledge(bool refused)

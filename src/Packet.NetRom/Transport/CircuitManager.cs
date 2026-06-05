@@ -242,12 +242,16 @@ public sealed class CircuitManager : IDisposable
         var t = request.Transport;
         Callsign remoteNode = request.Network.Origin;
 
-        // Parse the originating user (first shifted callsign in the connect payload)
-        // for the host's benefit; fall back to the origin node if absent.
+        // Decode the Connect Request info field: [proposed-window][orig-user][orig-node]
+        // (the de-facto NET/ROM layout — see ConnectRequestInfo). The proposed window
+        // lives in the info field, NOT the transport header (TX/RX are 0 on a connect).
+        // Fall back to the origin node for the user, and to "let the circuit default"
+        // for the window, if the field is absent/short (a terse peer).
         Callsign originatingUser = remoteNode;
-        if (request.Payload.Length >= NetRomCallsign.ShiftedLength &&
-            NetRomCallsign.TryReadShifted(request.Payload.Span, out var user))
+        int proposedWindow = 0;
+        if (ConnectRequestInfo.TryParse(request.Payload.Span, out var win, out var user, out _))
         {
+            proposedWindow = win;
             originatingUser = user;
         }
 
@@ -266,8 +270,8 @@ public sealed class CircuitManager : IDisposable
         }
 
         // The peer's own (index,id) live in the Connect Request's index/id fields;
-        // its proposed window is in the TX-sequence slot.
-        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, t.TxSequence);
+        // its proposed window came from the info field (ConnectRequestInfo, above).
+        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, proposedWindow);
         var handler = IncomingCircuit;
         if (handler is null)
         {

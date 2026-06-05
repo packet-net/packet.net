@@ -185,6 +185,32 @@ hop limit), `FragmentSize` (236 — the canonical 256 − 20 header maximum),
 its reader; the node bridge drains synchronously). The 8-bit sequence
 space (window ≤ 127) is canonical, not a knob.
 
+### Connect Request info field — canonical layout, wire-verified vs LinBPQ (`ConnectRequestInfo`)
+
+The one transport message with a structured info field is the **Connect
+Request** (opcode 0x01): it carries the *proposed send-window* and the
+*originating user + originating node* callsigns end-to-end. The canonical
+NET/ROM appendix puts all three in the **info field** — `[window:1]
+[origuser:7][orignode:7]` (15 octets), the callsigns AX.25-shifted — and
+the 5-octet transport header's TX/RX-sequence slots are 0 on a connect.
+This is **not pragmatism**: it is the spec-faithful, single, canonical
+layout, with one source of truth (`ConnectRequestInfo.Build`/`TryParse`)
+used by both the sender (`NetRomCircuit.SendConnectRequest`) and the
+inbound demux (`CircuitManager.MintInbound`).
+
+It is recorded here because it was **verified on the wire against a real
+LinBPQ 6.0.25.23** (the #308 interop follow-up, `NetRomL4CircuitViaNetsim`)
+and because it *corrected an earlier divergence*: `NetRomCircuit` had
+placed the proposed window in the transport-header TX byte (with the
+callsigns at info offset 0). BPQ originates `[window][user][node]` + a
+2-octet BPQ extension (a real `PN0TST` connect on the wire was `04
+A09C60A8A6A860 A09C60A8A6A860 3C00`) and reads the same shape inbound; it
+*accepted* our old framing (the mis-placed window only mis-set the
+negotiated window), but we mis-read BPQ's originating user (empty) and
+proposed window (0 → default) until the fix. `TryParse` tolerates a peer's
+trailing extension octets beyond the canonical 15 (BPQ's `3C00`).
+Construction stays strict — we always emit the canonical 15-octet form.
+
 ### TX-bearing behaviours are opt-in (safe-by-default, not pragmatism)
 
 NODES origination (`netRom.broadcast`) and L4 connect-routing

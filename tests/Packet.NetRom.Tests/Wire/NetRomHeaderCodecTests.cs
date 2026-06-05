@@ -135,4 +135,50 @@ public sealed class NetRomHeaderCodecTests
         NetRomPacket.TryParse(new byte[19], out _).Should().BeFalse("a datagram needs the full 20-byte header");
         NetRomPacket.TryParse(ReadOnlySpan<byte>.Empty, out _).Should().BeFalse();
     }
+
+    [Fact]
+    public void ConnectRequest_info_round_trips_window_user_and_node()
+    {
+        var user = new Callsign("M0LTE", 7);
+        var node = new Callsign("GB7RDG", 0);
+
+        var info = ConnectRequestInfo.Build(proposedWindow: 6, originatingUser: user, originatingNode: node);
+        info.Length.Should().Be(ConnectRequestInfo.Length).And.Be(15, "window byte + two shifted callsigns");
+        info[0].Should().Be((byte)6, "the proposed window is the FIRST info octet, not a transport-header field");
+
+        ConnectRequestInfo.TryParse(info, out var win, out var u, out var n).Should().BeTrue();
+        win.Should().Be((byte)6);
+        u.Should().Be(user);
+        n.Should().Be(node);
+    }
+
+    [Fact]
+    public void ConnectRequest_info_parse_tolerates_trailing_extension_octets()
+    {
+        // LinBPQ 6.0.25.23 originates a 17-octet Connect Request info field on the
+        // wire (verified via the interop stack, #308): [window][user][node] then a
+        // 2-octet BPQ extension. We parse the canonical 15 and ignore the rest.
+        // These exact bytes are a real PN0TST->PNPROB Connect Request: window 4,
+        // user + node both PN0TST, trailing 0x3C 0x00.
+        byte[] bpqOnTheWire =
+        [
+            0x04,                                           // proposed window = 4
+            0xA0, 0x9C, 0x60, 0xA8, 0xA6, 0xA8, 0x60,       // originating user  = PN0TST
+            0xA0, 0x9C, 0x60, 0xA8, 0xA6, 0xA8, 0x60,       // originating node  = PN0TST
+            0x3C, 0x00,                                      // BPQ extension (ignored)
+        ];
+
+        ConnectRequestInfo.TryParse(bpqOnTheWire, out var win, out var user, out var node).Should().BeTrue();
+        win.Should().Be((byte)4);
+        user.Should().Be(new Callsign("PN0TST", 0));
+        node.Should().Be(new Callsign("PN0TST", 0));
+    }
+
+    [Fact]
+    public void ConnectRequest_info_parse_is_total_on_short_input()
+    {
+        ConnectRequestInfo.TryParse(new byte[14], out _, out _, out _)
+            .Should().BeFalse("the canonical Connect Request info field is 15 octets");
+        ConnectRequestInfo.TryParse(ReadOnlySpan<byte>.Empty, out _, out _, out _).Should().BeFalse();
+    }
 }
