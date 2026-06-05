@@ -264,10 +264,15 @@ public sealed class Ax25Listener : IAsyncDisposable
         // negotiated values to give the right backstop on slow links.
         var budget = TimeSpan.FromMilliseconds(
             (cached.Session.Context.N2 + 1) * cached.Session.Context.T1V.TotalMilliseconds);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(budget);
+        // Budget timer on the listener's TimeProvider so the connect backstop is
+        // drivable under a FakeTimeProvider in tests (production uses
+        // TimeProvider.System, so this is behaviourally identical there).
+        using var budgetCts = new CancellationTokenSource(budget, timeProvider);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetCts.Token);
 
-        while (!cts.IsCancellationRequested)
+        // Drain queued upward signals: return the session on DL-CONNECT-confirm,
+        // throw on teardown, or null if nothing decisive is queued yet.
+        Ax25Session? DrainForConfirm()
         {
             while (cached.Signals.TryDequeue(out var sig))
             {
@@ -282,11 +287,25 @@ public sealed class Ax25Listener : IAsyncDisposable
                             $"outbound connect to {remote} torn down before DL-CONNECT-confirm arrived (peer refused or link reset).");
                 }
             }
+            return null;
+        }
+
+        while (!cts.IsCancellationRequested)
+        {
+            if (DrainForConfirm() is { } connected) return connected;
             try { await Task.Delay(25, cts.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
         }
 
+        // An explicit caller-cancel is a cancellation, not a timeout — honour it first.
         ct.ThrowIfCancellationRequested();
+
+        // Final drain before declaring failure: a DL-CONNECT-confirm enqueued in
+        // the last poll window — after the loop's inner drain, as the budget
+        // expired and Task.Delay was cancelled — would otherwise be lost to a
+        // spurious timeout even though the connect actually succeeded.
+        if (DrainForConfirm() is { } lateConfirm) return lateConfirm;
+
         throw new TimeoutException(
             $"outbound connect to {remote} timed out after {budget.TotalSeconds:F1}s without DL-CONNECT-confirm.");
     }

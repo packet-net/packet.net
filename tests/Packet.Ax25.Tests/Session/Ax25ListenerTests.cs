@@ -337,6 +337,43 @@ public class Ax25ListenerTests
     }
 
     [Fact]
+    public async Task ConnectAsync_Does_Not_Lose_A_Connect_Ack_That_Lands_As_The_Budget_Expires()
+    {
+        // Regression for the connect-ack lost-wakeup: ConnectAsync polled
+        // cached.Signals and, on budget expiry, broke out and threw a
+        // TimeoutException WITHOUT a final drain — so a DL-CONNECT-confirm enqueued
+        // in the last poll window (after the loop's inner drain, as the budget
+        // fired) was dropped, and a connect that actually succeeded reported a
+        // spurious timeout. The budget runs on the listener's FakeTimeProvider, so
+        // we expire it deterministically with the confirm freshly queued and the
+        // real 25 ms poll loop parked.
+        var time = new FakeTimeProvider();
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            N2 = 2,
+            T1V = TimeSpan.FromSeconds(5),   // fake-clock budget = (N2+1)·T1V = 15 s
+        }, time);
+        await listener.StartAsync();
+
+        var connectTask = listener.ConnectAsync(PeerCallA);
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2)); // SABM out; loop now polling
+
+        // Deliver the UA and let the inbound pump enqueue the DL-CONNECT-confirm (a
+        // brief settle, far under the 25 ms poll cadence so the loop hasn't drained
+        // it yet), then expire the fake-clock budget so the poll loop breaks with
+        // the confirm still queued — the exact lost-wakeup window.
+        modem.InjectInbound(Ax25Frame.Ua(LocalCall, PeerCallA, finalBit: true));
+        await Task.Delay(5);
+        time.Advance(TimeSpan.FromSeconds(16));
+
+        var session = await connectTask.WithTimeout(TimeSpan.FromSeconds(2));
+        session.CurrentState.Should().Be("Connected",
+            "a connect-ack that arrives as the budget expires must not be lost to a spurious timeout");
+    }
+
+    [Fact]
     public async Task Configured_N2_And_T1V_Bound_The_Connect_Backstop()
     {
         // With N2 and T1V both honoured through establishment, a connect to a peer
