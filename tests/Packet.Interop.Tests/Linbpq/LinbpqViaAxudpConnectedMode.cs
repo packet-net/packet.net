@@ -32,7 +32,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <b>Topology.</b> LinBPQ's BPQAXIP driver binds UDP 8093 (published on the
 /// host as <c>127.0.0.1:8093</c>). pdn binds a fixed host UDP port (8190) and
 /// points its <see cref="AxudpTransport"/> at <c>127.0.0.1:8093</c>. BPQ's
-/// <c>bpq32.cfg</c> AXIP port carries <c>AUTOADDMAP</c> (auto-learn pdn's reply
+/// <c>bpq32.cfg</c> AXIP port carries <c>AUTOADDQUIET</c> (auto-learn pdn's reply
 /// route from the first inbound frame, for the pdn→BPQ leg) and a static
 /// <c>MAP PNAX25-1 172.30.0.1 UDP 8190</c> (172.30.0.1 = the rfnet bridge
 /// gateway = the host, where pdn binds — used for the BPQ→pdn leg, where there
@@ -74,7 +74,7 @@ public sealed class LinbpqViaAxudpConnectedMode
     private const int    BpqTelnetPort = 8010;   // node prompt (for BPQ→pdn dial-out)
 
     // The static MAP target in bpq32.cfg: BPQ originates connects to THIS exact
-    // callsign + port (Direction B has no inbound for AUTOADDMAP to learn from).
+    // callsign + port (Direction B has no inbound for AUTOADDQUIET to learn from).
     private const int    PdnMappedPort = 8190;
     private static readonly Callsign PdnMappedCall = new("PNAX25", 1);
 
@@ -85,7 +85,7 @@ public sealed class LinbpqViaAxudpConnectedMode
 
     private static readonly Callsign BpqCall = new("PN0TST", 0);   // BPQ NODECALL
 
-    // Directions A and the FCS guard don't need the static MAP — BPQ's AUTOADDMAP
+    // Directions A and the FCS guard don't need the static MAP — BPQ's AUTOADDQUIET
     // auto-learns their reply route from the inbound SABM (verified). They each use
     // a DISTINCT callsign and a DISTINCT, FIXED local port. Distinct callsigns make
     // BPQ track three independent links, so the shared daemon can't leak link/MH
@@ -117,7 +117,7 @@ public sealed class LinbpqViaAxudpConnectedMode
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
-        // Distinct callsign + distinct fixed local port: AUTOADDMAP gives BPQ the
+        // Distinct callsign + distinct fixed local port: AUTOADDQUIET gives BPQ the
         // reply route (no static MAP needed) and this test is its own isolated BPQ
         // link; the fixed port keeps BPQ's AUTOADD cache valid across re-runs.
         await using var pdn = BuildPdn(call: PdnDialOutCall, localPort: PdnDialOutPort);
@@ -173,7 +173,7 @@ public sealed class LinbpqViaAxudpConnectedMode
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         // BPQ originates this connect, so pdn MUST be at the static MAP target
-        // (callsign + fixed port) — there's no inbound for AUTOADDMAP to learn.
+        // (callsign + fixed port) — there's no inbound for AUTOADDQUIET to learn.
         await using var pdn = BuildPdn(
             call: PdnMappedCall,
             localPort: PdnMappedPort,
@@ -228,7 +228,7 @@ public sealed class LinbpqViaAxudpConnectedMode
             $"LinBPQ not reachable (HTTP {Host}:{BpqHttpPort}). Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait'.");
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        // Distinct callsign + distinct fixed port: an isolated BPQ link (AUTOADDMAP
+        // Distinct callsign + distinct fixed port: an isolated BPQ link (AUTOADDQUIET
         // gives the reply route), so a prior test's BPQ state can't leak in; the
         // fixed port keeps BPQ's AUTOADD cache valid across re-runs.
         using var sock = new AxudpSocket(localPort: PdnFcsPort);

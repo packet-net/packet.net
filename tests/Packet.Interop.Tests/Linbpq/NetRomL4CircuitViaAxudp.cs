@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,141 +7,159 @@ using AwesomeAssertions;
 using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
-using Packet.Kiss;
+using Packet.Interop.Tests.Netsim;
 using Packet.NetRom.Routing;
 using Packet.NetRom.Transport;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Transports;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace Packet.Interop.Tests.Netsim;
+namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
-/// The NET/ROM <b>L3-origination + L4-circuit</b> interop against a real LinBPQ over
-/// net-sim — the deferred "real-BPQ-L4 interop" the #305 read-only slice left as a
-/// §7.1 follow-up. Where <see cref="NetRomNodesIngestViaNetsim"/> proves pdn
-/// <em>hears</em> BPQ's NODES (read-only), this proves the <em>transmitting</em>
-/// stack interoperates both ways:
+/// <b>Tier 2 (frame-perfect, modem-less) NET/ROM L3-origination + L4-circuit
+/// interop vs real LinBPQ over AXUDP.</b> The AXUDP re-home of the load-sensitive
+/// net-sim <c>NetRomL4CircuitViaNetsim</c> (removed): it asserts the <em>same</em>
+/// protocol behaviour against a real LinBPQ 6.0.25.23 — NODES both ways, an L4 circuit each
+/// way with Information round-tripping, and the Connect-Request info-field framing
+/// — but over a BPQAXIP/UDP tunnel (<see cref="AxudpKissModem"/>) rather than
+/// net-sim's software-AFSK channel. AXUDP is AX.25-frames-over-UDP, so it sheds the
+/// net-sim flakiness (CPU-glitch → audio-decode-fail → fake loss / half-duplex
+/// collision) while staying a genuine real-BPQ interop. See <c>docs/plan.md</c> §7.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>1. L3 both ways.</b> A pdn <see cref="NetRomService"/> with
-/// <see cref="NetRomConfig.Broadcast"/> on and a node alias <em>originates</em> a
-/// NODES broadcast on the netsim channel; we then query LinBPQ's own node interface
-/// (the sysop <c>ROUTES</c>/<c>NODES</c> commands, reached via the real
-/// positional-challenge <c>PASSWORD</c> handshake) and assert <b>BPQ learned pdn as
-/// a node + route</b>. The reverse (pdn hears BPQ's NODES) is the #305 assertion,
-/// re-checked here.
+/// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
+/// <see cref="AxudpKissModem"/> bound to a fixed host UDP port, pointed at BPQ's
+/// BPQAXIP/UDP listener (127.0.0.1:8093). A <see cref="NetRomService"/> with
+/// broadcast + connect on rides that one listener — the whole NET/ROM stack
+/// (NODES origination, interlink AX.25 PID-0xCF sessions, L4 circuits) is
+/// transport-agnostic, so swapping KISS-TCP for the AXUDP modem is the only change
+/// from the net-sim test.
 /// </para>
 /// <para>
-/// <b>2. L4 circuit pdn → BPQ (the core deliverable).</b> With
-/// <see cref="NetRomConfig.Connect"/> on, pdn routes a <c>connect</c> to BPQ's node
-/// over NET/ROM: <see cref="NetRomService.ConnectCircuitAsync"/> opens an interlink
-/// AX.25 PID-0xCF session to BPQ and originates an L4 circuit end-to-end; a command
-/// round-trips to BPQ's node prompt over the circuit; then it disconnects cleanly.
-/// This is the deterministic core (pdn establishes the interlink first, so there is
-/// no fresh-link race).
+/// <b>BPQAXIP NODES delivery (source-verified + on-the-wire; see
+/// <see cref="NetRomNodesIngestViaAxudp"/> for the full finding).</b> A point-to-point
+/// BPQAXIP port drops its own NODES UI broadcast unless the recipient MAP entry is
+/// flagged a broadcast target. The fixture's AXIP port carries
+/// <c>BROADCAST NODES</c> + <c>MAP PNL4BX-1 … B</c> so BPQ emits its
+/// <c>PN0TST &gt; NODES</c> to pdn over UDP — the AXUDP counterpart of the net-sim
+/// port's <c>QUALITY=192</c>. pdn's own NODES is a UI frame addressed to
+/// <c>NODES</c>; BPQ's <c>AUTOADDQUIET</c> learns pdn's reply route from it.
 /// </para>
 /// <para>
-/// <b>3. L4 circuit BPQ → pdn (reverse).</b> After BPQ has learned pdn (step 1), we
-/// drive BPQ's telnet <c>C &lt;pdn-alias&gt;</c> so BPQ originates the circuit to us;
-/// pdn's <see cref="CircuitManager.IncomingCircuit"/> fires, pdn accepts + bridges a
-/// tiny echo console, and data round-trips. Because BPQ pipelines its Connect
-/// Request I-frame onto a fresh interlink (and abandons it if our AX.25 session
-/// isn't up yet — BPQ does not re-originate the L4 connect), we re-drive BPQ's
-/// connect on a bounded cadence so a single raced/lost frame doesn't fail the run.
+/// <b>1. L3 both ways.</b> pdn (<c>broadcast</c>, alias <c>PNL4B</c>) originates
+/// NODES → BPQ learns it (queried via the sysop <c>ROUTES</c>/<c>NODES</c>), and
+/// pdn hears BPQ's <c>PNTST:PN0TST</c> (provoked via <c>PASSWORD</c> →
+/// <c>SENDNODES</c>).
 /// </para>
 /// <para>
-/// <b>The BPQ framing finding (#308 follow-up).</b> Verifying our L4 framing against
-/// real BPQ surfaced one genuine divergence and fixed it: the Connect Request's
-/// <em>proposed window</em> and <em>originating user/node</em> travel in the INFO
-/// field (<c>[window][user][node]</c>, the de-facto NET/ROM form BPQ originates +
-/// accepts), <b>not</b> the transport-header TX byte where pdn previously put the
-/// window. BPQ accepted our circuit either way (the window mis-placement only
-/// mis-set the negotiated window), but inbound we mis-read BPQ's originating user +
-/// proposed window until the fix. See <see cref="ConnectRequestInfo"/> and the
-/// strict-vs-pragmatic audit.
+/// <b>2. L4 circuit pdn → BPQ (the core deliverable).</b>
+/// <see cref="NetRomService.ConnectCircuitAsync"/> opens an interlink AX.25 PID-0xCF
+/// session over the AXUDP tunnel + originates an L4 circuit; a command round-trips
+/// to BPQ's node prompt over the circuit (BPQ's <c>PN0TST</c> identity relays back —
+/// Information both ways); then a clean Disconnect Request/Acknowledge.
 /// </para>
 /// <para>
-/// <b>Topology note.</b> On this net-sim topology node a (8100, "ours") links to
-/// node c (8102, LinBPQ) but NOT to node d (8103, XRouter); BPQ and XRouter cannot
-/// hear each other, so a multi-hop pdn → via-BPQ → XRouter routed connect is not
-/// feasible here and is not attempted.
+/// <b>3. L4 circuit BPQ → pdn (reverse).</b> We drive BPQ's telnet <c>C PNL4B</c> so
+/// BPQ originates the circuit to pdn over AXIP; pdn's
+/// <see cref="CircuitManager.IncomingCircuit"/> fires, pdn accepts + bridges a tiny
+/// echo console, and a line round-trips. BPQ pipelines its Connect Request onto a
+/// fresh interlink and abandons it if pdn's AX.25 session isn't up yet, so we
+/// re-drive on a bounded cadence (same as the net-sim test) — but over a lossless
+/// tunnel the first attempt almost always lands.
+/// </para>
+/// <para>
+/// <b>The Connect-Request info-field framing</b> (the #308/#309 finding, re-asserted
+/// frame-perfectly here): BPQ carries the proposed window + originating user/node in
+/// the INFO field (<c>[window][user][node]</c>), not the transport-header TX byte —
+/// the <see cref="ConnectRequestInfo"/> codec. The reverse-circuit
+/// <see cref="CircuitManager.IncomingCircuit"/> assertion reads BPQ's originating
+/// user from exactly that field, so a regression there fails this test.
+/// </para>
+/// <para>
+/// <b>Determinism.</b> Over a reliable UDP tunnel the budgets are far tighter than
+/// the net-sim version's (no channel loss, no half-duplex collision, no audio decode
+/// to glitch under CPU load) — this is the load-insensitivity the Tier-2 re-home
+/// buys. Serialised into <see cref="NetsimCollection"/> (shared BPQ daemon + fixed
+/// UDP port); tagged <c>Group=NetRom</c> so it runs in the clean-stack-fenced
+/// NET/ROM phase of <c>interop.yml</c> (fresh BPQ → no learned-state carryover),
+/// isolated from the timing-sensitive AX.25 tests. <c>NetRomService</c> is
+/// <c>await using</c> so its <c>DisposeAsync</c> cleanly DISCs the interlink before
+/// the listener disposes (BPQ-state hygiene — the #309 teardown discipline).
 /// </para>
 /// <para>
 /// Bring the stack up with
-/// <c>docker compose -f docker/compose.interop.yml up -d --wait</c>. Per
-/// <c>docs/plan.md</c> §7.1 the interop matrix is environmentally flaky and
-/// non-blocking; re-run a lone red in isolation (the #47 box-contention lesson).
+/// <c>docker compose -f docker/compose.interop.yml up -d --wait</c>.
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
-[Trait("Group", "NetRom")]   // isolated from the timing-sensitive AX.25 tests — interop.yml runs the NET/ROM group against a freshly-recreated stack (see docs/plan.md §7.2)
+[Trait("Group", "NetRom")]
 [Collection(NetsimCollection.Name)]
-public class NetRomL4CircuitViaNetsim
+public class NetRomL4CircuitViaAxudp
 {
     private const string Host = "127.0.0.1";
-    private const int OurKissPort = 8100;                        // net-sim node a — the shared "ours" endpoint
-    private const int BpqTelnetPort = 8010;                      // LinBPQ node prompt
+    private const int BpqAxudpPort = 8093;    // BPQAXIP/UDP listener (published)
+    private const int BpqHttpPort = 8008;     // liveness probe
+    private const int BpqTelnetPort = 8010;   // node prompt
 
-    // A pdn node identity distinct from every other interop test's callsigns so a
-    // torn-down link/route from another test cannot be confused with ours, and BPQ
-    // has no stale interlink to this callsign at the start of the run.
-    private static readonly Callsign OurCall = new("PNL4ND", 0);
-    private const string OurAlias = "PNL4";
+    // pdn binds the static-MAP target port + uses the static-MAP target callsign so
+    // BPQ's reply route (static MAP + AUTOADD) is stable across re-runs.
+    private const int PdnLocalPort = 8195;
+    private static readonly Callsign OurCall = new("PNL4BX", 1);
+    private const string OurAlias = "PNL4B";
     private static readonly Callsign BpqCall = new("PN0TST", 0);
 
-    private const string BpqPasswordText = "WONTLISTEN";          // docker/linbpq/bpq32.cfg PASSWORD=
+    private const string BpqPasswordText = "WONTLISTEN";   // docker/linbpq/bpq32.cfg PASSWORD=
 
-    // pdn originates NODES on this cadence so BPQ learns it; bounded overall.
-    private static readonly TimeSpan BroadcastEvery = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan BpqLearnsUsBudget = TimeSpan.FromSeconds(90);
+    // pdn originates NODES on this cadence so BPQ keeps a fresh route + AUTOADD entry.
+    private static readonly TimeSpan BroadcastEvery = TimeSpan.FromSeconds(2);
 
-    // We must hear BPQ's NODES first (so we have a route to it for the outbound L4).
-    private static readonly TimeSpan HearBpqBudget = TimeSpan.FromSeconds(90);
-    private static readonly TimeSpan BpqResendEvery = TimeSpan.FromSeconds(12);
-
-    // L4 connect/data budgets — generous-but-bounded for the simulated half-duplex
-    // AFSK1200 channel (these chain several real-time AX.25 + L4 handshakes).
-    private static readonly TimeSpan OutboundConnectBudget = TimeSpan.FromSeconds(50);
-    private static readonly TimeSpan InboundCircuitBudget = TimeSpan.FromSeconds(120);
-    private static readonly TimeSpan DataRoundTripBudget = TimeSpan.FromSeconds(30);
+    // Reliable UDP tunnel → tight, bounded budgets (no channel loss / half-duplex).
+    private static readonly TimeSpan HearBpqBudget = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan BpqResendEvery = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan BpqLearnsUsBudget = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan OutboundConnectBudget = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan InboundCircuitBudget = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DataRoundTripBudget = TimeSpan.FromSeconds(20);
 
     private readonly ITestOutputHelper output;
 
-    public NetRomL4CircuitViaNetsim(ITestOutputHelper output) => this.output = output;
+    public NetRomL4CircuitViaAxudp(ITestOutputHelper output) => this.output = output;
 
-    [Fact]
-    public async Task Pdn_originates_NODES_and_runs_L4_circuits_both_ways_with_real_linbpq()
+    [SkippableFact]
+    public async Task Pdn_originates_NODES_and_runs_L4_circuits_both_ways_with_real_linbpq_over_axudp()
     {
-        using var cts = new CancellationTokenSource(
-            BpqLearnsUsBudget + HearBpqBudget + OutboundConnectBudget + InboundCircuitBudget + TimeSpan.FromSeconds(120));
+        Skip.IfNot(await IsTcpPortReachable(Host, BpqHttpPort),
+            $"LinBPQ not reachable (HTTP {Host}:{BpqHttpPort}). Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait'.");
 
-        await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
-        await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions { MyCall = OurCall });
+        using var cts = new CancellationTokenSource(
+            HearBpqBudget + BpqLearnsUsBudget + OutboundConnectBudget + InboundCircuitBudget + TimeSpan.FromSeconds(90));
+
+        await using var modem = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
 
         // `await using` (not `using`): NetRomService.DisposeAsync runs the GRACEFUL
-        // teardown — it DISCs every interlink AX.25 session and waits (bounded) for the
-        // DISC/UA to round-trip on the wire BEFORE the listener below is disposed (the
-        // listener is declared earlier, so it disposes after this). That stops the test
-        // leaving LinBPQ a half-open interlink it would poll onto the shared channel and
-        // flake a subsequent timing-sensitive AX.25 test (the contamination this PR fixes).
+        // teardown — DISCs the interlink AX.25 session + waits (bounded) for DISC/UA on
+        // the wire BEFORE the listener (declared earlier → disposed after) is torn down,
+        // so BPQ isn't left a half-open interlink (the #309 hygiene discipline; cheap
+        // over a UDP tunnel).
         await using var netRom = new NetRomService(new NetRomConfig
         {
             Enabled = true,
             Broadcast = true,
             Connect = true,
             Alias = OurAlias,
-            // Fast-ish L4 retransmit so a dropped Info on the sim channel recovers
-            // inside the data round-trip budget.
+            // Fast-ish L4 retransmit; on a lossless tunnel this rarely fires.
             TransportTimeoutSeconds = 4,
             TransportRetries = 5,
         });
 
         // Bridge an inbound NET/ROM circuit (BPQ -> pdn) to a tiny echo console so we
-        // can both observe IncomingCircuit AND prove data round-trips over the circuit.
+        // observe IncomingCircuit AND prove data round-trips over the circuit.
         var inboundSeen = new TaskCompletionSource<Callsign>(TaskCreationOptions.RunContinuationsAsynchronously);
         var inboundEchoed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         netRom.RunInboundConsole = async (conn, ct) =>
@@ -158,7 +177,7 @@ public class NetRomL4CircuitViaNetsim
             }
         };
 
-        netRom.AttachPort("vhf", OurCall, listener);
+        netRom.AttachPort("axudp", OurCall, listener);
         if (netRom.Circuits is not null)
         {
             netRom.Circuits.IncomingCircuit += (_, e) =>
@@ -169,34 +188,30 @@ public class NetRomL4CircuitViaNetsim
         }
         await listener.StartAsync(cts.Token);
 
-        // Keep originating our NODES for the whole test so BPQ keeps a fresh route to
-        // us (its obsolescence count would otherwise decay). Stopped at the end.
+        // Keep originating pdn's NODES for the whole test (BPQ's obsolescence + AUTOADD
+        // would otherwise decay). Stopped at the end.
         using var broadcastCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
         var broadcaster = RunBroadcastLoop(netRom, broadcastCts.Token);
 
         try
         {
             // ── L3 (a): pdn hears BPQ's NODES (so we have a route to BPQ) ─────────
-            // Provoke BPQ's immediate NODES via the sysop SENDNODES handshake, then
-            // wait (bounded, re-triggering) until we have learned BPQ as a neighbour.
             var heardBpq = await ProvokeAndHearBpqAsync(netRom, cts.Token);
             heardBpq.Should().BeTrue(
-                "pdn must hear LinBPQ's NODES (PN0TST) so it has a NET/ROM route to dial the L4 circuit over");
-            DumpSnapshot(netRom.Snapshot(), "after hearing BPQ");
+                "pdn must hear LinBPQ's NODES (PN0TST) over AXUDP so it has a NET/ROM route to dial the L4 circuit over");
+            DumpSnapshot(netRom.Snapshot(), "after hearing BPQ (AXUDP)");
 
             // ── L3 (b): BPQ learns pdn as a node + route ─────────────────────────
-            // Query BPQ's own node interface and assert our alias/callsign appears in
-            // its ROUTES (a directly-heard NET/ROM neighbour on the netsim port).
             var bpqLearnedUs = await WaitForBpqToLearnUsAsync(cts.Token);
             bpqLearnedUs.Should().BeTrue(
-                "LinBPQ must learn pdn as a NET/ROM node/route from pdn's originated NODES broadcast (checked via BPQ's ROUTES/NODES)");
+                "LinBPQ must learn pdn as a NET/ROM node/route from pdn's originated NODES (checked via BPQ's ROUTES/NODES)");
 
             // ── L4 (1): pdn -> BPQ circuit (the core deliverable) ────────────────
             var dest = netRom.Snapshot().ResolveDestination("PNTST")
                        ?? netRom.Snapshot().ResolveDestination(BpqCall.ToString());
             dest.Should().NotBeNull("pdn resolves BPQ (alias PNTST / call PN0TST) as a NET/ROM destination to route to");
 
-            output.WriteLine($"opening L4 circuit pdn -> {dest!.Destination} via {dest.BestRoute?.Neighbour}");
+            output.WriteLine($"opening L4 circuit pdn -> {dest!.Destination} via {dest.BestRoute?.Neighbour} (AXUDP)");
             using (var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token))
             {
                 connectCts.CancelAfter(OutboundConnectBudget);
@@ -205,50 +220,32 @@ public class NetRomL4CircuitViaNetsim
                 connection.TransportKind.Should().Be(NodeTransportKind.NetRom,
                     "the console relays the user against a NET/ROM L4 circuit, not a direct AX.25 session");
                 netRom.Circuits!.Circuits.Should().NotBeEmpty("pdn holds the originating L4 circuit to BPQ");
-                output.WriteLine("*** L4 circuit pdn -> BPQ ESTABLISHED ***");
+                output.WriteLine("*** L4 circuit pdn -> BPQ ESTABLISHED over AXUDP ***");
 
-                // Data round-trip (the proof L4 Information flows BOTH ways): send a
-                // command into the circuit (pdn -> BPQ Information) and read BPQ's node
-                // reply back out (BPQ -> pdn Information). BPQ's node prompt is
-                // "PNTST:PN0TST}" so its callsign appears in the reply. We accumulate
-                // ALL circuit RX over a bounded window rather than requiring a specific
-                // frame first — BPQ also relays unrelated NET/ROM transit chatter (e.g.
-                // XRouter L3RTT keep-alives) over the session, which can interleave with
-                // the node output, so order is not guaranteed.
-                await connection.WriteAsync(Encoding.ASCII.GetBytes("\r"), cts.Token);          // nudge the prompt
-                await connection.WriteAsync(Encoding.ASCII.GetBytes("PORTS\r"), cts.Token);     // a sysop-free node command
+                // Data round-trip (Information both ways): nudge the prompt, send a
+                // sysop-free node command, accumulate BPQ's reply (which carries its
+                // PN0TST node identity). BPQ may interleave NET/ROM transit chatter, so
+                // accumulate over a bounded window rather than requiring a first frame.
+                await connection.WriteAsync(Encoding.ASCII.GetBytes("\r"), cts.Token);
+                await connection.WriteAsync(Encoding.ASCII.GetBytes("PORTS\r"), cts.Token);
                 var reply = await ReadCircuitAccumulateAsync(connection, "PN0TST", DataRoundTripBudget, cts.Token);
                 reply.Should().Contain("PN0TST",
                     "a command sent over the L4 circuit reaches BPQ's node and the reply (carrying BPQ's PN0TST node identity) relays back — Information round-trips both directions over the circuit");
                 output.WriteLine($"circuit data round-trip; reply contained BPQ identity. Sample: {Collapse(reply).Substring(0, Math.Min(160, Collapse(reply).Length))}");
-
-                // Clean disconnect: disposing the connection sends a Disconnect
-                // Request; BPQ answers Disconnect Acknowledge and the circuit closes.
             }
-            // After the using-block the circuit has been torn down; BPQ acked it.
             await WaitUntil(() => netRom.Circuits!.Circuits.All(c => c.State == NetRomCircuitState.Disconnected),
                 TimeSpan.FromSeconds(15), cts.Token);
             output.WriteLine("*** L4 circuit pdn -> BPQ DISCONNECTED cleanly ***");
 
             // ── L4 (2): BPQ -> pdn circuit (reverse) ─────────────────────────────
-            // Drive BPQ's telnet `C <pdn-alias>` so BPQ originates the L4 circuit to
-            // us, then push a data line through BPQ which it relays over the circuit to
-            // pdn's echo console (proving BPQ -> pdn Information); pdn echoes it, and
-            // inboundEchoed fires. Re-drive on a bounded cadence: BPQ pipelines its
-            // Connect Request onto a fresh interlink and abandons it if our AX.25
-            // session isn't up yet (BPQ does not re-originate the L4 connect), so a
-            // single attempt can race on the lossy channel; the retry lands it.
             var reverseEstablished = await DriveBpqConnectAndDataAsync(inboundSeen, inboundEchoed, cts.Token);
             reverseEstablished.Should().BeTrue(
-                "LinBPQ originates a NET/ROM L4 circuit to pdn (C <alias>) and pdn's CircuitManager raises IncomingCircuit");
+                "LinBPQ originates a NET/ROM L4 circuit to pdn (C <alias>) over AXUDP and pdn's CircuitManager raises IncomingCircuit");
 
             inboundSeen.Task.IsCompletedSuccessfully.Should().BeTrue("the reverse circuit reached pdn (IncomingCircuit fired)");
-
-            // Data round-trip over the reverse circuit: BPQ relayed a line to pdn's
-            // echo console, which acked it back over the circuit.
             inboundEchoed.Task.IsCompletedSuccessfully.Should().BeTrue(
                 "data round-trips over the BPQ -> pdn L4 circuit (BPQ relays a line; pdn's echo console replies over the circuit)");
-            output.WriteLine("*** L4 circuit BPQ -> pdn ESTABLISHED + data round-tripped ***");
+            output.WriteLine("*** L4 circuit BPQ -> pdn ESTABLISHED + data round-tripped over AXUDP ***");
         }
         finally
         {
@@ -303,9 +300,6 @@ public class NetRomL4CircuitViaNetsim
             try
             {
                 var (nodes, routes) = await BpqTelnet.QueryNodesAndRoutesAsync(Host, BpqTelnetPort, BpqPasswordText, output, cts.Token);
-                // BPQ shows a learned NET/ROM neighbour in ROUTES (e.g. "> 3 PNL4ND  192 1")
-                // and the node in NODES ("PNL4:PNL4ND"). Match our callsign base in
-                // either; ROUTES is the directly-heard-neighbour proof.
                 if (routes.Contains(OurCall.Base, StringComparison.OrdinalIgnoreCase) ||
                     nodes.Contains(OurCall.Base, StringComparison.OrdinalIgnoreCase))
                 {
@@ -315,7 +309,7 @@ public class NetRomL4CircuitViaNetsim
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested) { break; }
             catch (Exception ex) { output.WriteLine($"BPQ query failed (will retry): {ex.Message}"); }
-            try { await Task.Delay(3000, cts.Token); } catch (OperationCanceledException) { break; }
+            try { await Task.Delay(2000, cts.Token); } catch (OperationCanceledException) { break; }
         }
         return false;
     }
@@ -334,36 +328,22 @@ public class NetRomL4CircuitViaNetsim
             }
             try
             {
-                // One telnet session: `C <alias>` → wait for the circuit to reach pdn
-                // (IncomingCircuit) → push a data line BPQ relays to pdn over the
-                // circuit → hold until pdn echoes it back (inboundEchoed) or the
-                // per-attempt budget elapses.
                 await BpqTelnet.ConnectAndSendAsync(
                     Host, BpqTelnetPort, BpqPasswordText, OurAlias, "hello-from-bpq\r",
-                    TimeSpan.FromSeconds(30),
+                    TimeSpan.FromSeconds(20),
                     () => inboundSeen.Task.IsCompleted, () => inboundEchoed.Task.IsCompleted,
                     output, cts.Token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested) { break; }
             catch (Exception ex) { output.WriteLine($"BPQ C {OurAlias} attempt failed (will retry): {ex.Message}"); }
 
-            if (inboundSeen.Task.IsCompleted)
-            {
-                // Circuit reached pdn; even if the echo round-trip needs another nudge,
-                // the reverse-establish goal is met. Keep looping (bounded) to land the
-                // data echo too.
-                if (inboundEchoed.Task.IsCompleted) return true;
-            }
+            if (inboundSeen.Task.IsCompleted && inboundEchoed.Task.IsCompleted) return true;
             try { await Task.Delay(2000, cts.Token); } catch (OperationCanceledException) { break; }
         }
-        // Establishment is the hard requirement; the data echo is asserted separately.
         return inboundSeen.Task.IsCompleted;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
-    // Accumulate circuit RX until the needle is seen or the budget elapses (whichever
-    // first). Unlike a single-frame read, this tolerates BPQ interleaving unrelated
-    // NET/ROM transit frames before the node output we want.
     private static async Task<string> ReadCircuitAccumulateAsync(INodeConnection conn, string needle, TimeSpan budget, CancellationToken outer)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
@@ -381,8 +361,7 @@ public class NetRomL4CircuitViaNetsim
             }
             else if (sb.Length > 0)
             {
-                // EOF on the circuit (closed) — return what we have.
-                break;
+                break;   // EOF on the circuit (closed)
             }
         }
         return sb.ToString();
@@ -415,17 +394,25 @@ public class NetRomL4CircuitViaNetsim
         }
     }
 
+    private static async Task<bool> IsTcpPortReachable(string host, int port)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+            await client.ConnectAsync(host, port, cts.Token);
+            return client.Connected;
+        }
+        catch { return false; }
+    }
+
     /// <summary>
-    /// IAC-aware telnet driver for LinBPQ's node prompt: performs the real
-    /// positional-challenge sysop auth (so the sysop command set — SENDNODES, ROUTES,
-    /// NODES — is unlocked), and exposes the operations this test needs.
+    /// IAC-aware telnet driver for LinBPQ's node prompt: the source-verified
+    /// positional-challenge sysop auth, plus the operations this test needs
+    /// (SENDNODES, ROUTES/NODES query, and an outbound <c>C &lt;alias&gt;</c> +
+    /// data-relay). The same driver shape the removed net-sim
+    /// <c>NetRomL4CircuitViaNetsim</c> used.
     /// </summary>
-    /// <remarks>
-    /// Mirrors the <c>BpqSysop</c> driver in <see cref="NetRomNodesIngestViaNetsim"/>
-    /// (the challenge: log in as the non-sysop <c>netop</c> user → bare
-    /// <c>PASSWORD</c> → five 1-based positions → answer the chars at those positions
-    /// → <c>Ok</c>). Kept a separate nested type so each test owns its driver.
-    /// </remarks>
     private static class BpqTelnet
     {
         private const byte IAC = 255, DONT = 254, DO = 253, WONT = 252, WILL = 251;
@@ -459,14 +446,6 @@ public class NetRomL4CircuitViaNetsim
             return (nodes, routes);
         }
 
-        /// <summary>
-        /// Issue <c>C &lt;alias&gt;</c>; once the circuit reaches pdn
-        /// (<paramref name="established"/>), send <paramref name="payload"/> (which BPQ
-        /// relays over the circuit to pdn) and keep reading until pdn has echoed it
-        /// (<paramref name="echoed"/>) or <paramref name="hold"/> elapses. Holding the
-        /// telnet session open is essential — closing it tears the circuit down before
-        /// the echo can round-trip.
-        /// </summary>
         public static async Task ConnectAndSendAsync(
             string host, int port, string passwordText, string alias, string payload, TimeSpan hold,
             Func<bool> established, Func<bool> echoed, ITestOutputHelper output, CancellationToken ct)
@@ -484,21 +463,17 @@ public class NetRomL4CircuitViaNetsim
             bool payloadSent = false;
             while (!cts.IsCancellationRequested && !echoed())
             {
-                // Push the payload once BPQ's telnet reports the circuit is up
-                // ("Connected to ...") AND pdn has seen the IncomingCircuit — only then
-                // is BPQ in transparent passthrough; earlier input would hit BPQ's node
-                // command interpreter ("Invalid command") instead of the circuit.
                 if (!payloadSent && established() &&
                     acc.ToString().Contains("Connected", StringComparison.OrdinalIgnoreCase))
                 {
                     payloadSent = true;
-                    await Task.Delay(500, cts.Token);   // let BPQ settle into passthrough
+                    await Task.Delay(500, cts.Token);
                     await SendLineRawAsync(stream, payload, ct);
                     output.WriteLine($"BPQ relayed payload over circuit: {payload.Replace("\r", "\\r")}");
                 }
 
                 var readCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-                readCts.CancelAfter(TimeSpan.FromSeconds(2));   // poll so we can (re)check the connect/echo gates
+                readCts.CancelAfter(TimeSpan.FromSeconds(2));
                 int n;
                 try { n = await stream.ReadAsync(buf, readCts.Token); }
                 catch (OperationCanceledException) when (!cts.IsCancellationRequested) { continue; }
@@ -609,7 +584,6 @@ public class NetRomL4CircuitViaNetsim
             return sb.ToString();
         }
 
-        // Read everything that arrives within the window (multi-line command output).
         private static async Task<string> ReadForAsync(NetworkStream stream, TimeSpan budget, CancellationToken ct)
         {
             var sb = new StringBuilder();
