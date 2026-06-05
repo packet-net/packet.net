@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
@@ -56,8 +57,10 @@ public sealed class NetRomL3L4IntegrationTests
     {
         public async ValueTask DisposeAsync()
         {
+            // Dispose NET/ROM first (its DisposeAsync DISCs interlinks while the
+            // supervisor's listeners are still alive — mirrors NodeHostedService).
+            await NetRom.DisposeAsync();
             await Supervisor.DisposeAsync();
-            NetRom.Dispose();
         }
     }
 
@@ -118,6 +121,57 @@ public sealed class NetRomL3L4IntegrationTests
         // The interlink + circuit are live on both nodes.
         a.NetRom.Circuits!.Circuits.Should().NotBeEmpty("node A holds the originating circuit");
         await Wait.ForAsync(() => b.NetRom.Circuits!.Circuits.Count > 0, "node B holds the accepted circuit");
+    }
+
+    [Fact]
+    public async Task Disposing_the_service_cleanly_DISCs_its_interlink_so_the_neighbour_does_not_keep_a_half_open_link()
+    {
+        // Regression for the #309 interop-contamination class: the node that opens a
+        // NET/ROM interlink must DISC that AX.25 session on teardown, otherwise the
+        // neighbour is left with a half-open connected-mode link it keeps polling onto
+        // the shared channel (which flakes timing-sensitive AX.25 tests, and on real
+        // RF leaves a peer like LinBPQ holding a phantom session). Here we open an
+        // interlink A→B, capture B's accepted interlink session, dispose A's
+        // NetRomService, and assert B's session reaches Disconnected — i.e. A's DISC
+        // crossed the wire and B tore its half down.
+        var bus = new SharedRadioBus();
+        var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+
+        // Capture the interlink session B accepts from A (remote == A's node call).
+        Ax25Session? bInterlink = null;
+        var bPort = b.Supervisor.GetPort("p1");
+        bPort.Should().NotBeNull();
+        bPort!.Listener.SessionAccepted += (_, e) =>
+        {
+            if (e.Session.Context.Remote.Equals(ANodeCall))
+            {
+                bInterlink = e.Session;
+            }
+        };
+
+        var generous = TimeSpan.FromSeconds(60);
+        a.NetRom.BroadcastNodes();
+        b.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => a.NetRom.Snapshot().ResolveDestination("BNODE") is not null,
+            "node A should hear node B's NODES so it has a route to open the interlink", generous);
+
+        // Open the interlink + L4 circuit A→B directly (no user needed for this test).
+        var dest = a.NetRom.Snapshot().ResolveDestination("BNODE")!;
+        await using (var conn = await a.NetRom.ConnectCircuitAsync(dest, UserCall))
+        {
+            await Wait.ForAsync(() => bInterlink is not null,
+                "node B should accept node A's interlink AX.25 session", generous);
+            bInterlink!.CurrentState.Should().Be("Connected", "the interlink AX.25 session is up on B");
+        }
+
+        // Tear node A's NET/ROM service down gracefully. This must DISC the interlink.
+        await a.NetRom.DisposeAsync();
+        await a.Supervisor.DisposeAsync();
+
+        await Wait.ForAsync(() => bInterlink!.CurrentState == "Disconnected",
+            "node A's DisposeAsync must DISC its interlink so B's AX.25 session returns to Disconnected (no half-open link left polling)",
+            generous);
     }
 
     [Fact]

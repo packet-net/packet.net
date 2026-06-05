@@ -38,8 +38,21 @@ namespace Packet.Node.Core.NetRom;
 /// to a fresh node console via the injected <see cref="RunInboundConsole"/> hook.
 /// </para>
 /// </remarks>
-public sealed partial class NetRomService : INetRomRoutingView, IDisposable
+public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAsyncDisposable
 {
+    // States from which an interlink AX.25 session still owes the peer a clean
+    // DISC. Mirrors Ax25NodeConnection's teardown set — anything that isn't fully
+    // Disconnected leaves the neighbour with a half-open link it will poll.
+    private static readonly string[] LiveSessionStates =
+        ["Connected", "TimerRecovery", "AwaitingConnection", "AwaitingV22Connection", "AwaitingRelease"];
+
+    // How long to wait for an interlink's DISC/UA to settle on the wire before we
+    // give up and drop the socket anyway. Bounded so teardown can never hang — a
+    // peer that won't UA still gets the DISC frame on the wire (which is what stops
+    // it polling); the wait only buys the clean DISC/UA round-trip when the channel
+    // is healthy.
+    private static readonly TimeSpan InterlinkDisconnectGrace = TimeSpan.FromSeconds(8);
+
     private readonly NetRomConfig config;
     private readonly NetRomRoutingTable table;
     private readonly NetRomRoutingOptions routingOptions;
@@ -190,7 +203,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable
     }
 
     /// <summary>Stop hearing NODES on a port and unsubscribe its taps. Learned routes
-    /// survive; interlinks on the port are dropped.</summary>
+    /// survive. Interlinks on the port are <b>disconnected</b> (a best-effort DISC is
+    /// posted so the neighbour doesn't keep a half-open AX.25 link) and dropped. For a
+    /// clean DISC/UA round-trip on the wire before the listener is disposed, prefer
+    /// <see cref="DetachPortAsync"/>.</summary>
     public void DetachPort(string portId)
     {
         ArgumentNullException.ThrowIfNull(portId);
@@ -199,15 +215,129 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable
             attachment.Listener.FrameTraced -= attachment.FrameHandler;
             attachment.Listener.SessionAccepted -= attachment.SessionHandler;
 
-            // Drop interlinks running on this port.
+            // Drop interlinks running on this port, posting a best-effort DISC first
+            // so the neighbour tears its half of the AX.25 link down (otherwise it is
+            // left with a half-open session it polls — channel noise / interop flake).
             foreach (var (nbr, link) in interlinks)
             {
                 if (string.Equals(link.PortId, portId, StringComparison.Ordinal))
                 {
+                    RequestInterlinkDisconnect(link);
                     interlinks.TryRemove(nbr, out Interlink? _);
                 }
             }
             LogDetached(portId);
+        }
+    }
+
+    /// <summary>
+    /// Async counterpart to <see cref="DetachPort"/>: gracefully <b>disconnects</b>
+    /// the port's interlink AX.25 sessions — posting the DISC and waiting (bounded)
+    /// for each to reach Disconnected so the DISC/UA round-trips on the wire — before
+    /// the caller disposes the listener. Use this on port teardown / reconfigure so a
+    /// neighbour is never left with a half-open interlink it polls (the #309
+    /// contamination class). Learned routes survive.
+    /// </summary>
+    public async Task DetachPortAsync(string portId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        if (!attachments.TryRemove(portId, out var attachment))
+        {
+            return;
+        }
+        attachment.Listener.FrameTraced -= attachment.FrameHandler;
+        attachment.Listener.SessionAccepted -= attachment.SessionHandler;
+
+        var onPort = interlinks
+            .Where(kv => string.Equals(kv.Value.PortId, portId, StringComparison.Ordinal))
+            .ToArray();
+        foreach (var (nbr, link) in onPort)
+        {
+            interlinks.TryRemove(nbr, out Interlink? _);
+            await CloseInterlinkAsync(link, ct).ConfigureAwait(false);
+        }
+        LogDetached(portId);
+    }
+
+    // ─── L4: interlink teardown ─────────────────────────────────────────
+
+    // Post a best-effort DISC to an interlink session if it is still live. Fire and
+    // forget: the SDL serialises the DISC frame onto the wire on its pump. Used by
+    // the synchronous Dispose / DetachPort paths where we cannot await the round-trip
+    // (the caller must keep the listener alive a moment for the frame to flush).
+    private static void RequestInterlinkDisconnect(Interlink link)
+    {
+        var session = link.Session;
+        if (session is null)
+        {
+            return;
+        }
+        try
+        {
+            if (LiveSessionStates.Contains(session.CurrentState, StringComparer.Ordinal))
+            {
+                session.PostEvent(new DlDisconnectRequest());
+            }
+        }
+        catch
+        {
+            // Best-effort teardown; never throw while tearing an interlink down.
+        }
+    }
+
+    // Gracefully disconnect an interlink: post the DISC and wait (bounded) for the
+    // session to reach Disconnected, so the DISC/UA round-trips on the wire before
+    // the listener/socket is dropped. Best-effort — a peer that never UAs still got
+    // the DISC frame (which stops it polling); we just stop waiting at the grace cap.
+    private async Task CloseInterlinkAsync(Interlink link, CancellationToken ct)
+    {
+        var session = link.Session;
+        if (session is null)
+        {
+            return;
+        }
+        try
+        {
+            if (!LiveSessionStates.Contains(session.CurrentState, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnSignal(object? _, DataLinkSignal sig)
+            {
+                if (sig is DataLinkDisconnectConfirm or DataLinkDisconnectIndication)
+                {
+                    disconnected.TrySetResult();
+                }
+            }
+            session.DataLinkSignalEmitted += OnSignal;
+            try
+            {
+                session.PostEvent(new DlDisconnectRequest());
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(InterlinkDisconnectGrace);
+                // Poll the state too (covers a DISC that completes without a signal we
+                // subscribed for, and lets us exit the moment it is Disconnected).
+                while (!cts.IsCancellationRequested &&
+                       !disconnected.Task.IsCompleted &&
+                       !string.Equals(session.CurrentState, "Disconnected", StringComparison.Ordinal))
+                {
+                    try { await Task.Delay(50, cts.Token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
+                }
+            }
+            finally
+            {
+                session.DataLinkSignalEmitted -= OnSignal;
+            }
+            var neighbourText = session.Context.Remote.ToString();
+            LogInterlinkClosed(neighbourText);
+        }
+        catch
+        {
+            // Best-effort teardown; never throw while tearing an interlink down.
         }
     }
 
@@ -566,7 +696,14 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Synchronous dispose. Tears down the timer + circuit manager and detaches every
+    /// port, posting a <b>best-effort</b> DISC to each interlink AX.25 session on the
+    /// way (so a neighbour doesn't keep a half-open link). The DISC is fire-and-forget
+    /// here — the caller must keep the listeners alive momentarily for the frame to
+    /// flush. For a guaranteed clean DISC/UA round-trip on the wire, dispose via
+    /// <see cref="DisposeAsync"/> instead (the node host does).
+    /// </summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref disposed, 1) != 0)
@@ -575,6 +712,45 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable
         }
         sweepTimer?.Dispose();
         circuits?.Dispose();
+        foreach (var portId in attachments.Keys.ToArray())
+        {
+            DetachPort(portId);   // posts a best-effort DISC per interlink
+        }
+    }
+
+    /// <summary>
+    /// Graceful async dispose: stops origination, tears the L4 circuits down (their
+    /// Disconnect Requests flow over the still-live interlinks), then <b>cleanly
+    /// disconnects each interlink AX.25 session</b> — posting the DISC and waiting
+    /// (bounded) for the DISC/UA to round-trip on the wire — before detaching the
+    /// ports. This is what stops a neighbour (e.g. LinBPQ) being left with a half-open
+    /// connected-mode link that it polls onto the shared channel (the #309
+    /// contamination class). The caller must still keep the listeners alive until this
+    /// returns (the node host disposes NetRomService before the ports for exactly
+    /// this reason).
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        {
+            return;
+        }
+        sweepTimer?.Dispose();
+        // Tear the L4 circuits down first so their Disconnect Requests ride the
+        // interlinks while those AX.25 sessions are still up.
+        circuits?.Dispose();
+
+        // Now cleanly disconnect every interlink AX.25 session, waiting (bounded) for
+        // each DISC/UA to settle on the wire. Done while the listeners are still alive.
+        using var cts = new CancellationTokenSource(InterlinkDisconnectGrace + TimeSpan.FromSeconds(2));
+        foreach (var (nbr, link) in interlinks.ToArray())
+        {
+            interlinks.TryRemove(nbr, out Interlink? _);
+            await CloseInterlinkAsync(link, cts.Token).ConfigureAwait(false);
+        }
+
+        // Detach the ports (unsubscribe taps). Any interlinks are already closed +
+        // removed above, so this just drops the frame/session handlers.
         foreach (var portId in attachments.Keys.ToArray())
         {
             DetachPort(portId);
@@ -607,6 +783,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} up.")]
     private partial void LogInterlinkUp(string neighbour);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} disconnected (clean teardown).")]
+    private partial void LogInterlinkClosed(string neighbour);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: inbound circuit from {OriginatingUser} via {RemoteNode}.")]
     private partial void LogInboundCircuit(string remoteNode, string originatingUser);

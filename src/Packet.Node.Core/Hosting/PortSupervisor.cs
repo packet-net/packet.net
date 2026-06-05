@@ -356,10 +356,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         {
             if (!ports.Remove(id, out running)) return;
         }
-        // Unsubscribe the NET/ROM tap before disposing the listener so we never
-        // hold a handler on a torn-down listener. Learned routes survive; their
-        // neighbours age out via obsolescence.
-        netRom?.DetachPort(id);
+        // Detach the NET/ROM tap and cleanly disconnect any interlink AX.25 sessions
+        // on this port BEFORE disposing the listener — DetachPortAsync DISCs each
+        // interlink and waits (bounded) for the DISC/UA to round-trip on the wire, so
+        // the neighbour isn't left with a half-open link it polls (the #309
+        // contamination class). The listener is still alive here to carry the DISC.
+        // Learned routes survive; their neighbours age out via obsolescence.
+        if (netRom is not null) await netRom.DetachPortAsync(id).ConfigureAwait(false);
         await running.DisposeAsync().ConfigureAwait(false);
         LogPortDown(id);
     }
@@ -374,7 +377,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         }
         foreach (var p in all)
         {
-            netRom?.DetachPort(p.Id);
+            // Clean interlink DISC (bounded) before disposing the listener — see
+            // TearDownAsync for the rationale (avoid leaving a neighbour a half-open
+            // link it polls onto the shared channel).
+            if (netRom is not null) await netRom.DetachPortAsync(p.Id).ConfigureAwait(false);
             await p.DisposeAsync().ConfigureAwait(false);
         }
     }

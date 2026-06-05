@@ -78,6 +78,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
+[Trait("Group", "NetRom")]   // isolated from the timing-sensitive AX.25 tests — interop.yml runs the NET/ROM group against a freshly-recreated stack (see docs/plan.md §7.2)
 [Collection(NetsimCollection.Name)]
 public class NetRomNodesIngestViaNetsim
 {
