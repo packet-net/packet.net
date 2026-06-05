@@ -90,10 +90,10 @@ public class Rax25ViaNetsimConnectedMode
 
         var rig = BuildRig(local: OurCall, remote: Rax25Call, kiss: kiss);
 
-        var pumps = new[]
-        {
-            Task.Run(() => InboundPump(rig, cts.Token), cts.Token),
-        };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before
         // we fire SABM. rax25's KISS dial happens at container start;
@@ -104,19 +104,16 @@ public class Rax25ViaNetsimConnectedMode
         // ─── Connect ────────────────────────────────────────────────
         rig.Session.PostEvent(new DlConnectRequest());
 
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("rax25 must accept SABM addressed to PN0RAX-1 and reply UA, taking us to Connected");
         rig.Session.CurrentState.Should().Be("Connected");
 
         // ─── Disconnect ─────────────────────────────────────────────
         rig.Session.PostEvent(new DlDisconnectRequest());
 
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("rax25 must reply UA to our DISC, taking us to Disconnected");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     // ─── Rig ────────────────────────────────────────────────────────
