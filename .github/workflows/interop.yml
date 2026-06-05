@@ -16,6 +16,7 @@ on:
       - 'src/Packet.NetRom/**'
       - 'tests/Packet.Interop.Tests/**'
       - 'docker/**'
+      - 'scripts/interop-recreate-stack.sh'
       - '.github/workflows/interop.yml'
   push:
     branches: [main]
@@ -55,41 +56,51 @@ jobs:
         run: dotnet --version
         # .NET 10 SDK is pre-installed system-wide on the self-hosted runner.
 
-      - name: pre-up cleanup
-        # The self-hosted docker daemon's state can leak between runs —
-        # a crashed previous run can leave the named volume pointing at
-        # a container ID that no longer exists, which then makes
-        # `compose up` fail with "No such container" on the next run.
-        # Forcing a clean slate before each invocation prevents that.
-        # `|| true` because there may be nothing to clean up on a fresh
-        # runner, and that's not an error.
-        run: docker compose -f docker/compose.interop.yml down -v --remove-orphans || true
+      - name: build
+        # Build once up front (no stack needed); every phase below runs
+        # --no-build against this output.
+        run: dotnet build --configuration Release
+
+      # ────────────────────────────────────────────────────────────────────
+      # The matrix is split into clean-stack-fenced phases. The stack is ONE
+      # shared LinBPQ daemon + ONE net-sim half-duplex channel, so scenarios
+      # contaminate each other through LinBPQ learned-state (NODES/routes/open
+      # sessions) and channel contention. In particular the heavyweight NET/ROM
+      # L3/L4 scenarios leave LinBPQ warm (learned routes + interlink sessions)
+      # and the channel busy, which flakes the timing-sensitive AX.25 tests that
+      # share net-sim port 8100. So we run each group against a FRESHLY
+      # recreated stack and put the NET/ROM group LAST + isolated, where nothing
+      # follows it. scripts/interop-recreate-stack.sh does the
+      # down -v --remove-orphans + up --wait (the old pre-up/bring-up steps).
+      # See docs/plan.md §7.2 for the contamination diagnosis + isolation design.
+      # ────────────────────────────────────────────────────────────────────
+
+      # ── Phase A: AX.25 + general interop (the timing-sensitive group) ──────
+      # Runs FIRST on a pristine stack so no NET/ROM residue can precede it.
+      # Excludes the NET/ROM scenarios (Group=NetRom) — they run isolated in
+      # phase C.
+      - name: recreate stack (phase A — AX.25 + general)
+        run: scripts/interop-recreate-stack.sh
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop
 
-      - name: bring up interop stack
-        run: docker compose -f docker/compose.interop.yml up -d --wait
-        env:
-          COMPOSE_PROJECT_NAME: packetnet-interop
-
-      - name: dump container state
+      - name: dump container state (phase A)
         if: failure()
         run: |
           docker compose -f docker/compose.interop.yml ps
           docker compose -f docker/compose.interop.yml logs --tail=200
 
-      - name: build
-        run: dotnet build --configuration Release
+      - name: interop tests (C#) — AX.25 + general (Group!=NetRom)
+        run: dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group!=NetRom"
 
-      - name: interop tests (C#)
-        run: dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop"
-
-      # ax25-ts ships its own integration test against LinBPQ via
-      # net-sim (`tests/integration/linbpq-via-netsim.test.ts`). The
-      # library itself lives at m0lte/ax25-ts; we clone main and run
-      # its integration suite against the docker stack standing up
-      # in this job. Pin to a SHA once the API stabilises; for now
-      # we track main so spec changes flow end-to-end.
+      # ── Phase B: ax25-ts integration suite ────────────────────────────────
+      # ax25-ts (m0lte/ax25-ts) ships its own integration suite against LinBPQ
+      # via net-sim (tests/integration/**: the AX.25 linbpq-via-netsim round-trip
+      # AND a NET/ROM NODES-ingest test). We clone main and run it against the
+      # stack standing up in this job. It gets its OWN freshly recreated stack so
+      # its internal NET/ROM-ingest can't contaminate the C# AX.25 timing tests
+      # and vice versa. Pin to a SHA once the API stabilises; for now we track
+      # main so spec changes flow end-to-end.
       - name: setup Node (for ax25-ts integration tests)
         uses: actions/setup-node@v6
         with:
@@ -99,6 +110,17 @@ jobs:
         run: |
           rm -rf "${RUNNER_TEMP}/ax25-ts"
           git clone --depth=1 --branch main https://github.com/m0lte/ax25-ts.git "${RUNNER_TEMP}/ax25-ts"
+
+      - name: recreate stack (phase B — ax25-ts)
+        run: scripts/interop-recreate-stack.sh
+        env:
+          COMPOSE_PROJECT_NAME: packetnet-interop
+
+      - name: dump container state (phase B)
+        if: failure()
+        run: |
+          docker compose -f docker/compose.interop.yml ps
+          docker compose -f docker/compose.interop.yml logs --tail=200
 
       - name: ax25-ts integration tests
         # `npm run test:integration` uses the integration vitest config,
@@ -110,6 +132,29 @@ jobs:
           npm run build
           npm run test:integration
 
+      # ── Phase C: NET/ROM L3/L4 scenarios (isolated, LAST) ─────────────────
+      # The heavyweight group (NODES origination + bidirectional L4 circuits +
+      # provoked BPQ NODES). Run against a fresh stack and LAST, so the LinBPQ
+      # learned-state + channel traffic it generates can never reach a
+      # timing-sensitive AX.25 test. Each scenario also tears down its own state
+      # (NetRomService.DisposeAsync DISCs its interlinks), so it leaves the stack
+      # clean even within the group.
+      - name: recreate stack (phase C — NET/ROM)
+        run: scripts/interop-recreate-stack.sh
+        env:
+          COMPOSE_PROJECT_NAME: packetnet-interop
+
+      - name: dump container state (phase C)
+        if: failure()
+        run: |
+          docker compose -f docker/compose.interop.yml ps
+          docker compose -f docker/compose.interop.yml logs --tail=200
+
+      - name: interop tests (C#) — NET/ROM (Group=NetRom)
+        run: dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group=NetRom"
+
       - name: tear down
         if: always()
         run: docker compose -f docker/compose.interop.yml down -v
+        env:
+          COMPOSE_PROJECT_NAME: packetnet-interop

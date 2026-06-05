@@ -77,6 +77,7 @@ namespace Packet.Interop.Tests.Netsim;
 /// </para>
 /// </remarks>
 [Trait("Category", "Interop")]
+[Trait("Group", "NetRom")]   // isolated from the timing-sensitive AX.25 tests — interop.yml runs the NET/ROM group against a freshly-recreated stack (see docs/plan.md §7.2)
 [Collection(NetsimCollection.Name)]
 public class NetRomL4CircuitViaNetsim
 {
@@ -120,7 +121,13 @@ public class NetRomL4CircuitViaNetsim
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
         await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions { MyCall = OurCall });
 
-        using var netRom = new NetRomService(new NetRomConfig
+        // `await using` (not `using`): NetRomService.DisposeAsync runs the GRACEFUL
+        // teardown — it DISCs every interlink AX.25 session and waits (bounded) for the
+        // DISC/UA to round-trip on the wire BEFORE the listener below is disposed (the
+        // listener is declared earlier, so it disposes after this). That stops the test
+        // leaving LinBPQ a half-open interlink it would poll onto the shared channel and
+        // flake a subsequent timing-sensitive AX.25 test (the contamination this PR fixes).
+        await using var netRom = new NetRomService(new NetRomConfig
         {
             Enabled = true,
             Broadcast = true,

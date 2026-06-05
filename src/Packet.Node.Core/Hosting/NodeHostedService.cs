@@ -90,8 +90,12 @@ public sealed partial class NodeHostedService : BackgroundService
             changeSubscription?.Dispose();
             changeSubscription = null;
             if (telnet is not null) await telnet.DisposeAsync().ConfigureAwait(false);
+            // Dispose NET/ROM BEFORE the supervisor: DisposeAsync cleanly DISCs each
+            // interlink AX.25 session (so a neighbour isn't left with a half-open link
+            // it polls), and that DISC needs the ports' listeners still alive — the
+            // supervisor disposes those, so it must run after.
+            if (netRom is not null) await netRom.DisposeAsync().ConfigureAwait(false);
             if (supervisor is not null) await supervisor.DisposeAsync().ConfigureAwait(false);
-            netRom?.Dispose();
         }
     }
 
