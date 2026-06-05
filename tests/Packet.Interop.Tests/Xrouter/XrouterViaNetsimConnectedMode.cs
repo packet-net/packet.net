@@ -69,10 +69,10 @@ public class XrouterViaNetsimConnectedMode
 
         var rig = BuildRig(local: OurCall, remote: XrouterCall, kiss: kiss);
 
-        var pumps = new[]
-        {
-            Task.Run(() => InboundPump(rig, cts.Token), cts.Token),
-        };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before
         // we fire SABM. XRouter's KISS dial may still be racing in;
@@ -81,18 +81,15 @@ public class XrouterViaNetsimConnectedMode
 
         rig.Session.PostEvent(new DlConnectRequest());
 
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("XRouter must accept SABM addressed to its NODECALL (PN0XRT) and reply UA, taking us to Connected");
         rig.Session.CurrentState.Should().Be("Connected");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
 
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("XRouter must reply UA to our DISC, taking us to Disconnected");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -141,16 +138,16 @@ public class XrouterViaNetsimConnectedMode
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
         var rig = BuildRig(local: OurCall, remote: XrouterCall, kiss: kiss);
 
-        var pumps = new[]
-        {
-            Task.Run(() => InboundPump(rig, cts.Token), cts.Token),
-        };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         await Task.Delay(500, cts.Token);
 
         // ─── Connect ────────────────────────────────────────────────
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete handshake before any data exchange");
 
         // ─── Settle ─────────────────────────────────────────────────
@@ -163,7 +160,7 @@ public class XrouterViaNetsimConnectedMode
         // wait for our own link to go quiescent (the post-UA RR exchange
         // settled: V(s) == V(a), no ack pending) so the channel is idle
         // before we drive the command round-trip.
-        await WaitForQuiescence(rig.Session, TimeSpan.FromSeconds(15), pumps, cts.Token);
+        await WaitForQuiescence(rig.Session, TimeSpan.FromSeconds(15), pumps.Tasks, cts.Token);
         DrainIndications(rig.Signals);
 
         // ─── Outbound command ───────────────────────────────────────
@@ -172,7 +169,7 @@ public class XrouterViaNetsimConnectedMode
         // on XRouter's state.
         rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("?\r"), Ax25Frame.PidNoLayer3));
 
-        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps, cts.Token);
+        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps.Tasks, cts.Token);
         response.Should().NotBeNull("XRouter must reply to our help command with at least one I-frame");
         response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
         response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -181,12 +178,9 @@ public class XrouterViaNetsimConnectedMode
 
         // ─── Disconnect ─────────────────────────────────────────────
         rig.Session.PostEvent(new DlDisconnectRequest());
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("clean DISC/UA close after data exchange");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     private static void DrainIndications(ConcurrentQueue<DataLinkSignal> signals)

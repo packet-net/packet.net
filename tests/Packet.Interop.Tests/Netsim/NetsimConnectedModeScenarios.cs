@@ -95,11 +95,13 @@ public class NetsimConnectedModeScenarios
         // the test to fail immediately with the real exception, not
         // sit for ConnectBudget seconds waiting for a signal that can
         // never arrive.
-        var pumps = new[]
-        {
-            Task.Run(() => InboundPump(rigA, cts.Token), cts.Token),
-            Task.Run(() => InboundPump(rigB, cts.Token), cts.Token),
-        };
+        // `await using` so the pumps are cancelled + awaited on EVERY exit path —
+        // pass, assertion-failure, throw, or timeout — not just at the happy-path
+        // end (declared after `cts` so it disposes first: pumps stop before the
+        // outer CTS is torn down). See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token,
+            ct => InboundPump(rigA, ct),
+            ct => InboundPump(rigB, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before
         // we fire SABM.
@@ -108,29 +110,26 @@ public class NetsimConnectedModeScenarios
         // ─── Connect ────────────────────────────────────────────────
         rigA.Session.PostEvent(new DlConnectRequest());
 
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("node A must observe UA(F=1) from node B and emit DL-CONNECT-confirm");
         rigA.Session.CurrentState.Should().Be("Connected");
 
         // Node B saw SABM, replied UA, and transitioned. Give the
         // post-state mutations a beat to settle before asserting.
         await WaitUntil(() => rigB.Session.CurrentState == "Connected",
-            StateSettleBudget, pumps, cts.Token);
+            StateSettleBudget, pumps.Tasks, cts.Token);
         rigB.Session.CurrentState.Should().Be("Connected");
 
         // ─── Disconnect ─────────────────────────────────────────────
         rigA.Session.PostEvent(new DlDisconnectRequest());
 
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rigA.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rigA.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("node A must observe UA(F=1) to its DISC and emit DL-DISCONNECT-confirm");
         rigA.Session.CurrentState.Should().Be("Disconnected");
 
         await WaitUntil(() => rigB.Session.CurrentState == "Disconnected",
-            StateSettleBudget, pumps, cts.Token);
+            StateSettleBudget, pumps.Tasks, cts.Token);
         rigB.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     [Fact]
@@ -170,20 +169,18 @@ public class NetsimConnectedModeScenarios
         var rigA = BuildRig(local: nodeA, remote: nodeB, kiss: kissA);
         var rigB = BuildRig(local: nodeB, remote: nodeA, kiss: kissB);
 
-        var pumps = new[]
-        {
-            Task.Run(() => InboundPump(rigA, cts.Token), cts.Token),
-            Task.Run(() => InboundPump(rigB, cts.Token), cts.Token),
-        };
+        await using var pumps = InboundPumpScope.Start(cts.Token,
+            ct => InboundPump(rigA, ct),
+            ct => InboundPump(rigB, ct));
 
         await Task.Delay(200, cts.Token);
 
         // ─── Connect ────────────────────────────────────────────────
         rigA.Session.PostEvent(new DlConnectRequest());
-        (await WaitForSignal<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, pumps, cts.Token))
+        (await WaitForSignal<DataLinkConnectConfirm>(rigA.Signals, ConnectBudget, pumps.Tasks, cts.Token))
             .Should().NotBeNull("connect handshake should complete");
         await WaitUntil(() => rigB.Session.CurrentState == "Connected",
-            StateSettleBudget, pumps, cts.Token);
+            StateSettleBudget, pumps.Tasks, cts.Token);
 
         // On a shared half-duplex channel (collision_mode: silence) we drive
         // the two directions strictly one at a time, and between them wait
@@ -204,7 +201,7 @@ public class NetsimConnectedModeScenarios
         var payloadAB = System.Text.Encoding.ASCII.GetBytes("hello from A");
         rigA.Session.PostEvent(new DlDataRequest(payloadAB, Pid: Ax25Frame.PidNoLayer3));
 
-        var indicationAB = await WaitForSignal<DataLinkDataIndication>(rigB.Signals, dataBudget, pumps, cts.Token);
+        var indicationAB = await WaitForSignal<DataLinkDataIndication>(rigB.Signals, dataBudget, pumps.Tasks, cts.Token);
         indicationAB.Should().NotBeNull("node B must observe the I-frame from node A as DL-DATA-indication");
         indicationAB!.Info.ToArray().Should().Equal(payloadAB);
         indicationAB.Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -212,8 +209,8 @@ public class NetsimConnectedModeScenarios
         // Let the A→B exchange settle: A's I-frame must be acknowledged by B
         // and any RR B owes must have flushed, so the channel is idle before
         // B transmits in the other direction.
-        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
-        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps.Tasks, cts.Token);
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps.Tasks, cts.Token);
 
         // ─── I-frame B → A ──────────────────────────────────────────
         while (rigA.Signals.TryDequeue(out _)) { }
@@ -221,24 +218,21 @@ public class NetsimConnectedModeScenarios
         var payloadBA = System.Text.Encoding.ASCII.GetBytes("ack from B");
         rigB.Session.PostEvent(new DlDataRequest(payloadBA, Pid: Ax25Frame.PidNoLayer3));
 
-        var indicationBA = await WaitForSignal<DataLinkDataIndication>(rigA.Signals, dataBudget, pumps, cts.Token);
+        var indicationBA = await WaitForSignal<DataLinkDataIndication>(rigA.Signals, dataBudget, pumps.Tasks, cts.Token);
         indicationBA.Should().NotBeNull("node A must observe the I-frame from node B");
         indicationBA!.Info.ToArray().Should().Equal(payloadBA);
 
         // Settle the B→A exchange before tearing down so the DISC doesn't
         // race a still-in-flight RR/I-frame on the channel.
-        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps, cts.Token);
-        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps, cts.Token);
+        await WaitForQuiescence(rigB.Session, StateSettleBudget, pumps.Tasks, cts.Token);
+        await WaitForQuiescence(rigA.Session, StateSettleBudget, pumps.Tasks, cts.Token);
 
         // ─── Disconnect ─────────────────────────────────────────────
         rigA.Session.PostEvent(new DlDisconnectRequest());
-        (await WaitForSignal<DataLinkDisconnectConfirm>(rigA.Signals, DisconnectBudget, pumps, cts.Token))
+        (await WaitForSignal<DataLinkDisconnectConfirm>(rigA.Signals, DisconnectBudget, pumps.Tasks, cts.Token))
             .Should().NotBeNull("disconnect handshake should complete");
         await WaitUntil(() => rigB.Session.CurrentState == "Disconnected",
-            StateSettleBudget, pumps, cts.Token);
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
+            StateSettleBudget, pumps.Tasks, cts.Token);
     }
 
     // ─── Rig ────────────────────────────────────────────────────────

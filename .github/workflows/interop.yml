@@ -154,7 +154,14 @@ jobs:
         run: dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group=NetRom"
 
       - name: tear down
+        # Best-effort teardown that runs even when a phase FAILED or the job was
+        # cancelled (the recreate-before-each step is the BACKSTOP for a hard-killed
+        # run that skips this). `--remove-orphans` matches the recreate script so this
+        # last line of defence is exactly as thorough as the first: a service renamed
+        # or removed from the compose file can't leave an orphaned `pn-*` container
+        # behind even for one cycle. `|| true` so a teardown hiccup (e.g. nothing to
+        # remove) can't turn a green run red.
         if: always()
-        run: docker compose -f docker/compose.interop.yml down -v
+        run: docker compose -f docker/compose.interop.yml down -v --remove-orphans || true
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop

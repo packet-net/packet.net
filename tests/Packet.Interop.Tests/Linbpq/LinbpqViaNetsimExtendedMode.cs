@@ -111,7 +111,10 @@ public class LinbpqViaNetsimExtendedMode
         var rig = BuildRig(local: OurCall, remote: BpqCall, kiss: kiss);
         rig.Session.Context.IsExtended.Should().BeTrue("the rig must start extended so DL-CONNECT initiates a SABME");
 
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         // Brief settle so net-sim's per-port TX queue is ready before SABME.
         await Task.Delay(500, cts.Token);
@@ -119,7 +122,7 @@ public class LinbpqViaNetsimExtendedMode
         // ─── Extended connect → fallback → mod-8 Connected ──────────────
         rig.Session.PostEvent(new DlConnectRequest());
 
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull(
             "after BPQ FRMRs our SABME, the figc4.6 FRMR-fallback must re-establish with SABM and complete a mod-8 connection");
         rig.Session.CurrentState.Should().Be("Connected");
@@ -134,12 +137,9 @@ public class LinbpqViaNetsimExtendedMode
 
         // ─── Disconnect ─────────────────────────────────────────────────
         rig.Session.PostEvent(new DlDisconnectRequest());
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("LinBPQ must reply UA to our DISC, taking us to Disconnected");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -165,30 +165,33 @@ public class LinbpqViaNetsimExtendedMode
 
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
         var rig = BuildRig(local: OurCall, remote: BpqCall, kiss: kiss);
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
 
         await Task.Delay(500, cts.Token);
 
         // ─── Extended connect → fallback → mod-8 Connected ──────────────
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the FRMR-fallback handshake before any data exchange");
         rig.Session.Context.IsExtended.Should().BeFalse("fell back to mod-8");
 
         // ─── Banner from BPQ ────────────────────────────────────────────
-        var banner = await WaitForSignal<DataLinkDataIndication>(rig.Signals, bannerWait, pumps, cts.Token);
+        var banner = await WaitForSignal<DataLinkDataIndication>(rig.Signals, bannerWait, pumps.Tasks, cts.Token);
         banner.Should().NotBeNull("BPQ must emit its node-prompt welcome banner as an I-frame after the link is up");
         banner!.Info.Length.Should().BeGreaterThan(0, "banner payload should not be empty");
         banner.Pid.Should().Be(Ax25Frame.PidNoLayer3, "BPQ's node prompt uses PID 0xF0 (no layer 3)");
 
         await DrainIndicationsUntilQuiet(rig.Signals,
             quietFor: TimeSpan.FromSeconds(1.5),
-            budget:   TimeSpan.FromSeconds(15), pumps, cts.Token);
+            budget:   TimeSpan.FromSeconds(15), pumps.Tasks, cts.Token);
 
         // ─── Outbound command → response ────────────────────────────────
         rig.Session.PostEvent(new DlDataRequest(System.Text.Encoding.ASCII.GetBytes("P\r"), Ax25Frame.PidNoLayer3));
 
-        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps, cts.Token);
+        var response = await WaitForSignal<DataLinkDataIndication>(rig.Signals, responseWait, pumps.Tasks, cts.Token);
         response.Should().NotBeNull("BPQ must reply to our ports command with at least one I-frame");
         response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
         response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
@@ -197,12 +200,9 @@ public class LinbpqViaNetsimExtendedMode
 
         // ─── Disconnect ─────────────────────────────────────────────────
         rig.Session.PostEvent(new DlDisconnectRequest());
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("clean DISC/UA close after data exchange");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     // ─── Rig ────────────────────────────────────────────────────────────

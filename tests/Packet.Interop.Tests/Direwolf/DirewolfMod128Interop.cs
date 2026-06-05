@@ -120,12 +120,15 @@ public class DirewolfMod128Interop
         var rig = BuildRig(local: OurCall, remote: Connect128, kiss: kiss);
         rig.Session.Context.IsExtended.Should().BeTrue("the rig must start extended so DL-CONNECT initiates a SABME");
 
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
         rig.Session.PostEvent(new DlConnectRequest());
 
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("Dire Wolf must accept our SABME and reply UA, taking us to Connected at mod-128");
         rig.Session.CurrentState.Should().Be("Connected");
         rig.Session.Context.IsExtended.Should().BeTrue(
@@ -137,12 +140,9 @@ public class DirewolfMod128Interop
             "Dire Wolf must NOT answer SABME with DM (it is v2.2-capable on the incoming path)");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("Dire Wolf must reply UA to our DISC, taking us to Disconnected");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -161,18 +161,21 @@ public class DirewolfMod128Interop
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
 
         var rig = BuildRig(local: OurCall, remote: ConnectBidi, kiss: kiss);
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake before data exchange");
         rig.Session.Context.IsExtended.Should().BeTrue("link must be mod-128");
 
         var payload = System.Text.Encoding.ASCII.GetBytes("mod128-roundtrip-via-direwolf");
         rig.Session.PostEvent(new DlDataRequest(payload, Ax25Frame.PidNoLayer3));
 
-        var echo = await WaitForMatchingData(rig, payload, DataBudget, pumps, cts.Token);
+        var echo = await WaitForMatchingData(rig, payload, DataBudget, pumps.Tasks, cts.Token);
         echo.Should().NotBeNull("the AGW echo helper must bounce our connected-mode payload back to us");
 
         // Wire proof of mod-128: at least one I-frame from Dire Wolf addressed
@@ -188,12 +191,9 @@ public class DirewolfMod128Interop
         rig.Session.CurrentState.Should().Be("Connected", "link must survive the data round-trip");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
-        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
+        var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
         disconnectConfirm.Should().NotBeNull("clean DISC/UA close after data exchange");
         rig.Session.CurrentState.Should().Be("Disconnected");
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -223,11 +223,14 @@ public class DirewolfMod128Interop
         var rig = BuildRig(local: OurCall, remote: ConnectSrej, kiss: kiss,
             configure: ctx => { ctx.SrejEnabled = true; ctx.ImplicitReject = false; });
 
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake first");
 
         // Arm the send-side drop: the FIRST time we transmit the I-frame with
@@ -254,7 +257,7 @@ public class DirewolfMod128Interop
 
         foreach (var p in payloads)
         {
-            var got = await WaitForMatchingData(rig, p, DataBudget, pumps, cts.Token);
+            var got = await WaitForMatchingData(rig, p, DataBudget, pumps.Tasks, cts.Token);
             got.Should().NotBeNull(
                 $"payload {System.Text.Encoding.ASCII.GetString(p)!} must be echoed back after SREJ recovery completes");
         }
@@ -264,10 +267,7 @@ public class DirewolfMod128Interop
             "Dire Wolf must send an SREJ for the gap our dropped I-frame created (srej_single is on by default for a v2.2 responder)");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
-        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
+        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
     }
 
     /// <summary>
@@ -325,11 +325,14 @@ public class DirewolfMod128Interop
         var sendSeg = new SegmentationLayer(rig.Session.Context);
         var recvSeg = new SegmentationLayer(rig.Session.Context);
 
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake first");
 
         var payload = new byte[220];
@@ -344,16 +347,13 @@ public class DirewolfMod128Interop
         // receive-side shim reassembles it back to the exact original payload. The
         // session surfaces each inbound 0x08 segment as its own DL-DATA indication
         // (PID 0x08); we feed them through recvSeg until it yields the reassembly.
-        var reassembled = await WaitForReassembledPayload(rig, recvSeg, payload, DataBudget, pumps, cts.Token);
+        var reassembled = await WaitForReassembledPayload(rig, recvSeg, payload, DataBudget, pumps.Tasks, cts.Token);
         reassembled.Should().NotBeNull(
             "Dire Wolf must reassemble our segments (forward), echo the payload, re-segment it (reverse), and our " +
             "reassembler must reconstruct the exact original payload — the default inner-PID quirk makes both legs wire-compatible");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
-        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
+        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
     }
 
     /// <summary>
@@ -374,11 +374,14 @@ public class DirewolfMod128Interop
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
 
         var rig = BuildRig(local: OurCall, remote: ConnectXid, kiss: kiss);
-        var pumps = new[] { Task.Run(() => InboundPump(rig, cts.Token), cts.Token) };
+        // `await using` so the pump is cancelled + awaited on EVERY exit path
+        // (pass, assertion-failure, throw, timeout), not just at the happy-path end
+        // — declared after `cts` so it disposes first. See InboundPumpScope.
+        await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
         await Task.Delay(500, cts.Token);
 
         rig.Session.PostEvent(new DlConnectRequest());
-        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps, cts.Token);
+        var connectConfirm = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
         connectConfirm.Should().NotBeNull("must complete the mod-128 handshake first");
 
         // Build and send an XID command (mod-128 / SREJ defaults) directly
@@ -399,17 +402,14 @@ public class DirewolfMod128Interop
 
         var sawXidResponse = await WaitForObserved(rig,
             f => f.Destination.Callsign.Equals(OurCall) && UBase(f) == 0xAF,
-            DataBudget, pumps, cts.Token);
+            DataBudget, pumps.Tasks, cts.Token);
         sawXidResponse.Should().BeTrue(
             "Dire Wolf must answer our XID command with an XID response (U-frame base 0xAF) — it responds to XID on the incoming path even though it only initiates XID when it is the connection initiator");
 
         rig.Session.CurrentState.Should().Be("Connected", "the link must survive the XID exchange");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
-        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps, cts.Token);
-
-        cts.Cancel();
-        try { await Task.WhenAll(pumps); } catch (OperationCanceledException) { }
+        await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
     }
 
     // ─── Wire predicates ──────────────────────────────────────────────────
