@@ -556,7 +556,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // for. destText is a local (not an inline log arg) so it isn't evaluated when
         // the trace is disabled (CA1873).
         var destText = packet.Network.Destination.ToString();
-        var decision = NetRomForwarding.Decide(packet, receivedFrom, nodeCall, table.Snapshot(), circuitOptions.TimeToLive);
+        var decision = NetRomForwarding.Decide(packet, receivedFrom, nodeCall, table.Snapshot(), circuitOptions.TimeToLive, config.ForwardMode);
 
         switch (decision.Outcome)
         {

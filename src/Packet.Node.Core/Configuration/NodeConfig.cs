@@ -1,3 +1,4 @@
+using Packet.NetRom;
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
@@ -264,6 +265,17 @@ public sealed record NetRomConfig
     /// originate-only node that does not carry transit traffic.
     /// </summary>
     public bool Forward { get; init; } = true;
+
+    /// <summary>
+    /// How a forwarding node picks among multiple kept routes to a destination
+    /// (<see cref="NetRomForwardMode"/>). Default
+    /// <see cref="NetRomForwardMode.PerFlow"/> — a transit node spreads distinct L4
+    /// circuits across the kept routes, quality-weighted, each circuit pinned to one
+    /// path (so its ordering is preserved). Set <see cref="NetRomForwardMode.BestRoute"/>
+    /// to always use the single best route. Only consulted when <see cref="Forward"/>
+    /// is on.
+    /// </summary>
+    public NetRomForwardMode ForwardMode { get; init; } = NetRomForwardMode.PerFlow;
 
     /// <summary>
     /// Our NET/ROM node alias / mnemonic, advertised in our NODES broadcast (the
