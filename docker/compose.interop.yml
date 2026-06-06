@@ -159,8 +159,8 @@ services:
         ipv4_address: 172.30.0.14
 
   netsim:
-    # ghcr.io/packethacking/net-sim:main @ 2026-05-12
-    image: ghcr.io/packethacking/net-sim@sha256:71aed5bf5224966a4a640a20bc2bdb8ae5f45f601b0d8e2614c1463504d78417
+    # ghcr.io/packethacking/net-sim:main @ 2026-06-06 (continuous-carrier fix — no mid-transmission audio drops; packethacking/net-sim#15)
+    image: ghcr.io/packethacking/net-sim@sha256:0fb896080a07e19dac4a16958e18538f9b827360254428b1bddf8821b3e7ace7
     container_name: pn-netsim
     restart: unless-stopped
     volumes:
