@@ -7,6 +7,18 @@ name: publish-node
 # Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). The arm builds
 # cross-publish from x64 via crossgen2 (ReadyToRun), so no arch-native runners or
 # cross C-toolchain are needed; scripts/build-deb.sh does the publish + packaging.
+#
+# Single job, no Actions artifacts. The .debs are built, install-smoked, and
+# attached to the Release all from one job's local working tree — they never touch
+# the Actions artifact store. This is deliberate: the cross-job artifact hand-off
+# this workflow used previously depended on the ~500 MB free-tier artifact-storage
+# quota, whose usage GitHub recalculates only every 6-12 h, so a busy day of CI
+# could leave the counter transiently over-quota and block the release upload even
+# with retention-days:1 (observed twice — 2026-06-05, 2026-06-06). Keeping the
+# .debs local removes that dependency entirely; the published .debs live on the
+# Release. The build is already serial (crossgen2 R2R is memory-hungry — three
+# concurrent cross-publishes OOM-kill it, exit 137), so collapsing the per-arch
+# matrix into one sequential job costs no parallelism.
 
 on:
   push:
@@ -22,12 +34,15 @@ permissions:
   contents: read
 
 jobs:
-  version:
+  publish:
     runs-on: [self-hosted, Linux, X64]
-    outputs:
-      version: ${{ steps.v.outputs.version }}
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v6
+
       - id: v
+        name: Resolve version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
@@ -35,71 +50,31 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/node-v}" >> "$GITHUB_OUTPUT"
           fi
 
-  build:
-    needs: version
-    runs-on: [self-hosted, Linux, X64]
-    strategy:
-      fail-fast: false
-      # Serial: crossgen2 (ReadyToRun) is memory-hungry and the self-hosted
-      # runners share a host — three concurrent R2R cross-publishes OOM-kill
-      # crossgen2 (exit 137, arm64 is the heaviest cross-target). One arch at a
-      # time fits comfortably; the release is infrequent so the ~3x wall-time is fine.
-      max-parallel: 1
-      matrix:
-        rid: [linux-x64, linux-arm64, linux-arm]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Build .deb (${{ matrix.rid }})
-        run: scripts/build-deb.sh "${{ matrix.rid }}" "${{ needs.version.outputs.version }}"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: deb-${{ matrix.rid }}
-          path: artifacts/packetnet_*.deb
-          if-no-files-found: error
-          # Transient build->release hand-off only: the release job downloads these
-          # in the SAME run, and the published .debs then live on the GitHub Release.
-          # Expire them fast so they don't pile up against the Actions artifact-
-          # storage quota and block a future release's upload (observed 2026-06-05: a
-          # node release build hit the ~500 MB free-tier quota, all of it stale
-          # deb-* build artifacts from prior releases that are also on the Releases).
-          retention-days: 1
-
-  smoke:
-    # Gate: a .deb that won't install cleanly must never reach the release.
-    # Reuses the already-built amd64 artifact (no rebuild). Container-isolated,
-    # so nothing is installed onto the self-hosted runner. amd64 only (native,
-    # no QEMU); arm64/armhf are a later docker/setup-qemu matrix.
-    needs: [version, build]
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
-        with:
-          name: deb-linux-x64
-          path: artifacts
-      - name: Install-smoke the amd64 .deb (Debian-stable + Ubuntu-LTS)
-        run: scripts/deb-install-smoke.sh "artifacts/packetnet_${{ needs.version.outputs.version }}_amd64.deb"
-
-  release:
-    needs: [version, build, smoke]
-    runs-on: [self-hosted, Linux, X64]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: debs
-      - name: Collect + checksum
+      - name: Build .debs (amd64 / arm64 / armhf)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        # Serial: crossgen2 (ReadyToRun) is memory-hungry; concurrent cross-publishes
+        # OOM-kill it (arm64 is the heaviest). One arch at a time fits the shared host.
         run: |
-          mkdir -p out
-          find debs -name '*.deb' -exec cp {} out/ \;
-          ( cd out && sha256sum *.deb > SHA256SUMS && ls -l )
-      - name: Create GitHub Release
+          for rid in linux-x64 linux-arm64 linux-arm; do
+            scripts/build-deb.sh "$rid" "$VERSION"
+          done
+
+      - name: Install-smoke the amd64 .deb (Debian-stable + Ubuntu-LTS)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        # Gate: a .deb that won't install cleanly must never reach the release.
+        # Container-isolated, so nothing is installed onto the self-hosted runner.
+        # amd64 only (native, no QEMU); arm64/armhf are a later docker/setup-qemu matrix.
+        run: scripts/deb-install-smoke.sh "artifacts/packetnet_${VERSION}_amd64.deb"
+
+      - name: Checksum + create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.version.outputs.version }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
-          gh release create "node-v${VERSION}" out/*.deb out/SHA256SUMS \
+          ( cd artifacts && sha256sum packetnet_*.deb > SHA256SUMS && ls -l packetnet_*.deb SHA256SUMS )
+          gh release create "node-v${VERSION}" artifacts/packetnet_*.deb artifacts/SHA256SUMS \
             --repo "${{ github.repository }}" \
             --title "pdn node-v${VERSION}" \
             --notes "Packet.NET node host (pdn) ${VERSION} — self-contained \`.deb\`s for amd64 / arm64 / armhf. Install on Debian/Ubuntu/RaspiOS: \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (no .NET runtime required). The service runs as a hardened systemd unit; edit /etc/packetnet/packetnet.yaml to set your callsign + ports."
