@@ -128,4 +128,85 @@ public sealed class NetRomForwardingTests
         decision.ShouldForward.Should().BeTrue();
         decision.NextHop.Should().Be(AltNbr);
     }
+
+    // ─── multi-route load-balancing (per-flow, quality-weighted) ────────
+
+    /// <summary>A datagram with a chosen flow key (the L3 origin + L4 circuit
+    /// index/id are what `FlowHash` keys on; vary the index/id to make distinct
+    /// flows).</summary>
+    private static NetRomPacket Flow(Callsign origin, Callsign dest, byte ttl, byte circuitIndex, byte circuitId = 0) => new()
+    {
+        Network = new NetRomNetworkHeader { Origin = origin, Destination = dest, TimeToLive = ttl },
+        Transport = new NetRomTransportHeader
+        {
+            CircuitIndex = circuitIndex,
+            CircuitId = circuitId,
+            TxSequence = 0,
+            RxSequence = 0,
+            Opcode = NetRomOpcode.Information,
+            Flags = NetRomTransportFlags.None,
+        },
+        Payload = ReadOnlyMemory<byte>.Empty,
+    };
+
+    [Fact]
+    public void Per_flow_pins_a_circuit_to_one_route_regardless_of_ttl_or_sequence()
+    {
+        // Two equal routes; the same flow (same origin + circuit index/id) must take
+        // the same route across datagrams (so the circuit's L4 ordering is preserved).
+        var routing = RoutesTo(Dest, (OnwardNbr, 200), (AltNbr, 200));
+
+        var a = NetRomForwarding.Decide(Flow(Source, Dest, 20, 5), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow);
+        var b = NetRomForwarding.Decide(Flow(Source, Dest, 9, 5), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow);
+
+        a.ShouldForward.Should().BeTrue();
+        a.NextHop.Should().Be(b.NextHop, "every datagram of one circuit hashes to the same route");
+    }
+
+    [Fact]
+    public void Per_flow_spreads_distinct_circuits_across_the_kept_routes()
+    {
+        var routing = RoutesTo(Dest, (OnwardNbr, 200), (AltNbr, 200));
+        var counts = new Dictionary<string, int>();
+
+        for (byte i = 0; i < 60; i++)
+        {
+            var d = NetRomForwarding.Decide(Flow(Source, Dest, 20, i), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow);
+            counts[d.NextHop.ToString()] = counts.GetValueOrDefault(d.NextHop.ToString()) + 1;
+        }
+
+        counts.Should().ContainKey(OnwardNbr.ToString(), "distinct circuits should use both routes");
+        counts.Should().ContainKey(AltNbr.ToString());
+    }
+
+    [Fact]
+    public void Per_flow_weights_the_spread_by_route_quality()
+    {
+        // 2:1 quality → the higher-quality route should carry meaningfully more flows.
+        var routing = RoutesTo(Dest, (OnwardNbr, 200), (AltNbr, 100));
+        int onward = 0, alt = 0;
+
+        for (int i = 0; i < 256; i++)
+        {
+            var d = NetRomForwarding.Decide(Flow(Source, Dest, 20, (byte)i), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow);
+            if (d.NextHop.Equals(OnwardNbr)) onward++;
+            else if (d.NextHop.Equals(AltNbr)) alt++;
+        }
+
+        onward.Should().BeGreaterThan(0);
+        alt.Should().BeGreaterThan(0);
+        onward.Should().BeGreaterThan(alt, "the higher-quality route carries proportionally more flows");
+    }
+
+    [Fact]
+    public void Best_route_mode_ignores_the_flow_and_always_takes_the_single_best_route()
+    {
+        var routing = RoutesTo(Dest, (OnwardNbr, 200), (AltNbr, 100));
+
+        for (byte i = 0; i < 20; i++)
+        {
+            var d = NetRomForwarding.Decide(Flow(Source, Dest, 20, i), FromNbr, Me, routing, 25, NetRomForwardMode.BestRoute);
+            d.NextHop.Should().Be(OnwardNbr, "BestRoute mode always uses the best route, whatever the flow");
+        }
+    }
 }
