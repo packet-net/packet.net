@@ -84,4 +84,7 @@ jobs:
         with:
           name: test-results-${{ matrix.project }}
           path: 'tests/${{ matrix.project }}/TestResults/*.trx'
-          retention-days: 7
+          # Short retention: these only upload on failure and are for immediate
+          # triage; long retention just accumulates against the ~500 MB Actions
+          # artifact quota (the same one that bit publish-node — see its header).
+          retention-days: 1
