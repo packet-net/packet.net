@@ -2,9 +2,17 @@ namespace Packet.Node.Core.Configuration;
 
 /// <summary>
 /// Named, <b>opt-in</b> per-port channel-tuning profiles. A profile is a small,
-/// documented bundle of AX.25 timer + KISS CSMA/TX-timing defaults suited to a
-/// class of physical channel. It only ever <em>fills in fields the operator left
-/// unset</em> — an explicit value on the port always wins.
+/// documented bundle of AX.25 timer + KISS CSMA defaults suited to a class of
+/// physical channel. It only ever <em>fills in fields the operator left unset</em>
+/// — an explicit value on the port always wins.
+/// <para>
+/// A profile captures <em>channel</em> properties (timing under contention, CSMA,
+/// TX warm-up). It deliberately does <b>not</b> set a TX tail: the need for a
+/// non-zero TXTAIL is a <em>modem + radio-audio-path</em> property (software modems
+/// and latency audio paths need one; a fully analogue path doesn't) that the node
+/// can't infer from the channel — so <c>kiss.txTail</c> stays an explicit per-port
+/// operator setting.
+/// </para>
 /// </summary>
 /// <remarks>
 /// <para>
@@ -95,20 +103,18 @@ public static class ChannelProfiles
             // default, comfortably above a fast modem's floor (operator should
             // tune down for a known-fast TNC).
             //
-            // TXTAIL=5 (50 ms). A modern AFSK1200 port is almost always a SOFTWARE
-            // modem (direwolf / samoyed / a soundcard) — and a software modem
-            // clips the end of its own transmission without a non-zero TX tail
-            // (the net-sim lab: GB7RDG sending TxTail=0 caused decode collapse;
-            // see docs/plan.md and the lab notes). So a sane tail belongs in the
-            // software-modem channel profile, not as a global node default: a
-            // hardware TNC with an analogue audio path needs no tail, and pinning
-            // one node-wide would be wrong for it (and isn't spec-clean). A 50 ms
-            // tail is harmless to a hardware TNC, so scoping it to this profile is
-            // safe both ways; absent a profile a port still asserts no tail and
-            // gets the modem's own default. Matches GB7RDG's validated TXTAIL=5.
+            // NB this profile deliberately does NOT set a TX tail. The need for a
+            // non-zero TXTAIL is a property of the MODEM + the radio's audio-path
+            // latency, NOT of the channel or the baud rate: a software modem
+            // (samoyed / Dire Wolf) needs one, and so does a NinoTNC into a radio
+            // with a latency audio path — but a NinoTNC into a fully analogue
+            // audio path needs none, even on this exact slow AFSK1200 channel. The
+            // node can't infer the audio-path latency, so TXTAIL stays an explicit
+            // per-port operator setting (`kiss.txTail`), documented in the config
+            // template, rather than being bundled into a channel profile.
             "slowafsk1200" => (
                 new Ax25PortParams { T1Ms = 10000, N2 = 15 },
-                new KissParams { TxDelay = 30, Persistence = 63, SlotTime = 10, TxTail = 5 }),
+                new KissParams { TxDelay = 30, Persistence = 63, SlotTime = 10 }),
             _ => null,
         };
     }

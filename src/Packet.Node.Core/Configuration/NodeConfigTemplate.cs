@@ -58,11 +58,14 @@ public static class NodeConfigTemplate
         #      txDelay: 30         # units of 10 ms
         #      persistence: 63
         #      slotTime: 10
-        #      txTail: 5           # units of 10 ms. Needed by SOFTWARE modems
-        #                          # (direwolf/samoyed/soundcard) or they clip the
-        #                          # end of a transmission; a hardware TNC with an
-        #                          # analogue audio path needs none. The
-        #                          # slow-afsk1200 profile sets this for you.
+        #      txTail: 5           # units of 10 ms. Set this > 0 if your modem
+        #                          # needs a TX tail: a SOFTWARE modem (Dire Wolf
+        #                          # / samoyed), or a NinoTNC into a radio with a
+        #                          # non-zero-latency audio path, will clip the end
+        #                          # of a transmission without one. Leave it unset
+        #                          # (0) for a NinoTNC into a fully analogue audio
+        #                          # path. It is NOT a channel/profile property —
+        #                          # only you know your modem + radio.
         #  - id: hf
         #    enabled: false
         #    transport:
@@ -73,8 +76,9 @@ public static class NodeConfigTemplate
         #    enabled: false
         #    profile: slow-afsk1200 # slow half-duplex VHF packet: longer, asymmetric
         #                           # T1 (10 s) so the link doesn't stall on contention,
-        #                           # plus sane CSMA + a software-modem TX tail.
-        #                           # Override any field below.
+        #                           # plus sane CSMA. Override any field below.
+        #                           # (TX tail is NOT part of any profile — set
+        #                           #  kiss.txTail yourself if your modem needs it.)
         #    transport:
         #      kind: nino-tnc
         #      device: /dev/ttyACM1

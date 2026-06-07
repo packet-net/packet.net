@@ -50,17 +50,18 @@ public class ChannelProfilesTests
         kiss!.TxDelay.Should().Be((byte)30);
         kiss.Persistence.Should().Be((byte)63);
         kiss.SlotTime.Should().Be((byte)10);
-        kiss.TxTail.Should().Be((byte)5,
-            "AFSK1200 is the software-modem channel, which clips its transmission without a TX tail; "
-            + "the tail belongs in this profile, not as a global default (a hardware TNC needs none)");
+        kiss.TxTail.Should().BeNull(
+            "a channel profile must NOT set a TX tail — the need for one is a modem + radio-audio-path "
+            + "property (software modem / latency path = yes; fully analogue NinoTNC path = no), which the "
+            + "node can't infer from the channel; it stays an explicit per-port operator setting");
     }
 
     [Fact]
-    public void No_profile_supplies_no_tx_tail_so_hardware_modems_are_unaffected()
+    public void No_profile_supplies_no_tx_tail()
     {
-        // The TX-tail default is scoped to the software-modem profile. A port with
-        // no profile must assert no tail at all — a hardware TNC with an analogue
-        // audio path needs none, and a node-wide default would be wrong for it.
+        // A port with no profile asserts nothing — including no tail. TX tail is
+        // never auto-defaulted (profile or global): the operator sets it per the
+        // attached modem + radio audio path.
         var (_, kiss) = ChannelProfiles.Resolve(Port());
         kiss.Should().BeNull("no profile, no params → nothing is asserted, including TX tail");
     }
