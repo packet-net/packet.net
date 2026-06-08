@@ -209,4 +209,113 @@ public sealed class NetRomForwardingTests
             d.NextHop.Should().Be(OnwardNbr, "BestRoute mode always uses the best route, whatever the flow");
         }
     }
+
+    // ─── INP3 forwarding-by-time (preferInp3Routes) ─────────────────────
+
+    // Routes carrying BOTH a quality metric (NODES) and an INP3 time-route (RIF). Each entry
+    // is (neighbour, quality, targetTimeMs, hopCount). Quality-first ordering as passed.
+    private static NetRomRoutingSnapshot Inp3RoutesTo(
+        Callsign dest, params (Callsign neighbour, byte quality, int targetTimeMs, byte hop)[] routes)
+    {
+        var list = routes
+            .Select(r => new NetRomRoute(r.neighbour, r.quality, 6, new Inp3RouteMetric(r.targetTimeMs, r.hop)))
+            .ToList();
+        return new NetRomRoutingSnapshot([new NetRomDestination(dest, "DEST", list)], [], DateTimeOffset.UnixEpoch);
+    }
+
+    [Fact]
+    public void Prefers_the_lowest_target_time_inp3_route_overriding_quality_and_per_flow()
+    {
+        // OnwardNbr is the best QUALITY route; AltNbr is the fastest by measured TIME. With
+        // preferInp3Routes on, every flow forwards over AltNbr (the time winner) — overriding
+        // both the quality ranking AND the per-flow spread (time-space forwards the fastest path).
+        var routing = Inp3RoutesTo(Dest, (OnwardNbr, 200, 300, 2), (AltNbr, 100, 100, 3));
+
+        for (byte i = 0; i < 30; i++)
+        {
+            var d = NetRomForwarding.Decide(
+                Flow(Source, Dest, 20, i), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow, preferInp3Routes: true);
+            d.ShouldForward.Should().BeTrue();
+            d.NextHop.Should().Be(AltNbr, "the lowest-target-time INP3 route wins for every flow when INP3 is preferred");
+        }
+
+        // Knob off ⇒ quality wins, byte-for-byte today (BestRoute picks the highest-quality route).
+        NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, routing, 25, NetRomForwardMode.BestRoute)
+            .NextHop.Should().Be(OnwardNbr, "preferInp3Routes defaults off — quality decides");
+    }
+
+    [Fact]
+    public void preferInp3Routes_off_ignores_the_inp3_metric_entirely()
+    {
+        // The degenerate-to-today guard: routes carry INP3 metrics that would change the pick,
+        // but with the knob off the metric is never read — the quality route is chosen, identical
+        // to a node that never heard of INP3.
+        var routing = Inp3RoutesTo(Dest, (OnwardNbr, 200, 999, 9), (AltNbr, 100, 1, 1));
+
+        var off = NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, routing, 25, NetRomForwardMode.BestRoute);
+        var defaulted = NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, routing, 25);   // preferInp3Routes defaults false
+
+        off.NextHop.Should().Be(OnwardNbr, "knob off ⇒ quality wins despite AltNbr's far lower target time");
+        defaulted.NextHop.Should().Be(OnwardNbr, "the parameter defaults to off (byte-for-byte today)");
+    }
+
+    [Fact]
+    public void Falls_back_to_quality_when_preferred_but_no_inp3_route_exists()
+    {
+        // preferInp3Routes on, but the destination holds only quality routes (no time-route) →
+        // fall back to the quality next-hop, exactly as today.
+        var routing = RoutesTo(Dest, (OnwardNbr, 200), (AltNbr, 100));
+
+        var d = NetRomForwarding.Decide(
+            Datagram(Source, Dest, 20), FromNbr, Me, routing, 25, NetRomForwardMode.BestRoute, preferInp3Routes: true);
+
+        d.NextHop.Should().Be(OnwardNbr, "no INP3 route to prefer → quality fallback");
+    }
+
+    [Fact]
+    public void Excludes_the_inp3_route_that_arrived_from_and_takes_the_next_best_time()
+    {
+        // The fastest INP3 route is back the way it came (split-horizon) → excluded; the next
+        // lowest-target-time INP3 route is used instead.
+        var routing = Inp3RoutesTo(Dest, (FromNbr, 100, 50, 1), (OnwardNbr, 200, 300, 2));
+
+        var d = NetRomForwarding.Decide(
+            Datagram(Source, Dest, 20), FromNbr, Me, routing, 25, NetRomForwardMode.PerFlow, preferInp3Routes: true);
+
+        d.NextHop.Should().Be(OnwardNbr, "the time winner is the way it came → use the next-best INP3 route");
+    }
+
+    [Fact]
+    public void Falls_back_to_quality_when_the_only_inp3_route_is_the_way_it_came()
+    {
+        // The single INP3 route is back the way it came (excluded); a quality-only alternate
+        // exists → fall back to it rather than dropping.
+        var routing = new NetRomRoutingSnapshot(
+            [new NetRomDestination(Dest, "DEST",
+            [
+                new NetRomRoute(FromNbr, 100, 6, new Inp3RouteMetric(50, 1)),   // INP3, but the way it came
+                new NetRomRoute(AltNbr, 200, 6),                                // quality-only alternate
+            ])],
+            [], DateTimeOffset.UnixEpoch);
+
+        var d = NetRomForwarding.Decide(
+            Datagram(Source, Dest, 20), FromNbr, Me, routing, 25, NetRomForwardMode.BestRoute, preferInp3Routes: true);
+
+        d.NextHop.Should().Be(AltNbr, "no usable INP3 route (the only one is the way it came) → quality fallback");
+    }
+
+    [Fact]
+    public void Inp3_tie_break_is_target_time_then_hop_then_callsign()
+    {
+        // Two INP3 routes at the same target time: the lower hop count wins (then, on a hop tie,
+        // the lower neighbour callsign ordinal — mirroring Inp3RouteSelector).
+        var byHop = Inp3RoutesTo(Dest, (AltNbr, 200, 100, 3), (OnwardNbr, 100, 100, 2));
+        NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, byHop, 25, NetRomForwardMode.PerFlow, preferInp3Routes: true)
+            .NextHop.Should().Be(OnwardNbr, "equal target time → fewer hops wins");
+
+        // GB7CCC (OnwardNbr) < GB7DDD (AltNbr) ordinally, equal time + hop → callsign tie-break.
+        var byCall = Inp3RoutesTo(Dest, (AltNbr, 200, 100, 2), (OnwardNbr, 100, 100, 2));
+        NetRomForwarding.Decide(Datagram(Source, Dest, 20), FromNbr, Me, byCall, 25, NetRomForwardMode.PerFlow, preferInp3Routes: true)
+            .NextHop.Should().Be(OnwardNbr, "equal target time + hop → lower callsign ordinal wins");
+    }
 }

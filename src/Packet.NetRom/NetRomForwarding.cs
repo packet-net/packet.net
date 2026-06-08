@@ -77,13 +77,21 @@ public static class NetRomForwarding
     /// <param name="routing">The current routing view.</param>
     /// <param name="maxTimeToLive">The TTL cap applied to everything forwarded (the
     /// node's configured initial TTL — BPQ's <c>L3LIVES</c>).</param>
+    /// <param name="preferInp3Routes">The resolved INP3 forwarding preference (BPQ's
+    /// <c>PREFERINP3ROUTES</c>; <see cref="Wire.NetRomInp3Options.PreferInp3Routes"/>).
+    /// When <c>true</c> and the destination holds at least one INP3 time-route, the
+    /// datagram is forwarded over the <b>lowest-target-time</b> INP3 route (the way it
+    /// came excluded), falling back to the quality next-hop only when no INP3 route is
+    /// usable. When <c>false</c> (the default) the INP3 metric is ignored entirely and
+    /// selection is byte-for-byte today's quality path.</param>
     public static ForwardDecision Decide(
         NetRomPacket packet,
         Callsign receivedFrom,
         Callsign nodeCall,
         NetRomRoutingSnapshot routing,
         byte maxTimeToLive,
-        NetRomForwardMode mode = NetRomForwardMode.PerFlow)
+        NetRomForwardMode mode = NetRomForwardMode.PerFlow,
+        bool preferInp3Routes = false)
     {
         ArgumentNullException.ThrowIfNull(packet);
         ArgumentNullException.ThrowIfNull(routing);
@@ -111,11 +119,20 @@ public static class NetRomForwarding
         }
 
         // 4. Next hop: the destination's best route (Routes is best-first) whose
-        //    neighbour is not the one it arrived from.
+        //    neighbour is not the one it arrived from. When INP3 is preferred and the
+        //    destination holds a time-route, the lowest-target-time INP3 route wins;
+        //    otherwise (knob off, or no usable INP3 route) the quality next-hop, exactly
+        //    as today.
         var resolved = routing.Destinations.FirstOrDefault(d => d.Destination.Equals(network.Destination));
-        var nextHop = resolved is null
-            ? (Callsign?)null
-            : SelectNextHop(resolved.Routes, receivedFrom, mode, packet);
+        Callsign? nextHop = null;
+        if (resolved is not null)
+        {
+            if (preferInp3Routes)
+            {
+                nextHop = SelectInp3NextHop(resolved.Routes, receivedFrom);
+            }
+            nextHop ??= SelectNextHop(resolved.Routes, receivedFrom, mode, packet);
+        }
 
         if (nextHop is null)
         {
@@ -132,6 +149,37 @@ public static class NetRomForwarding
         => mode == NetRomForwardMode.PerFlow
             ? SelectWeighted(routes, receivedFrom, FlowHash(packet))
             : SelectBest(routes, receivedFrom);
+
+    // The single lowest-target-time INP3 route whose neighbour isn't the way the datagram
+    // came — the time-space mirror of SelectBest, and identical to the connect path's
+    // Inp3RouteSelector.SelectActiveRoute pick (so forward + connect agree on the active
+    // INP3 next hop). Per-flow weighting is a quality-space concept: in the measured
+    // time-space we always forward the fastest path (spreading flows across slower
+    // time-routes would defeat the measurement), so PerFlow/BestRoute is moot here. Returns
+    // null when the destination holds no usable INP3 route (every time-route is the way it
+    // came, or there are none), at which point Decide falls back to the quality next-hop.
+    private static Callsign? SelectInp3NextHop(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom)
+    {
+        NetRomRoute? best = null;
+        foreach (var route in routes)
+        {
+            if (route.Inp3 is not { } m || route.Neighbour.Equals(receivedFrom))
+            {
+                continue;   // a pure quality-route, or the way it came — not an eligible INP3 next hop.
+            }
+            var b = best?.Inp3;
+            bool better = b is null
+                || m.TargetTimeMs < b.TargetTimeMs
+                || (m.TargetTimeMs == b.TargetTimeMs && m.HopCount < b.HopCount)
+                || (m.TargetTimeMs == b.TargetTimeMs && m.HopCount == b.HopCount
+                    && string.CompareOrdinal(route.Neighbour.ToString(), best!.Neighbour.ToString()) < 0);
+            if (better)
+            {
+                best = route;
+            }
+        }
+        return best?.Neighbour;
+    }
 
     // The single best usable route — the first in the best-first list that isn't the
     // way the datagram came.

@@ -712,6 +712,22 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// the interlink is already up (the common transit path — preserves datagram
     /// order); a cold-start interlink is dialled on a background task first.
     /// </summary>
+    // The resolved INP3 forwarding/selection preference (BPQ PREFERINP3ROUTES). False
+    // unless the overlay is constructed (inp3 != null ⇒ inp3.enabled + connect) AND the
+    // operator flipped the knob — so forward + connect route by quality byte-for-byte as
+    // today by default, even with the overlay on for awareness. When the overlay is off no
+    // INP3 route is ever ingested, so this is moot; gating on `inp3 is not null` makes the
+    // default-off guarantee explicit at the selection seam.
+    private bool PreferInp3Routes => inp3 is not null && config.Inp3.PreferInp3Routes;
+
+    // The active route to a destination under the INP3 selection policy (the connect /
+    // best-route-forward next hop): the lowest-target-time INP3 route when the overlay is on,
+    // the knob is set, and the destination holds a time-route; otherwise the best-quality
+    // route, exactly as today. Null when the destination has no usable route. Shares
+    // Inp3RouteSelector with the forward path's SelectInp3NextHop so the two agree.
+    private NetRomRoute? SelectActiveRoute(NetRomDestination destination) =>
+        Inp3RouteSelector.SelectActiveRoute(destination, PreferInp3Routes);
+
     private void ForwardDatagram(NetRomPacket packet, Callsign receivedFrom)
     {
         // The forward decision (TTL decrement/cap, loop guard, next-hop resolution)
@@ -719,7 +735,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // for. destText is a local (not an inline log arg) so it isn't evaluated when
         // the trace is disabled (CA1873).
         var destText = packet.Network.Destination.ToString();
-        var decision = NetRomForwarding.Decide(packet, receivedFrom, nodeCall, table.Snapshot(), circuitOptions.TimeToLive, config.ForwardMode);
+        var decision = NetRomForwarding.Decide(packet, receivedFrom, nodeCall, table.Snapshot(), circuitOptions.TimeToLive, config.ForwardMode, PreferInp3Routes);
 
         switch (decision.Outcome)
         {
@@ -889,7 +905,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         for (int attempt = 0; attempt < 1 + NetRomRoutingOptions.Default.MaxRoutesPerDestination; attempt++)
         {
             var liveDest = table.Snapshot().ResolveDestination(destCall.ToString());
-            var best = liveDest?.BestRoute
+            var best = (liveDest is null ? null : SelectActiveRoute(liveDest))
                 ?? throw new InvalidOperationException($"no usable NET/ROM route to {destCall}.");
 
             try
@@ -1016,7 +1032,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             {
                 var snap = table.Snapshot();
                 var resolved = snap.Destinations.FirstOrDefault(d => d.Destination.Equals(dest));
-                if (resolved?.BestRoute is { } route)
+                if ((resolved is null ? null : SelectActiveRoute(resolved)) is { } route)
                 {
                     neighbour = route.Neighbour;
                 }
