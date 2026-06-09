@@ -234,8 +234,12 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
     if (!session) return;
     setBuffer("");
     setDraft("");
+    // Normalise line endings for display: packet stations terminate lines with a
+    // bare CR (BPQ does), and some send CRLF — but the pre-wrap pane only breaks on
+    // LF, so without this every CR-terminated line collapses onto one row. Fold both
+    // CRLF and lone CR to LF; the wire stream itself stays untouched.
     const unsubscribe = subscribeSessionOutput(session.id, (chunk) =>
-      setBuffer((b) => b + chunk),
+      setBuffer((b) => b + chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n")),
     );
     return unsubscribe;
   }, [session]);
