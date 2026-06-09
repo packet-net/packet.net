@@ -47,22 +47,24 @@ export function ThemeToggle() {
 function UserMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { user, logout } = useAuth();
+  const { username, scope, logout } = useAuth();
   const navigate = useNavigate();
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const initials = user.name.slice(0, 2);
+  // username is null when we entered tokenless (auth off / mock) — label it so.
+  const name = username || "node";
+  const initials = name.slice(0, 2);
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">{initials}</button>
+      <button onClick={() => setOpen((o) => !o)} className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary">{initials}</button>
       {open && (
         <div className="absolute right-0 top-10 z-50 w-48 rounded-lg border border-border bg-popover p-1 shadow-lg">
           <div className="px-3 py-2">
-            <p className="text-sm font-medium">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{user.role}</p>
+            <p className="text-sm font-medium">{name}</p>
+            <p className="text-xs text-muted-foreground">{scope ?? "unauthenticated"}</p>
           </div>
           <div className="my-1 h-px bg-border" />
           <button onClick={() => { logout(); navigate("/login"); }} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">

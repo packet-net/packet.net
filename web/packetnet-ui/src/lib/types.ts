@@ -186,6 +186,26 @@ export interface PortBeacon { enabled: boolean; intervalMinutes: number; text: s
 export interface User {
   name: string; role: string; scopes: string[]; passkeys: number; lastLogin: string;
 }
+
+// ---- auth wire shapes (mirror Packet.Node.Api.PdnAuthApi DTOs) ----
+// A user projected for the API — no password hash. Matches UserSummary (server).
+export interface UserSummary {
+  username: string;
+  /** The single granted scope: "read" | "operate" | "admin". */
+  scope: string;
+  createdUtc: string;
+  lastLoginUtc: string | null;
+}
+// POST /auth/login success body. `scopes` is the single granted scope string.
+export interface LoginResult { token: string; expiresAt: string; scopes: string }
+// GET /setup/state body.
+export interface SetupState { needsSetup: boolean }
+// POST /setup request body (identity + first admin + optional first port).
+export interface SetupIdentityInput { callsign: string; alias?: string | null; grid?: string | null }
+export interface SetupAdminInput { username: string; password: string }
+export interface SetupRequest { identity: SetupIdentityInput; admin: SetupAdminInput; firstPort?: PortConfig | null }
+// POST /setup success body (the created admin — no token).
+export interface SetupResult { username: string; scope: string }
 export interface LogLine { t: string; lvl: "info" | "warn" | "error"; msg: string }
 export interface ToggleHelp { label: string; desc: string }
 export interface FieldHelp { label: string; unit: string; help: string }

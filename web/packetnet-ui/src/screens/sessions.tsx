@@ -10,6 +10,7 @@ import {
   Th, Td, Sheet, Modal, EmptyState, Icon, type BadgeVariant,
 } from "@/components/ui";
 import { api, useQuery, subscribeSessionOutput } from "@/lib/api";
+import { useAuth } from "@/app/auth";
 import { PORTS_LIST, fmtUptime, fmtBytes } from "@/lib/mock";
 import type { SessionInfo, SessionRole } from "@/lib/types";
 
@@ -26,6 +27,8 @@ function stateDot(st: string): "up" | "faulted" | "down" {
 }
 
 export function Sessions() {
+  const { has } = useAuth();
+  const canOperate = has("operate"); // connect/disconnect is operate-scoped
   const { data, loading, error, reload } = useQuery(api.sessions);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openSession, setOpenSession] = useState<SessionInfo | null>(null);
@@ -90,7 +93,7 @@ export function Sessions() {
         title="Sessions"
         subtitle="Active AX.25 L2 + NET/ROM L4 circuits"
         actions={
-          <Button size="sm" onClick={() => setConnectOpen(true)}>
+          <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Connecting out requires the operate scope"} onClick={() => setConnectOpen(true)}>
             <Icon name="link" size={14} /> Connect
           </Button>
         }

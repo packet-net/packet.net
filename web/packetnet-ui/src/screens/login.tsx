@@ -1,12 +1,16 @@
 // ============================================================
-// Login (README §1) — passkey-first, centred card on a faint grid
-// backdrop. Full-screen (not wrapped in <Page>); theme toggle top-right.
+// Login (README §1) — centred card on a faint grid backdrop. Real submit:
+// api.login → auth.login(token, scope, username) → into the app. A 401 shows an
+// inline generic error (the server never says which of username/password was
+// wrong). The passkey button is a visible-but-disabled "coming soon" affordance —
+// WebAuthn is deferred.
 // ============================================================
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input, Icon } from "@/components/ui";
 import { Logo, ThemeToggle } from "@/components/layout/shell";
 import { useAuth } from "@/app/auth";
+import { api, Unauthorized } from "@/lib/api";
 
 function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   return (
@@ -32,14 +36,29 @@ function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNo
 }
 
 export function Login() {
-  const { login } = useAuth();
+  const auth = useAuth();
   const navigate = useNavigate();
+  const [username, setUsername] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const signIn = () => { login(); navigate("/"); };
-  const passkey = () => { setBusy(true); setTimeout(signIn, 700); };
-  const password = () => { if (!pw) return; setBusy(true); setTimeout(signIn, 500); };
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!username || !pw || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.login(username, pw);
+      auth.login(res.token, res.scopes, username);
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err instanceof Unauthorized
+        ? "Invalid username or password."
+        : err instanceof Error ? err.message : "Sign-in failed.");
+      setBusy(false);
+    }
+  };
 
   return (
     <AuthFrame footer={<p className="mt-6 text-center text-[11px] text-muted-foreground">GB7RDG · 127.0.0.1:8080</p>}>
@@ -47,21 +66,32 @@ export function Login() {
         <h1 className="text-lg font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted-foreground">Authenticate to manage this node.</p>
 
-        <Button className="mt-5 w-full" onClick={passkey} disabled={busy}>
+        {/* WebAuthn is deferred — shown as a "coming soon" affordance, disabled. */}
+        <Button className="mt-5 w-full" disabled title="Passkeys coming soon">
           <Icon name="fingerprint" size={16} /> Continue with passkey
         </Button>
+        <p className="mt-1 text-center text-[10px] text-muted-foreground">passkeys coming soon</p>
 
         <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wide text-muted-foreground">
           <div className="h-px flex-1 bg-border" />or password<div className="h-px flex-1 bg-border" />
         </div>
 
-        <div className="space-y-3">
-          <Field label="Username"><Input defaultValue="tom" className="font-mono" /></Field>
-          <Field label="Password">
-            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && password()} placeholder="••••••••" />
+        <form className="space-y-3" onSubmit={submit}>
+          <Field label="Username">
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} className="font-mono" autoComplete="username" autoFocus />
           </Field>
-          <Button variant="outline" className="w-full" onClick={password} disabled={busy}>Sign in</Button>
-        </div>
+          <Field label="Password">
+            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+          </Field>
+          {error && (
+            <div className="flex items-center gap-2 rounded-md bg-danger/10 px-3 py-2 text-xs text-danger">
+              <Icon name="info" size={14} /> {error}
+            </div>
+          )}
+          <Button type="submit" variant="outline" className="w-full" disabled={busy || !username || !pw}>
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
       </Card>
     </AuthFrame>
   );

@@ -1,7 +1,9 @@
 // ============================================================
-// First-run setup wizard (README §2) — reached via a one-time
-// /setup?token=… link printed to the node log. A 3-step stepper:
+// First-run setup wizard (README §2). A 3-step stepper:
 //   Station identity → Create admin → First port.
+// Submits POST /setup { identity, admin, firstPort? } — one-shot: creates the
+// first admin + applies the station identity. The endpoint returns the created
+// admin (no token), so on success we send the operator to /login to sign in.
 // Full-screen, centred (not wrapped in <Page>).
 // ============================================================
 import { Fragment, useState, type ReactNode } from "react";
@@ -9,6 +11,8 @@ import { useNavigate } from "react-router-dom";
 import { Button, Card, Field, Input, Select, Switch, Icon } from "@/components/ui";
 import { Logo, ThemeToggle } from "@/components/layout/shell";
 import { cn } from "@/lib/utils";
+import { api, ConfigRejected } from "@/lib/api";
+import type { PortConfig, SetupRequest, TransportConfig, TransportKind } from "@/lib/types";
 
 function AuthFrame({ children }: { children: ReactNode }) {
   return (
@@ -33,24 +37,68 @@ function AuthFrame({ children }: { children: ReactNode }) {
 
 interface SetupData {
   callsign: string; alias: string; grid: string;
-  username: string; password: string; passkey: boolean;
-  addPort: boolean; portId: string; portKind: string; device: string; baud: number;
+  username: string; password: string; confirm: string;
+  addPort: boolean; portId: string; portKind: TransportKind; device: string; baud: number;
 }
 
 const STEPS = ["Station identity", "Create admin", "First port"];
+const MIN_PW = 8;
+
+// Build a PortConfig from the wizard's first-port fields. The wizard collects a
+// transport kind + device + baud; map those to the right transport union member
+// (host/port kinds reuse the two fields as host:port). Defaults keep the candidate
+// valid — the operator can tune the rest later in Config.
+function buildPort(d: SetupData): PortConfig {
+  let transport: TransportConfig;
+  switch (d.portKind) {
+    case "nino-tnc": transport = { kind: "nino-tnc", device: d.device, baud: d.baud, mode: 4 }; break;
+    case "serial-kiss": transport = { kind: "serial-kiss", device: d.device, baud: d.baud }; break;
+    case "kiss-tcp": transport = { kind: "kiss-tcp", host: d.device || "127.0.0.1", port: d.baud || 8001 }; break;
+    case "axudp": transport = { kind: "axudp", host: d.device || "127.0.0.1", port: d.baud || 10093, localPort: d.baud || 10093 }; break;
+  }
+  return { id: d.portId, enabled: true, transport, profile: null, ax25: null, kiss: null };
+}
 
 export function Setup() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SetupData>({
     callsign: "", alias: "", grid: "",
-    username: "admin", password: "", passkey: false,
+    username: "admin", password: "", confirm: "",
     addPort: true, portId: "vhf-1", portKind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600,
   });
   const set = <K extends keyof SetupData>(k: K, v: SetupData[K]) => setData((d) => ({ ...d, [k]: v }));
 
-  const canNext = step === 0 ? !!data.callsign : step === 1 ? (data.password.length >= 8 || data.passkey) : true;
-  const finish = () => navigate("/login");
+  const pwOk = data.password.length >= MIN_PW && data.password === data.confirm;
+  const canNext = step === 0 ? !!data.callsign.trim() : step === 1 ? pwOk : true;
+
+  const finish = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const payload: SetupRequest = {
+      identity: {
+        callsign: data.callsign.trim(),
+        alias: data.alias.trim() || null,
+        grid: data.grid.trim() || null,
+      },
+      admin: { username: data.username.trim(), password: data.password },
+      firstPort: data.addPort ? buildPort(data) : null,
+    };
+    try {
+      await api.setup(payload);
+      // The endpoint returns no token (it creates the admin) — send the operator to
+      // sign in with the credentials they just chose.
+      navigate("/login", { replace: true });
+    } catch (e) {
+      setError(e instanceof ConfigRejected
+        ? e.message
+        : e instanceof Error ? e.message : "Setup failed.");
+      setBusy(false);
+    }
+  };
 
   return (
     <AuthFrame>
@@ -71,7 +119,7 @@ export function Setup() {
         </div>
 
         <div className="p-6">
-          <p className="mb-4 text-xs text-muted-foreground">First-run setup · reached via a one-time link printed to the node log.</p>
+          <p className="mb-4 text-xs text-muted-foreground">First-run setup · creates the first administrator and applies your station identity.</p>
 
           {step === 0 && (
             <div className="space-y-4">
@@ -87,13 +135,14 @@ export function Setup() {
 
           {step === 1 && (
             <div className="space-y-4">
-              <Field label="Admin username"><Input value={data.username} onChange={(e) => set("username", e.target.value)} className="font-mono" /></Field>
-              <Field label="Password" hint="Min 8 chars · hashed with Argon2id."><Input type="password" value={data.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••••" /></Field>
-              <button type="button" onClick={() => set("passkey", !data.passkey)} className={cn("flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors", data.passkey ? "border-primary bg-primary/5" : "border-border hover:bg-accent")}>
-                <Icon name="fingerprint" size={18} className={data.passkey ? "text-primary" : "text-muted-foreground"} />
-                <div className="flex-1"><p className="text-sm font-medium">Enrol a passkey</p><p className="text-xs text-muted-foreground">WebAuthn · optional, recommended</p></div>
-                <Switch checked={data.passkey} onChange={(v) => set("passkey", v)} />
-              </button>
+              <Field label="Admin username"><Input value={data.username} onChange={(e) => set("username", e.target.value)} className="font-mono" autoComplete="username" /></Field>
+              <Field label="Password" hint={`Min ${MIN_PW} chars · hashed with Argon2id.`}>
+                <Input type="password" value={data.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+              </Field>
+              <Field label="Confirm password" hint={data.confirm && data.password !== data.confirm ? "Passwords don't match." : undefined}>
+                <Input type="password" value={data.confirm} onChange={(e) => set("confirm", e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+              </Field>
+              <p className="text-[11px] text-muted-foreground">Passkeys (WebAuthn) can be enrolled later — coming soon.</p>
             </div>
           )}
 
@@ -108,7 +157,7 @@ export function Setup() {
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Port id"><Input value={data.portId} onChange={(e) => set("portId", e.target.value)} className="font-mono" /></Field>
                     <Field label="Transport">
-                      <Select value={data.portKind} onChange={(e) => set("portKind", e.target.value)}>
+                      <Select value={data.portKind} onChange={(e) => set("portKind", e.target.value as TransportKind)}>
                         <option value="nino-tnc">nino-tnc</option>
                         <option value="kiss-tcp">kiss-tcp</option>
                         <option value="serial-kiss">serial-kiss</option>
@@ -117,19 +166,29 @@ export function Setup() {
                     </Field>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Device"><Input value={data.device} onChange={(e) => set("device", e.target.value)} className="font-mono" /></Field>
-                    <Field label="Baud"><Input type="number" value={data.baud} onChange={(e) => set("baud", +e.target.value)} className="font-mono" /></Field>
+                    <Field label={data.portKind === "kiss-tcp" || data.portKind === "axudp" ? "Host" : "Device"}>
+                      <Input value={data.device} onChange={(e) => set("device", e.target.value)} className="font-mono" />
+                    </Field>
+                    <Field label={data.portKind === "kiss-tcp" || data.portKind === "axudp" ? "Port" : "Baud"}>
+                      <Input type="number" value={data.baud} onChange={(e) => set("baud", +e.target.value)} className="font-mono" />
+                    </Field>
                   </div>
                 </div>
               )}
             </div>
           )}
 
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md bg-danger/10 px-3 py-2 text-xs text-danger">
+              <Icon name="info" size={14} className="mt-0.5 shrink-0" /> {error}
+            </div>
+          )}
+
           <div className="mt-6 flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={() => (step === 0 ? finish() : setStep(step - 1))}>{step === 0 ? "Skip" : "Back"}</Button>
+            <Button variant="ghost" size="sm" disabled={busy || step === 0} onClick={() => setStep(step - 1)}>Back</Button>
             {step < 2
               ? <Button size="sm" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue <Icon name="chevRight" size={14} /></Button>
-              : <Button size="sm" onClick={finish}><Icon name="check" size={14} /> Finish setup</Button>}
+              : <Button size="sm" disabled={busy} onClick={finish}><Icon name="check" size={14} /> {busy ? "Setting up…" : "Finish setup"}</Button>}
           </div>
         </div>
       </Card>

@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { NodeConfig, ApplyImpact, FieldHelp, ToggleHelp, ReconcileResult, ValidationProblem, ReconcileChange } from "@/lib/types";
 import { api, useQuery, ConfigRejected } from "@/lib/api";
+import { useAuth } from "@/app/auth";
 import {
   APPLY_IMPACT, NETROM_TOGGLE_HELP, NETROM_FIELD_HELP, INP3_FIELD_HELP,
   BEACON_DEFAULT, PORT_BEACONS,
@@ -34,6 +35,8 @@ const TABS: { id: FormTab; label: string }[] = [
 
 export function Config() {
   const navigate = useNavigate();
+  const { has } = useAuth();
+  const canApply = has("admin"); // config write is admin-scoped (server is the real gate)
   const { data, reload } = useQuery(api.config, []);
 
   const [tab, setTab] = useState<FormTab>("identity");
@@ -125,7 +128,8 @@ export function Config() {
         actions={
           <div className="flex items-center gap-2">
             <Tabs active={mode} onChange={(m) => setMode(m as "forms" | "raw")} tabs={[{ id: "forms", label: "Forms" }, { id: "raw", label: "Raw YAML" }]} />
-            <Button size="sm" disabled={mode === "forms" && dirty.length === 0} onClick={openReview}>
+            <Button size="sm" disabled={!canApply || (mode === "forms" && dirty.length === 0)} onClick={openReview}
+              title={canApply ? undefined : "Config changes require the admin scope"}>
               <Icon name="check" size={14} /> Review &amp; apply
               {dirty.length > 0 && <Badge variant="secondary" className="ml-1">{dirty.length}</Badge>}
             </Button>

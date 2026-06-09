@@ -12,9 +12,10 @@ import { useEffect, useRef, useState } from "react";
 import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
-  PingResult, PingReply,
+  PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
 } from "./types";
 import * as mock from "./mock";
+import { UNAUTHORIZED_EVENT } from "@/app/auth";
 
 const MODE: "mock" | "live" =
   (import.meta.env.VITE_API_MODE as "mock" | "live") ?? "mock";
@@ -22,13 +23,73 @@ const BASE = "/api/v1";
 
 export const apiMode = MODE;
 
+// ---- auth glue ---------------------------------------------
+// api.ts is plain TS (no React). It reads the persisted token straight from the
+// same sessionStorage slot AuthProvider writes, and signals a 401 by dispatching
+// a window event the provider listens for (→ logout → relogin). This keeps the
+// fetch path free of a context dependency while staying in lock-step with auth.tsx.
+const SESSION_KEY = "pdn.session";
+
+/** The current JWT, or null when there's no session (auth off / pre-login / mock). */
+function token(): string | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    return (JSON.parse(raw) as { token?: string | null }).token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Build request headers, attaching the bearer token when we have one. */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const t = token();
+  return t ? { ...extra, authorization: `Bearer ${t}` } : extra;
+}
+
+/** Append ?access_token=<jwt> to an SSE URL (EventSource can't set headers). */
+function withTokenParam(url: string): string {
+  const t = token();
+  if (!t) return url;
+  const u = new URL(url, window.location.origin);
+  u.searchParams.set("access_token", t);
+  return u.pathname + u.search;
+}
+
+/** Raised when the session is rejected (401). The provider has already been told
+ * to log out (via the window event); callers usually just let this propagate. */
+export class Unauthorized extends Error {
+  constructor(message = "Your session has expired. Please sign in again.") {
+    super(message);
+    this.name = "Unauthorized";
+  }
+}
+
+/** A single 401 chokepoint: tell the auth provider to log out, then throw. */
+function on401(): never {
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  throw new Unauthorized();
+}
+
+/** Auth-aware fetch — attaches the bearer token and funnels every 401 to on401().
+ *  When auth is OFF the server 200s tokenless, so this transparently "just works"
+ *  with token() === null. */
+async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: authHeaders((init.headers as Record<string, string>) ?? {}),
+  });
+  if (res.status === 401) on401();
+  return res;
+}
+
 async function get<T>(path: string, mockValue: () => T): Promise<T> {
   if (MODE === "mock") {
     // tiny delay so loading states are exercised
     await new Promise((r) => setTimeout(r, 60));
     return structuredClone(mockValue());
   }
-  const res = await fetch(`${BASE}${path}`, { headers: { accept: "application/json" } });
+  const res = await authFetch(path, { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`${path}: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
@@ -67,7 +128,7 @@ export const api = {
   // The raw YAML the advanced editor round-trips.
   getConfigRaw: async (): Promise<string> => {
     if (MODE === "mock") return "# raw YAML round-trips against a live node\nschemaVersion: 1\n";
-    const res = await fetch(`${BASE}/config/raw`, { headers: { accept: "text/plain" } });
+    const res = await authFetch("/config/raw", { headers: { accept: "text/plain" } });
     if (!res.ok) throw new Error(`/config/raw: ${res.status}`);
     return res.text();
   },
@@ -101,6 +162,22 @@ export const api = {
   // PingUnavailable fallback remains for the case a node ever 501s this again.
   pingTarget: (station: string, portId: string, count?: number) =>
     pingTarget(station, portId, count),
+
+  // ---- auth + setup + user management (node-auth-ui) ----
+  // Whether first-run setup is still required (zero users). Always open (no token).
+  setupState: () => setupState(),
+  // First-run bootstrap: create the admin + apply identity (+ optional first port).
+  // Always open; one-shot (403 once a user exists). Returns the created admin summary
+  // (no token — the operator then logs in).
+  setup: (payload: SetupRequest) => setup(payload),
+  // Password login → JWT. Resolves the LoginResult ({ token, expiresAt, scopes }) on
+  // 200; throws Unauthorized on 401 (caller shows an inline error — note this 401 is
+  // expected and NOT a session expiry, so login() does not dispatch the logout event).
+  login: (username: string, password: string) => login(username, password),
+  // Admin-scope user management.
+  usersList: () => usersList(),
+  userCreate: (username: string, password: string, scope: string) => userCreate(username, password, scope),
+  userDelete: (username: string) => userDelete(username),
 };
 
 // The connectionless-ping result shape lives in ./types (PingResult); re-exported here so
@@ -138,7 +215,7 @@ async function connectSession(target: string, portId?: string): Promise<SessionI
       uptimeSeconds: 0, bytesIn: 0, bytesOut: 0, lastActivity: "0:00:00",
     };
   }
-  const res = await fetch(`${BASE}/sessions`, {
+  const res = await authFetch("/sessions", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(portId ? { target, portId } : { target }),
@@ -150,7 +227,7 @@ async function connectSession(target: string, portId?: string): Promise<SessionI
 // Disconnect a session by id. Resolves on 204; a 404/other surfaces as Error.
 async function disconnectSession(id: string): Promise<void> {
   if (MODE === "mock") { await new Promise((r) => setTimeout(r, 120)); return; }
-  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const res = await authFetch(`/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (res.status === 204) return;
   throw new Error(await errorMessage(res, `Disconnect failed (${res.status}).`));
 }
@@ -158,7 +235,7 @@ async function disconnectSession(id: string): Promise<void> {
 // Send one line into a session. Resolves on 202; a 404/other surfaces as Error.
 async function sendSessionLine(id: string, line: string): Promise<void> {
   if (MODE === "mock") { await new Promise((r) => setTimeout(r, 80)); return; }
-  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(id)}/send`, {
+  const res = await authFetch(`/sessions/${encodeURIComponent(id)}/send`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ line }),
@@ -176,7 +253,7 @@ async function pingTarget(station: string, portId: string, count = 5): Promise<P
     await new Promise((r) => setTimeout(r, 250));
     return mockPing(portId, count);
   }
-  const res = await fetch(`${BASE}/ping`, {
+  const res = await authFetch("/ping", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ station, portId, count }),
@@ -224,7 +301,7 @@ async function writeConfig(
     await new Promise((r) => setTimeout(r, 80));
     return mockReconcile(!dryRun);
   }
-  const res = await fetch(`${BASE}${path}?dryRun=${dryRun}`, {
+  const res = await authFetch(`${path}?dryRun=${dryRun}`, {
     method,
     headers: { "content-type": contentType, accept: "application/json" },
     body,
@@ -255,7 +332,7 @@ async function writePort(path: string, method: string, body?: string): Promise<R
     await new Promise((r) => setTimeout(r, 80));
     return mockReconcile(true);
   }
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await authFetch(path, {
     method,
     headers: body
       ? { "content-type": "application/json", accept: "application/json" }
@@ -282,7 +359,7 @@ async function portLifecycle(
     if (action === "restart") return { ...base, id };
     return { ...base, id, enabled: action === "up", state: action === "up" ? "up" : "down" };
   }
-  const res = await fetch(`${BASE}/ports/${encodeURIComponent(id)}/lifecycle`, {
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/lifecycle`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ action }),
@@ -294,6 +371,101 @@ async function portLifecycle(
   }
   if (!res.ok) throw new Error(`/ports/${id}/lifecycle: ${res.status} ${res.statusText}`);
   return (await res.json()) as PortStatus;
+}
+
+// ---- auth + setup + user management ------------------------
+// These three (setupState/login/setup) are the always-open bootstrap path: they
+// carry no token and are reachable before any account exists. usersList/userCreate/
+// userDelete are admin-gated and go through authFetch (token attached; 401→relogin).
+//
+// Mock mode has no real auth: setupState reports "no setup needed", login returns a
+// synthetic admin token, setup is a no-op success, and the user endpoints round-trip
+// against the in-memory mock list so the Users screen demos CRUD with no node.
+
+// Whether first-run setup is still required.
+async function setupState(): Promise<SetupState> {
+  if (MODE === "mock") return { needsSetup: false };
+  // Always open — no token, and a 401 here would be unexpected; let it surface.
+  const res = await fetch(`${BASE}/setup/state`, { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`/setup/state: ${res.status} ${res.statusText}`);
+  return (await res.json()) as SetupState;
+}
+
+// Password login → JWT. 200 resolves the LoginResult; 401 throws Unauthorized with
+// the server's generic message. This is the ONE 401 that must NOT trigger the global
+// logout event (there's no session to drop — the user is trying to create one), so it
+// uses a bare fetch rather than authFetch.
+async function login(username: string, password: string): Promise<LoginResult> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    if (!username || !password) throw new Unauthorized("Invalid username or password.");
+    return { token: "mock.jwt.token", expiresAt: new Date(Date.now() + 36e5).toISOString(), scopes: "admin" };
+  }
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (res.status === 401) throw new Unauthorized(await errorMessage(res, "Invalid username or password."));
+  if (!res.ok) throw new Error(await errorMessage(res, `Login failed (${res.status}).`));
+  return (await res.json()) as LoginResult;
+}
+
+// First-run bootstrap. Always open; one-shot (403 once a user exists). Returns the
+// created admin summary (no token — the caller sends the operator to login).
+async function setup(payload: SetupRequest): Promise<SetupResult> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return { username: payload.admin.username, scope: "admin" };
+  }
+  const res = await fetch(`${BASE}/setup`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 422) throw new ConfigRejected((await res.json()) as ValidationProblem);
+  if (!res.ok) throw new Error(await errorMessage(res, `Setup failed (${res.status}).`));
+  return (await res.json()) as SetupResult;
+}
+
+// In-memory mock user list, so the Users screen demos create/delete with no node.
+const mockUsers: UserSummary[] = [
+  { username: "tom", scope: "admin", createdUtc: "2026-01-01T00:00:00Z", lastLoginUtc: "2026-06-08T14:02:00Z" },
+];
+
+async function usersList(): Promise<UserSummary[]> {
+  if (MODE === "mock") { await new Promise((r) => setTimeout(r, 60)); return structuredClone(mockUsers); }
+  const res = await authFetch("/users", { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`/users: ${res.status} ${res.statusText}`);
+  return (await res.json()) as UserSummary[];
+}
+
+async function userCreate(username: string, password: string, scope: string): Promise<UserSummary> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 120));
+    const u: UserSummary = { username, scope, createdUtc: new Date().toISOString(), lastLoginUtc: null };
+    mockUsers.push(u);
+    return structuredClone(u);
+  }
+  const res = await authFetch("/users", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ username, password, scope }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Create user failed (${res.status}).`));
+  return (await res.json()) as UserSummary;
+}
+
+async function userDelete(username: string): Promise<void> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 120));
+    const i = mockUsers.findIndex((u) => u.username === username);
+    if (i >= 0) mockUsers.splice(i, 1);
+    return;
+  }
+  const res = await authFetch(`/users/${encodeURIComponent(username)}`, { method: "DELETE" });
+  if (res.status === 204) return;
+  throw new Error(await errorMessage(res, `Delete user failed (${res.status}).`));
 }
 
 // ---- generic data hook -------------------------------------
@@ -327,7 +499,9 @@ export function subscribeFrames(onFrame: (f: MonitorEvent) => void): () => void 
     }, 700);
     return () => clearInterval(id);
   }
-  const es = new EventSource(`${BASE}/events`);
+  // EventSource can't set an Authorization header, so the token rides as a query
+  // param (?access_token=<jwt>); the backend reads it. Tokenless (auth off) just omits it.
+  const es = new EventSource(withTokenParam(`${BASE}/events`));
   const handler = (e: MessageEvent) => {
     try { onFrame(JSON.parse(e.data) as MonitorEvent); } catch { /* ignore malformed */ }
   };
@@ -360,7 +534,8 @@ export function subscribeSessionOutput(id: string, onChunk: (text: string) => vo
     }, 1500);
     return () => clearInterval(timer);
   }
-  const es = new EventSource(`${BASE}/sessions/${encodeURIComponent(id)}/stream`);
+  // Token as a query param (see subscribeFrames) — EventSource has no header API.
+  const es = new EventSource(withTokenParam(`${BASE}/sessions/${encodeURIComponent(id)}/stream`));
   const handler = (e: MessageEvent) => {
     try { onChunk(JSON.parse(e.data) as string); } catch { /* ignore malformed */ }
   };

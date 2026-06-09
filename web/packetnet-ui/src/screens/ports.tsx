@@ -22,6 +22,7 @@ import {
 } from "@/lib/mock";
 import { portHealth } from "@/lib/health";
 import { api, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
+import { useAuth } from "@/app/auth";
 
 // ---- the editor draft: a PortConfig plus the operator-facing setup choices ----
 interface PortDraft {
@@ -66,6 +67,8 @@ function setupSummary(id: string): string {
 
 export function Ports() {
   const navigate = useNavigate();
+  const { has } = useAuth();
+  const canOperate = has("operate"); // port add/edit/lifecycle is operate-scoped
   const { data: config, reload: reloadConfig } = useQuery(api.config, []);
   const { data: portStatus, reload: reloadPorts } = useQuery(api.ports, []);
   const { data: links } = useQuery(api.linkStats, []);
@@ -161,7 +164,7 @@ export function Ports() {
         actions={
           <div className="flex items-center gap-2">
             <PingButton station={NODE_CONFIG.identity.callsign} label="AX.25 ping" variant="outline" size="sm" />
-            <Button size="sm" onClick={() => setEdit(newPort())}><Icon name="plus" size={14} /> Add port</Button>
+            <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Adding a port requires the operate scope"} onClick={() => setEdit(newPort())}><Icon name="plus" size={14} /> Add port</Button>
           </div>
         }
       />
