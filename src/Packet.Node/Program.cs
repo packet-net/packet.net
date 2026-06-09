@@ -113,6 +113,20 @@ if (tokenService is not null)
 // optional so an unregistered-service path can never abort startup.
 builder.Services.AddSingleton(new LoginThrottle(TimeProvider.System));
 
+// WebAuthn / passkeys (auth part 3, default-off behind management.auth.enabled). The
+// credential STORE (public keys, sign counters, transports) lives in the same pdn.db as
+// the users — a fault degrades to "no passkeys", never crashing the node. The challenge
+// cache holds pending ceremonies in-memory (server-generated, single-use, expiring,
+// user/session-bound — the anti-replay core). The per-request IFido2 verifier is built
+// in the endpoints (WebAuthnFido2Builder) from the live config + the actual serving
+// origin, so the RP-id/origin split (localhost-first) is handled there, not baked at
+// startup. Registered as the SAME nullable-service contract as the JWT/refresh services:
+// the credential store always registers (it degrades internally), and the host treats a
+// null token/refresh service (no signing key) as "passkeys unusable" → 503, node boots.
+var webAuthnStore = new SqliteWebAuthnCredentialStore(dbPath, bootstrapLoggers.CreateLogger<SqliteWebAuthnCredentialStore>());
+builder.Services.AddSingleton<IWebAuthnCredentialStore>(webAuthnStore);
+builder.Services.AddSingleton(new WebAuthnChallengeCache(TimeProvider.System));
+
 // Authentication: JWT bearer validated against THIS node's signing key/issuer/audience
 // (HS256 only). Always registered so a token presented when auth is on is validated;
 // when the key is unavailable the validator gets a throwaway parameters object that
@@ -250,6 +264,17 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 // group is returned so we can gate it `admin` (the gate is a no-op when auth is off).
 var usersGroup = app.MapPdnAuthApi();
 usersGroup.RequireAuthorization(PdnAuthPolicies.Admin);
+
+// WebAuthn / passkeys (auth part 3). The assert (passwordless-login) endpoints are
+// ALWAYS open — a login can't carry a bearer token. The register + credential-management
+// group is gated `read`: a logged-in user enrols/manages a passkey for THEMSELVES (the
+// username comes from the authenticated principal, never the body), and read is the floor
+// a self-service "manage my own login" action sits at — any authenticated user may add a
+// passkey. The gate is a no-op when auth is off (and register/complete then 409s, since
+// there is no authenticated "self" to enrol for). Mapped before the catch-all so the
+// specific /api/v1/* routes win.
+var webAuthnGroup = app.MapPdnWebAuthnApi();
+webAuthnGroup.RequireAuthorization(PdnAuthPolicies.Read);
 
 // Slice 3 control API (read endpoints). Mapped BEFORE the SPA fallback so /api/*
 // and /healthz win; everything else falls through to index.html for the React

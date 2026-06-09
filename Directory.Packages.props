@@ -13,6 +13,11 @@
     <!-- Auth -->
     <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
     <PackageVersion Include="Fido2.AspNet" Version="4.0.0-beta.16" />
+    <!-- Fido2 pulls Microsoft.Bcl.Memory 9.0.0 transitively, which carries
+         CVE-2026-26127 (GHSA-73j8-2gch-69rq — OOB read decoding malformed Base64Url).
+         Pin the first patched 9.x (9.0.14) via CPM transitive pinning so the restore
+         resolves the fixed build and warnings-as-errors (NU1903) stays clean. -->
+    <PackageVersion Include="Microsoft.Bcl.Memory" Version="9.0.14" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.5.0" />
     <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.5.0" />
     <!-- JWT bearer validation middleware for the host (the node auth foundation,

@@ -19,6 +19,8 @@ public static class NodeConfigYaml
         // surface); YamlDotNet has no deserializer for the interface, so map it to
         // the concrete List it will populate then expose read-only.
         .WithTypeMapping<IReadOnlyList<PortConfig>, List<PortConfig>>()
+        // Same for management.auth.webAuthn.allowedOrigins (an IReadOnlyList<string>).
+        .WithTypeMapping<IReadOnlyList<string>, List<string>>()
         // The nested netRom.inp3 block (a Packet.NetRom.Wire.NetRomInp3Options
         // record) needs NO custom converter: it is pure durations / ints / bools, so
         // the camel-case mapping + YamlDotNet's built-in TimeSpan converter bind it

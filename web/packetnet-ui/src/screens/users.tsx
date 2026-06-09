@@ -5,17 +5,19 @@
 // the server is the real gate, this is the light-touch UI mirror.
 //
 // Each user carries a single granted scope (read/operate/admin; admin⊃operate⊃read).
-// The on-air TOTP enrolment flow below is a design affordance (mock) — it has no
-// backend yet and stays client-side until that lands.
+// Passkeys (node-passkeys): a user manages their OWN passkeys (enrol + list + delete)
+// from their own row — the server scopes every WebAuthn call to the authenticated
+// principal, so the "Add passkey" / list affordance only lights up on the signed-in
+// user's row. The on-air TOTP enrolment flow below is still a design affordance (mock).
 // ============================================================
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Page, PageHeader } from "@/components/layout/shell";
 import { Button, Badge, Card, Label, Input, Select, Field, Modal } from "@/components/ui";
 import { Icon, type IconName } from "@/components/icon";
 import { cn } from "@/lib/utils";
 import { api, useQuery } from "@/lib/api";
 import { useAuth, type Scope } from "@/app/auth";
-import type { UserSummary } from "@/lib/types";
+import type { UserSummary, WebAuthnCredential } from "@/lib/types";
 
 const MIN_PW = 8;
 const SCOPES: Scope[] = ["read", "operate", "admin"];
@@ -96,7 +98,7 @@ export function Users() {
             <div className="mt-4 space-y-2 border-t border-border pt-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Web login</p>
               <AuthMethod icon="key" title="Password" sub="Argon2id" enabled action={<Button variant="ghost" size="xs" disabled={!isAdmin}>Reset</Button>} />
-              <AuthMethod icon="fingerprint" title="Passkeys" sub="coming soon" enabled={false} action={<Button variant="ghost" size="xs" disabled title="Passkeys coming soon"><Icon name="fingerprint" size={12} /> Add passkey</Button>} />
+              <Passkeys isSelf={auth.username === u.username} />
 
               <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On-air auth</p>
               <AuthMethod icon="signal" title="Authenticator (TOTP)" sub={totp[u.username] ? "6-digit code, enrolled" : "prove identity over a packet session"} enabled={!!totp[u.username]}
@@ -112,7 +114,7 @@ export function Users() {
         <Icon name="info" size={16} className="mt-0.5 shrink-0" />
         <div>
           <p className="font-medium text-foreground">Two worlds of auth</p>
-          <p className="mt-0.5 text-xs"><strong className="text-foreground/80">Web login</strong> uses a password (passkeys coming soon) over HTTPS. <strong className="text-foreground/80">On-air auth</strong> uses a TOTP code, because when someone reaches the node over a plain packet session there's no browser — just a 6-digit code they can type.</p>
+          <p className="mt-0.5 text-xs"><strong className="text-foreground/80">Web login</strong> uses a password or a passkey (WebAuthn) over a secure context. <strong className="text-foreground/80">On-air auth</strong> uses a TOTP code, because when someone reaches the node over a plain packet session there's no browser — just a 6-digit code they can type.</p>
         </div>
       </div>
 
@@ -189,6 +191,94 @@ function AuthMethod({ icon, title, sub, enabled, action }: {
         </div>
       </div>
       <div className="shrink-0">{action}</div>
+    </div>
+  );
+}
+
+// The passkeys row. A user manages their OWN passkeys (the server scopes every WebAuthn
+// call to the authenticated principal), so the affordances only activate on the
+// signed-in user's row (`isSelf`). Other rows show a static "passkeys" indicator. The
+// "Add passkey" button runs a real WebAuthn enrolment ceremony (api.passkeyRegister);
+// it is disabled outside a secure context (HTTPS / localhost) or in mock mode.
+function Passkeys({ isSelf }: { isSelf: boolean }) {
+  const [creds, setCreds] = useState<WebAuthnCredential[]>([]);
+  const [loading, setLoading] = useState(isSelf);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const supported = api.webauthnSupported();
+
+  const reload = useCallback(() => {
+    if (!isSelf) return;
+    setLoading(true);
+    api.passkeyList()
+      .then((c) => { setCreds(c); setError(null); })
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load passkeys."))
+      .finally(() => setLoading(false));
+  }, [isSelf]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const add = async () => {
+    if (busy || !supported) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.passkeyRegister();
+      reload();
+    } catch (e) {
+      const aborted = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "AbortError");
+      if (!aborted) setError(e instanceof Error ? e.message : "Passkey enrolment failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.passkeyDelete(id);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Other users' rows: a static, non-actionable indicator (you only manage your own).
+  if (!isSelf) {
+    return <AuthMethod icon="fingerprint" title="Passkeys" sub="managed by the user themselves" enabled={false}
+      action={<span className="text-[10px] text-muted-foreground">self-service</span>} />;
+  }
+
+  const enrolled = creds.length > 0;
+  const sub = !supported ? "needs HTTPS or localhost"
+    : loading ? "loading…"
+    : enrolled ? `${creds.length} passkey${creds.length === 1 ? "" : "s"}`
+    : "no passkeys yet";
+
+  return (
+    <div className="rounded-lg border border-border">
+      <AuthMethod icon="fingerprint" title="Passkeys" sub={sub} enabled={enrolled}
+        action={<Button size="xs" disabled={!supported || busy} onClick={add}
+          title={supported ? "Enrol a passkey on this device" : "Passkeys need a secure context (HTTPS or localhost)"}>
+          <Icon name="plus" size={12} /> {busy ? "Working…" : "Add passkey"}
+        </Button>} />
+      {error && <p className="px-3 pb-2 text-xs text-danger">{error}</p>}
+      {enrolled && (
+        <ul className="space-y-1 px-3 pb-3">
+          {creds.map((c) => (
+            <li key={c.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2.5 py-1.5 text-xs">
+              <span className="min-w-0 truncate font-mono text-muted-foreground" title={c.id}>
+                {c.transports ?? "passkey"} · added {fmtLastLogin(c.createdUtc)}
+              </span>
+              <button type="button" className="shrink-0 text-danger hover:underline" disabled={busy} onClick={() => remove(c.id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

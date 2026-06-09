@@ -21,6 +21,11 @@
          primitives + the user store live in Packet.Node.Core (web-free); this is
          only the ASP.NET authentication middleware. -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- WebAuthn / passkeys (auth part 3): the ASP.NET integration of Fido2NetLib.
+         The credential STORE + records + challenge cache live in Packet.Node.Core
+         (web-free); this package provides the IFido2 attestation/assertion verifier
+         and its DI registration, which are wired here in the host. -->
+    <PackageReference Include="Fido2.AspNet" />
   </ItemGroup>
 
   <ItemGroup>

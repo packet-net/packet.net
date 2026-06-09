@@ -41,4 +41,28 @@ internal static partial class AuthLog
     [LoggerMessage(EventId = 4007, Level = LogLevel.Information,
         Message = "auth: logout user={User} ip={Ip}")]
     public static partial void Logout(ILogger logger, string user, string ip);
+
+    [LoggerMessage(EventId = 4008, Level = LogLevel.Information,
+        Message = "auth: passkey REGISTERED user={User} ip={Ip}")]
+    public static partial void PasskeyRegistered(ILogger logger, string user, string ip);
+
+    [LoggerMessage(EventId = 4009, Level = LogLevel.Warning,
+        Message = "auth: passkey registration FAILED user={User} ip={Ip} reason={Reason}")]
+    public static partial void PasskeyRegistrationFailed(ILogger logger, string user, string ip, string reason);
+
+    [LoggerMessage(EventId = 4010, Level = LogLevel.Information,
+        Message = "auth: passkey assertion OK (passwordless login) user={User} ip={Ip} scope={Scope}")]
+    public static partial void PasskeyAssertionSucceeded(ILogger logger, string user, string ip, string scope);
+
+    [LoggerMessage(EventId = 4011, Level = LogLevel.Warning,
+        Message = "auth: passkey assertion FAILED ip={Ip} reason={Reason}")]
+    public static partial void PasskeyAssertionFailed(ILogger logger, string ip, string reason);
+
+    [LoggerMessage(EventId = 4012, Level = LogLevel.Warning,
+        Message = "auth: passkey CLONE DETECTED — signature counter regressed user={User} ip={Ip}")]
+    public static partial void PasskeyCloneDetected(ILogger logger, string user, string ip);
+
+    [LoggerMessage(EventId = 4013, Level = LogLevel.Information,
+        Message = "auth: passkey DELETED user={User} ip={Ip}")]
+    public static partial void PasskeyDeleted(ILogger logger, string user, string ip);
 }

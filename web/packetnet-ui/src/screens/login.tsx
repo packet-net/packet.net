@@ -2,8 +2,10 @@
 // Login (README §1) — centred card on a faint grid backdrop. Real submit:
 // api.login → auth.login(token, scope, username) → into the app. A 401 shows an
 // inline generic error (the server never says which of username/password was
-// wrong). The passkey button is a visible-but-disabled "coming soon" affordance —
-// WebAuthn is deferred.
+// wrong). The "Continue with passkey" button runs a real WebAuthn passwordless
+// assertion (api.passkeyAssert → the SAME token pair a password login mints) when
+// the origin is a secure context (HTTPS or localhost); otherwise it stays disabled
+// (we never fake a ceremony — in mock mode it's a no-op disabled affordance).
 // ============================================================
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -41,7 +43,13 @@ export function Login() {
   const [username, setUsername] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Passkeys only run in a secure context (HTTPS or localhost) with the WebAuthn API
+  // present; otherwise the button stays disabled rather than failing on tap. Mock mode
+  // reports false too (no ceremony to run — we don't fake one).
+  const passkeySupported = api.webauthnSupported();
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -60,17 +68,44 @@ export function Login() {
     }
   };
 
+  // Passwordless WebAuthn assertion. We pass the typed username when present (it scopes
+  // the allow-list); when blank, the browser offers any discoverable passkey for the RP.
+  const passkey = async () => {
+    if (passkeyBusy || !passkeySupported) return;
+    setPasskeyBusy(true);
+    setError(null);
+    try {
+      const res = await api.passkeyAssert(username.trim() || undefined);
+      auth.login(res.token, res.scopes, username.trim(), res.refreshToken);
+      navigate("/", { replace: true });
+    } catch (err) {
+      // A user-cancelled / aborted ceremony (NotAllowedError) is not an error to shout
+      // about — just stop. Anything else surfaces inline.
+      const aborted = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "AbortError");
+      if (!aborted) {
+        setError(err instanceof Unauthorized
+          ? "That passkey was not recognised."
+          : err instanceof Error ? err.message : "Passkey sign-in failed.");
+      }
+      setPasskeyBusy(false);
+    }
+  };
+
   return (
     <AuthFrame footer={<p className="mt-6 text-center text-[11px] text-muted-foreground">GB7RDG · 127.0.0.1:8080</p>}>
       <Card className="p-6">
         <h1 className="text-lg font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted-foreground">Authenticate to manage this node.</p>
 
-        {/* WebAuthn is deferred — shown as a "coming soon" affordance, disabled. */}
-        <Button className="mt-5 w-full" disabled title="Passkeys coming soon">
-          <Icon name="fingerprint" size={16} /> Continue with passkey
+        {/* Passwordless WebAuthn. Enabled only in a secure context (HTTPS / localhost). */}
+        <Button className="mt-5 w-full" onClick={passkey}
+          disabled={!passkeySupported || passkeyBusy}
+          title={passkeySupported ? "Sign in with a passkey" : "Passkeys need a secure context (HTTPS or localhost)"}>
+          <Icon name="fingerprint" size={16} /> {passkeyBusy ? "Waiting for passkey…" : "Continue with passkey"}
         </Button>
-        <p className="mt-1 text-center text-[10px] text-muted-foreground">passkeys coming soon</p>
+        {!passkeySupported && (
+          <p className="mt-1 text-center text-[10px] text-muted-foreground">passkeys need HTTPS or localhost</p>
+        )}
 
         <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wide text-muted-foreground">
           <div className="h-px flex-1 bg-border" />or password<div className="h-px flex-1 bg-border" />

@@ -359,5 +359,44 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
             .Must(a => !(a.RefreshTokenMinutes.HasValue && a.AccessTokenMinutes.HasValue
                 && a.RefreshTokenMinutes.Value <= a.AccessTokenMinutes.Value))
             .WithMessage("management.auth.refreshTokenMinutes must be greater than accessTokenMinutes.");
+
+        // WebAuthn / passkey relying-party config. Validated always (it is inert when
+        // no passkey is enrolled, but a bad RP id / origin should still be rejected at
+        // config-apply rather than only blowing up the first ceremony).
+        RuleFor(m => m.Auth.WebAuthn).NotNull().SetValidator(new WebAuthnConfigValidator());
     }
+}
+
+/// <summary>
+/// Validates the WebAuthn relying-party config. The RP id must be non-empty and a
+/// plausible domain label (never an IP literal — an IP is not a legal RP id, see
+/// docs/passkeys-lan-trust-pattern.md §1). Each allowed origin, when given, must be an
+/// absolute http/https URL (the exact origin the verifier pins).
+/// </summary>
+public sealed class WebAuthnConfigValidator : AbstractValidator<WebAuthnConfig>
+{
+    public WebAuthnConfigValidator()
+    {
+        RuleFor(w => w.RelyingPartyId)
+            .NotEmpty().WithMessage("management.auth.webAuthn.relyingPartyId is required.")
+            .Must(BeARegistrableDomainNotAnIp)
+            .WithMessage("management.auth.webAuthn.relyingPartyId must be a domain name (e.g. localhost or pdn.lab.example), never an IP address.");
+
+        RuleFor(w => w.RelyingPartyName)
+            .NotEmpty().WithMessage("management.auth.webAuthn.relyingPartyName is required.");
+
+        RuleForEach(w => w.AllowedOrigins)
+            .Must(BeAnAbsoluteHttpOrigin)
+            .WithMessage("each management.auth.webAuthn.allowedOrigins entry must be an absolute http(s) origin (e.g. https://pdn.lab.example:8443).");
+    }
+
+    // An RP id must be a registrable domain string — never an IP literal. We reject a
+    // value that parses as an IPv4/IPv6 address; everything else (a bare label like
+    // "localhost" or a dotted name like "pdn.lab.example") is accepted as a domain.
+    private static bool BeARegistrableDomainNotAnIp(string? rpId) =>
+        !string.IsNullOrWhiteSpace(rpId) && !System.Net.IPAddress.TryParse(rpId, out _);
+
+    private static bool BeAnAbsoluteHttpOrigin(string? origin) =>
+        Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }

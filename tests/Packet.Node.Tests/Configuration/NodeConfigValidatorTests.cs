@@ -130,6 +130,41 @@ public class NodeConfigValidatorTests
     }
 
     [Theory]
+    [InlineData("localhost", true)]                 // the zero-config default
+    [InlineData("pdn.lab.example", true)]           // a real registrable domain
+    [InlineData("", false)]                         // RP id is required
+    [InlineData("192.168.0.10", false)]             // an IP literal is NOT a legal RP id
+    [InlineData("::1", false)]                      // nor an IPv6 literal
+    public void WebAuthn_rp_id_must_be_a_domain_not_an_ip(string rpId, bool expectValid)
+    {
+        var config = Valid() with
+        {
+            Management = new ManagementConfig
+            {
+                Auth = new AuthConfig { WebAuthn = new WebAuthnConfig { RelyingPartyId = rpId } },
+            },
+        };
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Theory]
+    [InlineData("https://pdn.lab.example:8443", true)]
+    [InlineData("http://localhost:8080", true)]
+    [InlineData("pdn.lab.example", false)]          // not an absolute origin
+    [InlineData("ftp://pdn.lab.example", false)]    // not http(s)
+    public void WebAuthn_allowed_origins_must_be_absolute_http_origins(string origin, bool expectValid)
+    {
+        var config = Valid() with
+        {
+            Management = new ManagementConfig
+            {
+                Auth = new AuthConfig { WebAuthn = new WebAuthnConfig { AllowedOrigins = [origin] } },
+            },
+        };
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Theory]
     [InlineData(0, false)]    // baud must be > 0
     [InlineData(1, true)]
     [InlineData(57600, true)]

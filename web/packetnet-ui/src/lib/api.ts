@@ -13,8 +13,13 @@ import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
+  WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
 } from "./types";
 import * as mock from "./mock";
+import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
+import type {
+  PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON,
+} from "@simplewebauthn/browser";
 import { UNAUTHORIZED_EVENT, setLogoutRevoker } from "@/app/auth";
 
 const MODE: "mock" | "live" =
@@ -258,6 +263,24 @@ export const api = {
   usersList: () => usersList(),
   userCreate: (username: string, password: string, scope: string) => userCreate(username, password, scope),
   userDelete: (username: string) => userDelete(username),
+
+  // ---- WebAuthn / passkeys (node-passkeys) ----
+  // Whether passkeys can be exercised in this environment: a real WebAuthn ceremony
+  // needs a secure context (HTTPS, or localhost over plain HTTP) + the browser API.
+  // In mock mode there is no real ceremony to run, so it reports false (the login
+  // passkey button stays disabled — we never FAKE a ceremony).
+  webauthnSupported: () => webauthnSupported(),
+  // Passwordless sign-in: assert/begin → startAuthentication → assert/complete → the
+  // SAME LoginResult a password login returns ({token,expiresAt,scopes,refreshToken}).
+  // The optional username scopes the allow-list; omit for a discoverable credential.
+  passkeyAssert: (username?: string) => passkeyAssert(username),
+  // Enrol a passkey for the signed-in user: register/begin → startRegistration →
+  // register/complete. Gated; the username comes from the server's principal.
+  passkeyRegister: () => passkeyRegister(),
+  // The signed-in user's enrolled passkeys.
+  passkeyList: () => passkeyList(),
+  // Delete one of the signed-in user's passkeys by its base64url credential id.
+  passkeyDelete: (credentialId: string) => passkeyDelete(credentialId),
 };
 
 // The connectionless-ping result shape lives in ./types (PingResult); re-exported here so
@@ -601,6 +624,88 @@ async function userDelete(username: string): Promise<void> {
   const res = await authFetch(`/users/${encodeURIComponent(username)}`, { method: "DELETE" });
   if (res.status === 204) return;
   throw new Error(await errorMessage(res, `Delete user failed (${res.status}).`));
+}
+
+// ---- WebAuthn / passkeys -----------------------------------
+// A real WebAuthn ceremony only runs in a "potentially trustworthy" origin (HTTPS, or
+// localhost over plain HTTP) with the browser credentials API present. We probe that
+// rather than the API mode, so the login passkey button lights up exactly when a
+// ceremony could succeed. In mock mode there is no node to talk to, so it's always
+// false (we never fake a ceremony — see CLAUDE-task scope).
+function webauthnSupported(): boolean {
+  if (MODE === "mock") return false;
+  return typeof window !== "undefined"
+    && window.isSecureContext === true
+    && typeof window.PublicKeyCredential !== "undefined";
+}
+
+// Passwordless sign-in. assert/begin (always open) hands back a session id + the
+// WebAuthn request options; startAuthentication drives the authenticator; assert/complete
+// verifies and returns the SAME token pair a password login does. A user gesture must
+// have triggered this (the browser requires it for credentials.get).
+async function passkeyAssert(username?: string): Promise<LoginResult> {
+  if (MODE === "mock") throw new Error("Passkeys are not available in mock mode.");
+  // 1) begin — always open (no token; this IS the login).
+  const beginRes = await fetch(`${BASE}/auth/webauthn/assert/begin`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(username ? { username } : {}),
+  });
+  if (!beginRes.ok) throw new Error(await errorMessage(beginRes, `Passkey sign-in failed (${beginRes.status}).`));
+  const begin = (await beginRes.json()) as AssertBeginResponse;
+
+  // 2) drive the authenticator (navigator.credentials.get) over the server's options.
+  const assertion = await startAuthentication({
+    optionsJSON: begin.options as PublicKeyCredentialRequestOptionsJSON,
+  });
+
+  // 3) complete — verify + issue the token pair (401 on any failure: unknown credential,
+  //    bad signature, clone-detected counter regression — all generic, no oracle).
+  const completeRes = await fetch(`${BASE}/auth/webauthn/assert/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ sessionId: begin.sessionId, response: assertion }),
+  });
+  if (completeRes.status === 401) throw new Unauthorized(await errorMessage(completeRes, "Passkey sign-in failed."));
+  if (!completeRes.ok) throw new Error(await errorMessage(completeRes, `Passkey sign-in failed (${completeRes.status}).`));
+  return (await completeRes.json()) as LoginResult;
+}
+
+// Enrol a passkey for the signed-in user. Both halves are gated (authFetch attaches the
+// bearer token); the username is taken from the server principal, never sent.
+async function passkeyRegister(): Promise<RegisterCompleteResponse> {
+  if (MODE === "mock") throw new Error("Passkeys are not available in mock mode.");
+  const beginRes = await authFetch("/auth/webauthn/register/begin", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: "{}",
+  });
+  if (!beginRes.ok) throw new Error(await errorMessage(beginRes, `Could not start passkey enrolment (${beginRes.status}).`));
+  const options = (await beginRes.json()) as PublicKeyCredentialCreationOptionsJSON;
+
+  const attestation = await startRegistration({ optionsJSON: options });
+
+  const completeRes = await authFetch("/auth/webauthn/register/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ response: attestation }),
+  });
+  if (!completeRes.ok) throw new Error(await errorMessage(completeRes, `Passkey enrolment failed (${completeRes.status}).`));
+  return (await completeRes.json()) as RegisterCompleteResponse;
+}
+
+async function passkeyList(): Promise<WebAuthnCredential[]> {
+  if (MODE === "mock") return [];
+  const res = await authFetch("/auth/webauthn/credentials", { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`/auth/webauthn/credentials: ${res.status} ${res.statusText}`);
+  return (await res.json()) as WebAuthnCredential[];
+}
+
+async function passkeyDelete(credentialId: string): Promise<void> {
+  if (MODE === "mock") return;
+  const res = await authFetch(`/auth/webauthn/credentials/${encodeURIComponent(credentialId)}`, { method: "DELETE" });
+  if (res.status === 204) return;
+  throw new Error(await errorMessage(res, `Delete passkey failed (${res.status}).`));
 }
 
 // ---- generic data hook -------------------------------------

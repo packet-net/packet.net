@@ -224,6 +224,23 @@ export interface SetupAdminInput { username: string; password: string }
 export interface SetupRequest { identity: SetupIdentityInput; admin: SetupAdminInput; firstPort?: PortConfig | null }
 // POST /setup success body (the created admin — no token).
 export interface SetupResult { username: string; scope: string }
+
+// ---- WebAuthn / passkeys (mirror Packet.Node.Api.PdnWebAuthnApi DTOs) ----
+// One enrolled passkey, projected for the API (no key material). Matches
+// WebAuthnCredentialSummary (server). `id` is the base64url credential id (the handle
+// for DELETE /auth/webauthn/credentials/{id}).
+export interface WebAuthnCredential {
+  id: string;
+  transports: string | null;
+  createdUtc: string;
+  lastUsedUtc: string | null;
+}
+// POST /auth/webauthn/assert/begin response: a per-attempt session id (echoed back at
+// complete) + the assertion options (passed to startAuthentication). `options` is the
+// raw WebAuthn JSON (PublicKeyCredentialRequestOptionsJSON) Fido2 emitted.
+export interface AssertBeginResponse { sessionId: string; options: unknown }
+// POST /auth/webauthn/register/complete success body.
+export interface RegisterCompleteResponse { registered: boolean; credentialId: string }
 export interface LogLine { t: string; lvl: "info" | "warn" | "error"; msg: string }
 export interface ToggleHelp { label: string; desc: string }
 export interface FieldHelp { label: string; unit: string; help: string }

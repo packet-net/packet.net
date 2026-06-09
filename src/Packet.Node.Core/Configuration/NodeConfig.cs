@@ -327,6 +327,81 @@ public sealed record AuthConfig
     /// outlived its access token is the whole point — see
     /// <see cref="NodeConfigValidator"/>).</summary>
     public int? RefreshTokenMinutes { get; init; }
+
+    /// <summary>WebAuthn / passkey configuration (the relying-party identity + allowed
+    /// origins). See <see cref="WebAuthnConfig"/>. The defaults (<c>localhost</c>) make
+    /// same-machine passkeys a zero-config feature; an operator on a real domain sets
+    /// the RP id + origins here.</summary>
+    public WebAuthnConfig WebAuthn { get; init; } = new();
+}
+
+/// <summary>
+/// WebAuthn / passkey relying-party configuration.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>localhost-first, zero-config.</b> The defaults — <see cref="RelyingPartyId"/> =
+/// <c>localhost</c>, <see cref="AllowedOrigins"/> empty — make same-machine passkeys
+/// work today with no setup: reach the panel on <c>http://localhost:&lt;port&gt;</c>
+/// (a secure context with no cert) and the RP id and origin coincide, which is the
+/// case <c>docs/passkeys-lan-trust-pattern.md</c> §2 / §4 names as the one to nail
+/// first because the origin-vs-RP-id split is the most error-prone part.
+/// </para>
+/// <para>
+/// <b>The expected origin is the SERVING origin, not config.</b> For verification the
+/// host passes Fido2 the <em>actual</em> origin the browser used (request scheme + host
+/// + port), so a node reached on <c>http://localhost:8080</c> just works. The RP id
+/// must be a registrable suffix of that origin; with the <c>localhost</c> default they
+/// are identical. <see cref="AllowedOrigins"/> is the explicit allow-list for the
+/// real-domain case — when empty the host accepts the request's own origin (plus
+/// <c>localhost</c>); when set it pins exactly those origins.
+/// </para>
+/// <para>
+/// <b>Distribution tiers are parked.</b> Per the trust-pattern doc §8 decision gate,
+/// the mDNS / ACME / IP-encoded-name machinery is NOT built — only the RP id + origins
+/// are made configurable so a real-domain operator (doc §2a) can set them by hand.
+/// </para>
+/// </remarks>
+public sealed record WebAuthnConfig
+{
+    /// <summary>The WebAuthn Relying Party ID — the registrable domain a passkey is
+    /// scoped to. Default <c>localhost</c> (the loopback secure-context exemption). Must
+    /// be a registrable suffix of the serving origin's host; an IP literal is NOT a
+    /// legal RP id (trust-pattern doc §1).</summary>
+    public string RelyingPartyId { get; init; } = "localhost";
+
+    /// <summary>The human-facing Relying Party name shown by the authenticator UI.
+    /// Default <c>"pdn node"</c>.</summary>
+    public string RelyingPartyName { get; init; } = "pdn node";
+
+    /// <summary>The exact origins the verifier accepts (e.g.
+    /// <c>https://pdn.lab.example:8443</c>). <b>Empty (the default) = accept the
+    /// request's own serving origin plus <c>localhost</c></b>, which is what makes the
+    /// localhost default zero-config. Set this on a real domain to pin the accepted
+    /// origin(s) exactly.</summary>
+    public IReadOnlyList<string> AllowedOrigins { get; init; } = [];
+
+    // Records compare a collection member by REFERENCE, so two configs with equal-but-
+    // distinct AllowedOrigins lists would be unequal — breaking the YAML round-trip
+    // identity (serialise→parse yields a fresh list). Compare the list by sequence so
+    // equality is value-based, matching every other config record.
+    public bool Equals(WebAuthnConfig? other) =>
+        other is not null
+        && RelyingPartyId == other.RelyingPartyId
+        && RelyingPartyName == other.RelyingPartyName
+        && AllowedOrigins.SequenceEqual(other.AllowedOrigins);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(RelyingPartyId);
+        hash.Add(RelyingPartyName);
+        foreach (var origin in AllowedOrigins)
+        {
+            hash.Add(origin);
+        }
+        return hash.ToHashCode();
+    }
 }
 
 /// <summary>
