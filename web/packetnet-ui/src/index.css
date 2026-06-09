@@ -66,6 +66,9 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "cv11", "ss01";
+    /* App-like on touch: no double-tap zoom / 300ms tap delay (pairs with the
+       zoom-locked viewport meta). */
+    touch-action: manipulation;
   }
 }
 

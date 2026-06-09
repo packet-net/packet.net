@@ -3,7 +3,8 @@
 // flavoured Tailwind components). Faithful to the target screenshots; tokens
 // come from index.css. Icons are lucide via ../icon.
 // ============================================================
-import { useEffect, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type LabelHTMLAttributes, type TdHTMLAttributes } from "react";
+import { useEffect, useRef, useState, useCallback, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type LabelHTMLAttributes, type TdHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/icon";
 
@@ -119,12 +120,45 @@ export function Field({ label, hint, impact, info, badge, className, children }:
   );
 }
 
-// ---- Tooltip (CSS hover/focus — survives screenshots) ------
+// ---- Tooltip (hover/focus; panel PORTALED to <body>) -------
+// The panel is rendered into document.body with fixed positioning rather than
+// as an absolutely-positioned descendant, so it can't be clipped or stacked
+// under an ancestor's overflow / stacking context — e.g. the info hints in a
+// table heading, where the table lives in an `overflow-hidden` Card wrapping an
+// `overflow-x-auto` scroll box. Shown on hover OR focus (focus = tap on touch).
 export function Tooltip({ text, children, className }: { text: ReactNode; children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const show = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({ top: r.top, left: r.left + r.width / 2 });
+  }, []);
+  const hide = useCallback(() => setPos(null), []);
+
   return (
-    <span className={cn("group/tip relative inline-flex", className)} tabIndex={0}>
+    <span
+      ref={ref}
+      className={cn("relative inline-flex", className)}
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
       {children}
-      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 w-64 -translate-x-1/2 rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-normal leading-snug text-popover-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover/tip:opacity-100 group-focus/tip:opacity-100">{text}</span>
+      {pos !== null && createPortal(
+        <span
+          role="tooltip"
+          style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translate(-50%, calc(-100% - 6px))" }}
+          className="pointer-events-none z-[100] w-64 max-w-[calc(100vw-1rem)] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-normal leading-snug text-popover-foreground shadow-lg"
+        >
+          {text}
+        </span>,
+        document.body,
+      )}
     </span>
   );
 }
