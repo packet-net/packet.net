@@ -112,6 +112,34 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 ValidAlgorithms = [Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256],
             };
         }
+
+        // SSE token-by-query: a browser EventSource can't set an Authorization
+        // header, so the live feeds accept the JWT as a `?access_token=` query
+        // param. Restricted to the SSE paths only (so we don't normalise
+        // tokens-in-URLs across the API — they can leak into logs/referrers) and
+        // only when no bearer header was supplied. The token is still fully
+        // validated by the same pipeline; the query is just where it's read from.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (string.IsNullOrEmpty(context.Token))
+                {
+                    var path = context.HttpContext.Request.Path;
+                    bool isSse = path.StartsWithSegments("/api/v1/events")
+                        || (path.StartsWithSegments("/api/v1/sessions") && path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true);
+                    if (isSse)
+                    {
+                        var queryToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(queryToken))
+                        {
+                            context.Token = queryToken;
+                        }
+                    }
+                }
+                return Task.CompletedTask;
+            },
+        };
     });
 
 // Authorization: the read/operate/admin scope policies, evaluated by the
