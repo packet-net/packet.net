@@ -17,6 +17,9 @@ import type { LinkStats, MonitorEvent } from "@/lib/types";
 export function Monitor() {
   const { frames, paused, setPaused, clear } = useFrameStream(500);
   const { data: links } = useQuery(api.linkStats, []);
+  const { data: config } = useQuery(api.config, []);
+  // Port-filter options come from the live config; fall back to the mock list.
+  const portIds = config?.ports.map((p) => p.id) ?? PORTS_LIST;
 
   const [fPort, setFPort] = useState("all");
   const [fType, setFType] = useState("all");
@@ -143,7 +146,7 @@ export function Monitor() {
         </div>
         <Select value={fPort} onChange={(e) => setFPort(e.target.value)} className="h-8 w-32 text-xs">
           <option value="all">All ports</option>
-          {PORTS_LIST.map((p) => <option key={p} value={p}>{p}</option>)}
+          {portIds.map((p) => <option key={p} value={p}>{p}</option>)}
         </Select>
         <Select value={fType} onChange={(e) => setFType(e.target.value)} className="h-8 w-32 text-xs">
           <option value="all">All types</option>

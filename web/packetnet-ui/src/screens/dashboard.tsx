@@ -11,13 +11,29 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { api, useQuery } from "@/lib/api";
-import {
-  PORT_STATUS, NODE_CONFIG, LOG_TAIL, KIND_LABEL, fmtUptime, portHealth,
-} from "@/lib/mock";
+import { portHealth } from "@/lib/health";
+import { KIND_LABEL, fmtUptime } from "@/lib/mock";
 
 export function Dashboard() {
   const navigate = useNavigate();
   const { data: status } = useQuery(api.status, []);
+  const { data: config } = useQuery(api.config, []);
+  const { data: portStatus } = useQuery(api.ports, []);
+  const { data: links } = useQuery(api.linkStats, []);
+  const { data: log } = useQuery(api.log, []);
+  const { data: sessions } = useQuery(api.sessions, []);
+
+  // Live role breakdown for the Active-sessions card (replaces a hardcoded string).
+  const sessionSub = (() => {
+    const sess = sessions ?? [];
+    if (sess.length === 0) return "none";
+    const n = { console: 0, bridge: 0, interlink: 0 } as Record<string, number>;
+    for (const x of sess) n[x.role] = (n[x.role] ?? 0) + 1;
+    return (["console", "bridge", "interlink"] as const)
+      .filter((r) => n[r] > 0)
+      .map((r) => `${n[r]} ${r}`)
+      .join(" · ");
+  })();
 
   // Frames/sec ticks via a timer (mock live feed) — README §3.
   const [fps, setFps] = useState(7.4);
@@ -27,7 +43,7 @@ export function Dashboard() {
   }, []);
 
   const s = status;
-  const ports = Object.values(PORT_STATUS);
+  const ports = portStatus ?? [];
   const faulted = ports.filter((p) => p.state === "faulted").length;
 
   return (
@@ -59,7 +75,7 @@ export function Dashboard() {
         <Metric
           label="Active sessions"
           value={<span className="tnum">{s ? s.sessionCount : "—"}</span>}
-          sub="2 console · 1 bridge · 1 interlink"
+          sub={sessionSub}
           to="/sessions"
         />
         <Metric
@@ -91,8 +107,8 @@ export function Dashboard() {
           </div>
           <CardContent className="space-y-1">
             {ports.map((p) => {
-              const cfg = NODE_CONFIG.ports.find((x) => x.id === p.id);
-              const h = portHealth(p.id);
+              const cfg = config?.ports.find((x) => x.id === p.id);
+              const h = portHealth(p, links ?? []);
               return (
                 <button
                   key={p.id}
@@ -137,13 +153,17 @@ export function Dashboard() {
         </div>
         <CardContent>
           <div className="space-y-0.5 font-mono text-xs">
-            {LOG_TAIL.map((l, i) => (
-              <div key={i} className="flex gap-3 rounded px-1.5 py-1 hover:bg-accent/60">
-                <span className="shrink-0 text-muted-foreground">{l.t}</span>
-                <span className={cn("w-10 shrink-0 font-semibold uppercase", l.lvl === "error" ? "text-danger" : l.lvl === "warn" ? "text-warning" : "text-muted-foreground")}>{l.lvl}</span>
-                <span className="text-foreground/90">{l.msg}</span>
-              </div>
-            ))}
+            {(log ?? []).length === 0 ? (
+              <p className="px-1.5 py-1 text-muted-foreground">No recent activity.</p>
+            ) : (
+              (log ?? []).map((l, i) => (
+                <div key={i} className="flex gap-3 rounded px-1.5 py-1 hover:bg-accent/60">
+                  <span className="shrink-0 text-muted-foreground">{l.t}</span>
+                  <span className={cn("w-10 shrink-0 font-semibold uppercase", l.lvl === "error" ? "text-danger" : l.lvl === "warn" ? "text-warning" : "text-muted-foreground")}>{l.lvl}</span>
+                  <span className="text-foreground/90">{l.msg}</span>
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

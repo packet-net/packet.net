@@ -18,8 +18,9 @@ import type {
 import {
   NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PORT_SETUP, PARAM_HELP, AX25_DEFAULTS, KISS_DEFAULTS,
-  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, portHealth, NINO_TEST,
+  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, NINO_TEST,
 } from "@/lib/mock";
+import { portHealth } from "@/lib/health";
 import { api, useQuery } from "@/lib/api";
 
 // ---- the editor draft: a PortConfig plus the operator-facing setup choices ----
@@ -64,6 +65,7 @@ export function Ports() {
   const navigate = useNavigate();
   const { data: config } = useQuery(api.config, []);
   const { data: portStatus } = useQuery(api.ports, []);
+  const { data: links } = useQuery(api.linkStats, []);
 
   // local mock state: ports list (seeded from config) + bring-up toggle
   const [ports, setPorts] = useState<PortConfig[] | null>(null);
@@ -144,7 +146,7 @@ export function Ports() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {list.map((p) => {
           const st = statusById[p.id];
-          const h = portHealth(p.id);
+          const h = portHealth(st, links ?? []);
           const accent = h.level === "faulted" ? "border-danger/40" : h.level === "degraded" ? "border-warning/40" : "border-border";
           const up = st?.state === "up";
           return (
@@ -215,6 +217,7 @@ export function Ports() {
 
 // ---- NinoTNC hardware "test button" decode, flashed on the Ports screen ----
 function NinoTestFlash({ onDismiss, onConfigure }: { onDismiss: () => void; onConfigure: () => void }) {
+  // TODO: live endpoint (beacons / nino-test) — no API endpoint yet, mock-sourced.
   const test = NINO_TEST;
   return (
     <Card className={cn("mb-4 overflow-hidden p-0", test.softwareControl ? "border-success/40" : "border-primary/40")}>

@@ -7,7 +7,7 @@
 import type {
   NodeConfig, NetRomRoutingSnapshot, NodeStatus, PortStatus, SessionInfo,
   LinkStats, MonitorEvent, FrameType, ApplyImpact, NinoMode, RadioProfile,
-  ChannelMode, LinkDifficulty, PortSetup, ParamHelp, PortHealth, NinoTest,
+  ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
   BeaconDefault, PortBeacon, User, LogLine, ToggleHelp, FieldHelp,
 } from "./types";
 
@@ -236,16 +236,6 @@ export const KISS_DEFAULTS: Record<string, number> = { txDelay: 300, slotTime: 1
 
 export function persistPct(v: number): number { return Math.round((v / 255) * 100); }
 export function pctToPersist(p: number): number { return Math.round((p / 100) * 255); }
-
-export function portHealth(id: string): PortHealth {
-  const st = PORT_STATUS[id];
-  if (!st) return { level: "good" };
-  if (st.state === "faulted") return { level: "faulted", reason: st.lastError || "port faulted" };
-  const links = LINK_STATS.filter((l) => l.portId === id);
-  const bad = links.find((l) => l.retries > 2 || l.rejCount + l.srejCount > 3 || l.smoothedRttMs > 1500);
-  if (bad) return { level: "degraded", reason: `link to ${bad.peer} struggling — RTT ${bad.smoothedRttMs}ms, ${bad.retries} retries, ${bad.rejCount + bad.srejCount} REJ` };
-  return { level: "good" };
-}
 
 export const NINO_TEST: NinoTest = {
   portId: "vhf-1", receivedAt: "just now", firmware: "NinoTNC A3 · fw 2.3.1",

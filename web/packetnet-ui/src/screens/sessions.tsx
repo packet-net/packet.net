@@ -159,6 +159,7 @@ export function Sessions() {
       <ConnectOut
         open={connectOpen}
         initialCall={connectCall ?? ""}
+        // TODO: derive default via-port from live config; the ConnectOut <Select> options already do.
         initialPort={connectPort ?? PORTS_LIST[0]}
         onClose={() => setConnectOpen(false)}
         onConnect={(call, port) => {
@@ -286,6 +287,9 @@ function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
   initialPort: string;
 }) {
   const { data: routes } = useQuery(api.routes);
+  const { data: config } = useQuery(api.config);
+  // Via-port options come from the live config; fall back to the mock list.
+  const portIds = config?.ports.map((p) => p.id) ?? PORTS_LIST;
   const [target, setTarget] = useState("");
   const [port, setPort] = useState(initialPort);
 
@@ -357,7 +361,7 @@ function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
         </Field>
         <Field label="Via port">
           <Select value={port} onChange={(e) => setPort(e.target.value)}>
-            {PORTS_LIST.map((p) => <option key={p} value={p}>{p}</option>)}
+            {portIds.map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
         </Field>
       </div>
