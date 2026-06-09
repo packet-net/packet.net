@@ -24,6 +24,9 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Build amd64 .deb (throwaway version)
         # Exclusive box-wide flock around the CPU-heavy self-contained/crossgen
         # publish, so it doesn't oversubscribe a concurrent `ci` (§7.2.2).
