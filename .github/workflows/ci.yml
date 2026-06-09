@@ -88,3 +88,32 @@ jobs:
           # triage; long retention just accumulates against the ~500 MB Actions
           # artifact quota (the same one that bit publish-node — see its header).
           retention-days: 1
+
+  web-ui:
+    name: web-ui
+    runs-on: [self-hosted, Linux, X64]
+    # The Phase-5 node control-panel SPA (web/packetnet-ui): type-check + production
+    # build + the screen smoke tests — the gate that keeps the served UI from
+    # regressing. Self-hosted Linux runner, zero GitHub Actions minutes.
+    defaults:
+      run:
+        working-directory: web/packetnet-ui
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: report node
+        run: node --version && npm --version
+
+      - name: install
+        run: npm ci
+
+      - name: typecheck + build + test
+        # `npm run build` is `tsc --noEmit && vite build`; then the vitest screen
+        # smoke suite. Shared (reader) box-wide flock, same discipline as the .NET
+        # test job: coexist with other readers, never overlap a CPU-heavy EXCLUSIVE
+        # workflow (interop / fuzz / deb-smoke) on the shared self-hosted host.
+        run: flock -s /tmp/pdn-ci-heavy.lock bash -c 'npm run build && npm run test'

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Core.Hosting;
@@ -25,6 +26,7 @@ public sealed partial class NodeHostedService : BackgroundService
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<NodeHostedService> logger;
     private readonly INetRomRoutingStore? routingStore;
+    private readonly NodeTelemetry telemetry;
     private readonly SemaphoreSlim reconcileSignal = new(0);
     private readonly object swapGate = new();
 
@@ -47,6 +49,7 @@ public sealed partial class NodeHostedService : BackgroundService
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.routingStore = routingStore;
+        telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>());
         logger = this.loggerFactory.CreateLogger<NodeHostedService>();
         appliedConfig = config.Current;
     }
@@ -57,6 +60,11 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <summary>The NET/ROM read-only routing service — exposed for component tests
     /// (and any future read surface). Null until <see cref="ExecuteAsync"/> runs.</summary>
     public NetRomService? NetRom => netRom;
+
+    /// <summary>The live frame/byte telemetry (frame counters + the monitor SSE
+    /// feed). Created in the constructor so it's never null — the read API + the
+    /// <c>/events</c> endpoint read it straight off this singleton.</summary>
+    public NodeTelemetry Telemetry => telemetry;
 
     /// <summary>The telnet listener — exposed for component tests (e.g. to read
     /// the bound port).</summary>
@@ -73,7 +81,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // by the supervisor as ports come up), so it can never disturb a session.
         netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>(), routingStore);
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom);
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry);
         await supervisor.StartAsync(stoppingToken).ConfigureAwait(false);
 
         StartTelnet(startConfig.Management.Telnet, stoppingToken);

@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   pdn theme tokens — from design_handoff_pdn_control_panel.
+   HSL triplets consumed as hsl(var(--token)) (shadcn pattern).
+   ============================================================ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 24% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 24% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 24% 12%;
+    --primary: 200 92% 44%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 24% 12%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 94%;
+    --accent-foreground: 222 24% 12%;
+    --border: 220 13% 90%;
+    --input: 220 13% 88%;
+    --ring: 200 92% 44%;
+    --success: 152 58% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 33 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --danger: 0 72% 50%;
+    --danger-foreground: 0 0% 100%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 220 26% 7%;
+    --foreground: 210 22% 92%;
+    --card: 220 23% 9.5%;
+    --card-foreground: 210 22% 92%;
+    --popover: 220 23% 11%;
+    --popover-foreground: 210 22% 92%;
+    --primary: 199 89% 52%;
+    --primary-foreground: 220 40% 8%;
+    --secondary: 220 18% 14%;
+    --secondary-foreground: 210 22% 92%;
+    --muted: 220 18% 14%;
+    --muted-foreground: 218 12% 58%;
+    --accent: 220 18% 16%;
+    --accent-foreground: 210 22% 92%;
+    --border: 220 16% 17%;
+    --input: 220 16% 19%;
+    --ring: 199 89% 52%;
+    --success: 152 56% 46%;
+    --success-foreground: 220 40% 8%;
+    --warning: 38 92% 52%;
+    --warning-foreground: 220 40% 8%;
+    --danger: 0 74% 56%;
+    --danger-foreground: 220 40% 8%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer utilities {
+  /* tabular numerals for metrics / counters / sequence numbers */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* pulsing "live" status dot */
+@keyframes pdn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--success) / 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 5px hsl(var(--success) / 0);
+  }
+}
+.live-dot {
+  animation: pdn-pulse 2s infinite;
+}
+
+/* new-row flash in the live monitor */
+@keyframes pdn-flash {
+  from {
+    background-color: hsl(var(--primary) / 0.1);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.row-flash {
+  animation: pdn-flash 1.2s ease-out;
+}
+
+/* slim scrollbars to match the ops-dashboard feel */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pdn — style variations</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: {
+      fontFamily: { sans:['Inter','system-ui','sans-serif'], mono:['"JetBrains Mono"','ui-monospace','monospace'] },
+      colors: {
+        border:'hsl(var(--border))', input:'hsl(var(--input))', ring:'hsl(var(--ring))',
+        background:'hsl(var(--background))', foreground:'hsl(var(--foreground))',
+        primary:{DEFAULT:'hsl(var(--primary))',foreground:'hsl(var(--primary-foreground))'},
+        muted:{DEFAULT:'hsl(var(--muted))',foreground:'hsl(var(--muted-foreground))'},
+        card:{DEFAULT:'hsl(var(--card))',foreground:'hsl(var(--card-foreground))'},
+        accent:{DEFAULT:'hsl(var(--accent))',foreground:'hsl(var(--accent-foreground))'},
+        secondary:{DEFAULT:'hsl(var(--secondary))',foreground:'hsl(var(--secondary-foreground))'},
+        success:{DEFAULT:'hsl(var(--success))'}, warning:{DEFAULT:'hsl(var(--warning))'}, danger:{DEFAULT:'hsl(var(--danger))'},
+      },
+      borderRadius:{ lg:'var(--radius)', md:'calc(var(--radius) - 2px)', sm:'calc(var(--radius) - 4px)' },
+    } } };
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --radius:.5rem;
+      --background:0 0% 100%; --foreground:222 24% 12%; --card:0 0% 100%; --card-foreground:222 24% 12%;
+      --primary:200 92% 44%; --primary-foreground:0 0% 100%;
+      --secondary:220 14% 96%; --secondary-foreground:222 20% 20%;
+      --muted:220 14% 96%; --muted-foreground:220 9% 46%;
+      --accent:220 14% 94%; --accent-foreground:222 24% 14%;
+      --border:220 13% 90%; --input:220 13% 88%; --ring:200 92% 44%;
+      --success:152 58% 40%; --warning:33 92% 45%; --danger:0 72% 50%;
+    }
+    .dark {
+      --background:220 26% 7%; --foreground:210 22% 92%; --card:220 23% 9.5%; --card-foreground:210 22% 92%;
+      --primary:199 89% 52%; --primary-foreground:220 40% 8%;
+      --secondary:220 18% 15%; --secondary-foreground:210 20% 88%;
+      --muted:220 18% 14%; --muted-foreground:218 12% 58%;
+      --accent:220 18% 16%; --accent-foreground:210 22% 92%;
+      --border:220 16% 17%; --input:220 16% 19%; --ring:199 89% 52%;
+      --success:152 56% 46%; --warning:38 92% 52%; --danger:0 74% 56%;
+    }
+    body { margin:0; font-family:Inter,system-ui,sans-serif; }
+    .tnum { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" src="pdn/design-canvas.jsx"></script>
+  <script type="text/babel" data-presets="react">
+    const { Fragment } = React;
+
+    // ---- tiny shared bits (var-themed) ----
+    function Frame({ dark, accent, pad=true, children }) {
+      const style = accent ? { '--primary': accent, '--ring': accent } : {};
+      return (
+        <div className={dark ? "dark" : ""} style={{ ...style, height:'100%', background:'hsl(var(--background))', color:'hsl(var(--foreground))' }}>
+          <div style={{ height:'100%', padding: pad ? 20 : 0, boxSizing:'border-box' }}>{children}</div>
+        </div>
+      );
+    }
+    const Dot = ({c}) => <span style={{display:'inline-block',width:8,height:8,borderRadius:99,background:c}} />;
+
+    function Metric({ label, value, sub, subClass }) {
+      return (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <div className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">{value}</div>
+          <p className={"mt-1 text-xs "+(subClass||"text-muted-foreground")}>{sub}</p>
+        </div>
+      );
+    }
+    function MetricStrip() {
+      return (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-foreground">Dashboard</p>
+          <div className="grid grid-cols-4 gap-3">
+            <Metric label="Status" value={<span className="inline-flex items-center gap-2"><Dot c="hsl(var(--success))"/> Up</span>} sub="up 23d 0h"/>
+            <Metric label="Ports up" value={<span className="tnum">3<span className="text-muted-foreground">/4</span></span>} sub="1 faulted" subClass="text-warning"/>
+            <Metric label="Sessions" value={<span className="tnum text-primary">4</span>} sub="2 console · 1 link"/>
+            <Metric label="Frames/sec" value={<span className="tnum">7.4</span>} sub="live"/>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground shadow-sm">Connect out</button>
+            <button className="inline-flex h-8 items-center rounded-md border border-input bg-transparent px-3 text-xs font-medium text-foreground">Configure</button>
+            <span className="ml-1 inline-flex items-center rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold text-primary">INP3 on</span>
+            <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold" style={{background:'hsl(var(--success)/0.15)',color:'hsl(var(--success))'}}>PerFlow</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- monitor row treatments ----
+    const FRAMES = [
+      { t:'22:14:03.989', p:'vhf-1', d:'in',  s:'M0LTE', x:'GB7RDG', ty:'I',    k:'I', pid:'0xF0', len:184, sum:'I N(S)=3 N(R)=5' },
+      { t:'22:14:03.211', p:'uhf-2', d:'out', s:'GB7RDG',x:'G4APL-1',ty:'RR',   k:'S', pid:'—',    len:15,  sum:'RR N(R)=7' },
+      { t:'22:14:02.880', p:'vhf-1', d:'in',  s:'2E0XYZ',x:'GB7RDG', ty:'SABM', k:'U', pid:'—',    len:15,  sum:'SABM (connect)' },
+      { t:'22:14:02.104', p:'link-dn',d:'in', s:'G8PZT-7',x:'M0LTE', ty:'REJ',  k:'S', pid:'—',    len:15,  sum:'REJ N(R)=2' },
+      { t:'22:14:01.770', p:'uhf-2', d:'out', s:'GB7RDG',x:'MB7UWS', ty:'UI',   k:'UI',pid:'0xCF', len:48,  sum:'UI pid=0xCF len=33' },
+    ];
+    function badgeColor(ty,k){
+      if(ty==='UI') return {bg:'rgba(16,185,129,.15)',c:'#34d399'};
+      if(ty==='REJ'||ty==='SREJ'||ty==='FRMR') return {bg:'hsl(var(--danger)/.15)',c:'hsl(var(--danger))'};
+      if(k==='I') return {bg:'hsl(var(--primary)/.15)',c:'hsl(var(--primary))'};
+      if(k==='U') return {bg:'rgba(139,92,246,.15)',c:'#a78bfa'};
+      return {bg:'rgba(245,158,11,.15)',c:'#fbbf24'};
+    }
+    const TyBadge = ({ty,k}) => { const b=badgeColor(ty,k); return <span style={{display:'inline-flex',justifyContent:'center',minWidth:42,padding:'2px 6px',borderRadius:4,fontFamily:'JetBrains Mono',fontSize:11,fontWeight:600,background:b.bg,color:b.c}}>{ty}</span>; };
+    const Arrow = ({d}) => <span style={{color: d==='in'?'#34d399':'#38bdf8', fontFamily:'monospace'}}>{d==='in'?'↓':'↑'}</span>;
+
+    function MonitorRows({ variant }) {
+      return (
+        <div>
+          <p className="mb-3 text-sm font-semibold text-foreground">Live monitor — row treatment {variant.toUpperCase()}</p>
+          <div className="overflow-hidden rounded-lg border border-border" style={{fontFamily:'JetBrains Mono',fontSize:12}}>
+            <div className="flex items-center gap-3 border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" style={{fontFamily:'Inter'}}>
+              <span style={{width:84}}>Time</span><span style={{width:48}}>Port</span><span style={{width:16}}></span>
+              <span style={{flex:1}}>Src → Dst</span><span style={{width:50}}>Type</span><span style={{width:44,textAlign:'right'}}>Len</span>
+            </div>
+            {FRAMES.map((f,i)=>{
+              const base = { display:'flex', alignItems:'center', gap:12, padding:'8px 12px', color:'hsl(var(--foreground))' };
+              let rowStyle = base, cls = "";
+              if (variant==='a') rowStyle = { ...base, background: i%2? 'hsl(var(--muted)/0.4)':'transparent' };
+              if (variant==='b') { rowStyle = { ...base, margin:'6px 8px', border:'1px solid hsl(var(--border))', borderRadius:8, background:'hsl(var(--card))' }; }
+              if (variant==='c') rowStyle = { ...base, borderBottom:'1px solid hsl(var(--border)/0.5)' };
+              return (
+                <div key={i} style={rowStyle}>
+                  <span style={{width:84,color:'hsl(var(--muted-foreground))'}}>{f.t}</span>
+                  <span style={{width:48,color:'hsl(var(--muted-foreground))'}}>{f.p}</span>
+                  <span style={{width:16}}><Arrow d={f.d}/></span>
+                  <span style={{flex:1}}><b style={{fontWeight:600}}>{f.s}</b><span style={{color:'hsl(var(--muted-foreground))'}}> → {f.x}</span></span>
+                  <span style={{width:50}}><TyBadge ty={f.ty} k={f.k}/></span>
+                  <span style={{width:44,textAlign:'right',color:'hsl(var(--muted-foreground))'}} className="tnum">{f.len}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ---- station card (theme compare) ----
+    function StationCard({ elevated }) {
+      const rows = [['Callsign','GB7RDG'],['Alias','RDGGW'],['Locator','IO91nl'],['Version','0.7.0-rc2'],['Uptime','23d 0h 1m']];
+      return (
+        <div className={"rounded-lg border border-border bg-card p-4 "+(elevated?"shadow-xl":"shadow-sm")}>
+          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground"><Dot c="hsl(var(--primary))"/> Station</p>
+          <div className="space-y-2.5">
+            {rows.map(([k,v])=>(
+              <div key={k} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{k}</span>
+                <span className="font-mono text-foreground">{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ---- the canvas ----
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection id="accent" title="Accent family" subtitle="The status/primary hue — drives buttons, links, active nav, I-frame & INP3 highlights. Sky is the current pick.">
+            <DCArtboard id="sky" label="Sky · current" width={520} height={250}><Frame dark accent="199 89% 52%"><MetricStrip/></Frame></DCArtboard>
+            <DCArtboard id="indigo" label="Indigo" width={520} height={250}><Frame dark accent="243 75% 66%"><MetricStrip/></Frame></DCArtboard>
+            <DCArtboard id="emerald" label="Emerald" width={520} height={250}><Frame dark accent="160 70% 45%"><MetricStrip/></Frame></DCArtboard>
+            <DCArtboard id="amber" label="Amber" width={520} height={250}><Frame dark accent="38 92% 52%"><MetricStrip/></Frame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="monitor" title="Live monitor — row treatment" subtitle="The marquee screen reads under flow. Three densities of the streaming frame table.">
+            <DCArtboard id="zebra" label="A · Zebra + mono" width={560} height={300}><Frame dark><MonitorRows variant="a"/></Frame></DCArtboard>
+            <DCArtboard id="cards" label="B · Card rows" width={560} height={340}><Frame dark><MonitorRows variant="b"/></Frame></DCArtboard>
+            <DCArtboard id="rules" label="C · Hairline rules" width={560} height={300}><Frame dark><MonitorRows variant="c"/></Frame></DCArtboard>
+          </DCSection>
+
+          <DCSection id="theme" title="Theme & elevation" subtitle="Served on a Pi, often viewed on a phone at night — dark-first, but light works. Flat vs elevated cards.">
+            <DCArtboard id="dark-flat" label="Dark · flat" width={320} height={250}><Frame dark><StationCard/></Frame></DCArtboard>
+            <DCArtboard id="dark-elev" label="Dark · elevated" width={320} height={250}><Frame dark><StationCard elevated/></Frame></DCArtboard>
+            <DCArtboard id="light-flat" label="Light · flat" width={320} height={250}><Frame><StationCard/></Frame></DCArtboard>
+            <DCArtboard id="light-elev" label="Light · elevated" width={320} height={250}><Frame><StationCard elevated/></Frame></DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

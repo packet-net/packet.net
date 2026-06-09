@@ -1,0 +1,635 @@
+openapi: 3.1.0
+info:
+  title: pdn node control API
+  version: 0.1.0-draft
+  description: >
+    The operator control-plane API for the pdn (`packetnet`) packet-radio node —
+    Phase 4 Slice 3. Served by the node itself from Kestrel (default
+    `127.0.0.1:8080`). This contract is the boundary the Phase-5 web UI
+    (`web/packetnet-ui`) builds against; it is DERIVED from that UI's typed client
+    (`src/lib/api.ts` + `src/lib/types.ts`) + the design handoff, and is the spec the
+    Slice-3 backend implements. See `docs/node-ui-design.md` (§6 data shapes, §7
+    endpoint table) and `design_handoff_pdn_control_panel/README.md`.
+
+    STATUS: draft. The web UI currently runs against a mock backend; this locks the
+    shape so the backend can land behind it with no UI change. Auth + all write/action
+    endpoints are security-sensitive and land in a later Slice-3 step (see §"x-slices").
+
+servers:
+  - url: /api/v1
+
+x-slices:
+  read-and-stream: [GET /status, GET /ports, GET /sessions, GET /netrom/routes, GET /config, GET /links, GET /log, GET /events]
+  auth: [POST /auth/login, WebAuthn register/authenticate, GET /setup/state, POST /setup, /users, TOTP]
+  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ping, /beacons]
+
+tags:
+  - { name: status }
+  - { name: ports }
+  - { name: sessions }
+  - { name: routes }
+  - { name: config }
+  - { name: monitor }
+  - { name: auth }
+  - { name: users }
+  - { name: tools }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /status:
+    get:
+      tags: [status]
+      summary: Node health summary (dashboard)
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/NodeStatus" } } } }
+
+  /ports:
+    get:
+      tags: [ports]
+      summary: Live status of every configured port
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/PortStatus" } } } } }
+    post:
+      tags: [ports]
+      summary: Add a port (writes config through the reconcile path)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
+      responses:
+        "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
+  /ports/{id}:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [ports]
+      summary: One port's config + live status
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: object, properties: { config: { $ref: "#/components/schemas/PortConfig" }, status: { $ref: "#/components/schemas/PortStatus" } } } } } }
+    put:
+      tags: [ports]
+      summary: Edit a port — full-object replace (returns the reconcile result)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
+      responses:
+        "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
+        "404": { description: no such port }
+        "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } }
+    delete:
+      tags: [ports]
+      summary: Remove a port
+      security: [{ bearerAuth: [admin] }]
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } } }
+  /ports/{id}/lifecycle:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [ports]
+      summary: Bring a port up / down / restart
+      security: [{ bearerAuth: [operate] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string, enum: [up, down, restart] } } } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortStatus" } } } } }
+  /ports/{id}/tune:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Run a link-tuning burst (the Link Tuner workspace)
+      description: Sends a numbered frame burst to a partner and returns per-frame ack/loss; tuneables can be applied live during a run.
+      security: [{ bearerAuth: [operate] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TuneBurstRequest" } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/TuneBurstResult" } } } } }
+
+  /sessions:
+    get:
+      tags: [sessions]
+      summary: Active connected-mode circuits
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } }
+    post:
+      tags: [sessions]
+      summary: Connect out (sysop interactive connect to a callsign/alias)
+      security: [{ bearerAuth: [operate] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [target], properties: { target: { type: string, description: callsign or NET/ROM alias }, portId: { type: string } } } } } }
+      responses: { "200": { description: connecting, content: { application/json: { schema: { $ref: "#/components/schemas/SessionInfo" } } } } }
+  /sessions/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete:
+      tags: [sessions]
+      summary: Disconnect a session
+      security: [{ bearerAuth: [operate] }]
+      responses: { "204": { description: disconnected } }
+  /sessions/{id}/send:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [sessions]
+      summary: Send one text line into a connected-mode session (minimal v1)
+      security: [{ bearerAuth: [operate] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [line], properties: { line: { type: string } } } } } }
+      responses: { "202": { description: queued } }
+
+  /netrom/routes:
+    get:
+      tags: [routes]
+      summary: NET/ROM routing snapshot (neighbours + destinations, incl. INP3 time-metric)
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/NetRomRoutingSnapshot" } } } }
+
+  /links:
+    get:
+      tags: [monitor]
+      summary: Per-link stats rollup (RTT / retries / REJ-SREJ)
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LinkStats" } } } } }
+
+  /log:
+    get:
+      tags: [status]
+      summary: Recent node log tail
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LogLine" } } } } }
+
+  /events:
+    get:
+      tags: [monitor]
+      summary: Server-Sent Events — the multiplexed live feed
+      description: >
+        One SSE stream (`text/event-stream`). Events are tagged by `event:` type and
+        the client subscribes/filters. Types: `frame` (a MonitorEvent per AX.25 frame,
+        high-rate — the monitor keeps a ring buffer), `session` (add/remove/state-change),
+        `port` (state transition), `route` (routing-table update), `config` (a config
+        reload happened). The server may coalesce high-rate `frame` events.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200":
+          description: an event stream
+          content:
+            text/event-stream:
+              schema: { type: string, description: "SSE frames; `frame` event data is a MonitorEvent JSON" }
+
+  /config:
+    get:
+      tags: [config]
+      summary: The current NodeConfig
+      security: [{ bearerAuth: [read] }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } } } }
+    put:
+      tags: [config]
+      summary: Replace the whole config (atomic validate-before-apply)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } } }
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
+    patch:
+      tags: [config]
+      summary: Patch a config section (form-driven edits)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } } }
+  /config/schema:
+    get:
+      tags: [config]
+      summary: Field-metadata descriptor for the form editor (labels, units, help, apply-impact)
+      security: [{ bearerAuth: [read] }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { type: object, additionalProperties: true } } } } }
+  /config/raw:
+    get:
+      tags: [config]
+      summary: The raw YAML config text (advanced editor)
+      security: [{ bearerAuth: [admin] }]
+      responses: { "200": { description: ok, content: { text/plain: { schema: { type: string } } } } }
+    put:
+      tags: [config]
+      summary: Replace the raw YAML (validate-before-apply)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { text/plain: { schema: { type: string } } } }
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "422": { description: invalid, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
+  /config/validate:
+    post:
+      tags: [config]
+      summary: Validate a candidate config + return the reconcile preview (no apply)
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } }, text/plain: { schema: { type: string } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcilePreview" } } } } }
+
+  /beacons:
+    get:
+      tags: [config]
+      summary: Beacon (ID) settings — system default + per-port
+      security: [{ bearerAuth: [read] }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/BeaconSettings" } } } } }
+    put:
+      tags: [config]
+      summary: Update beacon settings
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BeaconSettings" } } } }
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } } }
+
+  /ping:
+    post:
+      tags: [tools]
+      summary: Connectionless AX.25 TEST ping (the axping analogue)
+      security: [{ bearerAuth: [operate] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [station, portId], properties: { station: { type: string }, portId: { type: string }, count: { type: integer, default: 5 } } } } } }
+      responses: { "200": { description: results, content: { application/json: { schema: { $ref: "#/components/schemas/PingResult" } } } } }
+
+  /setup/state:
+    get:
+      tags: [auth]
+      summary: Whether first-run setup is still required
+      security: []
+      responses: { "200": { description: ok, content: { application/json: { schema: { type: object, properties: { setupComplete: { type: boolean } } } } } } }
+  /setup:
+    post:
+      tags: [auth]
+      summary: Complete first-run setup (identity + first admin + optional first port). Requires the one-time setup token.
+      security: []
+      parameters: [{ name: token, in: query, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SetupRequest" } } } }
+      responses: { "200": { description: setup complete }, "401": { description: bad/used token } }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Password login (Argon2id) → JWT
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } } } } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/TokenResponse" } } } }, "401": { description: bad credentials } }
+  /auth/webauthn/authenticate:
+    post:
+      tags: [auth]
+      summary: WebAuthn passkey assertion → JWT (begin/finish via the WebAuthn ceremony)
+      security: []
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/TokenResponse" } } } } }
+  /auth/webauthn/register:
+    post:
+      tags: [auth]
+      summary: Enrol a passkey for the current user
+      security: [{ bearerAuth: [admin] }]
+      responses: { "200": { description: enrolled } }
+
+  /users:
+    get:
+      tags: [users]
+      summary: List operators
+      security: [{ bearerAuth: [admin] }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/User" } } } } } }
+    post:
+      tags: [users]
+      summary: Add an operator
+      security: [{ bearerAuth: [admin] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+      responses: { "200": { description: created } }
+  /users/{name}/totp:
+    parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [users]
+      summary: Begin TOTP enrolment (on-air auth) — returns the otpauth URI + recovery codes on verify
+      security: [{ bearerAuth: [admin] }]
+      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/TotpEnrolment" } } } } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT bearer. The token carries scopes `read` (status/monitor/routes/sessions
+        view), `operate` (connect/disconnect, port up/down, beacon, tune, ping) and
+        `admin` (config write, users). Obtained via /auth/login (Argon2id) or a WebAuthn
+        passkey. On-air auth (a station over a packet session) uses TOTP, not this token.
+
+  parameters:
+    PortId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    NodeStatus:
+      type: object
+      required: [callsign, version, uptimeSeconds, portsUp, portsTotal, sessionCount, netrom]
+      properties:
+        callsign: { type: string }
+        alias: { type: string }
+        grid: { type: string }
+        version: { type: string }
+        uptimeSeconds: { type: integer }
+        portsUp: { type: integer }
+        portsTotal: { type: integer }
+        sessionCount: { type: integer }
+        netrom:
+          type: object
+          properties:
+            neighbours: { type: integer }
+            destinations: { type: integer }
+            inp3Enabled: { type: boolean }
+
+    PortStatus:
+      type: object
+      required: [id, enabled, state, sessionCount, framesIn, framesOut]
+      properties:
+        id: { type: string }
+        enabled: { type: boolean }
+        state: { type: string, enum: [up, down, faulted] }
+        sessionCount: { type: integer }
+        lastError: { type: [string, "null"] }
+        framesIn: { type: integer }
+        framesOut: { type: integer }
+
+    TransportConfig:
+      oneOf:
+        - { $ref: "#/components/schemas/KissTcpTransport" }
+        - { $ref: "#/components/schemas/SerialKissTransport" }
+        - { $ref: "#/components/schemas/NinoTncTransport" }
+        - { $ref: "#/components/schemas/AxudpTransport" }
+      discriminator: { propertyName: kind }
+    KissTcpTransport:
+      type: object
+      required: [kind, host, port]
+      properties: { kind: { const: kiss-tcp }, host: { type: string }, port: { type: integer } }
+    SerialKissTransport:
+      type: object
+      required: [kind, device, baud]
+      properties: { kind: { const: serial-kiss }, device: { type: string }, baud: { type: integer } }
+    NinoTncTransport:
+      type: object
+      required: [kind, device, baud, mode]
+      properties: { kind: { const: nino-tnc }, device: { type: string }, baud: { type: integer }, mode: { type: integer } }
+    AxudpTransport:
+      type: object
+      required: [kind, host, port, localPort]
+      properties: { kind: { const: axudp }, host: { type: string }, port: { type: integer }, localPort: { type: integer } }
+
+    Ax25PortParams:
+      type: object
+      properties:
+        t1Ms: { type: integer }
+        t2Ms: { type: integer }
+        t3Ms: { type: integer }
+        n2: { type: integer }
+        windowSize: { type: integer }
+        maxCachedPeers: { type: integer }
+    KissParams:
+      type: object
+      properties:
+        txDelay: { type: integer }
+        persistence: { type: integer, description: "0..255 byte" }
+        slotTime: { type: integer }
+        txTail: { type: integer }
+    PortConfig:
+      type: object
+      required: [id, enabled, transport]
+      properties:
+        id: { type: string }
+        enabled: { type: boolean }
+        transport: { $ref: "#/components/schemas/TransportConfig" }
+        profile: { type: [string, "null"] }
+        ax25: { oneOf: [{ $ref: "#/components/schemas/Ax25PortParams" }, { type: "null" }] }
+        kiss: { oneOf: [{ $ref: "#/components/schemas/KissParams" }, { type: "null" }] }
+
+    Inp3Config:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        preferInp3Routes: { type: boolean }
+        l3RttInterval: { type: integer }
+        l3RttResetWindow: { type: integer }
+        rifInterval: { type: integer }
+        positiveDebounce: { type: integer }
+    NetRomConfig:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        broadcast: { type: boolean }
+        connect: { type: boolean }
+        forward: { type: boolean }
+        forwardMode: { type: string, enum: [PerFlow, Single] }
+        alias: { type: [string, "null"] }
+        defaultNeighbourQuality: { type: integer }
+        minQuality: { type: integer }
+        obsoleteInitial: { type: integer }
+        obsoleteMinimum: { type: integer }
+        sweepIntervalSeconds: { type: integer }
+        window: { type: integer }
+        transportTimeoutSeconds: { type: integer }
+        transportRetries: { type: integer }
+        timeToLive: { type: integer }
+        inp3: { $ref: "#/components/schemas/Inp3Config" }
+    NodeConfig:
+      type: object
+      required: [schemaVersion, identity, ports]
+      properties:
+        schemaVersion: { type: integer }
+        identity:
+          type: object
+          required: [callsign]
+          properties: { callsign: { type: string }, alias: { type: [string, "null"] }, grid: { type: [string, "null"] } }
+        ports: { type: array, items: { $ref: "#/components/schemas/PortConfig" } }
+        services:
+          type: object
+          properties: { banner: { type: string }, prompt: { type: string } }
+        management:
+          type: object
+          properties:
+            telnet: { type: object, properties: { enabled: { type: boolean }, bind: { type: string }, port: { type: integer } } }
+            http: { type: object, properties: { bind: { type: string }, port: { type: integer } } }
+        netRom: { $ref: "#/components/schemas/NetRomConfig" }
+
+    Inp3RouteMetric:
+      type: object
+      required: [targetTimeMs, hopCount]
+      properties: { targetTimeMs: { type: integer }, hopCount: { type: integer } }
+    NetRomRoute:
+      type: object
+      required: [neighbour, quality, obsolescence]
+      properties:
+        neighbour: { type: string }
+        quality: { type: integer, minimum: 0, maximum: 255 }
+        obsolescence: { type: integer }
+        inp3: { oneOf: [{ $ref: "#/components/schemas/Inp3RouteMetric" }, { type: "null" }] }
+    NetRomDestination:
+      type: object
+      required: [destination, alias, bestRoute, routes]
+      properties:
+        destination: { type: string }
+        alias: { type: string }
+        bestRoute: { type: integer }
+        routes: { type: array, items: { $ref: "#/components/schemas/NetRomRoute" } }
+    NetRomNeighbour:
+      type: object
+      required: [neighbour, alias, portId, pathQuality, lastHeard]
+      properties:
+        neighbour: { type: string }
+        alias: { type: string }
+        portId: { type: string }
+        pathQuality: { type: integer, minimum: 0, maximum: 255 }
+        lastHeard: { type: string }
+    NetRomRoutingSnapshot:
+      type: object
+      required: [generatedAt, neighbours, destinations]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        neighbours: { type: array, items: { $ref: "#/components/schemas/NetRomNeighbour" } }
+        destinations: { type: array, items: { $ref: "#/components/schemas/NetRomDestination" } }
+
+    SessionInfo:
+      type: object
+      required: [id, portId, peer, role, state, vs, vr, window, uptimeSeconds, bytesIn, bytesOut, lastActivity]
+      properties:
+        id: { type: string }
+        portId: { type: string }
+        peer: { type: string }
+        role: { type: string, enum: [console, interlink, bridge] }
+        state: { type: string, description: "Connected, TimerRecovery, …" }
+        vs: { type: integer }
+        vr: { type: integer }
+        window: { type: integer }
+        uptimeSeconds: { type: integer }
+        bytesIn: { type: integer }
+        bytesOut: { type: integer }
+        lastActivity: { type: string }
+
+    LinkStats:
+      type: object
+      required: [portId, peer, smoothedRttMs, retries, rejCount, srejCount, framesIn, framesOut]
+      properties:
+        portId: { type: string }
+        peer: { type: string }
+        smoothedRttMs: { type: integer }
+        retries: { type: integer }
+        rejCount: { type: integer }
+        srejCount: { type: integer }
+        framesIn: { type: integer }
+        framesOut: { type: integer }
+
+    MonitorEvent:
+      type: object
+      description: One decoded AX.25 frame (from the Ax25Listener.FrameTraced tap). Delivered over the SSE `frame` event.
+      required: [seq, timestamp, portId, direction, source, dest, type, classKind, length, summary]
+      properties:
+        seq: { type: integer }
+        timestamp: { type: string, format: date-time }
+        portId: { type: string }
+        direction: { type: string, enum: [in, out] }
+        source: { type: string }
+        dest: { type: string }
+        type: { type: string, enum: [UI, SABM, SABME, I, RR, RNR, REJ, SREJ, FRMR, UA, DISC, DM, XID] }
+        classKind: { type: string, enum: [I, U, S] }
+        pid: { type: [string, "null"] }
+        pidName: { type: [string, "null"] }
+        ns: { type: [integer, "null"] }
+        nr: { type: [integer, "null"] }
+        pf: { type: integer }
+        command: { type: boolean }
+        length: { type: integer }
+        summary: { type: string }
+        raw: { type: array, items: { type: integer }, description: "octets for the hex dump" }
+        path: { type: array, items: { type: string }, description: "digipeater path" }
+
+    LogLine:
+      type: object
+      properties:
+        t: { type: string }
+        lvl: { type: string, enum: [info, warn, error] }
+        msg: { type: string }
+
+    ApplyImpact:
+      type: string
+      enum: [live, port-restart, node-reset]
+    ReconcileChange:
+      type: object
+      properties:
+        path: { type: string }
+        impact: { $ref: "#/components/schemas/ApplyImpact" }
+        summary: { type: string }
+    ReconcilePreview:
+      type: object
+      description: What applying a candidate config would disrupt (grouped by impact). Plain-language; never leaks internal type names.
+      properties:
+        valid: { type: boolean }
+        live: { type: array, items: { $ref: "#/components/schemas/ReconcileChange" } }
+        portRestart: { type: array, items: { $ref: "#/components/schemas/ReconcileChange" } }
+        nodeReset: { type: array, items: { $ref: "#/components/schemas/ReconcileChange" } }
+    ReconcileResult:
+      allOf:
+        - { $ref: "#/components/schemas/ReconcilePreview" }
+        - type: object
+          properties: { applied: { type: boolean } }
+    ValidationProblem:
+      type: object
+      properties:
+        errors: { type: array, items: { type: object, properties: { path: { type: string }, message: { type: string } } } }
+
+    BeaconSettings:
+      type: object
+      properties:
+        default: { type: object, properties: { intervalMinutes: { type: integer }, text: { type: string } } }
+        ports:
+          type: object
+          additionalProperties:
+            type: object
+            properties: { enabled: { type: boolean }, intervalMinutes: { type: integer }, text: { type: [string, "null"] } }
+
+    TuneBurstRequest:
+      type: object
+      required: [portId, partner, count]
+      properties:
+        portId: { type: string }
+        partner: { type: string }
+        count: { type: integer }
+        txDelay: { type: integer }
+        persistence: { type: integer }
+        ackTimeoutMs: { type: integer }
+    TuneBurstResult:
+      type: object
+      properties:
+        delivered: { type: integer }
+        lost: { type: integer }
+        frames: { type: array, items: { type: object, properties: { seq: { type: integer }, acked: { type: boolean }, rttMs: { type: [integer, "null"] } } } }
+
+    PingResult:
+      type: object
+      properties:
+        replies: { type: array, items: { type: object, properties: { seq: { type: integer }, rttMs: { type: [integer, "null"] }, timeout: { type: boolean } } } }
+        minMs: { type: integer }
+        avgMs: { type: integer }
+        maxMs: { type: integer }
+        lossPct: { type: number }
+
+    SetupRequest:
+      type: object
+      required: [identity, admin]
+      properties:
+        identity: { type: object, required: [callsign], properties: { callsign: { type: string }, alias: { type: string }, grid: { type: string } } }
+        admin: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string }, enrolPasskey: { type: boolean } } }
+        firstPort: { oneOf: [{ $ref: "#/components/schemas/PortConfig" }, { type: "null" }] }
+
+    TokenResponse:
+      type: object
+      properties:
+        token: { type: string }
+        scopes: { type: array, items: { type: string } }
+        user: { type: string }
+
+    User:
+      type: object
+      required: [name, role, scopes]
+      properties:
+        name: { type: string }
+        role: { type: string }
+        scopes: { type: array, items: { type: string } }
+        passkeys: { type: integer }
+        lastLogin: { type: string }
+
+    TotpEnrolment:
+      type: object
+      properties:
+        otpauthUri: { type: string }
+        secretBase32: { type: string }
+        recoveryCodes: { type: array, items: { type: string } }

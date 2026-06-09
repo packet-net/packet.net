@@ -32,7 +32,7 @@ namespace Packet.Node.Core.Configuration;
 /// identical.
 /// </para>
 /// </remarks>
-public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
+public sealed partial class FileConfigProvider : IWritableConfigProvider, IDisposable
 {
     private readonly string path;
     private readonly TimeProvider timeProvider;
@@ -46,6 +46,12 @@ public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
     private ITimer? debounceTimer;
     private NodeConfig current;
     private bool disposed;
+
+    // The exact text we last wrote/loaded. The watcher fires on our own
+    // TryApply write; when its debounced reload reads back these same bytes we
+    // skip it (no double-swap, no echo OnChange). A genuine external edit reads
+    // different bytes and is processed normally.
+    private string lastText = string.Empty;
 
     /// <summary>
     /// Construct the provider over <paramref name="configPath"/>. Performs the
@@ -110,16 +116,77 @@ public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
         lock (gate)
         {
             if (disposed) return false;
-            if (!TryLoadCandidate(out var candidate))
+            if (!TryLoadCandidate(out var candidate, out var text))
             {
                 return false;   // rejected — Current unchanged, no event
             }
+            if (string.Equals(text, lastText, StringComparison.Ordinal))
+            {
+                // The bytes on disk are exactly what we last applied/loaded — our
+                // own TryApply write echoing back through the watcher, or a touch
+                // with no content change. Nothing to do.
+                return false;
+            }
             current = candidate;
+            lastText = text;
             applied = candidate;
         }
         RaiseOnChange(applied);
         return true;
     }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<ConfigValidationError> Validate(NodeConfig candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return ToErrors(validator.Validate(candidate));
+    }
+
+    /// <inheritdoc/>
+    public bool TryApply(NodeConfig candidate, out IReadOnlyList<ConfigValidationError> errors)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        var result = validator.Validate(candidate);
+        if (!result.IsValid)
+        {
+            errors = ToErrors(result);
+            return false;   // rejected — nothing persisted, Current unchanged, no event
+        }
+        errors = [];
+
+        var text = NodeConfigYaml.Serialize(candidate);
+        lock (gate)
+        {
+            if (disposed) return false;
+            // Persist atomically (write a sibling temp + rename) so a reader — the
+            // watcher, or a fresh boot — never sees a half-written file. Record the
+            // exact bytes so the watcher's echo of this very write is skipped.
+            WriteAtomic(text);
+            lastText = text;
+            current = candidate;
+        }
+        LogApplied(path, candidate.Identity.Callsign, candidate.Ports.Count);
+        RaiseOnChange(candidate);
+        return true;
+    }
+
+    private void WriteAtomic(string text)
+    {
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, text);
+        File.Move(tmp, path, overwrite: true);   // atomic rename on the same filesystem
+    }
+
+    private static ConfigValidationError[] ToErrors(FluentValidation.Results.ValidationResult result)
+        => result.IsValid
+            ? []
+            : result.Errors.Select(e => new ConfigValidationError(e.PropertyName, e.ErrorMessage)).ToArray();
 
     private NodeConfig LoadInitial()
     {
@@ -136,6 +203,7 @@ public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
             throw new InvalidOperationException(
                 $"the config at '{path}' is invalid:{Environment.NewLine}{FormatErrors(result.Errors)}");
         }
+        lastText = text;
         LogLoaded(path, candidate.Identity.Callsign, candidate.Ports.Count);
         return candidate;
     }
@@ -151,10 +219,10 @@ public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
         LogWroteTemplate(path, NodeConfigTemplate.PlaceholderCallsign);
     }
 
-    private bool TryLoadCandidate(out NodeConfig candidate)
+    private bool TryLoadCandidate(out NodeConfig candidate, out string text)
     {
         candidate = current;
-        string text;
+        text = string.Empty;
         try
         {
             text = File.ReadAllText(path);
@@ -247,6 +315,10 @@ public sealed partial class FileConfigProvider : IConfigProvider, IDisposable
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Loaded node config from {Path} (callsign {Callsign}, {PortCount} port(s)).")]
     private partial void LogLoaded(string path, string callsign, int portCount);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Applied edited config to {Path} (callsign {Callsign}, {PortCount} port(s)).")]
+    private partial void LogApplied(string path, string callsign, int portCount);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "No config found at {Path}; wrote a starter template (callsign {Placeholder}, no ports). Edit it to bring the node online.")]

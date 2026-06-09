@@ -71,3 +71,6 @@ ehthumbs.db
 # TypeScript build artefacts for the ax25 web library
 web/ax25/dist/
 
+
+# Generated: the web UI build copied in for the host to serve
+src/Packet.Node/wwwroot/

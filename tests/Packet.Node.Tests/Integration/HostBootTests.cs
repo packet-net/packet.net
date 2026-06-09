@@ -62,17 +62,19 @@ public sealed class HostBootTests : IDisposable
     }
 
     [Fact]
-    public async Task Maps_no_other_endpoints_in_slice_1()
+    public async Task Maps_healthz_and_the_control_api_but_404s_unknown_api_paths()
     {
         await using var factory = new NodeAppFactory();
         using var client = factory.CreateClient();
 
-        // No API / auth / UI surface yet — anything but /healthz is unmapped.
-        foreach (var path in new[] { "/", "/api/ports", "/setup", "/index.html" })
-        {
-            var resp = await client.GetAsync(path);
-            resp.StatusCode.Should().Be(HttpStatusCode.NotFound, "slice 1 maps only /healthz; {0} must be unmapped", path);
-        }
+        // Slice-3 step 1: liveness + the read API are mapped...
+        (await client.GetAsync("/healthz")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/api/v1/status")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // ...but an unknown /api/* path is a 404, not swallowed by the catch-all and
+        // never served the SPA index.html (that fallback is for client routes only).
+        (await client.GetAsync("/api/v1/does-not-exist")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.GetAsync("/api/ports")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     public void Dispose()

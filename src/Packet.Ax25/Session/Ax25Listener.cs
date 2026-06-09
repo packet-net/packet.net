@@ -110,6 +110,26 @@ public sealed class Ax25Listener : IAsyncDisposable
     public bool IsRunning => Volatile.Read(ref running) != 0;
 
     /// <summary>
+    /// A point-in-time snapshot of the live sessions this listener currently holds,
+    /// for read-only surfaces (the node control API's <c>/sessions</c>). Each session
+    /// exposes its <see cref="Ax25Session.CurrentState"/> + <see cref="Ax25Session.Context"/>
+    /// (Remote, V(S)/V(R), window K, retry count, smoothed RTT). Reading does not mutate
+    /// the cache or disturb a session.
+    /// </summary>
+    public IReadOnlyList<Ax25Session> ActiveSessions
+    {
+        get
+        {
+            var list = new List<Ax25Session>();
+            foreach (var cached in sessions.Values)
+            {
+                list.Add(cached.Session);
+            }
+            return list;
+        }
+    }
+
+    /// <summary>
     /// True if the listener will build a session for inbound SABMs.
     /// Flip to <c>false</c> to reject all new incoming (figc4.1 t15 →
     /// DM); existing sessions keep running. Default <c>true</c>.
