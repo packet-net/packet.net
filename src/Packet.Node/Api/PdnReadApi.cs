@@ -26,9 +26,11 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// Auth is a later step — these are read-only and the node binds 127.0.0.1 by
-/// default. The live SSE feed (<c>GET /events</c>) and the frame/byte counters that
-/// back several fields below are step 1b; the shapes are wired now and the live
-/// numbers fill in then (see the <c>// TODO step 1b</c> markers).
+/// default. As of step 1b the frame/byte/REJ/SREJ counters that back the port,
+/// link, and session projections are live (read from <see cref="NodeHostedService.Telemetry"/>);
+/// the live SSE feed lives next door in <see cref="PdnEventsApi"/>. A handful of
+/// fields can't be read from the frame tap alone (per-port last-error, per-link
+/// SRTT/retries, the log tail) and stay placeholders behind a named <c>// TODO</c>.
 /// </para>
 /// </remarks>
 public static class PdnReadApi
@@ -64,8 +66,8 @@ public static class PdnReadApi
         v1.MapGet("/ports", (NodeHostedService host, IConfigProvider config)
             => Results.Ok(BuildPorts(host, config)));
 
-        v1.MapGet("/sessions", (NodeHostedService host, IConfigProvider config)
-            => Results.Ok(BuildSessions(host)));
+        v1.MapGet("/sessions", (NodeHostedService host, IConfigProvider config, TimeProvider clock)
+            => Results.Ok(BuildSessions(host, clock)));
 
         v1.MapGet("/netrom/routes", (NodeHostedService host, TimeProvider clock)
             => Results.Ok(BuildNetRomRoutes(host, clock)));
@@ -73,9 +75,8 @@ public static class PdnReadApi
         v1.MapGet("/config", (IConfigProvider config)
             => Results.Json(config.Current));
 
-        // TODO step 1b: per-link rollup (smoothed RTT, retries, REJ/SREJ counts,
-        // frame counters) — empty until the listener exposes the counters.
-        v1.MapGet("/links", () => Results.Ok(Array.Empty<LinkStats>()));
+        // Per-link rollup (frame/byte/REJ/SREJ counters) from the telemetry tap.
+        v1.MapGet("/links", (NodeHostedService host) => Results.Ok(BuildLinks(host)));
 
         // TODO step 1b: log tail comes with the SSE feed (GET /events) — empty for now.
         v1.MapGet("/log", () => Results.Ok(Array.Empty<LogLine>()));
@@ -136,22 +137,25 @@ public static class PdnReadApi
                 state = "faulted";
             }
 
+            var (framesIn, framesOut) = host.Telemetry.PortFrames(port.Id);
+
             return new PortStatus(
                 Id: port.Id,
                 Enabled: port.Enabled,
                 State: state,
                 SessionCount: sessions,
-                LastError: null,    // TODO step 1b: surface the last bring-up fault per port.
-                FramesIn: 0,        // TODO step 1b: frame counters from the listener.
-                FramesOut: 0);      // TODO step 1b
+                LastError: null,        // TODO: surface the last bring-up fault per port (later step).
+                FramesIn: framesIn,     // Live per-port frame totals from the telemetry tap.
+                FramesOut: framesOut);
         }).ToArray();
     }
 
-    private static SessionInfo[] BuildSessions(NodeHostedService host)
+    private static SessionInfo[] BuildSessions(NodeHostedService host, TimeProvider clock)
     {
         var supervisor = host.Supervisor;
         var running = RunningPorts(supervisor);
         var snapshot = SnapshotOf(host);
+        var now = clock.GetUtcNow();
 
         // Callsigns of directly-heard NET/ROM neighbours — a peer in this set on an
         // active session is treated as an interlink (NET/ROM datagrams), else a
@@ -170,6 +174,18 @@ public static class PdnReadApi
                 var peer = ctx.Remote.ToString();
                 var role = neighbours.Contains(peer) ? "interlink" : "console";
 
+                // The (port, peer) telemetry link backs the session's byte/uptime/
+                // last-activity fields. The link is keyed on the peer callsign, so a
+                // session with no traffic yet (or whose link snapshot is absent) keeps
+                // the zero/"—" placeholders rather than fabricating numbers.
+                var link = host.Telemetry.Link(port.Id, peer);
+                long bytesIn = link?.BytesIn ?? 0;
+                long bytesOut = link?.BytesOut ?? 0;
+                long uptime = link is { FirstSeen: var seen } && seen != DateTimeOffset.MinValue
+                    ? (long)Math.Max(0, (now - seen).TotalSeconds)
+                    : 0;
+                string lastActivity = link is null ? "—" : RelativeAgo(now, link.LastActivity);
+
                 sessions.Add(new SessionInfo(
                     Id: $"{port.Id}:{peer}",
                     PortId: port.Id,
@@ -179,13 +195,31 @@ public static class PdnReadApi
                     Vs: ctx.VS,
                     Vr: ctx.VR,
                     Window: ctx.K,
-                    UptimeSeconds: 0,        // TODO step 1b: track per-session start.
-                    BytesIn: 0,              // TODO step 1b: per-session byte counters.
-                    BytesOut: 0,             // TODO step 1b
-                    LastActivity: "—"));  // TODO step 1b: last-activity timestamp ("—" placeholder).
+                    UptimeSeconds: uptime,
+                    BytesIn: bytesIn,
+                    BytesOut: bytesOut,
+                    LastActivity: lastActivity));
             }
         }
         return sessions.ToArray();
+    }
+
+    private static LinkStats[] BuildLinks(NodeHostedService host)
+    {
+        // Frame/byte counts and REJ/SREJ tallies ARE real — they come straight from
+        // the frame tap. SmoothedRttMs and Retries are NOT derivable from the tap
+        // alone: they live in each session's T1/SRTT timer state, which the monitor
+        // doesn't observe. They stay 0 until a later step surfaces the timer state
+        // (rather than fabricating a value from frame timing, which would be wrong).
+        return host.Telemetry.Links().Select(link => new LinkStats(
+            PortId: link.PortId,
+            Peer: link.Peer,
+            SmoothedRttMs: 0,   // not derivable from the frame tap — see comment above.
+            Retries: 0,         // not derivable from the frame tap — see comment above.
+            RejCount: link.RejCount,
+            SrejCount: link.SrejCount,
+            FramesIn: link.FramesIn,
+            FramesOut: link.FramesOut)).ToArray();
     }
 
     private static object BuildNetRomRoutes(NodeHostedService host, TimeProvider clock)

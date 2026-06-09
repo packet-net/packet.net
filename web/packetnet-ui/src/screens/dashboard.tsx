@@ -10,7 +10,7 @@ import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent, StatusDot, Tooltip, Icon,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { api, useQuery } from "@/lib/api";
+import { api, useQuery, subscribeFrames } from "@/lib/api";
 import { portHealth } from "@/lib/health";
 import { KIND_LABEL, fmtUptime } from "@/lib/mock";
 
@@ -35,11 +35,19 @@ export function Dashboard() {
       .join(" · ");
   })();
 
-  // Frames/sec ticks via a timer (mock live feed) — README §3.
-  const [fps, setFps] = useState(7.4);
+  // Frames/sec: a rolling rate computed from the live frame stream (the same SSE
+  // feed the monitor consumes; mock mode supplies a timer-driven stream). We keep
+  // a 3-second window of arrival times and recompute the rate each second.
+  const [fps, setFps] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setFps(+(4 + Math.random() * 9).toFixed(1)), 1400);
-    return () => clearInterval(t);
+    const arrivals: number[] = [];
+    const unsub = subscribeFrames(() => arrivals.push(Date.now()));
+    const t = setInterval(() => {
+      const cutoff = Date.now() - 3000;
+      while (arrivals.length > 0 && arrivals[0] < cutoff) arrivals.shift();
+      setFps(+(arrivals.length / 3).toFixed(1));
+    }, 1000);
+    return () => { unsub(); clearInterval(t); };
   }, []);
 
   const s = status;

@@ -74,6 +74,11 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 // 127.0.0.1 by default. The live SSE feed for the monitor is step 1b.)
 app.MapPdnReadApi();
 
+// Slice 3 step 1b: the live SSE frame feed the web monitor's EventSource
+// consumes (GET /api/v1/events). Mapped after the read API and before the
+// catch-all; the specific route wins over /api/{**rest} regardless of order.
+app.MapPdnEvents();
+
 // An unknown /api/* path returns 404 — it must NOT fall through to the SPA
 // index.html below (the catch-all is less specific than the real /api/v1/*
 // routes, so those still win).

@@ -7,6 +7,7 @@ using Packet.Kiss;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Core.Hosting;
@@ -42,6 +43,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<PortSupervisor> logger;
     private readonly NetRomService? netRom;
+    private readonly NodeTelemetry? telemetry;
     private readonly Dictionary<string, RunningPort> ports = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
     // Remotes a console connect-OUT is dialling right now (with a refcount, since
@@ -58,13 +60,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         ITransportFactory transportFactory,
         TimeProvider timeProvider,
         ILoggerFactory? loggerFactory = null,
-        NetRomService? netRom = null)
+        NetRomService? netRom = null,
+        NodeTelemetry? telemetry = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         logger = this.loggerFactory.CreateLogger<PortSupervisor>();
+        // Optional live telemetry: when present, each port that comes up has its
+        // frame-trace tap subscribed (and unsubscribed on teardown) so the node's
+        // frame/byte counters + monitor SSE feed see every frame. Observation-only,
+        // like the NET/ROM tap — it can never disturb a session.
+        this.telemetry = telemetry;
         // Optional node-level NET/ROM consumer. When present, each port that comes up
         // has its frame-trace tap subscribed (and unsubscribed on teardown) so the
         // service hears NODES broadcasts; with connect-routing enabled it also taps
@@ -344,6 +352,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         // cannot disturb the session path. Detached on teardown.
         netRom?.AttachPort(port.Id, myCall, listener);
 
+        // Live telemetry: tap the same frame trace for the node's frame/byte counters
+        // + the monitor SSE feed. Also observation-only; detached on teardown.
+        telemetry?.AttachPort(port.Id, listener);
+
         // Hoist the callsign too (CA1873) — endpointText is the one declared above.
         var callText = myCall.ToString();
         LogPortUp(port.Id, callText, endpointText);
@@ -363,6 +375,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         // contamination class). The listener is still alive here to carry the DISC.
         // Learned routes survive; their neighbours age out via obsolescence.
         if (netRom is not null) await netRom.DetachPortAsync(id).ConfigureAwait(false);
+        telemetry?.DetachPort(id);
         await running.DisposeAsync().ConfigureAwait(false);
         LogPortDown(id);
     }
@@ -381,6 +394,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             // TearDownAsync for the rationale (avoid leaving a neighbour a half-open
             // link it polls onto the shared channel).
             if (netRom is not null) await netRom.DetachPortAsync(p.Id).ConfigureAwait(false);
+            telemetry?.DetachPort(p.Id);
             await p.DisposeAsync().ConfigureAwait(false);
         }
     }
