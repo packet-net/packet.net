@@ -81,6 +81,12 @@ public static class PdnReadApi
         // Per-link rollup (frame/byte/REJ/SREJ counters) from the telemetry tap.
         v1.MapGet("/links", (NodeHostedService host) => Results.Ok(BuildLinks(host)));
 
+        // Recent frames (oldest → newest) from the telemetry ring, so the web monitor
+        // bootstraps with history instead of an empty table: the client seeds with this,
+        // then live-streams /events and dedupes the overlap by seq. Bounded to the ring.
+        v1.MapGet("/monitor/recent", (NodeHostedService host, int? limit)
+            => Results.Ok(host.Telemetry.RecentFrames(Math.Clamp(limit ?? 250, 1, 250))));
+
         // TODO step 1b: log tail comes with the SSE feed (GET /events) — empty for now.
         v1.MapGet("/log", () => Results.Ok(Array.Empty<LogLine>()));
     }

@@ -55,6 +55,15 @@ public sealed partial class NodeTelemetry
     // Monotonic frame sequence across the whole node (matches the UI's seq semantics).
     private long seq;
 
+    // A bounded ring of the most recent decoded frames so a freshly-opened web
+    // monitor bootstraps with recent history (GET /api/v1/monitor/recent) instead of
+    // an empty table that only fills as new frames arrive. Guarded by its own lock
+    // (the per-pump-thread Observe appends; a request thread snapshots) — kept off the
+    // Interlocked counter path so it doesn't touch that hot loop.
+    private const int HistoryCapacity = 250;
+    private readonly object historyLock = new();
+    private readonly Queue<MonitorEvent> history = new(HistoryCapacity);
+
     public NodeTelemetry(ILogger<NodeTelemetry>? logger = null)
     {
         this.logger = logger ?? NullLogger<NodeTelemetry>.Instance;
@@ -149,11 +158,39 @@ public sealed partial class NodeTelemetry
                 case "SREJ": Interlocked.Increment(ref lc.SrejCount); break;
             }
 
+            lock (historyLock)
+            {
+                history.Enqueue(evt);
+                while (history.Count > HistoryCapacity)
+                {
+                    history.Dequeue();
+                }
+            }
+
             Broadcast(evt);
         }
         catch (Exception ex)
         {
             LogObserveFault(ex, portId);
+        }
+    }
+
+    /// <summary>
+    /// A snapshot of the most recent frames (oldest → newest), up to
+    /// <paramref name="limit"/>, for the monitor's bootstrap fetch. The web client
+    /// seeds its table with this, then live-streams from <c>/events</c> and dedupes
+    /// the overlap by <see cref="MonitorEvent.Seq"/>.
+    /// </summary>
+    public IReadOnlyList<MonitorEvent> RecentFrames(int limit)
+    {
+        if (limit <= 0)
+        {
+            return [];
+        }
+        lock (historyLock)
+        {
+            int skip = Math.Max(0, history.Count - limit);
+            return history.Skip(skip).ToArray();
         }
     }
 

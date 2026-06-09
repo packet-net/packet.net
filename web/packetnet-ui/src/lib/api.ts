@@ -117,6 +117,8 @@ export const api = {
   routes: () => get<NetRomRoutingSnapshot>("/netrom/routes", () => mock.NETROM),
   config: () => get<NodeConfig>("/config", () => mock.NODE_CONFIG),
   linkStats: () => get<LinkStats[]>("/links", () => mock.LINK_STATS),
+  // Recent frames (oldest→newest) the monitor seeds with so it isn't empty on open.
+  recentFrames: (limit = 250) => get<MonitorEvent[]>(`/monitor/recent?limit=${limit}`, () => mock.seedFrames(limit)),
   users: () => get<User[]>("/users", () => mock.USERS),
   log: () => get<LogLine[]>("/log", () => mock.LOG_TAIL),
 
@@ -550,14 +552,31 @@ export function useFrameStream(cap = 500): {
   setPaused: (p: boolean) => void;
   clear: () => void;
 } {
-  const [frames, setFrames] = useState<MonitorEvent[]>(() => seedFrames(40).reverse());
+  const [frames, setFrames] = useState<MonitorEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // Bootstrap with recent history so the table isn't empty on open: fetch the ring
+  // (oldest→newest), flip to newest-first, and slot it UNDER any live frames that
+  // already arrived during the fetch (deduped by seq). If the fetch fails the monitor
+  // still works live-only.
+  useEffect(() => {
+    let alive = true;
+    api.recentFrames(cap).then((recent) => {
+      if (!alive) return;
+      setFrames((prev) => {
+        const seen = new Set(prev.map((f) => f.seq));
+        const history = [...recent].reverse().filter((f) => !seen.has(f.seq));
+        return [...prev, ...history].slice(0, cap);
+      });
+    }).catch(() => { /* live-only fallback */ });
+    return () => { alive = false; };
+  }, [cap]);
+  // Live stream; dedupe the bootstrap/live overlap by seq.
   useEffect(() => {
     return subscribeFrames((f) => {
       if (pausedRef.current) return;
-      setFrames((prev) => [f, ...prev].slice(0, cap));
+      setFrames((prev) => (prev.some((p) => p.seq === f.seq) ? prev : [f, ...prev].slice(0, cap)));
     });
   }, [cap]);
   return { frames, paused, setPaused, clear: () => setFrames([]) };

@@ -49,6 +49,54 @@ public sealed class NodeTelemetryTests
         => new NodeTelemetry().PortFrames("nope").Should().Be((0L, 0L));
 
     [Fact]
+    public void RecentFrames_is_empty_before_any_frame()
+        => new NodeTelemetry().RecentFrames(250).Should().BeEmpty();
+
+    [Fact]
+    public void RecentFrames_returns_the_last_N_oldest_first()
+    {
+        var t = new NodeTelemetry();
+        for (int i = 0; i < 10; i++)
+        {
+            t.Observe(Port, Rx(Ax25Frame.I(Local, Peer, nr: 0, ns: (byte)(i % 8), "x"u8), At(i)));
+        }
+
+        var recent = t.RecentFrames(3);
+        recent.Should().HaveCount(3);
+        // Monotonic seq, oldest → newest: the last three observed frames (seq 8, 9, 10).
+        recent.Select(f => f.Seq).Should().BeInAscendingOrder().And.Equal(8, 9, 10);
+    }
+
+    [Fact]
+    public void RecentFrames_returns_all_when_fewer_than_the_limit_and_clamps_a_nonpositive_limit()
+    {
+        var t = new NodeTelemetry();
+        t.Observe(Port, Rx(Ax25Frame.I(Local, Peer, nr: 0, ns: 0, "x"u8), At(0)));
+        t.Observe(Port, Tx(Ax25Frame.I(Peer, Local, nr: 0, ns: 1, "y"u8), At(1)));
+
+        t.RecentFrames(250).Should().HaveCount(2);
+        t.RecentFrames(0).Should().BeEmpty();
+        t.RecentFrames(-5).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RecentFrames_is_bounded_to_the_ring_capacity()
+    {
+        var t = new NodeTelemetry();
+        // Observe well past the 250-frame ring; only the most recent 250 survive.
+        for (int i = 0; i < 400; i++)
+        {
+            t.Observe(Port, Rx(Ax25Frame.I(Local, Peer, nr: 0, ns: (byte)(i % 8), "x"u8), At(i)));
+        }
+
+        var recent = t.RecentFrames(1000);
+        recent.Should().HaveCount(250);
+        // The oldest retained is seq 151 (frames 1..150 fell off), newest is 400.
+        recent[0].Seq.Should().Be(151);
+        recent[^1].Seq.Should().Be(400);
+    }
+
+    [Fact]
     public void Link_rolls_up_frames_bytes_and_rej_srej_per_peer()
     {
         var t = new NodeTelemetry();
