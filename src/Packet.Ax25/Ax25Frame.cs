@@ -469,6 +469,22 @@ public sealed partial class Ax25Frame
             info = bytes[offset..].ToArray();
         }
 
+        // §4.3.3.1 / §6.1.2: SABM, SABME and DISC are ALWAYS commands. A frame carrying
+        // one of those control octets whose address C-bits don't mark it a command is
+        // malformed. Strict drops it at decode (so a bogus-direction SABM can never open a
+        // session); the lenient default accepts it, since a legacy AX.25 v1.x peer predates
+        // the v2.0 command/response C-bit encoding. See docs/strict-vs-pragmatic-audit.md.
+        if (!options.AllowCommandFrameAsResponse && isUFrame)
+        {
+            byte cmdBase = (byte)(control & 0xEF);
+            bool isCommandOnly = cmdBase is 0x2F or 0x6F or 0x43;   // SABM / SABME / DISC
+            bool isCommandFrame = destination.CrhBit && !source.CrhBit;
+            if (isCommandOnly && !isCommandFrame)
+            {
+                return false;
+            }
+        }
+
         frame = new Ax25Frame(destination, source, digipeaters, control, controlExtension, pid, info);
         return true;
     }
