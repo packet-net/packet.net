@@ -333,6 +333,13 @@ public sealed record AuthConfig
     /// same-machine passkeys a zero-config feature; an operator on a real domain sets
     /// the RP id + origins here.</summary>
     public WebAuthnConfig WebAuthn { get; init; } = new();
+
+    /// <summary>How long an over-RF <c>SYSOP</c> elevation lasts, in minutes. Null =
+    /// the default (15). After a connected operator presents a valid rolling code, their
+    /// session is elevated for this long; once it lapses they must re-present a code to
+    /// run a privileged command again. Bounds the blast radius of a session left
+    /// connected. Must be &gt; 0 when set (see <see cref="NodeConfigValidator"/>).</summary>
+    public int? SysopElevationMinutes { get; init; }
 }
 
 /// <summary>

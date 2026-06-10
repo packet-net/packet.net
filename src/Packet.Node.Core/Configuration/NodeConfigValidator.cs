@@ -351,6 +351,9 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
         RuleFor(m => m.Auth.RefreshTokenMinutes!.Value).GreaterThan(0)
             .When(m => m.Auth.RefreshTokenMinutes.HasValue)
             .WithMessage("management.auth.refreshTokenMinutes must be positive.");
+        RuleFor(m => m.Auth.SysopElevationMinutes!.Value).GreaterThan(0)
+            .When(m => m.Auth.SysopElevationMinutes.HasValue)
+            .WithMessage("management.auth.sysopElevationMinutes must be positive.");
         // A refresh token must outlive the access token it renews — otherwise the
         // silent-renew has nothing to renew with (the refresh token would expire
         // first, forcing a re-login the moment the access token did). Only checked

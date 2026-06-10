@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Core;
+using Packet.Node.Core.Auth;
 
 namespace Packet.Node.Core.Console;
 
@@ -23,6 +25,7 @@ public sealed partial class NodeCommandService
 {
     private readonly NodeConsoleEnvironment env;
     private readonly ILogger<NodeCommandService> logger;
+    private readonly TimeProvider clock;
 
     /// <summary>The node software version string, from the assembly's informational
     /// version (falls back to the assembly version).</summary>
@@ -32,10 +35,28 @@ public sealed partial class NodeCommandService
             ?? typeof(NodeCommandService).Assembly.GetName().Version?.ToString()
             ?? "dev";
 
-    public NodeCommandService(NodeConsoleEnvironment env, ILogger<NodeCommandService>? logger = null)
+    public NodeCommandService(NodeConsoleEnvironment env, ILogger<NodeCommandService>? logger = null, TimeProvider? clock = null)
     {
         this.env = env ?? throw new ArgumentNullException(nameof(env));
         this.logger = logger ?? NullLogger<NodeCommandService>.Instance;
+        this.clock = clock ?? TimeProvider.System;
+    }
+
+    /// <summary>
+    /// Per-connection over-RF sysop elevation state. Lives for the lifetime of one console
+    /// session (a local in <see cref="RunAsync"/>), never shared between connections, so an
+    /// elevation on one session can never leak to another. A session starts unelevated;
+    /// <c>SYSOP &lt;code&gt;</c> sets <see cref="ElevatedUntil"/> + <see cref="Scope"/>, and
+    /// every privileged command re-checks <see cref="IsElevated"/> against the injected
+    /// clock so an elevation simply lapses with time (no background timer).
+    /// </summary>
+    private sealed class SysopSession
+    {
+        public DateTimeOffset? ElevatedUntil { get; set; }
+        public string? Scope { get; set; }
+
+        public bool IsElevated(DateTimeOffset now) =>
+            ElevatedUntil is { } until && now < until && !string.IsNullOrEmpty(Scope);
     }
 
     /// <summary>
@@ -56,6 +77,9 @@ public sealed partial class NodeCommandService
         await WriteBannerAndPromptAsync(connection, cancellationToken).ConfigureAwait(false);
 
         var assembler = new LineAssembler();
+        // Per-connection elevation state — created here so it lives exactly as long as this
+        // session and is never shared with another connection.
+        var sysop = new SysopSession();
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -79,7 +103,7 @@ public sealed partial class NodeCommandService
                 foreach (var lineBytes in assembler.Push(chunk))
                 {
                     var command = NodeCommandParser.Parse(lineBytes);
-                    var outcome = await DispatchAsync(connection, command, cancellationToken).ConfigureAwait(false);
+                    var outcome = await DispatchAsync(connection, command, sysop, cancellationToken).ConfigureAwait(false);
                     if (outcome == DispatchOutcome.Disconnect)
                     {
                         disconnect = true;
@@ -103,7 +127,7 @@ public sealed partial class NodeCommandService
     private enum DispatchOutcome { Continue, Disconnect }
 
     private async Task<DispatchOutcome> DispatchAsync(
-        INodeConnection connection, NodeCommand command, CancellationToken ct)
+        INodeConnection connection, NodeCommand command, SysopSession sysop, CancellationToken ct)
     {
         switch (command)
         {
@@ -111,7 +135,7 @@ public sealed partial class NodeCommandService
                 return DispatchOutcome.Continue;
 
             case HelpCommand:
-                await WriteLineAsync(connection, HelpText(), ct).ConfigureAwait(false);
+                await WriteLineAsync(connection, HelpText(sysop), ct).ConfigureAwait(false);
                 return DispatchOutcome.Continue;
 
             case InfoCommand:
@@ -132,6 +156,34 @@ public sealed partial class NodeCommandService
 
             case MalformedConnect bad:
                 await WriteLineAsync(connection, bad.Reason, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case SysopCommand sysopCmd:
+                await HandleSysopAsync(connection, sysopCmd, sysop, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case SessionsCommand:
+                await HandleSessionsAsync(connection, sysop, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case KickCommand kick:
+                await HandleKickAsync(connection, kick, sysop, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case MalformedKick badKick:
+                await WriteLineAsync(connection, badKick.Reason, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case PortPowerCommand portCmd:
+                await HandlePortAsync(connection, portCmd, sysop, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case MalformedPort badPort:
+                await WriteLineAsync(connection, badPort.Reason, ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
+            case ReloadCommand:
+                await HandleReloadAsync(connection, sysop, ct).ConfigureAwait(false);
                 return DispatchOutcome.Continue;
 
             case UnknownCommand unknown:
@@ -307,13 +359,197 @@ public sealed partial class NodeCommandService
     private static string Label(string alias, Packet.Core.Callsign call)
         => string.IsNullOrEmpty(alias) ? call.ToString() : $"{alias}:{call}";
 
-    private static string HelpText() =>
-        "Commands:\n" +
-        "  C[onnect] <call>   connect to a station\n" +
-        "  N[odes]            list this node and its ports\n" +
-        "  I[nfo]             node info and version\n" +
-        "  B[ye] / D          disconnect\n" +
-        "  H[elp] / ?         this help";
+    private string HelpText(SysopSession sysop)
+    {
+        var sb = new StringBuilder();
+        sb.Append("Commands:\n")
+          .Append("  C[onnect] <call>   connect to a station\n")
+          .Append("  N[odes]            list this node and its ports\n")
+          .Append("  I[nfo]             node info and version\n")
+          .Append("  B[ye] / D          disconnect\n")
+          .Append("  H[elp] / ?         this help");
+
+        // Only surface the sysop verbs when elevation is actually available on this node
+        // (auth on + the seam wired). When elevated, list the privileged set; otherwise
+        // just hint at SYSOP so a licensed sysop knows how to elevate.
+        bool available = env.Sysop is not null && env.AuthEnabled;
+        if (available && sysop.IsElevated(clock.GetUtcNow()))
+        {
+            sb.Append("\n\nSysop (elevated):\n")
+              .Append("  SESSIONS           list active sessions\n")
+              .Append("  KICK <id>          disconnect a session\n")
+              .Append("  PORT <id> UP|DOWN  enable/disable a port\n")
+              .Append("  RELOAD             re-read the config file");
+        }
+        else if (available)
+        {
+            sb.Append("\n  SYSOP <code>       elevate for remote admin");
+        }
+        return sb.ToString();
+    }
+
+    // ─── Over-RF sysop elevation + privileged commands ──────────────────
+    // SYSOP verifies a rolling RFC-6238 code (single-use, replay-guarded) and, on success,
+    // elevates THIS session for a TTL. The privileged commands gate on a live elevation +
+    // a sufficient scope and route through the SAME serialized host seams the web API uses.
+
+    private async Task HandleSysopAsync(INodeConnection connection, SysopCommand cmd, SysopSession sysop, CancellationToken ct)
+    {
+        var peer = connection.PeerId;
+        var ctx = env.Sysop;
+        if (ctx is null || !env.AuthEnabled)
+        {
+            await WriteLineAsync(connection, "Sysop elevation is not available on this node.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Resolve (user, code) per transport. AX.25/NET-ROM: the callsign is implicit from
+        // the connection's PeerId and the single argument is the code. Telnet has no
+        // callsign, so it is SYSOP <user> <code>.
+        UserRecord? user;
+        string? code;
+        string subject;   // for the audit line (callsign or username) — never the code
+        if (connection.TransportKind == NodeTransportKind.Telnet)
+        {
+            if (string.IsNullOrWhiteSpace(cmd.Token1) || string.IsNullOrWhiteSpace(cmd.Token2))
+            {
+                await WriteLineAsync(connection, "Usage: SYSOP <user> <code>", ct).ConfigureAwait(false);
+                return;
+            }
+            subject = cmd.Token1;
+            code = cmd.Token2;
+            user = ctx.Users.FindByUsername(cmd.Token1);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(cmd.Token1))
+            {
+                await WriteLineAsync(connection, "Usage: SYSOP <code>", ct).ConfigureAwait(false);
+                return;
+            }
+            // Canonicalise the connecting callsign for the lookup (the store match is
+            // case-insensitive; canonical form also normalises any SSID rendering).
+            subject = Callsign.TryParse(peer, out var call) ? call.ToString() : peer;
+            code = cmd.Token1;
+            user = ctx.Users.FindByCallsign(subject);
+        }
+
+        // No such user, or the user has no TOTP credential enrolled → generic failure with
+        // NO oracle on which it was (existence vs no-credential vs wrong code all look the
+        // same to the caller).
+        if (user is null || string.IsNullOrEmpty(user.TotpSecret))
+        {
+            LogSysopDenied(peer, "no-credential");
+            await WriteLineAsync(connection, "Sysop authentication failed.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        if (!ctx.Totp.TryVerify(user.TotpSecret, code, user.LastTotpCounter ?? -1, out var counter))
+        {
+            LogSysopDenied(peer, "bad-code");
+            await WriteLineAsync(connection, "Sysop authentication failed.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Burn the accepted counter BEFORE granting: if we cannot persist the new replay
+        // high-water mark, refuse to elevate (else the same code could be replayed to
+        // re-elevate). This is why UpdateTotpCounter returns false on fault.
+        if (!ctx.Users.UpdateTotpCounter(user.Username, counter))
+        {
+            LogSysopDenied(peer, "counter-not-persisted");
+            await WriteLineAsync(connection, "Sysop authentication failed, please try again.", ct).ConfigureAwait(false);
+            return;
+        }
+
+        var now = clock.GetUtcNow();
+        var ttl = env.SysopElevationTtl;
+        sysop.ElevatedUntil = now + ttl;
+        sysop.Scope = user.Scope;
+        LogSysopElevated(subject, user.Scope, peer);
+        await WriteLineAsync(connection,
+            $"Elevated as {user.Username} ({user.Scope}) for {(int)ttl.TotalMinutes} min. Commands: SESSIONS, KICK, PORT, RELOAD.",
+            ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleSessionsAsync(INodeConnection connection, SysopSession sysop, CancellationToken ct)
+    {
+        if (!await RequireElevatedAsync(connection, sysop, AuthScopes.Operate, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+        var ops = env.Sysop!.Operations;
+        var sessions = await ops.ListSessionsAsync(ct).ConfigureAwait(false);
+        LogSysopCommand("SESSIONS", connection.PeerId);
+        if (sessions.Count == 0)
+        {
+            await WriteLineAsync(connection, "No active sessions.", ct).ConfigureAwait(false);
+            return;
+        }
+        var sb = new StringBuilder("Active sessions:");
+        foreach (var line in sessions)
+        {
+            sb.Append('\n').Append("  ").Append(line);
+        }
+        await WriteLineAsync(connection, sb.ToString(), ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleKickAsync(INodeConnection connection, KickCommand kick, SysopSession sysop, CancellationToken ct)
+    {
+        if (!await RequireElevatedAsync(connection, sysop, AuthScopes.Operate, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+        var result = await env.Sysop!.Operations.KickAsync(kick.SessionId, ct).ConfigureAwait(false);
+        LogSysopCommand("KICK", connection.PeerId);
+        await WriteLineAsync(connection, result.Message, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandlePortAsync(INodeConnection connection, PortPowerCommand cmd, SysopSession sysop, CancellationToken ct)
+    {
+        // Bringing a port up/down is an admin action (it persists a config change).
+        if (!await RequireElevatedAsync(connection, sysop, AuthScopes.Admin, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+        var result = await env.Sysop!.Operations.SetPortEnabledAsync(cmd.PortId, cmd.Up, ct).ConfigureAwait(false);
+        LogSysopCommand(cmd.Up ? "PORT-UP" : "PORT-DOWN", connection.PeerId);
+        await WriteLineAsync(connection, result.Message, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleReloadAsync(INodeConnection connection, SysopSession sysop, CancellationToken ct)
+    {
+        if (!await RequireElevatedAsync(connection, sysop, AuthScopes.Admin, ct).ConfigureAwait(false))
+        {
+            return;
+        }
+        var result = await env.Sysop!.Operations.ReloadAsync(ct).ConfigureAwait(false);
+        LogSysopCommand("RELOAD", connection.PeerId);
+        await WriteLineAsync(connection, result.Message, ct).ConfigureAwait(false);
+    }
+
+    // The gate every privileged command passes through: the session must be wired for
+    // sysop, currently elevated (TTL not lapsed — checked against the injected clock), and
+    // hold a scope that satisfies the required one. Writes the refusal itself and returns
+    // false so the caller just returns.
+    private async Task<bool> RequireElevatedAsync(INodeConnection connection, SysopSession sysop, string requiredScope, CancellationToken ct)
+    {
+        if (env.Sysop is null || !env.AuthEnabled)
+        {
+            await WriteLineAsync(connection, "Sysop commands are not available on this node.", ct).ConfigureAwait(false);
+            return false;
+        }
+        if (!sysop.IsElevated(clock.GetUtcNow()))
+        {
+            await WriteLineAsync(connection, "Not authorised. Use SYSOP <code> first.", ct).ConfigureAwait(false);
+            return false;
+        }
+        if (!AuthScopes.Satisfies(sysop.Scope, requiredScope))
+        {
+            await WriteLineAsync(connection, $"Not authorised ({requiredScope} required).", ct).ConfigureAwait(false);
+            return false;
+        }
+        return true;
+    }
 
     // ─── IO helpers ─────────────────────────────────────────────────────
 
@@ -357,4 +593,15 @@ public sealed partial class NodeCommandService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} ended on an error.")]
     private partial void LogConsoleError(Exception ex, string peerId);
+
+    // Sysop audit — subject is the callsign (AX.25) or username (telnet); the code is
+    // NEVER logged. Elevation grants are Information; denials are Warning.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Sysop elevation granted to {Subject} (scope {Scope}) over {PeerId}.")]
+    private partial void LogSysopElevated(string subject, string scope, string peerId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sysop elevation denied over {PeerId}: {Reason}.")]
+    private partial void LogSysopDenied(string peerId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Sysop command {Command} run over {PeerId}.")]
+    private partial void LogSysopCommand(string command, string peerId);
 }

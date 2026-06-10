@@ -76,6 +76,74 @@ public class NodeCommandParserTests
     public void Unrecognised_verb_is_UnknownCommand(string line) =>
         NodeCommandParser.Parse(line).Should().BeOfType<UnknownCommand>();
 
+    // ─── over-RF sysop verbs (auth part 4) ──────────────────────────────
+
+    [Theory]
+    [InlineData("SYSOP 123456", "123456", null)]
+    [InlineData("sysop 123456", "123456", null)]
+    [InlineData("SY 123456", "123456", null)]                 // unambiguous SY prefix
+    [InlineData("SYSOP alice 654321", "alice", "654321")]     // telnet user+code form
+    [InlineData("SYSOP", null, null)]                         // no args → service shows usage
+    public void Parses_sysop_tokens(string line, string? t1, string? t2)
+    {
+        var cmd = NodeCommandParser.Parse(line).Should().BeOfType<SysopCommand>().Subject;
+        cmd.Token1.Should().Be(t1);
+        cmd.Token2.Should().Be(t2);
+    }
+
+    [Theory]
+    [InlineData("SESSIONS")]
+    [InlineData("sessions")]
+    [InlineData("SE")]   // unambiguous SE prefix
+    public void Parses_sessions(string line) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<SessionsCommand>();
+
+    [Fact]
+    public void Bare_S_is_ambiguous_and_not_a_sysop_or_sessions_command()
+    {
+        // "S" alone is a prefix of BOTH SYSOP and SESSIONS — it must NOT silently trigger
+        // either (especially not the auth command). It falls through to Unknown.
+        NodeCommandParser.Parse("S").Should().BeOfType<UnknownCommand>();
+        NodeCommandParser.Parse("S 123456").Should().BeOfType<UnknownCommand>();
+    }
+
+    [Theory]
+    [InlineData("KICK gb7rdg:M0LTE-1", "gb7rdg:M0LTE-1")]
+    [InlineData("kick gb7rdg:M0LTE-1 extra", "gb7rdg:M0LTE-1")]
+    public void Parses_kick(string line, string id) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<KickCommand>().Which.SessionId.Should().Be(id);
+
+    [Theory]
+    [InlineData("KICK")]
+    [InlineData("KICK   ")]
+    public void Kick_without_an_id_is_malformed(string line) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<MalformedKick>();
+
+    [Theory]
+    [InlineData("PORT gb7rdg UP", "gb7rdg", true)]
+    [InlineData("PORT gb7rdg DOWN", "gb7rdg", false)]
+    [InlineData("port gb7rdg down", "gb7rdg", false)]
+    public void Parses_port_power(string line, string id, bool up)
+    {
+        var cmd = NodeCommandParser.Parse(line).Should().BeOfType<PortPowerCommand>().Subject;
+        cmd.PortId.Should().Be(id);
+        cmd.Up.Should().Be(up);
+    }
+
+    [Theory]
+    [InlineData("PORT")]
+    [InlineData("PORT gb7rdg")]
+    [InlineData("PORT gb7rdg SIDEWAYS")]
+    public void Port_without_a_valid_state_is_malformed(string line) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<MalformedPort>();
+
+    [Theory]
+    [InlineData("RELOAD")]
+    [InlineData("reload")]
+    [InlineData("REL")]   // unambiguous prefix
+    public void Parses_reload(string line) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<ReloadCommand>();
+
     [Fact]
     public void Over_long_line_is_truncated_and_still_classified()
     {
@@ -130,7 +198,14 @@ public class NodeCommandParserTests
             IsPrefixOf(firstTokenUpper, "CONNECT") || IsPrefixOf(firstTokenUpper, "BYE") ||
             IsPrefixOf(firstTokenUpper, "DISCONNECT") || IsPrefixOf(firstTokenUpper, "NODES") ||
             IsPrefixOf(firstTokenUpper, "INFO") || IsPrefixOf(firstTokenUpper, "HELP") ||
-            firstTokenUpper == "?";
+            firstTokenUpper == "?" ||
+            // The over-RF sysop verbs (auth part 4). SYSOP/SESSIONS require ≥2 chars (bare
+            // "S" is ambiguous and falls through to Unknown — see the parser); KICK/PORT/
+            // RELOAD use the usual unambiguous-prefix rule.
+            (firstTokenUpper.Length >= 2 &&
+                (IsPrefixOf(firstTokenUpper, "SYSOP") || IsPrefixOf(firstTokenUpper, "SESSIONS"))) ||
+            IsPrefixOf(firstTokenUpper, "KICK") || IsPrefixOf(firstTokenUpper, "PORT") ||
+            IsPrefixOf(firstTokenUpper, "RELOAD");
 
         var cmd = NodeCommandParser.Parse(text);
         if (!couldBeVerb)

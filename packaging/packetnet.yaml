@@ -70,3 +70,13 @@ management:
   #   # certificatePath: /etc/packetnet/server.pfx
   #   # certificatePassword: null
   #   generateSelfSignedOnMissing: true
+  # Web/management authentication. Off by default; turn on to require a login on the
+  # control panel (users + scopes are created via the first-run setup / the Users screen).
+  # auth:
+  #   enabled: true
+  #   # accessTokenMinutes: 60        # short access JWT; the client silently renews it
+  #   # refreshTokenMinutes: 10080    # 7d session; rotates one-time-use (must exceed access)
+  #   # sysopElevationMinutes: 15     # how long an over-RF `SYSOP <code>` elevation lasts
+  #   # webAuthn:                     # passkeys (default rp.id localhost — set on a real domain)
+  #   #   relyingPartyId: pdn.example
+  #   #   allowedOrigins: [ "https://pdn.example:8443" ]

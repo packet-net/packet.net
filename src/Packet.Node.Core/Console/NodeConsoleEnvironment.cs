@@ -29,12 +29,29 @@ public sealed class NodeConsoleEnvironment
     /// </summary>
     public INetRomRoutingView? NetRom { get; }
 
-    public NodeConsoleEnvironment(IConfigProvider config, IOutboundConnector? outboundConnector, INetRomRoutingView? netRom = null)
+    /// <summary>
+    /// The over-RF sysop dependencies (user store + TOTP verifier + privileged
+    /// operations). Null when sysop elevation isn't wired — older call sites, tests, or a
+    /// node where the host couldn't supply the seam — in which case the <c>SYSOP</c>
+    /// command reports "not available" and the privileged commands are inert. Even when
+    /// present, elevation is only honoured while <see cref="AuthEnabled"/> is true.
+    /// </summary>
+    public SysopContext? Sysop { get; }
+
+    public NodeConsoleEnvironment(
+        IConfigProvider config,
+        IOutboundConnector? outboundConnector,
+        INetRomRoutingView? netRom = null,
+        SysopContext? sysop = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         OutboundConnector = outboundConnector;
         NetRom = netRom;
+        Sysop = sysop;
     }
+
+    /// <summary>The default over-RF elevation lifetime when the config leaves it unset.</summary>
+    public const int DefaultSysopElevationMinutes = 15;
 
     /// <summary>The node identity (callsign + alias + grid).</summary>
     public Identity Identity => config.Current.Identity;
@@ -48,4 +65,16 @@ public sealed class NodeConsoleEnvironment
 
     /// <summary>The node's display name — alias if set, else the callsign.</summary>
     public string NodeName => string.IsNullOrWhiteSpace(Identity.Alias) ? Identity.Callsign : Identity.Alias!;
+
+    /// <summary>Whether web/management auth is enabled — read live. Over-RF <c>SYSOP</c>
+    /// elevation is only honoured when this is true (the TOTP secrets + scopes it relies on
+    /// only exist in an auth-enabled node); with auth off the command reports "not
+    /// available", matching the default-off contract.</summary>
+    public bool AuthEnabled => config.Current.Management.Auth.Enabled;
+
+    /// <summary>How long an over-RF elevation lasts — read live from
+    /// <c>management.auth.sysopElevationMinutes</c> (default
+    /// <see cref="DefaultSysopElevationMinutes"/>).</summary>
+    public TimeSpan SysopElevationTtl =>
+        TimeSpan.FromMinutes(config.Current.Management.Auth.SysopElevationMinutes ?? DefaultSysopElevationMinutes);
 }

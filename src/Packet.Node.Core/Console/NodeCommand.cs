@@ -48,3 +48,42 @@ public sealed record MalformedConnect(string Raw, string Reason) : NodeCommand;
 
 /// <summary>An input line that matched no known verb.</summary>
 public sealed record UnknownCommand(string Raw) : NodeCommand;
+
+// ─── Over-RF sysop elevation + privileged commands (auth part 4) ──────────────
+// These verbs are always PARSED (the parser is transport-agnostic); the command
+// service is what GATES them — SYSOP verifies a rolling code and elevates the
+// session for a TTL, and the privileged commands below are refused unless the
+// session is currently elevated with a sufficient scope.
+
+/// <summary>
+/// <c>SYSOP &lt;code&gt;</c> (over AX.25 — the callsign is implicit from the
+/// connection's <c>PeerId</c>) or <c>SYSOP &lt;user&gt; &lt;code&gt;</c> (over telnet,
+/// which has no callsign). Carries the raw tokens; the command service interprets them
+/// per transport (it knows the <see cref="INodeConnection.PeerId"/> and
+/// <see cref="INodeConnection.TransportKind"/>), resolves the user, verifies the
+/// rolling code, and on success elevates the session. <see cref="Token1"/> is the first
+/// argument and <see cref="Token2"/> the optional second; both null/empty when
+/// <c>SYSOP</c> was typed with no argument (the service then shows usage). The code is
+/// never logged.
+/// </summary>
+public sealed record SysopCommand(string? Token1, string? Token2) : NodeCommand;
+
+/// <summary><c>SESSIONS</c> — list the node's active sessions. Privileged (operate).</summary>
+public sealed record SessionsCommand : NodeCommand;
+
+/// <summary><c>KICK &lt;id&gt;</c> — disconnect a session by its <c>portId:peer</c> id.
+/// Privileged (operate).</summary>
+public sealed record KickCommand(string SessionId) : NodeCommand;
+
+/// <summary><c>KICK</c> with a missing id — carries a reason for a helpful reply.</summary>
+public sealed record MalformedKick(string Reason) : NodeCommand;
+
+/// <summary><c>PORT &lt;id&gt; UP|DOWN</c> — enable/disable a configured port.
+/// Privileged (admin).</summary>
+public sealed record PortPowerCommand(string PortId, bool Up) : NodeCommand;
+
+/// <summary><c>PORT</c> with a missing / not-UP/DOWN argument — carries a reason.</summary>
+public sealed record MalformedPort(string Reason) : NodeCommand;
+
+/// <summary><c>RELOAD</c> — re-read the on-disk conffile. Privileged (admin).</summary>
+public sealed record ReloadCommand : NodeCommand;

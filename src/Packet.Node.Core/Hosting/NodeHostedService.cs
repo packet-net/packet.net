@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Auth;
 using Packet.Node.Core.Beacons;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
@@ -29,6 +30,12 @@ public sealed partial class NodeHostedService : BackgroundService
     private readonly INetRomRoutingStore? routingStore;
     private readonly NodeTelemetry telemetry;
     private readonly BeaconService beacons;
+    // Optional over-RF sysop dependencies (DI passes the registered user store + TOTP
+    // verifier). Null in older tests / a node without them — the console then has no SYSOP
+    // capability (the default-off contract). The SysopContext is assembled once at start.
+    private readonly IUserStore? userStore;
+    private readonly TotpService? totp;
+    private SysopContext? sysopContext;
     private readonly SemaphoreSlim reconcileSignal = new(0);
     // Serialises supervisor mutation: the reconcile worker AND any web-initiated
     // action (port restart, session connect/disconnect/send) acquire this, so an
@@ -50,13 +57,17 @@ public sealed partial class NodeHostedService : BackgroundService
         TimeProvider? timeProvider = null,
         ILoggerFactory? loggerFactory = null,
         INetRomRoutingStore? routingStore = null,
-        BeaconService? beacons = null)
+        BeaconService? beacons = null,
+        IUserStore? userStore = null,
+        TotpService? totp = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? TransportFactory.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.routingStore = routingStore;
+        this.userStore = userStore;
+        this.totp = totp;
         telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>());
         // The ID-beacon service. Optional ctor param (DI passes the registered singleton);
         // when null — every existing direct-construction test — we build one over the same
@@ -99,7 +110,11 @@ public sealed partial class NodeHostedService : BackgroundService
         // by the supervisor as ports come up), so it can never disturb a session.
         netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>(), routingStore);
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons);
+        // Assemble the over-RF sysop context before the supervisor so its per-connection
+        // consoles (AX.25 + NET/ROM) can serve SYSOP; the telnet factory reads the same field.
+        sysopContext = BuildSysopContext();
+
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext);
         await supervisor.StartAsync(stoppingToken).ConfigureAwait(false);
 
         StartTelnet(startConfig.Management.Telnet, stoppingToken);
@@ -303,10 +318,19 @@ public sealed partial class NodeHostedService : BackgroundService
             // up, Connect reports "not available". Resolved per session so it
             // reflects the live port set.
             var connector = supervisor?.ResolveDefaultConnector();
-            var env = new NodeConsoleEnvironment(config, connector, netRom);
-            return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
+            var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext);
+            return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
         };
     }
+
+    // Assemble the over-RF sysop dependencies once at start: the user store + TOTP verifier
+    // (DI-supplied) plus the host-side privileged operations (this host + config). Null when
+    // either dependency is absent — the console then has no SYSOP capability, exactly as
+    // before. Operations close over `this`, whose Supervisor is set immediately after.
+    private SysopContext? BuildSysopContext() =>
+        userStore is not null && totp is not null
+            ? new SysopContext(userStore, totp, new HostSysopOperations(this, config))
+            : null;
 
     private static string Describe(ReconcilePlan p)
     {

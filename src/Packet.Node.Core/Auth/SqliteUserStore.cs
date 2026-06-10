@@ -113,7 +113,7 @@ public sealed partial class SqliteUserStore : IUserStore
     // has no ADD COLUMN IF NOT EXISTS — so we read PRAGMA table_info(user) once and only
     // add the columns that are missing, and additionally swallow a "duplicate column name"
     // SqliteException (belt-and-braces against a race / a stale read). Idempotent.
-    private static void EnsureTotpColumns(SqliteConnection conn)
+    private void EnsureTotpColumns(SqliteConnection conn)
     {
         var existing = conn.Query<string>("SELECT name FROM pragma_table_info('user');")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -131,6 +131,25 @@ public sealed partial class SqliteUserStore : IUserStore
             {
                 // Already present (added concurrently / between the read and here) — fine.
             }
+        }
+
+        // Enforce callsign uniqueness at the DB level (a partial unique index — only
+        // non-NULL callsigns are constrained, so the many users with no TOTP enrolled
+        // don't collide on NULL). This is what makes the binding safe: it closes the
+        // SELECT-then-UPDATE race in SetTotpSecret (a racing bind fails the index → the
+        // UPDATE throws → SetTotpSecret returns false), and it guarantees FindByCallsign
+        // can never see two rows for one callsign. Idempotent (IF NOT EXISTS). Wrapped so
+        // a pre-existing duplicate (shouldn't happen) degrades to "no index" rather than
+        // taking the node down — uniqueness then falls back to the SELECT check.
+        try
+        {
+            conn.Execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_user_callsign " +
+                "ON user(callsign) WHERE callsign IS NOT NULL;");
+        }
+        catch (SqliteException ex)
+        {
+            LogSchemaFailed(ex, connectionString);
         }
     }
 

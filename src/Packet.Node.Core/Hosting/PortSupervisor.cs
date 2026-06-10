@@ -46,6 +46,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     private readonly NetRomService? netRom;
     private readonly NodeTelemetry? telemetry;
     private readonly BeaconService? beacons;
+    // Optional over-RF sysop context, threaded into each per-connection console env so an
+    // AX.25 / NET-ROM operator can SYSOP-elevate. Null = no sysop capability (default-off).
+    private readonly SysopContext? sysopContext;
     private readonly Dictionary<string, RunningPort> ports = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
     // Remotes a console connect-OUT is dialling right now (with a refcount, since
@@ -64,12 +67,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         ILoggerFactory? loggerFactory = null,
         NetRomService? netRom = null,
         NodeTelemetry? telemetry = null,
-        BeaconService? beacons = null)
+        BeaconService? beacons = null,
+        SysopContext? sysopContext = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        this.sysopContext = sysopContext;
         logger = this.loggerFactory.CreateLogger<PortSupervisor>();
         // Optional live telemetry: when present, each port that comes up has its
         // frame-trace tap subscribed (and unsubscribed on teardown) so the node's
@@ -123,8 +128,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     {
         Callsign user = Callsign.TryParse(connection.PeerId, out var u) ? u : default;
         var connector = netRom is not null ? new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, fallback: null, user) : null;
-        var env = new NodeConsoleEnvironment(config, connector, netRom);
-        var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
+        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext);
+        var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifecycle.Token);
         await service.RunAsync(connection, linked.Token).ConfigureAwait(false);
     }
@@ -564,8 +569,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable
                     // enabled) so `connect <alias>` reaches a distant node; the
                     // dialling user is this inbound peer.
                     var routed = WrapWithNetRom(connector, session.Context.Remote);
-                    var env = new NodeConsoleEnvironment(config, routed, netRom);
-                    var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>());
+                    var env = new NodeConsoleEnvironment(config, routed, netRom, sysopContext);
+                    var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
                     await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)

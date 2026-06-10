@@ -138,6 +138,13 @@ builder.Services.AddSingleton(new WebAuthnChallengeCache(TimeProvider.System));
 // separate piece — it consumes IUserStore.FindByCallsign + TotpService, which this readies.
 builder.Services.AddSingleton(new TotpEnrollmentCache(TimeProvider.System));
 
+// The RFC-6238 verifier (stateless over the clock — the single-use replay guard rides the
+// persisted per-user counter, not in-memory state). Registered so the host injects it into
+// NodeHostedService for the over-RF SYSOP gate; the enrolment endpoints construct their own
+// over the request clock. With it registered (and IUserStore above), an auth-enabled node's
+// console gains the SYSOP elevation command — inert until a user enrols a TOTP credential.
+builder.Services.AddSingleton(new TotpService(TimeProvider.System));
+
 // Authentication: JWT bearer validated against THIS node's signing key/issuer/audience
 // (HS256 only). Always registered so a token presented when auth is on is validated;
 // when the key is unavailable the validator gets a throwaway parameters object that

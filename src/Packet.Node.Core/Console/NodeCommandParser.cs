@@ -114,7 +114,97 @@ public static class NodeCommandParser
             return new HelpCommand();
         }
 
+        // Over-RF sysop verbs (auth part 4). SYSOP and SESSIONS both start with 'S', so a
+        // bare "S" is ambiguous — require ≥2 chars for those two (SY… → SYSOP, SE… →
+        // SESSIONS) and never let a single keystroke trigger the auth command. KICK / PORT
+        // / RELOAD have unique initials, so the usual unambiguous-prefix rule is safe.
+        if (upper.Length >= 2 && Matches(upper, "SYSOP"))
+        {
+            return ParseSysop(rest);
+        }
+        if (upper.Length >= 2 && Matches(upper, "SESSIONS"))
+        {
+            return new SessionsCommand();
+        }
+        if (Matches(upper, "KICK"))
+        {
+            return ParseKick(rest);
+        }
+        if (Matches(upper, "PORT"))
+        {
+            return ParsePort(rest);
+        }
+        if (Matches(upper, "RELOAD"))
+        {
+            return new ReloadCommand();
+        }
+
         return new UnknownCommand(trimmed);
+    }
+
+    // SYSOP <code>  (AX.25: callsign implicit from PeerId)
+    // SYSOP <user> <code>  (telnet: no callsign). The service interprets the tokens per
+    // transport; the parser only splits the first two (extras ignored). The code is never
+    // echoed or logged.
+    private static SysopCommand ParseSysop(string rest)
+    {
+        if (string.IsNullOrWhiteSpace(rest))
+        {
+            return new SysopCommand(null, null);
+        }
+        int ws = IndexOfWhitespace(rest);
+        if (ws < 0)
+        {
+            return new SysopCommand(rest, null);
+        }
+        string t1 = rest[..ws];
+        string t2 = rest[(ws + 1)..].Trim();
+        int ws2 = IndexOfWhitespace(t2);
+        if (ws2 >= 0)
+        {
+            t2 = t2[..ws2];
+        }
+        return new SysopCommand(t1, string.IsNullOrEmpty(t2) ? null : t2);
+    }
+
+    // KICK <id>  — id is "portId:peer" (the same id SESSIONS renders).
+    private static NodeCommand ParseKick(string rest)
+    {
+        if (string.IsNullOrWhiteSpace(rest))
+        {
+            return new MalformedKick("Kick needs a session id, e.g. KICK gb7rdg:M0LTE-1");
+        }
+        int ws = IndexOfWhitespace(rest);
+        string id = ws < 0 ? rest : rest[..ws];
+        return new KickCommand(id);
+    }
+
+    // PORT <id> UP|DOWN
+    private static NodeCommand ParsePort(string rest)
+    {
+        const string usage = "Usage: PORT <id> UP|DOWN";
+        if (string.IsNullOrWhiteSpace(rest))
+        {
+            return new MalformedPort(usage);
+        }
+        int ws = IndexOfWhitespace(rest);
+        if (ws < 0)
+        {
+            return new MalformedPort(usage);
+        }
+        string id = rest[..ws];
+        string state = rest[(ws + 1)..].Trim();
+        int ws2 = IndexOfWhitespace(state);
+        if (ws2 >= 0)
+        {
+            state = state[..ws2];
+        }
+        return state.ToUpperInvariant() switch
+        {
+            "UP" => new PortPowerCommand(id, true),
+            "DOWN" => new PortPowerCommand(id, false),
+            _ => new MalformedPort(usage),
+        };
     }
 
     private static NodeCommand ParseConnect(string rest, string rawLine)
