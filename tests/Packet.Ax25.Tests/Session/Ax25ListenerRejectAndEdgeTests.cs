@@ -292,20 +292,19 @@ public class Ax25ListenerRejectAndEdgeTests
     }
 
     /// <summary>
-    /// A SABM with the C-bit cleared (response, not command) is
-    /// malformed per AX.25 §6.1.2 — SABM is always a command. Today's
-    /// classifier doesn't filter on C-bits, so the frame still
-    /// classifies as <c>SabmReceived</c> and the SDL's t14 (which has
-    /// no `command` guard) accepts it. Document the current behaviour
-    /// so a future tightening surfaces visibly.
+    /// A SABM with the C-bit cleared (response, not command) is malformed per AX.25
+    /// §4.3.3.1 / §6.1.2 — SABM is always a command. The listener parses with the
+    /// LENIENT default (so a legacy AX.25 v1.x peer, which predates the v2.0
+    /// command/response C-bit encoding, can still connect), so the frame is accepted and
+    /// the session lands in Connected — the behaviour this test asserts.
     /// </summary>
     /// <remarks>
-    /// The spec is unambiguous (§4.3.3.1: "Set Asynchronous Balanced
-    /// Mode … is a command frame"), and figc4.1 t14 implicitly assumes
-    /// SABM-shaped frames are commands. A strict reading would have the
-    /// classifier reject the frame or the SDL gate accept on `command`.
-    /// Neither is implemented today. The test asserts the actual
-    /// observed behaviour: the session is built and lands in Connected.
+    /// The strict rejection now EXISTS at decode (#142): parsing with
+    /// <c>Ax25ParseOptions.Strict</c> (which sets <c>AllowCommandFrameAsResponse=false</c>)
+    /// drops a response-direction SABM so it can never open a session — see the paired
+    /// <c>Ax25FrameOptionsTests.Strict_Rejects_Sabm_With_Response_Cbits_Lenient_Accepts</c>.
+    /// This test pins the listener's lenient default (accept), the chosen behaviour for
+    /// v1.x interop.
     /// </remarks>
     [Fact]
     public async Task Listener_Handles_Sabm_With_C_Response_Bit_Set_As_Malformed()

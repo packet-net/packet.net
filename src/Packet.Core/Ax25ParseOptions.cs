@@ -54,12 +54,28 @@ public sealed record Ax25ParseOptions
     public bool AllowInfoOnSupervisoryFrames { get; init; } = true;
 
     /// <summary>
+    /// Accept a command-only unnumbered frame (SABM / SABME / DISC) whose address
+    /// C-bits do not mark it as a command. Strict §4.3.3.1 / §6.1.2: SABM, SABME and
+    /// DISC are <em>always</em> commands.
+    /// </summary>
+    /// <remarks>
+    /// Pragmatic: a legacy AX.25 v1.x peer predates the v2.0 command/response C-bit
+    /// encoding, so its connect/disconnect frames don't set the v2.2 "command" bits;
+    /// rejecting them by default would break v1.x interop. Strict drops such a frame at
+    /// decode (so a bogus-direction SABM can never open a session); the lenient default
+    /// accepts it. <see cref="Ax25Frame.IsCommand"/> is the v2.2 test
+    /// (<c>Destination.CrhBit &amp;&amp; !Source.CrhBit</c>).
+    /// </remarks>
+    public bool AllowCommandFrameAsResponse { get; init; } = true;
+
+    /// <summary>
     /// Strict AX.25 v2.2 — all pragmatic accommodations disabled.
     /// </summary>
     public static Ax25ParseOptions Strict { get; } = new()
     {
         AllowEmptyCallsignBase = false,
         AllowInfoOnSupervisoryFrames = false,
+        AllowCommandFrameAsResponse = false,
     };
 
     /// <summary>

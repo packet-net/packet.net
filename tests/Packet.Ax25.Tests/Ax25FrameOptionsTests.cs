@@ -61,6 +61,36 @@ public class Ax25FrameOptionsTests
     }
 
     [Fact]
+    public void Strict_Rejects_Sabm_With_Response_Cbits_Lenient_Accepts()
+    {
+        // §4.3.3.1 / §6.1.2: SABM is ALWAYS a command. A SABM whose address C-bits mark
+        // it a RESPONSE (dest C=0, source C=1) is malformed. Strict drops it at decode (so
+        // a bogus-direction SABM can never open a session); the lenient default accepts it
+        // — a legacy AX.25 v1.x peer predates the v2.0 command/response C-bit encoding.
+        Span<byte> bytes = stackalloc byte[15];
+        WriteCallsign("M0LTE",  0, 0x60, bytes[..7]);    // dest, C=0 (response direction)
+        WriteCallsign("WB2OSZ", 0, 0xE1, bytes[7..14]);  // source, C=1, E=1
+        bytes[14] = 0x2F;                                 // SABM
+
+        Ax25Frame.TryParse(bytes, Ax25ParseOptions.Strict, out _).Should().BeFalse();
+        Ax25Frame.TryParse(bytes, Ax25ParseOptions.Lenient, out var frame).Should().BeTrue();
+        frame!.IsCommand.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Strict_Accepts_A_Well_Formed_Command_Sabm()
+    {
+        // The well-formed case: dest C=1, source C=0 → IsCommand. Strict accepts.
+        Span<byte> bytes = stackalloc byte[15];
+        WriteCallsign("M0LTE",  0, 0xE0, bytes[..7]);    // dest, C=1 (command)
+        WriteCallsign("WB2OSZ", 0, 0x61, bytes[7..14]);  // source, C=0, E=1
+        bytes[14] = 0x2F;                                 // SABM
+
+        Ax25Frame.TryParse(bytes, Ax25ParseOptions.Strict, out var frame).Should().BeTrue();
+        frame!.IsCommand.Should().BeTrue();
+    }
+
+    [Fact]
     public void Parameterless_TryParse_Uses_Lenient()
     {
         // Same input as the Strict-rejects-RR-trailing-bytes test.
