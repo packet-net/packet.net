@@ -65,4 +65,16 @@ internal static partial class AuthLog
     [LoggerMessage(EventId = 4013, Level = LogLevel.Information,
         Message = "auth: passkey DELETED user={User} ip={Ip}")]
     public static partial void PasskeyDeleted(ILogger logger, string user, string ip);
+
+    [LoggerMessage(EventId = 4014, Level = LogLevel.Information,
+        Message = "auth: TOTP enrolled (over-RF sysop code) user={User} ip={Ip} callsign={Callsign}")]
+    public static partial void TotpEnrolled(ILogger logger, string user, string ip, string callsign);
+
+    [LoggerMessage(EventId = 4015, Level = LogLevel.Warning,
+        Message = "auth: TOTP enrolment FAILED user={User} ip={Ip} reason={Reason}")]
+    public static partial void TotpEnrollFailed(ILogger logger, string user, string ip, string reason);
+
+    [LoggerMessage(EventId = 4016, Level = LogLevel.Information,
+        Message = "auth: TOTP cleared (over-RF sysop code) user={User} ip={Ip}")]
+    public static partial void TotpCleared(ILogger logger, string user, string ip);
 }

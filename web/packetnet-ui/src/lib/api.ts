@@ -14,6 +14,7 @@ import type {
   LinkStats, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
+  TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState,
 } from "./types";
 import * as mock from "./mock";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
@@ -281,6 +282,23 @@ export const api = {
   passkeyList: () => passkeyList(),
   // Delete one of the signed-in user's passkeys by its base64url credential id.
   passkeyDelete: (credentialId: string) => passkeyDelete(credentialId),
+
+  // ---- Over-RF sysop code / TOTP (node-sysop-totp) ----
+  // The over-RF sysop code is the rolling 6-digit code a sysop presents to elevate a
+  // session over a plain packet link (no browser there). A user enrols / inspects /
+  // removes their OWN code; the server scopes every call to the authenticated principal.
+  // Whether enrolment can be exercised here. In mock mode there is no node to enrol
+  // against, so it reports false (the affordance shows an explanatory disabled state — we
+  // never fake the begin/verify round trip).
+  totpSupported: () => MODE !== "mock",
+  // Current over-RF enrolment state for the signed-in user.
+  totpState: () => totpState(),
+  // Begin enrolment: mint a fresh secret + otpauth URI (shown once; not yet persisted).
+  totpEnrollBegin: () => totpEnrollBegin(),
+  // Confirm enrolment: the current code from the authenticator app + the callsign to bind.
+  totpEnrollComplete: (code: string, callsign: string) => totpEnrollComplete(code, callsign),
+  // Remove the signed-in user's over-RF code.
+  totpRemove: () => totpRemove(),
 };
 
 // The connectionless-ping result shape lives in ./types (PingResult); re-exported here so
@@ -706,6 +724,54 @@ async function passkeyDelete(credentialId: string): Promise<void> {
   const res = await authFetch(`/auth/webauthn/credentials/${encodeURIComponent(credentialId)}`, { method: "DELETE" });
   if (res.status === 204) return;
   throw new Error(await errorMessage(res, `Delete passkey failed (${res.status}).`));
+}
+
+// ---- Over-RF sysop code / TOTP -----------------------------
+// All four endpoints are gated (authFetch attaches the bearer token); the username is
+// taken from the server principal, never sent. Mock mode has no node to enrol against, so
+// totpState reports "not enrolled" and begin/complete/remove are guarded by the UI (which
+// only enables them when totpSupported() is true) — we never fake the verify round trip.
+
+// Whether the signed-in user has an over-RF code enrolled (+ the bound callsign).
+async function totpState(): Promise<TotpEnrollState> {
+  if (MODE === "mock") return { enrolled: false, callsign: null };
+  const res = await authFetch("/auth/totp/enroll", { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`/auth/totp/enroll: ${res.status} ${res.statusText}`);
+  return (await res.json()) as TotpEnrollState;
+}
+
+// Begin enrolment → the server mints a secret + otpauth URI and stashes the secret pending
+// confirmation. Returns both to show (QR + manual key); nothing is persisted yet.
+async function totpEnrollBegin(): Promise<TotpEnrollBeginResponse> {
+  if (MODE === "mock") throw new Error("Over-RF enrolment is not available in mock mode.");
+  const res = await authFetch("/auth/totp/enroll/begin", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not start enrolment (${res.status}).`));
+  return (await res.json()) as TotpEnrollBeginResponse;
+}
+
+// Confirm enrolment with the current code + the callsign to bind. 400 (bad code / no
+// pending) and 409 (callsign in use) surface the server's message.
+async function totpEnrollComplete(code: string, callsign: string): Promise<TotpEnrollCompleteResponse> {
+  if (MODE === "mock") throw new Error("Over-RF enrolment is not available in mock mode.");
+  const res = await authFetch("/auth/totp/enroll/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ code, callsign }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Enrolment failed (${res.status}).`));
+  return (await res.json()) as TotpEnrollCompleteResponse;
+}
+
+// Remove the signed-in user's over-RF code. Resolves on 204.
+async function totpRemove(): Promise<void> {
+  if (MODE === "mock") return;
+  const res = await authFetch("/auth/totp/enroll", { method: "DELETE" });
+  if (res.status === 204) return;
+  throw new Error(await errorMessage(res, `Could not remove the code (${res.status}).`));
 }
 
 // ---- generic data hook -------------------------------------

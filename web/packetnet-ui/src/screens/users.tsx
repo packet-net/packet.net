@@ -8,9 +8,12 @@
 // Passkeys (node-passkeys): a user manages their OWN passkeys (enrol + list + delete)
 // from their own row — the server scopes every WebAuthn call to the authenticated
 // principal, so the "Add passkey" / list affordance only lights up on the signed-in
-// user's row. The on-air TOTP enrolment flow below is still a design affordance (mock).
+// user's row. The over-RF sysop code (TOTP, node-sysop-totp) is the same shape: a user
+// enrols / inspects / removes their OWN rolling code from their own row, wired to the real
+// /auth/totp/enroll endpoints.
 // ============================================================
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Page, PageHeader } from "@/components/layout/shell";
 import { Button, Badge, Card, Label, Input, Select, Field, Modal } from "@/components/ui";
 import { Icon, type IconName } from "@/components/icon";
@@ -26,14 +29,11 @@ export function Users() {
   const auth = useAuth();
   const isAdmin = auth.has("admin");
   const { data, loading, reload } = useQuery(api.usersList, []);
-  const [enroll, setEnroll] = useState<string | null>(null);
-  const [totp, setTotpState] = useState<Record<string, boolean>>({});
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const users = data ?? [];
-  const setTotp = (name: string, val: boolean) => setTotpState((m) => ({ ...m, [name]: val }));
 
   const remove = async (username: string) => {
     if (!isAdmin || busy) return;
@@ -101,10 +101,7 @@ export function Users() {
               <Passkeys isSelf={auth.username === u.username} />
 
               <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On-air auth</p>
-              <AuthMethod icon="signal" title="Authenticator (TOTP)" sub={totp[u.username] ? "6-digit code, enrolled" : "prove identity over a packet session"} enabled={!!totp[u.username]}
-                action={totp[u.username]
-                  ? <div className="flex items-center gap-1"><Button variant="ghost" size="xs" disabled={!isAdmin} onClick={() => setEnroll(u.username)}>Re-enrol</Button><Button variant="ghost" size="xs" className="text-danger" disabled={!isAdmin} onClick={() => setTotp(u.username, false)}>Remove</Button></div>
-                  : <Button size="xs" disabled={!isAdmin} onClick={() => setEnroll(u.username)}><Icon name="plus" size={12} /> Enrol</Button>} />
+              <OverRfTotp isSelf={auth.username === u.username} />
             </div>
           </Card>
         ))}
@@ -119,7 +116,6 @@ export function Users() {
       </div>
 
       <AddUser open={adding} onClose={() => setAdding(false)} onDone={() => { setAdding(false); reload(); }} />
-      <TotpEnroll userName={enroll} onClose={() => setEnroll(null)} onDone={() => { if (enroll) setTotp(enroll, true); setEnroll(null); }} />
     </Page>
   );
 }
@@ -283,75 +279,147 @@ function Passkeys({ isSelf }: { isSelf: boolean }) {
   );
 }
 
-// TOTP enrollment flow — scan → verify → recovery codes (client-side affordance;
-// no backend yet).
-const TOTP_SECRET = "KZXW6YTB OI6Q SESH";
-const RECOVERY_CODES = ["8FK2-QP4M", "ZT9X-7HRN", "LM3C-W0AE", "V6BD-1KXP"];
+// The over-RF sysop code (TOTP) row. Like Passkeys, a user manages their OWN code (the
+// server scopes every /auth/totp/enroll call to the authenticated principal), so the
+// affordances only activate on the signed-in user's row (`isSelf`); other rows show a
+// static self-service indicator. "Enrol authenticator" opens the real begin→confirm flow;
+// the enrolled state (callsign + Remove) reflects GET /auth/totp/enroll.
+function OverRfTotp({ isSelf }: { isSelf: boolean }) {
+  const supported = api.totpSupported();
+  const [enrolled, setEnrolled] = useState(false);
+  const [callsign, setCallsign] = useState<string | null>(null);
+  const [loading, setLoading] = useState(isSelf && supported);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
 
-function TotpEnroll({ userName, onClose, onDone }: { userName: string | null; onClose: () => void; onDone: () => void }) {
-  const [step, setStep] = useState(0);
-  const [code, setCode] = useState("");
-  useEffect(() => { if (userName) { setStep(0); setCode(""); } }, [userName]);
-  if (!userName) return null;
+  const reload = useCallback(() => {
+    if (!isSelf || !supported) return;
+    setLoading(true);
+    api.totpState()
+      .then((s) => { setEnrolled(s.enrolled); setCallsign(s.callsign); setError(null); })
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load enrolment state."))
+      .finally(() => setLoading(false));
+  }, [isSelf, supported]);
 
-  const secret = TOTP_SECRET.replace(/ /g, "");
-  const uri = `otpauth://totp/pdn:${userName}@GB7RDG?secret=${secret}&issuer=pdn%20GB7RDG&digits=6&period=30`;
+  useEffect(() => { reload(); }, [reload]);
 
-  const footer = step === 0 ? (
-    <>
-      <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-      <Button size="sm" onClick={() => setStep(1)}>I've added it <Icon name="chevRight" size={14} /></Button>
-    </>
-  ) : step === 1 ? (
-    <>
-      <Button variant="outline" size="sm" onClick={() => setStep(0)}>Back</Button>
-      <Button size="sm" disabled={code.replace(/\D/g, "").length !== 6} onClick={() => setStep(2)}><Icon name="check" size={14} /> Verify & enable</Button>
-    </>
-  ) : (
-    <Button size="sm" onClick={onDone}><Icon name="check" size={14} /> Done</Button>
-  );
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.totpRemove();
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Other users' rows: a static, non-actionable indicator (you only manage your own).
+  if (!isSelf) {
+    return <AuthMethod icon="signal" title="Authenticator (TOTP)" sub="managed by the user themselves" enabled={false}
+      action={<span className="text-[10px] text-muted-foreground">self-service</span>} />;
+  }
+
+  const sub = !supported ? "needs a live node"
+    : loading ? "loading…"
+    : enrolled ? `enrolled · ${callsign ?? "callsign set"}`
+    : "prove identity over a packet session";
 
   return (
-    <Modal open onClose={onClose} width="max-w-md" title={`On-air authenticator — ${userName}`} footer={footer}>
-      {step === 0 && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Add this node to an authenticator app (Aegis, 1Password, Google Authenticator…). When this user connects to the node <strong className="text-foreground">on the air</strong>, the node asks for the current 6-digit code.</p>
-          <div className="flex gap-4">
-            <div className="grid h-32 w-32 shrink-0 place-items-center rounded-lg border border-border bg-muted/40 text-center">
-              <div className="text-muted-foreground"><Icon name="radio" size={24} className="mx-auto" /><p className="mt-1 px-2 text-[10px] leading-tight">otpauth QR<br /><span className="text-muted-foreground/60">scan in app</span></p></div>
-            </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              <div>
-                <Label>Manual key</Label>
-                <div className="mt-1 flex items-center gap-2 rounded-md border border-border bg-background/60 px-2.5 py-1.5">
-                  <span className="flex-1 font-mono text-sm tracking-wider">{TOTP_SECRET}</span>
-                  <button type="button" className="text-muted-foreground hover:text-foreground" title="Copy" onClick={() => navigator.clipboard?.writeText(secret)}><Icon name="copy" size={14} /></button>
-                </div>
+    <div className="rounded-lg border border-border">
+      <AuthMethod icon="signal" title="Authenticator (TOTP)" sub={sub} enabled={enrolled}
+        action={enrolled
+          ? <Button variant="ghost" size="xs" className="text-danger" disabled={!supported || busy} onClick={remove}>
+              <Icon name="trash" size={12} /> {busy ? "Removing…" : "Remove"}
+            </Button>
+          : <Button size="xs" disabled={!supported || busy || loading} onClick={() => setEnrolling(true)}
+              title={supported ? "Enrol an authenticator for over-RF sysop access" : "Over-RF enrolment needs a live node"}>
+              <Icon name="plus" size={12} /> Enrol authenticator
+            </Button>} />
+      {error && <p className="px-3 pb-2 text-xs text-danger">{error}</p>}
+      <TotpEnroll open={enrolling} onClose={() => setEnrolling(false)} onDone={() => { setEnrolling(false); reload(); }} />
+    </div>
+  );
+}
+
+// The over-RF code enrolment flow, wired to the real endpoints:
+//   begin → render the otpauth URI as a QR (+ base32 fallback) + a callsign + code input
+//         → complete (verify the code, bind the callsign).
+// The username is the authenticated principal on the server side — never sent.
+function TotpEnroll({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [secret, setSecret] = useState<string | null>(null);
+  const [uri, setUri] = useState<string | null>(null);
+  const [callsign, setCallsign] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // On open, kick off begin (mint the secret server-side). Reset everything on close.
+  useEffect(() => {
+    if (!open) { setSecret(null); setUri(null); setCallsign(""); setCode(""); setError(null); setBusy(false); return; }
+    let alive = true;
+    setBusy(true);
+    api.totpEnrollBegin()
+      .then((r) => { if (alive) { setSecret(r.secret); setUri(r.otpauthUri); setError(null); } })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Could not start enrolment."); })
+      .finally(() => { if (alive) setBusy(false); });
+    return () => { alive = false; };
+  }, [open]);
+
+  const valid = callsign.trim().length > 0 && code.replace(/\D/g, "").length === 6 && secret !== null;
+
+  const confirm = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.totpEnrollComplete(code.replace(/\D/g, ""), callsign.trim().toUpperCase());
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Enrolment failed.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width="max-w-md" title="Over-RF sysop code (TOTP)" footer={
+      <>
+        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button size="sm" disabled={!valid || busy} onClick={confirm}><Icon name="check" size={14} /> {busy ? "Confirming…" : "Confirm"}</Button>
+      </>
+    }>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Add this node to an authenticator app (Aegis, 1Password, Google Authenticator…). When you connect to the node <strong className="text-foreground">on the air</strong>, the node asks for the current 6-digit code to elevate your session.</p>
+        <div className="flex gap-4">
+          <div className="grid h-32 w-32 shrink-0 place-items-center rounded-lg border border-border bg-white p-1">
+            {uri
+              ? <QRCodeSVG value={uri} size={120} marginSize={0} />
+              : <div className="text-center text-muted-foreground"><Icon name="radio" size={24} className="mx-auto" /><p className="mt-1 px-2 text-[10px] leading-tight">{busy ? "generating…" : "otpauth QR"}</p></div>}
+          </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <div>
+              <Label>Manual key</Label>
+              <div className="mt-1 flex items-center gap-2 rounded-md border border-border bg-background/60 px-2.5 py-1.5">
+                <span className="flex-1 break-all font-mono text-xs tracking-wider">{secret ?? "—"}</span>
+                {secret && <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" title="Copy" onClick={() => navigator.clipboard?.writeText(secret)}><Icon name="copy" size={14} /></button>}
               </div>
-              <p className="break-all font-mono text-[10px] leading-snug text-muted-foreground/70">{uri}</p>
             </div>
+            <p className="text-[11px] text-muted-foreground">Scan the QR, or type the key into your app by hand.</p>
           </div>
         </div>
-      )}
-      {step === 1 && (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Enter the current 6-digit code from your app to confirm it's set up correctly.</p>
+        <Field label="Callsign" hint="The callsign you'll present over the air — bound to your account.">
+          <Input value={callsign} onChange={(e) => setCallsign(e.target.value.toUpperCase())} placeholder="G7XYZ" className="font-mono uppercase" />
+        </Field>
+        <Field label="Current code" hint="The 6-digit code from your app, to confirm it's set up correctly.">
           <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric"
-            className="text-center font-mono text-2xl tracking-[0.4em]" autoFocus />
-        </div>
-      )}
-      {step === 2 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-md bg-success/10 px-3 py-2.5 text-sm text-success"><Icon name="check" size={16} /> On-air authenticator enabled for {userName}.</div>
-          <div>
-            <Label>Recovery codes</Label>
-            <p className="mb-2 mt-0.5 text-xs text-muted-foreground">Store these safely — each can be used once if the authenticator is unavailable.</p>
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 p-3 font-mono text-sm">
-              {RECOVERY_CODES.map((c) => <span key={c}>{c}</span>)}
-            </div>
-          </div>
-        </div>
-      )}
+            className="text-center font-mono text-2xl tracking-[0.4em]" />
+        </Field>
+        {error && <div className="flex items-center gap-2 rounded-md bg-danger/10 px-3 py-2 text-xs text-danger"><Icon name="info" size={14} /> {error}</div>}
+      </div>
     </Modal>
   );
 }

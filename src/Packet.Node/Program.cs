@@ -127,6 +127,17 @@ var webAuthnStore = new SqliteWebAuthnCredentialStore(dbPath, bootstrapLoggers.C
 builder.Services.AddSingleton<IWebAuthnCredentialStore>(webAuthnStore);
 builder.Services.AddSingleton(new WebAuthnChallengeCache(TimeProvider.System));
 
+// Over-RF sysop-code (TOTP) enrolment (auth part 4, enrolment half, default-off behind
+// management.auth.enabled). The per-user secret + callsign + replay counter live on the
+// existing user store (pdn.db) — added additively, degrade-safe like the rest. The
+// pending-enrolment cache holds in-flight enrolments in-memory (server-minted secret,
+// single-use, expiring — never persisted until the user confirms a code), mirroring the
+// WebAuthn challenge cache. Always registered (pure in-memory + the clock); the endpoint's
+// `TotpEnrollmentCache?` stays optional so an unregistered-service path can never abort
+// startup. The console SYSOP gate that VERIFIES a presented code over a packet session is a
+// separate piece — it consumes IUserStore.FindByCallsign + TotpService, which this readies.
+builder.Services.AddSingleton(new TotpEnrollmentCache(TimeProvider.System));
+
 // Authentication: JWT bearer validated against THIS node's signing key/issuer/audience
 // (HS256 only). Always registered so a token presented when auth is on is validated;
 // when the key is unavailable the validator gets a throwaway parameters object that
@@ -275,6 +286,15 @@ usersGroup.RequireAuthorization(PdnAuthPolicies.Admin);
 // specific /api/v1/* routes win.
 var webAuthnGroup = app.MapPdnWebAuthnApi();
 webAuthnGroup.RequireAuthorization(PdnAuthPolicies.Read);
+
+// Over-RF sysop-code (TOTP) enrolment (auth part 4). Self-service: a logged-in user enrols
+// / inspects / removes the rolling code for THEMSELVES (the username comes from the
+// authenticated principal, never the body), so the group is gated `read` — the same floor
+// as the passkey register group. The gate is a no-op when auth is off (and enroll then 409s,
+// since there is no authenticated "self" to enrol for). Mapped before the catch-all so the
+// specific /api/v1/* routes win.
+var totpGroup = app.MapPdnTotpApi();
+totpGroup.RequireAuthorization(PdnAuthPolicies.Read);
 
 // Slice 3 control API (read endpoints). Mapped BEFORE the SPA fallback so /api/*
 // and /healthz win; everything else falls through to index.html for the React

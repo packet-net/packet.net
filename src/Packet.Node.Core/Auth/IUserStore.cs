@@ -21,6 +21,40 @@ public interface IUserStore
     /// <summary>Look up a user by exact username, or null if absent / on fault.</summary>
     UserRecord? FindByUsername(string username);
 
+    /// <summary>
+    /// Look up a user by the callsign bound to their over-RF TOTP credential
+    /// (case-insensitive). Returns null if no user has that callsign or on a store
+    /// fault. This is the lookup the over-RF authorization gate uses to resolve a
+    /// connecting station's callsign to the account whose TOTP secret it must verify.
+    /// </summary>
+    UserRecord? FindByCallsign(string callsign);
+
+    /// <summary>
+    /// Bind a TOTP secret (base32) + a callsign to a user, resetting the replay
+    /// high-water mark (<see cref="UserRecord.LastTotpCounter"/>) to "none accepted"
+    /// so the very first presented code is eligible. Enforces callsign uniqueness:
+    /// returns <c>false</c> if the callsign is already bound to a DIFFERENT user (so
+    /// the caller can surface a 409), if the user does not exist, or on a store fault;
+    /// <c>true</c> on success.
+    /// </summary>
+    bool SetTotpSecret(string username, string secret, string callsign);
+
+    /// <summary>
+    /// Clear a user's TOTP enrolment — null out the secret, callsign, and replay
+    /// counter. Returns <c>true</c> if a row changed, <c>false</c> if the user was
+    /// absent / already had none / on a store fault.
+    /// </summary>
+    bool ClearTotp(string username);
+
+    /// <summary>
+    /// Persist the new TOTP replay high-water mark for a user (the counter
+    /// <see cref="TotpService.TryVerify"/> just accepted). Best-effort in intent, but
+    /// returns <c>false</c> on a store fault so the over-RF gate KNOWS the counter
+    /// could not be persisted (and can refuse to treat the code as consumed rather
+    /// than risk a replay window). <c>true</c> on success.
+    /// </summary>
+    bool UpdateTotpCounter(string username, long counter);
+
     /// <summary>All users (hash included — callers project to <see cref="UserSummary"/>
     /// before returning to a client). Empty on fault.</summary>
     IReadOnlyList<UserRecord> List();

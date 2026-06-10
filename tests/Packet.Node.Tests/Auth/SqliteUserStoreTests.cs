@@ -113,6 +113,151 @@ public sealed class SqliteUserStoreTests : IDisposable
         reopened.FindByUsername("ed")!.Scope.Should().Be(AuthScopes.Operate);
     }
 
+    // --- over-RF TOTP enrolment (auth part 4) ------------------------------------
+
+    [Fact]
+    public void Set_totp_secret_round_trips_via_find_by_username_and_callsign()
+    {
+        var store = Open();
+        store.Create(NewUser("frank")).Should().BeTrue();
+
+        store.SetTotpSecret("frank", "JBSWY3DPEHPK3PXP", "G7XYZ").Should().BeTrue();
+
+        var byName = store.FindByUsername("frank");
+        byName.Should().NotBeNull();
+        byName!.TotpSecret.Should().Be("JBSWY3DPEHPK3PXP");
+        byName.Callsign.Should().Be("G7XYZ");
+        byName.LastTotpCounter.Should().BeNull();   // reset to "none accepted" on (re)bind
+
+        // FindByCallsign resolves the same user, case-insensitively (the over-RF lookup).
+        store.FindByCallsign("G7XYZ")!.Username.Should().Be("frank");
+        store.FindByCallsign("g7xyz")!.Username.Should().Be("frank");
+        // An unknown callsign finds nothing.
+        store.FindByCallsign("M0AAA").Should().BeNull();
+    }
+
+    [Fact]
+    public void Callsign_uniqueness_rejects_a_second_user_binding_the_same_callsign()
+    {
+        var store = Open();
+        store.Create(NewUser("gina")).Should().BeTrue();
+        store.Create(NewUser("hank")).Should().BeTrue();
+
+        store.SetTotpSecret("gina", "JBSWY3DPEHPK3PXP", "G7XYZ").Should().BeTrue();
+        // hank cannot claim the same callsign — even with a different casing.
+        store.SetTotpSecret("hank", "GEZDGNBVGY3TQOJQ", "g7xyz").Should().BeFalse();
+
+        // gina still owns it; hank has none.
+        store.FindByCallsign("G7XYZ")!.Username.Should().Be("gina");
+        store.FindByUsername("hank")!.TotpSecret.Should().BeNull();
+    }
+
+    [Fact]
+    public void Re_enrolling_the_same_callsign_for_its_own_user_is_allowed()
+    {
+        var store = Open();
+        store.Create(NewUser("ivy")).Should().BeTrue();
+        store.SetTotpSecret("ivy", "JBSWY3DPEHPK3PXP", "G7XYZ").Should().BeTrue();
+        store.UpdateTotpCounter("ivy", 42).Should().BeTrue();
+
+        // A re-enrol with a fresh secret for the SAME callsign/user succeeds and resets
+        // the replay high-water mark.
+        store.SetTotpSecret("ivy", "GEZDGNBVGY3TQOJQ", "G7XYZ").Should().BeTrue();
+        var found = store.FindByUsername("ivy")!;
+        found.TotpSecret.Should().Be("GEZDGNBVGY3TQOJQ");
+        found.LastTotpCounter.Should().BeNull();
+    }
+
+    [Fact]
+    public void Update_totp_counter_persists_the_replay_high_water_mark()
+    {
+        var store = Open();
+        store.Create(NewUser("jack")).Should().BeTrue();
+        store.SetTotpSecret("jack", "JBSWY3DPEHPK3PXP", "M0JCK").Should().BeTrue();
+
+        store.UpdateTotpCounter("jack", 12345).Should().BeTrue();
+        store.FindByUsername("jack")!.LastTotpCounter.Should().Be(12345);
+
+        // Survives a reopen (it's the persisted single-use guard).
+        Open().FindByUsername("jack")!.LastTotpCounter.Should().Be(12345);
+    }
+
+    [Fact]
+    public void Clear_totp_nulls_the_credential_and_reports_whether_a_row_changed()
+    {
+        var store = Open();
+        store.Create(NewUser("kate")).Should().BeTrue();
+        store.SetTotpSecret("kate", "JBSWY3DPEHPK3PXP", "M0KAT").Should().BeTrue();
+        store.UpdateTotpCounter("kate", 7).Should().BeTrue();
+
+        store.ClearTotp("kate").Should().BeTrue();
+        var found = store.FindByUsername("kate")!;
+        found.TotpSecret.Should().BeNull();
+        found.Callsign.Should().BeNull();
+        found.LastTotpCounter.Should().BeNull();
+        store.FindByCallsign("M0KAT").Should().BeNull();
+
+        // A second clear changes nothing (already cleared) → false; idempotent overall.
+        store.ClearTotp("kate").Should().BeFalse();
+    }
+
+    [Fact]
+    public void User_summary_exposes_has_totp_and_callsign_but_never_the_secret()
+    {
+        var store = Open();
+        store.Create(NewUser("liam")).Should().BeTrue();
+        store.SetTotpSecret("liam", "JBSWY3DPEHPK3PXP", "M0LIA").Should().BeTrue();
+
+        var summary = UserSummary.From(store.FindByUsername("liam")!);
+        summary.HasTotp.Should().BeTrue();
+        summary.Callsign.Should().Be("M0LIA");
+        // UserSummary has no TotpSecret member — verified at compile time; here we assert
+        // the unenrolled projection is HasTotp:false.
+        UserSummary.From(NewUser("mona")).HasTotp.Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_old_pre_migration_db_without_totp_columns_still_opens_and_gains_them()
+    {
+        // Hand-build a db with the ORIGINAL (pre-TOTP) user schema — no callsign /
+        // totp_secret / last_totp_counter columns — then a row, exactly as a node from
+        // before this feature would have on disk.
+        using (var conn = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE user (
+                    username       TEXT PRIMARY KEY,
+                    password_hash  TEXT NOT NULL,
+                    scopes         TEXT NOT NULL,
+                    created_utc    TEXT NOT NULL,
+                    last_login_utc TEXT NULL);
+                INSERT INTO user (username, password_hash, scopes, created_utc, last_login_utc)
+                VALUES ('legacy', 'hash', 'admin', '2026-01-01T00:00:00.0000000+00:00', NULL);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        // Opening through the store runs the additive migration; the legacy row survives
+        // and reads back with null TOTP fields.
+        var store = Open();
+        var legacy = store.FindByUsername("legacy");
+        legacy.Should().NotBeNull();
+        legacy!.Scope.Should().Be(AuthScopes.Admin);
+        legacy.TotpSecret.Should().BeNull();
+        legacy.Callsign.Should().BeNull();
+        legacy.LastTotpCounter.Should().BeNull();
+
+        // And the new columns are usable on the migrated db.
+        store.SetTotpSecret("legacy", "JBSWY3DPEHPK3PXP", "M0LEG").Should().BeTrue();
+        store.FindByCallsign("M0LEG")!.Username.Should().Be("legacy");
+
+        // Re-opening (re-running the migration) is a no-op and preserves the data.
+        Open().FindByUsername("legacy")!.TotpSecret.Should().Be("JBSWY3DPEHPK3PXP");
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }

@@ -241,6 +241,17 @@ export interface WebAuthnCredential {
 export interface AssertBeginResponse { sessionId: string; options: unknown }
 // POST /auth/webauthn/register/complete success body.
 export interface RegisterCompleteResponse { registered: boolean; credentialId: string }
+
+// ---- Over-RF sysop code / TOTP (mirror Packet.Node.Api.PdnTotpApi DTOs) ----
+// POST /auth/totp/enroll/begin response: a freshly-minted base32 secret (shown ONCE for
+// manual entry) + the otpauth:// URI to render as a QR code. Neither is persisted until
+// enroll/complete succeeds.
+export interface TotpEnrollBeginResponse { secret: string; otpauthUri: string }
+// POST /auth/totp/enroll/complete success body.
+export interface TotpEnrollCompleteResponse { enrolled: boolean; callsign: string }
+// GET /auth/totp/enroll body: whether the signed-in user has an over-RF code enrolled, and
+// the bound callsign (null when not enrolled). Never the secret.
+export interface TotpEnrollState { enrolled: boolean; callsign: string | null }
 export interface LogLine { t: string; lvl: "info" | "warn" | "error"; msg: string }
 export interface ToggleHelp { label: string; desc: string }
 export interface FieldHelp { label: string; unit: string; help: string }

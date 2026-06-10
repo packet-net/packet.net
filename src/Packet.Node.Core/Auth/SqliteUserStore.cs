@@ -52,6 +52,25 @@ public sealed partial class SqliteUserStore : IUserStore
             value TEXT NOT NULL);
         """;
 
+    // The over-RF TOTP columns, added additively to the existing user table. SQLite has
+    // no ADD COLUMN IF NOT EXISTS, so each is applied guarded (PRAGMA table_info check +
+    // a duplicate-column catch) — see EnsureTotpColumns. A pre-TOTP db (no columns) opens
+    // fine and gains them; re-running is a no-op.
+    private static readonly (string Name, string Ddl)[] TotpColumns =
+    [
+        ("callsign",          "ALTER TABLE user ADD COLUMN callsign TEXT NULL;"),
+        ("totp_secret",       "ALTER TABLE user ADD COLUMN totp_secret TEXT NULL;"),
+        ("last_totp_counter", "ALTER TABLE user ADD COLUMN last_totp_counter INTEGER NULL;"),
+    ];
+
+    // The full user projection (all columns, base + TOTP), aliased to UserRow's
+    // properties. Shared by FindByUsername / FindByCallsign / List so every read path
+    // round-trips the TOTP fields.
+    private const string UserSelectColumns =
+        "username AS Username, password_hash AS PasswordHash, scopes AS Scopes, " +
+        "created_utc AS CreatedUtc, last_login_utc AS LastLoginUtc, " +
+        "callsign AS Callsign, totp_secret AS TotpSecret, last_totp_counter AS LastTotpCounter";
+
     private readonly string connectionString;
     private readonly ILogger<SqliteUserStore> logger;
 
@@ -80,10 +99,38 @@ public sealed partial class SqliteUserStore : IUserStore
             using var conn = Open();
             conn.Execute("PRAGMA journal_mode=WAL;");
             conn.Execute(SchemaSql);
+            EnsureTotpColumns(conn);
         }
         catch (SqliteException ex)
         {
             LogSchemaFailed(ex, connectionString);
+        }
+    }
+
+    // Additively migrate the existing user table to carry the over-RF TOTP columns. The
+    // webauthn/refresh stores use CREATE TABLE IF NOT EXISTS, but the user table predates
+    // these columns and must keep its rows, so we ALTER TABLE ADD COLUMN instead. SQLite
+    // has no ADD COLUMN IF NOT EXISTS — so we read PRAGMA table_info(user) once and only
+    // add the columns that are missing, and additionally swallow a "duplicate column name"
+    // SqliteException (belt-and-braces against a race / a stale read). Idempotent.
+    private static void EnsureTotpColumns(SqliteConnection conn)
+    {
+        var existing = conn.Query<string>("SELECT name FROM pragma_table_info('user');")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, ddl) in TotpColumns)
+        {
+            if (existing.Contains(name))
+            {
+                continue;
+            }
+            try
+            {
+                conn.Execute(ddl);
+            }
+            catch (SqliteException ex) when (ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
+            {
+                // Already present (added concurrently / between the read and here) — fine.
+            }
         }
     }
 
@@ -113,10 +160,31 @@ public sealed partial class SqliteUserStore : IUserStore
         {
             using var conn = Open();
             var row = conn.QuerySingleOrDefault<UserRow>(
-                "SELECT username AS Username, password_hash AS PasswordHash, scopes AS Scopes, " +
-                "created_utc AS CreatedUtc, last_login_utc AS LastLoginUtc " +
-                "FROM user WHERE username = @u;",
+                "SELECT " + UserSelectColumns + " FROM user WHERE username = @u;",
                 new { u = username });
+            return row is null ? null : ToRecord(row);
+        }
+        catch (Exception ex) when (ex is SqliteException or FormatException)
+        {
+            LogReadFailed(ex, connectionString);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public UserRecord? FindByCallsign(string callsign)
+    {
+        ArgumentNullException.ThrowIfNull(callsign);
+        try
+        {
+            using var conn = Open();
+            // Case-insensitive match on the callsign column. COLLATE NOCASE is ASCII-only,
+            // which is exactly right for callsigns (A–Z / 0–9). A NULL callsign (no TOTP
+            // enrolled) never matches a non-empty lookup.
+            var row = conn.QuerySingleOrDefault<UserRow>(
+                "SELECT " + UserSelectColumns +
+                " FROM user WHERE callsign IS NOT NULL AND callsign = @c COLLATE NOCASE;",
+                new { c = callsign });
             return row is null ? null : ToRecord(row);
         }
         catch (Exception ex) when (ex is SqliteException or FormatException)
@@ -133,9 +201,7 @@ public sealed partial class SqliteUserStore : IUserStore
         {
             using var conn = Open();
             var rows = conn.Query<UserRow>(
-                "SELECT username AS Username, password_hash AS PasswordHash, scopes AS Scopes, " +
-                "created_utc AS CreatedUtc, last_login_utc AS LastLoginUtc " +
-                "FROM user ORDER BY username;").ToList();
+                "SELECT " + UserSelectColumns + " FROM user ORDER BY username;").ToList();
             var users = new List<UserRecord>(rows.Count);
             foreach (var row in rows)
             {
@@ -158,8 +224,9 @@ public sealed partial class SqliteUserStore : IUserStore
         {
             using var conn = Open();
             conn.Execute(
-                "INSERT INTO user (username, password_hash, scopes, created_utc, last_login_utc) " +
-                "VALUES (@u, @h, @s, @c, @l);",
+                "INSERT INTO user (username, password_hash, scopes, created_utc, last_login_utc, " +
+                "callsign, totp_secret, last_totp_counter) " +
+                "VALUES (@u, @h, @s, @c, @l, @call, @secret, @counter);",
                 new
                 {
                     u = user.Username,
@@ -167,6 +234,9 @@ public sealed partial class SqliteUserStore : IUserStore
                     s = user.Scope,
                     c = Stamp(user.CreatedUtc),
                     l = user.LastLoginUtc is { } when ? Stamp(when) : null,
+                    call = user.Callsign,
+                    secret = user.TotpSecret,
+                    counter = user.LastTotpCounter,
                 });
             return true;
         }
@@ -219,6 +289,86 @@ public sealed partial class SqliteUserStore : IUserStore
     }
 
     /// <inheritdoc/>
+    public bool SetTotpSecret(string username, string secret, string callsign)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
+        ArgumentException.ThrowIfNullOrWhiteSpace(callsign);
+        try
+        {
+            using var conn = Open();
+
+            // Enforce callsign uniqueness across users (case-insensitive). If the callsign
+            // is already bound to a DIFFERENT account, refuse — the caller turns this into
+            // a 409. (Re-binding the SAME callsign to its own user, e.g. a re-enrol, is
+            // allowed.) Done in the same connection as the update; a fresh pooled
+            // connection per call is already serialised by SQLite's file lock under WAL.
+            var owner = conn.ExecuteScalar<string?>(
+                "SELECT username FROM user WHERE callsign IS NOT NULL AND callsign = @c COLLATE NOCASE;",
+                new { c = callsign });
+            if (owner is not null && !string.Equals(owner, username, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int rows = conn.Execute(
+                "UPDATE user SET totp_secret = @secret, callsign = @call, last_totp_counter = NULL " +
+                "WHERE username = @u;",
+                new { u = username, secret, call = callsign });
+            return rows > 0;
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool ClearTotp(string username)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        try
+        {
+            using var conn = Open();
+            // Only count it as a change when the user actually had a credential, so a
+            // double-clear (or a clear on a never-enrolled user) reads as "nothing changed".
+            int rows = conn.Execute(
+                "UPDATE user SET totp_secret = NULL, callsign = NULL, last_totp_counter = NULL " +
+                "WHERE username = @u AND (totp_secret IS NOT NULL OR callsign IS NOT NULL);",
+                new { u = username });
+            return rows > 0;
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool UpdateTotpCounter(string username, long counter)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        try
+        {
+            using var conn = Open();
+            conn.Execute(
+                "UPDATE user SET last_totp_counter = @counter WHERE username = @u;",
+                new { u = username, counter });
+            return true;
+        }
+        catch (SqliteException ex)
+        {
+            // Unlike UpdateLastLogin this is NOT silently swallowed: the over-RF gate must
+            // know the replay high-water mark could not be persisted (so it can refuse to
+            // treat the just-accepted code as consumed and avoid re-opening a replay window).
+            LogWriteFailed(ex, connectionString);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
     public byte[]? GetOrCreateSigningKey()
     {
         try
@@ -255,7 +405,10 @@ public sealed partial class SqliteUserStore : IUserStore
         row.PasswordHash,
         row.Scopes,
         ParseStamp(row.CreatedUtc),
-        string.IsNullOrEmpty(row.LastLoginUtc) ? null : ParseStamp(row.LastLoginUtc));
+        string.IsNullOrEmpty(row.LastLoginUtc) ? null : ParseStamp(row.LastLoginUtc),
+        Callsign: string.IsNullOrEmpty(row.Callsign) ? null : row.Callsign,
+        TotpSecret: string.IsNullOrEmpty(row.TotpSecret) ? null : row.TotpSecret,
+        LastTotpCounter: row.LastTotpCounter);
 
     private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
 
@@ -284,6 +437,9 @@ public sealed partial class SqliteUserStore : IUserStore
         public string Scopes { get; set; } = string.Empty;
         public string CreatedUtc { get; set; } = string.Empty;
         public string? LastLoginUtc { get; set; }
+        public string? Callsign { get; set; }
+        public string? TotpSecret { get; set; }
+        public long? LastTotpCounter { get; set; }
     }
 
     [LoggerMessage(Level = LogLevel.Warning,
