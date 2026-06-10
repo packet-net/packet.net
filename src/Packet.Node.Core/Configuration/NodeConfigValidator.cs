@@ -45,6 +45,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         RuleFor(c => c.Beacon).NotNull().SetValidator(new BeaconConfigValidator());
 
+        RuleFor(c => c.Rhp).NotNull().SetValidator(new RhpConfigValidator());
+
         // Empty applications is the default (a node with no apps). Each entry is validated,
         // and ids / match-verbs must be unique across the list (the launch + log keys).
         RuleForEach(c => c.Applications).SetValidator(new ApplicationConfigValidator());
@@ -197,6 +199,23 @@ public sealed class PortBeaconValidator : AbstractValidator<PortBeaconConfig>
         RuleFor(b => b.Text!).NotEmpty()
             .When(b => b.Enabled && b.Text is not null)
             .WithMessage("port beacon.text must be non-empty when set on an enabled beacon.");
+    }
+}
+
+/// <summary>Validates the RHPv2 server block: a sane port always (so a disabled-but-edited
+/// block can't hold junk), a parseable bind when enabled.</summary>
+public sealed class RhpConfigValidator : AbstractValidator<RhpConfig>
+{
+    public RhpConfigValidator()
+    {
+        RuleFor(r => r.Port)
+            .InclusiveBetween(1, 65535)
+            .WithMessage("rhp.port must be in 1..65535.");
+
+        RuleFor(r => r.Bind)
+            .Must(b => System.Net.IPAddress.TryParse(b, out _))
+            .When(r => r.Enabled)
+            .WithMessage(r => $"rhp.bind '{r.Bind}' must be an IP address when rhp is enabled.");
     }
 }
 

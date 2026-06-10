@@ -49,6 +49,12 @@ public sealed record NodeConfig
     /// <see cref="PortConfig.Beacon"/>. See <see cref="BeaconConfig"/>.</summary>
     public BeaconConfig Beacon { get; init; } = new();
 
+    /// <summary>The RHPv2 server (the app platform's <b>network plane</b>): a JSON-over-TCP
+    /// host API (PWP-0222/0245, XRouter-compatible) that lets an external application open and
+    /// accept packet connections through this node's AX.25 engine. Default-off; binds loopback.
+    /// See <c>docs/rhp2-server.md</c>.</summary>
+    public RhpConfig Rhp { get; init; } = new();
+
     /// <summary>Registered node applications — the app-extensibility platform. Each entry
     /// is launched (out-of-process) when a connected user types its <see cref="ApplicationConfig.Match"/>
     /// verb at the node prompt; the session is bridged to the app over the
@@ -57,6 +63,28 @@ public sealed record NodeConfig
     /// time — because each connect spawns a fresh process, a config edit is picked up by the
     /// next launch with no reconcile/restart machinery. See <c>docs/app-extensibility.md</c>.</summary>
     public IReadOnlyList<ApplicationConfig> Applications { get; init; } = [];
+}
+
+/// <summary>
+/// The RHPv2 server's configuration. Default-off and loopback-bound: a node that doesn't opt
+/// in serves no RHP. <see cref="RequireAuth"/> gates the wire's plaintext <c>auth</c> message
+/// against the node's existing user store — appropriate for a loopback/LAN bind; RHP has no
+/// TLS, so never expose the port beyond a trusted network.
+/// </summary>
+public sealed record RhpConfig
+{
+    /// <summary>Whether the RHPv2 listener runs. Default <c>false</c>.</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>Bind address. Default loopback — the trust boundary (cf. the app gateway).</summary>
+    public string Bind { get; init; } = "127.0.0.1";
+
+    /// <summary>TCP port. 9000 is the RHPv2 convention (PWP-0222).</summary>
+    public int Port { get; init; } = 9000;
+
+    /// <summary>When true, a client must <c>auth</c> (validated against the node's users)
+    /// before any other request is honoured. Default <c>false</c> (loopback trust).</summary>
+    public bool RequireAuth { get; init; }
 }
 
 /// <summary>How a registered application is run. <see cref="Process"/> is the spawn-per-connect

@@ -236,6 +236,12 @@ builder.Services.AddSingleton<BeaconService>();
 builder.Services.AddSingleton<NodeHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeHostedService>());
 
+// RHPv2 server (the app platform's network plane, default-off behind rhp.enabled): the
+// JSON-over-TCP host API bridged onto the running supervisor. See docs/rhp2-server.md.
+builder.Services.AddSingleton<Packet.Rhp2.Server.IRhpGateway, Packet.Node.Rhp.SupervisorRhpGateway>();
+builder.Services.AddSingleton<Packet.Rhp2.Server.RhpServerHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Rhp2.Server.RhpServerHostedService>());
+
 // Bind Kestrel from the node config's management.http section, plus an optional TLS
 // listener (management.https). HTTPS is opt-in; the plain HTTP listener is unchanged.
 var management = configProvider.Current.Management;

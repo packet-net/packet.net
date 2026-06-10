@@ -13,6 +13,9 @@
   <ItemGroup>
     <!-- The host shell is thin: all node logic lives in Packet.Node.Core. -->
     <ProjectReference Include="..\Packet.Node.Core\Packet.Node.Core.csproj" />
+    <!-- The RHPv2 server (the app platform's network plane) — hosted here, bridged onto the
+         running PortSupervisor via SupervisorRhpGateway. See docs/rhp2-server.md. -->
+    <ProjectReference Include="..\Packet.Rhp2.Server\Packet.Rhp2.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

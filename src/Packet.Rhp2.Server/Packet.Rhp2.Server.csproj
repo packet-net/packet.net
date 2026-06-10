@@ -6,4 +6,17 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The wire codec (framing + message catalogue) — see docs/rhp2-server.md. -->
+    <ProjectReference Include="..\Packet.Rhp2\Packet.Rhp2.csproj" />
+    <!-- INodeConnection (the engine seam the server bridges handles to) + config types. -->
+    <ProjectReference Include="..\Packet.Node.Core\Packet.Node.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- IHostedService for the config-driven listener lifecycle (start/stop/hot-reload). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
 </Project>

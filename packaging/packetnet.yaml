@@ -115,3 +115,13 @@ management:
 #     kind: socket
 #     socketPath: /run/packetnet/lobby.sock
 #     capabilities: [ session ]
+
+# RHPv2 server — the app platform's NETWORK plane (PWP-0222/0245, XRouter-compatible).
+# Lets an external application (e.g. DAPPS) open packet connections through this node over
+# JSON-over-TCP. Default-off; loopback-bound (RHP has no TLS — never expose it publicly).
+# See docs/rhp2-server.md.
+# rhp:
+#   enabled: true
+#   bind: 127.0.0.1
+#   port: 9000
+#   requireAuth: false   # true => `auth` validated against the node's users first

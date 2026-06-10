@@ -170,6 +170,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     /// local dial-in dials out on a real AX.25 port — slice-1 same-port-only in
     /// the sense that there is exactly one deterministic dial-out port.
     /// </summary>
+    /// <summary>
+    /// Resolve a same-port AX.25 connector for a <b>specific</b> running port (the RHPv2
+    /// server's outbound <c>open</c> dials on the port the client named). Null when the port
+    /// isn't running. The connector claims the dialled remote for the duration of the connect,
+    /// exactly like the console's connect-out, so no inbound console is started against it.
+    /// </summary>
+    public IOutboundConnector? ResolveConnector(string portId)
+    {
+        RunningPort? port;
+        lock (ports) ports.TryGetValue(portId, out port);
+        return port is null ? null : new Ax25OutboundConnector(port.Id, port.Listener, r => ClaimOutbound(r));
+    }
+
     public IOutboundConnector? ResolveDefaultConnector()
     {
         RunningPort? first;
