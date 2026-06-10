@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 using Yarp.ReverseProxy.Forwarder;
@@ -117,9 +119,27 @@ public static class PdnAppGateway
     /// <summary>A launcher tile (the <c>/api/v1/apps</c> shape).</summary>
     public sealed record AppTile(string Id, string Name, string? Icon, string Url);
 
+    /// <summary>
+    /// The authenticated username for the identity header, robust to inbound-claim mapping that
+    /// can surface the subject as <see cref="System.Security.Claims.ClaimsIdentity.Name"/>, the
+    /// raw <c>sub</c> claim, or the mapped <c>NameIdentifier</c> (the same fallback the auth APIs
+    /// use). Empty when the principal is unauthenticated (anonymous / auth-off).
+    /// </summary>
+    internal static string AuthenticatedUsername(ClaimsPrincipal? principal)
+    {
+        if (principal?.Identity?.IsAuthenticated != true)
+        {
+            return string.Empty;
+        }
+        return principal.Identity!.Name
+            ?? principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? string.Empty;
+    }
+
     // Rebases the path (strips /apps/{id}), strips any client-supplied identity headers, and
     // injects the authenticated identity. A singleton — all per-request state is on the context.
-    private sealed class AppGatewayTransformer : HttpTransformer
+    internal sealed class AppGatewayTransformer : HttpTransformer
     {
         public override async ValueTask TransformRequestAsync(
             HttpContext context, HttpRequestMessage proxyRequest, string destinationPrefix, CancellationToken cancellationToken)
@@ -142,9 +162,7 @@ public static class PdnAppGateway
             proxyRequest.Headers.Remove(ScopeHeader);
             proxyRequest.Headers.Remove(GatewayHeader);
 
-            var user = context.User?.Identity?.IsAuthenticated == true
-                ? context.User.Identity!.Name ?? string.Empty
-                : string.Empty;
+            var user = AuthenticatedUsername(context.User);
             var scope = context.User?.FindFirst(AuthScopes.ScopeClaim)?.Value ?? string.Empty;
 
             proxyRequest.Headers.TryAddWithoutValidation(UserHeader, user);
