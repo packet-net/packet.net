@@ -61,8 +61,11 @@ public static class PdnAppGateway
             return Results.Ok(tiles);
         }).RequireAuthorization(PdnAuthPolicies.Read);
 
-        // A bare /apps/{id} (no trailing slash) → /apps/{id}/ so the app's relative URLs resolve.
-        app.MapGet("/apps/{id}", (string id) => Results.Redirect($"/apps/{id}/"));
+        // Apps are reached at /apps/{id}/ (trailing slash — the launcher always emits it, and the
+        // app's relative URLs resolve against it). The catch-all below matches that (rest = "").
+        // We deliberately do NOT add a bare `/apps/{id}` → `/apps/{id}/` redirect: routing also
+        // matches `/apps/{id}` against the WITH-slash form, so such a route shadows the proxy for
+        // `/apps/{id}/` and 302-loops. (A no-trailing-slash request falls through to the SPA.)
 
         // The reverse proxy. Read-gated; the token comes from the bearer header or the pdn_at
         // cookie (Program.cs OnMessageReceived). Resolve the app by id, forward to its upstream.

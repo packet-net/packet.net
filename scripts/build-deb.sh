@@ -66,6 +66,9 @@ cp "$root/packaging/packetnet.yaml"    "$stage/etc/packetnet/packetnet.yaml"
 # an `applications:` entry. Recommends: python3 pulls in the interpreter on a default install.
 install -d "$stage/usr/share/packetnet/apps/wall"
 install -m 0755 "$root/examples/wall/wall.py" "$stage/usr/share/packetnet/apps/wall/wall.py"
+# wall_web.py = the human-plane web view (app platform Slice 3): a loopback web server the
+# owner runs and pdn reverse-proxies under /apps/wall/. See docs/app-gateway.md.
+install -m 0755 "$root/examples/wall/wall_web.py" "$stage/usr/share/packetnet/apps/wall/wall_web.py"
 install -m 0644 "$root/examples/wall/README.md" "$stage/usr/share/packetnet/apps/wall/README.md"
 sed -e "s/@ARCH@/$arch/" -e "s/@VERSION@/$version/" \
     "$root/packaging/control.in" > "$stage/DEBIAN/control"

@@ -114,6 +114,22 @@ public sealed class AppGatewayApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Proxies_the_trailing_slash_launcher_url()
+    {
+        // The launcher links to /apps/{id}/ (trailing slash) — the catch-all must forward it
+        // (rest = "" → upstream "/"), NOT 302-loop. (Regression: a `/apps/{id}` redirect route
+        // shadowed this and looped; found in lab live-verify.)
+        await using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/apps/wall/");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadAsStringAsync();
+        Assert.Contains("path=/", body, StringComparison.Ordinal);
+        Assert.Contains("gateway=[1]", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Strips_any_client_supplied_identity_header()
     {
         await using var factory = new WebApplicationFactory<Program>();
