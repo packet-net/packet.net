@@ -1,6 +1,6 @@
 # pdn RHPv2 server — scope, wire fidelity, and named deviations
 
-**Status:** R-1 (codec) + R-2 (server core + outbound) in progress, 2026-06-10. The app platform's **network plane** ([`app-extensibility.md`](app-extensibility.md) Slice 4): pdn hosts the Radio Host Protocol v2 (PWP-0222 / PWP-0245, JSON-over-TCP/9000) so an external application can open and accept packet connections through the node's AX.25 engine — the XRouter-compatible host API that [rhp2lib](https://rhp2lib.pages.dev/) clients (DAPPS, and ultimately Whatspac) speak.
+**Status:** R-1 (codec) + R-2 (outbound) shipped 2026-06-10; **R-3 (the passive half — listen/accept + multi-callsign) shipped 2026-06-11**. The app platform's **network plane** ([`app-extensibility.md`](app-extensibility.md) Slice 4): pdn hosts the Radio Host Protocol v2 (PWP-0222 / PWP-0245, JSON-over-TCP/9000) so an external application can open and accept packet connections through the node's AX.25 engine — the XRouter-compatible host API that [rhp2lib](https://rhp2lib.pages.dev/) clients (DAPPS, and ultimately Whatspac) speak.
 
 ## The honesty problem, and how this implementation handles it
 
@@ -16,9 +16,9 @@ Discipline adopted (mirrors the repo's strict-vs-pragmatic AX.25 rules):
 ## V1 scope (R-2): the DAPPS-proven subset
 
 - **Family/mode:** `ax25` + `stream` only. Addresses are callsign(+SSID) strings. `port` is the 1-indexed label of the node's configured ports, as a string (`"1"` = the first `ports:` entry); a null/absent port means the first port (outbound) / all ports (bind, R-3).
-- **Messages:** `auth`/`authReply`, `open`(Active)/`openReply`, `send`/`sendReply`, async `recv`, `close`/`closeReply` both ways. R-3 adds the passive half: `socket`/`bind`/`listen` + async `accept`. Until then those reply `errCode 16` ("Operation not supported") with an explanatory `errText` — visible, not dropped.
+- **Messages:** `auth`/`authReply`, `open`(Active)/`openReply`, `send`/`sendReply`, async `recv`, `close`/`closeReply` both ways, **and the passive half (R-3): `socket`/`bind`/`listen` + async `accept`** — the full DAPPS surface, both directions. A `bind` with a null `port` listens on all ports (exactly what DAPPS sends); `accept` pushes carry the listener handle, the new `child` handle, the caller's callsign, and the arrival port as a string.
 - **Deferred by name:** `netrom`/`inet`/`unix` families; `dgram`/`raw`/`trace`/`seqpkt`/`semiraw`/`custom` modes; `connect` (separate-step), `sendto`, `status` queries; the WebSocket transport (PWP-0245). None are needed by any validated client today.
-- **R-2 limitation (lifted by R-3):** outbound `open.local` must be the node's own callsign — originating a session from an arbitrary app callsign needs the same multi-callsign engine work as inbound listening (`Ax25Listener` accepts one `MyCall` today; widening it is R-3's core, and touches the ax25-ts parity-guarded listener surface). A mismatching `local` gets `errCode 6` with an `errText` saying exactly this.
+- **Multi-callsign engine (R-3, the load-bearing piece):** `Ax25Listener` now keys its session cache by the **(local, remote) pair** and accepts inbound SABM/TEST for **registered local aliases** (`AddLocalAlias`/`RemoveLocalAlias`, refcounted) — the callsigns come **from the RHP client** (`bind` registers one; Tom: "the RHP client tells us what callsigns we should answer for"). `ConnectAsync(remote, local)` originates from an alias, so outbound `open.local` may be **any valid callsign** (the former R-2 node-callsign limitation is lifted). Inbound sessions whose `Local` is an app callsign route to the registration's handler (the `accept` push), never to the node console; the node's own callsign keeps serving the console untouched; TEST to an alias is answered *as* the alias. The listener-surface widening is parity-guarded — the reviewed exception shipped in ax25-ts first (`parity-exceptions.json`, ax25-ts#58), with a TS leg as a named follow-up. One listener per callsign (a second `listen` → `errCode 9`); registering the node's own callsign is refused (the console listens there).
 
 ## Wire fidelity — XRouter behaviours we match (the spec-vs-wire deltas)
 
@@ -62,8 +62,8 @@ Hot-reload: enable/bind/port changes restart just the RHP listener (like telnet)
 
 ## Roadmap
 
-- **R-1 ✅(in flight)** — `Packet.Rhp2` codec: framing, the full message catalogue, Latin-1 data encoding; pinned by golden fixtures captured from real XRouter.
-- **R-2 (this PR)** — `Packet.Rhp2.Server`: TCP host, auth, handle table, outbound `open`(Active)/`send`/`recv`/`close` over the node's existing connect-out seam. DAPPS's *forward* path.
-- **R-3** — the passive half: multi-callsign acceptance in `Ax25Listener` (registration driven by the client's `bind`, per Tom: "the RHP client tells us what callsigns to answer for"), `socket`/`bind`/`listen`/`accept`, and arbitrary-`local` outbound. Lifts the D-noted R-2 limitation. Touches the parity-guarded listener surface (ax25-ts leg or recorded exception). DAPPS's *listener* path — after this, DAPPS runs against pdn.
+- **R-1 ✅** — `Packet.Rhp2` codec: framing, the full message catalogue, Latin-1 data encoding; pinned by golden fixtures captured from real XRouter.
+- **R-2 ✅** — `Packet.Rhp2.Server`: TCP host, auth, handle table, outbound `open`(Active)/`send`/`recv`/`close` over the node's existing connect-out seam. DAPPS's *forward* path.
+- **R-3 ✅** — the passive half: multi-callsign acceptance in `Ax25Listener` ((local, remote) session keying + refcounted aliases + alias origination), `socket`/`bind`/`listen`/`accept` with child handles, arbitrary-`local` outbound. DAPPS's *listener* path — the full DAPPS message surface now exists. Parity exception recorded in ax25-ts first (ax25-ts#58).
 - **R-4** — conformance: re-point rhp2lib's `RealXRouterTests` assertions at pdn; live-XRouter diff via the interop stack; **DAPPS-against-pdn** as the acceptance gate; revisit D4.
 - **Later** — `netrom` family over `NetRomService` circuits; dgram/UI; trace (the monitor feed already exists internally); shared codec library convergence with rhp2lib (Tom, 2026-06-10: "value in converging on a shared library in the longer run").

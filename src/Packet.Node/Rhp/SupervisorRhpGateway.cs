@@ -59,14 +59,18 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         }
         var portId = ports[index].Id;
 
-        // R-2: the originating callsign is the node's own; an app callsign needs R-3's
-        // multi-callsign engine work (named limitation — docs/rhp2-server.md).
+        // R-3: the session may originate from an application callsign (the wire's open.local);
+        // null/the node's own callsign means dial as the node. The engine's (local, remote)
+        // session keying routes the peer's replies to the right link either way.
         var nodeCall = config.Current.Identity.Callsign;
+        Callsign? localOverride = null;
         if (!string.IsNullOrWhiteSpace(local) && !string.Equals(local.Trim(), nodeCall, StringComparison.OrdinalIgnoreCase))
         {
-            throw new RhpGatewayException(
-                RhpErrorCode.InvalidLocalAddress,
-                $"local must be the node callsign '{nodeCall}' (app-callsign origination lands in R-3).");
+            if (!Callsign.TryParse(local.Trim().ToUpperInvariant(), out var localCall))
+            {
+                throw new RhpGatewayException(RhpErrorCode.InvalidLocalAddress, $"'{local}' is not a valid AX.25 callsign.");
+            }
+            localOverride = localCall;
         }
 
         if (!Callsign.TryParse(remote.Trim().ToUpperInvariant(), out var target))
@@ -74,7 +78,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
         }
 
-        var connector = supervisor.ResolveConnector(portId)
+        var connector = supervisor.ResolveConnector(portId, localOverride)
             ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
 
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -94,6 +98,57 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         catch (Exception ex) when (ex is InvalidOperationException or IOException)
         {
             throw new RhpGatewayException(RhpErrorCode.NoRoute, $"Connect to {target} failed: {ex.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public IDisposable RegisterListener(string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted)
+    {
+        var supervisor = host.Supervisor
+            ?? throw new RhpGatewayException(RhpErrorCode.Unspecified, "Node engine is not running.");
+
+        if (!Callsign.TryParse(local.Trim().ToUpperInvariant(), out var call))
+        {
+            throw new RhpGatewayException(RhpErrorCode.InvalidLocalAddress, $"'{local}' is not a valid AX.25 callsign.");
+        }
+
+        // Port scope: null = all ports (the wire's null bind port); "N" = 1-indexed config order.
+        string? portId = null;
+        var ports = config.Current.Ports;
+        if (!string.IsNullOrWhiteSpace(portLabel))
+        {
+            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
+            {
+                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
+            }
+            portId = ports[n - 1].Id;
+        }
+
+        // The accept push wants the arrival port as its 1-indexed LABEL; the supervisor hands
+        // us the port id — translate per the live config (config order defines the labels).
+        Task OnAcceptedWithLabel(INodeConnection connection, string arrivalPortId)
+        {
+            var snapshot = config.Current.Ports;
+            int idx = -1;
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                if (string.Equals(snapshot[i].Id, arrivalPortId, StringComparison.Ordinal))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            return onAccepted(connection, idx >= 0 ? (idx + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "1");
+        }
+
+        try
+        {
+            return supervisor.RegisterAppCallsign(call, portId, OnAcceptedWithLabel);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Already registered / the node's own callsign — the wire's "Duplicate socket".
+            throw new RhpGatewayException(RhpErrorCode.DuplicateSocket, ex.Message);
         }
     }
 }

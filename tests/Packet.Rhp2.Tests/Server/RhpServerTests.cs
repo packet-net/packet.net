@@ -216,22 +216,6 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Contains("\"id\":42", json, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Passive_socket_lifecycle_is_deferred_visibly()
-    {
-        var (server, _) = await StartServerAsync();
-        var client = await ConnectAsync(server);
-
-        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
-        var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.OperationNotSupported, sock.ErrCode);
-        Assert.Contains("R-3", sock.ErrText, StringComparison.Ordinal);   // deferred by NAME
-
-        await client.SendAsync(new ListenMessage { Id = 2, Handle = 5, Flags = 0 });
-        var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.OperationNotSupported, listen.ErrCode);
-    }
-
     // ── Auth: the gate + the D2 no-wedge deviation ────────────────────────
 
     [Fact]
@@ -296,12 +280,18 @@ public sealed class RhpServerTests : IAsyncDisposable
         return reply.Handle;
     }
 
-    // The packet engine stand-in: returns one scripted in-memory connection (or throws).
-    private sealed class FakeGateway : IRhpGateway
+    // The packet engine stand-in: returns one scripted in-memory connection (or throws), and
+    // records listener registrations so the passive tests can drive accepts by hand.
+    internal sealed class FakeGateway : IRhpGateway
     {
         public FakeConnection Connection { get; } = new();
         public RhpGatewayException? Fail { get; set; }
         public string? LastPort, LastLocal, LastRemote;
+
+        public RhpGatewayException? ListenFail { get; set; }
+        public string? ListenerLocal, ListenerPort;
+        public Func<INodeConnection, string, Task>? AcceptHandler;
+        public int Registrations, Disposals;
 
         public Task<INodeConnection> OpenAx25StreamAsync(string? portLabel, string? local, string remote, CancellationToken ct = default)
         {
@@ -312,11 +302,27 @@ public sealed class RhpServerTests : IAsyncDisposable
             }
             return Task.FromResult<INodeConnection>(Connection);
         }
+
+        public IDisposable RegisterListener(string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted)
+        {
+            if (ListenFail is { } f)
+            {
+                throw f;
+            }
+            Registrations++;
+            (ListenerPort, ListenerLocal, AcceptHandler) = (portLabel, local, onAccepted);
+            return new Unsub(this);
+        }
+
+        private sealed class Unsub(FakeGateway owner) : IDisposable
+        {
+            public void Dispose() => owner.Disposals++;
+        }
     }
 
     // An in-memory INodeConnection the tests drive: Inject = bytes "from the peer",
     // WrittenAsync = what the server wrote toward the peer, Drop = the peer vanished.
-    private sealed class FakeConnection : INodeConnection
+    internal sealed class FakeConnection : INodeConnection
     {
         private readonly Channel<byte[]> inbound = Channel.CreateUnbounded<byte[]>();
         private readonly Channel<byte[]> written = Channel.CreateUnbounded<byte[]>();
@@ -370,7 +376,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     }
 
     // A minimal wire-true RHP client: frames via the codec, with typed expectations.
-    private sealed class RhpTestClient : IAsyncDisposable
+    internal sealed class RhpTestClient : IAsyncDisposable
     {
         private readonly TcpClient tcp;
         private readonly NetworkStream stream;

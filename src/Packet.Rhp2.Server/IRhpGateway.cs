@@ -23,6 +23,20 @@ public interface IRhpGateway
     /// <c>errCode</c>/<c>errText</c> the server should put on the <c>openReply</c>.</exception>
     Task<INodeConnection> OpenAx25StreamAsync(
         string? portLabel, string? local, string remote, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Register <paramref name="local"/> as a callsign the node answers for (the wire's
+    /// <c>bind</c>+<c>listen</c>): every inbound AX.25 connection addressed to it is handed to
+    /// <paramref name="onAccepted"/> as an <see cref="INodeConnection"/> together with the
+    /// 1-indexed label of the port it arrived on (the <c>accept.port</c> string). Dispose the
+    /// returned registration to stop listening (live sessions are unaffected).
+    /// </summary>
+    /// <param name="portLabel">Restrict to one port (1-indexed label), or null for all ports —
+    /// the wire's null bind port.</param>
+    /// <exception cref="RhpGatewayException">6 — not a valid callsign; 9 — already
+    /// listening / the node's own callsign; 10 — no such port.</exception>
+    IDisposable RegisterListener(
+        string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted);
 }
 
 /// <summary>

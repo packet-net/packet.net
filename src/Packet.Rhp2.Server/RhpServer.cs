@@ -226,17 +226,16 @@ public sealed partial class RhpServer : IAsyncDisposable
                 await HandleCloseAsync(client, close, ct).ConfigureAwait(false);
                 break;
 
-            // The passive half (socket/bind/listen) is R-3; connect/sendto/status queries are
-            // post-DAPPS surface. Each gets its proper reply type with a visible 16 — deferred
-            // by name, never dropped (docs/rhp2-server.md §Scope).
+            // The BSD-style passive lifecycle: socket → bind(callsign) → listen → async accept
+            // pushes per inbound connection (the DAPPS listener path).
             case SocketMessage m:
-                await WriteAsync(client, new SocketReplyMessage { Id = m.Id, Handle = null, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (passive sockets land in R-3)" }, ct).ConfigureAwait(false);
+                await HandleSocketAsync(client, m, ct).ConfigureAwait(false);
                 break;
             case BindMessage m:
-                await WriteAsync(client, new BindReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (passive sockets land in R-3)" }, ct).ConfigureAwait(false);
+                await HandleBindAsync(client, m, ct).ConfigureAwait(false);
                 break;
             case ListenMessage m:
-                await WriteAsync(client, new ListenReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (passive sockets land in R-3)" }, ct).ConfigureAwait(false);
+                await HandleListenAsync(client, m, ct).ConfigureAwait(false);
                 break;
             case ConnectMessage m:
                 await WriteAsync(client, new ConnectReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (use open with the Active flag)" }, ct).ConfigureAwait(false);
@@ -357,6 +356,132 @@ public sealed partial class RhpServer : IAsyncDisposable
         }, CancellationToken.None);
     }
 
+    private async Task HandleSocketAsync(ClientState client, SocketMessage msg, CancellationToken ct)
+    {
+        // Same family/mode ladder as open — ax25 + stream only in v1 (docs/rhp2-server.md §Scope).
+        int err = 0;
+        string? text = null;
+        bool knownFamily = msg.Pfam is ProtocolFamily.Ax25 or ProtocolFamily.NetRom or ProtocolFamily.Inet or ProtocolFamily.Unix;
+        bool knownMode = msg.Mode is SocketMode.Stream or SocketMode.Dgram or SocketMode.Seqpkt
+            or SocketMode.Custom or SocketMode.SemiRaw or SocketMode.Trace or SocketMode.Raw;
+        if (!knownFamily)
+        {
+            (err, text) = (RhpErrorCode.BadOrMissingFamily, RhpErrorCode.Text(RhpErrorCode.BadOrMissingFamily));
+        }
+        else if (msg.Pfam != ProtocolFamily.Ax25)
+        {
+            (err, text) = (RhpErrorCode.OperationNotSupported, $"family '{msg.Pfam}' is not implemented yet (ax25 only)");
+        }
+        else if (!knownMode)
+        {
+            (err, text) = (RhpErrorCode.BadOrMissingMode, RhpErrorCode.Text(RhpErrorCode.BadOrMissingMode));
+        }
+        else if (msg.Mode != SocketMode.Stream)
+        {
+            (err, text) = (RhpErrorCode.OperationNotSupported, $"mode '{msg.Mode}' is not implemented yet (stream only)");
+        }
+
+        if (err != 0)
+        {
+            await WriteAsync(client, new SocketReplyMessage { Id = msg.Id, Handle = null, ErrCode = err, ErrText = text }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var handle = new RhpHandle(Interlocked.Increment(ref nextHandle), client, connection: null);
+        handles[handle.Id] = handle;
+        await WriteAsync(client, new SocketReplyMessage
+        {
+            Id = msg.Id,
+            Handle = handle.Id,
+            ErrCode = RhpErrorCode.Ok,
+            ErrText = RhpErrorCode.Text(RhpErrorCode.Ok),
+        }, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleBindAsync(ClientState client, BindMessage msg, CancellationToken ct)
+    {
+        if (!handles.TryGetValue(msg.Handle, out var handle) || handle.Owner != client || handle.Connection is not null)
+        {
+            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(msg.Local))
+        {
+            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidLocalAddress, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress) }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Re-bind before listen is legal (XRouter allows a second bind); a null port means all
+        // ports — exactly what DAPPS sends.
+        handle.BoundLocal = msg.Local.Trim();
+        handle.BoundPort = msg.Port;
+        await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
+    }
+
+    private async Task HandleListenAsync(ClientState client, ListenMessage msg, CancellationToken ct)
+    {
+        if (!handles.TryGetValue(msg.Handle, out var handle) || handle.Owner != client || handle.Connection is not null)
+        {
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (handle.BoundLocal is null)
+        {
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.BadParameter, ErrText = "socket is not bound (bind a callsign first)" }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (handle.Listening)
+        {
+            // A second listen on the same socket — the wire's "Duplicate socket".
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.DuplicateSocket, ErrText = RhpErrorCode.Text(RhpErrorCode.DuplicateSocket) }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            handle.Registration = gateway.RegisterListener(
+                handle.BoundPort,
+                handle.BoundLocal,
+                (connection, portLabel) => OnInboundAcceptedAsync(handle, connection, portLabel));
+        }
+        catch (RhpGatewayException gex)
+        {
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        LogListening2(handle.Id, handle.BoundLocal, client.Peer);
+        await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
+    }
+
+    // An inbound station connected to a listening callsign: allocate the CHILD handle (owned by
+    // the listener's client), announce it with an async accept push (seqno, no id —
+    // accept.port is a STRING, the XRouter wire shape), then pump its session like any stream.
+    private async Task OnInboundAcceptedAsync(RhpHandle listenerHandle, INodeConnection connection, string portLabel)
+    {
+        if (listenerHandle.Closed)
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);   // listener torn down mid-accept
+            return;
+        }
+
+        var child = new RhpHandle(Interlocked.Increment(ref nextHandle), listenerHandle.Owner, connection);
+        handles[child.Id] = child;
+        LogAccepted(child.Id, connection.PeerId, listenerHandle.Id);
+
+        await WriteAsync(listenerHandle.Owner, new AcceptMessage
+        {
+            Handle = listenerHandle.Id,
+            Child = child.Id,
+            Remote = connection.PeerId,
+            Local = listenerHandle.BoundLocal,
+            Port = portLabel,
+            Seqno = Interlocked.Increment(ref nextSeqno),
+        }, CancellationToken.None).ConfigureAwait(false);
+
+        child.Pump = Task.Run(() => PumpHandleAsync(child, lifecycle.Token), CancellationToken.None);
+    }
+
     private async Task HandleSendAsync(ClientState client, SendMessage send, CancellationToken ct)
     {
         // Deviation D3: a handle is only usable by the connection that created it — anyone
@@ -364,6 +489,12 @@ public sealed partial class RhpServer : IAsyncDisposable
         if (!handles.TryGetValue(send.Handle, out var handle) || handle.Owner != client)
         {
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = send.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (handle.Connection is null)
+        {
+            // A socket/listener handle has no link to send on — the wire's 17.
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = send.Handle, ErrCode = RhpErrorCode.NotConnected, ErrText = RhpErrorCode.Text(RhpErrorCode.NotConnected) }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -404,7 +535,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     // "the peer hung up" signal.
     private async Task PumpHandleAsync(RhpHandle handle, CancellationToken ct)
     {
-        var conn = handle.Connection;
+        var conn = handle.Connection!;   // pumps only run on stream handles
         try
         {
             while (!ct.IsCancellationRequested && !handle.Closed)
@@ -471,13 +602,17 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;   // already torn down
         }
         handles.TryRemove(handle.Id, out _);
-        try
+        handle.Registration?.Dispose();   // a listener stops answering for its callsign
+        if (handle.Connection is { } conn)
         {
-            await handle.Connection.DisposeAsync().ConfigureAwait(false);
-        }
-        catch
-        {
-            // best-effort teardown
+            try
+            {
+                await conn.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // best-effort teardown
+            }
         }
         LogHandleClosed(handle.Id);
 
@@ -625,12 +760,15 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
     }
 
-    // One open packet connection, owned by exactly one client (deviation D3).
+    // One handle, owned by exactly one client (deviation D3). Two shapes: a STREAM handle
+    // wraps a live packet connection (from an active open, or a listener's accepted child);
+    // a SOCKET handle is the BSD-style lifecycle state (socket → bind → listen) whose
+    // Registration, once listening, is the engine-side callsign registration.
     private sealed class RhpHandle
     {
         private int closed;
 
-        public RhpHandle(int id, ClientState owner, INodeConnection connection)
+        public RhpHandle(int id, ClientState owner, INodeConnection? connection)
         {
             Id = id;
             Owner = owner;
@@ -639,8 +777,17 @@ public sealed partial class RhpServer : IAsyncDisposable
 
         public int Id { get; }
         public ClientState Owner { get; }
-        public INodeConnection Connection { get; }
+
+        /// <summary>The live packet connection (stream handles); null for a socket handle.</summary>
+        public INodeConnection? Connection { get; }
         public Task? Pump { get; set; }
+
+        // Socket-lifecycle state (null/false on stream handles).
+        public string? BoundLocal { get; set; }
+        public string? BoundPort { get; set; }
+        public IDisposable? Registration { get; set; }
+        public bool Listening => Registration is not null;
+
         public bool Closed => Volatile.Read(ref closed) != 0;
 
         /// <summary>Mark closed; true if it already was (idempotent teardown).</summary>
@@ -676,4 +823,10 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "RHP client {Peer} sent a non-request message type '{Type}'; ignored.")]
     private partial void LogIgnoredMessage(string peer, string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle} listening on {Callsign} for {Peer}.")]
+    private partial void LogListening2(int handle, string callsign, string peer);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "RHP child handle {Child} accepted from {Remote} (listener {Listener}).")]
+    private partial void LogAccepted(int child, string remote, int listener);
 }

@@ -53,6 +53,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     // Optional application launcher, threaded into each per-connection console env so an
     // inbound user can launch a registered app by its verb. Null = no app platform wired.
     private readonly IApplicationHost? applicationHost;
+    // App callsigns the node answers for on behalf of an external program (the RHPv2 server's
+    // `bind`): callsign → registration. Applied to running listeners as local aliases, re-applied
+    // when a port (re)starts, and routed in OnSessionAccepted (an inbound session whose Local is
+    // an app callsign goes to the registration's handler, never to the node console).
+    private readonly Dictionary<Callsign, AppCallsignRegistration> appCallsigns = new();
+    private readonly object appCallsignGate = new();
     private readonly Dictionary<string, RunningPort> ports = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
     // Remotes a console connect-OUT is dialling right now (with a refcount, since
@@ -175,12 +181,111 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     /// server's outbound <c>open</c> dials on the port the client named). Null when the port
     /// isn't running. The connector claims the dialled remote for the duration of the connect,
     /// exactly like the console's connect-out, so no inbound console is started against it.
+    /// <paramref name="localOverride"/> originates the session from an application callsign
+    /// instead of the node's own (the wire's <c>open.local</c>).
     /// </summary>
-    public IOutboundConnector? ResolveConnector(string portId)
+    public IOutboundConnector? ResolveConnector(string portId, Callsign? localOverride = null)
     {
         RunningPort? port;
         lock (ports) ports.TryGetValue(portId, out port);
-        return port is null ? null : new Ax25OutboundConnector(port.Id, port.Listener, r => ClaimOutbound(r));
+        return port is null ? null : new Ax25OutboundConnector(port.Id, port.Listener, r => ClaimOutbound(r), localOverride);
+    }
+
+    /// <summary>
+    /// Register an application callsign the node answers for (the RHPv2 server's <c>bind</c>:
+    /// "the RHP client tells us what callsigns we should answer for"). Running listeners on the
+    /// matching port(s) gain it as a local alias immediately; ports that (re)start later have it
+    /// re-applied. An inbound session addressed to it routes to <paramref name="onAccepted"/>
+    /// (wrapped as an <see cref="INodeConnection"/>, with the arrival port id) instead of the
+    /// node console. Dispose the returned registration to stop answering.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The callsign is already registered (one
+    /// listener per callsign — the wire's "Duplicate socket"), or is the node's own.</exception>
+    public IDisposable RegisterAppCallsign(Callsign local, string? portId, Func<INodeConnection, string, Task> onAccepted)
+    {
+        ArgumentNullException.ThrowIfNull(onAccepted);
+        Callsign nodeCall = Callsign.TryParse(config.Current.Identity.Callsign, out var nc) ? nc : default;
+        if (local.Equals(nodeCall))
+        {
+            throw new InvalidOperationException("the node's own callsign is already in use (the node console listens on it).");
+        }
+
+        lock (appCallsignGate)
+        {
+            if (appCallsigns.ContainsKey(local))
+            {
+                throw new InvalidOperationException($"callsign {local} is already registered.");
+            }
+            appCallsigns[local] = new AppCallsignRegistration { Local = local, PortId = portId, OnAccepted = onAccepted };
+        }
+
+        // Alias the running listener(s) now; ports that come up later get it in BringUpAsync.
+        foreach (var port in MatchingPorts(portId))
+        {
+            port.Listener.AddLocalAlias(local);
+        }
+        LogAppCallsignRegistered(local, portId ?? "*");
+        return new AppCallsignUnsubscriber(this, local, portId);
+    }
+
+    private void UnregisterAppCallsign(Callsign local, string? portId)
+    {
+        lock (appCallsignGate)
+        {
+            if (!appCallsigns.Remove(local))
+            {
+                return;
+            }
+        }
+        foreach (var port in MatchingPorts(portId))
+        {
+            port.Listener.RemoveLocalAlias(local);
+        }
+        LogAppCallsignUnregistered(local);
+    }
+
+    private List<RunningPort> MatchingPorts(string? portId)
+    {
+        lock (ports)
+        {
+            return ports.Values.Where(p => portId is null || string.Equals(p.Id, portId, StringComparison.Ordinal)).ToList();
+        }
+    }
+
+    // Apply every live registration to a port that just came up (a reconciled/restarted port's
+    // fresh listener must answer for the registered app callsigns too).
+    private void ApplyAppCallsignsTo(RunningPort port)
+    {
+        List<AppCallsignRegistration> matching;
+        lock (appCallsignGate)
+        {
+            matching = appCallsigns.Values
+                .Where(r => r.PortId is null || string.Equals(r.PortId, port.Id, StringComparison.Ordinal))
+                .ToList();
+        }
+        foreach (var r in matching)
+        {
+            port.Listener.AddLocalAlias(r.Local);
+        }
+    }
+
+    private sealed class AppCallsignRegistration
+    {
+        public required Callsign Local { get; init; }
+        public required string? PortId { get; init; }
+        public required Func<INodeConnection, string, Task> OnAccepted { get; init; }
+    }
+
+    private sealed class AppCallsignUnsubscriber(PortSupervisor owner, Callsign local, string? portId) : IDisposable
+    {
+        private int gone;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref gone, 1) == 0)
+            {
+                owner.UnregisterAppCallsign(local, portId);
+            }
+        }
     }
 
     public IOutboundConnector? ResolveDefaultConnector()
@@ -415,6 +520,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         };
         lock (ports) ports[port.Id] = running;
 
+        // A fresh listener must answer for the app callsigns registered while the port was
+        // down/restarting (the RHPv2 server's binds outlive any individual port lifecycle).
+        ApplyAppCallsignsTo(running);
+
         // NET/ROM read-only awareness: subscribe this port's frame-trace tap so the
         // node-level service hears NODES broadcasts on it. Observation-only — it
         // cannot disturb the session path. Detached on teardown.
@@ -604,6 +713,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             return;
         }
 
+        // An inbound session addressed to an APP callsign (the session's Local is a
+        // registered alias, not the port's own call) routes to the app's handler —
+        // the RHPv2 server's accept path — never to the node console.
+        if (!session.Context.Local.Equals(listener.MyCall))
+        {
+            OnAppSessionAccepted(listener, session);
+            return;
+        }
+
         // SessionAccepted can re-fire for the same session (a reconnect SABM on a
         // cached session). Only the first start a console loop; the dictionary is
         // the dedupe guard. Entries are removed when the loop ends.
@@ -636,6 +754,59 @@ public sealed partial class PortSupervisor : IAsyncDisposable
                 {
                     consoleSessions.TryRemove(session, out _);
                 }
+            }
+        }, CancellationToken.None);
+    }
+
+    // Route an inbound session for an app callsign to its registration's handler. The session
+    // wraps as the standard INodeConnection; the handler (the RHPv2 server) owns its lifetime
+    // from here. Re-fired SessionAccepted (a reconnect SABM) is deduped exactly like the
+    // console path; the entry clears when the connection completes so a genuine reconnect
+    // dispatches a fresh accept. No registration (a just-removed bind racing an accept) →
+    // dispose the wrapper, which posts DISC.
+    private void OnAppSessionAccepted(Ax25Listener listener, Ax25Session session)
+    {
+        if (!consoleSessions.TryAdd(session, 0))
+        {
+            return;
+        }
+
+        AppCallsignRegistration? registration;
+        lock (appCallsignGate)
+        {
+            appCallsigns.TryGetValue(session.Context.Local, out registration);
+        }
+
+        string portId;
+        lock (ports)
+        {
+            portId = ports.Values.FirstOrDefault(p => ReferenceEquals(p.Listener, listener))?.Id ?? "?";
+        }
+
+        _ = Task.Run(async () =>
+        {
+            var connection = new Ax25NodeConnection(listener, session);
+            try
+            {
+                if (registration is null)
+                {
+                    LogAppSessionUnclaimed(session.Context.Local.ToString(), session.Context.Remote.ToString());
+                    await connection.DisposeAsync().ConfigureAwait(false);   // posts DISC
+                    consoleSessions.TryRemove(session, out byte _);
+                    return;
+                }
+                await registration.OnAccepted(connection, portId).ConfigureAwait(false);
+                // The handler owns the connection from here; clear the dedupe entry when the
+                // link ends so a reconnect SABM dispatches a fresh accept.
+                _ = connection.Completion.ContinueWith(
+                    _ => consoleSessions.TryRemove(session, out byte _),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            }
+            catch (Exception ex)
+            {
+                LogAppSessionFaulted(ex, session.Context.Local.ToString());
+                try { await connection.DisposeAsync().ConfigureAwait(false); } catch { /* teardown */ }
+                consoleSessions.TryRemove(session, out byte _);
             }
         }, CancellationToken.None);
     }
@@ -687,4 +858,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} faulted.")]
     private partial void LogConsoleFaulted(Exception ex, string peerId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} registered (port {Port}) — the node now answers for it.")]
+    private partial void LogAppCallsignRegistered(Callsign callsign, string port);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} unregistered.")]
+    private partial void LogAppCallsignUnregistered(Callsign callsign);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Inbound session to app callsign {Local} from {Remote} had no live registration; disconnected.")]
+    private partial void LogAppSessionUnclaimed(string local, string remote);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "App-session handler for {Local} faulted.")]
+    private partial void LogAppSessionFaulted(Exception ex, string local);
 }

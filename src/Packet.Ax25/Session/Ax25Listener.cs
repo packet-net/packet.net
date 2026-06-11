@@ -63,10 +63,19 @@ public sealed class Ax25Listener : IAsyncDisposable
     // whole record atomically. Existing cached sessions keep the context they
     // were built with — object identity preserved.
     private Ax25SessionParameters sessionParameters;
-    private readonly ConcurrentDictionary<Callsign, CachedSession> sessions = new();
-    private readonly LinkedList<Callsign> lruOrder = new();          // most-recently-used at the back
-    private readonly Dictionary<Callsign, LinkedListNode<Callsign>> lruIndex = new();
+    // Sessions are keyed by the (local, remote) callsign PAIR: with local aliases (below) the
+    // same remote can hold one link to MyCall and another to an app callsign simultaneously —
+    // a remote-only key would conflate them. The console/MyCall path is unchanged semantically
+    // (its key is just (MyCall, remote) now).
+    private readonly ConcurrentDictionary<SessionKey, CachedSession> sessions = new();
+    private readonly LinkedList<SessionKey> lruOrder = new();        // most-recently-used at the back
+    private readonly Dictionary<SessionKey, LinkedListNode<SessionKey>> lruIndex = new();
     private readonly object cacheGate = new();
+    // Additional local callsigns this listener answers for (inbound SABM/TEST) and may
+    // originate from — the multi-callsign seam the node's RHPv2 server registers app
+    // callsigns into (an RHP client's `bind` is what adds one). Value = refcount, so two
+    // independent registrations of the same callsign compose.
+    private readonly ConcurrentDictionary<Callsign, int> localAliases = new();
     private readonly CancellationTokenSource lifecycleCts = new();
     private readonly TaskCompletionSource<bool> pumpStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -149,6 +158,42 @@ public sealed class Ax25Listener : IAsyncDisposable
     {
         get => Volatile.Read(ref acceptIncoming);
         set => Volatile.Write(ref acceptIncoming, value);
+    }
+
+    /// <summary>
+    /// Register an additional local callsign this listener answers for: an inbound SABM (or
+    /// connectionless TEST) addressed to it is accepted exactly as one addressed to
+    /// <see cref="MyCall"/>, with the session's <see cref="Ax25SessionContext.Local"/> set to
+    /// the alias — and <see cref="ConnectAsync(Callsign, Callsign, CancellationToken)"/> can
+    /// originate from it. This is the multi-callsign seam the node's RHPv2 server uses to
+    /// answer for application callsigns (a client's <c>bind</c> registers one). Refcounted:
+    /// each <see cref="AddLocalAlias"/> is balanced by one <see cref="RemoveLocalAlias"/>.
+    /// </summary>
+    public void AddLocalAlias(Callsign alias)
+        => localAliases.AddOrUpdate(alias, 1, (_, n) => n + 1);
+
+    /// <summary>
+    /// Remove one registration of <paramref name="alias"/> (see <see cref="AddLocalAlias"/>).
+    /// The listener stops answering for the callsign when the last registration is removed;
+    /// live sessions on it keep running until they disconnect (their cache key keeps routing
+    /// their frames — removal only stops <em>new</em> inbound acceptance).
+    /// </summary>
+    public void RemoveLocalAlias(Callsign alias)
+    {
+        while (localAliases.TryGetValue(alias, out var n))
+        {
+            if (n <= 1)
+            {
+                if (localAliases.TryRemove(new KeyValuePair<Callsign, int>(alias, n)))
+                {
+                    return;
+                }
+            }
+            else if (localAliases.TryUpdate(alias, n - 1, n))
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -267,7 +312,18 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// <see cref="InvalidOperationException"/> if the SDL responds with
     /// DM (peer refused) or torn down before the budget expired.
     /// </returns>
-    public async Task<Ax25Session> ConnectAsync(Callsign remote, CancellationToken ct = default)
+    public Task<Ax25Session> ConnectAsync(Callsign remote, CancellationToken ct = default)
+        => ConnectAsync(remote, MyCall, ct);
+
+    /// <summary>
+    /// Initiate an outbound connect originating from <paramref name="local"/> instead of
+    /// <see cref="MyCall"/> — the multi-callsign origination the node's RHPv2 server uses to
+    /// dial out as an application's callsign. The session's cache key is the (local, remote)
+    /// pair, so the same remote can hold simultaneous links to MyCall and to an alias; the
+    /// inbound filter routes the peer's replies by that pair (no alias registration needed
+    /// for an outbound link — its live cache key admits them).
+    /// </summary>
+    public async Task<Ax25Session> ConnectAsync(Callsign remote, Callsign local, CancellationToken ct = default)
     {
         EnsureNotDisposed();
         if (!IsRunning)
@@ -275,8 +331,9 @@ public sealed class Ax25Listener : IAsyncDisposable
             throw new InvalidOperationException("listener has not been started; call StartAsync() first.");
         }
 
-        var cached = GetOrCreateSession(remote);
-        TouchLru(remote);
+        var key = new SessionKey(local, remote);
+        var cached = GetOrCreateSession(key);
+        TouchLru(key);
 
         // Drain any stale signals queued from a previous lifecycle on
         // this cached session — otherwise we might fish out a stale
@@ -374,7 +431,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(session);
         EnsureNotDisposed();
 
-        if (!sessions.TryGetValue(session.Context.Remote, out var cached) ||
+        if (!sessions.TryGetValue(new SessionKey(session.Context.Local, session.Context.Remote), out var cached) ||
             !ReferenceEquals(cached.Session, session))
         {
             throw new ArgumentException(
@@ -519,9 +576,13 @@ public sealed class Ax25Listener : IAsyncDisposable
 
     private void DispatchInbound(Ax25Frame parsed, ReadOnlyMemory<byte> payload, Ax25ParseOptions parseOptions)
     {
-        // Frames not addressed to us: monitor-only (trace already
-        // fired). Don't route to any session.
-        if (!parsed.Destination.Callsign.Equals(MyCall))
+        // Frames not addressed to us: monitor-only (trace already fired). "Us" is MyCall, any
+        // registered local alias (app callsigns — see AddLocalAlias), or the local side of a
+        // live session (an outbound link originated FROM an alias keeps receiving its replies
+        // even if the alias was deregistered mid-session).
+        var local = parsed.Destination.Callsign;
+        var key = new SessionKey(local, parsed.Source.Callsign);
+        if (!local.Equals(MyCall) && !localAliases.ContainsKey(local) && !sessions.ContainsKey(key))
         {
             return;
         }
@@ -557,9 +618,9 @@ public sealed class Ax25Listener : IAsyncDisposable
         // just like a fresh one. We re-fire SessionAccepted in that
         // case so consumers can re-arm any per-session handlers they
         // attached the last time around.
-        if (sessions.TryGetValue(peer, out var cached))
+        if (sessions.TryGetValue(key, out var cached))
         {
-            TouchLru(peer);
+            TouchLru(key);
 
             // The routing parse (line ~268) was modulo-8 — we didn't yet know
             // which session, hence which modulo. Addresses precede the control
@@ -643,14 +704,23 @@ public sealed class Ax25Listener : IAsyncDisposable
         // true for case (b) — the catch-alls don't gate on it.
         bool isSabmShaped = classified is SabmReceived || classified is SabmeReceived;
 
+        // A deregistered alias whose session is gone: only the live-session key kept the
+        // frame past the filter; with no cached session and no registration, don't build a
+        // transient responder AS the alias — fall silent (we no longer answer for it).
+        if (!local.Equals(MyCall) && !localAliases.ContainsKey(local))
+        {
+            return;
+        }
+
         if (isSabmShaped && AcceptIncoming)
         {
             // Accept path: build the session, cache it, fire the
             // consumer hook before posting SABM so consumers can attach
             // listeners on the session's signal stream before any
-            // events flow.
-            var built = BuildSession(peer, allowAccept: true);
-            AddToCache(peer, built);
+            // events flow. The session's Local is the callsign the SABM
+            // was addressed to (MyCall or a registered alias).
+            var built = BuildSession(local, peer, allowAccept: true);
+            AddToCache(key, built);
             options.ConfigureSession?.Invoke(built.Session);
             built.Session.PostEvent(classified);
             RaiseSessionAccepted(built.Session);
@@ -667,7 +737,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         //
         // Build, post, dispose. No cache write, no SessionAccepted
         // event.
-        var transient = BuildSession(peer, allowAccept: AcceptIncoming);
+        var transient = BuildSession(local, peer, allowAccept: AcceptIncoming);
         var transientEvent = isSabmShaped
             ? classified
             : ReclassifyForDisconnectedCatchAll(classified, parsed);
@@ -701,6 +771,9 @@ public sealed class Ax25Listener : IAsyncDisposable
         // once DispatchInbound returns, but the send below runs after that.
         var echo = command.Info.ToArray();
         var responder = command.Source.Callsign;
+        // Respond AS the callsign the TEST was addressed to — MyCall normally, the alias when
+        // an app callsign was pinged (the station "at" that callsign answers, not the node).
+        var respondAs = command.Destination.Callsign;
         // F bit of the response mirrors the P bit of the command (§4.3.4.2).
         bool pollFinal = command.PollFinal;
 
@@ -709,7 +782,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             try
             {
                 var frame = Ax25Frame.Test(
-                    destination: responder, source: MyCall, info: echo,
+                    destination: responder, source: respondAs, info: echo,
                     isCommand: false, pollFinal: pollFinal);
                 await modem.SendFrameAsync(frame.ToBytes()).ConfigureAwait(false);
                 // Trace AFTER the send so the monitor's TX order matches the wire
@@ -777,9 +850,9 @@ public sealed class Ax25Listener : IAsyncDisposable
         SafeInvoke(handler, new Ax25SessionEventArgs { Session = session });
     }
 
-    private CachedSession GetOrCreateSession(Callsign peer)
+    private CachedSession GetOrCreateSession(SessionKey key)
     {
-        if (sessions.TryGetValue(peer, out var existing))
+        if (sessions.TryGetValue(key, out var existing))
         {
             return existing;
         }
@@ -789,20 +862,20 @@ public sealed class Ax25Listener : IAsyncDisposable
         // up with two separate sessions.
         lock (cacheGate)
         {
-            if (sessions.TryGetValue(peer, out existing))
+            if (sessions.TryGetValue(key, out existing))
             {
                 return existing;
             }
-            var built = BuildSession(peer, allowAccept: true);
-            sessions[peer] = built;
+            var built = BuildSession(key.Local, key.Remote, allowAccept: true);
+            sessions[key] = built;
             options.ConfigureSession?.Invoke(built.Session);
-            UpdateLruLocked(peer);
+            UpdateLruLocked(key);
             EvictExcessLocked();
             return built;
         }
     }
 
-    private CachedSession BuildSession(Callsign peer, bool allowAccept)
+    private CachedSession BuildSession(Callsign local, Callsign peer, bool allowAccept)
     {
         // Snapshot the live per-session parameters once (single volatile read) so a
         // concurrent UpdateSessionParameters can't tear this build. New sessions
@@ -812,7 +885,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         var scheduler = new SystemTimerScheduler(timeProvider);
         var ctx = new Ax25SessionContext
         {
-            Local = MyCall,
+            Local = local,         // MyCall, or a registered alias / origination override
             Remote = peer,
             AcceptIncoming = allowAccept,
         };
@@ -965,29 +1038,29 @@ public sealed class Ax25Listener : IAsyncDisposable
         };
     }
 
-    private void AddToCache(Callsign peer, CachedSession built)
+    private void AddToCache(SessionKey key, CachedSession built)
     {
         lock (cacheGate)
         {
-            sessions[peer] = built;
-            UpdateLruLocked(peer);
+            sessions[key] = built;
+            UpdateLruLocked(key);
             EvictExcessLocked();
         }
     }
 
-    private void TouchLru(Callsign peer)
+    private void TouchLru(SessionKey key)
     {
-        lock (cacheGate) UpdateLruLocked(peer);
+        lock (cacheGate) UpdateLruLocked(key);
     }
 
-    private void UpdateLruLocked(Callsign peer)
+    private void UpdateLruLocked(SessionKey key)
     {
-        if (lruIndex.TryGetValue(peer, out var node))
+        if (lruIndex.TryGetValue(key, out var node))
         {
             lruOrder.Remove(node);
         }
-        var added = lruOrder.AddLast(peer);
-        lruIndex[peer] = added;
+        var added = lruOrder.AddLast(key);
+        lruIndex[key] = added;
     }
 
     private void EvictExcessLocked()
@@ -1043,6 +1116,10 @@ public sealed class Ax25Listener : IAsyncDisposable
         ["AwaitingRelease"]      = DataLink_AwaitingRelease.Transitions,
         ["TimerRecovery"]        = DataLink_TimerRecovery.Transitions,
     };
+
+    /// <summary>The session-cache key: the (local, remote) callsign pair. Local is MyCall for
+    /// ordinary sessions, or a registered alias / origination override (multi-callsign).</summary>
+    private readonly record struct SessionKey(Callsign Local, Callsign Remote);
 
     private static Ax25Event TimerExpiry(string name) => name switch
     {

@@ -25,12 +25,17 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
 {
     private readonly Ax25Listener listener;
     private readonly Func<Callsign, IDisposable>? claim;
+    private readonly Callsign? localOverride;
 
-    public Ax25OutboundConnector(string portId, Ax25Listener listener, Func<Callsign, IDisposable>? claim = null)
+    public Ax25OutboundConnector(
+        string portId, Ax25Listener listener, Func<Callsign, IDisposable>? claim = null, Callsign? localOverride = null)
     {
         PortId = portId ?? throw new ArgumentNullException(nameof(portId));
         this.listener = listener ?? throw new ArgumentNullException(nameof(listener));
         this.claim = claim;
+        // Originate from an application callsign instead of the port's own (the RHPv2
+        // server's open.local) — multi-callsign origination; null = the listener's MyCall.
+        this.localOverride = localOverride;
     }
 
     /// <inheritdoc/>
@@ -45,7 +50,9 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
         var ticket = claim?.Invoke(target);
         try
         {
-            var session = await listener.ConnectAsync(target, cancellationToken).ConfigureAwait(false);
+            var session = localOverride is { } local
+                ? await listener.ConnectAsync(target, local, cancellationToken).ConfigureAwait(false)
+                : await listener.ConnectAsync(target, cancellationToken).ConfigureAwait(false);
             return new Ax25NodeConnection(listener, session);
         }
         finally
