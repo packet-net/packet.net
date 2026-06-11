@@ -116,6 +116,22 @@ management:
 #     socketPath: /run/packetnet/lobby.sock
 #     capabilities: [ session ]
 
+# App packages (Slice 5a) — the user-facing packaging model (docs/app-packages.md).
+# pdn discovers pdn-app.yaml manifests under /usr/share/packetnet/apps and
+# /var/lib/packetnet/apps (later root wins on id collision). Discovered is NOT
+# enabled: a package stays off until you grant trust with an `apps:` entry here
+# (or the control panel toggle, which writes the same entry). Only the on/off
+# switch and small overrides live here — everything else comes from the package's
+# own manifest, authored by the app.
+# apps:
+#   - id: lobby
+#     enabled: true
+#   - id: dapps
+#     enabled: true
+#     environment:           # merged over the manifest's service environment (owner wins)
+#       DAPPS_CALLSIGN: M0LTE-7
+#     # match: DAPPS         # optional session-verb override
+
 # RHPv2 server — the app platform's NETWORK plane (PWP-0222/0245, XRouter-compatible).
 # Lets an external application (e.g. DAPPS) open packet connections through this node over
 # JSON-over-TCP. Default-off; loopback-bound (RHP has no TLS — never expose it publicly).

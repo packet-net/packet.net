@@ -56,6 +56,22 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .WithMessage("Each application must have a unique Id.")
             .Must(HaveUniqueAppMatches)
             .WithMessage("Two applications may not share the same Match verb (case-insensitive).");
+
+        // The apps: package-override list (docs/app-packages.md § Owner state). The validator
+        // has no filesystem access, so whether an id matches a discovered package is the
+        // catalog's concern (an unmatched entry is tolerated — the package may be installed
+        // later); here we only require well-formed, unique ids.
+        RuleForEach(c => c.Apps).SetValidator(new AppOverrideConfigValidator());
+
+        RuleFor(c => c.Apps)
+            .Must(HaveUniqueOverrideIds)
+            .WithMessage("Each apps: entry must have a unique id (the package it applies to).");
+
+        // appPackageRoots: null means the standard roots; when the list is present every
+        // entry must be a non-empty path (an empty string would silently scan nothing).
+        RuleForEach(c => c.AppPackageRoots)
+            .Must(root => !string.IsNullOrWhiteSpace(root))
+            .WithMessage("appPackageRoots entries must be non-empty paths.");
     }
 
     private static bool HaveUniqueIds(IReadOnlyList<PortConfig> ports)
@@ -74,6 +90,13 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return apps.All(a => string.IsNullOrWhiteSpace(a.Match) || seen.Add(a.Match.Trim()));
+    }
+
+    private static bool HaveUniqueOverrideIds(IReadOnlyList<AppOverrideConfig> apps)
+    {
+        // Blank ids are reported by AppOverrideConfigValidator; don't double-report them here.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return apps.All(a => string.IsNullOrWhiteSpace(a.Id) || seen.Add(a.Id));
     }
 
     private static bool HaveUniqueEndpoints(IReadOnlyList<PortConfig> ports)
@@ -273,6 +296,21 @@ public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationCo
         }
         var parsed = NodeCommandParser.Parse(match.Trim());
         return parsed is UnknownCommand or EmptyCommand;
+    }
+}
+
+/// <summary>
+/// Validates one <see cref="AppOverrideConfig"/> (an <c>apps:</c> package-override entry).
+/// Only the id is constrained here — Enabled/Match/Environment are free-form overrides whose
+/// meaning the catalog resolves against the discovered manifest.
+/// </summary>
+public sealed class AppOverrideConfigValidator : AbstractValidator<AppOverrideConfig>
+{
+    public AppOverrideConfigValidator()
+    {
+        RuleFor(a => a.Id)
+            .Must(id => !string.IsNullOrWhiteSpace(id))
+            .WithMessage("apps entry id is required (the package id it applies to).");
     }
 }
 

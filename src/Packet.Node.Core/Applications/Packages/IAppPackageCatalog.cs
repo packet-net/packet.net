@@ -43,4 +43,37 @@ public sealed record DiscoveredAppPackage
     /// <summary>Human-readable manifest/validation problem; non-null marks the entry broken
     /// (broken entries are never enabled, sessions never resolve, services never start).</summary>
     public string? Error { get; init; }
+
+    /// <summary>The effective console verb — the owner's <see cref="AppOverrideConfig.Match"/>
+    /// when set, else the manifest's session match. Null when there is no session block (or
+    /// the manifest failed to parse). This is the value the catalog's verb-collision rules
+    /// run on and the value the session-verb resolution uses. Computed, never stored — not
+    /// part of record equality.</summary>
+    public string? EffectiveMatch => Override?.Match ?? Manifest?.Session?.Match;
+
+    /// <summary>The effective service environment: the manifest's <c>environment</c> map with
+    /// the owner's override merged over it key-by-key (owner wins) — the order the contract
+    /// pins for the supervised child (after the <c>PDN_APP_*</c> injections, which are the
+    /// supervisor's concern). Empty when neither side declares anything.</summary>
+    public IReadOnlyDictionary<string, string> EffectiveEnvironment
+    {
+        get
+        {
+            var manifestEnv = Manifest?.Service?.Environment;
+            var overrideEnv = Override?.Environment;
+            if (overrideEnv is null or { Count: 0 })
+            {
+                return manifestEnv ?? new Dictionary<string, string>();
+            }
+
+            var merged = manifestEnv is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(manifestEnv, StringComparer.Ordinal);
+            foreach (var (key, value) in overrideEnv)
+            {
+                merged[key] = value;   // the owner's entry wins key-by-key.
+            }
+            return merged;
+        }
+    }
 }
