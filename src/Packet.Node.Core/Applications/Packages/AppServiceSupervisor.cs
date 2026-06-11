@@ -317,7 +317,14 @@ public sealed partial class AppServiceSupervisor(
             ["PDN_APP_ID"] = pkg.Id,
             ["PDN_APP_DIR"] = pkg.PackageDir,
             ["PDN_APP_STATE"] = pkg.StateDir,
+            // The host node's identity, so an app can derive its own (the convention: an app
+            // lives at an SSID of the node callsign — e.g. DAPPS defaults to <nodecall>-7).
+            ["PDN_NODE_CALLSIGN"] = current.Identity.Callsign,
         };
+        if (!string.IsNullOrWhiteSpace(current.Identity.Alias))
+        {
+            environment["PDN_NODE_ALIAS"] = current.Identity.Alias!;
+        }
         if (current.Rhp.Enabled)
         {
             environment["PDN_RHP_HOST"] = current.Rhp.Bind;

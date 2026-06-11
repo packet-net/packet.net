@@ -72,6 +72,7 @@ public sealed class AppServiceSupervisorTests
         Assert.Contains("PDN_APP_ID=envy", env);
         Assert.Contains($"PDN_APP_DIR={pkg.PackageDir}", env);
         Assert.Contains($"PDN_APP_STATE={pkg.StateDir}", env);
+        Assert.Contains("PDN_NODE_CALLSIGN=M0LTE-1", env); // the node's identity, for the SSID-of-the-node-callsign convention
         Assert.Contains("PDN_RHP_HOST=127.0.0.1", env);   // present: the config enables RHP
         Assert.Contains("PDN_RHP_PORT=9123", env);
         Assert.Contains("FROM_MANIFEST=m", env);

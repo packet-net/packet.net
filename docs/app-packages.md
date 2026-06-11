@@ -61,7 +61,7 @@ At least one of `session` / `service` / `ui` must be present. Examples of the sh
 
 Path resolution: a relative `command`/`args` element that names an existing file in the package dir resolves to it; everything else passes through untouched. `workingDirectory` defaults to the state dir.
 
-Environment given to a supervised service: the node's own environment, plus `PDN_APP_ID`, `PDN_APP_DIR` (the package dir), `PDN_APP_STATE` (the state dir), and — when the RHP server is enabled — `PDN_RHP_HOST`/`PDN_RHP_PORT`, then the manifest `environment` map, then the owner's override map (last wins).
+Environment given to a supervised service: the node's own environment, plus `PDN_APP_ID`, `PDN_APP_DIR` (the package dir), `PDN_APP_STATE` (the state dir), `PDN_NODE_CALLSIGN` (the node's own callsign, so an app can derive its identity per the an-app-lives-at-an-SSID-of-the-node-callsign convention) and `PDN_NODE_ALIAS` when set, and — when the RHP server is enabled — `PDN_RHP_HOST`/`PDN_RHP_PORT`, then the manifest `environment` map, then the owner's override map (last wins).
 
 ## Owner state — `packetnet.yaml`
 
