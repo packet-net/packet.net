@@ -64,7 +64,9 @@ public sealed partial class NodeHostedService : BackgroundService
         INetRomRoutingStore? routingStore = null,
         BeaconService? beacons = null,
         IUserStore? userStore = null,
-        TotpService? totp = null)
+        TotpService? totp = null,
+        Applications.Packages.IAppPackageCatalog? appPackages = null,
+        Applications.Packages.IAppServiceSupervisor? appServices = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? TransportFactory.Instance;
@@ -80,8 +82,17 @@ public sealed partial class NodeHostedService : BackgroundService
         this.beacons = beacons ?? new BeaconService(
             this.config, this.timeProvider, this.loggerFactory.CreateLogger<BeaconService>());
         logger = this.loggerFactory.CreateLogger<NodeHostedService>();
+        this.appPackages = appPackages;
+        this.appServices = appServices;
         appliedConfig = config.Current;
     }
+
+    // App-package plumbing (docs/app-packages.md): the catalog feeds the launcher's
+    // verb union; the service supervisor owns enabled packages' daemons. Both are
+    // optional — null (every direct-construction test, and a host that doesn't
+    // register them) means packages simply don't exist, byte-for-byte old behaviour.
+    private readonly Applications.Packages.IAppPackageCatalog? appPackages;
+    private readonly Applications.Packages.IAppServiceSupervisor? appServices;
 
     /// <summary>The port supervisor — exposed for component tests.</summary>
     public PortSupervisor? Supervisor => supervisor;
@@ -121,12 +132,18 @@ public sealed partial class NodeHostedService : BackgroundService
 
         // The application launcher — built before the supervisor so its per-connection consoles
         // (AX.25 + NET/ROM) can launch registered apps; the telnet factory reads the same field.
-        applicationHost = new ApplicationHost(config, loggerFactory);
+        applicationHost = new ApplicationHost(config, loggerFactory, appPackages);
 
         supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost);
         await supervisor.StartAsync(stoppingToken).ConfigureAwait(false);
 
         StartTelnet(startConfig.Management.Telnet, stoppingToken);
+
+        // Bring enabled packages' daemons up with the node (idempotent; self-serialised).
+        if (appServices is not null)
+        {
+            await appServices.ReconcileAsync(stoppingToken).ConfigureAwait(false);
+        }
 
         lock (swapGate) appliedConfig = startConfig;
 
@@ -146,6 +163,12 @@ public sealed partial class NodeHostedService : BackgroundService
             // the listeners the supervisor is about to dispose).
             await beacons.DisposeAsync().ConfigureAwait(false);
             if (telnet is not null) await telnet.DisposeAsync().ConfigureAwait(false);
+            // Stop supervised app daemons with the node (idempotent dispose; the DI
+            // container's later dispose of the singleton is a no-op second call).
+            if (appServices is IAsyncDisposable appServicesDisposable)
+            {
+                await appServicesDisposable.DisposeAsync().ConfigureAwait(false);
+            }
             // Dispose NET/ROM BEFORE the supervisor: DisposeAsync cleanly DISCs each
             // interlink AX.25 session (so a neighbour isn't left with a half-open link
             // it polls), and that DISC needs the ports' listeners still alive — the
@@ -208,6 +231,12 @@ public sealed partial class NodeHostedService : BackgroundService
             // to the new interval/text/enabled. Re-arm from the live config (idempotent),
             // the same way the console reads ServicesConfig live.
             beacons.Reapply();
+            // Same for app packages: an apps:-toggle or manifest change is invisible
+            // to the port planner but must start/stop daemons.
+            if (appServices is not null)
+            {
+                await appServices.ReconcileAsync(ct).ConfigureAwait(false);
+            }
             lock (swapGate) appliedConfig = to;
             return;
         }
@@ -246,6 +275,13 @@ public sealed partial class NodeHostedService : BackgroundService
         // already armed from live config on AttachPort; this catches beacon edits to
         // ports the plan left untouched (and is idempotent for the rest).
         beacons.Reapply();
+
+        // App-package daemons reconcile after the port set settles (their env can
+        // reference the RHP bind, which a config apply may have moved).
+        if (appServices is not null)
+        {
+            await appServices.ReconcileAsync(ct).ConfigureAwait(false);
+        }
 
         lock (swapGate) appliedConfig = to;
     }
