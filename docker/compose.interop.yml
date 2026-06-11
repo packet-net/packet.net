@@ -82,6 +82,7 @@ services:
     ports:
       - "127.0.0.1:8023:23"     # telnet
       - "127.0.0.1:8086:8086"   # JSON API
+      - "127.0.0.1:8900:9000"   # RHPv2 (the wire-diff oracle for pdn's RHP server)
       - "127.0.0.1:8095:8095/udp"  # AXUDP
     cap_add:
       - NET_RAW
