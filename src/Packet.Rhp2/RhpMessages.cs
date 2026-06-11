@@ -15,6 +15,14 @@ namespace Packet.Rhp2;
 //   * `port` is a string everywhere. Where XRouter is known to emit a JSON
 //     number instead (TRACE recv; the spec's accept example), a
 //     StringOrIntConverter normalises on read.
+//   * Request `handle` and `data` fields are nullable so field ABSENCE
+//     survives deserialization: the wire distinguishes a missing field
+//     (errCode 12, "Missing handle"/"Missing data" — RHPTEST + live
+//     XRouter) from a present-but-empty one ("data":"" is a legal
+//     zero-byte send). Reply `handle` fields are nullable for the same
+//     reason XRouter omits them on parameter errors — there is nothing
+//     truthful to echo. Emission for present values is unchanged
+//     (WhenWritingNull only ever removes fields).
 
 /// <summary>Client authentication request (<c>auth</c>).</summary>
 public sealed class AuthMessage : RhpMessage
@@ -48,6 +56,63 @@ public sealed class AuthReplyMessage : RhpMessage
     /// <summary>Human-readable result text.</summary>
     [JsonPropertyName("errText")]
     public string? ErrText { get; set; }
+}
+
+/// <summary>
+/// Capability discovery request (<c>hello</c>) — a pdn extension from the
+/// rhp2lib protocol field notes ("There's no way to ask the server what it
+/// supports"). Perfectly backwards-compatible: a server without it answers
+/// via the unknown-type fallback (<c>helloReply</c> with errCode 2 — live
+/// XRouter does exactly this), which a client uses as the "baseline v2,
+/// no capability discovery" signal.
+/// </summary>
+public sealed class HelloMessage : RhpMessage
+{
+    /// <summary>Creates a <c>hello</c> message.</summary>
+    public HelloMessage() : base(RhpMessageType.Hello)
+    {
+    }
+}
+
+/// <summary>
+/// Reply to <c>hello</c> (<c>helloReply</c>): the server's protocol
+/// version, implementation name, and capability/limit advertisement.
+/// </summary>
+public sealed class HelloReplyMessage : RhpMessage
+{
+    /// <summary>Creates a <c>helloReply</c> message.</summary>
+    public HelloReplyMessage() : base(RhpMessageType.HelloReply)
+    {
+    }
+
+    /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
+    [JsonPropertyName("errCode")]
+    public int ErrCode { get; set; }
+
+    /// <summary>Human-readable result text.</summary>
+    [JsonPropertyName("errText")]
+    public string? ErrText { get; set; }
+
+    /// <summary>Protocol version the server speaks (e.g. <c>"2"</c>).</summary>
+    [JsonPropertyName("proto")]
+    public string? Proto { get; set; }
+
+    /// <summary>Implementation name/version (the wire's <c>impl</c>,
+    /// e.g. <c>"pdn/0.8.0"</c>).</summary>
+    [JsonPropertyName("impl")]
+    public string? Implementation { get; set; }
+
+    /// <summary>Protocol families this server supports (e.g. <c>["ax25"]</c>).</summary>
+    [JsonPropertyName("pfams")]
+    public IReadOnlyList<string>? Pfams { get; set; }
+
+    /// <summary>Largest <c>send.data</c> the server accepts, in bytes.</summary>
+    [JsonPropertyName("maxData")]
+    public int? MaxData { get; set; }
+
+    /// <summary>The <c>data</c> encoding in effect (e.g. <c>"latin1"</c>).</summary>
+    [JsonPropertyName("enc")]
+    public string? Enc { get; set; }
 }
 
 /// <summary>
@@ -153,9 +218,10 @@ public sealed class BindMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle from <c>socketReply</c>.</summary>
+    /// <summary>Socket handle from <c>socketReply</c>. Null when the wire
+    /// field was absent — the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Local address to bind.</summary>
     [JsonPropertyName("local")]
@@ -174,9 +240,10 @@ public sealed class BindReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -195,9 +262,10 @@ public sealed class ListenMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle to listen on.</summary>
+    /// <summary>Socket handle to listen on. Null when the wire field was
+    /// absent — the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Bit flags; see <see cref="OpenFlags"/>.</summary>
     [JsonPropertyName("flags")]
@@ -212,9 +280,10 @@ public sealed class ListenReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -233,9 +302,10 @@ public sealed class ConnectMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle to connect.</summary>
+    /// <summary>Socket handle to connect. Null when the wire field was
+    /// absent — the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Remote address, possibly with digi path.</summary>
     [JsonPropertyName("remote")]
@@ -254,9 +324,10 @@ public sealed class ConnectReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -275,16 +346,20 @@ public sealed class SendMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle to send on.</summary>
+    /// <summary>Socket handle to send on. Null when the wire field was
+    /// absent — the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>
     /// Payload as a Latin-1 wire string — use
-    /// <see cref="RhpDataEncoding"/> to convert binary payloads.
+    /// <see cref="RhpDataEncoding"/> to convert binary payloads. The field
+    /// is mandatory even when empty (RHPTEST): null (absent on the wire)
+    /// draws errCode 12 "Missing data", while <c>""</c> is a legal
+    /// zero-byte send.
     /// </summary>
     [JsonPropertyName("data")]
-    public string Data { get; set; } = string.Empty;
+    public string? Data { get; set; }
 
     /// <summary>Destination port (DGRAM mode only).</summary>
     [JsonPropertyName("port")]
@@ -307,9 +382,10 @@ public sealed class SendReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -332,16 +408,18 @@ public sealed class SendToMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle to send on.</summary>
+    /// <summary>Socket handle to send on. Null when the wire field was
+    /// absent — the server answers errCode 12 ("Missing handle").</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>
     /// Payload as a Latin-1 wire string — use
-    /// <see cref="RhpDataEncoding"/> to convert binary payloads.
+    /// <see cref="RhpDataEncoding"/> to convert binary payloads. Null when
+    /// the wire field was absent (see <see cref="SendMessage.Data"/>).
     /// </summary>
     [JsonPropertyName("data")]
-    public string Data { get; set; } = string.Empty;
+    public string? Data { get; set; }
 
     /// <summary>Destination port.</summary>
     [JsonPropertyName("port")]
@@ -368,9 +446,10 @@ public sealed class SendToReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -520,9 +599,10 @@ public sealed class StatusMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle.</summary>
+    /// <summary>Socket handle. Always present on server pushes; null when a
+    /// client request omitted it (the server answers errCode 12).</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Status bits; see <see cref="StatusFlags"/>. Absent on client requests.</summary>
     [JsonPropertyName("flags")]
@@ -537,9 +617,10 @@ public sealed class StatusReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]
@@ -561,9 +642,11 @@ public sealed class CloseMessage : RhpMessage
     {
     }
 
-    /// <summary>Socket handle to close.</summary>
+    /// <summary>Socket handle to close. Always present on server pushes;
+    /// null when a client request omitted it (errCode 12, not 3 — "3 is
+    /// for handles that are well-formed but unknown", RHPTEST).</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 }
 
 /// <summary>Reply to a client <c>close</c> request (<c>closeReply</c>).</summary>
@@ -574,9 +657,10 @@ public sealed class CloseReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>The socket handle the request named.</summary>
+    /// <summary>The socket handle the request named; omitted on parameter
+    /// errors (the request named none), matching XRouter.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]

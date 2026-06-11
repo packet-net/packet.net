@@ -152,6 +152,175 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.NotNull(close.Seqno);
     }
 
+    // ── seqno: per-RHP-connection, starting at 0, shared across push types ─
+    //    (RHPTEST-verified: first push is seqno 0; live XRouter confirms — a fresh
+    //    connection's first notification carries "seqno":0.)
+
+    [Fact]
+    public async Task First_push_on_a_fresh_connection_carries_seqno_zero()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+        _ = await client.ExpectAsync<OpenReplyMessage>();
+
+        var status = await client.ExpectAsync<StatusMessage>();
+        Assert.Equal(0, status.Seqno);                     // not 1 — the counter starts at 0
+    }
+
+    [Fact]
+    public async Task Seqno_increments_across_push_types_within_a_connection()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+        _ = await client.ExpectAsync<OpenReplyMessage>();
+
+        // One counter across all push types: status, recv, recv, server-close.
+        var status = await client.ExpectAsync<StatusMessage>();
+        Assert.Equal(0, status.Seqno);
+
+        gateway.Connection.Inject("one\r"u8.ToArray());
+        Assert.Equal(1, (await client.ExpectAsync<RecvMessage>()).Seqno);
+
+        gateway.Connection.Inject("two\r"u8.ToArray());
+        Assert.Equal(2, (await client.ExpectAsync<RecvMessage>()).Seqno);
+
+        gateway.Connection.Drop();
+        Assert.Equal(3, (await client.ExpectAsync<CloseMessage>()).Seqno);
+    }
+
+    [Fact]
+    public async Task Two_concurrent_connections_each_count_seqno_from_zero_independently()
+    {
+        var (server, _) = await StartServerAsync();
+        var alice = await ConnectAsync(server);
+        var bob = await ConnectAsync(server);
+
+        // Alice's pushes advance HER counter only...
+        await alice.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+        _ = await alice.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(0, (await alice.ExpectAsync<StatusMessage>()).Seqno);
+
+        // ...so Bob's first push is still seqno 0 (a server-wide counter would give 1 here).
+        await bob.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+        _ = await bob.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(0, (await bob.ExpectAsync<StatusMessage>()).Seqno);
+    }
+
+    // ── send.data: mandatory even when empty (RHPTEST) ───────────────────
+
+    [Fact]
+    public async Task Send_with_the_data_field_absent_is_bad_parameter_12()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await OpenAsync(client);
+
+        // Raw JSON so the field is genuinely ABSENT on the wire (not empty).
+        await client.SendRawAsync($$"""{"type":"send","id":5,"handle":{{handle}}}""");
+
+        var reply = await client.ExpectAsync<SendReplyMessage>();
+        Assert.Equal(RhpErrorCode.BadParameter, reply.ErrCode);
+        Assert.Equal("Missing data", reply.ErrText);       // the live wire's exact errText
+        Assert.Equal(5, reply.Id);
+    }
+
+    [Fact]
+    public async Task Send_with_empty_data_is_a_legal_zero_byte_send()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await OpenAsync(client);
+
+        await client.SendAsync(new SendMessage { Id = 6, Handle = handle, Data = "" });
+
+        var reply = await client.ExpectAsync<SendReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);      // "" ≠ absent — RHPTEST's zero-byte send
+        Assert.Empty(await gateway.Connection.WrittenAsync());
+    }
+
+    // ── absent handle: errCode 12 ("Missing handle"), never 3 ────────────
+    //    RHPTEST: "3 is for handles that are well-formed but unknown"; verified per-op
+    //    against live XRouter (every op answers 12 with errText "Missing handle").
+
+    [Theory]
+    [InlineData("""{"type":"close","id":3}""", "closeReply")]
+    [InlineData("""{"type":"send","id":3,"data":"x"}""", "sendReply")]
+    [InlineData("""{"type":"bind","id":3,"local":"M0LTE-7"}""", "bindReply")]
+    [InlineData("""{"type":"listen","id":3,"flags":0}""", "listenReply")]
+    [InlineData("""{"type":"connect","id":3,"remote":"GB7RDG"}""", "connectReply")]
+    [InlineData("""{"type":"status","id":3}""", "statusReply")]
+    [InlineData("""{"type":"sendto","id":3,"data":"x"}""", "sendtoReply")]
+    public async Task A_request_with_an_absent_handle_is_bad_parameter_12(string request, string expectedReplyType)
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync(request);
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal(expectedReplyType, type);
+        Assert.Contains("\"errCode\":12", json, StringComparison.Ordinal);
+        Assert.Contains("\"errText\":\"Missing handle\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"id\":3", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"handle\"", json, StringComparison.Ordinal);   // nothing truthful to echo
+    }
+
+    // ── callsign validation at the wire: 6 / 7, never a wedge (deviation D7) ─
+
+    [Fact]
+    public async Task Open_with_an_alphabetic_SSID_local_is_refused_with_6()
+    {
+        // XRouter accepts G9DUM-S here, "Ok"s a connect from it, then wedges in background
+        // SABM retries (rhp2lib field notes). pdn refuses at the wire, deterministically.
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Local = "G9DUM-S", Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+
+        var reply = await client.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(RhpErrorCode.InvalidLocalAddress, reply.ErrCode);
+        Assert.Equal("Invalid local address", reply.ErrText);   // a clean 6, not a generic failure
+    }
+
+    [Fact]
+    public async Task Open_with_an_alphabetic_SSID_remote_is_refused_with_7()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "G9DUM-S", Flags = (int)OpenFlags.Active });
+
+        var reply = await client.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(RhpErrorCode.InvalidRemoteAddress, reply.ErrCode);
+    }
+
+    [Fact]
+    public async Task Open_without_local_is_accepted_and_defaults_to_the_node_callsign()
+    {
+        // Deviation D8: requiring `local` on open is an XRouter-ism, not an RHP rule
+        // (RHPTEST quotes the author saying exactly that). pdn stays permissive — a null
+        // local reaches the gateway, which dials as the node's own callsign.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+
+        var reply = await client.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Null(gateway.LastLocal);
+    }
+
     // ── The validation ladder + gateway error passthrough ────────────────
 
     [Theory]

@@ -85,6 +85,8 @@ public static class RhpJson
         {
             RhpMessageType.Auth => To<AuthMessage>(obj),
             RhpMessageType.AuthReply => To<AuthReplyMessage>(obj),
+            RhpMessageType.Hello => To<HelloMessage>(obj),
+            RhpMessageType.HelloReply => To<HelloReplyMessage>(obj),
             RhpMessageType.Open => To<OpenMessage>(obj),
             RhpMessageType.OpenReply => To<OpenReplyMessage>(obj),
             RhpMessageType.Socket => To<SocketMessage>(obj),

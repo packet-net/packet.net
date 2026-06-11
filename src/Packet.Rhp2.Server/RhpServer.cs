@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Core;
 using Packet.Node.Core.Console;
 
 namespace Packet.Rhp2.Server;
@@ -36,18 +38,39 @@ public sealed class RhpServerOptions
 /// </summary>
 /// <remarks>
 /// <para><b>Wire contracts matched to live XRouter:</b> replies echo the request <c>id</c>;
-/// async notifications carry a <c>seqno</c> and never an <c>id</c>; <c>errCode</c>/<c>errText</c>
+/// async notifications carry a <c>seqno</c> and never an <c>id</c> — the seqno counter is
+/// <b>per RHP connection</b>, starts at 0, and is shared across all push types
+/// (recv/accept/status/server-close), per RHPTEST and the live wire; <c>errCode</c>/<c>errText</c>
 /// are capitalised; an unknown <c>type</c> is answered with <c>{type}Reply</c> + errCode 2;
-/// handles are numbered from one server-wide counter (from 100, like the reference).</para>
+/// an absent <c>handle</c>/<c>data</c> field is errCode 12 ("Missing handle"/"Missing data" —
+/// 3 is reserved for well-formed-but-unknown handles), and parameter-error replies omit the
+/// handle echo; handles are numbered from one server-wide counter (from 100, like the
+/// reference).</para>
 /// <para><b>Named deviations (docs/rhp2-server.md):</b> a handle is usable only by the client
 /// connection that created it (D3); a bad <c>auth</c> fails that attempt without wedging the
 /// connection (D2); oversize sends are honoured, not silently dropped (D1); <c>openReply</c>
-/// is sent when the connect resolves, carrying a real success/failure (D4).</para>
+/// is sent when the connect resolves, carrying a real success/failure (D4); an invalid
+/// local/remote callsign (e.g. the alphabetic SSID <c>G9DUM-S</c>) is refused with 6/7 where
+/// XRouter accepts it and wedges (D7); <c>send</c> on a listener is 16 per RHPTEST where the
+/// pinned live build answers 17 (D9).</para>
 /// </remarks>
 public sealed partial class RhpServer : IAsyncDisposable
 {
     private const int RecvChunk = 2048;          // session bytes per recv push (escaped JSON stays well under the frame cap)
     private const int FirstHandle = 100;         // match the reference's visible numbering
+
+    // errCode 12 errText as the live wire spells it (XRouter answers "Missing handle" /
+    // "Missing data", not the spec table's generic "Bad parameter").
+    private const string MissingHandleText = "Missing handle";
+    private const string MissingDataText = "Missing data";
+
+    // The helloReply capability advertisement (a pdn extension — docs/rhp2-server.md
+    // §pdn extensions). The informational version is the repo's own build stamp, the
+    // same one the node binary ships.
+    private static readonly string Implementation = "pdn/" + (
+        typeof(RhpServer).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion ?? "dev");
 
     private readonly RhpServerOptions options;
     private readonly IRhpGateway gateway;
@@ -56,7 +79,6 @@ public sealed partial class RhpServer : IAsyncDisposable
     private readonly ConcurrentDictionary<int, RhpHandle> handles = new();
     private readonly ConcurrentDictionary<ClientState, byte> clients = new();
     private int nextHandle = FirstHandle - 1;
-    private int nextSeqno;
     private Socket? listenSocket;
     private Task? acceptLoop;
     private int started;
@@ -214,6 +236,23 @@ public sealed partial class RhpServer : IAsyncDisposable
                 }, ct).ConfigureAwait(false);
                 break;
 
+            case HelloMessage hello:
+                // Capability discovery (pdn extension; docs/rhp2-server.md §pdn extensions).
+                // A non-supporting server answers this via the unknown-type fallback —
+                // helloReply errCode 2 — so errCode 0 here is the "capabilities follow" signal.
+                await WriteAsync(client, new HelloReplyMessage
+                {
+                    Id = hello.Id,
+                    ErrCode = RhpErrorCode.Ok,
+                    ErrText = RhpErrorCode.Text(RhpErrorCode.Ok),
+                    Proto = "2",
+                    Implementation = Implementation,
+                    Pfams = [ProtocolFamily.Ax25],
+                    MaxData = RhpFraming.MaxPayloadLength,
+                    Enc = "latin1",
+                }, ct).ConfigureAwait(false);
+                break;
+
             case OpenMessage open:
                 await HandleOpenAsync(client, open, ct).ConfigureAwait(false);
                 break;
@@ -237,14 +276,23 @@ public sealed partial class RhpServer : IAsyncDisposable
             case ListenMessage m:
                 await HandleListenAsync(client, m, ct).ConfigureAwait(false);
                 break;
+            // The deferred ops still validate their parameters first: an absent handle is
+            // errCode 12 ("Missing handle") before the 16 deferral — exactly the live wire's
+            // precedence (XRouter answers 12 on connect/status/sendto with no handle too).
             case ConnectMessage m:
-                await WriteAsync(client, new ConnectReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (use open with the Active flag)" }, ct).ConfigureAwait(false);
+                await WriteAsync(client, m.Handle is null
+                    ? new ConnectReplyMessage { Id = m.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }
+                    : new ConnectReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = "Operation not supported (use open with the Active flag)" }, ct).ConfigureAwait(false);
                 break;
             case SendToMessage m:
-                await WriteAsync(client, new SendToReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
+                await WriteAsync(client, m.Handle is null
+                    ? new SendToReplyMessage { Id = m.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }
+                    : new SendToReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
                 break;
             case StatusMessage m:
-                await WriteAsync(client, new StatusReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
+                await WriteAsync(client, m.Handle is null
+                    ? new StatusReplyMessage { Id = m.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }
+                    : new StatusReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
                 break;
 
             case UnknownMessage unknown:
@@ -297,9 +345,22 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         else if ((open.Flags & (int)OpenFlags.Active) == 0)
         {
-            (err, text) = (RhpErrorCode.OperationNotSupported, "passive open is not implemented yet (R-3); only Active (0x80) opens");
+            // Deferred by name (docs/rhp2-server.md §Scope): the passive form of `open` —
+            // the BSD socket/bind/listen path covers every validated client's listener needs.
+            (err, text) = (RhpErrorCode.OperationNotSupported, "passive open is not supported (use socket/bind/listen); only Active (0x80) opens");
+        }
+        else if (open.Local is { } local && !string.IsNullOrWhiteSpace(local) && !IsValidCallsign(local))
+        {
+            // Refused at the wire (deviation D7): XRouter accepts an alphabetic SSID like
+            // G9DUM-S here and then wedges in background SABM retries. An ABSENT local is
+            // fine — pdn defaults to the node callsign (deviation D8; XRouter requires it).
+            (err, text) = (RhpErrorCode.InvalidLocalAddress, RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress));
         }
         else if (string.IsNullOrWhiteSpace(open.Remote))
+        {
+            (err, text) = (RhpErrorCode.InvalidRemoteAddress, RhpErrorCode.Text(RhpErrorCode.InvalidRemoteAddress));
+        }
+        else if (!IsValidCallsign(open.Remote!))
         {
             (err, text) = (RhpErrorCode.InvalidRemoteAddress, RhpErrorCode.Text(RhpErrorCode.InvalidRemoteAddress));
         }
@@ -349,7 +410,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             {
                 Handle = handle.Id,
                 Flags = (int)(StatusFlags.Connected | StatusFlags.ConOk),
-                Seqno = Interlocked.Increment(ref nextSeqno),
+                Seqno = client.NextSeqno(),
             }, ct).ConfigureAwait(false);
 
             handle.Pump = Task.Run(() => PumpHandleAsync(handle, ct), CancellationToken.None);
@@ -400,29 +461,47 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     private async Task HandleBindAsync(ClientState client, BindMessage msg, CancellationToken ct)
     {
-        if (!handles.TryGetValue(msg.Handle, out var handle) || handle.Owner != client || handle.Connection is not null)
+        if (msg.Handle is not { } bindHandle)
         {
-            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            // Absent handle is a missing PARAMETER (12), not an invalid handle (3) — RHPTEST:
+            // "3 is for handles that are well-formed but unknown". No handle echo: there is
+            // nothing truthful to echo (matching the live wire's shape).
+            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
             return;
         }
-        if (string.IsNullOrWhiteSpace(msg.Local))
+        if (!handles.TryGetValue(bindHandle, out var handle) || handle.Owner != client || handle.Connection is not null)
         {
-            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidLocalAddress, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress) }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = bindHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(msg.Local) || !IsValidCallsign(msg.Local))
+        {
+            // Absent, empty or malformed local is 6 on the live wire — and an invalid
+            // callsign (e.g. the alphabetic SSID G9DUM-S) is refused HERE, deterministically,
+            // where XRouter accepts the bind and later wedges (deviation D7).
+            await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = bindHandle, ErrCode = RhpErrorCode.InvalidLocalAddress, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidLocalAddress) }, ct).ConfigureAwait(false);
             return;
         }
 
         // Re-bind before listen is legal (XRouter allows a second bind); a null port means all
-        // ports — exactly what DAPPS sends.
+        // ports — exactly what DAPPS sends — and the string "0" is its wire synonym (XRouter
+        // convention, rhp2lib field notes §12).
+        var boundPort = msg.Port?.Trim();
         handle.BoundLocal = msg.Local.Trim();
-        handle.BoundPort = msg.Port;
-        await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
+        handle.BoundPort = string.IsNullOrEmpty(boundPort) || boundPort == "0" ? null : boundPort;
+        await WriteAsync(client, new BindReplyMessage { Id = msg.Id, Handle = bindHandle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
     }
 
     private async Task HandleListenAsync(ClientState client, ListenMessage msg, CancellationToken ct)
     {
-        if (!handles.TryGetValue(msg.Handle, out var handle) || handle.Owner != client || handle.Connection is not null)
+        if (msg.Handle is not { } listenHandle)
         {
-            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (!handles.TryGetValue(listenHandle, out var handle) || handle.Owner != client || handle.Connection is not null)
+        {
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = listenHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
             return;
         }
         if (handle.BoundLocal is null)
@@ -478,7 +557,17 @@ public sealed partial class RhpServer : IAsyncDisposable
             Remote = connection.PeerId,
             Local = listenerHandle.BoundLocal,
             Port = portLabel,
-            Seqno = Interlocked.Increment(ref nextSeqno),
+            Seqno = listenerHandle.Owner.NextSeqno(),
+        }, CancellationToken.None).ConfigureAwait(false);
+
+        // The protocol lifecycle (PWP-0222 / rhp2lib protocol primer): the accept push is
+        // followed by a status push announcing the CHILD's link is up — same flags as the
+        // active-open path's announcement, before any recv can flow.
+        await WriteAsync(listenerHandle.Owner, new StatusMessage
+        {
+            Handle = child.Id,
+            Flags = (int)(StatusFlags.Connected | StatusFlags.ConOk),
+            Seqno = listenerHandle.Owner.NextSeqno(),
         }, CancellationToken.None).ConfigureAwait(false);
 
         child.Pump = Task.Run(() => PumpHandleAsync(child, lifecycle.Token), CancellationToken.None);
@@ -486,17 +575,41 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     private async Task HandleSendAsync(ClientState client, SendMessage send, CancellationToken ct)
     {
+        if (send.Handle is not { } sendHandle)
+        {
+            // Absent handle is a missing parameter (12), not an invalid handle (3); the
+            // live wire validates the handle's PRESENCE first and never echoes one back.
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
+            return;
+        }
+
         // Deviation D3: a handle is only usable by the connection that created it — anyone
         // else sees the same "invalid handle" an unknown id gets (no existence oracle).
-        if (!handles.TryGetValue(send.Handle, out var handle) || handle.Owner != client)
+        if (!handles.TryGetValue(sendHandle, out var handle) || handle.Owner != client)
         {
-            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = send.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (send.Data is null)
+        {
+            // `data` is mandatory even when empty (RHPTEST): absence is errCode 12
+            // ("Missing data", no handle echo — the live wire's exact shape), while
+            // "data":"" is a legal zero-byte send that proceeds like any other.
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingDataText }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (handle.Listening)
+        {
+            // A LISTENER rejects everything but accept/close with 16 (RHPTEST, against
+            // XRouter v505d) — distinct from 17 for a non-listening unconnected stream.
+            // Deviation D9: the pinned live container (505c) still answers 17 here.
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
             return;
         }
         if (handle.Connection is null)
         {
-            // A socket/listener handle has no link to send on — the wire's 17.
-            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = send.Handle, ErrCode = RhpErrorCode.NotConnected, ErrText = RhpErrorCode.Text(RhpErrorCode.NotConnected) }, ct).ConfigureAwait(false);
+            // A non-listening socket handle has no link to send on — the wire's 17.
+            await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.NotConnected, ErrText = RhpErrorCode.Text(RhpErrorCode.NotConnected) }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -522,14 +635,21 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     private async Task HandleCloseAsync(ClientState client, CloseMessage close, CancellationToken ct)
     {
-        if (!handles.TryGetValue(close.Handle, out var handle) || handle.Owner != client)
+        if (close.Handle is not { } closeHandle)
         {
-            await WriteAsync(client, new CloseReplyMessage { Id = close.Id, Handle = close.Handle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
+            // RHPTEST: a MISSING handle is 12 ("Missing handle"), not 3 — "3 is for handles
+            // that are well-formed but unknown". No handle echo, matching the live wire.
+            await WriteAsync(client, new CloseReplyMessage { Id = close.Id, ErrCode = RhpErrorCode.BadParameter, ErrText = MissingHandleText }, ct).ConfigureAwait(false);
+            return;
+        }
+        if (!handles.TryGetValue(closeHandle, out var handle) || handle.Owner != client)
+        {
+            await WriteAsync(client, new CloseReplyMessage { Id = close.Id, Handle = closeHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
             return;
         }
 
         await TearDownHandleAsync(handle, notifyOwner: false).ConfigureAwait(false);
-        await WriteAsync(client, new CloseReplyMessage { Id = close.Id, Handle = close.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
+        await WriteAsync(client, new CloseReplyMessage { Id = close.Id, Handle = closeHandle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
     }
 
     // Session → client: forward the link's bytes as async recv pushes until it ends, then
@@ -573,7 +693,7 @@ public sealed partial class RhpServer : IAsyncDisposable
                     {
                         Handle = handle.Id,
                         Data = RhpDataEncoding.ToWireString(slice.Span),
-                        Seqno = Interlocked.Increment(ref nextSeqno),
+                        Seqno = handle.Owner.NextSeqno(),
                     }, ct).ConfigureAwait(false);
                 }
             }
@@ -623,7 +743,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             await WriteAsync(handle.Owner, new CloseMessage
             {
                 Handle = handle.Id,
-                Seqno = Interlocked.Increment(ref nextSeqno),
+                Seqno = handle.Owner.NextSeqno(),
             }, CancellationToken.None).ConfigureAwait(false);
         }
     }
@@ -644,6 +764,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         var text = RhpErrorCode.Text(errCode);
         RhpMessage? reply = msg switch
         {
+            HelloMessage m => new HelloReplyMessage { Id = m.Id, ErrCode = errCode, ErrText = text },
             OpenMessage m => new OpenReplyMessage { Id = m.Id, Handle = 0, ErrCode = errCode, ErrText = text },
             SocketMessage m => new SocketReplyMessage { Id = m.Id, Handle = null, ErrCode = errCode, ErrText = text },
             BindMessage m => new BindReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = errCode, ErrText = text },
@@ -672,6 +793,12 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         return WriteRawAsync(client, raw, ct);
     }
+
+    // The strict outbound-construction callsign rule applied at the RHP wire: AX.25 SSIDs
+    // are numeric 0–15, so e.g. G9DUM-S is refused (errCode 6/7) rather than handed to the
+    // engine. XRouter accepts these and wedges in background SABM retries (deviation D7).
+    private static bool IsValidCallsign(string text)
+        => Callsign.TryParse(text.Trim().ToUpperInvariant(), out _);
 
     // Writes are serialized per client (replies from the dispatch loop interleave with pushes
     // from handle pumps). A write failure means the client is gone — swallowed; the read loop
@@ -740,6 +867,8 @@ public sealed partial class RhpServer : IAsyncDisposable
     // One connected RHP client (a TCP connection multiplexing many handles).
     private sealed class ClientState : IDisposable
     {
+        private int seqno = -1;   // first push must carry seqno 0 (RHPTEST; live wire)
+
         public ClientState(Socket socket, bool authed)
         {
             Socket = socket;
@@ -753,6 +882,10 @@ public sealed partial class RhpServer : IAsyncDisposable
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
         public string Peer { get; }
         public bool Authed { get; set; }
+
+        /// <summary>Next push seqno: one counter per RHP connection, starting at 0, shared
+        /// across all push types (recv/accept/status/server-close) — RHPTEST-verified.</summary>
+        public int NextSeqno() => Interlocked.Increment(ref seqno);
 
         public void Dispose()
         {

@@ -263,6 +263,90 @@ public class WireSerializationTests
         doc.RootElement.TryGetProperty("id", out _).Should().BeFalse(json);
     }
 
+    // -----------------------------------------------------------------
+    //  Field ABSENCE survives deserialization (absent ≠ empty — the wire
+    //  answers errCode 12 for a missing handle/data, 3 only for unknown
+    //  handles, and "data":"" is a legal zero-byte send)
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public void Send_with_data_absent_deserializes_to_null_not_empty()
+    {
+        var msg = (SendMessage)Parse("""{"type":"send","id":1,"handle":5}""");
+
+        msg.Handle.Should().Be(5);
+        msg.Data.Should().BeNull("an absent data field must be distinguishable from \"\"");
+    }
+
+    [Fact]
+    public void Send_with_empty_data_deserializes_to_empty_not_null()
+    {
+        var msg = (SendMessage)Parse("""{"type":"send","id":1,"handle":5,"data":""}""");
+
+        msg.Data.Should().Be("");
+    }
+
+    [Theory]
+    [InlineData("""{"type":"close","id":1}""", typeof(CloseMessage))]
+    [InlineData("""{"type":"send","id":1,"data":"x"}""", typeof(SendMessage))]
+    [InlineData("""{"type":"bind","id":1,"local":"G8PZT"}""", typeof(BindMessage))]
+    [InlineData("""{"type":"listen","id":1,"flags":0}""", typeof(ListenMessage))]
+    [InlineData("""{"type":"connect","id":1,"remote":"G8PZT"}""", typeof(ConnectMessage))]
+    [InlineData("""{"type":"status","id":1}""", typeof(StatusMessage))]
+    [InlineData("""{"type":"sendto","id":1,"data":"x"}""", typeof(SendToMessage))]
+    public void Requests_with_an_absent_handle_deserialize_to_null(string wire, Type expected)
+    {
+        var msg = Parse(wire);
+
+        msg.Should().BeOfType(expected);
+        var handle = (int?)expected.GetProperty("Handle")!.GetValue(msg);
+        handle.Should().BeNull("an absent handle field must be distinguishable from 0");
+    }
+
+    [Fact]
+    public void Reply_handle_is_omitted_when_null_matching_xrouters_parameter_error_shape()
+    {
+        // Live XRouter omits the handle echo on parameter errors ("Missing handle") —
+        // there is nothing truthful to echo. Null must vanish, not serialize as 0.
+        var json = ToJson(new CloseReplyMessage { Id = 1, ErrCode = 12, ErrText = "Missing handle" });
+        using var doc = JsonDocument.Parse(json);
+
+        doc.RootElement.TryGetProperty("handle", out _).Should().BeFalse(json);
+    }
+
+    // -----------------------------------------------------------------
+    //  hello / helloReply — the pdn capability-discovery extension
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public void HelloReply_serializes_the_capability_advertisement_fields()
+    {
+        // Wire field names per the rhp2lib field-notes proposal: proto, impl, pfams,
+        // maxData, enc — emitted with errCode 0 by a supporting server. (A server
+        // without the extension answers via the unknown-type fallback: helloReply
+        // errCode 2 — which is how a client detects the baseline.)
+        var json = ToJson(new HelloReplyMessage
+        {
+            Id = 1,
+            ErrCode = 0,
+            ErrText = "Ok",
+            Proto = "2",
+            Implementation = "pdn/1.2.3",
+            Pfams = ["ax25"],
+            MaxData = 65535,
+            Enc = "latin1",
+        });
+        using var doc = JsonDocument.Parse(json);
+
+        doc.RootElement.GetProperty("type").GetString().Should().Be("helloReply");
+        doc.RootElement.GetProperty("proto").GetString().Should().Be("2");
+        doc.RootElement.GetProperty("impl").GetString().Should().Be("pdn/1.2.3");
+        doc.RootElement.GetProperty("pfams")[0].GetString().Should().Be("ax25");
+        doc.RootElement.GetProperty("maxData").GetInt32().Should().Be(65535);
+        doc.RootElement.GetProperty("enc").GetString().Should().Be("latin1");
+        doc.RootElement.GetProperty("errCode").GetInt32().Should().Be(0);
+    }
+
     [Fact]
     public void Status_notification_flags_decode_as_StatusFlags_bits()
     {
@@ -281,6 +365,8 @@ public class WireSerializationTests
     {
         new AuthMessage { Id = 1, User = "g8pzt", Pass = "secret" },
         new AuthReplyMessage { Id = 1, ErrCode = 0, ErrText = "Ok" },
+        new HelloMessage { Id = 11 },
+        new HelloReplyMessage { Id = 11, ErrCode = 0, ErrText = "Ok", Proto = "2", Implementation = "pdn/1.2.3", Pfams = ["ax25"], MaxData = 65535, Enc = "latin1" },
         new OpenMessage { Id = 2, Pfam = "ax25", Mode = "stream", Port = "1", Local = "G8PZT", Remote = "M0LTE-1", Flags = 0x80 },
         new OpenReplyMessage { Id = 2, Handle = 7, ErrCode = 0, ErrText = "Ok" },
         new SocketMessage { Id = 3, Pfam = "netrom", Mode = "seqpkt" },

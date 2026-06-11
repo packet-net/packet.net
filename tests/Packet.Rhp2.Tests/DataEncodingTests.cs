@@ -50,7 +50,7 @@ public class DataEncodingTests
 
         var parsed = (SendMessage)RhpJson.Deserialize(RhpJson.Serialize(sent));
 
-        RhpDataEncoding.FromWireString(parsed.Data).Should().Equal(payload);
+        RhpDataEncoding.FromWireString(parsed.Data!).Should().Equal(payload);
     }
 
     [Fact]

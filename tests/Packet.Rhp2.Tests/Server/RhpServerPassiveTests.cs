@@ -91,6 +91,14 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         Assert.Null(accept.Id);
         Assert.NotNull(accept.Seqno);
 
+        // The protocol lifecycle: the accept push is followed by a status push announcing
+        // the CHILD's link is up (rhp2lib protocol primer's incoming-listener sequence).
+        var status = await client.ExpectAsync<StatusMessage>();
+        Assert.Equal(accept.Child, status.Handle);
+        Assert.True(((StatusFlags)(status.Flags ?? 0)).HasFlag(StatusFlags.Connected));
+        Assert.Null(status.Id);
+        Assert.NotNull(status.Seqno);
+
         // The child handle is live both ways: peer bytes push as recv; send reaches the peer.
         gateway.Connection.Inject("hi\r"u8.ToArray());
         var recv = await client.ExpectAsync<RecvMessage>();
@@ -151,6 +159,81 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Send_on_a_listening_socket_is_operation_not_supported_16()
+    {
+        // RHPTEST (the author's harness, against XRouter v505d): listener sockets reject
+        // everything but accept/close with 16 — distinct from 17 "Not connected" for a
+        // non-listening stream. (Deviation D9: the pinned live 505c container still
+        // answers 17 here; pdn implements the v505d intent.)
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var listener = await ListenAsync(client, gateway);
+
+        await client.SendAsync(new SendMessage { Id = 7, Handle = listener, Data = "x" });
+
+        var reply = await client.ExpectAsync<SendReplyMessage>();
+        Assert.Equal(RhpErrorCode.OperationNotSupported, reply.ErrCode);
+    }
+
+    [Fact]
+    public async Task Send_on_a_non_listening_socket_handle_stays_not_connected_17()
+    {
+        // The other half of the 16/17 split: a plain (or bound-but-not-listening) socket
+        // handle has no link and is not a listener — the wire's 17 (pinned R-2 behaviour,
+        // verified against the live container).
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+
+        await client.SendAsync(new SendMessage { Id = 2, Handle = sock.Handle!.Value, Data = "x" });
+
+        var reply = await client.ExpectAsync<SendReplyMessage>();
+        Assert.Equal(RhpErrorCode.NotConnected, reply.ErrCode);
+    }
+
+    [Fact]
+    public async Task Bind_with_an_alphabetic_SSID_is_refused_with_6()
+    {
+        // XRouter accepts a bind to G9DUM-S and the socket later wedges the node in
+        // background SABM retries (rhp2lib field notes); pdn refuses the bind itself with
+        // a clean 6 (deviation D7) so the engine never sees an invalid callsign.
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "G9DUM-S" });
+
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.InvalidLocalAddress, bind.ErrCode);
+        Assert.Equal("Invalid local address", bind.ErrText);
+    }
+
+    [Fact]
+    public async Task Bind_port_string_zero_is_a_synonym_for_all_ports()
+    {
+        // XRouter convention (rhp2lib field notes §12): port "0" — like null/absent —
+        // means "all ports". The engine registration must see the same null it would
+        // for DAPPS's null-port bind.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7", Port = "0" });
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+
+        await client.SendAsync(new ListenMessage { Id = 3, Handle = sock.Handle!.Value, Flags = 0 });
+        var listen = await client.ExpectAsync<ListenReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, listen.ErrCode);
+        Assert.Null(gateway.ListenerPort);                 // "0" registered as all-ports
+    }
+
+    [Fact]
     public async Task Listen_before_bind_is_a_bad_parameter()
     {
         var (server, _) = await StartServerAsync();
@@ -173,6 +256,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await gateway.AcceptHandler!(gateway.Connection, "1");
         var accept = await client.ExpectAsync<AcceptMessage>();
+        _ = await client.ExpectAsync<StatusMessage>();   // swallow the child's connected push
 
         await client.SendAsync(new CloseMessage { Id = 5, Handle = listener });
         var closed = await client.ExpectAsync<CloseReplyMessage>();

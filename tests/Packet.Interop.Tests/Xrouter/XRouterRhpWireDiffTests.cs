@@ -192,12 +192,6 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         Assert.Equal(xrSock, pdnSock);
 
         // The allocated handles differ numerically — extract each side's own.
-        static async Task<int> HandleOf(WireClient c, string req)
-        {
-            await c.SendAsync(req);
-            using var doc = JsonDocument.Parse(await c.ReadAsync());
-            return doc.RootElement.GetProperty("handle").GetInt32();
-        }
         var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":2,"pfam":"ax25","mode":"stream"}""");
         var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":2,"pfam":"ax25","mode":"stream"}""");
 
@@ -239,12 +233,6 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         Assert.Equal(RhpErrorCode.DuplicateSocket, pdnDup.Item2); // pdn's deliberate D5
         Assert.Equal(8, xrDup.Item3);
         Assert.Equal(8, pdnDup.Item3);
-
-        static async Task<string> Send(WireClient c, string req)
-        {
-            await c.SendAsync(req);
-            return await c.ReadAsync();
-        }
     }
 
     [Fact]
@@ -255,5 +243,176 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
 
         Assert.Equal(xr, pdn);
         Assert.Equal(RhpErrorCode.BadOrMissingFamily, xr.Item2);
+    }
+
+    // ── R-5: the field-notes / RHPTEST conformance sweep ──────────────────
+
+    [Fact]
+    public async Task Idless_success_requests_are_still_replied_to_without_an_id()
+    {
+        // The spec says a server only replies ON ERROR when id is omitted; the live wire
+        // replies to everything, success included — the id is simply absent from the
+        // reply. pdn matches the wire (wire-fidelity row 10, docs/rhp2-server.md).
+        var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
+            """{"type":"socket","pfam":"ax25","mode":"stream"}""");
+
+        Assert.Equal(xr, pdn);
+        Assert.Equal("socketReply", xr.Item1);
+        Assert.Equal(RhpErrorCode.Ok, xr.Item2);
+        Assert.Null(xr.Item3);                              // replied, but no id to echo
+    }
+
+    [Fact]
+    public async Task Idless_unknown_type_is_answered_without_an_id_identically()
+    {
+        var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
+            """{"type":"pnIdlessProbe"}""");
+
+        Assert.Equal(xr, pdn);
+        Assert.Equal("pnIdlessProbeReply", xr.Item1);
+        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);
+        Assert.Null(xr.Item3);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"close","id":11}""", "closeReply")]
+    [InlineData("""{"type":"send","id":12,"data":"x"}""", "sendReply")]
+    [InlineData("""{"type":"bind","id":13,"local":"PN9TST-8"}""", "bindReply")]
+    [InlineData("""{"type":"listen","id":14,"flags":0}""", "listenReply")]
+    [InlineData("""{"type":"connect","id":15,"remote":"PN9TST"}""", "connectReply")]
+    [InlineData("""{"type":"status","id":16}""", "statusReply")]
+    [InlineData("""{"type":"sendto","id":17,"data":"x"}""", "sendtoReply")]
+    public async Task An_absent_handle_is_bad_parameter_12_on_both_sides(string request, string expectedReplyType)
+    {
+        // RHPTEST: a missing handle is 12, "not 3 — 3 is for handles that are well-formed
+        // but unknown". Verified per-op against the live wire (errText "Missing handle").
+        var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(), request);
+
+        Assert.Equal(xr, pdn);
+        Assert.Equal(expectedReplyType, xr.Item1);
+        Assert.Equal(RhpErrorCode.BadParameter, xr.Item2);
+    }
+
+    [Fact]
+    public async Task Send_with_data_absent_on_a_fresh_socket_is_bad_parameter_12_on_both_sides()
+    {
+        // RHPTEST: send.data is mandatory even when empty — absence is a protocol
+        // violation (12); the live wire answers errText "Missing data".
+        var xrouter = await XRouterAsync();
+        var pdn = await PdnAsync();
+        var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+        var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+
+        var (xr, pdnShape) = (
+            Shape(await Send(xrouter, $$"""{"type":"send","id":2,"handle":{{xrHandle}}}""")),
+            Shape(await Send(pdn, $$"""{"type":"send","id":2,"handle":{{pdnHandle}}}""")));
+
+        Assert.Equal(xr, pdnShape);
+        Assert.Equal("sendReply", xr.Item1);
+        Assert.Equal(RhpErrorCode.BadParameter, xr.Item2);
+    }
+
+    [Fact]
+    public async Task Send_on_a_plain_socket_handle_is_not_connected_17_on_both_sides()
+    {
+        // The other half of the 16/17 split: a non-listening unconnected socket handle.
+        var xrouter = await XRouterAsync();
+        var pdn = await PdnAsync();
+        var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+        var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+
+        var (xr, pdnShape) = (
+            Shape(await Send(xrouter, $$"""{"type":"send","id":2,"handle":{{xrHandle}},"data":"x"}""")),
+            Shape(await Send(pdn, $$"""{"type":"send","id":2,"handle":{{pdnHandle}},"data":"x"}""")));
+
+        Assert.Equal(xr, pdnShape);
+        Assert.Equal("sendReply", xr.Item1);
+        Assert.Equal(RhpErrorCode.NotConnected, xr.Item2);
+    }
+
+    [Fact]
+    public async Task Send_on_a_listening_socket_xrouter_answers_17_pdn_answers_16_deliberately()
+    {
+        // A DELIBERATE divergence (deviation D9, docs/rhp2-server.md): RHPTEST — the
+        // protocol author's own harness, asserted against XRouter v505d — says a listener
+        // rejects everything but accept/close with 16; the pinned live container (image
+        // label 505c) still answers 17, indistinguishable from a plain unconnected socket.
+        // pdn implements the author's documented intent. Both sides asserted explicitly so
+        // a change in either (e.g. a 505d+ container bump) surfaces here, never silently.
+        var xrouter = await XRouterAsync();
+        var pdn = await PdnAsync();
+        var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+        var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+        _ = await Send(xrouter, $$"""{"type":"bind","id":2,"handle":{{xrHandle}},"local":"PN9TST-9"}""");
+        _ = await Send(pdn, $$"""{"type":"bind","id":2,"handle":{{pdnHandle}},"local":"PN9TST-9"}""");
+        _ = await Send(xrouter, $$"""{"type":"listen","id":3,"handle":{{xrHandle}},"flags":0}""");
+        _ = await Send(pdn, $$"""{"type":"listen","id":3,"handle":{{pdnHandle}},"flags":0}""");
+
+        var xr = Shape(await Send(xrouter, $$"""{"type":"send","id":4,"handle":{{xrHandle}},"data":"x"}"""));
+        var pdnShape = Shape(await Send(pdn, $$"""{"type":"send","id":4,"handle":{{pdnHandle}},"data":"x"}"""));
+
+        Assert.Equal(RhpErrorCode.NotConnected, xr.Item2);            // the observed 505c wire
+        Assert.Equal(RhpErrorCode.OperationNotSupported, pdnShape.Item2);   // pdn's deliberate D9 (RHPTEST/v505d intent)
+        Assert.Equal(4, xr.Item3);
+        Assert.Equal(4, pdnShape.Item3);
+
+        // Tidy: close the XRouter listener so nothing lingers for later scenarios.
+        _ = await Send(xrouter, $$"""{"type":"close","id":5,"handle":{{xrHandle}}}""");
+    }
+
+    [Fact]
+    public async Task Alphabetic_ssid_bind_xrouter_accepts_pdn_refuses_6_deliberately()
+    {
+        // A DELIBERATE divergence (deviation D7, docs/rhp2-server.md): XRouter accepts a
+        // bind to the invalid callsign G9DUM-S — and a subsequent connect from it "Ok"s,
+        // then wedges the node in background SABM retries (rhp2lib field notes). pdn
+        // refuses the bind itself with a clean 6. NOTE: bind-only on the XRouter side —
+        // deliberately no connect — so this scenario can never wedge the shared container.
+        var xrouter = await XRouterAsync();
+        var pdn = await PdnAsync();
+        var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+        var pdnHandle = await HandleOf(pdn, """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
+
+        var xr = Shape(await Send(xrouter, $$"""{"type":"bind","id":2,"handle":{{xrHandle}},"local":"G9DUM-S"}"""));
+        var pdnShape = Shape(await Send(pdn, $$"""{"type":"bind","id":2,"handle":{{pdnHandle}},"local":"G9DUM-S"}"""));
+
+        Assert.Equal(RhpErrorCode.Ok, xr.Item2);                          // XRouter accepts the wedge-fuse
+        Assert.Equal(RhpErrorCode.InvalidLocalAddress, pdnShape.Item2);   // pdn refuses deterministically (D7)
+
+        // Tidy: release the XRouter handle without ever connecting from it.
+        _ = await Send(xrouter, $$"""{"type":"close","id":3,"handle":{{xrHandle}}}""");
+    }
+
+    [Fact]
+    public async Task Hello_xrouter_answers_the_unknown_type_fallback_pdn_advertises_capabilities()
+    {
+        // The pdn extension (docs/rhp2-server.md §pdn extensions): capability discovery.
+        // XRouter answers via its unknown-type fallback — helloReply errCode 2 — which is
+        // exactly what makes the extension backwards-compatible: a client treats errCode 2
+        // as "baseline v2 server, no discovery". Both sides asserted explicitly.
+        var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
+            """{"type":"hello","id":18}""");
+
+        Assert.Equal("helloReply", xr.Item1);
+        Assert.Equal("helloReply", pdn.Item1);
+        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);   // the live fallback
+        Assert.Equal(RhpErrorCode.Ok, pdn.Item2);                // pdn: capabilities follow
+        Assert.Equal(18, xr.Item3);
+        Assert.Equal(18, pdn.Item3);
+        Assert.True(xr.Item4);                                   // capital errCode on both
+        Assert.True(pdn.Item4);
+    }
+
+    private static async Task<int> HandleOf(WireClient c, string req)
+    {
+        await c.SendAsync(req);
+        using var doc = JsonDocument.Parse(await c.ReadAsync());
+        return doc.RootElement.GetProperty("handle").GetInt32();
+    }
+
+    private static async Task<string> Send(WireClient c, string req)
+    {
+        await c.SendAsync(req);
+        return await c.ReadAsync();
     }
 }

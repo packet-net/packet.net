@@ -215,6 +215,12 @@ public static class RhpMessageType
     /// <summary>Reply to <see cref="Auth"/>.</summary>
     public const string AuthReply = "authReply";
 
+    /// <summary>Capability discovery request (pdn extension; see <see cref="HelloMessage"/>).</summary>
+    public const string Hello = "hello";
+
+    /// <summary>Reply to <see cref="Hello"/>.</summary>
+    public const string HelloReply = "helloReply";
+
     /// <summary>Combined create/bind/connect-or-listen request.</summary>
     public const string Open = "open";
 

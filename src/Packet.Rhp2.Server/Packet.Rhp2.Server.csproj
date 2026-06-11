@@ -11,6 +11,10 @@
     <ProjectReference Include="..\Packet.Rhp2\Packet.Rhp2.csproj" />
     <!-- INodeConnection (the engine seam the server bridges handles to) + config types. -->
     <ProjectReference Include="..\Packet.Node.Core\Packet.Node.Core.csproj" />
+    <!-- Callsign — wire-level local/remote validation (errCode 6/7 on open/bind), so an
+         invalid callsign is refused deterministically at the RHP wire regardless of
+         gateway (XRouter accepts e.g. G9DUM-S and then wedges in SABM retries). -->
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -106,6 +106,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var acceptJson = (await clientB.ReadRawAsync()).json;
         raws.Add(acceptJson);
         var child = Parse<AcceptMessage>(acceptJson).Child;
+        raws.Add((await clientB.ReadRawAsync()).json);   // the child's connected status push
 
         raws.Add(await RoundTripAsync(clientB, new SendMessage { Id = 4, Handle = child, Data = "x" }));
 
@@ -265,6 +266,123 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var (_, textJson) = await client.ReadRawAsync();
         Assert.Contains("hello\\r", textJson, StringComparison.Ordinal);
         Assert.DoesNotContain("aGVsbG8N", textJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_fresh_connections_first_push_carries_seqno_zero_on_the_raw_wire()
+    {
+        // RHPTEST: "seqno starts at 0 ... the first notification after an active open is
+        // status with seqno: 0, and the first recv carries seqno: 1" — per RHP connection.
+        // Also observed live (R-5 probe): a fresh connection's first push is "seqno":0.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        var (handle, _, statusJson) = await OpenRawAsync(client, id: 1);
+        Assert.Contains("\"seqno\":0", statusJson, StringComparison.Ordinal);
+
+        gateway.Connection.Inject("x\r"u8.ToArray());
+        var (recvType, recvJson) = await client.ReadRawAsync();
+        Assert.Equal("recv", recvType);
+        Assert.Contains("\"seqno\":1", recvJson, StringComparison.Ordinal);
+        Assert.Contains($"\"handle\":{handle}", recvJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Absent_handle_and_absent_data_answer_12_with_the_wires_errText_and_no_handle_echo()
+    {
+        // Live-XRouter observed shape (R-5 probe): errCode 12 with errText "Missing handle" /
+        // "Missing data" — NOT the spec table's "Bad parameter" — and no handle field on the
+        // reply (there is nothing truthful to echo). 3 stays reserved for well-formed-but-
+        // unknown handles (RHPTEST).
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"close","id":21}""");
+        var (closeType, closeJson) = await client.ReadRawAsync();
+        Assert.Equal("closeReply", closeType);
+        Assert.Contains("\"errCode\":12", closeJson, StringComparison.Ordinal);
+        Assert.Contains("\"errText\":\"Missing handle\"", closeJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"handle\"", closeJson, StringComparison.Ordinal);
+
+        var socketJson = await RoundTripAsync(client, new SocketMessage { Id = 22, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var handle = Parse<SocketReplyMessage>(socketJson).Handle!.Value;
+        await client.SendRawAsync($$"""{"type":"send","id":23,"handle":{{handle}}}""");
+        var (sendType, sendJson) = await client.ReadRawAsync();
+        Assert.Equal("sendReply", sendType);
+        Assert.Contains("\"errCode\":12", sendJson, StringComparison.Ordinal);
+        Assert.Contains("\"errText\":\"Missing data\"", sendJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"handle\"", sendJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Accept_is_followed_by_a_child_connected_status_push()
+    {
+        // The protocol lifecycle's incoming-listener sequence (rhp2lib protocol primer):
+        // accept {handle:L, child:N} then status {handle:N, flags:CONNECTED} — pinned on
+        // the raw wire: the status push carries the CHILD handle, the Connected bit, a
+        // seqno, and never an id.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        var socketJson = await RoundTripAsync(client, new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var listener = Parse<SocketReplyMessage>(socketJson).Handle!.Value;
+        _ = await RoundTripAsync(client, new BindMessage { Id = 2, Handle = listener, Local = "M0LTE-7" });
+        _ = await RoundTripAsync(client, new ListenMessage { Id = 3, Handle = listener, Flags = 0 });
+
+        await gateway.AcceptHandler!(gateway.Connection, "2");
+
+        var (acceptType, acceptJson) = await client.ReadRawAsync();
+        Assert.Equal("accept", acceptType);
+        var child = Parse<AcceptMessage>(acceptJson).Child;
+
+        var (statusType, statusJson) = await client.ReadRawAsync();
+        Assert.Equal("status", statusType);
+        Assert.Contains($"\"handle\":{child}", statusJson, StringComparison.Ordinal);
+        Assert.Contains("\"flags\":3", statusJson, StringComparison.Ordinal);   // Connected|ConOk — the open path's announcement shape
+        Assert.Contains("\"seqno\":", statusJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"id\":", statusJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hello_is_answered_with_a_capability_advertisement()
+    {
+        // The pdn extension (docs/rhp2-server.md §pdn extensions, from the rhp2lib field
+        // notes' hello/helloReply proposal). errCode 0 + capability fields; a server
+        // without the extension answers helloReply errCode 2 via the unknown-type
+        // fallback (verified against the live container), which is the client's
+        // "baseline v2" signal — so this is perfectly backwards-compatible.
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"hello","id":31}""");
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal("helloReply", type);
+        Assert.Contains("\"errCode\":0", json, StringComparison.Ordinal);
+        Assert.Contains("\"errText\":\"Ok\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"id\":31", json, StringComparison.Ordinal);
+        Assert.Contains("\"proto\":\"2\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"impl\":\"pdn/", json, StringComparison.Ordinal);
+        Assert.Contains("\"pfams\":[\"ax25\"]", json, StringComparison.Ordinal);
+        Assert.Contains($"\"maxData\":{RhpFraming.MaxPayloadLength}", json, StringComparison.Ordinal);
+        Assert.Contains("\"enc\":\"latin1\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hello_before_auth_is_refused_like_any_other_request()
+    {
+        // The pre-auth gate is uniform: hello gets helloReply errCode 14 (no capability
+        // fields) until auth succeeds — a client still learns the server SUPPORTS the
+        // extension (a non-supporting server would answer errCode 2).
+        var (server, _) = await StartServerAsync(requireAuth: true, auth: (_, _) => false);
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"hello","id":32}""");
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal("helloReply", type);
+        Assert.Contains("\"errCode\":14", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"pfams\"", json, StringComparison.Ordinal);
     }
 
     // ── helpers (harness types reused from RhpServerTests — same assembly) ─
