@@ -104,15 +104,18 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task A_second_listen_on_the_same_socket_is_a_duplicate()
+    public async Task A_second_listen_on_the_same_socket_is_idempotent_ok()
     {
+        // Observed live XRouter behaviour (the R-4 wire-diff oracle): re-listen on the SAME
+        // already-listening socket answers Ok, not 9 — and must not double-register.
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
         var handle = await ListenAsync(client, gateway);
 
         await client.SendAsync(new ListenMessage { Id = 4, Handle = handle, Flags = 0 });
         var again = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.DuplicateSocket, again.ErrCode);
+        Assert.Equal(RhpErrorCode.Ok, again.ErrCode);
+        Assert.Equal(1, gateway.Registrations);   // no second engine registration
     }
 
     [Fact]

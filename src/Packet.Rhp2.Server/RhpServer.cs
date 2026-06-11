@@ -432,8 +432,10 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (handle.Listening)
         {
-            // A second listen on the same socket — the wire's "Duplicate socket".
-            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.DuplicateSocket, ErrText = RhpErrorCode.Text(RhpErrorCode.DuplicateSocket) }, ct).ConfigureAwait(false);
+            // Re-listen on an already-listening socket is idempotent Ok — OBSERVED live XRouter
+            // behaviour (the R-4 wire-diff oracle caught this: errCode 9 "Duplicate socket" is
+            // only for a SECOND socket claiming the same callsign, which the gateway raises).
+            await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
             return;
         }
 
