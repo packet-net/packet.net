@@ -94,6 +94,33 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void Ackmode_toggle_is_a_single_port_restart_not_a_live_kiss_apply()
+    {
+        // kiss.ackMode decides whether the modem is wrapped in the PacingKissModem
+        // decorator at construction time, so it cannot be applied live like the other
+        // KISS knobs — toggling it must RESTART the port so the change takes effect,
+        // not land in the (no-op-for-ackmode) live KissParamsChanged bucket.
+        var before = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = false }));
+        var to = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = true }));
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.ToRestart.Select(p => p.Id).Should().Equal("a");
+        plan.KissParamsChanged.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Ackmode_unchanged_with_other_kiss_change_stays_a_live_apply()
+    {
+        // ackMode steady (here: both on); only TXDELAY moved → still the hot live path.
+        var before = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = true, TxDelay = 30 }));
+        var to = Config("M0LTE-1", Tcp("a", kiss: new KissParams { AckMode = true, TxDelay = 50 }));
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.KissParamsChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Ax25_param_change_only_is_hot_no_restart()
     {
         // The AX.25-params-only change is HOT: classified into Ax25ParamsChanged

@@ -121,10 +121,16 @@ public static class ReconcilePlanner
             // the AX.25 timer seed — next-bring-up only — and the CSMA params), is a
             // single-port restart. Folding profile into restart keeps the effective
             // params unambiguous: the rebuilt listener picks up the resolved values.
+            // kiss.ackMode is in the same class: it decides whether the modem is wrapped
+            // in the PacingKissModem decorator at construction time, so it cannot be
+            // applied live (unlike the TXDELAY/PERSIST/SLOTTIME/TXTAIL knobs, which the
+            // KISS-live path re-sends to the running modem). Toggling it restarts the
+            // port so the change actually takes effect rather than silently no-op'ing.
             if (!Equals(oldPort.Transport, newPort.Transport) ||
-                !string.Equals(oldPort.Profile, newPort.Profile, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(oldPort.Profile, newPort.Profile, StringComparison.OrdinalIgnoreCase) ||
+                AckModeChanged(oldPort.Kiss, newPort.Kiss))
             {
-                restart.Add(newPort);   // transport / profile change → single-port restart
+                restart.Add(newPort);   // transport / profile / ackMode change → single-port restart
                 continue;
             }
 
@@ -157,4 +163,11 @@ public static class ReconcilePlanner
             ServicesChanged = servicesChanged,
         };
     }
+
+    // Did the ACKMODE-pacing flag flip between two ports' KISS settings? A null Kiss
+    // block means ackMode defaults to false, so a present-but-false block compares
+    // equal to absent here. No channel profile sets ackMode, so comparing the explicit
+    // per-port config (rather than the profile-resolved value) is exact.
+    private static bool AckModeChanged(KissParams? oldKiss, KissParams? newKiss)
+        => (oldKiss?.AckMode ?? false) != (newKiss?.AckMode ?? false);
 }

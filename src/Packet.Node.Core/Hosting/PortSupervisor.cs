@@ -492,6 +492,21 @@ public sealed partial class PortSupervisor : IAsyncDisposable
                 timeProvider);
         }
 
+        // ACKMODE pacing (opt-in, default-off): when this port's kiss.ackMode is set,
+        // wrap the modem so the listener's outbound frames are serialised over the
+        // half-duplex channel — each sent in ACKMODE, the next held until the prior
+        // frame's TX-completion echo arrives (or a short timeout). The wrapper owns the
+        // modem it wraps, so RunningPort.DisposeAsync (which disposes Modem) tears the
+        // whole chain down. Off → the listener gets the modem unwrapped, exactly as
+        // before. (See PacingKissModem + KissParams.AckMode.)
+        if (effectiveKiss?.AckMode == true)
+        {
+            modem = new PacingKissModem(
+                modem,
+                PacingKissModem.DefaultPacingTimeout,
+                loggerFactory.CreateLogger<PacingKissModem>());
+        }
+
         var options = BuildListenerOptions(effectiveAx25, port.Compat, myCall);
         var listener = new Ax25Listener(modem, options, timeProvider);
         var connector = new Ax25OutboundConnector(port.Id, listener, r => ClaimOutbound(r));

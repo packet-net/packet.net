@@ -27,6 +27,10 @@ export interface Ax25PortParams {
 }
 export interface KissParams {
   txDelay?: number; persistence?: number; slotTime?: number; txTail?: number;
+  // Pace outbound TX over the G8BPQ ACKMODE extension (kiss-tcp ports only). Default
+  // false. Unlike the other knobs this is construction-time — toggling it restarts the
+  // port. See Packet.Node.Core.Configuration.KissParams.AckMode.
+  ackMode?: boolean;
 }
 // Per-port AX.25 compatibility profile (Packet.Node.Core.Configuration.PortCompatConfig).
 // preset picks the Ax25ParseOptions preset (null = lenient, the historical default);

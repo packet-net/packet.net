@@ -27,7 +27,11 @@ namespace Packet.Node.Core.Transports;
 /// Reads pump the current inner and reconnect on end-of-stream; sends and
 /// parameter-sets target the current inner and are dropped best-effort while the
 /// link is down — AX.25 T1 retransmits any lost I-frame once the link is back.
-/// ACKMODE is not supported (the kiss-tcp client doesn't implement it).
+/// ACKMODE sends delegate straight to the current inner: the inner KissTcpClient
+/// intercepts its own TX-completion echoes on the same RX pump this wrapper
+/// already delegates to (<see cref="ReadFramesAsync"/> drives the inner's
+/// enumerator), so the pending waiter and the echo live in one instance and a
+/// mid-flight reconnect simply faults the in-flight ACK (the caller retries).
 /// </para>
 /// </remarks>
 internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposable
@@ -165,9 +169,17 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Delegates to the current inner modem. The echo that resolves this send is
+    /// intercepted inside that same inner instance's RX pump (which this wrapper
+    /// drives via <see cref="ReadFramesAsync"/>), so the pending waiter and the
+    /// echo never split across instances. If the link drops mid-flight the inner
+    /// faults the waiter (TimeoutException / ObjectDisposedException) and AX.25
+    /// T1 retransmits once the link is back, exactly like a plain send.
+    /// </remarks>
     public Task<AckModeReceipt> SendFrameWithAckAsync(
         ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("ReconnectingKissModem wraps a kiss-tcp client, which does not implement KISS ACKMODE.");
+        => inner.SendFrameWithAckAsync(ax25Bytes, timeout, sequenceTag, cancellationToken);
 
     /// <inheritdoc/>
     public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default)

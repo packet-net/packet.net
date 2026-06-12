@@ -488,4 +488,54 @@ public class NodeConfigYamlTests
         var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(fromTemplate));
         reparsed.Traffic.Should().Be(fromTemplate.Traffic);
     }
+
+    [Fact]
+    public void Kiss_ackMode_parses_and_round_trips_when_set_true()
+    {
+        var config = NodeConfigYaml.Parse("""
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: vhf
+                enabled: true
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8001
+                kiss:
+                  txDelay: 30
+                  ackMode: true
+            """);
+
+        config.Ports[0].Kiss!.AckMode.Should().BeTrue();
+        config.Ports[0].Kiss!.TxDelay.Should().Be((byte)30);
+
+        // The flag survives a serialise→parse round-trip unchanged.
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(config));
+        reparsed.Ports[0].Kiss!.AckMode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Kiss_ackMode_defaults_false_when_absent()
+    {
+        // A port with KISS knobs set but no ackMode key must default the flag off —
+        // the no-regression contract (a pre-feature config blasts fire-and-forget).
+        var config = NodeConfigYaml.Parse("""
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: vhf
+                enabled: true
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8001
+                kiss:
+                  txDelay: 30
+            """);
+
+        config.Ports[0].Kiss!.AckMode.Should().BeFalse();
+    }
 }

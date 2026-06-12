@@ -387,6 +387,21 @@ public sealed record KissParams
 
     /// <summary>KISS TXTAIL (0x04), in units of 10 ms. Most modern modems ignore it.</summary>
     public byte? TxTail { get; init; }
+
+    /// <summary>
+    /// Whether this port's outbound transmissions are <b>paced</b> over the G8BPQ
+    /// ACKMODE extension. Default <c>false</c> — a stock port blasts frames
+    /// fire-and-forget exactly as before. When <c>true</c> (and the transport is a
+    /// kiss-tcp link to an ACKMODE-honouring TNC / net-sim), the node sends each
+    /// frame in ACKMODE and waits for the TNC's TX-completion echo before releasing
+    /// the next, serialising its transmissions onto the half-duplex channel instead
+    /// of colliding with itself. Unlike the other KISS knobs here this is NOT a live
+    /// modem setting — it gates how the modem is constructed (the
+    /// <c>PacingKissModem</c> wrapper), so toggling it restarts the port (see
+    /// <c>ReconcilePlanner</c>). Only meaningful on a kiss-tcp transport; a no-op on
+    /// transports that don't speak ACKMODE.
+    /// </summary>
+    public bool AckMode { get; init; }
 }
 
 /// <summary>Operator-facing service strings, hot-swappable by reference.</summary>

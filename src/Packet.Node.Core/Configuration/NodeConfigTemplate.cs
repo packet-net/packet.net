@@ -79,6 +79,15 @@ public static class NodeConfigTemplate
         #                          # (0) for a NinoTNC into a fully analogue audio
         #                          # path. It is NOT a channel/profile property —
         #                          # only you know your modem + radio.
+        #      ackMode: false      # default false. Set true on a kiss-tcp port to a
+        #                          # TNC / net-sim that honours the G8BPQ ACKMODE
+        #                          # extension: the node then PACES its outbound
+        #                          # frames — each sent in ACKMODE, the next held
+        #                          # until the prior frame's TX-completion echo
+        #                          # arrives — serialising onto the half-duplex
+        #                          # channel instead of colliding with itself.
+        #                          # Toggling it restarts the port (it is a
+        #                          # construction-time choice, not a live setting).
         #  - id: hf
         #    enabled: false
         #    transport:

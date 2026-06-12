@@ -144,6 +144,9 @@ public static class ChannelProfiles
             Persistence = e?.Persistence ?? profile.Persistence,
             SlotTime = e?.SlotTime ?? profile.SlotTime,
             TxTail = e?.TxTail ?? profile.TxTail,
+            // No profile sets ackMode (no profile knows your link is half-duplex +
+            // ACKMODE-capable); carry the explicit per-port choice straight through.
+            AckMode = e?.AckMode ?? profile.AckMode,
         };
     }
 

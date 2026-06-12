@@ -19,6 +19,12 @@
     <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
   </ItemGroup>
 
+  <!-- Lets the test project drive KissTcpClient over an injected loopback
+       stream (the internal stream-injecting ctor) without a real socket. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Kiss.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <PackageId>Packet.Kiss</PackageId>
     <Title>Packet.Kiss — KISS framing + transports for the Packet.NET stack</Title>
