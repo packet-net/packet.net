@@ -8,7 +8,8 @@
 #   docker compose -f docker/inp3lab/compose.yml down -v
 services:
   netsim:
-    image: ghcr.io/packethacking/net-sim@sha256:0fb896080a07e19dac4a16958e18538f9b827360254428b1bddf8821b3e7ace7
+    # net-sim v0.2.0 (ACKMODE echo + tq fix reconciled; see docker/compose.interop.yml).
+    image: ghcr.io/packethacking/net-sim@sha256:b28c357a0a019e454e1cbf672849d4bb9089b62bfdefed94d2d6d9d016791315
     container_name: inp3lab-netsim
     volumes:
       - ./network.yaml:/etc/sim/network.yaml:ro
