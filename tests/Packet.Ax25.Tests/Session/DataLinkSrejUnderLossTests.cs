@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25.Sdl;
@@ -210,6 +211,71 @@ public class DataLinkSrejUnderLossTests
         rig.B.Signals.OfType<DataLinkDataIndication>().Select(s => s.Info.ToArray()[0]).Should()
             .Equal(new byte[] { 0, 1, 2, 3 }, "all four payloads must reach B in order");
         rig.A.Context.VA.Should().Be((byte)4, "every I-frame must end acknowledged");
+    }
+
+    // #214 — a BULK multi-frame transfer survives scripted loss across sequence-ring
+    // wraps and recovers, for BOTH go-back-N (SREJ off) and Selective Repeat (SREJ on).
+    // The deterministic in-process proof of the Phase-2 §5.2 "10 kB transfer with
+    // 0–30 % scripted loss" criterion that the hardware matrix (HardwareLoop10KBTransfer,
+    // [SkippableFact]) can only check on real TNCs. The broader exploration is
+    // tools/Packet.LinkBench's `--loss`/`--srej` sweep over a modelled-airtime channel;
+    // this distils it to a CI-deterministic regression. Driven with T1 PACING (advance
+    // the FakeTimeProvider one T1 interval per round, then drain what's on the wire) so
+    // it models a real link rather than the unpaced-Settle "storm" (#233): the first
+    // transmission of every third frame is dropped — recurring through every mod-8 ring
+    // cycle — so the gap→recover→advance loop is exercised dozens of times, including at
+    // the V(R) wrap where #393's stale-stored-frame bug lived. Asserts every payload
+    // byte reaches B exactly once, in order, and the link ends Connected + fully acked.
+    [Theory]
+    [InlineData(false, 4)]   // go-back-N, default window
+    [InlineData(true, 4)]    // Selective Repeat, default window (= modulus/2, the SREJ-safe cap)
+    [InlineData(false, 2)]   // narrower window
+    [InlineData(true, 2)]
+    public void Bulk_transfer_survives_scripted_loss_across_ring_wraps(bool srej, int k)
+    {
+        const int frames = 24;   // 3 full mod-8 ring cycles
+        var rig = BuildPair();
+        rig.A.Context.K = k;
+        rig.B.Context.K = k;
+        Connect(rig);
+        rig.A.Context.SrejEnabled = srej;
+        rig.B.Context.SrejEnabled = srej;
+
+        // Drop the FIRST transmission of every third payload index (recurs through
+        // each ring cycle). Keyed by the payload byte = the frame's index, so a
+        // retransmit of the same frame is let through and the link always converges.
+        var droppedOnce = new HashSet<int>();
+        rig.Link.Drop = f =>
+        {
+            if (Ax25FrameClassifier.Classify(f) is not IFrameReceived) return false;
+            if (f.Info.Length < 1) return false;
+            int idx = f.Info.Span[0];
+            if (idx % 3 == 2 && droppedOnce.Add(idx)) return true;   // drop once, then deliver
+            return false;
+        };
+
+        for (int i = 0; i < frames; i++) rig.A.Session.PostEvent(new DlDataRequest(new[] { (byte)i }));
+        DrainOnce(rig);   // the first window flows out and is processed
+
+        // Paced rounds, the proven rhythm (Srej_under_loss_converges_under_T1_pacing_no_storm):
+        // advance one T1 interval, then process one batch of what's on the wire.
+        const int maxRounds = 400;
+        int rounds = 0;
+        for (; rounds < maxRounds; rounds++)
+        {
+            if (rig.B.Signals.OfType<DataLinkDataIndication>().Count() >= frames) break;
+            rig.Time.Advance(TimeSpan.FromMilliseconds(FastT1V + 20));   // T1 tick → retransmits
+            DrainOnce(rig);
+        }
+        // Settle the final acks (the channel is clean of pending drops by now).
+        for (int i = 0; i < 64 && (rig.A.Inbound.Count + rig.B.Inbound.Count) > 0; i++) DrainOnce(rig);
+
+        rounds.Should().BeLessThan(maxRounds, "the transfer must converge, not run away under loss");
+        var delivered = rig.B.Signals.OfType<DataLinkDataIndication>()
+            .Select(s => (int)s.Info.ToArray()[0]).ToArray();
+        delivered.Should().Equal(Enumerable.Range(0, frames).ToArray(),
+            "every payload byte must reach B exactly once, in order — no loss, no duplicate, no reorder across the ring wrap");
+        rig.A.Context.VA.Should().Be((byte)(frames % 8), "every I-frame must end acknowledged");
     }
 
     // Shared setup: connect, enable SREJ both ends, drop A's gap frame N(s)=1 and
