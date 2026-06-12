@@ -44,6 +44,10 @@ The outbound construction path (frame factories, encoder construction-time `Call
 
 [`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts) tracks this repo's libraries behaviour-for-behaviour, and the `interop.yml` job runs its `scripts/parity-check.mjs` against **this PR's head** + ax25-ts `main`: it compares the named-flag inventories (`Ax25ParseOptions`, `Ax25SessionQuirks`, `XidParseOptions`), the presets, and the `Ax25Listener` options/surface, and **fails on any undocumented gap**. So a PR here that adds a named flag (step 2 above) or widens the listener surface will fail interop until either (a) the TS counterpart ships in ax25-ts (preferred — land it first or alongside), or (b) a *reviewed* exception with a reason is recorded in ax25-ts `scripts/parity-exceptions.json` (ship that first, then re-run). The mirror check runs in ax25-ts's own CI, so drift fails on whichever side introduces it.
 
+### Releasing is a tag-driven cascade — follow the doc
+
+Shipping a change to the world is more than merging the PR: it's a **release cascade** (tag `lib-v*`/`node-v*` on green main → NuGet + `.deb`s → downstream `axcall`/`packet-term-tui` releases → TS leg if `ax25-ts` moved → plan §17 ledger). The full ordered procedure — preconditions, what each tag publishes, the downstream fan-out, the known interop flakes — lives in **[`docs/releasing.md`](docs/releasing.md)**. Read it before tagging; don't rediscover it.
+
 ### SDL state-machine library is a NuGet dependency
 
 The AX.25 SDL state machine tables come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet package, built and published by [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl). **Do not** try to regenerate, edit, or extend the SDL state machines from this repo — they don't live here. If a change is needed, raise it against `m0lte/ax25sdl`, publish a new version, and bump the `Packet.Ax25.Sdl` pin in [`Directory.Packages.props`](Directory.Packages.props).

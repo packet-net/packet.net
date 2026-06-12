@@ -328,7 +328,7 @@ Effort key: S ≤ 3 days, M ≤ 2 weeks, L ≤ 1 month, XL > 1 month. Status: �
 
 v1 is **phases 0–7 plus phase 8**. Phases 0–5 are complete; Phase 6 (AGW/RHPv2) is the next v1 capability, Phase 7 (distribution) part-done. Phase 9 follows v1 on the v1.x train; Phase 10 is the adaptive-RF horizon (NET/ROM + INP3 already landed early under Phase 9).
 
-**Status as of 2026-06-10:** the node host (Phase 4) is built, web-managed (Phase 5), authenticated end-to-end (TLS + refresh tokens + passkeys + over-RF sysop TOTP), packaged as a `.deb`, and **live on the lab over a real domain** (`pdn.m0lte.uk`, passkeys working on phone + laptop). The AX.25 runtime (Phase 2) is conformance-complete incl. mod-128 connected-mode data transfer + SREJ recovery; a 2026-06-10 correctness sweep found the issue tracker had drifted well behind the code and reconciled it (closed #231/#292/#239/#230/#167/#260/#177/#144 as fixed-but-open). The one residual library-conformance item is the #142 SABM-C-bit guard (a strict-default-plus-named-escape-hatch change, scoped). Next: Phase 6 (AGW) or Phase 7 (distribution).
+**Status as of 2026-06-10:** the node host (Phase 4) is built, web-managed (Phase 5), authenticated end-to-end (TLS + refresh tokens + passkeys + over-RF sysop TOTP), packaged as a `.deb`, and **live on the lab over a real domain** (`pdn.m0lte.uk`, passkeys working on phone + laptop). The AX.25 runtime (Phase 2) is conformance-complete incl. mod-128 connected-mode data transfer + SREJ recovery; a 2026-06-10 correctness sweep found the issue tracker had drifted well behind the code and reconciled it (closed #231/#292/#239/#230/#167/#260/#177/#144 as fixed-but-open). The #142 SABM-C-bit guard shipped that same sweep (the `Ax25ParseOptions.AllowCommandFrameAsResponse` flag) and released in lib-v0.7.0 — there is no residual library-conformance item. Next: Phase 6 (AGW) or Phase 7 (distribution).
 
 ### 5.0 Phase 0 — Foundation + SDL spike ✅
 
@@ -393,7 +393,7 @@ Goal: send and receive AX.25 UI frames over KISS-over-TCP and AXUDP. No state ma
 
 ### 5.2 Phase 2 — AX.25 v2.2 Data-Link state machine ✅ ([#168](https://github.com/m0lte/packet.net/issues/168))
 
-> **Status 2026-06-10:** complete. mod-8 + mod-128 connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, and the conformance/property harnesses are all in and green; the runtime drives the `Packet.Ax25.Sdl` tables. The sole residual is the on-air hardware-loop bench confirmation of the 10 kB lossy transfer (#214), gated on the TNC bench, not on code. (#239/#231/#230 were closed in the 2026-06-10 reconciliation as fixed-but-open; #142 SABM-C-bit guard is the one scoped library follow-up.)
+> **Status 2026-06-10:** complete. mod-8 + mod-128 connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, and the conformance/property harnesses are all in and green; the runtime drives the `Packet.Ax25.Sdl` tables. The sole residual is the on-air hardware-loop bench confirmation of the 10 kB lossy transfer (#214), gated on the TNC bench, not on code. (#239/#231/#230 were closed in the 2026-06-10 reconciliation as fixed-but-open; the #142 SABM-C-bit guard also shipped in that sweep and released in lib-v0.7.0.)
 
 Goal: full AX.25 connected-mode operation against LinBPQ — connect, send, retry, disconnect, mod-8 and mod-128.
 
@@ -1061,6 +1061,12 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-12 — Release v0.8.0 cascade + a written release procedure (and a runner-OOM incident)
+
+Cut the **v0.8.0** release for the substantive work stacked on `main` since 0.7.0, and — because the cascade keeps getting rediscovered from scratch — wrote it down. New **[`docs/releasing.md`](releasing.md)** is the canonical procedure (tag-driven; preconditions; what each tag publishes; the downstream fan-out; the known interop/OOM flakes), linked from `CLAUDE.md`. The arc: **`lib-v0.8.0`** → `publish-libs.yml` packed the 6 NuGet packages (carries #394 the SREJ window-wrap clamp / silent-corruption fix, and the library half of #390 TX-complete→T1: `Ax25Listener.RestartT1OnTxComplete` + `PacingKissModem` queue-routing). **`node-v0.8.0`** → `publish-node.yml` built the amd64/arm64/armhf `.deb` GitHub Release (the whole node arc since 0.7.0: #399 auth refresh-rotation fix, #396 over-N1 byte-stream chunking to v2.0 peers, #390 `kiss.t1FromTxComplete`). **Downstream .NET**: `axcall` and `packet-term-tui` bumped their four `Packet.*` pins 0.7.0→0.8.0 (axcall#10 / packet-term-tui#15, built+tested green against the published NuGet — additive, no break) and both released **v0.2.10** (six-platform binaries). **TS leg**: `ax25-ts` had three parity legs unreleased since 0.12.0 — `ax25Spec13ClampSrejWindowToHalfModulus` (#62, mirrors #394), `ax25Spec9AckProgressResetsRc` (#60), and the recorded `RestartT1OnTxComplete` exception (#61) — promoted to **`@packet-net/ax25` 0.13.0** (ax25-ts#63, 1193 tests green) → npm, and `packet-term-web`'s esm.sh pin bumped to match.
+
+**Incident worth recording:** the `node-v0.8.0` `.deb` build was *cancelled* (not failed) twice — the crossgen2 R2R arm cross-publish is memory-hungry and, run while the interop job + three downstream CIs were also queued, OOM'd the constrained runner LXC; the kernel OOM-killer took the **runner agents** down with it (all of `pdn-runner-1..4` + the downstream repos' runners went offline ~45 min until a host reboot + manual `actions.runner.*` service start). Lesson (now in `docs/releasing.md`): serialize the `.deb` cross-build away from other heavy jobs — fire `node-v*` when the runner box is quiet. Also corrected here: the §5 status lines that still called **#142** (the C=Response-SABM strict guard) a "residual follow-up" — it shipped in the 2026-06-10 sweep (`Ax25ParseOptions.AllowCommandFrameAsResponse`) and released in lib-v0.7.0; there is no residual.
 
 ### 2026-06-12 — Web auth: stop the refresh-token rotation race logging the sysop out every ~hour (server reuse-leeway + cross-tab client lock)
 
