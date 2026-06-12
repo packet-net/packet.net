@@ -104,7 +104,29 @@ public sealed class Ax25NodeConnection : INodeConnection
         // that as a closed connection rather than letting it escape the console.
         try
         {
-            listener.SendData(session, bytes);
+            // A connected-mode link is a byte stream: the data link frames it into
+            // N1-sized I-frames. The listener's SendData treats its input as one SDU
+            // and (correctly) throws when it exceeds N1 without the v2.2 segmenter
+            // negotiated — right for an oversized atomic datagram, wrong for a stream
+            // write. v2.0 peers (e.g. LinBPQ: plain SABM, no XID) never negotiate the
+            // segmenter, so an over-N1 application write (a forwarded message body, a
+            // long console reply) must be chunked into ordinary <=N1 I-frames here, or
+            // it never reaches the wire and the link is torn down. A negotiated v2.2
+            // link still passes the whole buffer through so it produces PID-0x08
+            // segments. (Without this the InvalidOperationException SendData throws on
+            // the over-N1 case escapes as RHP errCode 17 "Not connected".)
+            int n1 = session.Context.N1;
+            if (bytes.Length > n1 && !session.Context.SegmenterReassemblerEnabled)
+            {
+                for (int offset = 0; offset < bytes.Length; offset += n1)
+                {
+                    listener.SendData(session, bytes.Slice(offset, Math.Min(n1, bytes.Length - offset)));
+                }
+            }
+            else
+            {
+                listener.SendData(session, bytes);
+            }
         }
         catch (ArgumentException)
         {
