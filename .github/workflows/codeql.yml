@@ -15,26 +15,29 @@ name: codeql
 # (it isn't the CPU-heavy compile that lock guards against). The trade is a small
 # loss of completeness vs a traced build, acceptable for a buildless first cut.
 #
-# Findings surface in the repo Security > Code scanning tab (SARIF upload), so on
-# top of push/PR we run a weekly scheduled sweep to re-scan main against any
-# newly-shipped CodeQL queries even when the code is quiet. This repo is public,
-# so code scanning is free + available with no setup — the analyze step's SARIF
-# upload just works. (On a private repo it would need GitHub Advanced Security.)
+# Findings surface in the repo Security > Code scanning tab (SARIF upload). This
+# repo is public, so code scanning is free + available with no setup — the
+# analyze step's SARIF upload just works. (On a private repo it would need
+# GitHub Advanced Security.)
+#
+# Cadence: SCHEDULED-ONLY (weekly) + on-demand dispatch — NOT per-push/PR. Even
+# buildless, running this on every push and PR is more load than a small project
+# on a shared self-hosted box wants; a weekly sweep of main is enough to catch
+# regressions + newly-shipped CodeQL queries, and `workflow_dispatch` covers the
+# "scan this now" case. Trade-off: PRs don't get pre-merge code-scanning feedback.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     # Weekly, Mondays at 03:37 UTC. Deliberately off the half-hour and
-    # distinct from the 02:17 fuzz nightly.
+    # distinct from the 02:17 fuzz nightly. (Swap to a daily cron, e.g.
+    # '37 3 * * *', for nightly instead of weekly.)
     - cron: '37 3 * * 1'
   workflow_dispatch:
 
 concurrency:
+  # One CodeQL run at a time per ref; a manual dispatch supersedes a running one.
   group: codeql-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
