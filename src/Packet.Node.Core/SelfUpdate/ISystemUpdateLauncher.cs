@@ -38,8 +38,10 @@ public sealed record UpdateLaunchResult(UpdateLaunchOutcome Outcome, string? Det
 /// </summary>
 public interface ISystemUpdateLauncher
 {
-    /// <summary>Dispatch the apt-channel update job (the targeted <c>apt</c> upgrade in
-    /// <c>packetnet-update.service</c>) and return immediately. Detached: it must not be
-    /// awaited to completion, because the job restarts this very process.</summary>
-    Task<UpdateLaunchResult> StartAptUpdateAsync(CancellationToken cancellationToken = default);
+    /// <summary>Dispatch the update job (<c>packetnet-update.service</c>) and return
+    /// immediately. Channel-agnostic: the unit's helper body is whatever the install
+    /// shipped — the apt-channel <c>apt upgrade</c> or the self-contained download/swap —
+    /// so the launch is identical for both. Detached: it must not be awaited to
+    /// completion, because the job restarts this very process.</summary>
+    Task<UpdateLaunchResult> StartUpdateAsync(CancellationToken cancellationToken = default);
 }

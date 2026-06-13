@@ -63,7 +63,7 @@ Both tags can be pushed together; the two workflows run independently.
 
 ### Optional — move the lab to the release `.deb`
 
-The lab (`root@packetdotnet`, M9YYY) is usually running a dev `.deb` from [`scripts/deploy-node.sh`](../scripts/deploy-node.sh) (version `0.1.0+dev<stamp>`). It already has the released *code* (deploy-node ships the same build), so a redeploy is optional; do it only to align versions or pick up the release artifact shape. `deploy-node.sh` keeps the box's edited `/etc/packetnet/packetnet.yaml`.
+The lab (`root@pdn-lab`, M9YYY) is usually running a dev `.deb` from [`scripts/deploy-node.sh`](../scripts/deploy-node.sh) (version `0.1.0+dev<stamp>`). It already has the released *code* (deploy-node ships the same build), so a redeploy is optional; do it only to align versions or pick up the release artifact shape. `deploy-node.sh` keeps the box's edited `/etc/packetnet/packetnet.yaml`.
 
 ## Step 3 — downstream .NET consumers (`axcall`, `packet-term-tui`)
 

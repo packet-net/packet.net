@@ -51,14 +51,14 @@ The jump from tier 2 to tier 4 is exactly "stop making every user install a root
 
 ### 2a. A box you control, reachable from phones — the dev / single-operator path
 
-This is the right tier for the `pdn` **dev lab** (`root@packetdotnet`) and for any self-hoster who controls a domain — including the iPhone-on-WLAN case. It is the manual version of [§3](#3-the-distribution-pattern--b--mdns): no control plane, no mDNS, no IP-encoding, and **no new node code** — the shipped `management.https` already accepts a bring-your-own PKCS#12 (`CertificatePath` + `CertificatePassword`, [#357](plan.md#17-amendment-log)).
+This is the right tier for the `pdn` **dev lab** (`root@pdn-lab`) and for any self-hoster who controls a domain — including the iPhone-on-WLAN case. It is the manual version of [§3](#3-the-distribution-pattern--b--mdns): no control plane, no mDNS, no IP-encoding, and **no new node code** — the shipped `management.https` already accepts a bring-your-own PKCS#12 (`CertificatePath` + `CertificatePassword`, [#357](plan.md#17-amendment-log)).
 
 Recipe (one-time, on a domain you have on Cloudflare):
 
 1. **Issue a wildcard via DNS-01.** `*.lab.<your-domain>` from Let's Encrypt, validated by a Cloudflare API TXT write (scoped token: `Zone → DNS → Edit` for that one zone). DNS-01 is required for wildcards and works regardless of the box being internet-unreachable. One cert then covers `pdn.lab.<your-domain>` *and* every future LAN dev service.
 2. **Point the cert at the node.** Convert to PKCS#12 and set `management.https.certificatePath` / `certificatePassword` in the conffile; the node serves it on 8443. (Renewal is manual every ~90 days for now — re-issue, drop in the new `.pfx`, restart. Fine for a dev box; automatable later.)
 3. **Resolve the name to the box's LAN IP** so the iPhone on the WLAN can reach it — two choices:
-   - **Split-horizon (recommended if you run Pi-hole / AdGuard / Unbound / a router-local zone — likely):** add a *local* record `pdn.lab.<your-domain>` → the box's LAN IP (e.g. `10.45.0.47`); keep **only** the ACME TXT in public Cloudflare. The iPhone uses the WLAN's resolver and gets the private IP; nothing about the LAN is published, and there is no DNS-rebinding exposure.
+   - **Split-horizon (recommended if you run Pi-hole / AdGuard / Unbound / a router-local zone — likely):** add a *local* record `pdn.lab.<your-domain>` → the box's LAN IP (e.g. `10.x.x.x`); keep **only** the ACME TXT in public Cloudflare. The iPhone uses the WLAN's resolver and gets the private IP; nothing about the LAN is published, and there is no DNS-rebinding exposure.
    - **Grey-cloud A record (zero extra infra):** a Cloudflare "DNS only" A record `pdn.lab.<your-domain>` → the private IP. Simplest, but it publishes the private IP and can be stripped by DNS-rebinding protection — on your own WLAN you control the router, so allowlist the domain if needed.
 4. **WebAuthn:** `rp.id = "pdn.lab.<your-domain>"`, expected origin `https://pdn.lab.<your-domain>:8443`. Because the cert is publicly-trusted and the name is a real domain, **iOS Safari does the passkey ceremony with no profile install and no per-device trust toggle.**
 

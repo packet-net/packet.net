@@ -11,9 +11,9 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// The Phase-7 system/self-update API: <c>GET /api/v1/system/info</c> (version + install
-/// channel) and the channel-aware <c>POST /api/v1/system/update</c> — apt channel launches
-/// the privileged helper and 202s; self-contained 501s; an unknown channel 409s; and the
-/// trigger is admin-gated when auth is on. The install channel + update launcher are seamed
+/// channel) and the channel-aware <c>POST /api/v1/system/update</c> — apt and self-contained
+/// both launch the privileged helper and 202 (with the right <c>via</c>); an unknown channel
+/// 409s; a launch fault 503s; and the trigger is admin-gated when auth is on. The seams
 /// (<see cref="IInstallChannelProvider"/> / <see cref="ISystemUpdateLauncher"/>) so the real
 /// systemd/apt mechanism isn't touched here.
 /// </summary>
@@ -82,15 +82,19 @@ public sealed class SystemUpdateApiTests : IDisposable
     }
 
     [Fact]
-    public async Task Update_on_the_self_contained_channel_is_501_and_does_not_launch_apt()
+    public async Task Update_on_the_self_contained_channel_launches_and_returns_202()
     {
         WriteConfig(authEnabled: false);
         await using var factory = Factory(InstallChannel.SelfContained);
         using var client = factory.CreateClient();
 
         var resp = await client.PostAsync("/api/v1/system/update", content: null);
-        resp.StatusCode.Should().Be(HttpStatusCode.NotImplemented);
-        factory.Launcher.Calls.Should().Be(0, "the apt launcher must not run on the self-contained channel");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        factory.Launcher.Calls.Should().Be(1, "the self-contained channel must trigger the update helper too");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Web);
+        body.GetProperty("status").GetString().Should().Be("started");
+        body.GetProperty("via").GetString().Should().Be("self-contained");
     }
 
     [Fact]
@@ -165,7 +169,7 @@ public sealed class SystemUpdateApiTests : IDisposable
         public int Calls { get; private set; }
         public UpdateLaunchResult Result { get; set; } = UpdateLaunchResult.Started;
 
-        public Task<UpdateLaunchResult> StartAptUpdateAsync(CancellationToken cancellationToken = default)
+        public Task<UpdateLaunchResult> StartUpdateAsync(CancellationToken cancellationToken = default)
         {
             Calls++;
             return Task.FromResult(Result);

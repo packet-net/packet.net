@@ -12,6 +12,7 @@ on:
     paths:
       - 'scripts/build-deb.sh'
       - 'scripts/deb-install-smoke.sh'
+      - 'scripts/selfupdate-smoke.sh'
       - 'packaging/**'
       - '.github/workflows/deb-smoke.yml'
   workflow_dispatch:
@@ -33,3 +34,8 @@ jobs:
         run: flock -x /tmp/pdn-ci-heavy.lock scripts/build-deb.sh linux-x64 0.0.0-ci
       - name: Install-smoke it (Debian-stable + Ubuntu-LTS)
         run: scripts/deb-install-smoke.sh artifacts/packetnet_0.0.0-ci_amd64.deb
+      - name: Self-contained update helper smoke (download/verify/flip/rollback)
+        # Exercises packaging/packetnet-selfupdate against a file:// fixture — no network,
+        # no systemd. The self-contained channel's helper isn't in the .deb (apt channel),
+        # so this is its CI coverage.
+        run: scripts/selfupdate-smoke.sh

@@ -21,11 +21,11 @@ namespace Packet.Node.Api;
 /// <c>docs/node-self-update-design.md</c>.
 /// </para>
 /// <para>
-/// <b>Fire-and-acknowledge.</b> A successful apt launch returns <c>202 Accepted</c>, not a
+/// <b>Fire-and-acknowledge.</b> A successful launch returns <c>202 Accepted</c>, not a
 /// result: the update job restarts this very process, so the outcome can't come back
 /// in-band. The web UI polls <c>GET /api/v1/system/info</c> until the version changes.
-/// The self-contained channel (<c>501</c>) and an unknown channel (<c>409</c>) decline
-/// cleanly — this slice ships the apt apply path.
+/// Both <c>apt</c> and <c>self-contained</c> dispatch the same oneshot (its helper body
+/// differs per install); only an <c>unknown</c> channel declines (<c>409</c>).
 /// </para>
 /// </remarks>
 public static class PdnSystemApi
@@ -61,38 +61,37 @@ public static class PdnSystemApi
             var ch = channel.Channel;
             SystemLog.UpdateRequested(audit, ChannelName(ch), user, ip);
 
-            switch (ch)
+            // apt + self-contained both dispatch the same packetnet-update.service oneshot
+            // (its helper body differs per install); only an unknown channel declines.
+            if (ch is InstallChannel.Apt or InstallChannel.SelfContained)
             {
-                case InstallChannel.Apt:
-                    var result = await launcher.StartAptUpdateAsync(http.RequestAborted).ConfigureAwait(false);
-                    return result.Outcome switch
-                    {
-                        UpdateLaunchOutcome.Started => Started(audit, user, ip),
-                        UpdateLaunchOutcome.NotSupported => Declined(audit, "apt", "launcher-unsupported", user, ip,
-                            StatusCodes.Status501NotImplemented,
-                            "Update launcher is unavailable on this host (no systemd)."),
-                        _ => LaunchFailed(audit, result.Detail, user, ip),
-                    };
-
-                case InstallChannel.SelfContained:
-                    return Declined(audit, "self-contained", "not-implemented", user, ip,
+                var via = ChannelName(ch);
+                var result = await launcher.StartUpdateAsync(http.RequestAborted).ConfigureAwait(false);
+                return result.Outcome switch
+                {
+                    UpdateLaunchOutcome.Started => Started(audit, via, user, ip),
+                    UpdateLaunchOutcome.NotSupported => Declined(audit, via, "launcher-unsupported", user, ip,
                         StatusCodes.Status501NotImplemented,
-                        "Self-contained self-update is not implemented yet (a later Phase 7 slice).");
-
-                default:
-                    return Declined(audit, "unknown", "unknown-channel", user, ip,
-                        StatusCodes.Status409Conflict,
-                        "This node's install channel is unknown, so it won't self-update. Update via your package manager or reinstall.");
+                        "Update launcher is unavailable on this host (no systemd)."),
+                    _ => LaunchFailed(audit, via, result.Detail, user, ip),
+                };
             }
+
+            return Declined(audit, "unknown", "unknown-channel", user, ip,
+                StatusCodes.Status409Conflict,
+                "This node's install channel is unknown, so it won't self-update. Update via your package manager or reinstall.");
         }).RequireAuthorization(PdnAuthPolicies.Admin);
     }
 
-    private static IResult Started(ILogger audit, string user, string ip)
+    private static IResult Started(ILogger audit, string via, string user, string ip)
     {
-        SystemLog.UpdateStarted(audit, user, ip);
+        SystemLog.UpdateStarted(audit, via, user, ip);
+        var what = via == "apt"
+            ? "A targeted apt upgrade is running"
+            : "A self-contained update is downloading";
         return Results.Json(
-            new UpdateStartedResponse("started", "apt",
-                "A targeted apt upgrade is running; the node will restart. Poll /api/v1/system/info until the version changes."),
+            new UpdateStartedResponse("started", via,
+                $"{what}; the node will restart. Poll /api/v1/system/info until the version changes."),
             statusCode: StatusCodes.Status202Accepted);
     }
 
@@ -102,9 +101,9 @@ public static class PdnSystemApi
         return Results.Problem(message, statusCode: status);
     }
 
-    private static IResult LaunchFailed(ILogger audit, string? detail, string user, string ip)
+    private static IResult LaunchFailed(ILogger audit, string via, string? detail, string user, string ip)
     {
-        SystemLog.UpdateLaunchFailed(audit, "apt", detail ?? "unknown", user, ip);
+        SystemLog.UpdateLaunchFailed(audit, via, detail ?? "unknown", user, ip);
         return Results.Problem($"Could not start the update: {detail}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 

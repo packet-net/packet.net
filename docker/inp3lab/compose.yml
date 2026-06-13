@@ -1,5 +1,5 @@
 # Standalone INP3 lab — two real Packet.Node hosts (INP3 overlay ON) sharing one
-# net-sim afsk1200 channel. Fully isolated from the shared packetdotnet lab.
+# net-sim afsk1200 channel. Fully isolated from the shared pdn-lab lab.
 #
 #   docker compose -f docker/inp3lab/compose.yml up --build -d
 #   # node A console:  telnet 127.0.0.1 9011   (then:  c GB7BBB   to raise the interlink)

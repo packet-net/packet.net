@@ -11,7 +11,7 @@
 # logs) so you can see it came up. Shipping the real .deb means the dev loop and
 # the release install the identical artifact shape — no hand-staged wwwroot.
 #
-# Default target is root@packetdotnet (Ubuntu/systemd LXC on the LAN, no .NET
+# Default target is root@pdn-lab (Ubuntu/systemd LXC on the LAN, no .NET
 # runtime installed -> self-contained). Layout there: /opt/packetnet/app holds
 # the binaries + wwwroot (root-owned, read-only to the service); /opt/packetnet
 # holds the data, /etc/packetnet the config conffile, owned/edited on the box.
@@ -19,7 +19,7 @@
 set -euo pipefail
 
 # --- Config (env-overridable) -----------------------------------------------
-HOST="${PACKETNET_HOST:-root@packetdotnet}"
+HOST="${PACKETNET_HOST:-root@pdn-lab}"
 SSH_KEY="${PACKETNET_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SERVICE="${PACKETNET_SERVICE:-packetnet}"
 REMOTE_APP="${PACKETNET_REMOTE_APP:-/opt/packetnet/app}"
@@ -50,7 +50,7 @@ Usage: scripts/deploy-node.sh [--skip-build] [--logs] [-h|--help]
   --logs         Follow the service log after deploying (Ctrl-C to stop).
 
 Env overrides:
-  PACKETNET_HOST         (default root@packetdotnet)
+  PACKETNET_HOST         (default root@pdn-lab)
   PACKETNET_SSH_KEY      (default ~/.ssh/id_ed25519)
   PACKETNET_SERVICE      (default packetnet)
   PACKETNET_REMOTE_APP   (default /opt/packetnet/app)
