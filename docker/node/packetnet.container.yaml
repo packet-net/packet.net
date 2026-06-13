@@ -1,0 +1,28 @@
+# pdn node — container default config (baked into the m0lte/pdn image).
+#
+# Differs from the .deb's template in ONE way that matters for a container: the HTTP
+# management UI binds 0.0.0.0 (not loopback), so `docker run -p 8080:8080` actually
+# reaches it. THAT MEANS THE PANEL IS EXPOSED on whatever you publish the port to.
+#
+#   >>> Before exposing this beyond a trusted LAN, enable auth (management.auth.enabled:
+#   >>> true, then bootstrap an admin via /setup) or front it with an authenticating
+#   >>> reverse proxy. On an untrusted network, an unauthenticated panel is a liability.
+#
+# Override the whole file by bind-mounting your own at /etc/packetnet/packetnet.yaml,
+# or edit it in the /etc/packetnet volume. Add your real callsign + ports there.
+schemaVersion: 1
+
+identity:
+  callsign: N0CALL          # CHANGE THIS — your licensed callsign
+  alias: PDN
+
+ports: []                   # add your KISS-TCP / serial / AXUDP ports here
+
+management:
+  telnet:
+    enabled: false
+  http:
+    bind: 0.0.0.0           # container: reachable via -p (see the warning above)
+    port: 8080
+  auth:
+    enabled: false          # turn on before exposing beyond a trusted network

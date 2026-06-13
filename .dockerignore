@@ -1,0 +1,14 @@
+# Keep the docker build context small. The node image (docker/node/Dockerfile) only needs
+# artifacts/deb/<rid>/opt/packetnet/app + docker/node/packetnet.container.yaml, so exclude
+# the heavy build cruft (NOT artifacts/deb, which the COPY needs).
+.git
+**/obj
+**/bin
+**/node_modules
+**/.vs
+artifacts/node
+artifacts/*.deb
+artifacts/*.tar.gz
+artifacts/*.tar.zst
+artifacts/deb/*/DEBIAN
+tools
