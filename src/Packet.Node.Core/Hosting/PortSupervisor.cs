@@ -213,6 +213,25 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     }
 
     /// <summary>
+    /// Build a loopback-crossconnect connector for <paramref name="target"/> if it is a callsign
+    /// the node is locally registered for right now (an RHP-attached app on its own SSID), else
+    /// null. "Connect to a local app SSID bridges in-process" defined once, for both consumers:
+    /// the console connect router and the RHPv2 gateway's outbound <c>open</c>.
+    /// <paramref name="callerPeerId"/>/<paramref name="callerKind"/> are what the target app sees
+    /// as the connecting peer (the human who dialled, or the originating app's callsign).
+    /// </summary>
+    public IOutboundConnector? TryResolveLocalAppConnector(Callsign target, string callerPeerId, NodeTransportKind callerKind)
+    {
+        var registration = FindAppRegistration(target);
+        if (registration is null)
+        {
+            return null;
+        }
+        var label = registration.PortId ?? "local";
+        return new LocalAppConnector(registration.OnAccepted, callerPeerId, callerKind, label);
+    }
+
+    /// <summary>
     /// Register an application callsign the node answers for (the RHPv2 server's <c>bind</c>:
     /// "the RHP client tells us what callsigns we should answer for"). Running listeners on the
     /// matching port(s) gain it as a local alias immediately; ports that (re)start later have it
@@ -309,12 +328,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             // the session's default dial. An explicit port skips this — it's a deliberate "go RF".
             if (port is null)
             {
-                var registration = owner.FindAppRegistration(target);
-                if (registration is not null)
+                var localApp = owner.TryResolveLocalAppConnector(target, inbound.PeerId, inbound.TransportKind);
+                if (localApp is not null)
                 {
-                    var label = registration.PortId ?? "local";
-                    var connector = new LocalAppConnector(registration.OnAccepted, inbound.PeerId, inbound.TransportKind, label);
-                    return ConnectResolution.LocalApp(connector);
+                    return ConnectResolution.LocalApp(localApp);
                 }
 
                 return defaultConnector is not null
