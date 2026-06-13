@@ -1066,6 +1066,10 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-06-13 — Web auth core security review (no findings) — written up
+
+Read the security-critical web-auth components end to end (`JwtTokenService`, `RefreshTokenService`, `TotpService`, `PasswordHasher`, `ScopeRequirementHandler` / `AuthScopes.Satisfies`, and the `PdnAuthApi` login flow). **No exploitable issues** — the surface is well-built: HS256 with `ValidAlgorithms` pinned (blocks alg-confusion), zero clock skew; opaque hashed one-time-use refresh tokens with reuse-detection; the TOTP strictly-greater replay guard with constant-time compare; Argon2id at OWASP params with fixed-time verify; correct rank-based scope implication with no fail-open; and a login flow that throttles before the Argon2 verify, pays full Argon2 cost on unknown users (no enumeration timing oracle), and returns a generic 401. Two non-bug observations recorded (TOTP high-water-mark persistence is the caller's responsibility; RHP auth is cleartext-by-protocol so network exposure remains the real control). Full write-up plus the whole session's security work in [`docs/security-review-2026-06-13.md`](security-review-2026-06-13.md).
+
 ### 2026-06-13 — CI: NuGet vulnerability-scan gate; fuzz PR trigger widened to the new parsers
 
 Added a `dependency-scan` job to `ci.yml` (self-hosted, per the no-hosted-runners rule): `dotnet list package --vulnerable --include-transitive` over `Packet.NET.slnx`, failing the build if any direct or transitive package has a known advisory (detected by the table's `>` row marker, since the command always exits 0). Currently clean. Also widened `fuzz.yml`'s PR `paths` trigger to `src/Packet.Aprs/**`, `src/Packet.Agw/**`, `src/Packet.NetRom/**` so a change to a newly-fuzzed parser gets an immediate smoke signal (the nightly `--smoke` already exercises all nine targets).
