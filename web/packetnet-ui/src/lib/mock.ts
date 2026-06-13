@@ -8,7 +8,7 @@ import type {
   NodeConfig, NetRomRoutingSnapshot, NodeStatus, PortStatus, SessionInfo,
   LinkStats, MonitorEvent, FrameType, ApplyImpact, NinoMode, RadioProfile,
   ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
-  User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage,
+  User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -194,6 +194,17 @@ export const APP_PACKAGES: AppPackage[] = [
   { id: "wx", name: "wx", version: null, description: null, icon: null, capabilities: [], enabled: false, source: "package", error: "pdn-app.yaml: missing required field 'command'", service: "none", state: null, pid: null, detail: null },
   { id: "motd", name: "MOTD", version: null, description: null, icon: null, capabilities: ["session"], enabled: true, source: "inline", error: null, service: "none", state: null, pid: null, detail: null },
   { id: "notes", name: "Notes", version: "1.0.0", description: "Static node notice board — no service process", icon: "sticky-note", capabilities: [], enabled: false, source: "package", error: null, service: "none", state: null, pid: null, detail: null },
+];
+
+// The app catalog projected with this node's view (GET /api/v1/apps/available) — the
+// "Available apps" section's source. One fixture per interesting state: a not-installed
+// app ready to install, an installed-but-out-of-date one offering an Update, and one with
+// no artifact for this node's architecture (installable:false → the button is disabled
+// with a hint). The api.ts mock install path returns a synthetic success.
+export const AVAILABLE_APPS: AvailableApp[] = [
+  { id: "dapps", name: "DAPPS", version: "0.34.1", description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging.", icon: "inbox", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/dapps", kind: "assets", installed: false, installedVersion: null, updateAvailable: false, installable: true },
+  { id: "bpqchat", name: "BPQ Chat", version: "0.1.0", description: "BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network.", icon: "message-square", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/pdn-bpqchat", kind: "deb", installed: true, installedVersion: "0.0.9", updateAvailable: true, installable: true },
+  { id: "convers", name: "Convers", version: "0.1.2", description: "Classic CONVERS multi-user conference bridge.", icon: "users", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/pdn-convers", kind: "deb", installed: false, installedVersion: null, updateAvailable: false, installable: false },
 ];
 
 // formatters -------------------------------------------------

@@ -15,6 +15,7 @@ import type {
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
+  AvailableApp, InstallOutcome,
 } from "./types";
 import * as mock from "./mock";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
@@ -246,6 +247,21 @@ export const api = {
   // Restart a managed package's service (admin scope). 503 { error } when there is
   // no supervisor; 409 { error } when the package has no restartable service.
   appPackageRestart: (id: string) => appPackageAction(id, "restart"),
+
+  // ---- app catalog: available apps (app-catalog Slice 6b) ----
+  // The available-apps list (catalog ⋈ this node's installed state). Read-gated; the
+  // array may be empty (no catalog / everything installed) → the section's empty state.
+  availableApps: () => get<AvailableApp[]>("/apps/available", () => mock.AVAILABLE_APPS),
+  // Install (or update) a catalog app by id (admin scope). The server fetches +
+  // sha256-verifies the artifact for this node's architecture, stages it disabled, and
+  // returns { ok, id, version }; a 422/404/409 surfaces its { error } as a thrown Error.
+  appInstall: (id: string) => appInstall(id),
+  // Remove a catalog/upload-installed package (admin scope). 409 { error } when it must
+  // be disabled first, or was hand-sideloaded (no install marker); 404 when unknown.
+  appUninstall: (id: string) => appUninstall(id),
+  // Upload a .pdnapp tarball (admin scope) — the air-gapped install path. Same staging
+  // pipeline as install, bytes from a multipart file. 422 { error } on a bad package.
+  appUpload: (file: File) => appUpload(file),
 
   // ---- config write (Slice-3 step 2) ----
   // PUT the whole config; dryRun returns the reconcile preview without applying.
@@ -498,6 +514,60 @@ async function appPackageAction(
   });
   if (!res.ok) throw new Error(await errorMessage(res, `Could not ${action} '${id}' (${res.status}).`));
   return (await res.json()) as AppPackage;
+}
+
+// Install (or update) a catalog app. Live mode POSTs the install endpoint and returns the
+// server's { ok, id, version }; any failure (404 unknown id, 409 conflict, 422 fetch/
+// verify/stage) surfaces the server's { error } as an Error so the screen can banner it
+// (mirrors appPackageAction's error extraction). Mock mode returns a synthetic success.
+async function appInstall(id: string): Promise<InstallOutcome> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 150));
+    return { ok: true, id, version: "(mock)" };
+  }
+  const res = await authFetch(`/apps/available/${encodeURIComponent(id)}/install`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not install '${id}' (${res.status}).`));
+  return (await res.json()) as InstallOutcome;
+}
+
+// Uninstall a catalog/upload-installed package. Live mode POSTs the uninstall endpoint and
+// returns the server's { ok, id }; a 409 (must disable first / hand-sideloaded) or 404
+// surfaces its { error } as an Error. Mock mode returns a synthetic success.
+async function appUninstall(id: string): Promise<InstallOutcome> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 150));
+    return { ok: true, id };
+  }
+  const res = await authFetch(`/apps/packages/${encodeURIComponent(id)}/uninstall`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not uninstall '${id}' (${res.status}).`));
+  return (await res.json()) as InstallOutcome;
+}
+
+// Upload a .pdnapp tarball as multipart/form-data (field name `file`). We DON'T set a
+// content-type header — the browser fills it in with the multipart boundary; forcing
+// application/json (as the JSON POSTs do) would corrupt the body. Live mode returns the
+// server's { ok, id, version }; a 422 surfaces its { error } as an Error. Mock returns a
+// synthetic success keyed by the file name.
+async function appUpload(file: File): Promise<InstallOutcome> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return { ok: true, id: file.name };
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const res = await authFetch("/apps/packages/upload", {
+    method: "POST",
+    headers: { accept: "application/json" },
+    body: form,
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Upload failed (${res.status}).`));
+  return (await res.json()) as InstallOutcome;
 }
 
 // Shared PUT helper for the config write endpoints: returns the ReconcileResult,

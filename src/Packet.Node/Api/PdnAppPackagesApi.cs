@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
@@ -120,7 +122,83 @@ public static class PdnAppPackagesApi
 
             return Results.Ok(ProjectById(config.Current, catalog, supervisor, package.Id));
         }).RequireAuthorization(PdnAuthPolicies.Admin);
+
+        // Uninstall a catalog/upload-installed package. Admin + audited. Refuses an ENABLED app
+        // (never delete files a running app needs — disable first) → 409; 404 for an id that is
+        // not a discovered package. On a clean run it first strips any apps: override for the id
+        // (so a reinstall starts fresh), then deletes exactly the installer-recorded payload +
+        // marker via UninstallAsync. A marker-less, hand-sideloaded dir is refused by the
+        // installer (409 with its reason) — pdn never deletes files it did not place.
+        group.MapPost("/{id}/uninstall",
+            async (string id, HttpContext ctx, IWritableConfigProvider cfg, IAppPackageCatalog catalog,
+                IAppInstaller installer, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
+            {
+                audit.RecordRest(ctx, clock, "uninstall_app", id, "requested", "");
+
+                var current = cfg.Current;
+                var package = FindPackage(catalog.Discover(current), id);
+                if (package is null)
+                {
+                    return Results.NotFound();
+                }
+
+                // Never delete a running app's files. The effective trust state (override or an
+                // inline-enable) gates this — disable it first.
+                if (package.Enabled)
+                {
+                    return Results.Json(
+                        new { error = "Disable the app before uninstalling." },
+                        statusCode: StatusCodes.Status409Conflict);
+                }
+
+                // Strip a leftover apps: override for the id so a later reinstall starts fresh.
+                // (Best-effort: if the write is rejected we still attempt the uninstall — a
+                // dangling disabled override is harmless and surfaced as a config warning.)
+                var existing = current.Apps.FirstOrDefault(a =>
+                    string.Equals(a.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+                if (existing is not null)
+                {
+                    var apps = current.Apps
+                        .Where(a => !string.Equals(a.Id, package.Id, StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+                    cfg.TryApply(current with { Apps = apps }, out _);
+                }
+
+                var outcome = await installer.UninstallAsync(package.Id, ct).ConfigureAwait(false);
+                return outcome.Ok
+                    ? Results.Ok(outcome)
+                    : Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status409Conflict);
+            }).RequireAuthorization(PdnAuthPolicies.Admin);
+
+        // Upload a .pdnapp (a tar.gz of a package dir, manifest at root). Admin + audited. The
+        // operator uploading the bytes IS the trust (no sha pin); the installer's path-traversal
+        // guard + size cap still apply. 200 on a clean stage, 422 on a failure (no manifest,
+        // bad archive, …). The request body is bounded to the installer's default artifact cap.
+        group.MapPost("/upload",
+            async (HttpContext ctx, [FromForm] IFormFile file, IAppInstaller installer,
+                IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
+            {
+                audit.RecordRest(ctx, clock, "upload_app", file.FileName, "requested", $"len={file.Length}");
+
+                await using var stream = file.OpenReadStream();
+                var outcome = await installer.InstallFromUploadAsync(stream, ct).ConfigureAwait(false);
+                return outcome.Ok
+                    ? Results.Ok(outcome)
+                    : Results.UnprocessableEntity(new { ok = false, id = outcome.Id, error = outcome.Error });
+            })
+            .RequireAuthorization(PdnAuthPolicies.Admin)
+            .DisableAntiforgery()
+            // Bound the request to the installer's artifact cap (the default fetch limit) — a
+            // .pdnapp can be tens of MB, well over Kestrel's 30 MB default. Both the raw body
+            // limit and the multipart length limit have to be lifted in step.
+            .WithMetadata(
+                new RequestSizeLimitAttribute(UploadMaxBytes),
+                new RequestFormLimitsAttribute { MultipartBodyLengthLimit = UploadMaxBytes });
     }
+
+    /// <summary>The .pdnapp upload size cap — the same default the artifact fetcher enforces for
+    /// catalog downloads, so the two install faces share one bound.</summary>
+    private const long UploadMaxBytes = HttpArtifactFetcher.DefaultMaxBytes;
 
     /// <summary>Flip (or create) the <c>apps:</c> override for <paramref name="id"/> and
     /// persist it through the write seam. 404 when the id matches neither a discovered

@@ -216,6 +216,21 @@ public sealed partial class AppInstaller : IAppInstaller
         }
     }
 
+    /// <inheritdoc/>
+    public InstalledApp? GetInstalled(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return null;
+        }
+
+        var markerPath = Path.Combine(appsRoot, id, MarkerFileName);
+        var marker = ReadMarker(markerPath);
+        return marker is null
+            ? null
+            : new InstalledApp(marker.Id, marker.Version, marker.Source, marker.Kind);
+    }
+
     // ---- per-kind assembly into the staging dir --------------------------------------------
 
     private async Task<Assembled> AssembleAssetsAsync(AppCatalogEntry entry, string rid, string staging, CancellationToken ct)

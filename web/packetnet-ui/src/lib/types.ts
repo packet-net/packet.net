@@ -305,6 +305,33 @@ export interface AppPackage {
   pid: number | null;
   detail: string | null;
 }
+// ---- app catalog: available apps (GET /api/v1/apps/available) ----
+// One catalog entry projected with this node's view (mirrors
+// PdnAvailableAppsApi.AvailableApp, camelCase on the wire). `installed` is whether a
+// package with this id is already present; `installedVersion` + `updateAvailable`
+// compare it against the catalog `version`. `installable` is false when the catalog has
+// no artifact for this node's architecture (the Install button shows disabled, hinted).
+// `kind` is the artifact shape ("assets" per-RID binary · "deb" extracted · "pdnapp"
+// tarball). `capabilities` are the manifest's declared grants, shown at install time.
+export interface AvailableApp {
+  id: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  icon?: string | null;
+  capabilities: string[];
+  homepage?: string | null;
+  kind: "assets" | "deb" | "pdnapp";
+  installed: boolean;
+  installedVersion?: string | null;
+  updateAvailable: boolean;
+  installable: boolean;
+}
+// The result of an install / update / upload. `ok` true ⇒ the package was staged
+// (and now appears as discovered-but-disabled); `error` carries the server's message
+// on a failed attempt. The live client surfaces a failure as a thrown Error rather than
+// a returned { ok:false } — this shape mirrors the wire body either way.
+export interface InstallOutcome { ok: boolean; id: string; version?: string | null; error?: string | null }
 export interface LogLine { t: string; lvl: "info" | "warn" | "error"; msg: string }
 export interface ToggleHelp { label: string; desc: string }
 export interface FieldHelp { label: string; unit: string; help: string }

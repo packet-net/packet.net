@@ -1,10 +1,14 @@
 using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
+using Packet.Node.Core.Audit;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -129,11 +133,43 @@ public sealed class AppPackagesApiTests : IDisposable
         }
     }
 
+    /// <summary>A controllable installer stand-in for the uninstall/upload endpoints: records
+    /// the calls and returns canned outcomes (the real installer touches disk + the network).</summary>
+    private sealed class FakeInstaller : IAppInstaller
+    {
+        public List<string> Uninstalled { get; } = [];
+        public int Uploads { get; private set; }
+        public InstallOutcome UninstallOutcome { get; set; } = InstallOutcome.Success("(unset)", null);
+        public InstallOutcome UploadOutcome { get; set; } = InstallOutcome.Success("(unset)", null);
+
+        public Task<InstallOutcome> InstallFromCatalogAsync(AppCatalogEntry entry, string rid, CancellationToken cancellationToken) =>
+            Task.FromResult(InstallOutcome.Failure(entry.Id, "unused"));
+
+        public Task<InstallOutcome> InstallFromCatalogAsync(AppCatalogEntry entry, CancellationToken cancellationToken) =>
+            Task.FromResult(InstallOutcome.Failure(entry.Id, "unused"));
+
+        public Task<InstallOutcome> InstallFromUploadAsync(Stream pdnappTarGz, CancellationToken cancellationToken)
+        {
+            Uploads++;
+            return Task.FromResult(UploadOutcome);
+        }
+
+        public Task<InstallOutcome> UninstallAsync(string id, CancellationToken cancellationToken)
+        {
+            Uninstalled.Add(id);
+            return Task.FromResult(UninstallOutcome.Id == "(unset)" ? InstallOutcome.Success(id, null) : UninstallOutcome);
+        }
+
+        public InstalledApp? GetInstalled(string id) => null;
+    }
+
     /// <summary>Boots the node with the REAL supervisor registration replaced by
     /// <paramref name="supervisor"/> — or removed entirely when null (the degraded host the
     /// 503 path covers). Replacing matters: the real supervisor would actually spawn any
-    /// enabled service from the temp package root.</summary>
-    private sealed class NodeAppFactory(FakeSupervisor? supervisor) : WebApplicationFactory<Program>
+    /// enabled service from the temp package root. An optional <paramref name="installer"/>
+    /// swaps the catalog installer too (the uninstall/upload endpoints drive it).</summary>
+    private sealed class NodeAppFactory(FakeSupervisor? supervisor, FakeInstaller? installer = null)
+        : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
         {
@@ -143,6 +179,11 @@ public sealed class AppPackagesApiTests : IDisposable
                 if (supervisor is not null)
                 {
                     services.AddSingleton<IAppServiceSupervisor>(supervisor);
+                }
+                if (installer is not null)
+                {
+                    services.RemoveAll<IAppInstaller>();
+                    services.AddSingleton<IAppInstaller>(installer);
                 }
             });
         }
@@ -364,6 +405,174 @@ public sealed class AppPackagesApiTests : IDisposable
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
         body.GetProperty("error").GetString().Should().Contain("not in the desired set");
+    }
+
+    // --- uninstall -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task Uninstall_of_an_enabled_package_is_409_disable_first()
+    {
+        var installer = new FakeInstaller();
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        // Grant trust first, then try to uninstall the running app.
+        (await client.PostAsync("/api/v1/apps/packages/alpha/enable", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resp = await client.PostAsync("/api/v1/apps/packages/alpha/uninstall", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("error").GetString().Should().Contain("Disable the app before uninstalling");
+
+        // Nothing was deleted, and the override survives.
+        installer.Uninstalled.Should().BeEmpty();
+        Entry(await GetInventoryAsync(client), "alpha").GetProperty("enabled").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Uninstall_of_a_disabled_package_is_200_and_strips_the_override()
+    {
+        var installer = new FakeInstaller { UninstallOutcome = InstallOutcome.Success("alpha", "1.2.3") };
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        // Enable then disable so a (disabled) apps: override exists to be stripped.
+        (await client.PostAsync("/api/v1/apps/packages/alpha/enable", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PostAsync("/api/v1/apps/packages/alpha/disable", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resp = await client.PostAsync("/api/v1/apps/packages/alpha/uninstall", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeTrue();
+        body.GetProperty("id").GetString().Should().Be("alpha");
+
+        installer.Uninstalled.Should().Equal("alpha");
+
+        // The override was stripped from the persisted config (so a reinstall starts fresh).
+        var yaml = await File.ReadAllTextAsync(configPath);
+        yaml.Should().NotContain("- id: alpha");
+    }
+
+    [Fact]
+    public async Task Uninstall_of_an_unknown_id_is_404()
+    {
+        var installer = new FakeInstaller();
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        (await client.PostAsync("/api/v1/apps/packages/ghost/uninstall", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        installer.Uninstalled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Uninstall_of_a_markerless_package_is_409_with_the_installer_refusal()
+    {
+        // The installer refuses a hand-sideloaded dir (no marker) — the API maps that to 409.
+        var installer = new FakeInstaller
+        {
+            UninstallOutcome = InstallOutcome.Failure("alpha", "no install marker — sideloaded by hand."),
+        };
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/packages/alpha/uninstall", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("error").GetString().Should().Contain("no install marker");
+        installer.Uninstalled.Should().Equal("alpha");
+    }
+
+    [Fact]
+    public async Task Uninstall_records_an_audit_entry()
+    {
+        var installer = new FakeInstaller();
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        (await client.PostAsync("/api/v1/apps/packages/alpha/uninstall", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        factory.Services.GetRequiredService<IAuditLog>().Recent(50)
+            .Should().Contain(e => e.Action == "uninstall_app" && e.Target == "alpha");
+    }
+
+    // --- upload --------------------------------------------------------------------------
+
+    private static MultipartFormDataContent PdnappUpload(string fileName = "app.pdnapp")
+    {
+        var content = new MultipartFormDataContent();
+        var bytes = new ByteArrayContent(Encoding.ASCII.GetBytes("not-a-real-tarball-the-installer-is-faked"));
+        bytes.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(bytes, "file", fileName);
+        return content;
+    }
+
+    [Fact]
+    public async Task Upload_success_is_200_with_the_ok_outcome()
+    {
+        var installer = new FakeInstaller { UploadOutcome = InstallOutcome.Success("uploaded", "9.9.9") };
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        using var content = PdnappUpload();
+        var resp = await client.PostAsync("/api/v1/apps/packages/upload", content);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeTrue();
+        body.GetProperty("id").GetString().Should().Be("uploaded");
+        installer.Uploads.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Upload_failure_is_422_with_the_error()
+    {
+        var installer = new FakeInstaller
+        {
+            UploadOutcome = InstallOutcome.Failure("(upload)", "the uploaded .pdnapp has no pdn-app.yaml at its root."),
+        };
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        using var content = PdnappUpload();
+        var resp = await client.PostAsync("/api/v1/apps/packages/upload", content);
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeFalse();
+        body.GetProperty("error").GetString().Should().Contain("pdn-app.yaml");
+    }
+
+    [Fact]
+    public async Task Upload_requires_admin_when_auth_is_on()
+    {
+        // Rewrite the config with auth ON for this boot: a tokenless upload hits the admin gate.
+        File.WriteAllText(configPath, $"""
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports: []
+            management:
+              telnet:
+                enabled: false
+              http:
+                bind: 127.0.0.1
+                port: 8080
+              auth:
+                enabled: true
+            appPackageRoots:
+              - {packagesRoot}
+            """);
+        var installer = new FakeInstaller();
+        await using var factory = new NodeAppFactory(new FakeSupervisor(), installer);
+        using var client = factory.CreateClient();
+
+        using var content = PdnappUpload();
+        var resp = await client.PostAsync("/api/v1/apps/packages/upload", content);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        installer.Uploads.Should().Be(0);
     }
 
     public void Dispose()

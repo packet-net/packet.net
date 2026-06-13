@@ -495,6 +495,13 @@ app.MapPdnAppGateway();
 // the catch-all. See PdnAppPackagesApi + docs/app-packages.md.
 app.MapPdnAppPackagesApi();
 
+// "Available apps" (app catalog Slice 6b): the vetted catalog left-joined with installed state
+// (GET /api/v1/apps/available) + one-click install (POST /api/v1/apps/available/{id}/install,
+// admin, audited). The sibling of the package manager above — the menu you install FROM, while
+// uninstall/upload live on the packages group. Mapped before the catch-all. See
+// PdnAvailableAppsApi + docs/app-catalog.md.
+app.MapPdnAvailableAppsApi();
+
 // Phase 7 self-update: GET /api/v1/system/info (read — version + install channel) and
 // POST /api/v1/system/update (admin, audited — channel-aware: a targeted apt upgrade via
 // the privileged packetnet-update.service on the apt channel). See PdnSystemApi +
