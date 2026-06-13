@@ -457,7 +457,7 @@ Mirror RHPv2 framing from `/home/tf/src/rhp2lib-net/src/RhpV2.Client/Protocol/`.
 
 The `.deb` build (`scripts/build-deb.sh`) + `node-v*` GitHub Releases are **done** (§9, §17). **The apt repo is no longer in packet.net's scope** — the Debian maintainer (**hibby**) already runs + signs the OARC reprepro repo and is handling distro packaging; packet.net's job on the packaged side is just to be a *well-behaved package* (never self-mutate) and a polite update notifier.
 
-Remaining: the self-contained `install.sh` + signed tarball + cosign verification (multi-arch Docker via `buildx` optional), and the **in-app update mechanism** — `POST /api/system/update` with watchdog rollback, **channel-aware** so it never fights a system package manager: a build-stamped install channel selects "self-update" (versioned dirs + `current` symlink + cosign-verify + atomic flip + health-check rollback) for the self-contained path vs "defer to apt / notify only" for the packaged path, driven through an unprivileged-node + privileged-helper seam. Full design: [`docs/node-self-update-design.md`](node-self-update-design.md).
+Remaining: the self-contained `install.sh` + signed tarball + cosign verification (multi-arch Docker via `buildx` optional), and the **in-app update mechanism** — `POST /api/system/update` with watchdog rollback, **channel-aware** so it never fights a system package manager: a build-stamped install channel selects "self-update" (versioned dirs + `current` symlink + cosign-verify + atomic flip + health-check rollback) for the self-contained path vs an **apt-Apply** button (the helper runs a targeted `apt-get install --only-upgrade packetnet`, with downgrade-rollback) for the packaged path, driven through an unprivileged-node + privileged-helper (`packetnet-update` oneshot, polkit-authorized) seam. Decisions settled 2026-06-13: active apt apply, ship the `InstallChannel` marker, match the `Restart=` contract. Full design: [`docs/node-self-update-design.md`](node-self-update-design.md).
 
 ### 5.8 Phase 8 — MCP + live monitor v2 + link troubleshooting ⬜ ([#173](https://github.com/m0lte/packet.net/issues/173))
 
@@ -859,7 +859,7 @@ The probe at [`tests/Packet.Interop.Tests/Hardware/NinoTncEnumeration.cs`](../te
 - Docker image multi-arch via `buildx`; healthcheck on `/api/system/health`.
 - TLS on by default. Self-signed cert generated on first start. LE/ACME opt-in from web UI.
 - `packetnet ctl` subcommands for ops (reset admin password, dump diag bundle, regenerate cert, run migrations).
-- `POST /api/system/update` — **channel-aware** in-app update with auto-rollback on health failure: self-update (versioned dirs + `current` symlink + cosign-verify + atomic flip) on the self-contained channel, defer-to-apt / notify-only on the packaged channel, so the node never overwrites dpkg-owned files. Design: [`docs/node-self-update-design.md`](node-self-update-design.md).
+- `POST /api/system/update` — **channel-aware** in-app update with auto-rollback on health failure: self-update (versioned dirs + `current` symlink + cosign-verify + atomic flip) on the self-contained channel; an **Apply** button driving a targeted `apt-get install --only-upgrade packetnet` on the packaged channel — so the node never overwrites dpkg-owned files. Design: [`docs/node-self-update-design.md`](node-self-update-design.md).
 
 Targets: linux-x64, linux-arm64, linux-arm (v7), win-x64, osx-arm64, osx-x64. Self-contained binaries unless armhf size > 80 MB (fallback FDD) — measured: the linux-* `.deb`s are all self-contained, armhf ~40 MB (comfortably under), so no FDD fallback is needed.
 
@@ -1063,6 +1063,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-13 — Phase 7 self-update: the three open decisions settled (active apt Apply, channel marker, restart contract)
+
+Tom resolved the three open questions from the self-update design ([`docs/node-self-update-design.md`](node-self-update-design.md)). (1) **The apt channel gets an active Apply button**, not notify-only: the privileged helper runs a *targeted* `apt-get install --only-upgrade -y packetnet` (never a dist-upgrade). Trust on this channel is **apt's repo signature** (hibby's GPG-signed reprepro), not cosign (cosign stays the self-contained channel's trust root) — two channels, two trust roots. Because an active self-upgrade replaces + restarts the very process that triggered it, the node does **not** run apt as a child: it starts the detached **`packetnet-update.service` systemd oneshot** (over D-Bus, authorized by a polkit rule scoped to that one unit for the `packetnet` user), returns immediately, and the web UI polls `/api/system/version` + `/healthz` until the node reappears on the new version (fire-and-acknowledge, not in-band). Rollback = `apt-get install --allow-downgrades packetnet=<prev>` (needs the repo/cache to retain the prior `.deb` — flagged for the maintainer). Apply is admin-scoped + audit-logged. (2) **The package ships the `InstallChannel=apt` marker** (`/usr/lib/packetnet/install-channel`); the `dpkg-query` sniff stays as fallback only. (3) **The self-contained channel matches the packaged unit's `Restart=` contract** so update/restart behaviour is identical across install methods. Design doc updated (apt section rewritten, privilege model = polkit-scoped detached oneshot, "Open decisions" → "Decisions (settled)"); §5.7 + §9 trued up. Still docs/plan only — no code.
 
 ### 2026-06-13 — Phase 7 re-scoped: apt repo dropped (maintainer-owned), in-app self-update designed channel-aware
 
