@@ -117,3 +117,43 @@ jobs:
         # test job: coexist with other readers, never overlap a CPU-heavy EXCLUSIVE
         # workflow (interop / fuzz / deb-smoke) on the shared self-hosted host.
         run: flock -s /tmp/pdn-ci-heavy.lock bash -c 'npm run build && npm run test'
+
+  dependency-scan:
+    name: dependency-scan
+    runs-on: [self-hosted, Linux, X64]
+    # Fails the build if any referenced NuGet package (direct OR transitive) has a
+    # known advisory in the configured sources — the supply-chain tripwire. Cheap
+    # (`dotnet list package --vulnerable` is a restore + a metadata query), self-
+    # hosted, zero GitHub Actions minutes. If a flagged transitive dep ever has no
+    # fixable upgrade, pin the override in Directory.Packages.props (CPM) or relax
+    # this gate deliberately — don't let it rot into an ignored red.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: report .NET
+        run: dotnet --version
+
+      - name: vulnerable-package scan
+        # `dotnet list package --vulnerable` always exits 0, so detect findings by
+        # the table's row marker (lines like "   > Package  1.0  1.0  High  url").
+        # Shared (reader) flock — a restore + metadata query is light, but keep the
+        # box-wide discipline so it never overlaps an EXCLUSIVE heavy workflow.
+        run: |
+          flock -s /tmp/pdn-ci-heavy.lock bash -c '
+            dotnet restore Packet.NET.slnx
+            dotnet list Packet.NET.slnx package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+            if grep -E "^[[:space:]]*>[[:space:]]" vuln.txt; then
+              echo "::error::Vulnerable NuGet packages detected (see the scan output above)."
+              exit 1
+            fi
+            echo "No vulnerable packages."
+          '
+
+      - name: upload scan output
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-scan-output
+          path: vuln.txt
+          retention-days: 7

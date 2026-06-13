@@ -18,10 +18,13 @@ on:
     branches: [main]
     paths:
       # Run on PRs that touch the fuzzer itself, the targets, or this
-      # workflow — so changes to Ax25Frame.TryParse / KissDecoder get
-      # an immediate smoke signal rather than waiting for the nightly.
+      # workflow — so changes to a fuzzed parser get an immediate smoke
+      # signal rather than waiting for the nightly.
       - 'src/Packet.Ax25/**'
       - 'src/Packet.Kiss/**'
+      - 'src/Packet.Aprs/**'
+      - 'src/Packet.Agw/**'
+      - 'src/Packet.NetRom/**'
       - 'tools/Packet.Fuzz/**'
       - '.github/workflows/fuzz.yml'
   workflow_dispatch:
