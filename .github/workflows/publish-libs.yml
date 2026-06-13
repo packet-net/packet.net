@@ -1,7 +1,7 @@
 name: publish-libs
 
 # Publishes the .NET libraries that downstream consumers (e.g. the
-# upcoming m0lte/packet-term-tui) need from nuget.org. Triggered by
+# upcoming packet-net/packet-term-tui) need from nuget.org. Triggered by
 # tags matching `lib-v*` (e.g. `lib-v0.1.0`). The `lib-` prefix is
 # distinct so we don't trigger this on every plain `v*` tag.
 #

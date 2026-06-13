@@ -23,7 +23,7 @@ Each library is its own NuGet package (or planned package). They compose: the no
 | `src/Packet.Rhp2/` + `.Server/` | RHPv2 protocol | _not yet published_ |
 | `src/Packet.Node/` + `.Extensions/` | Packet-radio node host (web UI, REST, MCP, plugin shim) | n/a — application |
 
-The SDL state-machine tables that drive `Packet.Ax25/Session/` come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet package, built and published by [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl) — don't try to regenerate them from here.
+The SDL state-machine tables that drive `Packet.Ax25/Session/` come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet package, built and published by [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) — don't try to regenerate them from here.
 
 ## Provenance
 
@@ -33,13 +33,13 @@ The SDL state-machine tables that drive `Packet.Ax25/Session/` come from the [`P
 
 | Repo | What it is | Visibility |
 | --- | --- | --- |
-| **`m0lte/packet.net`** *(here)* | .NET libraries + node host. Hosts the interop matrix (LinBPQ/XRouter/rax25/NinoTNC). | private |
-| [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl) | AX.25 v2.2 SDL transcriptions + codegen (7 backends). Publishes `Packet.Ax25.Sdl` to NuGet + `ax25sdl` to npm. | private (prove-out) |
-| [`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts) | `@packet-net/ax25` — browser-targeted TypeScript library. | public |
-| [`m0lte/packet-term-tui`](https://github.com/m0lte/packet-term-tui) | `Packet.Term` — Terminal.Gui v2 TUI. Consumes `Packet.*` from NuGet. | private |
-| [`m0lte/packet-term-web`](https://github.com/m0lte/packet-term-web) | Browser TNC2 emulator at https://packet-term.m0lte.uk. Consumes `@packet-net/ax25` from npm. | public |
+| **`packet-net/packet.net`** *(here)* | .NET libraries + node host. Hosts the interop matrix (LinBPQ/XRouter/rax25/NinoTNC). | private |
+| [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) | AX.25 v2.2 SDL transcriptions + codegen (7 backends). Publishes `Packet.Ax25.Sdl` to NuGet + `ax25sdl` to npm. | private (prove-out) |
+| [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) | `@packet-net/ax25` — browser-targeted TypeScript library. | public |
+| [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui) | `Packet.Term` — Terminal.Gui v2 TUI. Consumes `Packet.*` from NuGet. | private |
+| [`packet-net/packet-term-web`](https://github.com/packet-net/packet-term-web) | Browser TNC2 emulator at https://packet-term.m0lte.uk. Consumes `@packet-net/ax25` from npm. | public |
 
-The `ax25sdl` repo is the longest-lived contributor surface — that's where SDL transcriptions and spec-side work happen. Tom is working with the original AX.25 authors on whether `packethacking/ax25spec` should be the canonical community home for those transcriptions; `m0lte/ax25sdl` is the prove-out venue until that's agreed.
+The `ax25sdl` repo is the longest-lived contributor surface — that's where SDL transcriptions and spec-side work happen. Tom is working with the original AX.25 authors on whether `packethacking/ax25spec` should be the canonical community home for those transcriptions; `packet-net/ax25sdl` is the prove-out venue until that's agreed.
 
 ## Build + test
 
@@ -50,7 +50,7 @@ dotnet test --filter "Category!=HardwareLoop&Category!=Interop"
 
 Requires .NET 10 SDK (see `global.json`).
 
-The full interop matrix (docker stack + cross-runtime tests) lives in [`.github/workflows/interop.yml`](.github/workflows/interop.yml). It stands up LinBPQ/XRouter/rax25/netsim in docker and runs the C# interop tests against it; it also clones `m0lte/ax25-ts` and runs its integration suite against the same stack.
+The full interop matrix (docker stack + cross-runtime tests) lives in [`.github/workflows/interop.yml`](.github/workflows/interop.yml). It stands up LinBPQ/XRouter/rax25/netsim in docker and runs the C# interop tests against it; it also clones `packet-net/ax25-ts` and runs its integration suite against the same stack.
 
 ## What this is NOT
 

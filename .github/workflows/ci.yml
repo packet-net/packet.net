@@ -29,16 +29,13 @@ jobs:
     # Self-hosted Linux runners — zero GitHub Actions minutes consumed.
     strategy:
       fail-fast: false
-      # All matrix jobs land on the SAME self-hosted runner, and GitHub runs them
-      # in parallel by default. Twelve `dotnet test` processes co-resident
-      # oversubscribed the box: the CPU-heavy FsCheck property suites
-      # (Packet.Ax25.Properties / Packet.Ax25.Tests) saturated every core and
-      # scheduling-starved the real-time AX.25 pumps in Packet.Node.Tests, blowing
-      # their (bounded) connect/wait budgets — the intermittent ~66 s node-test
-      # timeout (#47). Cap concurrency so the runner is never oversubscribed; the
-      # node tests always have responsive CPU. (Same shared-runner-contention
-      # remedy as the publish-node matrix's `max-parallel: 1` in #297, but the test
-      # jobs are light enough that 4-at-a-time keeps throughput.)
+      # 4 org-level runners (packet-net runner-1..4) on the same physical host.
+      # Cap at 4 so this workflow never monopolises all runners, and because
+      # the per-runner flock below coordinates across runner processes via /tmp —
+      # the exclusive heavy workflows (interop / fuzz / deb-smoke) hold an
+      # EXCLUSIVE flock that starves the real-time AX.25 pumps in
+      # Packet.Node.Tests if they overlap. 13 matrix legs × max-parallel 4
+      # naturally saturates all four runners, so throughput is unchanged.
       max-parallel: 4
       matrix:
         project:
@@ -62,14 +59,14 @@ jobs:
         run: dotnet --version
 
       - name: test
-        # Shared (reader) box-wide flock. These matrix legs run 4-up among
-        # themselves (multiple shared holders coexist) but never overlap a
-        # CPU-heavy EXCLUSIVE workflow — interop / fuzz / deb-smoke — on the shared
-        # self-hosted host. That overlap oversubscribes the physical CPU and
-        # starves the integration suites' real-time AX.25 pumps/timers (the
-        # Packet.Node.Tests flake). Command-wrapped, so the lock releases when the
-        # test process exits (no holder to leak); it harmlessly no-ops if the
-        # runners don't actually share /tmp. See docs/plan.md §7.2.2.
+        # Shared (reader) box-wide flock. The 4 org-level runners are separate
+        # processes on the same LXC host, sharing /tmp, so this lock coordinates
+        # across all of them. Multiple shared holders coexist (4 test legs run
+        # truly in parallel) but never overlap a CPU-heavy EXCLUSIVE workflow —
+        # interop / fuzz / deb-smoke. That overlap oversubscribes the physical CPU
+        # and starves the real-time AX.25 pumps/timers (the Packet.Node.Tests
+        # flake). Command-wrapped so the lock releases on process exit.
+        # See docs/plan.md §7.2.2.
         run: |
           flock -s /tmp/pdn-ci-heavy.lock \
           dotnet test tests/${{ matrix.project }}/${{ matrix.project }}.csproj \
@@ -114,8 +111,8 @@ jobs:
       - name: typecheck + build + test
         # `npm run build` is `tsc --noEmit && vite build`; then the vitest screen
         # smoke suite. Shared (reader) box-wide flock, same discipline as the .NET
-        # test job: coexist with other readers, never overlap a CPU-heavy EXCLUSIVE
-        # workflow (interop / fuzz / deb-smoke) on the shared self-hosted host.
+        # test job: coexist with other readers across all 4 org runners, never
+        # overlap a CPU-heavy EXCLUSIVE workflow (interop / fuzz / deb-smoke).
         run: flock -s /tmp/pdn-ci-heavy.lock bash -c 'npm run build && npm run test'
 
   dependency-scan:

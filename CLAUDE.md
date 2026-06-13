@@ -4,9 +4,9 @@ Operating notes for Claude Code (and other agents) working in `m0lte/packet.net`
 
 ## What this repo is
 
-The .NET libraries (`Packet.Core`, `Packet.Ax25`, `Packet.Kiss`, `Packet.Aprs`, `Packet.Agw`, `Packet.Axudp`, `Packet.Kiss.NinoTnc`, `Packet.Mcp`, `Packet.Rhp2*`) and the packet-radio node host (`Packet.Node*`). Plus C# interop CI (LinBPQ / XRouter / rax25 / netsim / NinoTNC-loop) — the `interop.yml` workflow also clones [`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts) and runs its integration suite against the docker stack standing up here.
+The .NET libraries (`Packet.Core`, `Packet.Ax25`, `Packet.Kiss`, `Packet.Aprs`, `Packet.Agw`, `Packet.Axudp`, `Packet.Kiss.NinoTnc`, `Packet.Mcp`, `Packet.Rhp2*`) and the packet-radio node host (`Packet.Node*`). Plus C# interop CI (LinBPQ / XRouter / rax25 / netsim / NinoTNC-loop) — the `interop.yml` workflow also clones [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) and runs its integration suite against the docker stack standing up here.
 
-After the 5-repo split on 2026-05-17, the SDL transcriptions, codegen, and multi-language artefacts live in [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl), and the TypeScript library lives in [`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts). See [`README.md` § Sibling repos](README.md#sibling-repos). If a task is about spec-side work (transcribing a new figc4.x page, the YAML DSL, the codegen tools, the `Packet.Ax25.Sdl` package), it belongs in `m0lte/ax25sdl`. If it's about the browser AX.25 library (`@packet-net/ax25`), it belongs in `m0lte/ax25-ts`. Not here.
+After the 5-repo split on 2026-05-17, the SDL transcriptions, codegen, and multi-language artefacts live in [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl), and the TypeScript library lives in [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts). See [`README.md` § Sibling repos](README.md#sibling-repos). If a task is about spec-side work (transcribing a new figc4.x page, the YAML DSL, the codegen tools, the `Packet.Ax25.Sdl` package), it belongs in `packet-net/ax25sdl`. If it's about the browser AX.25 library (`@packet-net/ax25`), it belongs in `packet-net/ax25-ts`. Not here.
 
 ## Read first
 
@@ -42,7 +42,7 @@ The outbound construction path (frame factories, encoder construction-time `Call
 
 ### ax25-ts parity is CI-enforced — a new named flag needs its TS leg
 
-[`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts) tracks this repo's libraries behaviour-for-behaviour, and the `interop.yml` job runs its `scripts/parity-check.mjs` against **this PR's head** + ax25-ts `main`: it compares the named-flag inventories (`Ax25ParseOptions`, `Ax25SessionQuirks`, `XidParseOptions`), the presets, and the `Ax25Listener` options/surface, and **fails on any undocumented gap**. So a PR here that adds a named flag (step 2 above) or widens the listener surface will fail interop until either (a) the TS counterpart ships in ax25-ts (preferred — land it first or alongside), or (b) a *reviewed* exception with a reason is recorded in ax25-ts `scripts/parity-exceptions.json` (ship that first, then re-run). The mirror check runs in ax25-ts's own CI, so drift fails on whichever side introduces it.
+[`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) tracks this repo's libraries behaviour-for-behaviour, and the `interop.yml` job runs its `scripts/parity-check.mjs` against **this PR's head** + ax25-ts `main`: it compares the named-flag inventories (`Ax25ParseOptions`, `Ax25SessionQuirks`, `XidParseOptions`), the presets, and the `Ax25Listener` options/surface, and **fails on any undocumented gap**. So a PR here that adds a named flag (step 2 above) or widens the listener surface will fail interop until either (a) the TS counterpart ships in ax25-ts (preferred — land it first or alongside), or (b) a *reviewed* exception with a reason is recorded in ax25-ts `scripts/parity-exceptions.json` (ship that first, then re-run). The mirror check runs in ax25-ts's own CI, so drift fails on whichever side introduces it.
 
 ### Releasing is a tag-driven cascade — follow the doc
 
@@ -50,7 +50,7 @@ Shipping a change to the world is more than merging the PR: it's a **release cas
 
 ### SDL state-machine library is a NuGet dependency
 
-The AX.25 SDL state machine tables come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet package, built and published by [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl). **Do not** try to regenerate, edit, or extend the SDL state machines from this repo — they don't live here. If a change is needed, raise it against `m0lte/ax25sdl`, publish a new version, and bump the `Packet.Ax25.Sdl` pin in [`Directory.Packages.props`](Directory.Packages.props).
+The AX.25 SDL state machine tables come from the [`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet package, built and published by [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl). **Do not** try to regenerate, edit, or extend the SDL state machines from this repo — they don't live here. If a change is needed, raise it against `packet-net/ax25sdl`, publish a new version, and bump the `Packet.Ax25.Sdl` pin in [`Directory.Packages.props`](Directory.Packages.props).
 
 ## Common commands
 
@@ -119,7 +119,7 @@ docs/                            plan, ADRs, runtime capability docs, strict/pra
 - Don't add `[Version=...]` on `<PackageReference>` items — CPM enforces a central version table.
 - Don't write `appsettings.Local.json` to git. It's `.gitignore`d for a reason.
 - Don't add new GitHub Actions jobs with `runs-on: ubuntu-latest` (or any other GitHub-hosted runner label). This project has no Actions minutes budget for hosted runners — every workflow job MUST target `[self-hosted, Linux, X64]`, matching the existing CI / interop / publish-libs jobs. Reach for hosted runners only after Tom explicitly authorises a budget for them.
-- Don't try to edit the SDL state machines from this repo. They come from [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl) via the `Packet.Ax25.Sdl` NuGet package — raise spec-side issues there.
+- Don't try to edit the SDL state machines from this repo. They come from [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) via the `Packet.Ax25.Sdl` NuGet package — raise spec-side issues there.
 
 ## When in doubt
 

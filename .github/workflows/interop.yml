@@ -97,7 +97,7 @@ jobs:
         run: flock -x /tmp/pdn-ci-heavy.lock dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group!=NetRom"
 
       # ── Phase B: ax25-ts integration suite ────────────────────────────────
-      # ax25-ts (m0lte/ax25-ts) ships its own integration suite against LinBPQ
+      # ax25-ts (packet-net/ax25-ts) ships its own integration suite against LinBPQ
       # via net-sim (tests/integration/**: the AX.25 linbpq-via-netsim round-trip
       # AND a NET/ROM NODES-ingest test). We clone main and run it against the
       # stack standing up in this job. It gets its OWN freshly recreated stack so
@@ -109,10 +109,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: clone m0lte/ax25-ts
+      - name: clone packet-net/ax25-ts
         run: |
           rm -rf "${RUNNER_TEMP}/ax25-ts"
-          git clone --depth=1 --branch main https://github.com/m0lte/ax25-ts.git "${RUNNER_TEMP}/ax25-ts"
+          git clone --depth=1 --branch main https://github.com/packet-net/ax25-ts.git "${RUNNER_TEMP}/ax25-ts"
 
       # Cross-stack parity drift guard: ax25-ts ships scripts/parity-check.mjs,
       # which compares the C# named-flag / preset / listener-surface inventories
