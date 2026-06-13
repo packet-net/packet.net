@@ -4,6 +4,8 @@
 [Oo]ut/
 [Pp]ublish/
 artifacts/
+# staged per-arch app trees for the docker build (scripts/docker-image.sh)
+pdn-app/
 *.user
 *.suo
 .vs/

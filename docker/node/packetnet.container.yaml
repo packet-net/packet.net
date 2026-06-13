@@ -1,4 +1,4 @@
-# pdn node — container default config (baked into the m0lte/pdn image).
+# pdn node — container default config (baked into the m0lte/packet.net image).
 #
 # Differs from the .deb's template in ONE way that matters for a container: the HTTP
 # management UI binds 0.0.0.0 (not loopback), so `docker run -p 8080:8080` actually

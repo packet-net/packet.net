@@ -1,4 +1,4 @@
-# pdn node host — Docker image (`m0lte/pdn`)
+# pdn node host — Docker image (`m0lte/packet.net`)
 
 The Packet.NET node host (pdn) as a container. Self-contained (no .NET runtime needed), Debian-slim base, runs as an unprivileged user.
 
@@ -7,7 +7,7 @@ docker run -d --name pdn \
   -p 8080:8080 \
   -v pdn-config:/etc/packetnet \
   -v pdn-state:/var/lib/packetnet \
-  m0lte/pdn:latest
+  m0lte/packet.net:latest
 ```
 
 Then open `http://<host>:8080/`. The web panel binds `0.0.0.0` in the container so it's reachable via `-p`.
@@ -22,6 +22,6 @@ Then open `http://<host>:8080/`. The web panel binds `0.0.0.0` in the container 
 
 ## Tags
 
-`m0lte/pdn:<version>` (e.g. matching a `node-v*` release) and `m0lte/pdn:latest`. **amd64** today; arm64/armhf are a planned buildx matrix (Pi users can use the `.deb` from the GitHub release meanwhile).
+`m0lte/packet.net:<version>` (e.g. matching a `node-v*` release) and `m0lte/packet.net:latest`. **Multi-arch: amd64 + arm64** (armhf via the `.deb` for now).
 
-Built from `docker/node/Dockerfile` (in `m0lte/packet.net`), published by `publish-node.yml` on a `node-v*` tag.
+Built from `docker/node/Dockerfile` via `scripts/docker-image.sh`, published by `publish-docker.yml` on a `node-v*` tag (or `workflow_dispatch`).

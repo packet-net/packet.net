@@ -120,22 +120,4 @@ jobs:
             artifacts/SHA256SUMS artifacts/latest.json \
             --repo "${{ github.repository }}" \
             --title "pdn node-v${VERSION}" \
-            --notes "Packet.NET node host (pdn) ${VERSION}. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (no .NET runtime required), runs as a hardened systemd unit; edit /etc/packetnet/packetnet.yaml. **Self-contained:** the \`*.tar.gz\` + \`latest.json\` are the self-contained-channel artifacts (Phase 7 in-app self-update); \`SHA256SUMS\` covers everything. **Docker:** \`docker run -p 8080:8080 m0lte/pdn:${VERSION}\` (also \`:latest\`)."
-
-      - name: Publish Docker image (amd64)
-        # Reuses the amd64 self-contained tree build-deb.sh already staged
-        # (artifacts/deb/linux-x64/opt/packetnet/app) — no rebuild. Skips cleanly when
-        # the Docker Hub creds aren't configured (like the NuGet publish), so the .deb
-        # release never depends on it. arm64/armhf images are a later buildx+QEMU matrix.
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          VERSION: ${{ steps.v.outputs.version }}
-        if: ${{ env.DOCKERHUB_TOKEN != '' }}
-        run: |
-          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-          docker build -f docker/node/Dockerfile --build-arg RID=linux-x64 \
-            -t "m0lte/pdn:${VERSION}" -t "m0lte/pdn:latest" .
-          docker push "m0lte/pdn:${VERSION}"
-          docker push "m0lte/pdn:latest"
-          docker logout
+            --notes "Packet.NET node host (pdn) ${VERSION}. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (no .NET runtime required), runs as a hardened systemd unit; edit /etc/packetnet/packetnet.yaml. **Self-contained:** the \`*.tar.gz\` + \`latest.json\` are the self-contained-channel artifacts (Phase 7 in-app self-update); \`SHA256SUMS\` covers everything. **Docker:** \`docker run -p 8080:8080 m0lte/packet.net:${VERSION}\` (also \`:latest\`; multi-arch amd64+arm64 — published by publish-docker.yml)."

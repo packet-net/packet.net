@@ -1,19 +1,21 @@
 # syntax=docker/dockerfile:1
-# pdn node-host image (m0lte/pdn). Built from the SELF-CONTAINED app tree that
-# scripts/build-deb.sh stages (binary + dlls + the built wwwroot) — the same content the
-# .deb ships, so the image carries no separate .NET runtime. Build context is the repo ROOT:
+# pdn node-host image (m0lte/packet.net). Multi-arch (amd64 + arm64) via buildx.
+# Built from the SELF-CONTAINED app tree scripts/build-deb.sh publishes (binary + dlls +
+# the built wwwroot) — the same content the .deb ships, so no separate .NET runtime.
+# scripts/docker-image.sh stages the per-arch trees under pdn-app/<arch>/ (amd64, arm64)
+# and buildx selects the right one via the auto-provided TARGETARCH:
 #
-#   scripts/build-deb.sh linux-x64 <ver>                  # stages artifacts/deb/linux-x64/...
-#   docker build -f docker/node/Dockerfile --build-arg RID=linux-x64 -t m0lte/pdn:<ver> .
+#   scripts/docker-image.sh <version> [push]      # local build, or CI push
 #
-# (publish-docker.yml does this per-arch on a node-v* tag — reusing the cross-published
-# trees build-deb.sh already produced for the .debs, so no double build.)
+# (publish-docker.yml runs that on a node-v* tag or workflow_dispatch.)
+#
 # debian-slim, not dotnet/runtime-deps: the app is self-contained (carries its own
 # runtime), so we only need the few native libs .NET depends on — and there's no
 # net10 runtime-deps tag anyway. InvariantGlobalization is baked in, so no libicu.
 ARG BASE=debian:bookworm-slim
 FROM ${BASE}
-ARG RID=linux-x64
+# Provided automatically by buildx per target platform: amd64 | arm64.
+ARG TARGETARCH
 
 # .NET self-contained native deps + curl (HEALTHCHECK) + tini (clean PID 1). Then the
 # unprivileged service user + the config/state dirs (writable by it).
@@ -25,8 +27,9 @@ RUN apt-get update \
  && mkdir -p /opt/packetnet/app /etc/packetnet /var/lib/packetnet \
  && chown -R packetnet:packetnet /etc/packetnet /var/lib/packetnet
 
-# The staged self-contained app tree (binary + dlls + wwwroot) and the container config.
-COPY artifacts/deb/${RID}/opt/packetnet/app/ /opt/packetnet/app/
+# The per-arch self-contained app tree (binary + dlls + wwwroot), staged by
+# scripts/docker-image.sh as pdn-app/<arch>/, and the container config.
+COPY pdn-app/${TARGETARCH}/ /opt/packetnet/app/
 COPY docker/node/packetnet.container.yaml /etc/packetnet/packetnet.yaml
 RUN chown -R packetnet:packetnet /etc/packetnet
 
