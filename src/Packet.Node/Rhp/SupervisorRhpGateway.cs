@@ -47,18 +47,6 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.NoSuchPort, "No ports are configured on this node.");
         }
 
-        // Port label: 1-indexed config order, null = the first port (XRouter convention).
-        int index = 0;
-        if (!string.IsNullOrWhiteSpace(portLabel))
-        {
-            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
-            {
-                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
-            }
-            index = n - 1;
-        }
-        var portId = ports[index].Id;
-
         // R-3: the session may originate from an application callsign (the wire's open.local);
         // null/the node's own callsign means dial as the node. The engine's (local, remote)
         // session keying routes the peer's replies to the right link either way.
@@ -78,8 +66,31 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
         }
 
-        var connector = supervisor.ResolveConnector(portId, localOverride)
-            ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
+        // The same connect-routing the node console grew (docs/rhp2-server.md): with NO explicit
+        // port, a target the node is locally registered for (an app on its own SSID) is reached by
+        // an in-process loopback crossconnect — no RF, no second SABM — so one local app can open
+        // another, and the target app sees the originating callsign (open.local, or the node) as
+        // the caller. An EXPLICIT port is an explicit "go to RF" and always dials. Port labels are
+        // 1-indexed config order; null = the first port (XRouter convention). NET/ROM stays out of
+        // scope here (aliases come later).
+        IOutboundConnector connector;
+        if (string.IsNullOrWhiteSpace(portLabel))
+        {
+            var callerPeerId = localOverride?.ToString() ?? nodeCall;
+            connector = supervisor.TryResolveLocalAppConnector(target, callerPeerId, NodeTransportKind.Ax25)
+                ?? supervisor.ResolveConnector(ports[0].Id, localOverride)
+                ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{ports[0].Id}' is not running.");
+        }
+        else
+        {
+            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
+            {
+                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
+            }
+            var portId = ports[n - 1].Id;
+            connector = supervisor.ResolveConnector(portId, localOverride)
+                ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
+        }
 
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         bounded.CancelAfter(ConnectTimeout);
