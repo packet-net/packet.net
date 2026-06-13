@@ -16,10 +16,13 @@ public abstract record NodeCommand
 }
 
 /// <summary>
-/// <c>C[onnect] &lt;call&gt;</c> — connect outbound to the given station and
-/// relay until either side drops.
+/// <c>C[onnect] [port] &lt;call&gt;</c> — connect to the given station and relay until either
+/// side drops. <see cref="Port"/> is an optional 1-indexed port (config order, XRouter
+/// convention: <c>C 1 G0ABC-2</c> dials out the first port); null means "no port specified" —
+/// the router then bridges to a locally-registered app of that callsign if one exists, else
+/// dials the default port.
 /// </summary>
-public sealed record ConnectCommand(Callsign Target) : NodeCommand;
+public sealed record ConnectCommand(Callsign Target, int? Port = null) : NodeCommand;
 
 /// <summary><c>N[odes]</c> — list the node identity + configured ports.</summary>
 public sealed record NodesCommand : NodeCommand;

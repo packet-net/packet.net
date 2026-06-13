@@ -140,7 +140,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
     {
         Callsign user = Callsign.TryParse(connection.PeerId, out var u) ? u : default;
         var connector = netRom is not null ? new Packet.Node.Core.NetRom.NetRomOutboundConnector(netRom, fallback: null, user) : null;
-        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost);
+        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost, CreateConnectRouter(connector));
         var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifecycle.Token);
         await service.RunAsync(connection, linked.Token).ConfigureAwait(false);
@@ -189,6 +189,27 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         RunningPort? port;
         lock (ports) ports.TryGetValue(portId, out port);
         return port is null ? null : new Ax25OutboundConnector(port.Id, port.Listener, r => ClaimOutbound(r), localOverride);
+    }
+
+    /// <summary>
+    /// Build the connect router a console session uses for <c>C[onnect] [port] &lt;call&gt;</c>:
+    /// it bridges to a locally-registered app SSID (loopback crossconnect), dials a chosen
+    /// 1-indexed port directly, or — for a plain <c>C &lt;call&gt;</c> — returns
+    /// <paramref name="defaultConnector"/> (the session's usual same-port / NET/ROM-wrapped
+    /// dial). Resolves against the live config + app registry, so a port that comes up or an app
+    /// that binds mid-session is reachable on the next command.
+    /// </summary>
+    public IConnectRouter CreateConnectRouter(IOutboundConnector? defaultConnector) =>
+        new ConnectRouter(this, defaultConnector);
+
+    // Look up a live app-callsign registration (the loopback-crossconnect target). Null when the
+    // callsign isn't registered as a local app right now.
+    private AppCallsignRegistration? FindAppRegistration(Callsign target)
+    {
+        lock (appCallsignGate)
+        {
+            return appCallsigns.TryGetValue(target, out var reg) ? reg : null;
+        }
     }
 
     /// <summary>
@@ -274,6 +295,46 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         public required Callsign Local { get; init; }
         public required string? PortId { get; init; }
         public required Func<INodeConnection, string, Task> OnAccepted { get; init; }
+    }
+
+    // The console's connect router (see CreateConnectRouter). Holds the supervisor + the session's
+    // default connector; reads the live config/registry on each Resolve so it tracks port and app
+    // changes within a session. NET/ROM is intentionally not consulted here — an explicit port is
+    // a direct dial; aliases come later.
+    private sealed class ConnectRouter(PortSupervisor owner, IOutboundConnector? defaultConnector) : IConnectRouter
+    {
+        public ConnectResolution Resolve(int? port, Callsign target, INodeConnection inbound)
+        {
+            // No port: a registered app SSID wins (loopback crossconnect to the app); otherwise
+            // the session's default dial. An explicit port skips this — it's a deliberate "go RF".
+            if (port is null)
+            {
+                var registration = owner.FindAppRegistration(target);
+                if (registration is not null)
+                {
+                    var label = registration.PortId ?? "local";
+                    var connector = new LocalAppConnector(registration.OnAccepted, inbound.PeerId, inbound.TransportKind, label);
+                    return ConnectResolution.LocalApp(connector);
+                }
+
+                return defaultConnector is not null
+                    ? ConnectResolution.Dial(defaultConnector)
+                    : ConnectResolution.Fail("Connect is not available on this connection (no outbound port configured).");
+            }
+
+            // Explicit port: 1-indexed config order (XRouter convention).
+            var ports = owner.config.Current.Ports;
+            if (port < 1 || port > ports.Count)
+            {
+                return ConnectResolution.Fail($"No such port {port} (1..{ports.Count}).");
+            }
+
+            var portId = ports[port.Value - 1].Id;
+            var dial = owner.ResolveConnector(portId);
+            return dial is not null
+                ? ConnectResolution.Dial(dial)
+                : ConnectResolution.Fail($"Port '{portId}' is not running.");
+        }
     }
 
     private sealed class AppCallsignUnsubscriber(PortSupervisor owner, Callsign local, string? portId) : IDisposable
@@ -762,7 +823,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
                     // enabled) so `connect <alias>` reaches a distant node; the
                     // dialling user is this inbound peer.
                     var routed = WrapWithNetRom(connector, session.Context.Remote);
-                    var env = new NodeConsoleEnvironment(config, routed, netRom, sysopContext, applicationHost);
+                    var env = new NodeConsoleEnvironment(config, routed, netRom, sysopContext, applicationHost, CreateConnectRouter(routed));
                     var service = new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
                     await service.RunAsync(connection, lifecycle.Token).ConfigureAwait(false);
                 }

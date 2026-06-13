@@ -363,7 +363,8 @@ public sealed partial class NodeHostedService : BackgroundService
             // up, Connect reports "not available". Resolved per session so it
             // reflects the live port set.
             var connector = supervisor?.ResolveDefaultConnector();
-            var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost);
+            var router = supervisor?.CreateConnectRouter(connector);
+            var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost, router);
             return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
         };
     }

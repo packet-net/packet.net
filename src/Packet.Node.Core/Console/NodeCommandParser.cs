@@ -214,19 +214,30 @@ public static class NodeCommandParser
             return new MalformedConnect(rawLine, "Connect needs a callsign, e.g. C M0LTE-1");
         }
 
-        // Take the first token as the target; ignore trailing via-path / extras
-        // (same-port-only in slice 1, so a via path is not honoured — flagging it
-        // as malformed would be hostile, so we just use the first token).
+        // First token: a bare integer when ≥2 tokens follow is a PORT number (XRouter/BPQ
+        // convention: "C 1 G0ABC-2"); otherwise it's the target callsign. A single token is
+        // always the callsign — "2" alone is a (degenerate) callsign, not a port, and "2E0ABC"
+        // starts with a digit but is a callsign because it doesn't parse as a pure integer.
         int ws = IndexOfWhitespace(rest);
-        string target = ws < 0 ? rest : rest[..ws];
+        string firstToken = ws < 0 ? rest : rest[..ws];
+        string remainder = ws < 0 ? string.Empty : rest[(ws + 1)..].Trim();
 
-        if (!Callsign.TryParse(target.ToUpperInvariant(), out var call))
+        int? port = null;
+        string targetToken = firstToken;
+        if (remainder.Length > 0 && int.TryParse(firstToken, out var portNumber))
         {
-            return new MalformedConnect(rawLine,
-                $"'{target}' is not a valid callsign (1–6 letters/digits, optional -SSID 0–15).");
+            port = portNumber;
+            int ws2 = IndexOfWhitespace(remainder);
+            targetToken = ws2 < 0 ? remainder : remainder[..ws2];   // target is the next token
         }
 
-        return new ConnectCommand(call);
+        if (!Callsign.TryParse(targetToken.ToUpperInvariant(), out var call))
+        {
+            return new MalformedConnect(rawLine,
+                $"'{targetToken}' is not a valid callsign (1–6 letters/digits, optional -SSID 0–15).");
+        }
+
+        return new ConnectCommand(call, port);
     }
 
     // An input verb matches a canonical verb if it is a non-empty,
