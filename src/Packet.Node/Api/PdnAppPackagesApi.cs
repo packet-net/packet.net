@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Applications.Packages;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Api;
@@ -63,22 +64,29 @@ public static class PdnAppPackagesApi
         // the config-write seam (validate inside TryApply → 422 on a rejected candidate, the
         // same discipline as the ports lifecycle flip). Admin: enabling is the trust grant.
         group.MapPost("/{id}/enable",
-            (string id, IWritableConfigProvider cfg, IAppPackageCatalog catalog, IServiceProvider services) =>
-                SetEnabled(id, enable: true, cfg, catalog, services))
+            (string id, HttpContext ctx, IWritableConfigProvider cfg, IAppPackageCatalog catalog, IServiceProvider services, IAuditLog audit, TimeProvider clock) =>
+            {
+                audit.RecordRest(ctx, clock, "enable_app", id, "requested", "");
+                return SetEnabled(id, enable: true, cfg, catalog, services);
+            })
             .RequireAuthorization(PdnAuthPolicies.Admin);
 
         group.MapPost("/{id}/disable",
-            (string id, IWritableConfigProvider cfg, IAppPackageCatalog catalog, IServiceProvider services) =>
-                SetEnabled(id, enable: false, cfg, catalog, services))
+            (string id, HttpContext ctx, IWritableConfigProvider cfg, IAppPackageCatalog catalog, IServiceProvider services, IAuditLog audit, TimeProvider clock) =>
+            {
+                audit.RecordRest(ctx, clock, "disable_app", id, "requested", "");
+                return SetEnabled(id, enable: false, cfg, catalog, services);
+            })
             .RequireAuthorization(PdnAuthPolicies.Admin);
 
         // Stop-then-start one managed service regardless of backoff state — the owner's way
         // out of Faulted. 503 when no supervisor is wired; 404 for an unknown id; 409 for a
         // service pdn does not manage (none/external) or anything the supervisor refuses.
         group.MapPost("/{id}/restart",
-            async (string id, IConfigProvider config, IAppPackageCatalog catalog, IServiceProvider services,
-                CancellationToken ct) =>
+            async (string id, HttpContext ctx, IConfigProvider config, IAppPackageCatalog catalog, IServiceProvider services,
+                IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
+            audit.RecordRest(ctx, clock, "restart_app", id, "requested", "");
             var supervisor = services.GetService<IAppServiceSupervisor>();
             if (supervisor is null)
             {

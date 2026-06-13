@@ -7,6 +7,7 @@ using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
 
@@ -99,7 +100,7 @@ public static class PdnSessionsApi
         // Connect out to a callsign (AX.25 dial) or NET/ROM alias (network route). Capture
         // the connector inside the gate; dial OUTSIDE it (bounded by DialTimeout + the
         // request token). Returns the new session's SessionInfo on success.
-        v1.MapPost("/sessions", async (ConnectRequest body, NodeHostedService host, SysopConsoleManager console, TimeProvider clock, CancellationToken ct) =>
+        v1.MapPost("/sessions", async (ConnectRequest body, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
             if (body is null || string.IsNullOrWhiteSpace(body.Target))
             {
@@ -109,6 +110,11 @@ public static class PdnSessionsApi
             {
                 return Results.BadRequest(new { error = $"'{body.Target}' is not a valid callsign or NET/ROM alias." });
             }
+
+            // Audit the connect attempt: a dial TRANSMITS (SABM / NET/ROM circuit setup), so
+            // the owner sees who reached out to which station, on which port, from where.
+            audit.RecordRest(ctx, clock, "connect_session", target.ToString(), "requested",
+                string.IsNullOrWhiteSpace(body.PortId) ? "port=default" : $"port={body.PortId}");
 
             // Capture a connector under the gate (a short critical section — no dial here).
             // The supervisor's resolver encodes callsign→AX.25-dial / alias→NET/ROM-route
@@ -189,8 +195,11 @@ public static class PdnSessionsApi
         // disposes the connection (posts DISC), and completes any open SSE subscribers. Else
         // fall back to posting DL-DISCONNECT on a live AX.25 session under the gate. Absent in
         // both → 404, else 204.
-        v1.MapDelete("/sessions/{id}", async (string id, NodeHostedService host, SysopConsoleManager console, CancellationToken ct) =>
+        v1.MapDelete("/sessions/{id}", async (string id, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
+            // A disconnect transmits DISC/DL-DISCONNECT — audit the teardown request.
+            audit.RecordRest(ctx, clock, "disconnect_session", id, "requested", "");
+
             if (console.IsManaged(id))
             {
                 await console.CloseAsync(id).ConfigureAwait(false);
@@ -212,12 +221,16 @@ public static class PdnSessionsApi
         // owns the session (an adopted connect-out), type the line into the peer through the
         // manager's write path; else fall back to the live AX.25 session's SendData under the
         // gate. Absent in both → 404, else 202 (queued).
-        v1.MapPost("/sessions/{id}/send", async (string id, SendRequest body, NodeHostedService host, SysopConsoleManager console, CancellationToken ct) =>
+        v1.MapPost("/sessions/{id}/send", async (string id, SendRequest body, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
             if (body is null || body.Line is null)
             {
                 return Results.BadRequest(new { error = "A 'line' is required." });
             }
+
+            // Audit the send: this transmits I-frames on the link. Log the length, never the
+            // line content (it may carry message text — payloads are summarised, not logged).
+            audit.RecordRest(ctx, clock, "send_session", id, "requested", $"len={body.Line.Length}");
 
             // CR-terminated, UTF-8 — matches the telnet console's CR (not CRLF) relay
             // discipline onto the AX.25 link.
@@ -317,7 +330,7 @@ public static class PdnSessionsApi
         // TEST commands, so it runs OUTSIDE the host gate (no port-set mutation); the
         // listener reference is captured once, defensively. An all-timeout result (a peer
         // that doesn't answer TEST) is a normal 200 with loss 100%, not an error.
-        v1.MapPost("/ping", async (PingRequest body, NodeHostedService host, TimeProvider clock, CancellationToken ct) =>
+        v1.MapPost("/ping", async (PingRequest body, HttpContext ctx, NodeHostedService host, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
             if (body is null || string.IsNullOrWhiteSpace(body.Station))
             {
@@ -331,6 +344,9 @@ public static class PdnSessionsApi
             {
                 return Results.BadRequest(new { error = "A 'portId' is required." });
             }
+
+            // A ping transmits TEST command frames — audit who pinged which station on which port.
+            audit.RecordRest(ctx, clock, "ping_station", target.ToString(), "requested", $"port={body.PortId}");
 
             var listener = host.Supervisor?.GetPort(body.PortId!)?.Listener;
             if (listener is null)

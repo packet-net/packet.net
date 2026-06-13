@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Audit;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -83,6 +85,26 @@ public sealed class PortsApiTests : IDisposable
 
         var ports = await GetPortsAsync(client);
         ports.Should().ContainSingle(p => p.GetProperty("id").GetString() == "vhf");
+    }
+
+    [Fact]
+    public async Task Port_writes_are_recorded_in_the_node_audit_log()
+    {
+        // The §6 promise on the REST surface: privileged port writes are attributable in
+        // pdn.db (actor/source/action/target), not just MCP writes. Auth is off in this
+        // test config, so the actor is the local "owner".
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        (await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8101)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PostAsJsonAsync("/api/v1/ports/vhf/lifecycle", new { action = "down" }))
+            .EnsureSuccessStatusCode();
+
+        var recent = factory.Services.GetRequiredService<IAuditLog>().Recent(50);
+        recent.Should().Contain(e => e.Action == "add_port" && e.Target == "vhf" && e.Source == "rest");
+        recent.Should().Contain(e =>
+            e.Action == "port_lifecycle" && e.Target == "vhf" && e.Detail.Contains("down", StringComparison.Ordinal));
     }
 
     [Fact]

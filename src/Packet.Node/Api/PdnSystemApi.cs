@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.SelfUpdate;
 
 namespace Packet.Node.Api;
@@ -53,6 +54,8 @@ public static class PdnSystemApi
             HttpContext http,
             IInstallChannelProvider channel,
             ISystemUpdateLauncher launcher,
+            IAuditLog auditLog,
+            TimeProvider clock,
             ILoggerFactory logs) =>
         {
             var audit = logs.CreateLogger(AuditCategory);
@@ -60,6 +63,9 @@ public static class PdnSystemApi
             var user = UserName(http);
             var ch = channel.Channel;
             SystemLog.UpdateRequested(audit, ChannelName(ch), user, ip);
+            // Also persist to the node-wide audit log (pdn.db) — a self-update restarts the
+            // whole node, so it belongs in the durable §6 record, not just the structured log.
+            auditLog.RecordRest(http, clock, "system_update", ChannelName(ch), "requested", "");
 
             // apt + self-contained both dispatch the same packetnet-update.service oneshot
             // (its helper body differs per install); only an unknown channel declines.

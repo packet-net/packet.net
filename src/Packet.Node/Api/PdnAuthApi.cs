@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 
@@ -336,7 +337,7 @@ public static class PdnAuthApi
         usersGroup.MapGet("", (IUserStore users) =>
             Results.Ok(users.List().Select(UserSummary.From).ToArray()));
 
-        usersGroup.MapPost("", (CreateUserRequest body, IUserStore users, TimeProvider clock) =>
+        usersGroup.MapPost("", (CreateUserRequest body, HttpContext ctx, IUserStore users, IAuditLog audit, TimeProvider clock) =>
         {
             if (body is null || string.IsNullOrWhiteSpace(body.Username))
             {
@@ -361,10 +362,12 @@ public static class PdnAuthApi
             {
                 return Results.Conflict(new { error = $"User '{user.Username}' already exists." });
             }
+            // Creating an account is a privileged grant — record it (scope, not the password).
+            audit.RecordRest(ctx, clock, "create_user", user.Username, "ok", $"scope={user.Scope}");
             return Results.Created($"/api/v1/users/{user.Username}", UserSummary.From(user));
         });
 
-        usersGroup.MapDelete("/{username}", (string username, IUserStore users) =>
+        usersGroup.MapDelete("/{username}", (string username, HttpContext ctx, IUserStore users, IAuditLog audit, TimeProvider clock) =>
         {
             // Don't let the last admin delete themselves into a locked-out node.
             var all = users.List();
@@ -377,7 +380,12 @@ public static class PdnAuthApi
             {
                 return Results.Conflict(new { error = "Cannot delete the last administrator." });
             }
-            return users.Delete(username) ? Results.NoContent() : Results.NotFound();
+            if (!users.Delete(username))
+            {
+                return Results.NotFound();
+            }
+            audit.RecordRest(ctx, clock, "delete_user", username, "ok", "");
+            return Results.NoContent();
         });
 
         return usersGroup;

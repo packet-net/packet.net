@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 
@@ -50,7 +51,7 @@ public static class PdnConfigApi
 
         // Structured edit: a NodeConfig JSON body. ?dryRun=true validates +
         // previews without persisting.
-        v1.MapPut("/config", (NodeConfig candidate, IWritableConfigProvider cfg, bool dryRun = false) =>
+        v1.MapPut("/config", (NodeConfig candidate, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
             // Capture the live config BEFORE applying — the preview is from→to.
             var before = cfg.Current;
@@ -73,6 +74,9 @@ public static class PdnConfigApi
             {
                 return Results.UnprocessableEntity(new ValidationProblem(applyErrors));
             }
+            // Audit the applied config write (not dry-runs, not rejected candidates).
+            audit.RecordRest(ctx, clock, "PUT /config", "config", "ok",
+                $"portRestart={preview.PortRestart} nodeReset={preview.NodeReset}");
             return Results.Ok(ToResult(preview, applied: true));
         }).RequireAuthorization(PdnAuthPolicies.Operate);   // a config write is `operate`
 
@@ -83,7 +87,7 @@ public static class PdnConfigApi
 
         // Raw-YAML edit: the request body IS the YAML. A parse failure is a 422 with
         // a single (yaml)-path error; otherwise the same validate→preview→apply flow.
-        v1.MapPut("/config/raw", async (HttpContext ctx, IWritableConfigProvider cfg, bool dryRun = false) =>
+        v1.MapPut("/config/raw", async (HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var yaml = await reader.ReadToEndAsync();
@@ -117,6 +121,8 @@ public static class PdnConfigApi
             {
                 return Results.UnprocessableEntity(new ValidationProblem(applyErrors));
             }
+            audit.RecordRest(ctx, clock, "PUT /config/raw", "config", "ok",
+                $"portRestart={preview.PortRestart} nodeReset={preview.NodeReset}");
             return Results.Ok(ToResult(preview, applied: true));
         }).RequireAuthorization(PdnAuthPolicies.Operate);   // a raw-YAML config write is `operate`
     }

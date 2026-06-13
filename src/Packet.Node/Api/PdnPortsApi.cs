@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 
@@ -71,32 +72,35 @@ public static class PdnPortsApi
 
         // Add a port: append it to the live Ports list. A duplicate id is caught by the
         // validator's unique-id rule → 422 (no separate guard needed here).
-        v1.MapPost("/ports", (PortConfig port, IWritableConfigProvider cfg) =>
+        v1.MapPost("/ports", (PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
         {
+            audit.RecordRest(ctx, clock, "add_port", port.Id ?? "", "requested", "");
             var candidate = cfg.Current with { Ports = [.. cfg.Current.Ports, port] };
             return ApplyCandidate(cfg, candidate);
         });
 
         // Edit a port: replace the port carrying {id}. Unknown id → 404. Renaming the id
         // in the body (Id != {id}) reads as "edit the {id} entry" — the route id is the key.
-        v1.MapPut("/ports/{id}", (string id, PortConfig port, IWritableConfigProvider cfg) =>
+        v1.MapPut("/ports/{id}", (string id, PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
         {
             if (!cfg.Current.Ports.Any(p => p.Id == id))
             {
                 return Results.NotFound();
             }
+            audit.RecordRest(ctx, clock, "edit_port", id, "requested", "");
             var ports = cfg.Current.Ports.Select(p => p.Id == id ? port : p).ToArray();
             var candidate = cfg.Current with { Ports = ports };
             return ApplyCandidate(cfg, candidate);
         });
 
         // Remove a port. Unknown id → 404.
-        v1.MapDelete("/ports/{id}", (string id, IWritableConfigProvider cfg) =>
+        v1.MapDelete("/ports/{id}", (string id, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
         {
             if (!cfg.Current.Ports.Any(p => p.Id == id))
             {
                 return Results.NotFound();
             }
+            audit.RecordRest(ctx, clock, "delete_port", id, "requested", "");
             var candidate = cfg.Current with { Ports = [.. cfg.Current.Ports.Where(p => p.Id != id)] };
             return ApplyCandidate(cfg, candidate);
         });
@@ -106,13 +110,17 @@ public static class PdnPortsApi
         // can't race a config reconcile). All three return the port's resulting
         // (best-effort) PortStatus.
         v1.MapPost("/ports/{id}/lifecycle",
-            async (string id, LifecycleRequest body, IWritableConfigProvider cfg, NodeHostedService host, CancellationToken ct) =>
+            async (string id, LifecycleRequest body, HttpContext ctx, IWritableConfigProvider cfg, NodeHostedService host, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
             var existing = cfg.Current.Ports.FirstOrDefault(p => p.Id == id);
             if (existing is null)
             {
                 return Results.NotFound();
             }
+
+            // Bringing a port up/down or restarting it changes whether the node can transmit
+            // on that RF interface — audit the lifecycle action against the port.
+            audit.RecordRest(ctx, clock, "port_lifecycle", id, "requested", $"action={body.Action}");
 
             switch (body.Action)
             {
