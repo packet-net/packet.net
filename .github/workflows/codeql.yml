@@ -1,0 +1,76 @@
+name: codeql
+
+# CodeQL static analysis for the C# code. Runs the github/codeql-action
+# JS actions on our own self-hosted runners — zero GitHub-hosted Actions
+# minutes consumed (this project has no hosted-runner budget; every job
+# targets [self-hosted, Linux, X64], same discipline as ci/fuzz/interop).
+#
+# Findings surface in the repo Security > Code scanning tab (SARIF upload),
+# so on top of push/PR we run a weekly scheduled sweep to re-scan main
+# against any newly-shipped CodeQL queries even when the code is quiet.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Mondays at 03:37 UTC. Deliberately off the half-hour and
+    # distinct from the 02:17 fuzz nightly so the two CPU-heavy workflows
+    # never collide on the shared self-hosted box.
+    - cron: '37 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  # CodeQL uploads its results as SARIF to the code-scanning API.
+  security-events: write
+  # The codeql-action reads workflow/run metadata when uploading.
+  actions: read
+
+env:
+  # GitHub will force JavaScript actions onto Node.js 24 from
+  # June 2nd, 2026 and remove Node.js 20 from the runner on
+  # September 16th, 2026. Opting in early both silences the
+  # deprecation warning and lets us catch any Node 24 breakage
+  # well ahead of the forced cutover.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  analyze:
+    name: analyze (csharp)
+    runs-on: [self-hosted, Linux, X64]
+    # Self-hosted Linux runner — zero GitHub Actions minutes consumed.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          # Manual build mode: autobuild can't reliably restore this repo
+          # (Central Package Management + a .slnx solution), so we drive the
+          # build ourselves between init and analyze.
+          build-mode: manual
+
+      - name: report .NET
+        run: dotnet --version
+
+      - name: build
+        # The compile CodeQL traces to build its C# database. This is a full
+        # Release build of the whole solution → CPU-heavy, so it takes the
+        # EXCLUSIVE box-wide flock (same discipline as fuzz.yml's smoke run):
+        # never overlap a concurrent CPU-heavy workflow on the shared
+        # self-hosted host (§7.2.2). flock passes the command's exit through.
+        run: |
+          flock -x /tmp/pdn-ci-heavy.lock \
+          dotnet build Packet.NET.slnx --configuration Release
+
+      - name: analyze CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:csharp
