@@ -6,6 +6,7 @@
 
 **As of:** 2026-06-11
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the deferred link-tuner is parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 (MCP) kickoff** — design agreed ([`docs/mcp-design.md`](docs/mcp-design.md)), Phase 8 flipped 🟡: in-process server (`Packet.Mcp` tool surface behind an `INodeMcpBackend` seam — live in-proc backend for SSE, loopback-REST backend for the `pdn mcp` stdio bridge), auth on the **shipped `read`/`operate`/`admin`** model (§6's never-built `mcp:invoke`/granular scheme corrected), full §5.8 surface in one slice with monitor-v2 (per-session T1-SRTT/retries/T3) instrumentation landing last to retire the `/links` stubbed zeros; no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-11 — **KISS ACKMODE host-side pacing** — a kiss-tcp port with the new per-port `kiss.ackMode` flag (default-off) serialises its outbound frames onto the half-duplex channel: `PacingKissModem` decorates the modem so each frame is sent in ACKMODE (`SendFrameWithAckAsync`) and the next is held until the prior frame's TX-completion echo arrives (or a 5 s timeout), replacing the fire-and-forget blast that collides on the shared medium; a single background pump preserves the SDL sinks' fire-and-forget send contract, one frame can't wedge it, and a toggle restarts the port (it's a construction-time wrap, not a live KISS setting). Host/transport + config only — parity surfaces untouched](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-11 — **T2 coalesced acks (#385)** — the §6.7.1.2 acknowledge delay now defers the LM-SEIZE grant at both production construction sites, so a burst of received I-frames coalesces into ONE cumulative RR (was one keyup per frame); `ClearAcknowledgePending` cancels the pending delayed ack on any superseding N(R)-bearing transmission, so the F=1 checkpoint answer to a poll can never be followed by a stale ack (the BPQ retransmit-rollback loop that killed sustained inbound transfers at 1200 baud); `T2Ms=0` restores ack-per-frame](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-11 — **DAPPS bundle re-pinned to v0.34.0** — manifest now fetched from the release (the interim copy deleted, completing the 5b design); the release carries `DAPPS_ENV_MANAGED` + the node-derived callsign with SSID probe-walk, so enabling dapps on a pdn node is now zero-config](#17-amendment-log)
@@ -322,7 +323,7 @@ Effort key: S ≤ 3 days, M ≤ 2 weeks, L ≤ 1 month, XL > 1 month. Status: �
 | 5 | Web UI | L | ✅ |
 | 6 | External app surfaces: RHPv2 + AGW | L | ⬜ next |
 | 7 | Packaging + self-update | M | 🟡 (.deb + node-v* release done; apt repo is maintainer-owned, dropped from scope; self-contained installer + channel-aware in-app self-update pending — see `docs/node-self-update-design.md`) |
-| 8 | MCP + live monitor v2 + link troubleshooting | M | ⬜ (home of the deferred link-tuner) |
+| 8 | MCP + live monitor v2 + link troubleshooting | M | 🟡 (design agreed — [`docs/mcp-design.md`](mcp-design.md); home of the deferred link-tuner) |
 | 9 | Plugin API + NET/ROM + hardening (post-v1) | L–XL | 🟡 (NET/ROM L3+L4 + INP3 shipped cross-stack; plugin API + hardening remain) |
 | 10 | Hardware ecosystem & adaptive RF (post-v1) | XL | ⬜ (per-frame RSSI/SNR — Tait 8100/8200, #363) |
 
@@ -463,9 +464,11 @@ The `.deb` build (`scripts/build-deb.sh`) + `node-v*` GitHub Releases are **done
 
 Remaining beyond that: the **web UI** Apply button + version-poll completion UX; deepening the apt health-gate from `is-active` to a `/healthz` probe; **cosign** signing/verify; the available-version check feeding the UI. Full design + status: [`docs/node-self-update-design.md`](node-self-update-design.md).
 
-### 5.8 Phase 8 — MCP + live monitor v2 + link troubleshooting ⬜ ([#173](https://github.com/m0lte/packet.net/issues/173))
+### 5.8 Phase 8 — MCP + live monitor v2 + link troubleshooting 🟡 ([#173](https://github.com/m0lte/packet.net/issues/173))
 
-`Packet.Mcp` over stdio + SSE. Read tools: `list_ports`, `list_sessions`, `recent_frames(filter)`, `link_quality(remote)`, `network_topology`, `decode_frame(hex)`. Write tools: `send_ui_frame`, `reset_port`, `disconnect_session`, `set_kiss_param` — require separate `mcp:invoke` scope token and audit-logged. Link troubleshoot view: per-link RTT, retries, REJ/SREJ counts, T1/T3 graphs.
+**Design AGREED 2026-06-13 — full spec in [`docs/mcp-design.md`](mcp-design.md).** `Packet.Mcp` over stdio + SSE (Streamable HTTP, which subsumes the deprecated raw-SSE the §5.8/§6 text names). Read tools: `list_ports`, `list_sessions`, `recent_frames(filter)`, `link_quality(remote)`, `network_topology`, `decode_frame(hex)`. Write tools: `send_ui_frame`, `reset_port`, `disconnect_session`, `set_kiss_param` — audit-logged. Link troubleshoot view: per-link RTT, retries, REJ/SREJ counts, T1/T3 graphs.
+
+Kickoff decisions: **in-process** (the server reads live `NodeHostedService` state, not a REST re-projection — `Packet.Mcp` holds the transport-agnostic tool surface behind an `INodeMcpBackend` seam, with a live in-proc backend for SSE and a loopback-REST backend for the `pdn mcp` stdio bridge); auth is the **shipped `read`/`operate`/`admin` model** (read tools `read`, write tools `operate` + audit), *not* the `mcp:invoke`/granular scheme §6 once penciled in but never built (§6 corrected below); **full surface in the opening slice** (read + write + both transports), with an internal build order ending in the monitor-v2 piece. **Monitor v2** is the one part needing new instrumentation: SRTT/retries aren't derivable from the frame tap (`PdnReadApi.BuildLinks` honestly stubs them to 0), so it surfaces per-session T1-SRTT/retries/T3 from the AX.25 engine to feed `link_quality`, the REST `/links` stubs, and the T1/T3 troubleshoot view. No ax25-ts parity leg (not a parser flag / not the listener surface). The deferred link-tuner stays parked here.
 
 ### 5.9 Phase 9 — Plugin API + NET/ROM + hardening ⬜ (post-v1) ([#174](https://github.com/m0lte/packet.net/issues/174))
 
@@ -879,8 +882,8 @@ Targets: linux-x64, linux-arm64, linux-arm (v7), win-x64, osx-arm64, osx-x64. Se
 | RHPv2 TCP | `127.0.0.1:8050` | auth msg required | `--listen-public` opt-in |
 | RHPv2 WS | piggyback web port `/rhp` | auth msg (or relaxed under `--linbpq-compat`) | |
 | AGW TCP | `127.0.0.1:8000` | none (legacy) | non-loopback requires `--listen-public --i-understand-agw-is-unauthenticated` |
-| MCP stdio | n/a | local user | |
-| MCP SSE | `127.0.0.1:8051` | bearer + `mcp:invoke` scope | separate token lifetime |
+| MCP stdio | n/a | local user | `pdn mcp` subcommand; bridges to loopback |
+| MCP SSE | `127.0.0.1:8051` | bearer; `read` (read tools) / `operate` (write tools) | in-process; pass-through when auth off |
 | KISS-TCP outbound | n/a | n/a | TLS not in scope (TNC vendors don't speak it) |
 | AXUDP | configurable | none | startup banner warning |
 
@@ -888,7 +891,7 @@ All write endpoints audit-logged (actor, IP, scope, payload hash) into `config.d
 
 The RHPv2 TCP front-end is resource-bounded against a hostile/buggy peer (defaults, all configurable in the `rhp:` block): a concurrent-connection cap (`maxConnections`, 64), a per-client live-handle cap (`maxHandlesPerClient`, 256 — refused with errCode 4), and an in-frame read timeout (`inFrameTimeoutSeconds`, 30 — drops a peer that stalls part-way through a frame, while leaving idle-between-frames unbounded). See the 2026-06-13 amendment-log entry.
 
-JWT scopes: `frames:read`, `ports:read`, `ports:write`, `sessions:write`, `system:admin`, `mcp:invoke`.
+JWT scopes (shipped): the hierarchical **`read` ⊂ `operate` ⊂ `admin`** model (`AuthScopes.cs`) — *not* the granular `frames:read`/`ports:write`/`sessions:write`/`mcp:invoke` list this section once penciled in (never built). All surfaces, REST and MCP, gate on the shipped three: read tools/endpoints `read`, writes `operate`, user-management `admin`; the gate passes through when `management.auth.enabled` is off. See [`docs/mcp-design.md`](mcp-design.md) §"Auth & audit".
 
 ### 10.1 On-air authentication — TOTP (future direction)
 
@@ -1069,6 +1072,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-13 — Phase 8 (MCP) kickoff: design agreed, plan/§6 reconciled
+
+Started the MCP endpoint arc ([#173](https://github.com/m0lte/packet.net/issues/173)). Full design in [`docs/mcp-design.md`](mcp-design.md); Phase 8 flipped ⬜ → 🟡; §5.8 rewritten to point at it. Kickoff decisions taken with Tom: **(1) in-process** — `Packet.Mcp` is the transport-agnostic tool surface behind an `INodeMcpBackend` seam; a live in-proc backend (reusing `PdnReadApi`'s projections) serves the SSE transport mounted in the node pipeline, and a loopback-REST backend serves the `pdn mcp` stdio subcommand (resolving the separate-process reality of a subcommand vs shared live state). **(2) Auth = the shipped `read`/`operate`/`admin` model** — read tools `read`, write tools `operate` + audited; pass-through when auth is off, exactly like `/api/v1`. This corrects §6, which once listed a granular `frames:read`/`ports:write`/`mcp:invoke` scheme **that was never built** — the §6 scope line + the MCP-SSE table row are updated to the shipped model. **(3) Full §5.8 surface in one slice** (read + write tools + stdio + SSE), with an internal build order: `decode_frame` (pure, golden-test anchor) → read tools on existing data → SSE mount → stdio bridge → write tools + audit → **monitor-v2 instrumentation last**. Monitor-v2 is the one part needing new code in the AX.25 engine: SRTT/retries aren't derivable from the frame tap (`PdnReadApi.BuildLinks` honestly stubs them to 0), so it surfaces per-session T1-SRTT/retries/T3 to feed `link_quality`, the REST `/links` stubs, and the T1/T3 troubleshoot view — one seam, three consumers. SDK: official `ModelContextProtocol` (+ `.AspNetCore`); the modern Streamable-HTTP transport subsumes the deprecated raw-SSE the §5.8/§6 prose names. No ax25-ts parity leg (MCP adds no parser flag and doesn't widen the `Ax25Listener` surface). The deferred link-tuner stays parked in Phase 8. No code yet — this entry covers the design + plan reconciliation.
 
 ### 2026-06-13 — CodeQL moved to scheduled-only (weekly) + dispatch, off per-push/PR
 
