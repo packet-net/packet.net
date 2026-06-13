@@ -77,6 +77,19 @@ install -d "$stage/opt/packetnet/app/wwwroot"
 cp -a "$ui/dist/." "$stage/opt/packetnet/app/wwwroot/"
 cp "$root/packaging/packetnet.service" "$stage/lib/systemd/system/packetnet.service"
 cp "$root/packaging/packetnet.yaml"    "$stage/etc/packetnet/packetnet.yaml"
+
+# Phase 7 in-app self-update (apt channel; docs/node-self-update-design.md):
+#  - install-channel: the build-stamped marker the node reads to decide HOW it updates
+#    (this .deb is an apt install → "apt"; the node defers to dpkg, never self-mutates).
+#  - packetnet-update.service: a privileged, on-demand oneshot the node triggers.
+#  - packetnet-apt-update: that oneshot's helper — a targeted `apt-get install
+#    --only-upgrade packetnet` with health-check rollback (mode 0755).
+#  - the polkit rule: lets the unprivileged `packetnet` user start ONLY that one unit.
+install -d "$stage/usr/lib/packetnet" "$stage/usr/share/polkit-1/rules.d"
+install -m 0644 "$root/packaging/install-channel"          "$stage/usr/lib/packetnet/install-channel"
+install -m 0755 "$root/packaging/packetnet-apt-update"     "$stage/usr/lib/packetnet/packetnet-apt-update"
+install -m 0644 "$root/packaging/packetnet-update.service" "$stage/lib/systemd/system/packetnet-update.service"
+install -m 0644 "$root/packaging/49-packetnet-update.rules" "$stage/usr/share/polkit-1/rules.d/49-packetnet-update.rules"
 # The bundled app PACKAGES (docs/app-packages.md): each directory under
 # /usr/share/packetnet/apps carries a pdn-app.yaml manifest authored by the app; pdn
 # discovers them at startup/reload and the owner enables them with an `apps:` entry (or

@@ -223,6 +223,13 @@ builder.Services.AddHttpForwarder();
 
 builder.Services.AddSingleton<ITransportFactory>(TransportFactory.Instance);
 builder.Services.AddSingleton(TimeProvider.System);
+// Phase 7 self-update (docs/node-self-update-design.md): the install channel is read
+// from the build-stamped marker; the launcher triggers the privileged, detached
+// packetnet-update.service oneshot (the node never runs apt / touches files itself).
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IInstallChannelProvider>(
+    new Packet.Node.Core.SelfUpdate.FileInstallChannelProvider());
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemUpdateLauncher,
+    Packet.Node.Core.SelfUpdate.SystemctlUpdateLauncher>();
 // The app-package catalog (docs/app-packages.md): discovers pdn-app.yaml packages under the
 // package roots and merges the owner's apps: overrides. A pure, cheap, side-effect-free scan
 // per call — the gateway, the packages API, and the hosted service consume it directly.
@@ -410,6 +417,12 @@ app.MapPdnAppGateway();
 // override list), and the managed-service restart action. Mapped beside the gateway, before
 // the catch-all. See PdnAppPackagesApi + docs/app-packages.md.
 app.MapPdnAppPackagesApi();
+
+// Phase 7 self-update: GET /api/v1/system/info (read — version + install channel) and
+// POST /api/v1/system/update (admin, audited — channel-aware: a targeted apt upgrade via
+// the privileged packetnet-update.service on the apt channel). See PdnSystemApi +
+// docs/node-self-update-design.md. Mapped before the catch-all; specific routes win.
+app.MapPdnSystemApi();
 
 // An unknown /api/* path returns 404 — it must NOT fall through to the SPA
 // index.html below (the catch-all is less specific than the real /api/v1/*

@@ -79,6 +79,17 @@ The service runs **unprivileged** (the `packetnet` user) and must stay that way.
 
 These were the three open questions; all resolved with the maintainer.
 
+## Implementation status
+
+**Slice 1 — the apt-channel apply path — is shipped.**
+
+- **API** (`PdnSystemApi`): `GET /api/v1/system/info` (read scope) → `{ version, channel, updateMechanism }`; `POST /api/v1/system/update` (admin scope, audited via `SystemLog`/`Packet.Node.System`) → on `apt`, dispatch the helper and **202** (fire-and-acknowledge); on `self-contained` **501**; on `unknown` **409**; launch failure **503**.
+- **Seams** (`Packet.Node.Core/SelfUpdate/`): `IInstallChannelProvider` (`FileInstallChannelProvider` reads the marker + `PDN_INSTALL_CHANNEL` override, fail-safe to `Unknown`); `ISystemUpdateLauncher` (`SystemctlUpdateLauncher` runs `systemctl start --no-block packetnet-update.service`, `NotSupported` when systemd is absent).
+- **Packaging** (`packaging/` + `build-deb.sh`): the `install-channel` marker (`apt`) at `/usr/lib/packetnet/`, the `packetnet-update.service` oneshot, the `packetnet-apt-update` helper (targeted `apt-get install --only-upgrade` + is-active health-gate + downgrade rollback), and the `49-packetnet-update.rules` polkit rule; `Depends: polkitd | policykit-1`.
+- **Tests**: `InstallChannelProviderTests` + `SystemUpdateApiTests` (channel branches, admin gating, launcher invoked/not).
+
+**Deferred (later slices):** the **self-contained** channel (versioned dirs + `current` symlink + cosign + atomic flip + rollback); the **web UI** Apply button + version-poll completion UX; deepening the apt-channel health gate from `systemctl is-active` to a real `/healthz` probe; the available-version check (`updateAvailable`) feeding the UI; the `dpkg-query` channel-sniff fallback.
+
 ## Cross-references
 
 - Cosign key management for the trusted pubkey + rotation: OQ-003 ([#188](https://github.com/m0lte/packet.net/issues/188)).

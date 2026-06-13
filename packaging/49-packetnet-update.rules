@@ -1,0 +1,17 @@
+// 49-packetnet-update.rules — let the unprivileged `packetnet` service user start
+// ONLY packetnet-update.service (the in-app update trigger), and nothing else.
+//
+// The node host runs as `packetnet` and triggers an update with
+//   systemctl start --no-block packetnet-update.service
+// which systemd gates behind the org.freedesktop.systemd1.manage-units polkit action.
+// Without this rule the start is denied; with it, exactly that one unit's `start` verb
+// is allowed for that one user — every other unit and verb still requires admin auth.
+// Phase 7; docs/node-self-update-design.md.
+polkit.addRule(function (action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "packetnet-update.service" &&
+        action.lookup("verb") === "start" &&
+        subject.user === "packetnet") {
+        return polkit.Result.YES;
+    }
+});

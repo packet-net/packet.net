@@ -1,0 +1,65 @@
+#!/bin/sh
+# packetnet-apt-update — apply a TARGETED apt upgrade of the packetnet package.
+#
+# NEVER run this directly. It is the ExecStart of packetnet-update.service, which the
+# node starts on demand (Apply button → systemctl start --no-block) — a polkit rule
+# lets the unprivileged `packetnet` user start that one unit. This keeps the node
+# unprivileged: dpkg stays the sole owner of the files, and the upgrade restarts the
+# node via the package's own postinst try-restart.
+#
+# Targeted, not a dist-upgrade: only `packetnet` (and its strict deps) move, so a node
+# "update" can never drag the whole box forward. On a failed upgrade — or a node that
+# won't come up healthy afterwards — it rolls back to the prior version.
+# docs/node-self-update-design.md.
+set -eu
+
+PKG=packetnet
+TAG=packetnet-update
+
+log() { logger -t "$TAG" -- "$*" 2>/dev/null || true; echo "$TAG: $*"; }
+
+prev="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
+log "starting targeted upgrade of $PKG (current: ${prev:-unknown})"
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update || { log "apt-get update failed; aborting"; exit 1; }
+
+# --only-upgrade + the explicit package: upgrade packetnet alone, never the whole box.
+if ! apt-get install --only-upgrade -y "$PKG"; then
+    log "apt upgrade FAILED — node left on $prev"
+    exit 1
+fi
+
+new="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
+if [ "$new" = "$prev" ]; then
+    log "already at the newest version ($new); nothing to do"
+    exit 0
+fi
+log "upgrade applied ($prev -> $new); waiting for the node to come up"
+
+# The package postinst try-restarts packetnet.service inside the apt run above, so by
+# here the new version is (re)starting. Health-gate on it reaching active; if it won't,
+# roll back to the prior version. (A deeper /healthz probe is a later refinement.)
+healthy=0
+i=0
+while [ "$i" -lt 30 ]; do
+    if systemctl is-active --quiet "$PKG.service"; then healthy=1; break; fi
+    i=$((i + 1))
+    sleep 2
+done
+
+if [ "$healthy" -ne 1 ]; then
+    if [ -n "$prev" ]; then
+        log "node did not become active after the upgrade — rolling back to $prev"
+        if apt-get install --allow-downgrades -y "$PKG=$prev"; then
+            log "rolled back to $prev"
+        else
+            log "ROLLBACK FAILED — manual intervention needed"
+        fi
+    else
+        log "node unhealthy and no prior version recorded — manual intervention needed"
+    fi
+    exit 1
+fi
+
+log "done; node active on $new"

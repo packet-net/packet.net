@@ -2,7 +2,7 @@ Package: packetnet
 Version: @VERSION@
 Architecture: @ARCH@
 Maintainer: Tom Fanning <tom@m0lte.uk>
-Depends: adduser, libc6
+Depends: adduser, libc6, polkitd | policykit-1
 Recommends: python3
 Section: hamradio
 Priority: optional
