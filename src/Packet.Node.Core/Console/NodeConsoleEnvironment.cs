@@ -47,18 +47,29 @@ public sealed class NodeConsoleEnvironment
     /// </summary>
     public IApplicationHost? Applications { get; }
 
+    /// <summary>
+    /// Resolves a <c>Connect</c> target to a local-app crossconnect or a port-scoped dial. Null
+    /// when not wired (older call sites / tests) — the console then falls back to
+    /// <see cref="OutboundConnector"/> and rejects an explicit port. When present, it supersedes
+    /// <see cref="OutboundConnector"/> for the <c>Connect</c> command (it returns that same
+    /// default connector for the no-port, non-app case).
+    /// </summary>
+    public IConnectRouter? ConnectRouter { get; }
+
     public NodeConsoleEnvironment(
         IConfigProvider config,
         IOutboundConnector? outboundConnector,
         INetRomRoutingView? netRom = null,
         SysopContext? sysop = null,
-        IApplicationHost? applications = null)
+        IApplicationHost? applications = null,
+        IConnectRouter? connectRouter = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         OutboundConnector = outboundConnector;
         NetRom = netRom;
         Sysop = sysop;
         Applications = applications;
+        ConnectRouter = connectRouter;
     }
 
     /// <summary>The default over-RF elevation lifetime when the config leaves it unset.</summary>

@@ -218,7 +218,31 @@ public sealed partial class NodeCommandService : INodeApplication
 
     private async Task HandleConnectAsync(INodeConnection inbound, ConnectCommand connect, CancellationToken ct)
     {
-        var connector = env.OutboundConnector;
+        // The router (when wired) handles a chosen port and local-app crossconnects, and returns
+        // the session's default connector for a plain `C <call>`. Without it (older host / tests)
+        // we keep the single-default-connector behaviour and can't honour an explicit port.
+        IOutboundConnector? connector;
+        if (env.ConnectRouter is { } router)
+        {
+            var resolution = router.Resolve(connect.Port, connect.Target, inbound);
+            if (resolution.Failed)
+            {
+                await WriteLineAsync(inbound, resolution.Error!, ct).ConfigureAwait(false);
+                return;
+            }
+            connector = resolution.Connector;
+        }
+        else
+        {
+            if (connect.Port is not null)
+            {
+                await WriteLineAsync(inbound,
+                    "Port-scoped connect is not available on this connection.", ct).ConfigureAwait(false);
+                return;
+            }
+            connector = env.OutboundConnector;
+        }
+
         if (connector is null)
         {
             await WriteLineAsync(inbound,
