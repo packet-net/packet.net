@@ -22,7 +22,7 @@ public sealed class SystemctlUpdateLauncher : ISystemUpdateLauncher
     private const string UpdateUnit = "packetnet-update.service";
 
     /// <inheritdoc/>
-    public async Task<UpdateLaunchResult> StartAptUpdateAsync(CancellationToken cancellationToken = default)
+    public async Task<UpdateLaunchResult> StartUpdateAsync(CancellationToken cancellationToken = default)
     {
         var psi = new ProcessStartInfo("systemctl")
         {

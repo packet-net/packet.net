@@ -1,0 +1,107 @@
+#!/bin/sh
+# packetnet-selfupdate — the SELF-CONTAINED channel's update helper.
+#
+# NEVER run directly. On a self-contained install (install.sh) this is shipped as
+# /usr/lib/packetnet/packetnet-update — the ExecStart of packetnet-update.service,
+# which the node triggers on demand (Apply -> `systemctl start --no-block`, polkit-
+# authorized). It downloads the latest published self-contained build, verifies its
+# sha256, lays it down BESIDE the running one, flips the `current` symlink, restarts,
+# and rolls back if the node won't come up healthy. The node stays unprivileged; this
+# (root, detached) does the file work and survives the restart it triggers.
+#
+# Integrity is checksum-only for now (the sha256 from the signed-by-the-release
+# latest.json); cosign verification is a planned hardening and slots in at the marked
+# VERIFY step. docs/node-self-update-design.md.
+set -eu
+
+TAG=packetnet-update
+# Paths + the restart/health commands are overridable (PDN_*), production defaults below,
+# so the flow is testable against a fixture without real systemd. install.sh leaves the
+# defaults.
+PREFIX="${PDN_PREFIX:-/opt/packetnet}"
+RELEASES="$PREFIX/releases"
+CURRENT="$PREFIX/current"
+CONF="${PDN_UPDATE_CONF:-/etc/packetnet/update.conf}"   # install.sh writes FEED_URL=, HEALTH_URL=
+RESTART_CMD="${PDN_RESTART_CMD:-systemctl restart packetnet.service}"
+
+log() { logger -t "$TAG" -- "$*" 2>/dev/null || true; echo "$TAG: $*"; }
+fail() { log "$*"; exit 1; }
+restart() { sh -c "$RESTART_CMD"; }
+
+[ -r "$CONF" ] && . "$CONF"
+: "${FEED_URL:?no FEED_URL in $CONF}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+
+case "$(uname -m)" in
+    x86_64)          arch=amd64 ;;
+    aarch64)         arch=arm64 ;;
+    armv7l|armv6l)   arch=armhf ;;
+    *)               fail "unsupported arch $(uname -m)" ;;
+esac
+
+cur="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo none)")"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+log "checking $FEED_URL (current=$cur arch=$arch)"
+curl -fsSL --max-time 30 "$FEED_URL/latest.json" -o "$work/latest.json" || fail "feed unreachable"
+
+# Parse latest.json without a jq dependency. The manifest is the shape publish-node.yml
+# writes: a top-level "version" and one single-line block per arch carrying file+sha256.
+new="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work/latest.json" | head -1)"
+block="$(grep -o "\"$arch\"[[:space:]]*:[[:space:]]*{[^}]*}" "$work/latest.json" || true)"
+afile="$(printf '%s' "$block" | sed -n 's/.*"file"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+asha="$(printf '%s' "$block" | sed -n 's/.*"sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+[ -n "$new" ] && [ -n "$afile" ] && [ -n "$asha" ] || fail "malformed latest.json (no version/$arch entry)"
+
+if [ "$new" = "$cur" ]; then log "already at newest ($cur); nothing to do"; exit 0; fi
+
+log "downloading $afile ($cur -> $new)"
+curl -fsSL --max-time 600 "$FEED_URL/$afile" -o "$work/pkg.tar.gz" || fail "download failed"
+
+# --- VERIFY (checksum-only; cosign verify-blob slots in here later) ---
+calc="$(sha256sum "$work/pkg.tar.gz" | cut -d' ' -f1)"
+[ "$calc" = "$asha" ] || fail "sha256 MISMATCH (want $asha, got $calc) — refusing to install"
+
+# Unpack into releases/<new> via a temp dir, then rename into place (never over the
+# running tree). Then atomically flip `current`.
+dest="$RELEASES/$new"
+rm -rf "$dest.tmp"; mkdir -p "$dest.tmp"
+tar -C "$dest.tmp" -xzf "$work/pkg.tar.gz" || { rm -rf "$dest.tmp"; fail "unpack failed"; }
+rm -rf "$dest"; mv "$dest.tmp" "$dest"
+
+prev="$(readlink "$CURRENT" 2>/dev/null || true)"        # e.g. "releases/0.8.0"
+ln -sfn "releases/$new" "$CURRENT.new"; mv -T "$CURRENT.new" "$CURRENT"
+log "flipped current -> releases/$new; restarting"
+restart || log "restart returned non-zero (will health-gate anyway)"
+
+# Health-gate the new version; on failure flip the symlink back and restart.
+healthy=0; i=0
+while [ "$i" -lt 30 ]; do
+    if curl -fsS -o /dev/null --max-time 3 "$HEALTH_URL" 2>/dev/null; then healthy=1; break; fi
+    i=$((i + 1)); sleep 2
+done
+
+if [ "$healthy" -ne 1 ]; then
+    if [ -n "$prev" ] && [ -d "$PREFIX/$prev" ]; then
+        log "node unhealthy on $new — rolling back to $prev"
+        ln -sfn "$prev" "$CURRENT.new"; mv -T "$CURRENT.new" "$CURRENT"
+        restart || true
+    else
+        log "node unhealthy on $new and no prior release to roll back to — manual intervention needed"
+    fi
+    exit 1
+fi
+
+# GC: keep the new current AND the rollback target ($prev) explicitly, drop the rest.
+# (Never sort by mtime to choose — the rollback target isn't necessarily the 2nd-newest,
+# and deleting it would leave rollback with nowhere to go.)
+for d in "$RELEASES"/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    [ "$name" = "$new" ] && continue
+    [ "releases/$name" = "$prev" ] && continue
+    log "gc old release releases/$name"
+    rm -rf "$d"
+done
+log "done; node active on $new"
