@@ -87,19 +87,39 @@ Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` buil
 
 ## Config
 
-A new `mcp:` block (defaults preserve "off until asked", loopback-only, like AGW/RHPv2):
+A new `mcp:` block (defaults preserve "off until asked", like AGW/RHPv2):
 
 ```yaml
 mcp:
-  enabled: false            # master switch for the in-process server
+  enabled: false            # master switch: registers the MCP tool surface in DI
   sse:
-    enabled: false          # mount the Streamable-HTTP transport in the web pipeline
-    bind: 127.0.0.1
-    port: 8051              # §6 table
+    enabled: false          # mount the Streamable-HTTP transport on the web listener
+    path: /mcp              # served on the EXISTING web listener (piggyback, like RHPv2-WS at /rhp)
   # stdio needs no config — it's the `pdn mcp` subcommand
 ```
 
-The `pdn mcp` subcommand reads the node's loopback base URL (default derived from the web config) + an optional local token.
+The SSE transport is **not** a separate socket/port — it mounts on the node's existing web
+listener (`management.http` / `management.https`), so it inherits that listener's bind, TLS,
+and auth. (The §6 "8051" note is superseded by this piggyback.) The `pdn mcp` subcommand reads
+the node base URL from `--node-url` / `PDN_NODE_URL` (default loopback) + an optional local token.
+
+## Deployment & reachability
+
+**The model (decided 2026-06-13): the SSE/Streamable-HTTP `/mcp` endpoint is the network transport, and MCP reachability == web-panel reachability.** Because `/mcp` rides the same web listener as the control panel, whatever path already reaches the pdn web UI from a phone/laptop reaches MCP — same host, same port, same TLS, same JWT auth. There is **no hard Tailscale dependency**; Tailscale is one supported reachability option, not a requirement. stdio (`pdn mcp`) is a **co-located convenience** (on the node box, or a laptop with the binary + LAN line-of-sight via `--node-url`), *not* the mainstream remote path.
+
+All four reachability paths are in scope (operator's choice — they're the same endpoint, differing only in how the client reaches the listener and authenticates):
+
+| Path | How the client reaches it | Auth | Status |
+|---|---|---|---|
+| **LAN-direct** | `https://node.lan:8443/mcp` (web listener bound to a LAN addr, TLS on) | node JWT bearer header | works once `mcp.sse` on + listener LAN-bound |
+| **Tailscale/WireGuard** | `https://<node-ts-name>/mcp` over the overlay; no public exposure | node JWT bearer | works (recipe to document) |
+| **Public HTTPS domain** | the lab `pdn.m0lte.uk` model — DDNS/port-forward + real cert | node JWT bearer | works (harden: rate-limit, token lifetime) |
+| **Hosted claude.ai connector** | claude.ai "custom connector" → public HTTPS URL | **OAuth 2.1** (MCP auth spec) | **needs building** — see below |
+
+**Auth over the wire.** `/mcp` is gated `read` (read tools) / `operate` (write tools) via the node's existing JWT bearer when `management.auth.enabled` is on, with TLS from the web listener. **Claude Code (desktop/CLI)** supports remote HTTP MCP servers with an `Authorization: Bearer …` header, so it works against `/mcp` today given reachability + a node-issued token. Planned convenience: a long-lived, `read`/`operate`-scoped **MCP token** an operator mints in the panel (rather than reusing a short-lived login JWT).
+
+**The OAuth gap (the claude.ai connector path).** Hosted claude.ai custom connectors follow the MCP authorization spec — OAuth 2.1 with the MCP server as an OAuth **resource server**, discovered via `/.well-known/oauth-protected-resource` + an authorization server (the node can be its own AS, reusing the existing user store / passkeys for the consent step, or delegate). This is a real, security-sensitive build (its own design pass + review, like the WebAuthn work) — the long pole of the four paths. The other three need only config + docs + minor hardening on top of what's shipped.
+
 
 ## Monitor-v2 — the one piece that needs new instrumentation
 

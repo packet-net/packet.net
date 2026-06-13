@@ -46,7 +46,8 @@ public sealed class HttpContextMcpCallerAccessor(IHttpContextAccessor http, ICon
                 if (AuthScopes.Satisfies(granted, AuthScopes.Admin)) scopes.Add(McpScopes.Admin);
             }
 
-            return new McpCaller(actor, "sse", scopes);
+            string? ip = http.HttpContext?.Connection.RemoteIpAddress?.ToString();
+            return new McpCaller(actor, "mcp:sse", scopes, ip);
         }
     }
 }

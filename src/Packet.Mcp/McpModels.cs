@@ -134,7 +134,7 @@ public static class McpScopes
 /// <see cref="Scopes"/> is the caller's expanded scope set (the host fills it from
 /// the authenticated token, or grants all when auth is off / for the local user).
 /// </summary>
-public sealed record McpCaller(string Actor, string Transport, IReadOnlySet<string> Scopes)
+public sealed record McpCaller(string Actor, string Transport, IReadOnlySet<string> Scopes, string? ClientIp = null)
 {
     /// <summary>True if the caller holds <paramref name="scope"/>.</summary>
     public bool HasScope(string scope) => Scopes.Contains(scope);
@@ -142,7 +142,7 @@ public sealed record McpCaller(string Actor, string Transport, IReadOnlySet<stri
     /// <summary>
     /// The local-user identity for the stdio transport (no token). A process that
     /// can exec <c>pdn mcp</c> and reach loopback is OS-trusted, so it holds every
-    /// scope.
+    /// scope. No client IP — it's a local process.
     /// </summary>
     public static McpCaller LocalStdio { get; } =
         new("local-stdio", "stdio", new HashSet<string>(StringComparer.Ordinal)

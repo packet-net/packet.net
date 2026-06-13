@@ -89,6 +89,14 @@ builder.Services.AddSingleton<INetRomRoutingStore>(routingStore);
 var userStore = new SqliteUserStore(dbPath, bootstrapLoggers.CreateLogger<SqliteUserStore>());
 builder.Services.AddSingleton<IUserStore>(userStore);
 
+// The node-wide audit log for privileged actions, persisted to the same pdn.db. Same
+// resilient discipline as the user/routing stores (a store fault degrades to
+// "logged-but-not-persisted", never faults the node). Wired into the MCP write tools;
+// REST write endpoints adopt the same IAuditLog seam. The §6 audit promise.
+var auditLog = new Packet.Node.Core.Audit.SqliteAuditLog(
+    dbPath, bootstrapLoggers.CreateLogger<Packet.Node.Core.Audit.SqliteAuditLog>());
+builder.Services.AddSingleton<Packet.Node.Core.Audit.IAuditLog>(auditLog);
+
 var signingKey = userStore.GetOrCreateSigningKey();
 var accessTokenLifetime = TimeSpan.FromMinutes(configProvider.Current.Management.Auth.AccessTokenMinutes ?? 60);
 JwtTokenService? tokenService =
@@ -439,6 +447,11 @@ app.MapPdnAppPackagesApi();
 // the privileged packetnet-update.service on the apt channel). See PdnSystemApi +
 // docs/node-self-update-design.md. Mapped before the catch-all; specific routes win.
 app.MapPdnSystemApi();
+
+// The audit-log read API (GET /api/v1/audit, admin-gated): recent privileged-action
+// records from the node-wide audit log (pdn.db). Mapped before the catch-all. See
+// PdnAuditApi + §6.
+app.MapPdnAuditApi();
 
 // Phase 8: the in-process MCP server's Streamable-HTTP transport, mounted at the
 // configured path (default /mcp) on the web listener when mcp.sse.enabled, gated

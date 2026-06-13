@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
 using Packet.Ax25.Session;
+using Packet.Node.Core.Audit;
 using Packet.Core;
 using Packet.Mcp;
 using Packet.Node.Api;
@@ -17,11 +17,11 @@ namespace Packet.Node.Mcp;
 /// endpoints use), so an MCP write can never race a reconcile. See
 /// <c>docs/mcp-design.md</c>.
 /// </summary>
-public sealed partial class LiveNodeMcpBackend(
+public sealed class LiveNodeMcpBackend(
     NodeHostedService host,
     IConfigProvider config,
     TimeProvider clock,
-    ILogger<LiveNodeMcpBackend> logger) : INodeMcpBackend
+    IAuditLog audit) : INodeMcpBackend
 {
     // ---- read ----
 
@@ -129,7 +129,7 @@ public sealed partial class LiveNodeMcpBackend(
     public async Task<SendResult> SendUiFrameAsync(SendUiRequest req, McpCaller caller, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(req);
-        Audit(caller, "send_ui_frame", $"port={req.Port} dest={req.Dest} len={req.Payload?.Length ?? 0}");
+        Audit(caller, "send_ui_frame", req.Port, $"dest={req.Dest} len={req.Payload?.Length ?? 0}");
 
         if (req.Path is { Count: > 0 })
         {
@@ -152,7 +152,7 @@ public sealed partial class LiveNodeMcpBackend(
     public async Task<PortActionResult> ResetPortAsync(string portId, McpCaller caller, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(portId);
-        Audit(caller, "reset_port", $"port={portId}");
+        Audit(caller, "reset_port", portId, "restart");
 
         if (host.Supervisor is not { } supervisor)
         {
@@ -168,7 +168,7 @@ public sealed partial class LiveNodeMcpBackend(
     public async Task<SessionResult> DisconnectSessionAsync(string sessionId, McpCaller caller, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        Audit(caller, "disconnect_session", $"id={sessionId}");
+        Audit(caller, "disconnect_session", sessionId, "DL-DISCONNECT");
 
         int colon = sessionId.IndexOf(':', StringComparison.Ordinal);
         if (colon <= 0 || colon == sessionId.Length - 1)
@@ -194,7 +194,7 @@ public sealed partial class LiveNodeMcpBackend(
     public Task<KissParamResult> SetKissParamAsync(SetKissParamRequest req, McpCaller caller, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(req);
-        Audit(caller, "set_kiss_param", $"port={req.Port} {req.Param}={req.Value}");
+        Audit(caller, "set_kiss_param", req.Port, $"{req.Param}={req.Value}");
 
         // The KISS-parameter write path (TXDELAY/persist/slottime/txtail → a KISS
         // SetHardware/param frame on the modem, vs the construction-time params that
@@ -205,12 +205,16 @@ public sealed partial class LiveNodeMcpBackend(
             Message: "set_kiss_param is not yet wired to the KISS modem (tracked for a later Phase-8 step)."));
     }
 
-    private void Audit(McpCaller caller, string tool, string detail)
-        => LogWriteAudit(caller.Actor, caller.Transport, tool, detail);
-
-    [LoggerMessage(Level = LogLevel.Information,
-        Message = "MCP write: actor={Actor} via={Transport} tool={Tool} {Detail}")]
-    private partial void LogWriteAudit(string actor, string transport, string tool, string detail);
+    // Persist the privileged-action invocation to the node-wide audit log (pdn.db).
+    // Recorded at invocation (the security-critical "who invoked what, from where"); the
+    // operate-scope gate upstream means a write that reaches here was authorized. The
+    // store also emits a structured log line, so this is visible in normal logs too.
+    private void Audit(McpCaller caller, string action, string target, string detail)
+    {
+        string source = caller.Transport == "stdio" ? "mcp:stdio" : caller.Transport;
+        audit.Record(AuditEntry.New(
+            clock.GetUtcNow(), caller.Actor, source, action, target, "requested", detail, caller.ClientIp));
+    }
 
     // Format a past instant as "h:mm:ss" ago (matches the REST projections' style).
     private static string RelativeAgo(DateTimeOffset now, DateTimeOffset then)
