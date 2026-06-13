@@ -106,9 +106,12 @@ public sealed class AgwFrameStream : IAsyncDisposable
 
                 if (!AgwFrame.TryReadDataLength(header, out int dataLen))
                 {
-                    // Should be unreachable — ReadExactAsync only returns
-                    // true when the full header is in hand.
-                    throw new InvalidDataException("AGW header truncated despite full read.");
+                    // A full header is in hand (ReadExactAsync returned true), so "too
+                    // short" is impossible: the advertised length is unusable (would
+                    // overflow Int32). AGW has no frame delimiter to resync on, so a
+                    // corrupt length desyncs the stream — surface it and stop.
+                    throw new InvalidDataException(
+                        "AGW frame advertises an unusable data length (overflows Int32); stream desynced.");
                 }
 
                 byte[] body = dataLen == 0

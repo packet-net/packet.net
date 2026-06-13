@@ -181,6 +181,65 @@ reassembler, and either drop silently or raise a DL-ERROR — leaving the low-le
 `Reassembler.Push` contract (and its existing tests) untouched. That is a small,
 local change, but it changes observable behaviour, so it wants an explicit call.
 
+## 2026-06-13 — higher-layer parsers added (APRS / AGW / NET/ROM) + a fixed AGW finding
+
+Extended the harness past the AX.25/KISS/node surface to the three higher-layer
+wire parsers that also take untrusted bytes: the APRS info-field decoders, the
+AGW length-prefixed framing, and the NET/ROM network-layer datagram parsers.
+Three new targets, three new seed corpora, a structured generator each. New
+subcommands: `aprs`, `agw`, `netrom`. All replayed under `--smoke`.
+
+Targets added:
+
+- `FuzzAprsBytes` — every public APRS decoder (`AprsPositionDecoder`,
+  `AprsMessageDecoder`, `AprsStatusDecoder`, `AprsObjectDecoder`,
+  `AprsItemDecoder`, `AprsTelemetryDecoder`, `AprsMicEDecoder`) under both
+  `Strict` and `Lenient`. All total by contract — return `false`, never throw.
+- `FuzzAgwBytes` — `AgwFrame.Parse` (attacker-controlled little-endian
+  data-length → body slice; throws `InvalidDataException` by contract, swallowed)
+  plus `AgwFrame.TryReadDataLength` (a bool length-peek that must never throw).
+- `FuzzNetRomBytes` — `NetRomPacket.TryParse`, `NetRomNetworkHeader.TryParse`,
+  `NetRomTransportHeader.TryParse`, and `NodesBroadcast.TryParse` under both
+  presets. All total by contract.
+
+### Result
+
+```
+── APRS info-field decoders ──   clean — no throws
+── AgwFrame.Parse ──             clean — no throws (after the fix below)
+── NET/ROM wire parsers ──       clean — no throws
+```
+
+Default smoke (N=1000/target) and an N=50000 sweep are clean for all three after
+the fix below. APRS and NET/ROM were clean from the start.
+
+### FINDING (fixed) — `AgwFrame.TryReadDataLength` threw instead of returning false
+
+The first 50k AGW sweep surfaced ~18.5k throws, all the same:
+
+- input hex (50B): `000000004400F0004D304C54452D31000000474237524447000000000E0000800000000068656C6C6F206F76657220616777`
+- `InvalidDataException: AGW frame advertises data length 2147483662 which would overflow Int32` at `Packet.Agw.AgwFrame.TryReadDataLength` (`AgwFrame.cs:124`).
+
+Root cause: `TryReadDataLength` — a `Try*` method documented to *return false* on
+unusable input — instead **threw** when the advertised data-length field exceeded
+`int.MaxValue - HeaderSize`. It is wire-reachable: `AgwFrameStream`'s read loop
+calls it on every full header off the socket (`AgwFrameStream.cs:107`), un-guarded,
+so a peer sending a header whose 4-byte LE length field is ≥ `0x7FFFFFDC` throws
+straight into the loop's catch-all (`AgwFrameStream.cs:140`) and tears down the
+**whole** AGW frame stream. The default AGW bind is loopback, but `--listen-public`
+exposes it.
+
+**Fixed.** `TryReadDataLength` now returns `false` on the overflow case (consistent
+with its existing too-short branch) — honouring the `Try*` contract. The streaming
+caller's now-reachable false branch was updated to a clear "unusable length; stream
+desynced" message (AGW has no frame delimiter, so a corrupt length can't be resynced
+— tearing the stream down stays the correct outcome, just with an honest message and
+no unhandled throw). `AgwFrame.Parse` keeps its own documented throwing contract for
+the one-shot path — only the `Try*` peek was wrong. Regression pinned in
+`tests/Packet.Agw.Tests/AgwFrameTests.cs`
+(`TryReadDataLength_returns_false_for_an_overflowing_length_rather_than_throwing`),
+and the `agw` fuzz target guards it from regressing.
+
 ## How to re-run
 
 ```sh
@@ -190,15 +249,17 @@ dotnet run --project tools/Packet.Fuzz -- --smoke
 # Larger sweep with custom seed.
 dotnet run --project tools/Packet.Fuzz -- --smoke 100000 1234
 
-# Regenerate the seed corpus (ax25 + kiss + ax25ext + xid + segment).
+# Regenerate the seed corpus (ax25 + kiss + ax25ext + xid + segment +
+# command + aprs + agw + netrom).
 dotnet run --project tools/Packet.Fuzz -- --seed-corpus tools/Packet.Fuzz/corpus
 
 # AFL/libfuzzer harness (requires afl-fuzz + libfuzzer-dotnet on PATH).
-# One subcommand per target: ax25 | kiss | ax25ext | xid | segment
+# One subcommand per target:
+#   ax25 | kiss | ax25ext | xid | segment | command | aprs | agw | netrom
 afl-fuzz -i tools/Packet.Fuzz/corpus/ax25 -o /tmp/ax25-out -- \
     dotnet tools/Packet.Fuzz/bin/Debug/net10.0/Packet.Fuzz.dll ax25 @@
-afl-fuzz -i tools/Packet.Fuzz/corpus/xid -o /tmp/xid-out -- \
-    dotnet tools/Packet.Fuzz/bin/Debug/net10.0/Packet.Fuzz.dll xid @@
+afl-fuzz -i tools/Packet.Fuzz/corpus/agw -o /tmp/agw-out -- \
+    dotnet tools/Packet.Fuzz/bin/Debug/net10.0/Packet.Fuzz.dll agw @@
 ```
 
 ## Format for future entries

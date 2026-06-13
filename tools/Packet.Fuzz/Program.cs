@@ -1,11 +1,14 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Packet.Agw;
+using Packet.Aprs;
 using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Ax25.Xid;
 using Packet.Core;
 using Packet.Kiss;
+using Packet.NetRom.Wire;
 using Packet.Node.Core.Console;
 using SharpFuzz;
 
@@ -90,6 +93,9 @@ public static class Program
             "xid"            => RunXidFuzzer(args),
             "segment"        => RunSegmentFuzzer(args),
             "command"        => RunCommandFuzzer(args),
+            "aprs"           => RunAprsFuzzer(args),
+            "agw"            => RunAgwFuzzer(args),
+            "netrom"         => RunNetRomFuzzer(args),
             "--help"
                 or "-h"      => RunHelp(),
             _ => UnknownCommand(args[0]),
@@ -122,6 +128,9 @@ public static class Program
         Console.WriteLine("  Packet.Fuzz xid [corpus-dir]       AFL/libfuzzer harness for XidInfoField.TryParse.");
         Console.WriteLine("  Packet.Fuzz segment [corpus-dir]   AFL/libfuzzer harness for Reassembler.Push + SegmentationLayer.");
         Console.WriteLine("  Packet.Fuzz command [corpus-dir]   AFL/libfuzzer harness for the node console command parser.");
+        Console.WriteLine("  Packet.Fuzz aprs [corpus-dir]      AFL/libfuzzer harness for the APRS info-field decoders.");
+        Console.WriteLine("  Packet.Fuzz agw [corpus-dir]       AFL/libfuzzer harness for AgwFrame.Parse.");
+        Console.WriteLine("  Packet.Fuzz netrom [corpus-dir]    AFL/libfuzzer harness for the NET/ROM wire parsers.");
     }
 
     // ─── seed corpus ──────────────────────────────────────────────────
@@ -137,6 +146,9 @@ public static class Program
         Directory.CreateDirectory(Path.Combine(root, "xid"));
         Directory.CreateDirectory(Path.Combine(root, "segment"));
         Directory.CreateDirectory(Path.Combine(root, "command"));
+        Directory.CreateDirectory(Path.Combine(root, "aprs"));
+        Directory.CreateDirectory(Path.Combine(root, "agw"));
+        Directory.CreateDirectory(Path.Combine(root, "netrom"));
 
         Console.WriteLine($"Writing seed corpus under {root}…");
 
@@ -218,6 +230,30 @@ public static class Program
             string path = Path.Combine(root, "command", name);
             File.WriteAllBytes(path, bytes);
             Console.WriteLine($"  command/{name} — {bytes.Length} bytes");
+        }
+
+        // ── APRS info-field seeds (raw info bytes, sans AX.25 header) ─────
+        foreach (var (name, bytes) in AprsSeeds())
+        {
+            string path = Path.Combine(root, "aprs", name);
+            File.WriteAllBytes(path, bytes);
+            Console.WriteLine($"  aprs/{name} — {bytes.Length} bytes");
+        }
+
+        // ── AGW length-prefixed frame seeds (full 36-byte header + body) ──
+        foreach (var (name, bytes) in AgwSeeds())
+        {
+            string path = Path.Combine(root, "agw", name);
+            File.WriteAllBytes(path, bytes);
+            Console.WriteLine($"  agw/{name} — {bytes.Length} bytes");
+        }
+
+        // ── NET/ROM network-layer datagram seeds ─────────────────────────
+        foreach (var (name, bytes) in NetRomSeeds())
+        {
+            string path = Path.Combine(root, "netrom", name);
+            File.WriteAllBytes(path, bytes);
+            Console.WriteLine($"  netrom/{name} — {bytes.Length} bytes");
         }
 
         return 0;
@@ -358,6 +394,9 @@ public static class Program
         var xidSeeds  = LoadCorpus("xid");
         var segSeeds  = LoadCorpus("segment");
         var cmdSeeds  = LoadCorpus("command");
+        var aprsSeeds = LoadCorpus("aprs");
+        var agwSeeds  = LoadCorpus("agw");
+        var nrSeeds   = LoadCorpus("netrom");
 
         var ax25 = SmokeOne("Ax25Frame.TryParse", iterations, FuzzAx25Bytes, ax25Seeds, seed);
         Console.WriteLine();
@@ -385,6 +424,21 @@ public static class Program
         // expected at all here, unlike the segment target).
         var cmd = SmokeOne("NodeCommandParser.Parse", iterations, FuzzCommandBytes, cmdSeeds, seed,
             structuredGenerator: MostlyValidCommand);
+        Console.WriteLine();
+        // The APRS decoders are total by contract — every public TryDecode must return
+        // false on a malformed info field, never throw. The target runs each in turn.
+        var aprs = SmokeOne("APRS info-field decoders", iterations, FuzzAprsBytes, aprsSeeds, seed,
+            structuredGenerator: MostlyValidAprs);
+        Console.WriteLine();
+        // AgwFrame.Parse throws InvalidDataException by documented contract on a short /
+        // over-claiming frame; the target swallows exactly that and records any other
+        // (crash-class) exception as a finding — like the segment target.
+        var agw = SmokeOne("AgwFrame.Parse", iterations, FuzzAgwBytes, agwSeeds, seed,
+            structuredGenerator: MostlyValidAgw);
+        Console.WriteLine();
+        // The NET/ROM wire parsers are total by contract — return false, never throw.
+        var nr = SmokeOne("NET/ROM wire parsers", iterations, FuzzNetRomBytes, nrSeeds, seed,
+            structuredGenerator: MostlyValidNetRom);
 
         Console.WriteLine();
         Console.WriteLine("════════ Summary ════════");
@@ -394,10 +448,14 @@ public static class Program
         Report(xid);
         Report(seg);
         Report(cmd);
+        Report(aprs);
+        Report(agw);
+        Report(nr);
 
         int totalFindings = ax25.Findings.Count + kiss.Findings.Count
                           + ext.Findings.Count + xid.Findings.Count + seg.Findings.Count
-                          + cmd.Findings.Count;
+                          + cmd.Findings.Count + aprs.Findings.Count + agw.Findings.Count
+                          + nr.Findings.Count;
         return totalFindings == 0 ? 0 : 2;
     }
 
@@ -1064,6 +1122,285 @@ public static class Program
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
             FuzzCommandBytes(ms.ToArray());
+        });
+        return 0;
+    }
+
+    // ─── APRS / AGW / NET/ROM targets ────────────────────────────────────
+
+    /// <summary>
+    /// Drive arbitrary info-field bytes through every public APRS decoder. All are total
+    /// by contract (return <c>false</c> on a malformed field, never throw); a single
+    /// hostile APRS-IS / RF info field must not crash any of them. The MIC-E decoder also
+    /// takes a destination-base string (the encoded latitude in the AX.25 dest callsign),
+    /// so it is fed a structured-ish base derived from the same bytes.
+    /// </summary>
+    private static void FuzzAprsBytes(byte[] bytes)
+    {
+        var info = bytes.AsSpan();
+        foreach (var options in new[] { AprsParseOptions.Strict, AprsParseOptions.Lenient })
+        {
+            _ = AprsPositionDecoder.TryDecode(info, out _);
+            _ = AprsPositionDecoder.TryDecodePayload(info, out _);
+            _ = AprsMessageDecoder.TryDecode(info, out _);
+            _ = AprsStatusDecoder.TryDecode(info, options, out _);
+            _ = AprsObjectDecoder.TryDecode(info, out _);
+            _ = AprsItemDecoder.TryDecode(info, out _);
+            _ = AprsTelemetryDecoder.TryDecode(info, options, out _);
+
+            // MIC-E needs a 6-char destination base (the lat-encoding callsign); derive a
+            // plausible-but-fuzzed one from the leading bytes so the decoder's dest-field
+            // math is exercised too.
+            string destBase = MicEDestBase(bytes);
+            _ = AprsMicEDecoder.TryDecode(destBase, info, options, out _);
+        }
+    }
+
+    private static string MicEDestBase(byte[] bytes)
+    {
+        // 6 chars in the MIC-E dest alphabet (0-9, A-L, P-Z and a few specials), drawn
+        // deterministically from the input so a given seed maps to a stable base.
+        const string alphabet = "0123456789ABCDEFGHIJKLPQRSTUVWXYZ";
+        Span<char> chars = stackalloc char[6];
+        for (int i = 0; i < 6; i++)
+        {
+            byte b = bytes.Length == 0 ? (byte)i : bytes[i % bytes.Length];
+            chars[i] = alphabet[b % alphabet.Length];
+        }
+        return new string(chars);
+    }
+
+    /// <summary>
+    /// Parse arbitrary bytes as an AGW frame off the head of the buffer. <see cref="AgwFrame.Parse"/>
+    /// reads an attacker-controlled little-endian data-length and slices the body by it —
+    /// a classic over-read / overflow shape — and throws <see cref="InvalidDataException"/>
+    /// by documented contract on a short / over-claiming / overflowing frame. This target
+    /// swallows exactly that documented type and lets any other (crash-class) exception
+    /// escape to be recorded as a finding. <see cref="AgwFrame.TryReadDataLength"/> (a
+    /// bool-returning length peek) must never throw at all.
+    /// </summary>
+    private static void FuzzAgwBytes(byte[] bytes)
+    {
+        _ = AgwFrame.TryReadDataLength(bytes, out _);   // must not throw on any input
+        try
+        {
+            _ = AgwFrame.Parse(bytes, out _);
+        }
+        catch (InvalidDataException) { /* documented contract */ }
+    }
+
+    /// <summary>
+    /// Drive arbitrary bytes through the NET/ROM network-layer wire parsers. All are total
+    /// by contract — they return <c>false</c> on a malformed datagram (short header, bad
+    /// callsign octets, truncated NODES body), never throw. Covers the full datagram
+    /// (<see cref="NetRomPacket"/>), the network/transport headers, and a NODES broadcast
+    /// under both option presets.
+    /// </summary>
+    private static void FuzzNetRomBytes(byte[] bytes)
+    {
+        var info = bytes.AsSpan();
+        _ = NetRomPacket.TryParse(info, out _);
+        _ = NetRomNetworkHeader.TryParse(info, out _);
+        _ = NetRomTransportHeader.TryParse(info, out _);
+        foreach (var options in new[] { NetRomParseOptions.Strict, NetRomParseOptions.Lenient })
+        {
+            _ = NodesBroadcast.TryParse(info, options, out _);
+        }
+    }
+
+    // ─── APRS / AGW / NET/ROM structured generators ──────────────────────
+
+    /// <summary>
+    /// Produce a buffer shaped like a real APRS info field: a data-type-identifier byte
+    /// from the common set, then format-plausible content with some bytes deliberately
+    /// random so each decoder's reject branches are exercised.
+    /// </summary>
+    private static byte[] MostlyValidAprs(Random rng)
+    {
+        // Lead with a real APRS DTI; the body is a mix of the canonical shape and noise.
+        char[] dtis = { '!', '=', '/', '@', ':', '>', ';', ')', 'T', '`', '\'' };
+        char dti = dtis[rng.Next(dtis.Length)];
+        var sb = new StringBuilder();
+        sb.Append(dti);
+        string[] fragments =
+        {
+            "5126.30N/00121.30W>", "4903.50N/07201.75W#", "WB2OSZ   :hello{1",
+            "LEADER   *092345z", "T#005,199,000,255,073,123,01101001", "My status",
+            "AID!4903.50N", "/A=001234", "000/000", "!!", "    ",
+        };
+        int frags = rng.Next(1, 4);
+        for (int f = 0; f < frags; f++)
+        {
+            sb.Append(fragments[rng.Next(fragments.Length)]);
+            if (rng.Next(3) == 0)
+            {
+                sb.Append((char)rng.Next(32, 127));   // stray printable
+            }
+        }
+        var buf = Encoding.ASCII.GetBytes(sb.ToString());
+        // 1-in-6 flip a byte fully random to probe the binary-ish (MIC-E / compressed) paths.
+        if (buf.Length > 0 && rng.Next(6) == 0)
+        {
+            buf[rng.Next(buf.Length)] = (byte)rng.Next(256);
+        }
+        return buf;
+    }
+
+    /// <summary>
+    /// Produce a buffer shaped like an AGW frame: a valid 36-byte header whose
+    /// little-endian data-length field is sometimes truthful, sometimes wildly over-
+    /// claimed / near Int32.MaxValue (the overflow-guard probe), followed by a body that
+    /// usually does NOT match the advertised length.
+    /// </summary>
+    private static byte[] MostlyValidAgw(Random rng)
+    {
+        int bodyLen = rng.Next(0, 64);
+        var body = new byte[bodyLen];
+        rng.NextBytes(body);
+        byte[] frame = new AgwFrame(
+            (byte)rng.Next(256), (byte)rng.Next(256), (byte)rng.Next(256),
+            From: "M0LTE-1", To: "GB7RDG", Data: body, UserField: (uint)rng.Next()).ToBytes();
+
+        // Now corrupt the advertised data-length (bytes 28..31, little-endian) so the
+        // body short / over-claim / overflow branches of Parse are all reached.
+        uint claimed = rng.Next(5) switch
+        {
+            0 => (uint)bodyLen,                         // truthful
+            1 => (uint)(bodyLen + rng.Next(1, 4096)),   // over-claim
+            2 => uint.MaxValue,                          // overflow guard
+            3 => (uint)int.MaxValue,                     // boundary
+            _ => (uint)rng.Next(),                       // arbitrary
+        };
+        frame[28] = (byte)(claimed & 0xFF);
+        frame[29] = (byte)((claimed >> 8) & 0xFF);
+        frame[30] = (byte)((claimed >> 16) & 0xFF);
+        frame[31] = (byte)((claimed >> 24) & 0xFF);
+        // Occasionally truncate the whole buffer mid-header to probe the short-header guard.
+        if (rng.Next(6) == 0 && frame.Length > 4)
+        {
+            Array.Resize(ref frame, rng.Next(0, AgwFrame.HeaderSize));
+        }
+        return frame;
+    }
+
+    /// <summary>
+    /// Produce a buffer shaped like a NET/ROM datagram: a 20-octet network header (two
+    /// AX.25-encoded callsigns + TTL + a 5-octet transport header) then a small payload,
+    /// with address and circuit/opcode bytes partly random to drive the reject branches.
+    /// </summary>
+    private static byte[] MostlyValidNetRom(Random rng)
+    {
+        // NET/ROM network header = src callsign (7) + dest callsign (7) + TTL (1) +
+        // transport header (5) = 20 octets, then payload.
+        int payload = rng.Next(0, 48);
+        var buf = new byte[20 + payload];
+        int off = 0;
+        WriteAddrSlot(buf, ref off, rng, isLast: false);    // source (7)
+        WriteAddrSlot(buf, ref off, rng, isLast: false);    // dest (7)
+        buf[off++] = (byte)rng.Next(8);                      // TTL
+        // Transport header: circuit index/id, tx/rx seq, opcode.
+        buf[off++] = (byte)rng.Next(256);
+        buf[off++] = (byte)rng.Next(256);
+        buf[off++] = (byte)rng.Next(256);
+        buf[off++] = (byte)rng.Next(256);
+        buf[off++] = (byte)rng.Next(256);                    // opcode + flags
+        rng.NextBytes(buf.AsSpan(off));                      // payload
+        // 1-in-5 NODES broadcast: signature byte 0xFF then mnemonic + entries.
+        if (rng.Next(5) == 0 && buf.Length > 0)
+        {
+            buf[0] = 0xFF;
+        }
+        return buf;
+    }
+
+    // ─── APRS / AGW / NET/ROM seed corpora ───────────────────────────────
+
+    private static IEnumerable<(string Name, byte[] Bytes)> AprsSeeds()
+    {
+        (string, string)[] seeds =
+        {
+            ("position.bin",  "!5126.30N/00121.30W>Packet.NET test"),
+            ("pos-ts.bin",    "@092345z4903.50N/07201.75W>weather"),
+            ("message.bin",   ":WB2OSZ   :hello world{1"),
+            ("status.bin",    ">My status text here"),
+            ("telemetry.bin", "T#005,199,000,255,073,123,01101001"),
+            ("object.bin",    ";LEADER   *092345z4903.50N/07201.75W>"),
+            ("item.bin",      ")AID!4903.50N/07201.75W#"),
+            ("compressed.bin","!/5L!!<*e7>{?!"),
+        };
+        foreach (var (name, text) in seeds)
+        {
+            yield return (name, Encoding.ASCII.GetBytes(text));
+        }
+    }
+
+    private static IEnumerable<(string Name, byte[] Bytes)> AgwSeeds()
+    {
+        yield return ("data.bin",
+            new AgwFrame(0, (byte)'D', 0xF0, "M0LTE-1", "GB7RDG",
+                Encoding.ASCII.GetBytes("hello over agw"), 0).ToBytes());
+        yield return ("empty.bin",
+            new AgwFrame(0, (byte)'X', 0x00, "M0LTE", "GB7RDG", ReadOnlyMemory<byte>.Empty, 0).ToBytes());
+        yield return ("header-only.bin",
+            new AgwFrame(1, (byte)'K', 0xF0, "G7XYZ-2", "APRS", ReadOnlyMemory<byte>.Empty, 42).ToBytes());
+    }
+
+    private static IEnumerable<(string Name, byte[] Bytes)> NetRomSeeds()
+    {
+        // A minimal but well-formed NET/ROM datagram: src/dest callsigns + TTL + a
+        // 5-octet transport header (info/connect-request-ish) + a short payload.
+        static byte[] AddrSlot(string @base, byte ssid, bool last)
+        {
+            var slot = new byte[7];
+            for (int i = 0; i < 6; i++)
+            {
+                char c = i < @base.Length ? @base[i] : ' ';
+                slot[i] = (byte)(c << 1);
+            }
+            slot[6] = (byte)((ssid << 1) | 0x60 | (last ? 0x01 : 0x00));
+            return slot;
+        }
+        var info = new List<byte>();
+        info.AddRange(AddrSlot("M0LTE", 1, last: false));
+        info.AddRange(AddrSlot("GB7RDG", 0, last: false));
+        info.Add(7);                                   // TTL
+        info.AddRange(new byte[] { 0x10, 0x20, 0x00, 0x00, 0x05 });  // transport header
+        info.AddRange(Encoding.ASCII.GetBytes("payload"));
+        yield return ("info.bin", info.ToArray());
+        yield return ("header-only.bin", info.GetRange(0, 20).ToArray());
+    }
+
+    // ─── APRS / AGW / NET/ROM afl entry points ───────────────────────────
+
+    private static int RunAprsFuzzer(string[] args)
+    {
+        Fuzzer.OutOfProcess.Run(stream =>
+        {
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            FuzzAprsBytes(ms.ToArray());
+        });
+        return 0;
+    }
+
+    private static int RunAgwFuzzer(string[] args)
+    {
+        Fuzzer.OutOfProcess.Run(stream =>
+        {
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            FuzzAgwBytes(ms.ToArray());
+        });
+        return 0;
+    }
+
+    private static int RunNetRomFuzzer(string[] args)
+    {
+        Fuzzer.OutOfProcess.Run(stream =>
+        {
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            FuzzNetRomBytes(ms.ToArray());
         });
         return 0;
     }

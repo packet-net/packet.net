@@ -20,6 +20,11 @@
     <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
     <!-- Node console command parser — the node-host slice-1 fuzz target. -->
     <ProjectReference Include="..\..\src\Packet.Node.Core\Packet.Node.Core.csproj" />
+    <!-- Higher-layer wire parsers fed untrusted bytes: APRS info fields, AGW
+         length-prefixed frames, NET/ROM network-layer datagrams. -->
+    <ProjectReference Include="..\..\src\Packet.Aprs\Packet.Aprs.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Agw\Packet.Agw.csproj" />
+    <ProjectReference Include="..\..\src\Packet.NetRom\Packet.NetRom.csproj" />
   </ItemGroup>
 
   <ItemGroup>

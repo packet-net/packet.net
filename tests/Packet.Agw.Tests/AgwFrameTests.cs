@@ -90,6 +90,26 @@ public class AgwFrameTests
     }
 
     [Fact]
+    public void TryReadDataLength_returns_false_for_an_overflowing_length_rather_than_throwing()
+    {
+        // SP-004 fuzz finding (2026-06-13): a full header whose advertised data-length
+        // field would overflow Int32 must be reported as false (the Try* contract), not
+        // by throwing — a streaming reader calls this on attacker-controlled header bytes,
+        // and a throw here tears down the whole AGW stream.
+        var header = new byte[AgwFrame.HeaderSize];
+        header[28] = 0xFF;
+        header[29] = 0xFF;
+        header[30] = 0xFF;
+        header[31] = 0xFF;   // data length = 0xFFFFFFFF
+
+        var act = () => AgwFrame.TryReadDataLength(header, out _);
+
+        act.Should().NotThrow();
+        AgwFrame.TryReadDataLength(header, out int dataLen).Should().BeFalse();
+        dataLen.Should().Be(0);
+    }
+
+    [Fact]
     public void Parse_throws_when_buffer_is_shorter_than_header()
     {
         var buffer = new byte[AgwFrame.HeaderSize - 1];

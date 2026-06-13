@@ -114,14 +114,21 @@ public sealed record AgwFrame(
     /// </summary>
     public static bool TryReadDataLength(ReadOnlySpan<byte> header, out int dataLength)
     {
+        dataLength = 0;
         if (header.Length < HeaderSize)
         {
-            dataLength = 0;
             return false;
         }
         uint raw = BinaryPrimitives.ReadUInt32LittleEndian(header.Slice(28, 4));
         if (raw > int.MaxValue - HeaderSize)
-            throw new InvalidDataException($"AGW frame advertises data length {raw} which would overflow Int32.");
+        {
+            // A Try* method must not throw: an advertised length that would overflow
+            // Int32 is unusable, so it is reported as false (like a too-short header),
+            // not by throwing. A streaming reader treats false on a complete header as a
+            // desync and tears the stream down. (Parse keeps its own throwing contract
+            // for the one-shot path.)
+            return false;
+        }
         dataLength = (int)raw;
         return true;
     }
