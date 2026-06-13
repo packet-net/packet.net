@@ -10,6 +10,16 @@ namespace Packet.Node.Core.Applications.Packages;
 /// </summary>
 public static class AppPackagePaths
 {
+    /// <summary>The default install root for owner-installed packages — the second discovery
+    /// root (<c>docs/app-packages.md</c> § Discovery). The catalog installer places each app
+    /// at <c>&lt;AppsRoot&gt;/&lt;id&gt;/</c> so the existing discovery picks it up unchanged.</summary>
+    public const string AppsRoot = "/var/lib/packetnet/apps";
+
+    /// <summary>The default location of the curated app catalog file
+    /// (<c>catalog/apps.yaml</c>), baked into the node .deb. Read by the catalog reader
+    /// (<c>EmbeddedAppCatalog</c>); see <c>docs/app-catalog.md</c>.</summary>
+    public const string CatalogFile = "/usr/share/packetnet/catalog/apps.yaml";
+
     /// <summary>Resolve one command/argument element against <paramref name="packageDir"/>:
     /// a relative element naming an existing <b>file</b> there becomes that file's absolute
     /// path; an absolute element, a flag like <c>--socket</c>, or anything that names no file

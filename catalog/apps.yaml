@@ -1,0 +1,93 @@
+# pdn app catalog — the curated index of "Available apps" (docs/app-catalog.md).
+#
+# This file is committed here and baked into the node .deb at
+# /usr/share/packetnet/catalog/apps.yaml. pdn reads it to populate the control
+# panel's "Available apps" view; the owner installs an app from the browser and
+# pdn fetches + sha256-verifies the artifact, staging a discovered-but-DISABLED
+# package into /var/lib/packetnet/apps/<id>/ (enable stays the separate grant).
+#
+# TRUST: every artifact is pinned by sha256 (GitHub's recorded per-asset digest).
+# A mismatched hash is a hard refusal — never a staged file. "Vetted" means we
+# chose the version + the hash, exactly like the old build-deb.sh DAPPS pins.
+#
+# TO ADD/BUMP an app: set the release tag in each `url:`, take each asset's
+# sha256 from `gh release view <tag> -R <repo> --json assets`, and update the
+# `version:` to the release tag. (See docs/app-catalog.md § O3 for a future
+# regen script.)
+
+catalog: 1
+
+apps:
+  # kind: assets — a per-RID raw binary placed at `dest` + a separately-fetched
+  # manifest. DAPPS publishes exactly this shape.
+  - id: dapps
+    name: DAPPS
+    version: "0.34.1"
+    description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging over packet radio."
+    icon: inbox
+    capabilities: [network, web]
+    homepage: https://github.com/m0lte/dapps
+    artifact:
+      kind: assets
+      manifest:
+        url: https://github.com/m0lte/dapps/releases/download/v0.34.1/pdn-app.yaml
+        sha256: ae0b2f50b7a7f7f38ba1ce6eb182cee21073cbd1646eca9a5189a9aa386d8125
+      binaries:
+        linux-x64:
+          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-x64
+          sha256: a509c31d0be87e2cf7f10b2fde0614234381b6fbc623580da9c9757a969ddb4b
+          dest: dapps
+          mode: "0755"
+        linux-arm64:
+          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-arm64
+          sha256: 2205fed8ee4bf09cf5cfb24edbeb00017bbc6e68ca4611b9e4f055c570d4a76f
+          dest: dapps
+          mode: "0755"
+        linux-arm:
+          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-arm
+          sha256: 54d0d0a9aa6be56e5703ec85343083fdfd3e28d35716833ae42e835622a57341
+          dest: dapps
+          mode: "0755"
+
+  # kind: deb — a per-arch .deb, EXTRACTED (dpkg-deb -x) not dpkg-installed; the
+  # manifest + binary come from the .deb's usr/share/packetnet/apps/<id>/ subtree.
+  # The Debian arch maps from the RID: linux-x64→amd64, linux-arm64→arm64, linux-arm→armhf.
+  - id: bpqchat
+    name: BPQ Chat
+    version: "0.1.0"
+    description: "BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network."
+    icon: chat
+    capabilities: [network, web]
+    homepage: https://github.com/packet-net/pdn-bpqchat
+    artifact:
+      kind: deb
+      debs:
+        linux-x64:
+          url: https://github.com/packet-net/pdn-bpqchat/releases/download/v0.1.0/pdn-bpqchat_0.1.0_amd64.deb
+          sha256: eb61449232d85af46f4ccaa090d34441dc7e0527cbf250e9792576e65a717027
+        linux-arm64:
+          url: https://github.com/packet-net/pdn-bpqchat/releases/download/v0.1.0/pdn-bpqchat_0.1.0_arm64.deb
+          sha256: c9a55eb9eba4aec30267585a91570843d19466f05879643742abd98b1cc23e5d
+        linux-arm:
+          url: https://github.com/packet-net/pdn-bpqchat/releases/download/v0.1.0/pdn-bpqchat_0.1.0_armhf.deb
+          sha256: ba13b3673e69aab4619ded02bbb5931c771899a2859fbb332d5732b94fe2d55f
+
+  - id: convers
+    name: Convers
+    version: "0.1.2"
+    description: "Round-table packet chat — a leaf node on the worldwide convers network, for RF and web users."
+    icon: chat
+    capabilities: [network, web]
+    homepage: https://github.com/packet-net/pdn-convers
+    artifact:
+      kind: deb
+      debs:
+        linux-x64:
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.2/pdn-convers_0.1.2_amd64.deb
+          sha256: 274b03a751e7506a0f35a48e2a0269fa6e5f69950cc35541ffd5e00b9bd919a0
+        linux-arm64:
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.2/pdn-convers_0.1.2_arm64.deb
+          sha256: 4200759288fd9060df4683abf17b606e6dfaa13ab1ce90ed6824a2d9f7750308
+        linux-arm:
+          url: https://github.com/packet-net/pdn-convers/releases/download/v0.1.2/pdn-convers_0.1.2_armhf.deb
+          sha256: d4d1e081016c82c5f5d463f6685f42712d702f662d01777dae3e0454dcdc7223

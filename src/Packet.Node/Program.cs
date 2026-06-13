@@ -296,6 +296,28 @@ builder.Services.AddSingleton<Packet.Node.Core.Applications.Packages.IAppService
         sp.GetRequiredService<Packet.Node.Core.Applications.Packages.IAppPackageCatalog>(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetRequiredService<ILoggerFactory>()));
+// The app catalog (docs/app-catalog.md): the curated index of AVAILABLE apps
+// (/usr/share/packetnet/catalog/apps.yaml) and the installer that fetches + sha256-verifies a
+// pinned artifact and lays down a discoverable package the supervisor then picks up unchanged.
+// Slice 6a is plumbing only — no API/UI surface yet (6b adds that). IHttpClientFactory backs
+// the production fetcher; the deb extractor shells dpkg-deb -x.
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IAppCatalog>(sp =>
+    new Packet.Node.Core.Applications.Catalog.EmbeddedAppCatalog(
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IArtifactFetcher>(sp =>
+    new Packet.Node.Core.Applications.Catalog.HttpArtifactFetcher(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IDebExtractor>(sp =>
+    new Packet.Node.Core.Applications.Catalog.DpkgDebExtractor(
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IAppInstaller>(sp =>
+    new Packet.Node.Core.Applications.Catalog.AppInstaller(
+        sp.GetRequiredService<Packet.Node.Core.Applications.Catalog.IArtifactFetcher>(),
+        sp.GetRequiredService<Packet.Node.Core.Applications.Catalog.IDebExtractor>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILoggerFactory>()));
 // Holds operator-initiated connect-out sessions as interactive consoles (the web
 // Sessions drawer reads their output over SSE + types into them). Disposed on host
 // shutdown (IAsyncDisposable) → each adopted connection gets a clean DISC.
