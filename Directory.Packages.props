@@ -53,7 +53,11 @@
          the full hosting stack via Microsoft.NET.Sdk.Web; the core library
          depends only on the abstractions. -->
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <!-- 10.0.7 (not 10.0.0): the MCP SDK (ModelContextProtocol.Core, Phase 8)
+         depends on Logging.Abstractions >= 10.0.7; CPM transitive pinning makes
+         the lower pin a downgrade error (NU1109). 10.0.7 is the .NET 10 servicing
+         build and back-compatible for every other consumer. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
 
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
@@ -69,6 +73,13 @@
     <!-- AX.25 SDL state machines — consumed from m0lte/ax25sdl as a NuGet
          package. Source repo: github.com/m0lte/ax25sdl. -->
     <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.0" />
+
+    <!-- MCP — the official C# SDK (Anthropic + .NET). Packet.Mcp (the
+         transport-agnostic tool surface) takes .Core; the node host takes
+         .AspNetCore to mount the Streamable-HTTP transport in its pipeline.
+         Phase 8 / docs/mcp-design.md. -->
+    <PackageVersion Include="ModelContextProtocol.Core" Version="1.4.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
 
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

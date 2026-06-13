@@ -28,6 +28,7 @@
     <Project Path="tests/Packet.Kiss.NinoTnc.Tests/Packet.Kiss.NinoTnc.Tests.csproj" />
     <Project Path="tests/Packet.Kiss.Serial.Tests/Packet.Kiss.Serial.Tests.csproj" />
     <Project Path="tests/Packet.Kiss.Tests/Packet.Kiss.Tests.csproj" />
+    <Project Path="tests/Packet.Mcp.Tests/Packet.Mcp.Tests.csproj" />
     <Project Path="tests/Packet.NetRom.Tests/Packet.NetRom.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />

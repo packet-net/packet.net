@@ -1,9 +1,32 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <!--
+    Packet.Mcp is the transport-agnostic MCP tool surface for the pdn node:
+    the tool names/schemas/handlers, written against the INodeMcpBackend seam.
+    decode_frame is pure (no backend), so it needs the parser libraries; the
+    other tools project live node state the backend supplies. The node host
+    (Packet.Node) implements the live backend + mounts the transports; the
+    `pdn mcp` stdio entrypoint implements a loopback-REST backend. See
+    docs/mcp-design.md.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
+    <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Mcp.Tests" />
+  </ItemGroup>
 
 </Project>

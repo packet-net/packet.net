@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Mcp\Packet.Mcp.csproj" />
+  </ItemGroup>
+
+</Project>
