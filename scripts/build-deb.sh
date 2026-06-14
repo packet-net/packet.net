@@ -21,23 +21,6 @@ case "$rid" in
   *) echo "unknown rid: $rid (want linux-x64 | linux-arm64 | linux-arm)" >&2; exit 2 ;;
 esac
 
-# DAPPS — the bundled store-and-forward messaging app (docs/app-packages.md
-# § Distribution). Public interfaces only: we FETCH the published self-contained
-# release binary AND its app-authored pdn-app.yaml manifest from the SAME
-# m0lte/dapps release (never build from or vendor its source) and pin every
-# asset by version + sha256. To bump: download all FOUR assets from the new
-# release ONCE (dapps-linux-{x64,arm64,arm} + pdn-app.yaml), sha256sum them,
-# and update dapps_version + the four pins together (ShippedManifestsTests
-# asserts the cached release manifest tracks dapps_version).
-dapps_version="v0.34.1"
-case "$rid" in
-  linux-x64)   dapps_sha256="a509c31d0be87e2cf7f10b2fde0614234381b6fbc623580da9c9757a969ddb4b" ;;
-  linux-arm64) dapps_sha256="2205fed8ee4bf09cf5cfb24edbeb00017bbc6e68ca4611b9e4f055c570d4a76f" ;;
-  linux-arm)   dapps_sha256="54d0d0a9aa6be56e5703ec85343083fdfd3e28d35716833ae42e835622a57341" ;;
-esac
-# The manifest is RID-independent: one asset, one pin, version-stamped to the tag.
-dapps_manifest_sha256="ae0b2f50b7a7f7f38ba1ce6eb182cee21073cbd1646eca9a5189a9aa386d8125"
-
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 proj="$root/src/Packet.Node/Packet.Node.csproj"
 ui="$root/web/packetnet-ui"
@@ -111,53 +94,14 @@ install -d "$stage/usr/share/packetnet/apps/lobby"
 install -m 0644 "$root/examples/lobby/pdn-app.yaml" "$stage/usr/share/packetnet/apps/lobby/pdn-app.yaml"
 install -m 0755 "$root/examples/lobby/lobby.py" "$stage/usr/share/packetnet/apps/lobby/lobby.py"
 install -m 0644 "$root/examples/lobby/README.md" "$stage/usr/share/packetnet/apps/lobby/README.md"
-# DAPPS — staged from the m0lte/dapps PUBLISHED release: the per-RID binary AND the
-# app-authored pdn-app.yaml manifest, both assets of the SAME pinned release (pins
-# above; the "only public interfaces" rule — docs/app-packages.md § Distribution).
-# Each asset is cached in artifacts/cache (key includes the version) and re-downloaded
-# only when the cached file's hash no longer matches its pin. A downloaded file that
-# fails its pin is a hard build error (wrong artifact / tampering — never package it).
-# If a download fails AND no valid cache exists (network-less build), the dapps
-# package is SKIPPED with a warning and the deb still builds — all-or-nothing: a
-# binary is never staged without its manifest, nor a manifest without its binary.
-# DAPPS is bundled, not load-bearing.
-dapps_cache="$root/artifacts/cache/dapps-${dapps_version}-${rid}"
-dapps_manifest_cache="$root/artifacts/cache/dapps-${dapps_version}-pdn-app.yaml"
-# dapps_pin_ok <file> <sha256> — the file exists and matches its pin.
-dapps_pin_ok() {
-  [ -f "$1" ] && echo "$2  $1" | sha256sum --check --status -
-}
-# dapps_fetch <asset> <cache> <sha256> — cached, pin-verified fetch of one release
-# asset. Returns 0 with a verified file at <cache>; returns 1 only when the release
-# is unreachable and no valid cache exists; a FRESH download failing its pin exits.
-dapps_fetch() {
-  local asset="$1" cache="$2" sha="$3"
-  local url="https://github.com/m0lte/dapps/releases/download/${dapps_version}/${asset}"
-  if dapps_pin_ok "$cache" "$sha"; then return 0; fi
-  echo "==> fetch DAPPS ${dapps_version} asset ${asset} from the published release"
-  mkdir -p "$(dirname "$cache")"
-  if curl -fSL --retry 3 -o "${cache}.tmp" "$url"; then
-    mv "${cache}.tmp" "$cache"
-    if ! dapps_pin_ok "$cache" "$sha"; then
-      echo "ERROR: $url does not match the pinned sha256 (${sha})." >&2
-      echo "       Refusing to package an unverified artifact. If the dapps release was" >&2
-      echo "       re-cut, re-pin dapps_version + all four hashes together." >&2
-      exit 1
-    fi
-    return 0
-  fi
-  rm -f "${cache}.tmp"
-  return 1
-}
-if dapps_fetch "dapps-${rid}" "$dapps_cache" "$dapps_sha256" &&
-   dapps_fetch "pdn-app.yaml" "$dapps_manifest_cache" "$dapps_manifest_sha256"; then
-  install -d "$stage/usr/share/packetnet/apps/dapps"
-  install -m 0644 "$dapps_manifest_cache" "$stage/usr/share/packetnet/apps/dapps/pdn-app.yaml"
-  install -m 0755 "$dapps_cache" "$stage/usr/share/packetnet/apps/dapps/dapps"
-else
-  echo "WARNING: could not fetch DAPPS ${dapps_version} (${rid} binary + manifest) and no" >&2
-  echo "         valid cached copy exists — building the deb WITHOUT the bundled dapps package." >&2
-fi
+# The app CATALOG (docs/app-catalog.md): the curated index of "Available apps" the
+# node owner can fetch + install from the control panel. We ship the INDEX, not the
+# payloads — DAPPS (and bpqchat/convers, …) are fetched on demand at install time,
+# sha256-pinned (catalog/apps.yaml holds every pin), instead of bloating the deb.
+# This is what took DAPPS's ~33 MB/arch binary back out of the package. The catalog
+# is committed in this repo; the node reads it from here at runtime.
+install -d "$stage/usr/share/packetnet/catalog"
+install -m 0644 "$root/catalog/apps.yaml" "$stage/usr/share/packetnet/catalog/apps.yaml"
 sed -e "s/@ARCH@/$arch/" -e "s/@VERSION@/$version/" \
     "$root/packaging/control.in" > "$stage/DEBIAN/control"
 cp "$root/packaging/conffiles" "$root/packaging/postinst" \
@@ -177,6 +121,8 @@ echo "--- wwwroot (the served SPA) ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/opt/packetnet/app/wwwroot/' | head -10
 echo "--- bundled app packages ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/apps/'
+echo "--- app catalog (the Available-apps index) ---"
+dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/catalog/'
 if command -v lintian >/dev/null 2>&1; then
   lintian "$out" || true
 else

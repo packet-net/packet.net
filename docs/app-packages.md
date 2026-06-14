@@ -109,11 +109,12 @@ Unchanged from the platform's owner-owns-trust model: enabling a package is the 
 
 The directory **is** the format. Conventions on top of it:
 
-- **deb**: a package may ship as its own `.deb` dropping `/usr/share/packetnet/apps/<id>/`. pdn's own deb ships the bundled apps (WALL, LOBBY, and DAPPS staged from its **published release artifact** — never vendored source) the same way.
-- **`.pdnapp`** (later): a tarball of the package dir, manifest at root, installable by UI upload into `/var/lib/packetnet/apps/<id>/`.
-- **apt repo** (later, with the node's own apt distribution): the store.
+- **app catalog (the primary path — [`app-catalog.md`](app-catalog.md)):** pdn ships a curated **index** (`catalog/apps.yaml`, baked into the deb at `/usr/share/packetnet/catalog/`) of vetted apps the owner installs on demand from the control panel's **"Available apps"** view — by URL-fetch of a sha256-pinned artifact (a per-RID binary, a per-arch `.deb` extracted unprivileged, or a `.pdnapp`) or by uploading a `.pdnapp`. Install lands a discovered-but-disabled package in `/var/lib/packetnet/apps/<id>/`. This is how DAPPS, bpqchat and convers reach a node — **not** by being bundled in the deb.
+- **bundled in pdn's deb**: only the tiny reference apps (WALL, LOBBY) are staged into `/usr/share/packetnet/apps/<id>/` at build time, for a good first-boot experience. Heavyweight apps deliberately are not — that is what the catalog is for.
+- **`.pdnapp`** (shipped): a tarball of the package dir, manifest at root, installable by UI upload (or a catalog `kind: pdnapp` URL) into `/var/lib/packetnet/apps/<id>/`.
+- **own `.deb`**: an app may still publish its own `.deb` dropping `/usr/share/packetnet/apps/<id>/`; the catalog consumes such `.deb`s by **extraction** (`kind: deb`), and `apt install`ing one is a complementary CLI path (later, with the node's own apt distribution).
 
-The "only public interfaces" rule applies to packaging too: pdn's build may **fetch** another project's published release artifact to stage a bundled package, but never builds from or vendors its source; the manifest for an external app belongs upstream in that app's repo as soon as it can carry one.
+The "only public interfaces" rule applies to packaging too: pdn never builds from or vendors another app's source — the catalog references the app's **published release artifact** by URL + sha256, and the manifest for an external app belongs upstream in that app's repo.
 
 ## Implementation map
 
@@ -122,4 +123,4 @@ The "only public interfaces" rule applies to packaging too: pdn's build may **fe
 - `ApplicationHost` resolves session verbs from the union (inline entries + enabled packages).
 - `PdnAppGateway` tiles from the union; new `apps/packages` endpoints beside it.
 - Web UI: Apps screen management section.
-- Packaging: manifests for WALL/LOBBY in `/usr/share/packetnet/apps/*`; the `apps:` examples in `packaging/packetnet.yaml`; DAPPS staging in `build-deb.sh`.
+- Packaging: manifests for WALL/LOBBY in `/usr/share/packetnet/apps/*`; the `apps:` examples in `packaging/packetnet.yaml`; the app catalog `catalog/apps.yaml` staged into `/usr/share/packetnet/catalog/` by `build-deb.sh` (DAPPS/bpqchat/convers install from it on demand — [`app-catalog.md`](app-catalog.md)).
