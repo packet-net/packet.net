@@ -55,7 +55,11 @@ ReadWritePaths=/var/lib/packetnet /etc/packetnet
 ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK is required by the embedded Tailscale sidecar (sidecar/tsnet, launched
+# as a child so it inherits this sandbox): tsnet's userspace network monitor opens a
+# netlink socket to watch interface/route changes — without it the sidecar exits at
+# startup. (Tailscale's own systemd unit allows AF_NETLINK for the same reason.)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
 # A serial/USB TNC (serial-kiss / nino-tnc ports) needs device access: add the
 # service user to dialout (`usermod -aG dialout packetnet`) and drop in an
