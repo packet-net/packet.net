@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
@@ -97,14 +96,6 @@ public sealed partial class RhpServer : IAsyncDisposable
     // "Missing data", not the spec table's generic "Bad parameter").
     private const string MissingHandleText = "Missing handle";
     private const string MissingDataText = "Missing data";
-
-    // The helloReply capability advertisement (a pdn extension — docs/rhp2-server.md
-    // §pdn extensions). The informational version is the repo's own build stamp, the
-    // same one the node binary ships.
-    private static readonly string Implementation = "pdn/" + (
-        typeof(RhpServer).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion ?? "dev");
 
     private readonly RhpServerOptions options;
     private readonly IRhpGateway gateway;
@@ -303,23 +294,6 @@ public sealed partial class RhpServer : IAsyncDisposable
                     Id = auth.Id,
                     ErrCode = ok ? RhpErrorCode.Ok : RhpErrorCode.Unauthorised,
                     ErrText = RhpErrorCode.Text(ok ? RhpErrorCode.Ok : RhpErrorCode.Unauthorised),
-                }, ct).ConfigureAwait(false);
-                break;
-
-            case HelloMessage hello:
-                // Capability discovery (pdn extension; docs/rhp2-server.md §pdn extensions).
-                // A non-supporting server answers this via the unknown-type fallback —
-                // helloReply errCode 2 — so errCode 0 here is the "capabilities follow" signal.
-                await WriteAsync(client, new HelloReplyMessage
-                {
-                    Id = hello.Id,
-                    ErrCode = RhpErrorCode.Ok,
-                    ErrText = RhpErrorCode.Text(RhpErrorCode.Ok),
-                    Proto = "2",
-                    Implementation = Implementation,
-                    Pfams = [ProtocolFamily.Ax25],
-                    MaxData = RhpFraming.MaxPayloadLength,
-                    Enc = "latin1",
                 }, ct).ConfigureAwait(false);
                 break;
 
@@ -864,7 +838,6 @@ public sealed partial class RhpServer : IAsyncDisposable
         var text = RhpErrorCode.Text(errCode);
         RhpMessage? reply = msg switch
         {
-            HelloMessage m => new HelloReplyMessage { Id = m.Id, ErrCode = errCode, ErrText = text },
             OpenMessage m => new OpenReplyMessage { Id = m.Id, Handle = 0, ErrCode = errCode, ErrText = text },
             SocketMessage m => new SocketReplyMessage { Id = m.Id, Handle = null, ErrCode = errCode, ErrText = text },
             BindMessage m => new BindReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = errCode, ErrText = text },

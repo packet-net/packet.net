@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Packet.Node.Tests.Integration;
@@ -138,19 +139,36 @@ public sealed class AppGatewayApiTests : IDisposable
         // app — a hard reload there must boot the SPA shell so the app stays embedded in pdn chrome
         // (AppFrame), NOT proxy the raw app. (Regression: F5 on /apps/bbs dropped pdn's chrome and
         // left only the bare BBS UI; found in lab live-verify.)
-        await using var factory = new WebApplicationFactory<Program>();
-        using var client = factory.CreateClient();
+        //
+        // Use a self-contained web root with a stub SPA shell: the gateway serves `index.html` from
+        // the web root, and the committed/built wwwroot is NOT reliably at the WebApplicationFactory
+        // content root across machines (it's present locally, absent under CI — which silently fell
+        // through to the proxy and made this assertion flap). Pinning the web root makes it deterministic.
+        string webRoot = Path.Combine(Path.GetTempPath(), "pdn-gw-webroot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(webRoot);
+        await File.WriteAllTextAsync(Path.Combine(webRoot, "index.html"),
+            "<!doctype html><html><body><div id=\"root\"></div></body></html>");
+        try
+        {
+            await using var factory = new WebApplicationFactory<Program>()
+                .WithWebHostBuilder(b => b.UseWebRoot(webRoot));
+            using var client = factory.CreateClient();
 
-        var resp = await client.GetAsync("/apps/wall");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        var body = await resp.Content.ReadAsStringAsync();
+            var resp = await client.GetAsync("/apps/wall");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            var body = await resp.Content.ReadAsStringAsync();
 
-        // The SPA shell (wwwroot/index.html), not the upstream echo. The echo body would carry
-        // `gateway=[1]`; the shell carries the React root div.
-        Assert.Contains("<div id=\"root\">", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("gateway=[1]", body, StringComparison.Ordinal);
-        // The shell must be no-cache so a redeploy's new asset hashes are picked up at once.
-        Assert.Contains("no-cache", resp.Headers.CacheControl?.ToString() ?? "", StringComparison.Ordinal);
+            // The SPA shell (index.html from the web root), not the upstream echo. The echo body would
+            // carry `gateway=[1]`; the shell carries the React root div.
+            Assert.Contains("<div id=\"root\">", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("gateway=[1]", body, StringComparison.Ordinal);
+            // The shell must be no-cache so a redeploy's new asset hashes are picked up at once.
+            Assert.Contains("no-cache", resp.Headers.CacheControl?.ToString() ?? "", StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(webRoot, recursive: true);
+        }
     }
 
     [Fact]

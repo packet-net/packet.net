@@ -59,63 +59,6 @@ public sealed class AuthReplyMessage : RhpMessage
 }
 
 /// <summary>
-/// Capability discovery request (<c>hello</c>) — a pdn extension from the
-/// rhp2lib protocol field notes ("There's no way to ask the server what it
-/// supports"). Perfectly backwards-compatible: a server without it answers
-/// via the unknown-type fallback (<c>helloReply</c> with errCode 2 — live
-/// XRouter does exactly this), which a client uses as the "baseline v2,
-/// no capability discovery" signal.
-/// </summary>
-public sealed class HelloMessage : RhpMessage
-{
-    /// <summary>Creates a <c>hello</c> message.</summary>
-    public HelloMessage() : base(RhpMessageType.Hello)
-    {
-    }
-}
-
-/// <summary>
-/// Reply to <c>hello</c> (<c>helloReply</c>): the server's protocol
-/// version, implementation name, and capability/limit advertisement.
-/// </summary>
-public sealed class HelloReplyMessage : RhpMessage
-{
-    /// <summary>Creates a <c>helloReply</c> message.</summary>
-    public HelloReplyMessage() : base(RhpMessageType.HelloReply)
-    {
-    }
-
-    /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
-    [JsonPropertyName("errCode")]
-    public int ErrCode { get; set; }
-
-    /// <summary>Human-readable result text.</summary>
-    [JsonPropertyName("errText")]
-    public string? ErrText { get; set; }
-
-    /// <summary>Protocol version the server speaks (e.g. <c>"2"</c>).</summary>
-    [JsonPropertyName("proto")]
-    public string? Proto { get; set; }
-
-    /// <summary>Implementation name/version (the wire's <c>impl</c>,
-    /// e.g. <c>"pdn/0.8.0"</c>).</summary>
-    [JsonPropertyName("impl")]
-    public string? Implementation { get; set; }
-
-    /// <summary>Protocol families this server supports (e.g. <c>["ax25"]</c>).</summary>
-    [JsonPropertyName("pfams")]
-    public IReadOnlyList<string>? Pfams { get; set; }
-
-    /// <summary>Largest <c>send.data</c> the server accepts, in bytes.</summary>
-    [JsonPropertyName("maxData")]
-    public int? MaxData { get; set; }
-
-    /// <summary>The <c>data</c> encoding in effect (e.g. <c>"latin1"</c>).</summary>
-    [JsonPropertyName("enc")]
-    public string? Enc { get; set; }
-}
-
-/// <summary>
 /// Combined create/bind/connect-or-listen request (<c>open</c>) — the
 /// high-level alternative to the socket/bind/listen/connect sequence.
 /// </summary>

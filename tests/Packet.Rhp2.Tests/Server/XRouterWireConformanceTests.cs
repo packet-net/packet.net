@@ -344,13 +344,13 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Hello_is_answered_with_a_capability_advertisement()
+    public async Task Hello_is_answered_with_the_unknown_type_fallback_not_a_capability_advertisement()
     {
-        // The pdn extension (docs/rhp2-server.md §pdn extensions, from the rhp2lib field
-        // notes' hello/helloReply proposal). errCode 0 + capability fields; a server
-        // without the extension answers helloReply errCode 2 via the unknown-type
-        // fallback (verified against the live container), which is the client's
-        // "baseline v2" signal — so this is perfectly backwards-compatible.
+        // The `hello`/`helloReply` capability-discovery surface was REMOVED (proposed in
+        // the rhp2lib field notes but never agreed — packet-net/packet.net#449). pdn now
+        // treats `hello` like any other unsupported type: the unknown-type fallback —
+        // helloReply errCode 2 ("Bad or missing type") — which is exactly what real
+        // XRouter answers, so pdn looks like a server that simply doesn't support it.
         var (server, _) = await StartServerAsync();
         var client = await ConnectAsync(server);
 
@@ -358,22 +358,22 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
 
         var (type, json) = await client.ReadRawAsync();
         Assert.Equal("helloReply", type);
-        Assert.Contains("\"errCode\":0", json, StringComparison.Ordinal);
-        Assert.Contains("\"errText\":\"Ok\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
         Assert.Contains("\"id\":31", json, StringComparison.Ordinal);
-        Assert.Contains("\"proto\":\"2\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"impl\":\"pdn/", json, StringComparison.Ordinal);
-        Assert.Contains("\"pfams\":[\"ax25\"]", json, StringComparison.Ordinal);
-        Assert.Contains($"\"maxData\":{RhpFraming.MaxPayloadLength}", json, StringComparison.Ordinal);
-        Assert.Contains("\"enc\":\"latin1\"", json, StringComparison.Ordinal);
+        // None of the removed capability fields appear on the wire.
+        Assert.DoesNotContain("\"proto\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"impl\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"pfams\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"maxData\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"enc\"", json, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Hello_before_auth_is_refused_like_any_other_request()
+    public async Task Hello_before_auth_is_refused_like_any_other_unknown_request()
     {
-        // The pre-auth gate is uniform: hello gets helloReply errCode 14 (no capability
-        // fields) until auth succeeds — a client still learns the server SUPPORTS the
-        // extension (a non-supporting server would answer errCode 2).
+        // The pre-auth gate is uniform: a pre-auth `hello` (now an unknown type) gets
+        // helloReply errCode 14 via the generic {type}Reply fallback — no capability
+        // fields, since the surface no longer exists (#449).
         var (server, _) = await StartServerAsync(requireAuth: true, auth: (_, _) => false);
         var client = await ConnectAsync(server);
 

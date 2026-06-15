@@ -315,36 +315,23 @@ public class WireSerializationTests
     }
 
     // -----------------------------------------------------------------
-    //  hello / helloReply — the pdn capability-discovery extension
+    //  hello — the removed (never-agreed) capability-discovery surface
     // -----------------------------------------------------------------
 
     [Fact]
-    public void HelloReply_serializes_the_capability_advertisement_fields()
+    public void Hello_is_not_a_known_type_and_deserializes_as_UnknownMessage()
     {
-        // Wire field names per the rhp2lib field-notes proposal: proto, impl, pfams,
-        // maxData, enc — emitted with errCode 0 by a supporting server. (A server
-        // without the extension answers via the unknown-type fallback: helloReply
-        // errCode 2 — which is how a client detects the baseline.)
-        var json = ToJson(new HelloReplyMessage
-        {
-            Id = 1,
-            ErrCode = 0,
-            ErrText = "Ok",
-            Proto = "2",
-            Implementation = "pdn/1.2.3",
-            Pfams = ["ax25"],
-            MaxData = 65535,
-            Enc = "latin1",
-        });
-        using var doc = JsonDocument.Parse(json);
+        // The `hello`/`helloReply` capability-discovery extension was removed
+        // (proposed in the rhp2lib field notes but never agreed —
+        // packet-net/packet.net#449). The codec no longer recognises the type,
+        // so a `hello` frame is an UnknownMessage like any other unsupported
+        // type — which makes the server answer it via the unknown-type fallback
+        // (helloReply errCode 2), exactly as real XRouter does.
+        var msg = Parse("""{"type":"hello","id":31}""");
 
-        doc.RootElement.GetProperty("type").GetString().Should().Be("helloReply");
-        doc.RootElement.GetProperty("proto").GetString().Should().Be("2");
-        doc.RootElement.GetProperty("impl").GetString().Should().Be("pdn/1.2.3");
-        doc.RootElement.GetProperty("pfams")[0].GetString().Should().Be("ax25");
-        doc.RootElement.GetProperty("maxData").GetInt32().Should().Be(65535);
-        doc.RootElement.GetProperty("enc").GetString().Should().Be("latin1");
-        doc.RootElement.GetProperty("errCode").GetInt32().Should().Be(0);
+        var unknown = msg.Should().BeOfType<UnknownMessage>().Subject;
+        unknown.Type.Should().Be("hello");
+        unknown.Id.Should().Be(31);
     }
 
     [Fact]
@@ -365,8 +352,6 @@ public class WireSerializationTests
     {
         new AuthMessage { Id = 1, User = "g8pzt", Pass = "secret" },
         new AuthReplyMessage { Id = 1, ErrCode = 0, ErrText = "Ok" },
-        new HelloMessage { Id = 11 },
-        new HelloReplyMessage { Id = 11, ErrCode = 0, ErrText = "Ok", Proto = "2", Implementation = "pdn/1.2.3", Pfams = ["ax25"], MaxData = 65535, Enc = "latin1" },
         new OpenMessage { Id = 2, Pfam = "ax25", Mode = "stream", Port = "1", Local = "G8PZT", Remote = "M0LTE-1", Flags = 0x80 },
         new OpenReplyMessage { Id = 2, Handle = 7, ErrCode = 0, ErrText = "Ok" },
         new SocketMessage { Id = 3, Pfam = "netrom", Mode = "seqpkt" },
