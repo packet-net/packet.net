@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -93,9 +94,15 @@ public static class PdnAppGateway
 
         // Apps are reached at /apps/{id}/ (trailing slash — the launcher always emits it, and the
         // app's relative URLs resolve against it). The catch-all below matches that (rest = "").
-        // We deliberately do NOT add a bare `/apps/{id}` → `/apps/{id}/` redirect: routing also
-        // matches `/apps/{id}` against the WITH-slash form, so such a route shadows the proxy for
-        // `/apps/{id}/` and 302-loops. (A no-trailing-slash request falls through to the SPA.)
+        // The catch-all ALSO matches the bare `/apps/{id}` (no trailing slash): the `/` before a
+        // `{**rest}` catch-all is optional, so `/apps/{id}` binds rest = "". We do NOT proxy that
+        // form — it's the SPA's in-panel route for a slot/embedded app (the left-nav links there
+        // with a react-router <Link>, and <AppFrame> renders the app inside pdn chrome via an
+        // iframe of `/apps/{id}/`). A hard reload of `/apps/{id}` must therefore boot the SPA
+        // shell (so the embedded experience is restored), exactly like any other deep link — NOT
+        // proxy the raw app and lose pdn's chrome. We serve index.html for the no-slash form
+        // inside the handler below (rather than a separate route) so it can't shadow the proxy for
+        // the with-slash forms `/apps/{id}/` and `/apps/{id}/...`, which still forward as before.
 
         // The reverse proxy. Read-gated; the token comes from the bearer header or the pdn_at
         // cookie (Program.cs OnMessageReceived). Resolve the app by id — inline entries first
@@ -103,9 +110,31 @@ public static class PdnAppGateway
         // and forward to its upstream. The same transformer serves both sources, so the
         // identity-injection/anti-spoof behaviour is identical for package-backed upstreams.
         // All methods (MapMethods, not the ambiguous all-methods app.Map overload).
-        app.MapMethods("/apps/{id}/{**rest}", ProxyMethods, async (HttpContext context, IConfigProvider config, IAppPackageCatalog catalog, IHttpForwarder forwarder) =>
+        app.MapMethods("/apps/{id}/{**rest}", ProxyMethods, async (HttpContext context, IConfigProvider config, IAppPackageCatalog catalog, IHttpForwarder forwarder, IWebHostEnvironment env) =>
         {
             var id = context.Request.RouteValues["id"] as string;
+
+            // The bare no-trailing-slash form `/apps/{id}` (rest empty, path has no trailing
+            // slash) is the SPA's embedded route, not a proxy target — serve the SPA shell so a
+            // reload restores the in-chrome experience instead of stranding the user on the raw
+            // proxied app. The with-slash forms (rest non-empty, or a trailing slash) proxy.
+            var rest = context.Request.RouteValues["rest"] as string;
+            if (string.IsNullOrEmpty(rest) && context.Request.Path.Value?.EndsWith('/') == false)
+            {
+                var index = env.WebRootFileProvider.GetFileInfo("index.html");
+                if (index.Exists)
+                {
+                    // Match the SPA fallback's no-cache policy so a deploy's new asset hashes are
+                    // picked up immediately (Program.cs MapFallbackToFile).
+                    context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+                    context.Response.ContentType = "text/html; charset=utf-8";
+                    await context.Response.SendFileAsync(index, context.RequestAborted).ConfigureAwait(false);
+                    return;
+                }
+                // No built SPA present (shouldn't happen in a real deploy) — fall through and let
+                // the proxy resolution below answer (it 404s an unknown id).
+            }
+
             var upstream = config.Current.Applications
                 .FirstOrDefault(a => a.Enabled && a.Ui is not null && string.Equals(a.Id, id, StringComparison.Ordinal))
                 ?.Ui!.Upstream;

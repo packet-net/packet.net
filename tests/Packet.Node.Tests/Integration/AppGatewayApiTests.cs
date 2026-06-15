@@ -132,6 +132,28 @@ public sealed class AppGatewayApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Bare_no_slash_app_url_serves_the_spa_shell_not_the_proxied_app()
+    {
+        // The bare `/apps/{id}` (no trailing slash) is the SPA's in-panel route for a slot/embedded
+        // app — a hard reload there must boot the SPA shell so the app stays embedded in pdn chrome
+        // (AppFrame), NOT proxy the raw app. (Regression: F5 on /apps/bbs dropped pdn's chrome and
+        // left only the bare BBS UI; found in lab live-verify.)
+        await using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/apps/wall");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadAsStringAsync();
+
+        // The SPA shell (wwwroot/index.html), not the upstream echo. The echo body would carry
+        // `gateway=[1]`; the shell carries the React root div.
+        Assert.Contains("<div id=\"root\">", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("gateway=[1]", body, StringComparison.Ordinal);
+        // The shell must be no-cache so a redeploy's new asset hashes are picked up at once.
+        Assert.Contains("no-cache", resp.Headers.CacheControl?.ToString() ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Strips_any_client_supplied_identity_header()
     {
         await using var factory = new WebApplicationFactory<Program>();
