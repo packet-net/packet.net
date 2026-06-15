@@ -102,8 +102,8 @@ apps:
 
   - id: bbs
     name: BBS
-    version: "0.2.10"
-    description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less. Sysop forwarding dashboard."
+    version: "0.2.12"
+    description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less. Sysop forwarding dashboard; reverse collection."
     icon: mail
     capabilities: [packet, web]
     homepage: https://github.com/packet-net/pdn-bbs
@@ -111,11 +111,11 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.10/pdn-bbs_0.2.10_amd64.deb
-          sha256: a54a9a489aea6921c9e8810e34550709e43f326fa77cf25b8e6a72841629fc6a
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.12/pdn-bbs_0.2.12_amd64.deb
+          sha256: 43c00b585cac9d4a4f0c128667a931cc746515f8cc22da963569abb1f1fa9de4
         linux-arm64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.10/pdn-bbs_0.2.10_arm64.deb
-          sha256: 07a20ba541b517d673b0fd278976f5f6797558cd5117cafd6ebe45e23f5fbdaf
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.12/pdn-bbs_0.2.12_arm64.deb
+          sha256: 752f953b3f8a268e581416675ab230e680e1c7e42924f1169c3d0e611144399b
         linux-arm:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.10/pdn-bbs_0.2.10_armhf.deb
-          sha256: 1d6cc2f6ae299c723c3784cd529f8c7bda6001425ba192293c22952c0dfec499
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.12/pdn-bbs_0.2.12_armhf.deb
+          sha256: a28bebdea370c7daac2ed8f4d24a797255e897224a9561dc965fd5997396c139
