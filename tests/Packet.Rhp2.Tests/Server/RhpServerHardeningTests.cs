@@ -54,10 +54,12 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
     }
 
     // A round-trip proves the connection is fully accepted (and counted) before we proceed.
-    private static async Task HelloAsync(RhpServerTests.RhpTestClient client, int id)
+    // A `socket` request is the simplest supported request that always Ok's on a fresh
+    // connection (the `hello` capability-discovery surface was removed — #449).
+    private static async Task PingAsync(RhpServerTests.RhpTestClient client, int id)
     {
-        await client.SendAsync(new HelloMessage { Id = id });
-        var reply = await client.ExpectAsync<HelloReplyMessage>();
+        await client.SendAsync(new SocketMessage { Id = id, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        var reply = await client.ExpectAsync<SocketReplyMessage>();
         Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
     }
 
@@ -78,9 +80,9 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
 
         // Two live, fully-accepted connections fill the cap.
         var c1 = await ConnectAsync(server);
-        await HelloAsync(c1, 1);
+        await PingAsync(c1, 1);
         var c2 = await ConnectAsync(server);
-        await HelloAsync(c2, 2);
+        await PingAsync(c2, 2);
 
         // The third is accepted only to be closed at once: a read sees a clean EOF.
         using var third = new TcpClient();
@@ -97,7 +99,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         var server = await StartServerAsync(maxConnections: 1);
 
         var c1 = await ConnectAsync(server);
-        await HelloAsync(c1, 1);
+        await PingAsync(c1, 1);
 
         // Drop the only allowed connection and wait for the server to notice (its read
         // loop ends on EOF and decrements the count in the finally).
@@ -110,7 +112,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
             var candidate = await RhpServerTests.RhpTestClient.ConnectAsync(server.BoundEndpoint!);
             try
             {
-                await HelloAsync(candidate, 2);
+                await PingAsync(candidate, 2);
                 c2 = candidate;
                 cleanup.Add(candidate);
             }
@@ -208,9 +210,9 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
 
         // One request, then sit idle well past the in-frame timeout — the connection
         // must survive, because idle-between-frames is unbounded by design.
-        await HelloAsync(client, 1);
+        await PingAsync(client, 1);
         await Task.Delay(600);
-        await HelloAsync(client, 2);
+        await PingAsync(client, 2);
     }
 
     // ── Auth brute-force throttle ────────────────────────────────────────

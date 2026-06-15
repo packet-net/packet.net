@@ -384,23 +384,19 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Hello_xrouter_answers_the_unknown_type_fallback_pdn_advertises_capabilities()
+    public async Task Hello_is_answered_with_the_unknown_type_fallback_identically()
     {
-        // The pdn extension (docs/rhp2-server.md §pdn extensions): capability discovery.
-        // XRouter answers via its unknown-type fallback — helloReply errCode 2 — which is
-        // exactly what makes the extension backwards-compatible: a client treats errCode 2
-        // as "baseline v2 server, no discovery". Both sides asserted explicitly.
+        // The `hello`/`helloReply` capability-discovery surface was REMOVED (proposed in
+        // the rhp2lib field notes but never agreed — packet-net/packet.net#449). pdn now
+        // treats `hello` like any other unsupported type, so it matches XRouter exactly:
+        // the unknown-type fallback — helloReply errCode 2 ("Bad or missing type").
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"hello","id":18}""");
 
+        Assert.Equal(xr, pdn);                                   // type/errCode/id-echo/casing all match
         Assert.Equal("helloReply", xr.Item1);
-        Assert.Equal("helloReply", pdn.Item1);
-        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);   // the live fallback
-        Assert.Equal(RhpErrorCode.Ok, pdn.Item2);                // pdn: capabilities follow
+        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);   // the live fallback, on both
         Assert.Equal(18, xr.Item3);
-        Assert.Equal(18, pdn.Item3);
-        Assert.True(xr.Item4);                                   // capital errCode on both
-        Assert.True(pdn.Item4);
     }
 
     private static async Task<int> HandleOf(WireClient c, string req)
