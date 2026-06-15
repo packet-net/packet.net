@@ -6,6 +6,7 @@ using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.SelfUpdate;
 
 namespace Packet.Node.Api;
 
@@ -198,9 +199,14 @@ public static class PdnAvailableAppsApi
             installedVersion = installer.GetInstalled(entry.Id)?.Version ?? package!.Manifest?.Version;
         }
 
+        // An update is offered ONLY when the catalog pin is a genuine UPGRADE — a strictly-greater
+        // numeric version (see IsUpgrade). This guards against a backwards "update vX → vY" when the
+        // catalog version is OLDER than what's installed (an out-of-band install, or a catalog
+        // rollback), and against the naive Ordinal string compare that mis-orders "0.2.10" vs
+        // "0.2.9". Equal, older, or unparseable → no badge.
         var updateAvailable = installed
             && installedVersion is not null
-            && !string.Equals(installedVersion, entry.Version, StringComparison.Ordinal);
+            && IsUpgrade(installedVersion, entry.Version);
 
         return new AvailableApp(
             Id: entry.Id,
@@ -218,6 +224,20 @@ public static class PdnAvailableAppsApi
             UpdateAvailable: updateAvailable,
             Installable: IsInstallable(entry, rid));
     }
+
+    /// <summary>
+    /// Whether the <paramref name="catalogVersion"/> is a genuine upgrade over the
+    /// <paramref name="installedVersion"/> — a strictly-greater numeric base
+    /// (<see cref="NodeVersion.IsUpdateOver"/>, the same comparator the node self-update uses). An
+    /// equal or OLDER catalog version (a downgrade — e.g. an out-of-band install left the box ahead
+    /// of the catalog, or the catalog was rolled back) is NOT an update. Either side unparseable →
+    /// not an update (conservative: never a spurious or backwards badge). This also fixes the naive
+    /// Ordinal string compare, under which "0.2.9" sorts after "0.2.10".
+    /// </summary>
+    internal static bool IsUpgrade(string installedVersion, string? catalogVersion) =>
+        NodeVersion.TryParse(catalogVersion, out var catalog)
+        && NodeVersion.TryParse(installedVersion, out var installed)
+        && catalog.IsUpdateOver(installed);
 
     /// <summary>Whether the catalog entry carries an artifact for <paramref name="rid"/> — an
     /// <c>assets</c> binary, a <c>deb</c>, or a <c>pdnapp</c> variant (or its rid-independent
