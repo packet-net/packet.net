@@ -1,6 +1,6 @@
 # pdn-whatspac-client — design (ADR) + execution plan
 
-**Status:** agreed 2026-06-13 (Tom + Claude); design record, no code yet. The *implementation* lives in its own repo — **`m0lte/pdn-whatspac-client`** — exactly as [`m0lte/dapps`](https://m0lte.github.io/dapps/) does; this document is the in-pdn design record + the rationale for why the **shipped** RHPv2 server ([`docs/rhp2-server.md`](rhp2-server.md)) is the only pdn-side surface this needs. It is *not* a plan to build anything inside `Packet.Node*`.
+**Status:** agreed 2026-06-13 (Tom + Claude); design record, no code yet. The *implementation* lives in its own repo — **`m0lte/pdn-whatspac-client`** — exactly as [`packet-net/dapps`](https://m0lte.github.io/dapps/) does; this document is the in-pdn design record + the rationale for why the **shipped** RHPv2 server ([`docs/rhp2-server.md`](rhp2-server.md)) is the only pdn-side surface this needs. It is *not* a plan to build anything inside `Packet.Node*`.
 
 **TL;DR.** WhatsPac (Kevin M0AHN) is a browser SPA with no engine of its own and — its defining limitation — **no persistence**: the over-the-air session to the central WhatsPac Server (WPS, `MB7NPW-9`) lives and dies with the browser tab. We build **`pdn-whatspac-client`**: a persistent, out-of-process WhatsPac *client* (not a re-host of the SPA) that runs as a pdn app — DAPPS-shaped — holds the WPS link continuously, persists all state, and presents it through **two heads**: a fresh LAN/phone UI and a line-based RF terminal. It speaks the WPS application protocol (reverse-engineered below) end-to-end, over a transparent AX.25 stream obtained from pdn via **RHPv2** — the same decoupled app↔node boundary DAPPS already uses.
 
@@ -18,7 +18,7 @@ The flaw Tom wants to fix is structural, not cosmetic: **when the tab closes, th
 
 pdn's app-extensibility platform ([`docs/app-extensibility.md`](app-extensibility.md), Slices 1–5 shipped) is the substrate:
 
-- **DAPPS** ([`m0lte/dapps`](https://m0lte.github.io/dapps/)) is the flagship **network-plane** app: an out-of-process binary that uses pdn purely through **RHPv2** (`DAPPS_NODE_BEARER=rhpv2`) to bind its own callsigns and open/accept connections, proven end-to-end against the deployed lab node (plan §17, 2026-06-11, Slice 4 R-4). It ships *with* pdn but strictly through the public package mechanism — pdn never special-cases it.
+- **DAPPS** ([`packet-net/dapps`](https://m0lte.github.io/dapps/)) is the flagship **network-plane** app: an out-of-process binary that uses pdn purely through **RHPv2** (`DAPPS_NODE_BEARER=rhpv2`) to bind its own callsigns and open/accept connections, proven end-to-end against the deployed lab node (plan §17, 2026-06-11, Slice 4 R-4). It ships *with* pdn but strictly through the public package mechanism — pdn never special-cases it.
 - **pdn-bpqchat** and **pdn-convers** are further apps in progress (separate repos), reinforcing the pattern: apps live out-of-tree and consume pdn's public seams.
 - The local-session worked examples are **WALL** (`pdn-app/1` stdio) and **LOBBY** (long-running socket daemon with shared state).
 - The human plane is the **app-gateway** ([`docs/app-gateway.md`](app-gateway.md)): a manifest + reverse-proxy + auth shell that surfaces an app's web UI under `/apps/{id}/*` with anti-spoofed `X-Pdn-User`/`X-Pdn-Scope` identity injection.
@@ -243,7 +243,7 @@ Multi-user + multiplexing over **DAPPS federation** (§6); the **efficient-binar
 
 ## 6. Federation & the binary-framing future
 
-- **Multiplexing many users** belongs on the **m0lte/dapps** federation transport (Tom + Kevin's half-plan to use DAPPS as an inter-WPS-server transport): one pipe carries many users' traffic, keeping N keepalive-bearing L2 sessions off the shared half-duplex channel. v1 is deliberately single-user so this is a clean later layer, not a retrofit.
+- **Multiplexing many users** belongs on the **packet-net/dapps** federation transport (Tom + Kevin's half-plan to use DAPPS as an inter-WPS-server transport): one pipe carries many users' traffic, keeping N keepalive-bearing L2 sessions off the shared half-duplex channel. v1 is deliberately single-user so this is a clean later layer, not a retrofit.
 - **Efficient binary:** the base64 hack exists only because the browser→WebSocket path mangles high bytes. `pdn-whatspac-client` speaks raw (Latin-1) AX.25 and suffers none of that, so it is the natural first client to carry **raw deflate bytes** — but only once WPS accepts a non-base64 framing (it currently expects base64 from every client). This is precisely Kevin's open 2026-06-13 question ("…any way to achieve this with RHP v2?") and is a WPS-side change to co-design, not a v1 unilateral move.
 
 ---
@@ -265,7 +265,7 @@ Multi-user + multiplexing over **DAPPS federation** (§6); the **efficient-binar
 - [`docs/app-gateway.md`](app-gateway.md) — manifest + reverse-proxy + identity injection (the LAN head).
 - [`docs/app-packages.md`](app-packages.md) — `pdn-app.yaml`, capabilities, supervised lifecycle (Slice 5).
 - [`docs/rhp2-server.md`](rhp2-server.md) — the shipped RHPv2 server this app consumes (and why its WS-transport leg is unneeded here).
-- [`m0lte/dapps`](https://m0lte.github.io/dapps/) — the precedent network-plane app; the shape `pdn-whatspac-client` follows.
+- [`packet-net/dapps`](https://m0lte.github.io/dapps/) — the precedent network-plane app; the shape `pdn-whatspac-client` follows.
 - WhatsPac: `whatspac.oarc.uk`; BPQ RHP interface (John G8BPQ): `https://www.cantab.net/users/john.wiseman/Documents/WhatsPacInterface.html`; OARC wiki `https://wiki.oarc.uk/packet:whatspac`.
 </content>
 </invoke>

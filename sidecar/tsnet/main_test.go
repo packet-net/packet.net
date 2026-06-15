@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -200,5 +202,250 @@ func TestServeForward_ListenerCloseStops(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("serveForward did not return after listener close")
+	}
+}
+
+// ---- reconcileForwards (the SIGHUP live-reload diff) ----------------------
+//
+// These exercise the diff with fake open/close — no tsnet, no real sockets —
+// so the registry reconciliation is unit-testable in isolation. open records
+// each opened spec and hands back a sentinel listener; close records the port.
+
+// fakeListener is a no-op net.Listener stand-in: reconcileForwards only stores
+// it and (via the fake closeFunc) never calls its methods, so the methods just
+// satisfy the interface.
+type fakeListener struct{}
+
+func (fakeListener) Accept() (net.Conn, error) { return nil, net.ErrClosed }
+func (fakeListener) Close() error              { return nil }
+func (fakeListener) Addr() net.Addr            { return nil }
+
+// fakeReconciler wires reconcileForwards to in-memory open/close recorders.
+type fakeReconciler struct {
+	opened  []forward
+	closed  []int
+	openErr map[int]error // listen port → error to return from open (else nil)
+	active  map[int]*activeForward
+}
+
+func newFakeReconciler() *fakeReconciler {
+	return &fakeReconciler{active: make(map[int]*activeForward), openErr: map[int]error{}}
+}
+
+func (r *fakeReconciler) open(f forward) (net.Listener, error) {
+	if err := r.openErr[f.Listen]; err != nil {
+		return nil, err
+	}
+	r.opened = append(r.opened, f)
+	return fakeListener{}, nil
+}
+
+func (r *fakeReconciler) close(listen int) {
+	r.closed = append(r.closed, listen)
+}
+
+func (r *fakeReconciler) reconcile(desired []forward) (opened, closed []int) {
+	return reconcileForwards(desired, r.active, r.open, r.close)
+}
+
+func activePorts(active map[int]*activeForward) map[int]forward {
+	out := make(map[int]forward, len(active))
+	for p, a := range active {
+		out[p] = a.forward
+	}
+	return out
+}
+
+func TestReconcileForwards_InitialOpensAll(t *testing.T) {
+	r := newFakeReconciler()
+	desired := []forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"},
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},
+	}
+	opened, closed := r.reconcile(desired)
+	if len(opened) != 2 || len(closed) != 0 {
+		t.Fatalf("opened=%v closed=%v, want 2 opened 0 closed", opened, closed)
+	}
+	if len(r.active) != 2 {
+		t.Fatalf("active = %v, want 2 entries", activePorts(r.active))
+	}
+	if _, ok := r.active[993]; !ok {
+		t.Errorf("993 not active: %v", activePorts(r.active))
+	}
+	if _, ok := r.active[143]; !ok {
+		t.Errorf("143 not active: %v", activePorts(r.active))
+	}
+}
+
+func TestReconcileForwards_AddOne(t *testing.T) {
+	r := newFakeReconciler()
+	r.reconcile([]forward{{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}})
+	r.opened = nil // reset the recorder for the second pass.
+
+	opened, closed := r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}, // unchanged
+		{Listen: 465, Target: "127.0.0.1:1465", TLS: "raw"},       // new
+	})
+	if len(opened) != 1 || opened[0] != 465 {
+		t.Fatalf("opened=%v, want [465]", opened)
+	}
+	if len(closed) != 0 {
+		t.Fatalf("closed=%v, want none (993 unchanged)", closed)
+	}
+	if len(r.opened) != 1 || r.opened[0].Listen != 465 {
+		t.Errorf("open called for %v, want only 465 (993 must be left alone)", r.opened)
+	}
+}
+
+func TestReconcileForwards_RemoveOne(t *testing.T) {
+	r := newFakeReconciler()
+	r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"},
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},
+	})
+
+	opened, closed := r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}, // kept
+	})
+	if len(opened) != 0 {
+		t.Fatalf("opened=%v, want none", opened)
+	}
+	if len(closed) != 1 || closed[0] != 143 {
+		t.Fatalf("closed=%v, want [143]", closed)
+	}
+	if r.closed[len(r.closed)-1] != 143 {
+		t.Errorf("close called for %v, want 143 closed", r.closed)
+	}
+	if _, gone := r.active[143]; gone {
+		t.Errorf("143 still active after removal: %v", activePorts(r.active))
+	}
+}
+
+func TestReconcileForwards_ChangedTargetReopens(t *testing.T) {
+	r := newFakeReconciler()
+	r.reconcile([]forward{{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}})
+	r.opened, r.closed = nil, nil
+
+	// Same listen port, different target → close + reopen on that port.
+	opened, closed := r.reconcile([]forward{{Listen: 993, Target: "127.0.0.1:9999", TLS: "terminate"}})
+	if len(opened) != 1 || opened[0] != 993 {
+		t.Fatalf("opened=%v, want [993] (reopened)", opened)
+	}
+	if len(closed) != 1 || closed[0] != 993 {
+		t.Fatalf("closed=%v, want [993] (closed before reopen)", closed)
+	}
+	if got := r.active[993].Target; got != "127.0.0.1:9999" {
+		t.Errorf("active 993 target = %q, want the new target", got)
+	}
+}
+
+func TestReconcileForwards_ChangedTlsReopens(t *testing.T) {
+	r := newFakeReconciler()
+	r.reconcile([]forward{{Listen: 993, Target: "127.0.0.1:1430", TLS: "raw"}})
+	r.opened, r.closed = nil, nil
+
+	// Same listen + target, different tls mode → must close + reopen.
+	opened, closed := r.reconcile([]forward{{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}})
+	if len(opened) != 1 || opened[0] != 993 || len(closed) != 1 || closed[0] != 993 {
+		t.Fatalf("opened=%v closed=%v, want both [993]", opened, closed)
+	}
+	if got := r.active[993].TLS; got != "terminate" {
+		t.Errorf("active 993 tls = %q, want terminate", got)
+	}
+}
+
+func TestReconcileForwards_UnchangedIsNoop(t *testing.T) {
+	r := newFakeReconciler()
+	same := []forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"},
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},
+	}
+	r.reconcile(same)
+	r.opened, r.closed = nil, nil
+
+	opened, closed := r.reconcile(same)
+	if len(opened) != 0 || len(closed) != 0 {
+		t.Fatalf("opened=%v closed=%v, want both empty (idempotent reload)", opened, closed)
+	}
+	if len(r.opened) != 0 || len(r.closed) != 0 {
+		t.Errorf("open/close were called on an unchanged reload: opened=%v closed=%v", r.opened, r.closed)
+	}
+}
+
+func TestReconcileForwards_EmptyDesiredClosesAll(t *testing.T) {
+	r := newFakeReconciler()
+	r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"},
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},
+	})
+
+	opened, closed := r.reconcile(nil)
+	if len(opened) != 0 {
+		t.Fatalf("opened=%v, want none", opened)
+	}
+	if len(closed) != 2 {
+		t.Fatalf("closed=%v, want both ports", closed)
+	}
+	if len(r.active) != 0 {
+		t.Errorf("active = %v, want empty after closing all", activePorts(r.active))
+	}
+}
+
+func TestReconcileForwards_OpenFailureLeavesPortInactive(t *testing.T) {
+	r := newFakeReconciler()
+	r.openErr[993] = net.ErrClosed // simulate a listen failure on this port.
+
+	opened, closed := r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"}, // fails to open
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},       // opens fine
+	})
+	if len(opened) != 1 || opened[0] != 143 {
+		t.Fatalf("opened=%v, want only [143] (993 failed)", opened)
+	}
+	if len(closed) != 0 {
+		t.Fatalf("closed=%v, want none", closed)
+	}
+	if _, live := r.active[993]; live {
+		t.Errorf("993 must not be active after an open failure: %v", activePorts(r.active))
+	}
+	// A subsequent reload (now succeeding) opens the previously-failed port.
+	delete(r.openErr, 993)
+	r.opened = nil
+	opened, _ = r.reconcile([]forward{
+		{Listen: 993, Target: "127.0.0.1:1430", TLS: "terminate"},
+		{Listen: 143, Target: "127.0.0.1:1431", TLS: "raw"},
+	})
+	if len(opened) != 1 || opened[0] != 993 {
+		t.Fatalf("opened=%v on retry, want [993] (the previously-failed port)", opened)
+	}
+}
+
+// TestStartAndReloadForwards_FromFile exercises the file-backed entry points
+// (startForwards → reloadForwards) end to end against the fake opener, proving
+// the SIGHUP path re-reads the file and reconciles the live registry.
+func TestStartAndReloadForwards_FromFile(t *testing.T) {
+	r := newFakeReconciler()
+	path := filepath.Join(t.TempDir(), "forwards.json")
+
+	write := func(s string) {
+		if err := os.WriteFile(path, []byte(s), 0o600); err != nil {
+			t.Fatalf("write forwards file: %v", err)
+		}
+	}
+
+	write(`[{"listen":993,"target":"127.0.0.1:1430","tls":"terminate"}]`)
+	startForwards(path, r.active, r.open)
+	if _, ok := r.active[993]; !ok || len(r.active) != 1 {
+		t.Fatalf("after start: active=%v, want only 993", activePorts(r.active))
+	}
+
+	// Add a forward + drop the original → the reload reconciles to the new file.
+	write(`[{"listen":143,"target":"127.0.0.1:1431","tls":"raw"}]`)
+	reloadForwards(path, r.active, r.open)
+	if _, gone := r.active[993]; gone {
+		t.Errorf("993 should be closed after reload: %v", activePorts(r.active))
+	}
+	if _, ok := r.active[143]; !ok || len(r.active) != 1 {
+		t.Fatalf("after reload: active=%v, want only 143", activePorts(r.active))
 	}
 }

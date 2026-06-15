@@ -6,7 +6,7 @@ Source: `ax.25.2.2.4_Oct_25.md`, §2.9, Appendix C1, and the conventions actuall
 
 The spec is explicit about the authority of these diagrams: **"The SDL takes precedence over the text of this document and should be used to resolve any apparent discrepancies between the two. The SDL is a much clearer description of the protocol than the verbal text."** (§Preface.) Anything in this guide is a guide to reading the figures; the figures themselves are the protocol.
 
-> **Audit note (2026-05-21).** The first version of this guide followed §C1.2 verbatim, but several of §C1.2's claims about *direction* are contradicted by the actual figures and by the encoded transcriptions in [`m0lte/ax25sdl`](https://github.com/m0lte/ax25sdl)'s GraphML/YAML. Where §C1.2 and the figures disagree, the figures win (per the §Preface quote above). Sections affected: §2.2 (input direction is **not** load-bearing; the spec text's claim that left-notch=upper, right-notch=lower is reversed in the data-link figures), §2.2 (timer expiries use the right-notch shape, not the left-notch shape §C1.2 implies), and §2.4 (internal queue ops use their own dedicated shape classes, not relabelled input/output shapes). The corrected behaviour is what's encoded in the project's GraphML palette and what its YAML DSL preserves. See §11 below for the corrected mapping and the project's "trust the figure" rule.
+> **Audit note (2026-05-21).** The first version of this guide followed §C1.2 verbatim, but several of §C1.2's claims about *direction* are contradicted by the actual figures and by the encoded transcriptions in [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl)'s GraphML/YAML. Where §C1.2 and the figures disagree, the figures win (per the §Preface quote above). Sections affected: §2.2 (input direction is **not** load-bearing; the spec text's claim that left-notch=upper, right-notch=lower is reversed in the data-link figures), §2.2 (timer expiries use the right-notch shape, not the left-notch shape §C1.2 implies), and §2.4 (internal queue ops use their own dedicated shape classes, not relabelled input/output shapes). The corrected behaviour is what's encoded in the project's GraphML palette and what its YAML DSL preserves. See §11 below for the corrected mapping and the project's "trust the figure" rule.
 
 ---
 
@@ -56,7 +56,7 @@ So a diagram that ends in a box labelled `3` means "return to the Connected stat
 
 - A flag-shaped box with a **notch on one of its left/right edges**.
 - The name of the input event (primitive, frame, timer expiry, or queue pop) is written inside the symbol.
-- **The notch direction is NOT load-bearing in the AX.25 figures.** §C1.2 of the spec text describes a convention (left-notch=upper, right-notch=lower), but the actual figures — and therefore the GraphML transcriptions in `m0lte/ax25sdl` — apply the convention inconsistently or in reverse. See §11.1 for the worked evidence.
+- **The notch direction is NOT load-bearing in the AX.25 figures.** §C1.2 of the spec text describes a convention (left-notch=upper, right-notch=lower), but the actual figures — and therefore the GraphML transcriptions in `packet-net/ax25sdl` — apply the convention inconsistently or in reverse. See §11.1 for the worked evidence.
 - **Identify the event by its text label, not by the notch direction.** The d5 shape-class attribute in the GraphML (which copies the figc1.1 palette name verbatim) is used as a label *namespace* — e.g. when the same label "All Other Primitives" appears under two different shape classes in one state, the project disambiguates them as `..._from_lower_layer` / `..._from_upper_layer`, but those suffixes are about d5 provenance, not about which OSI layer the signal really came from.
 - **Timer expirations are drawn as the *right-notch* input shape** (d5 = `Signal reception from upper layer`) throughout the v2.2.4 data-link figures — not the left-notch shape §C1.2 implies. Inside the symbol is `Timer T1 Expiry`, `Timer T3 Expiry`, etc.
 
@@ -348,7 +348,7 @@ A few conventions are not stated in §C1.2 but are uniformly observed across App
 
 ## 8. Quick reference: symbol → meaning
 
-| Shape class (d5 in `m0lte/ax25sdl` GraphML) | Visual cue | Meaning |
+| Shape class (d5 in `packet-net/ax25sdl` GraphML) | Visual cue | Meaning |
 |---|---|---|
 | `State` | Rounded/elongated box, contains number + name | Resting state; sequence starts beneath it |
 | `Signal reception from Lower Layer` | Flag with **notch on left** | An input event. Identify by **label**, not direction. In figc4.x this shape is used for upper-layer DL service primitives (`DL-CONNECT Request`, `DL-DISCONNECT Request`, `DL-UNIT-DATA Request`) and for some queue-pop transcriptions. |
@@ -381,9 +381,9 @@ A few conventions are not stated in §C1.2 but are uniformly observed across App
 
 ---
 
-## 11. Correlation with the `m0lte/ax25sdl` GraphML/YAML encoding
+## 11. Correlation with the `packet-net/ax25sdl` GraphML/YAML encoding
 
-The sibling repo `m0lte/ax25sdl` transcribes every figc4.x SDL page into yEd GraphML and then into a YAML DSL that drives codegen. The encoding decisions there are the practical ground truth for "what the figure actually says", and they reveal where §C1.2 of the spec text is unreliable.
+The sibling repo `packet-net/ax25sdl` transcribes every figc4.x SDL page into yEd GraphML and then into a YAML DSL that drives codegen. The encoding decisions there are the practical ground truth for "what the figure actually says", and they reveal where §C1.2 of the spec text is unreliable.
 
 ### 11.1 d5 is the authoritative shape class
 
@@ -467,4 +467,4 @@ When you open a figc4.x figure or its GraphML transcription:
 6. **For each subroutine call (double-sidebar rectangle), expand by name** from the subroutines page.
 7. **The chain ends at a state symbol** — the machine settles there, ready for the next event.
 
-This is the rule the `m0lte/ax25sdl` codegen pipeline operates by, and it produces transcriptions that successfully drive the C# data-link runtime in `m0lte/packet.net` against real LinBPQ / Xrouter / NinoTNC peers — which is the load-bearing evidence that the rule is right and §C1.2's direction claims are not.
+This is the rule the `packet-net/ax25sdl` codegen pipeline operates by, and it produces transcriptions that successfully drive the C# data-link runtime in `packet-net/packet.net` against real LinBPQ / Xrouter / NinoTNC peers — which is the load-bearing evidence that the rule is right and §C1.2's direction claims are not.

@@ -8,7 +8,7 @@ namespace Packet.Ax25.Tests.Session.Conformance;
 
 /// <summary>
 /// SIMULTANEOUS bidirectional SREJ recovery — the residual defects surfaced when
-/// porting the #285 mod-8 ring-wrap fix to <c>m0lte/ax25-ts</c> (#35). #285 fixed
+/// porting the #285 mod-8 ring-wrap fix to <c>packet-net/ax25-ts</c> (#35). #285 fixed
 /// the UNIDIRECTIONAL ring-wrap duplicate (the sender replaying acked I-frames);
 /// these are distinct cases that only appear when BOTH stations are concurrently a
 /// sender-in-recovery AND a receiver under SREJ.

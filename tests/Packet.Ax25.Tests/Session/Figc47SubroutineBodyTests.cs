@@ -188,7 +188,7 @@ public class Figc47SubroutineBodyTests
     {
         // figc4.7b page 102 draws Check_Need_for_Response's Yes branch as
         // `Enquiry Response (F = 1)`. The "(F = 1)" annotation isn't
-        // documented in §C1.2; canonical encoding tracked at m0lte/ax25sdl#45.
+        // documented in §C1.2; canonical encoding tracked at packet-net/ax25sdl#45.
         // The wire contract is unambiguous either way — §4.3 prose: "the
         // reply to this poll is indicated by setting the response (final)
         // bit in the appropriate frame". DefaultSubroutineRegistry honours

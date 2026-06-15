@@ -49,16 +49,16 @@ describe("screens render without crashing", () => {
     await waitFor(() => expect(screen.getAllByText(/Sessions/i).length).toBeGreaterThan(0));
   });
 
-  it("Apps lists the registered web apps", async () => {
+  it("Apps renders the management surface (no launcher grid — apps live in the nav now)", async () => {
     const { container } = mount(<Apps />);
     expect(container.firstChild).toBeTruthy();
-    // The mock apps list (lib/mock APPS) includes the WALL tile, linking to /apps/wall/.
-    // "WALL" also appears as a row in the management section below the grid, so pick
-    // the occurrence that lives inside an anchor (the launcher tile).
-    await waitFor(() => {
-      const link = screen.getAllByText("WALL").map((el) => el.closest("a")).find((a) => a !== null);
-      expect(link).toHaveAttribute("href", "/apps/wall/");
-    });
+    // The Apps page is pure management now: "Available apps" (install) + "Manage apps". The
+    // launcher grid moved to the left-nav (see shell.nav.test.tsx), so WALL appears here only
+    // as a management row, never as an /apps/wall/ launcher anchor.
+    await waitFor(() => expect(screen.getByText(/Available apps/i)).toBeInTheDocument());
+    expect(screen.getByText(/Manage apps/i)).toBeInTheDocument();
+    const wallLink = screen.queryAllByText("WALL").map((el) => el.closest("a")).find((a) => a !== null);
+    expect(wallLink).toBeUndefined();
   });
 
   it("Routes renders the destinations/neighbours view", async () => {

@@ -56,6 +56,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     /// <summary>Backoff doubles per consecutive failed start, capped here.</summary>
     private static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
 
+    private const int Sighup = 1;
     private const int Sigterm = 15;
     private const int Sigkill = 9;
 
@@ -108,11 +109,23 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     private IDisposable? changeSubscription;
     private CancellationTokenSource? lifetime;
 
-    // The single live child run, and the config fingerprint it was launched for. Null = no child.
+    // The single live child run, and the spawn fingerprints it was launched for. Null = no child.
+    // The fingerprint is split so a forwards-only change can be live-reloaded (SIGHUP) instead of
+    // restarting the whole tsnet node (which drops every tailnet connection — docs/network-access.md):
+    //   • node-level fingerprint changes → restart (a fresh tsnet node is required)
+    //   • node-level unchanged, forwards changed → rewrite forwards.json + SIGHUP the child
     private CancellationTokenSource? runStopping;
     private Task runLoop = Task.CompletedTask;
-    private string? runFingerprint;
+    private string? runNodeFingerprint;
+    private string? runForwardsFingerprint;
     private volatile bool disposed;
+
+    // The live child's pid + whether it leads its own process group, published by the run loop while
+    // a child is actually running (cleared on exit/teardown) so the reconcile path can SIGHUP it for
+    // a forwards-only reload. -1 = no running child to signal.
+    private readonly object childSignalGate = new();
+    private int childPid = -1;
+    private bool childGroupLeader;
 
     public TailscaleSidecarHostedService(
         IConfigProvider config,
@@ -222,23 +235,42 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
             }
 
             // The app-declared tailnet forwards from every enabled, error-free package — applied
-            // only when tailscale is enabled (no tailscale → no forwards). They ride the spawn
-            // fingerprint, so enabling/disabling a forward-declaring app (or any forward change)
-            // restarts the sidecar with a freshly-written --forwards-file.
+            // only when tailscale is enabled (no tailscale → no forwards). The spawn fingerprint is
+            // split: node-level fields need a fresh tsnet node (restart), whereas a forwards-only
+            // change is live-reloaded via SIGHUP — rewriting --forwards-file and signalling the
+            // child — so it does NOT tear down + rejoin the tailnet (which would drop every tailnet
+            // connection, including the operator's control-panel session). See docs/network-access.md.
             var forwards = CollectForwards();
-            var fingerprint = FingerprintOf(ts, forwards);
-            if (runStopping is not null && string.Equals(runFingerprint, fingerprint, StringComparison.Ordinal))
+            var nodeFingerprint = NodeFingerprintOf(ts);
+            var forwardsFingerprint = FingerprintForwards(forwards);
+
+            if (runStopping is not null
+                && string.Equals(runNodeFingerprint, nodeFingerprint, StringComparison.Ordinal))
             {
-                // Running with the same spawn-relevant config — leave it alone.
-                return;
+                if (string.Equals(runForwardsFingerprint, forwardsFingerprint, StringComparison.Ordinal))
+                {
+                    // Running with the same spawn-relevant config — leave it alone.
+                    return;
+                }
+
+                // Forwards-only change: rewrite the file + SIGHUP the live child to reconcile its
+                // listeners on the existing tsnet node. No restart, so existing tailnet connections
+                // survive. If we have no live pid to signal (e.g. the child is mid-backoff), fall
+                // through to a restart so the new forwards still take effect.
+                if (TryReloadForwardsLocked(ts, forwards))
+                {
+                    runForwardsFingerprint = forwardsFingerprint;
+                    return;
+                }
             }
+
             if (runStopping is not null)
             {
                 LogReconfiguring();
                 await StopChildLockedAsync().ConfigureAwait(false);
             }
 
-            StartChildLocked(ts, forwards, fingerprint, ct);
+            StartChildLocked(ts, forwards, nodeFingerprint, forwardsFingerprint, ct);
         }
         finally
         {
@@ -246,23 +278,22 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         }
     }
 
-    /// <summary>The spawn-relevant config (everything passed to the child as a flag or file).
-    /// An edit that changes this restarts the child; an irrelevant edit leaves it alone. The
-    /// collected forwards are part of it (the JSON the child reads via <c>--forwards-file</c>) so
-    /// enabling/disabling a forward-declaring app — or any forward change — restarts the sidecar.</summary>
-    private static string FingerprintOf(TailscaleConfig ts, IReadOnlyList<ForwardEntry> forwards) =>
+    /// <summary>The <b>node-level</b> spawn-relevant config: everything that needs a fresh tsnet
+    /// node (so a change here restarts the child). Deliberately excludes the forwards — those are
+    /// fingerprinted separately (<see cref="FingerprintForwards"/>) and reconciled live via SIGHUP,
+    /// because they can change on the existing node without tearing down the tailnet.</summary>
+    private static string NodeFingerprintOf(TailscaleConfig ts) =>
         string.Join(' ',
             ts.Hostname,
             ts.StateDir,
             ts.Target,
             ts.Funnel ? "funnel" : "",
             ts.AuthKey ?? "",
-            ts.AuthKeyFile ?? "",
-            // The forwards are part of the spawn — fold their JSON into the fingerprint.
-            FingerprintForwards(forwards));
+            ts.AuthKeyFile ?? "");
 
     /// <summary>A stable string for the collected forwards set (already in a deterministic order,
-    /// since the catalog scans roots/dirs deterministically).</summary>
+    /// since the catalog scans roots/dirs deterministically). A change here is a forwards-only
+    /// reload (SIGHUP), not a node restart — the JSON the child re-reads via <c>--forwards-file</c>.</summary>
     private static string FingerprintForwards(IReadOnlyList<ForwardEntry> forwards) =>
         forwards.Count == 0
             ? ""
@@ -272,14 +303,69 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
     /// <summary>Launch the child run loop for the given config. Caller holds the gate.</summary>
     private void StartChildLocked(
-        TailscaleConfig ts, IReadOnlyList<ForwardEntry> forwards, string fingerprint, CancellationToken parentCt)
+        TailscaleConfig ts, IReadOnlyList<ForwardEntry> forwards,
+        string nodeFingerprint, string forwardsFingerprint, CancellationToken parentCt)
     {
         var stopping = CancellationTokenSource.CreateLinkedTokenSource(parentCt);
         runStopping = stopping;
-        runFingerprint = fingerprint;
+        runNodeFingerprint = nodeFingerprint;
+        runForwardsFingerprint = forwardsFingerprint;
         status.Update(new TailscaleStatusSnapshot(
             Enabled: true, State: "starting", Fqdn: null, AuthUrl: null, Error: null, Funnel: ts.Funnel));
         runLoop = Task.Run(() => RunChildAsync(ts, forwards, stopping.Token), CancellationToken.None);
+    }
+
+    /// <summary>Live-reload a forwards-only change without restarting the tsnet node: rewrite
+    /// <c>forwards.json</c> in the state dir and SIGHUP the running child, which re-reads the file
+    /// and reconciles just its forward listeners (the node, WireGuard, and the web proxy are left
+    /// up). Returns <c>false</c> when there is no running child pid to signal (mid-backoff/spawn
+    /// failure) or the signal fails — the caller then falls back to a restart so the new forwards
+    /// still take effect. Caller holds the gate. Total: a fault degrades to a restart, never throws.</summary>
+    private bool TryReloadForwardsLocked(TailscaleConfig ts, IReadOnlyList<ForwardEntry> forwards)
+    {
+        int pid;
+        bool groupLeader;
+        lock (childSignalGate)
+        {
+            pid = childPid;
+            groupLeader = childGroupLeader;
+        }
+        if (pid < 0 || OperatingSystem.IsWindows())
+        {
+            return false;   // no live child to signal (Windows has no SIGHUP either) → restart.
+        }
+
+        // Rewrite the file the child re-reads on SIGHUP. A drop to zero forwards removes the file so
+        // the child reconciles down to none (it reads an absent file as "no forwards"). A write
+        // fault degrades to a restart (which rewrites args + the file from scratch).
+        try
+        {
+            if (forwards.Count > 0)
+            {
+                if (WriteForwardsFile(ts.StateDir, forwards) is null)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                DeleteForwardsFile(ts.StateDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogForwardsFileFailed(ts.StateDir, ex.Message);
+            return false;
+        }
+
+        // SIGHUP the child (or its group, mirroring the SIGTERM target). A non-zero return means the
+        // pid was already gone — fall back to a restart.
+        if (SysKill(groupLeader ? -pid : pid, Sighup) != 0)
+        {
+            return false;
+        }
+        LogForwardsReloaded(pid, forwards.Count);
+        return true;
     }
 
     /// <summary>Signal the live child to stop, await its run loop, untrack it. Caller holds the
@@ -289,7 +375,8 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         var stopping = runStopping;
         var loop = runLoop;
         runStopping = null;
-        runFingerprint = null;
+        runNodeFingerprint = null;
+        runForwardsFingerprint = null;
         runLoop = Task.CompletedTask;
         if (stopping is null)
         {
@@ -363,6 +450,9 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                 else
                 {
                     LogStarted(binaryPath, process.Id);
+                    // Publish the live pid so a forwards-only reconcile can SIGHUP this child for a
+                    // live forwards reload (cleared in every exit path below).
+                    PublishChildPid(process.Id, groupLeader);
                     var pumps = Task.WhenAll(
                         PumpStdoutAsync(process.StandardOutput, ts.Funnel),
                         PumpAsync(process.StandardError, line => SidecarLog.Stderr(childLogger, line)));
@@ -382,6 +472,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                     catch (OperationCanceledException)
                     {
                         // Stop requested (disable / reconfigure / shutdown): graceful teardown.
+                        ClearChildPid(process.Id);
                         await GracefulStopAsync(process, groupLeader).ConfigureAwait(false);
                         await SwallowAsync(pumps).ConfigureAwait(false);
                         process.Dispose();
@@ -389,6 +480,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                         return;
                     }
 
+                    ClearChildPid(process.Id);
                     var exitCode = process.ExitCode;
                     await SwallowAsync(pumps).ConfigureAwait(false);
                     process.Dispose();
@@ -421,6 +513,13 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
             status.Update(new TailscaleStatusSnapshot(
                 Enabled: true, State: "error", Fqdn: null, AuthUrl: null,
                 Error: $"Tailscale supervisor fault: {ex.Message}", Funnel: ts.Funnel));
+        }
+        finally
+        {
+            // Belt-and-braces: the run loop has ended, so no child of this run is signalable. Clear
+            // any pid still published (e.g. a fault between publish and the normal clear) so a later
+            // reconcile never SIGHUPs a stale/recycled pid.
+            ClearPublishedChildPid();
         }
     }
 
@@ -523,6 +622,57 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         {
             LogForwardsFileFailed(stateDir, ex.Message);
             return null;
+        }
+    }
+
+    /// <summary>Delete the forwards file (the live-reload-to-zero-forwards path), best-effort: an
+    /// absent file is what the child reads as "no forwards", so a failed delete is non-fatal.</summary>
+    private static void DeleteForwardsFile(string stateDir)
+    {
+        try
+        {
+            File.Delete(Path.Combine(stateDir, ForwardsFileName));
+        }
+        catch (Exception)
+        {
+            // Best-effort: a lingering forwards.json the child no longer reconciles to is harmless.
+        }
+    }
+
+    /// <summary>Publish the running child's pid so the reconcile path can SIGHUP it for a live
+    /// forwards reload. Called by the run loop the instant the child starts.</summary>
+    private void PublishChildPid(int pid, bool groupLeader)
+    {
+        lock (childSignalGate)
+        {
+            childPid = pid;
+            childGroupLeader = groupLeader;
+        }
+    }
+
+    /// <summary>Clear the published pid when the child exits (only if it still names this child — a
+    /// late clear must not clobber a freshly-published successor pid).</summary>
+    private void ClearChildPid(int pid)
+    {
+        lock (childSignalGate)
+        {
+            if (childPid == pid)
+            {
+                childPid = -1;
+                childGroupLeader = false;
+            }
+        }
+    }
+
+    /// <summary>Unconditionally clear the published pid (the run loop has fully ended, so no child of
+    /// this run remains signalable). Safe because a successor run loop only starts after this one's
+    /// task has completed.</summary>
+    private void ClearPublishedChildPid()
+    {
+        lock (childSignalGate)
+        {
+            childPid = -1;
+            childGroupLeader = false;
         }
     }
 
@@ -828,6 +978,10 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Tailscale config changed; restarting the sidecar.")]
     private partial void LogReconfiguring();
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Tailscale forwards changed; live-reloading the sidecar (pid {Pid}) via SIGHUP — {Count} forward(s), no restart.")]
+    private partial void LogForwardsReloaded(int pid, int count);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Tailscale reconcile faulted.")]
     private partial void LogReconcileFault(Exception ex);

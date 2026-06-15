@@ -66,12 +66,12 @@
     <PackageVersion Include="MQTTnet" Version="4.3.7.1207" />
 
     <!-- CommandLineParser — used by the Packet.Term TUI's CLI. (NB: Packet.Term
-         itself moves to m0lte/packet-term-tui in a sibling PR; once that lands
+         itself moves to packet-net/packet-term-tui in a sibling PR; once that lands
          this can be dropped.) -->
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
 
-    <!-- AX.25 SDL state machines — consumed from m0lte/ax25sdl as a NuGet
-         package. Source repo: github.com/m0lte/ax25sdl. -->
+    <!-- AX.25 SDL state machines — consumed from packet-net/ax25sdl as a NuGet
+         package. Source repo: github.com/packet-net/ax25sdl. -->
     <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.0" />
 
     <!-- MCP — the official C# SDK (Anthropic + .NET). Packet.Mcp (the

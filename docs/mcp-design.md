@@ -1,6 +1,6 @@
 # pdn MCP endpoint — design
 
-**Status:** design agreed 2026-06-13 (kickoff of Phase 8, [#173](https://github.com/m0lte/packet.net/issues/173)). Decisions taken with Tom at kickoff:
+**Status:** design agreed 2026-06-13 (kickoff of Phase 8, [#173](https://github.com/packet-net/packet.net/issues/173)). Decisions taken with Tom at kickoff:
 
 1. **In-process.** The MCP server lives inside the node host and reads live node state — it is not a standalone process re-projecting the REST API.
 2. **Auth is the shipped `read`/`operate`/`admin` model**, not the `mcp:invoke`/granular scheme §6 once penciled in (that scheme was never built — see [§17](plan.md#17-amendment-log) and the §6 reconciliation in this doc).

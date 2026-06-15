@@ -930,7 +930,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             // figc4.7's Select_T1_Value smooths). The establishment path
             // (figc4.1 t13/t14) then runs `SRT := Initial Default; T1V := 2 * SRT`
             // unconditionally — which would clobber this seed back to the spec
-            // default (m0lte/packet.net#292) — so we ALSO set the dispatcher's
+            // default (packet-net/packet.net#292) — so we ALSO set the dispatcher's
             // InitialSrt to t1v/2 below, making `T1V := 2 * SRT` reproduce t1v.
             ctx.T1V = t1v;
             ctx.Srt = t1v / 2;
@@ -1101,7 +1101,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         {
             // Per-port timer overrides. InitialSrt seeds the establishment path's
             // `SRT := Initial Default; T1V := 2 * SRT` so a configured T1V actually
-            // reaches the session's T1 timer (m0lte/packet.net#292) — without it,
+            // reaches the session's T1 timer (packet-net/packet.net#292) — without it,
             // the SDL resets T1V to 2×3000 ms on every connect. T3 arms the
             // inactive-link timer. The live T2 (the §6.7.1.2 acknowledge delay) is
             // read from ctx.T2 by the sendLinkMux grant above; the dispatcher copies
@@ -1255,7 +1255,7 @@ public sealed class Ax25ListenerOptions
     /// dispatcher's <see cref="ActionDispatcher.InitialSrt"/> (= T1V/2), the
     /// establishment path's <c>SRT := Initial Default; T1V := 2 * SRT</c> — so a
     /// configured T1V survives the SABM/SABME connect that would otherwise reset
-    /// it to the spec default (m0lte/packet.net#292). figc4.7's
+    /// it to the spec default (packet-net/packet.net#292). figc4.7's
     /// <c>Select_T1_Value</c> still smooths the *running* value from round-trip
     /// samples once frames flow; this only sets the starting point.
     /// </remarks>

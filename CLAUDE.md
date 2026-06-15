@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Operating notes for Claude Code (and other agents) working in `m0lte/packet.net`.
+Operating notes for Claude Code (and other agents) working in `packet-net/packet.net`.
 
 ## What this repo is
 

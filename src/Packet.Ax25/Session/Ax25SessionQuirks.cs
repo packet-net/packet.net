@@ -11,7 +11,7 @@ namespace Packet.Ax25.Session;
 /// <para>
 /// This is the session-layer analogue of <see cref="Packet.Core.Ax25ParseOptions"/>
 /// (which covers wire-parse pragmatism). The SDL tables themselves
-/// (<c>Packet.Ax25.Sdl</c>, from <c>m0lte/ax25sdl</c>) stay faithful to the
+/// (<c>Packet.Ax25.Sdl</c>, from <c>packet-net/ax25sdl</c>) stay faithful to the
 /// published figures — including their defects — so the canonical transcription
 /// tracks the in-progress draft. Where a figure is provably wrong, the runtime
 /// corrects it here, behind a named flag, rather than diverging the tables.
@@ -111,11 +111,11 @@ public sealed record Ax25SessionQuirks
     /// go-back-N "Invoke Retransmission". When <c>false</c>, the figc4.5 figure
     /// runs as drawn (which also throws on the payload-less push — strict
     /// conformance only). Delete this quirk once ax25sdl ships a corrected
-    /// figc4.5. Removal tracked at m0lte/packet.net#227 ← packethacking/ax25spec#38.
+    /// figc4.5. Removal tracked at packet-net/packet.net#227 ← packethacking/ax25spec#38.
     /// </remarks>
     /// <remarks>
     /// <para>
-    /// <b>Scope — SREJ is response-only (m0lte/packet.net#234).</b> The redirect
+    /// <b>Scope — SREJ is response-only (packet-net/packet.net#234).</b> The redirect
     /// fires only on the figc4.5 SREJ <i>response</i> paths
     /// (<c>t24_srej_received_yes_yes_*_no</c>), which carry the
     /// <c>push_frame_on_queue</c> verb this quirk rewrites. The SREJ
@@ -158,7 +158,7 @@ public sealed record Ax25SessionQuirks
     /// <c>srej_enabled</c> split). When <c>false</c>, the figure runs as drawn
     /// (out-of-window frames are SREJ'd, reproducing the livelock for strict
     /// conformance study). Delete once ax25sdl ships a figc4.4 carrying the
-    /// upstream window guard. Implemented in m0lte/packet.net#242 ←
+    /// upstream window guard. Implemented in packet-net/packet.net#242 ←
     /// packethacking/ax25spec#40.
     /// </remarks>
     public bool Ax25Spec40DiscardOutOfWindowIFrames { get; init; } = true;
@@ -174,7 +174,7 @@ public sealed record Ax25SessionQuirks
     /// Since T1V is derived from SRT, feeding it back is self-amplifying:
     /// SRT' = 7/8·SRT + 1/8·(2·SRT) = 1.125·SRT, so SRT (and T1V) grow geometrically
     /// under sustained loss until <c>Next T1 &lt;- 2*SRT</c> overflows
-    /// <see cref="TimeSpan"/> (m0lte/packet.net#241; reproduced by the conformance
+    /// <see cref="TimeSpan"/> (packet-net/packet.net#241; reproduced by the conformance
     /// harness within a single multi-frame SREJ recovery).
     /// </summary>
     /// <remarks>
@@ -187,7 +187,7 @@ public sealed record Ax25SessionQuirks
     /// T1V cap deliberately: leaving the unguarded path divergent keeps the fuzzer
     /// able to catch any *other* SRT-growth source rather than masking it. Delete
     /// once ax25sdl ships a figc4.7 carrying the Karn guard. Implemented in
-    /// m0lte/packet.net#241 ← packethacking/ax25spec#41.
+    /// packet-net/packet.net#241 ← packethacking/ax25spec#41.
     /// </remarks>
     public bool Ax25Spec41KarnSrtSampling { get; init; } = true;
 
@@ -212,7 +212,7 @@ public sealed record Ax25SessionQuirks
     /// elsewhere. When <c>false</c>, the figure runs as drawn (SREJ asks for the
     /// just-arrived frame, reproducing the livelock for strict conformance study).
     /// Delete once ax25sdl ships a figc4.4 requesting the gap. Implemented in
-    /// m0lte/packet.net#246 ← packethacking/ax25spec#42.
+    /// packet-net/packet.net#246 ← packethacking/ax25spec#42.
     /// </remarks>
     public bool Ax25Spec42SrejTargetsGap { get; init; } = true;
 
@@ -238,8 +238,8 @@ public sealed record Ax25SessionQuirks
     /// quirks this has <i>no de-facto corroboration</i> — neither direwolf nor
     /// linbpq implements DL-FLOW-OFF — so it rests on the §6.4.10 prose and the
     /// figure contradicting its own primitive. Delete once ax25sdl ships a figc4.4
-    /// with the branches corrected. Implemented in m0lte/packet.net ←
-    /// packethacking/ax25spec#43 (m0lte/ax25sdl#60, faithful figure).
+    /// with the branches corrected. Implemented in packet-net/packet.net ←
+    /// packethacking/ax25spec#43 (packet-net/ax25sdl#60, faithful figure).
     /// </remarks>
     public bool Ax25Spec43DlFlowOffEntersBusy { get; init; } = true;
 
@@ -249,7 +249,7 @@ public sealed record Ax25SessionQuirks
     /// <c>"1 Awaiting Connection"</c> — <c>Establish Data Link</c> &#8594;
     /// <c>Set Layer 3 Initiated</c> &#8594; <b>Awaiting Connection</b> — with <b>no
     /// version branch</b>, regardless of modulo. (Verified against the authoritative
-    /// graphml source <c>DataLink_Disconnected.graphml</c> in <c>m0lte/ax25sdl</c>:
+    /// graphml source <c>DataLink_Disconnected.graphml</c> in <c>packet-net/ax25sdl</c>:
     /// the initiator's DL-CONNECT edge has no modulo test; version routing exists
     /// only on the <i>responder</i> SABM/SABME-received side.) That is a faithful
     /// transcription of a defective figure: a v2.2-preferred connect sends a SABME
@@ -415,7 +415,7 @@ public sealed record Ax25SessionQuirks
     /// the same N(S) exactly <c>modulus</c> frames back) in place of the live
     /// frame — exact-length, wrong-content payload corruption. Reproduced by
     /// <c>tools/Packet.LinkBench</c>: at mod-8, 5% loss, SREJ on, corruption
-    /// appears at <c>k ≥ 5</c> and is absent at <c>k ≤ 4</c> (m0lte/packet.net#393).
+    /// appears at <c>k ≥ 5</c> and is absent at <c>k ≤ 4</c> (packet-net/packet.net#393).
     /// </summary>
     /// <remarks>
     /// When <c>true</c> (default), <see cref="Ax25SessionContext.EffectiveSendWindow"/>

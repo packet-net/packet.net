@@ -10,7 +10,7 @@ namespace Packet.Ax25.Tests.Session;
 /// window k ≤ modulus/2 — the 2·W ≤ modulus bound — because recovery state is
 /// keyed by the bare N(S). Above the cap, two in-flight frames can share an N(S)
 /// and SREJ recovery silently delivers a stale stored I-frame from the previous
-/// ring cycle (m0lte/packet.net#393, found by tools/Packet.LinkBench: corruption
+/// ring cycle (packet-net/packet.net#393, found by tools/Packet.LinkBench: corruption
 /// at mod-8 k≥5, clean at k≤4). With the quirk on (default) the engine's
 /// <see cref="Ax25SessionContext.EffectiveWindow"/> caps the outstanding-frame
 /// window at modulus/2 while SREJ is in effect; with it off the figure-literal

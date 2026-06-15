@@ -77,7 +77,7 @@ public interface ITimerScheduler
     /// <paramref name="state"/> with their captured remaining time. The session
     /// uses this to undo a transition that threw part-way through, so a
     /// half-applied transition can't leave the link watchdog (T1) cancelled —
-    /// which would wedge the session silently. (m0lte/packet.net#225)
+    /// which would wedge the session silently. (packet-net/packet.net#225)
     /// </summary>
     void RestoreState(IReadOnlyList<ArmedTimer> state);
 }

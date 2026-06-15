@@ -2,7 +2,7 @@
 
 How a packet.net change reaches the world. This is the **release cascade**: a single substantive merge to `main` fans out into NuGet packages, `.deb`s, downstream app releases, and (when the TS library moved) an npm publish + a static-site redeploy. It is tag-driven and mostly automated, but the *order* and the *downstream fan-out* are easy to forget — hence this doc.
 
-> **TL;DR** — on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the four `Packet.*` pins in `m0lte/axcall` and `m0lte/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump `m0lte/packet-term-web`'s pin. Finally, record the whole arc in `docs/plan.md` §17.
+> **TL;DR** — on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the four `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump `packet-net/packet-term-web`'s pin. Finally, record the whole arc in `docs/plan.md` §17.
 
 ## When to release
 
@@ -15,7 +15,7 @@ The libraries and the node host version **in lockstep** in practice (`lib-v0.8.0
 Tag only a commit whose **`ci` and `interop`** workflows both went green **on the merge commit on `main`** (not just on the PR):
 
 ```sh
-gh run list --repo M0LTE/packet.net --branch main --limit 6
+gh run list --repo packet-net/packet.net --branch main --limit 6
 ```
 
 Both `ci` and `interop` must show `success` for the HEAD merge commit. The interop job stands up a docker stack on the self-hosted runner and has two known flake classes — re-run, don't investigate, when they bite:
@@ -56,7 +56,7 @@ The `node-v*` tag triggers [`.github/workflows/publish-node.yml`](../.github/wor
 Verify the release is **non-draft with 4 assets** (three `.deb`s + `SHA256SUMS`):
 
 ```sh
-gh release view node-v<semver> --repo M0LTE/packet.net
+gh release view node-v<semver> --repo packet-net/packet.net
 ```
 
 Both tags can be pushed together; the two workflows run independently.
@@ -69,17 +69,17 @@ The lab (`root@pdn-lab`, M9YYY) is usually running a dev `.deb` from [`scripts/d
 
 Two public app repos pin the `Packet.*` NuGet packages:
 
-- [`m0lte/axcall`](https://github.com/m0lte/axcall)
-- [`m0lte/packet-term-tui`](https://github.com/m0lte/packet-term-tui)
+- [`packet-net/axcall`](https://github.com/packet-net/axcall)
+- [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui)
 
 For each: open a PR bumping the four `Packet.*` pins in its `Directory.Packages.props` to the new version, **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` — their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
 
 ## Step 4 — the TS leg (only when `ax25-ts` changed)
 
-[`m0lte/ax25-ts`](https://github.com/m0lte/ax25-ts) mirrors this repo's behaviour and is parity-CI-enforced (see [CLAUDE.md](../CLAUDE.md) → "ax25-ts parity"). It only needs a release when *it* changed this cycle — e.g. a new named-flag parity leg landed there alongside a flag here. If so:
+[`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) mirrors this repo's behaviour and is parity-CI-enforced (see [CLAUDE.md](../CLAUDE.md) → "ax25-ts parity"). It only needs a release when *it* changed this cycle — e.g. a new named-flag parity leg landed there alongside a flag here. If so:
 
 1. ax25-ts release PR: promote its `CHANGELOG` `[Unreleased]` → versioned, `npm pkg set version <semver>`, merge, tag `v<semver>` → its `publish.yml` → npm.
-2. Bump [`m0lte/packet-term-web`](https://github.com/m0lte/packet-term-web)'s esm.sh pin in `index.html` (~line 423). That repo has **no CI and branch protection**, so the pin-bump merge needs `--admin`; pushing to `main` auto-deploys to packet-term.m0lte.uk via OARC object storage (see the OARC publish notes — self-hosted-runner image gotchas apply).
+2. Bump [`packet-net/packet-term-web`](https://github.com/packet-net/packet-term-web)'s esm.sh pin in `index.html` (~line 423). That repo has **no CI and branch protection**, so the pin-bump merge needs `--admin`; pushing to `main` auto-deploys to packet-term.m0lte.uk via OARC object storage (see the OARC publish notes — self-hosted-runner image gotchas apply).
 
 If `ax25-ts` did **not** change this cycle, skip Step 4 entirely.
 
@@ -89,7 +89,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 
 ## Repo visibility
 
-`m0lte/packet.net` is **private**. `m0lte/ax25-ts`, `m0lte/axcall`, `m0lte/packet-term-tui`, and `m0lte/packet-term-web` are **public** — mind what release notes say.
+`packet-net/packet.net` is **private**. `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/packet-term-web` are **public** — mind what release notes say.
 
 ## Quick reference
 
@@ -97,7 +97,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 |---|---|---|
 | `lib-v<semver>` | `publish-libs.yml` | 6 NuGet packages on nuget.org |
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s on a GitHub Release |
-| `m0lte/axcall` `v*` | its `release.yml` | six-platform app binaries |
-| `m0lte/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
-| `m0lte/ax25-ts` `v*` | its `publish.yml` | npm package |
-| push to `m0lte/packet-term-web` `main` | OARC auto-deploy | packet-term.m0lte.uk |
+| `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
+| `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
+| `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |
+| push to `packet-net/packet-term-web` `main` | OARC auto-deploy | packet-term.m0lte.uk |

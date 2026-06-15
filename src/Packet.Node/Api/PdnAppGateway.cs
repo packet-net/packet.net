@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Auth;
@@ -63,11 +64,16 @@ public static class PdnAppGateway
         // packages that expose a UI (read-gated, like the other reads). Inline first — on an
         // id collision inline wins (the catalog errors that case, so the package side is
         // never enabled; the explicit skip below is belt-and-braces).
-        app.MapGet("/api/v1/apps", (IConfigProvider config, IAppPackageCatalog catalog) =>
+        app.MapGet("/api/v1/apps", (IConfigProvider config, IAppPackageCatalog catalog, IServiceProvider services) =>
         {
+            // The supervisor (optional, like the packages API) supplies the live service state so
+            // the panel's nav can render a not-running warning badge from this ONE fetch. An
+            // inline app has no service block, so its state is null (nothing to warn about).
+            var supervisor = services.GetService<IAppServiceSupervisor>();
+
             var tiles = config.Current.Applications
                 .Where(a => a.Enabled && a.Ui is not null)
-                .Select(a => new AppTile(a.Id, a.Ui!.Name ?? a.Id, a.Ui.Icon, $"/apps/{a.Id}/"))
+                .Select(a => new AppTile(a.Id, a.Ui!.Name ?? a.Id, a.Ui.Icon, $"/apps/{a.Id}/", UiModeName(a.Ui.Mode), State: null))
                 .ToList();
 
             var inlineIds = new HashSet<string>(
@@ -79,7 +85,9 @@ public static class PdnAppGateway
                     p.Id,
                     p.Manifest!.Ui!.Name ?? p.Manifest.Name ?? p.Id,
                     p.Manifest.Ui.Icon,
-                    $"/apps/{p.Id}/")));
+                    $"/apps/{p.Id}/",
+                    UiModeName(p.Manifest.Ui.Mode),
+                    ServiceState(p, supervisor))));
             return Results.Ok(tiles);
         }).RequireAuthorization(PdnAuthPolicies.Read);
 
@@ -144,8 +152,47 @@ public static class PdnAppGateway
         });
     }
 
-    /// <summary>A launcher tile (the <c>/api/v1/apps</c> shape).</summary>
-    public sealed record AppTile(string Id, string Name, string? Icon, string Url);
+    /// <summary>A launcher tile (the <c>/api/v1/apps</c> shape — camelCase on the wire). The
+    /// feed lists only enabled, web-capable apps. <see cref="UiMode"/> tells the panel how to
+    /// open the app from its nav entry — <c>standalone</c> (a full navigation to <see cref="Url"/>,
+    /// the default), or <c>embedded</c>/<c>slot</c> (an in-panel iframe; <c>slot</c> appends
+    /// <c>?pdn_embed=1</c> so the app renders chrome-less). <see cref="State"/> is the live
+    /// supervisor state — an <see cref="AppServiceState"/> name (<c>Stopped</c>|<c>Starting</c>|
+    /// <c>Running</c>|<c>Backoff</c>|<c>Faulted</c>|<c>External</c>) — or null when the app has
+    /// no pdn-managed service to watch (an inline app, or a package with no <c>service:</c>
+    /// block). The panel's nav warns when an enabled tile's state is one the supervisor should
+    /// have driven to Running but hasn't (Stopped/Backoff/Faulted), sourcing the badge from this
+    /// single fetch rather than a second call to the packages inventory.</summary>
+    public sealed record AppTile(string Id, string Name, string? Icon, string Url, string UiMode, string? State);
+
+    /// <summary>The wire spelling of an <see cref="AppUiMode"/> on the launcher feed — the
+    /// lowercase contract name (<c>standalone</c> | <c>embedded</c> | <c>slot</c>) the panel nav
+    /// branches on.</summary>
+    private static string UiModeName(AppUiMode mode) => mode.ToString().ToLowerInvariant();
+
+    /// <summary>The live service state for a launcher tile, derived exactly as
+    /// <see cref="PdnAppPackagesApi"/>'s inventory does: null when the package declares no
+    /// <c>service:</c> block (nothing to run); <c>External</c> for an owner-managed daemon pdn
+    /// never tracks; otherwise the supervisor's reported <see cref="AppServiceState"/> name,
+    /// falling back to <c>Stopped</c> when the supervisor has no status yet (or isn't wired).</summary>
+    private static string? ServiceState(DiscoveredAppPackage package, IAppServiceSupervisor? supervisor)
+    {
+        var managed = package.Manifest?.Service;
+        if (managed is null)
+        {
+            return null;   // no service → nothing to run, nothing to warn about
+        }
+        if (managed.Managed == AppServiceManaged.External)
+        {
+            return nameof(AppServiceState.External);
+        }
+
+        var status = supervisor?.Statuses.FirstOrDefault(s =>
+            string.Equals(s.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+        return status is not null
+            ? status.State.ToString()
+            : nameof(AppServiceState.Stopped);   // supervisor not wired / no status yet
+    }
 
     /// <summary>
     /// The authenticated username for the identity header, robust to inbound-claim mapping that

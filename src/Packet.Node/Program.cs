@@ -274,13 +274,58 @@ builder.Services.AddHttpForwarder();
 
 builder.Services.AddSingleton<ITransportFactory>(TransportFactory.Instance);
 builder.Services.AddSingleton(TimeProvider.System);
-// Phase 7 self-update (docs/node-self-update-design.md): the install channel is read
-// from the build-stamped marker; the launcher triggers the privileged, detached
-// packetnet-update.service oneshot (the node never runs apt / touches files itself).
+// Phase 7 self-update (docs/node-self-update-design.md): the install channel is resolved
+// at boot — the build stamp gives deb-vs-selfcontained, and apt-vs-github is decided live
+// (dpkg ownership of the running binary + apt-cache repo origin, every probe guarded). The
+// launcher triggers the privileged, detached packetnet-update.service oneshot (the node
+// never runs apt / touches files itself).
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IInstallChannelProvider>(
-    new Packet.Node.Core.SelfUpdate.FileInstallChannelProvider());
+    new Packet.Node.Core.SelfUpdate.RuntimeInstallChannelProvider());
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemUpdateLauncher,
     Packet.Node.Core.SelfUpdate.SystemctlUpdateLauncher>();
+// The available-version check (docs/node-self-update-design.md § Channel = github / Available-
+// version check), surfaced on GET /api/v1/system/info as { updateAvailable, latestVersion }. One
+// dispatching probe per channel — apt: `apt-cache policy` (the same guarded IProcessRunner seam
+// channel detection uses); github: the GitHub Releases API (rate-limited, cached); selfcontained:
+// the configured latest.json feed. Every external call is guarded → offline/missing-tool/API-error
+// reports no-update, never throws. ISystemVersionService caches the result behind a TTL so /info
+// stays an in-memory read; the github request builder resolves the per-arch .deb URL + sha256 for
+// the Apply path.
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IProcessRunner>(
+    Packet.Node.Core.SelfUpdate.SystemProcessRunner.Instance);
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(sp =>
+    new Packet.Node.Core.SelfUpdate.GitHubReleaseClient(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISelfContainedFeedClient>(sp =>
+    new Packet.Node.Core.SelfUpdate.SelfContainedFeedClient(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILoggerFactory>(),
+        // The self-contained feed URL is configuration (slice 2c surfaces it in node config; until
+        // then it's the PDN_UPDATE_FEED_URL env seam). No feed configured → the check is a no-op
+        // (the client short-circuits to null with zero network calls), which is the correct default
+        // for the deb channels that don't consume the feed at all.
+        feedUrl: Environment.GetEnvironmentVariable("PDN_UPDATE_FEED_URL") is { Length: > 0 } f
+                 && Uri.TryCreate(f.EndsWith('/') ? f : f + "/", UriKind.Absolute, out var fu) ? fu : null));
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IUpdateAvailabilityProbe>(sp =>
+    new Packet.Node.Core.SelfUpdate.ChannelUpdateAvailabilityProbe(
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IInstallChannelProvider>(),
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IProcessRunner>(),
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(),
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.ISelfContainedFeedClient>(),
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemVersionService>(sp =>
+    new Packet.Node.Core.SelfUpdate.SystemVersionService(
+        Packet.Node.Api.PdnSystemApi.NodeVersion,
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IUpdateAvailabilityProbe>(),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.GithubUpdateRequestBuilder>(sp =>
+    new Packet.Node.Core.SelfUpdate.GithubUpdateRequestBuilder(
+        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(),
+        sp.GetRequiredService<ILoggerFactory>()));
 // The app-package catalog (docs/app-packages.md): discovers pdn-app.yaml packages under the
 // package roots and merges the owner's apps: overrides. A pure, cheap, side-effect-free scan
 // per call — the gateway, the packages API, and the hosted service consume it directly.

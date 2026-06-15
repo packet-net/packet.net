@@ -109,7 +109,7 @@ public sealed class RefreshTokenServiceTests
         // retried silent refresh) and presents the SAME just-rotated token twice within
         // a moment. This must NOT burn the family — it mints another successor and the
         // session survives. (Before the leeway, this logged the user out on every
-        // access-token expiry — see m0lte/packet.net auth audit, REUSE-DETECTED pairs.)
+        // access-token expiry — see packet-net/packet.net auth audit, REUSE-DETECTED pairs.)
         var (svc, store, clock) = Make();
         var first = svc.Issue("tom")!;
         var rot1 = svc.Rotate(first);             // first consumed, second minted

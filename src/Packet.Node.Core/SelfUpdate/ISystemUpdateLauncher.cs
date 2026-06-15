@@ -31,6 +31,30 @@ public sealed record UpdateLaunchResult(UpdateLaunchOutcome Outcome, string? Det
 }
 
 /// <summary>
+/// The per-channel parameters the privileged update oneshot needs — what the runtime channel
+/// detection (and, for github, the available-version check + the resolved release asset) computed,
+/// handed to the root helper so it <em>validates rather than trusts the caller</em>. The C# side
+/// owns the apt-vs-github distinction (the build stamp can't disambiguate <c>deb</c>), so the
+/// launcher tells the single oneshot which per-channel helper to dispatch.
+/// </summary>
+/// <param name="Channel">The resolved install channel the oneshot dispatches on
+/// (<c>apt</c> / <c>github</c> / <c>selfcontained</c>).</param>
+/// <param name="GithubRequest">For the github channel: the validated download request the helper
+/// applies (<c>targetVersion</c> / <c>arch</c> / <c>debUrl</c> / <c>sha256</c>). Null otherwise.</param>
+public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? GithubRequest = null);
+
+/// <summary>
+/// The github-channel Apply request file the privileged helper consumes — written by the node, but
+/// the helper re-validates every field (the URL host, the sha256 against the download) rather than
+/// trusting it blindly (docs/node-self-update-design.md § Channel = github).
+/// </summary>
+/// <param name="TargetVersion">The release version being applied (e.g. <c>0.9.0</c>).</param>
+/// <param name="Arch">The Debian arch of the <c>.deb</c> to fetch (<c>amd64</c>/<c>arm64</c>/<c>armhf</c>).</param>
+/// <param name="DebUrl">The HTTPS GitHub-release download URL of <c>packetnet_&lt;ver&gt;_&lt;arch&gt;.deb</c>.</param>
+/// <param name="Sha256">The expected SHA-256 (lowercase hex) the helper verifies the download against.</param>
+public sealed record GithubUpdateRequest(string TargetVersion, string Arch, string DebUrl, string Sha256);
+
+/// <summary>
 /// Triggers the privileged, out-of-process update job — never does the privileged work
 /// itself. The node service stays unprivileged; this seam starts a root systemd unit
 /// (authorized by polkit) that survives the service restart the update causes. The
@@ -38,10 +62,11 @@ public sealed record UpdateLaunchResult(UpdateLaunchOutcome Outcome, string? Det
 /// </summary>
 public interface ISystemUpdateLauncher
 {
-    /// <summary>Dispatch the update job (<c>packetnet-update.service</c>) and return
-    /// immediately. Channel-agnostic: the unit's helper body is whatever the install
-    /// shipped — the apt-channel <c>apt upgrade</c> or the self-contained download/swap —
-    /// so the launch is identical for both. Detached: it must not be awaited to
-    /// completion, because the job restarts this very process.</summary>
-    Task<UpdateLaunchResult> StartUpdateAsync(CancellationToken cancellationToken = default);
+    /// <summary>Dispatch the update job (<c>packetnet-update.service</c>) and return immediately.
+    /// The single oneshot dispatches the per-channel helper named by
+    /// <paramref name="request"/>.<see cref="SystemUpdateRequest.Channel"/> — the apt-channel
+    /// targeted <c>apt upgrade</c>, the github-channel release-<c>.deb</c> <c>dpkg -i</c>, or the
+    /// self-contained download/swap. Detached: it must not be awaited to completion, because the
+    /// job restarts this very process.</summary>
+    Task<UpdateLaunchResult> StartUpdateAsync(SystemUpdateRequest request, CancellationToken cancellationToken = default);
 }

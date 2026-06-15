@@ -27,7 +27,7 @@ The SDL state-machine tables that drive `Packet.Ax25/Session/` come from the [`P
 
 ## Provenance
 
-`m0lte/packet.net` is the origin of the project. It started life as a monorepo holding everything — .NET libraries, SDL transcriptions + codegen, the TypeScript library, two terminal apps. On 2026-05-17 it split into five repos along their natural ownership boundaries, each spinoff extracted with history preserved (`git filter-repo`). What's left here is the .NET surface — libraries + node host + interop CI.
+`packet-net/packet.net` is the origin of the project. It started life as a monorepo holding everything — .NET libraries, SDL transcriptions + codegen, the TypeScript library, two terminal apps. On 2026-05-17 it split into five repos along their natural ownership boundaries, each spinoff extracted with history preserved (`git filter-repo`). What's left here is the .NET surface — libraries + node host + interop CI.
 
 ## Sibling repos
 

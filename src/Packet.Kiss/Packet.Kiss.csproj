@@ -28,7 +28,7 @@
   <PropertyGroup>
     <PackageId>Packet.Kiss</PackageId>
     <Title>Packet.Kiss — KISS framing + transports for the Packet.NET stack</Title>
-    <Description>KISS (Keep It Simple, Stupid) framing encoder/decoder, ACKMODE handling, multi-drop port support, and TCP transport. Decodes KISS-Data payloads into typed Ax25Frame events. Pair with Packet.Ax25 for connected-mode sessions. Source: github.com/m0lte/packet.net.</Description>
+    <Description>KISS (Keep It Simple, Stupid) framing encoder/decoder, ACKMODE handling, multi-drop port support, and TCP transport. Decodes KISS-Data payloads into typed Ax25Frame events. Pair with Packet.Ax25 for connected-mode sessions. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;tnc;ackmode</PackageTags>
   </PropertyGroup>
 

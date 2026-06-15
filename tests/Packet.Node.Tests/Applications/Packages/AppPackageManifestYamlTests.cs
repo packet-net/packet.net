@@ -259,6 +259,74 @@ public class AppPackageManifestYamlTests
     }
 
     [Fact]
+    public void Ui_mode_defaults_to_standalone_when_the_key_is_omitted()
+    {
+        var m = AppPackageManifestYaml.Parse("""
+            manifest: 1
+            id: x
+            ui:
+              upstream: http://127.0.0.1:9090
+            """);
+
+        m.Ui!.Mode.Should().Be(AppUiMode.Standalone, "standalone is the safe default — a full navigation");
+    }
+
+    [Theory]
+    [InlineData("standalone", AppUiMode.Standalone)]
+    [InlineData("embedded", AppUiMode.Embedded)]
+    [InlineData("slot", AppUiMode.Slot)]
+    [InlineData("Embedded", AppUiMode.Embedded)]
+    [InlineData("SLOT", AppUiMode.Slot)]
+    public void Ui_mode_binds_each_value_case_insensitively(string text, AppUiMode expected)
+    {
+        var m = AppPackageManifestYaml.Parse($"""
+            manifest: 1
+            id: x
+            ui:
+              upstream: http://127.0.0.1:9090
+              mode: {text}
+            """);
+
+        m.Ui!.Mode.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("popup")]
+    [InlineData("inline")]
+    [InlineData("3")]
+    public void An_unknown_ui_mode_falls_back_to_standalone_rather_than_erroring(string text)
+    {
+        // Unlike the strict manifest enums (restart / managed / tls), ui.mode is forgiving: an
+        // unknown value (an app authored against a newer mode set) safe-defaults to standalone so
+        // the whole manifest still loads. (docs/app-packages.md § UI surface modes.)
+        var m = AppPackageManifestYaml.Parse($"""
+            manifest: 1
+            id: x
+            ui:
+              upstream: http://127.0.0.1:9090
+              mode: {text}
+            """);
+
+        m.Ui!.Mode.Should().Be(AppUiMode.Standalone);
+    }
+
+    [Fact]
+    public void Ui_mode_round_trips_through_serialize_and_parse_as_kebab_text()
+    {
+        var manifest = new AppPackageManifest
+        {
+            Manifest = 1,
+            Id = "demo",
+            Ui = new AppUiConfig { Upstream = "http://127.0.0.1:9090", Mode = AppUiMode.Slot },
+        };
+
+        var yaml = AppPackageManifestYaml.Serialize(manifest);
+        yaml.Should().Contain("slot", "the mode is emitted as its lowercase contract name");
+
+        AppPackageManifestYaml.Parse(yaml).Ui!.Mode.Should().Be(AppUiMode.Slot);
+    }
+
+    [Fact]
     public void Malformed_yaml_throws_a_descriptive_exception()
     {
         var act = () => AppPackageManifestYaml.Parse("id: [unclosed");

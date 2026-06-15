@@ -1,9 +1,15 @@
 // Management-section tests for the Apps screen (the /apps/packages UI): list
 // rendering across the interesting fixture states, the capability confirm that
-// gates the enable POST, restart visibility, and admin gating. Mounts against the
-// mock API backend like screens.smoke.test.tsx; mutating calls are spied + stubbed
-// (vi.spyOn(api, …).mockResolvedValue) so the shared mock fixtures stay pristine
-// across tests.
+// gates the enable POST, restart visibility, admin gating, the launcher refetch
+// on enable, and the in-flight busy state. Mounts against the mock API backend
+// like screens.smoke.test.tsx; mutating calls are spied + stubbed (vi.spyOn(api,
+// …).mockResolvedValue) so the shared mock fixtures stay pristine across tests.
+//
+// The old <Switch> toggle is now a two-segment Enable/Disable control (a button
+// group, role="group"): the segment matching the current state is "selected" and
+// inert; the other is the action. We click segments by accessible name, scoped to
+// the row's group — and scope confirm-modal buttons to the open panel, since the
+// modal's footer "Enable" shares its name with the row's Enable segment.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -49,6 +55,23 @@ function fixture(id: string): AppPackage {
   return structuredClone(p);
 }
 
+// The row's enable/disable segments, by accessible name within the row's group.
+function enableSeg(id: string): HTMLElement {
+  return within(row(id)).getByRole("button", { name: /Enable/ });
+}
+function disableSeg(id: string): HTMLElement {
+  return within(row(id)).getByRole("button", { name: /Disable/ });
+}
+
+// Click a confirm-modal footer button by name. While the modal is open the row's
+// Enable segment shares its accessible name, so scope to the open modal panel (the
+// wrapper of the title text) to disambiguate.
+function clickModalButton(titleRe: RegExp, name: string) {
+  const title = screen.getByText(titleRe);
+  const modal = title.closest("div.relative") as HTMLElement;
+  fireEvent.click(within(modal).getByRole("button", { name }));
+}
+
 afterEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
@@ -70,6 +93,19 @@ describe("Apps — package management section", () => {
     expect(within(row("notes")).getByText("—")).toBeInTheDocument();
   });
 
+  it("highlights the current state — the active segment is selected, the other is the action", async () => {
+    await mountApps();
+    // wall is enabled → Enable is the selected (inert) segment, Disable is the action
+    expect(enableSeg("wall")).toHaveAttribute("aria-pressed", "true");
+    expect(enableSeg("wall")).toBeDisabled();
+    expect(disableSeg("wall")).toHaveAttribute("aria-pressed", "false");
+    expect(disableSeg("wall")).toBeEnabled();
+    // lobby is disabled → Disable is selected, Enable is the action
+    expect(disableSeg("lobby")).toHaveAttribute("aria-pressed", "true");
+    expect(disableSeg("lobby")).toBeDisabled();
+    expect(enableSeg("lobby")).toBeEnabled();
+  });
+
   it("shows a Faulted service as an error with its crash detail", async () => {
     await mountApps();
     const r = row("quiz");
@@ -78,19 +114,42 @@ describe("Apps — package management section", () => {
     expect(detail.closest("div")).toHaveClass("text-danger");
   });
 
-  it("shows a broken package's manifest error and keeps its toggle disabled", async () => {
+  it("warns on an ENABLED app's row when its service isn't running, but not on a disabled one", async () => {
+    await mountApps();
+    // quiz is enabled + Faulted → the not-running warning shows on its row…
+    expect(within(row("quiz")).getByText(/not running/i)).toBeInTheDocument();
+    // wall is enabled + Running → no warning.
+    expect(within(row("wall")).queryByText(/not running/i)).toBeNull();
+    // lobby is DISABLED + Stopped → expected to be stopped, so no warning despite a stopped state.
+    expect(within(row("lobby")).queryByText(/not running/i)).toBeNull();
+    // notes has no service at all (state null) → never warns.
+    expect(within(row("notes")).queryByText(/not running/i)).toBeNull();
+  });
+
+  it("display-normalises the `network` capability to `packet` in the enable confirm", async () => {
+    await mountApps();
+    // mail's manifest declares the legacy `network` capability — the confirm shows `packet`.
+    fireEvent.click(enableSeg("mail"));
+    expect(screen.getByText(/Enable Mail\?/)).toBeInTheDocument();
+    expect(screen.getByText("packet")).toBeInTheDocument();
+    expect(screen.queryByText("network")).toBeNull();
+  });
+
+  it("shows a broken package's manifest error and keeps both segments disabled", async () => {
     await mountApps();
     const r = row("wx");
     const error = within(r).getByText(/missing required field 'command'/);
     expect(error.closest("div")).toHaveClass("text-danger");
-    expect(within(r).getByRole("switch")).toBeDisabled();
+    expect(enableSeg("wx")).toBeDisabled();
+    expect(disableSeg("wx")).toBeDisabled();
   });
 
-  it("renders inline entries read-only — the toggle explains they are managed in config", async () => {
+  it("renders inline entries read-only — the control explains they are managed in config", async () => {
     await mountApps();
-    const sw = within(row("motd")).getByRole("switch");
-    expect(sw).toBeDisabled();
-    expect(sw).toHaveAttribute("title", expect.stringMatching(/config/i));
+    const en = enableSeg("motd");
+    expect(en).toBeDisabled();
+    expect(en).toHaveAttribute("title", expect.stringMatching(/config/i));
+    expect(disableSeg("motd")).toBeDisabled();
   });
 
   it("enable opens the capability confirm and only POSTs once it is accepted", async () => {
@@ -99,13 +158,13 @@ describe("Apps — package management section", () => {
       .mockResolvedValue({ ...fixture("lobby"), enabled: true, state: "Running", pid: 20001 });
     await mountApps();
 
-    fireEvent.click(within(row("lobby")).getByRole("switch"));
+    fireEvent.click(enableSeg("lobby"));
     // the confirm lists the manifest's declared capabilities before anything fires
     expect(screen.getByText(/Enable LOBBY\?/)).toBeInTheDocument();
     expect(screen.getByText("session")).toBeInTheDocument();
     expect(enable).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+    clickModalButton(/Enable LOBBY\?/, "Enable");
     await waitFor(() => expect(enable).toHaveBeenCalledWith("lobby"));
     expect(enable).toHaveBeenCalledTimes(1);
   });
@@ -114,9 +173,9 @@ describe("Apps — package management section", () => {
     const enable = vi.spyOn(api, "appPackageEnable");
     await mountApps();
 
-    fireEvent.click(within(row("lobby")).getByRole("switch"));
+    fireEvent.click(enableSeg("lobby"));
     expect(screen.getByText(/Enable LOBBY\?/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    clickModalButton(/Enable LOBBY\?/, "Cancel");
 
     expect(enable).not.toHaveBeenCalled();
     expect(screen.queryByText(/Enable LOBBY\?/)).not.toBeInTheDocument();
@@ -124,14 +183,14 @@ describe("Apps — package management section", () => {
 
   it("still confirms — saying so — when the manifest declares no capabilities", async () => {
     await mountApps();
-    fireEvent.click(within(row("notes")).getByRole("switch"));
+    fireEvent.click(enableSeg("notes"));
     expect(screen.getByText(/Enable Notes\?/)).toBeInTheDocument();
     expect(screen.getByText(/No declared capabilities/)).toBeInTheDocument();
   });
 
   it("lists declared tailnet forwards in the enable confirm — the exposure is a capability", async () => {
     await mountApps();
-    fireEvent.click(within(row("mail")).getByRole("switch"));
+    fireEvent.click(enableSeg("mail"));
 
     expect(screen.getByText(/Enable Mail\?/)).toBeInTheDocument();
     expect(screen.getByText(/Exposes on your tailnet:/)).toBeInTheDocument();
@@ -142,7 +201,7 @@ describe("Apps — package management section", () => {
 
   it("shows no forwards line for an app that declares none", async () => {
     await mountApps();
-    fireEvent.click(within(row("lobby")).getByRole("switch"));
+    fireEvent.click(enableSeg("lobby"));
     expect(screen.getByText(/Enable LOBBY\?/)).toBeInTheDocument();
     expect(screen.queryByText(/Exposes on your tailnet:/)).not.toBeInTheDocument();
   });
@@ -153,9 +212,41 @@ describe("Apps — package management section", () => {
       .mockResolvedValue({ ...fixture("wall"), enabled: false, state: "Stopped", pid: null });
     await mountApps();
 
-    fireEvent.click(within(row("wall")).getByRole("switch"));
+    fireEvent.click(disableSeg("wall"));
     await waitFor(() => expect(disable).toHaveBeenCalledWith("wall"));
     expect(screen.queryByText(/Enable WALL\?/)).not.toBeInTheDocument();
+  });
+
+  it("refetches the package inventory after enabling — the row's state updates without a refresh", async () => {
+    vi
+      .spyOn(api, "appPackageEnable")
+      .mockResolvedValue({ ...fixture("lobby"), enabled: true, state: "Running", pid: 20001 });
+    // The launcher feed (api.apps) now lives in <Shell>'s nav, not on the Apps page — enabling
+    // here refetches the package inventory (api.appPackages); the nav re-fetches on its own.
+    const packages = vi.spyOn(api, "appPackages");
+    await mountApps();
+    // the inventory fetched once on mount
+    await waitFor(() => expect(packages).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(enableSeg("lobby"));
+    clickModalButton(/Enable LOBBY\?/, "Enable");
+    // the enable's reloadAll() refetches the inventory (a second api.appPackages call)
+    await waitFor(() => expect(packages.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("shows an in-flight busy label on the segment being applied while the mutation runs", async () => {
+    // A deferred enable so we can observe the in-progress state before it resolves.
+    let resolve!: (p: AppPackage) => void;
+    vi.spyOn(api, "appPackageEnable").mockReturnValue(new Promise((r) => { resolve = r; }));
+    await mountApps();
+
+    fireEvent.click(enableSeg("lobby"));
+    clickModalButton(/Enable LOBBY\?/, "Enable");
+    // while in flight the row's Enable segment shows the spinner + "Enabling…"
+    await waitFor(() => expect(within(row("lobby")).getByText("Enabling…")).toBeInTheDocument());
+
+    resolve({ ...fixture("lobby"), enabled: true, state: "Running", pid: 20001 });
+    await waitFor(() => expect(within(row("lobby")).queryByText("Enabling…")).not.toBeInTheDocument());
   });
 
   it("offers Restart only on enabled managed services", async () => {
@@ -185,10 +276,11 @@ describe("Apps — package management section", () => {
     await mountApps("read");
     // the list itself still renders (read-gated endpoint)
     expect(within(row("wall")).getByText("running")).toBeInTheDocument();
-    // every toggle is read-only, titled with the admin requirement
-    for (const sw of screen.getAllByRole("switch")) {
-      expect(sw).toBeDisabled();
-      expect(sw).toHaveAttribute("title", "Requires admin");
+    // every enable/disable segment is read-only, titled with the admin requirement
+    for (const r of ["wall", "lobby", "quiz", "notes"]) {
+      expect(enableSeg(r)).toBeDisabled();
+      expect(enableSeg(r)).toHaveAttribute("title", "Requires admin");
+      expect(disableSeg(r)).toBeDisabled();
     }
     const restart = within(row("wall")).getByRole("button", { name: "Restart" });
     expect(restart).toBeDisabled();

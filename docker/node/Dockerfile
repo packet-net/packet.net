@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# pdn node-host image (m0lte/packet.net). Multi-arch (amd64 + arm64) via buildx.
+# pdn node-host image (ghcr.io/packet-net/packet.net). Multi-arch (amd64 + arm64) via buildx.
 # Built from the SELF-CONTAINED app tree scripts/build-deb.sh publishes (binary + dlls +
 # the built wwwroot) — the same content the .deb ships, so no separate .NET runtime.
 # scripts/docker-image.sh stages the per-arch trees under pdn-app/<arch>/ (amd64, arm64)

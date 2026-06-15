@@ -30,9 +30,9 @@ description: |
       "Outbound SABM then UA closes Connected".
     - C# interop: tests/Packet.Interop.Tests/Linbpq/
       LinbpqViaNetsimConnectedMode.cs.
-    - TS happy path: m0lte/ax25-ts: tests/session.test.ts "connects and
+    - TS happy path: packet-net/ax25-ts: tests/session.test.ts "connects and
       disconnects against scripted peer".
-    - TS interop: m0lte/ax25-ts: tests/integration/linbpq-via-netsim.test.ts.
+    - TS interop: packet-net/ax25-ts: tests/integration/linbpq-via-netsim.test.ts.
 
 setup:
   myCall: M0LTE-1

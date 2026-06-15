@@ -14,8 +14,8 @@
     <Description>SV2AGW AGWPE protocol client for .NET. Connects to LinBPQ, direwolf, SoundModem, and XRouter AGW listeners for AX.25 connected-mode and UNPROTO interop.</Description>
     <Authors>Packet.NET contributors</Authors>
     <PackageTags>ax25;agw;agwpe;packet-radio;linbpq;direwolf;soundmodem</PackageTags>
-    <PackageProjectUrl>https://github.com/M0LTE/packet.net</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/M0LTE/packet.net</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/packet-net/packet.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/packet-net/packet.net</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>

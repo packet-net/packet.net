@@ -1,6 +1,6 @@
 # Research / options analyses
 
-Exploratory design-space write-ups that inform the AX.25 roadmap (`../plan.md`) but are **not** commitments — they capture investigation + options + a recommendation at a point in time, for later decision. Each is dated and grounded against the live `m0lte/ax25sdl`, `m0lte/packet.net`, and `m0lte/ax25-ts` trees plus the AX.25 v2.2 spec.
+Exploratory design-space write-ups that inform the AX.25 roadmap (`../plan.md`) but are **not** commitments — they capture investigation + options + a recommendation at a point in time, for later decision. Each is dated and grounded against the live `packet-net/ax25sdl`, `packet-net/packet.net`, and `packet-net/ax25-ts` trees plus the AX.25 v2.2 spec.
 
 | Doc | Question | Headline |
 |---|---|---|

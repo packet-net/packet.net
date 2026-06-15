@@ -10,14 +10,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
     <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
-    <!-- Packet.Ax25.Sdl moved to m0lte/ax25sdl on 2026-05-17 — consumed via NuGet. -->
+    <!-- Packet.Ax25.Sdl moved to packet-net/ax25sdl on 2026-05-17 — consumed via NuGet. -->
     <PackageReference Include="Packet.Ax25.Sdl" />
   </ItemGroup>
 
   <PropertyGroup>
     <PackageId>Packet.Ax25</PackageId>
     <Title>Packet.Ax25 — AX.25 v2.2 frame codec + connected-mode session runtime</Title>
-    <Description>AX.25 v2.2 protocol library: frame codec for U/S/I frames with mod-8 sequence numbers, SDL-driven connected-mode session machine, Ax25Listener for inbound session acceptance with per-peer caching, AcceptIncoming toggle, and frame-traced event hooks. Walks the AX.25 SDL transitions from Packet.Ax25.Sdl. Source: github.com/m0lte/packet.net.</Description>
+    <Description>AX.25 v2.2 protocol library: frame codec for U/S/I frames with mod-8 sequence numbers, SDL-driven connected-mode session machine, Ax25Listener for inbound session acceptance with per-peer caching, AcceptIncoming toggle, and frame-traced event hooks. Walks the AX.25 SDL transitions from Packet.Ax25.Sdl. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;protocol;sdl;state-machine</PackageTags>
   </PropertyGroup>
 

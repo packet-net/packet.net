@@ -6,14 +6,14 @@
 // changes by disruption (apply live / restart a port / reset the node) in
 // plain language and applies them atomically.
 // ============================================================
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Page, PageHeader } from "@/components/layout/shell";
 import {
   Button, Badge, Card, Input, Label, Field, InfoHint, Switch, ImpactBadge, Tabs, Modal, Icon,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import type { NodeConfig, ApplyImpact, FieldHelp, ToggleHelp, ReconcileResult, ValidationProblem, ReconcileChange, PortBeacon, TailscaleStatus } from "@/lib/types";
+import type { NodeConfig, ApplyImpact, FieldHelp, ToggleHelp, ReconcileResult, ValidationProblem, ReconcileChange, PortBeacon, TailscaleStatus, SystemInfo, InstallChannelName } from "@/lib/types";
 import { api, useQuery, ConfigRejected } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 import {
@@ -232,6 +232,7 @@ export function Config() {
                   </div>
                 </div>
                 <RemoteAccessSection cfg={cfg} canAdmin={canApply} onAdopted={reload} />
+                <SystemPanel canAdmin={canApply} />
               </section>
             )}
 
@@ -353,6 +354,186 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
                 Changing the passkey hostname invalidates existing passkeys — they&apos;ll need re-enrolling.
               </p>
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- About this node + self-update (Phase 7) ---------
+// Shows the node's running version + install channel (closing the "nothing
+// distinguishes the running version" gap — docs/node-self-update-design.md), and when
+// the node reports an update available, an "update available · vX → vY" banner with an
+// admin-gated Apply button.
+//
+// Apply is the fire-and-acknowledge reconnect (the design's "UI reconnect, not in-band
+// result"): POST /system/update returns 202 and restarts the very process that handled
+// it, so we can't read the outcome in-band. Instead we poll GET /system/info (the
+// authoritative signal — the running version changing proves the new binary is up) plus
+// GET /healthz (liveness) until the version differs from the one we started on, or a
+// timeout. Apply is disabled when the channel is "unknown" (the node won't self-update).
+const UPDATE_POLL_TIMEOUT_MS = 180_000; // 3 min — an apt/dpkg upgrade + restart can be slow
+const UPDATE_POLL_INTERVAL_MS = 2_000;
+
+// Friendly label for the install channel + a one-liner on how this node updates.
+const CHANNEL_LABEL: Record<InstallChannelName, string> = {
+  apt: "apt",
+  github: "GitHub Releases",
+  selfcontained: "self-contained",
+  unknown: "unknown",
+};
+function channelHelp(ch: InstallChannelName): string {
+  switch (ch) {
+    case "apt": return "Installed from an apt repository — Apply runs a targeted apt upgrade of this package. dpkg stays the owner of the files.";
+    case "github": return "Installed from a GitHub release .deb — Apply downloads the next release, verifies its checksum, and installs it through dpkg.";
+    case "selfcontained": return "Self-contained install — Apply downloads the next release, verifies its checksum, and atomically swaps it in (with rollback).";
+    case "unknown": return "This node's install channel can't be determined, so it won't self-update. Update it via your package manager or by reinstalling.";
+  }
+}
+
+type ApplyPhase = "idle" | "applying" | "waiting" | "done" | "timeout" | "error";
+
+function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
+  const [info, setInfo] = useState<SystemInfo | null>(null);
+  const [phase, setPhase] = useState<ApplyPhase>("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  // Load once on mount, and again after a confirmed restart (to show the new version).
+  const loadInfo = () => api.systemInfo().then(setInfo).catch(() => { /* transient — keep last */ });
+  useEffect(() => { loadInfo(); }, []);
+
+  const busy = phase === "applying" || phase === "waiting";
+  const ch: InstallChannelName = info?.channel ?? "unknown";
+  const canUpdate = ch !== "unknown";
+
+  // The fire-and-acknowledge Apply: POST /update (202), then poll /info + /healthz until
+  // the running version changes (the new binary is up) or we time out. The polling tab can
+  // close mid-flight — the loop is bounded and self-cancels on unmount via `alive`.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  const apply = async () => {
+    if (!info || !canUpdate || busy) return;
+    const fromVersion = info.version;
+    setError(null);
+    setPhase("applying");
+    try {
+      await api.systemUpdate();
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e) || "Could not start the update.");
+      setPhase("error");
+      return;
+    }
+    // Dispatched. Now wait for the node to come back on a different version.
+    setPhase("waiting");
+    const deadline = Date.now() + UPDATE_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, UPDATE_POLL_INTERVAL_MS));
+      if (!aliveRef.current) return; // panel unmounted — abandon the poll
+      // /healthz answering is necessary-but-not-sufficient: it can be up on the OLD
+      // version mid-restart. The authoritative signal is /info reporting a NEW version.
+      if (!(await api.nodeHealthy())) continue;
+      let next: SystemInfo | null = null;
+      try { next = await api.systemInfo(); } catch { continue; } // still restarting
+      if (!aliveRef.current) return;
+      if (next && next.version !== fromVersion) {
+        setInfo(next);
+        setPhase("done");
+        return;
+      }
+    }
+    if (aliveRef.current) setPhase("timeout");
+  };
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="system-panel">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="flex items-center gap-1.5">
+          <Label className="text-foreground">About this node</Label>
+          <InfoHint text="The version of pdn this node is running and how it was installed. When a newer version is available, an admin can apply it here — the node updates and restarts, then this panel reconnects on the new version." />
+        </span>
+        <Badge variant={ch === "unknown" ? "muted" : "secondary"}>{CHANNEL_LABEL[ch]}</Badge>
+      </div>
+
+      {info == null ? (
+        <p className="text-xs text-muted-foreground">Checking…</p>
+      ) : (
+        <div className="space-y-3">
+          <div className="space-y-1.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Version</span>
+              <span className="font-mono font-semibold" data-testid="node-version">{info.version}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Update channel</span>
+              <span className="font-mono">{CHANNEL_LABEL[ch]}</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{channelHelp(ch)}</p>
+
+          {/* update-available banner + Apply */}
+          {info.updateAvailable && info.latestVersion && phase !== "done" && (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3" data-testid="update-banner">
+              <div className="flex items-start gap-2">
+                <Icon name="download" size={15} className="mt-0.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Update available — v{info.version} → v{info.latestVersion}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {channelHelp(ch)}
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-2.5"
+                    disabled={!canAdmin || !canUpdate || busy}
+                    title={
+                      !canUpdate
+                        ? "This node's install channel is unknown, so it can't self-update."
+                        : !canAdmin
+                          ? "Applying an update requires the admin scope."
+                          : undefined
+                    }
+                    onClick={apply}
+                  >
+                    {phase === "applying"
+                      ? "Starting update…"
+                      : phase === "waiting"
+                        ? "Updating — reconnecting…"
+                        : <><Icon name="download" size={14} /> Apply update</>}
+                  </Button>
+                  {busy && (
+                    <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                      The node is updating and will restart. This page reconnects automatically when it&apos;s back — please don&apos;t close it.
+                    </p>
+                  )}
+                  {phase === "timeout" && (
+                    <p className="mt-2 text-[11px] text-warning">
+                      The node hasn&apos;t come back on a new version yet. It may still be updating — refresh in a moment to check, or see the node log if it doesn&apos;t recover.
+                    </p>
+                  )}
+                  {phase === "error" && error && (
+                    <p className="mt-2 text-[11px] text-danger">{error}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {phase === "done" && (
+            <div className="rounded-md border border-success/30 bg-success/5 p-3" data-testid="update-done">
+              <p className="flex items-center gap-1.5 text-sm font-medium text-success">
+                <Icon name="check" size={15} /> Updated — now running v{info.version}.
+              </p>
+            </div>
+          )}
+
+          {!info.updateAvailable && phase === "idle" && (
+            <p className="flex items-center gap-1.5 text-xs text-success" data-testid="up-to-date">
+              <Icon name="check" size={14} /> Up to date.
+            </p>
           )}
         </div>
       )}

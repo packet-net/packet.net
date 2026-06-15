@@ -299,7 +299,7 @@ The AX.25-layer flags and presets above are **operator-reachable at the node** v
 
 ## Session quirks (SDL-figure deviations — `Ax25SessionQuirks`)
 
-Distinct from the wire-parse pragmatism above: these are *session-layer* deviations from the AX.25 SDL **figures**, used where a figure is a confirmed upstream spec **defect**. The SDL tables (`Packet.Ax25.Sdl`, from `m0lte/ax25sdl`) stay faithful to the published figures — defects and all — so the canonical transcription tracks the in-progress draft; the runtime corrects provable figure errors here, behind named flags. Each flag is named `Ax25Spec<issue>…` after the `packethacking/ax25spec` issue it works around (greppable, removable once the spec is fixed). The default preset is spec-correct (quirks on); `Ax25SessionQuirks.StrictlyFaithful` runs the figures exactly as drawn for conformance testing.
+Distinct from the wire-parse pragmatism above: these are *session-layer* deviations from the AX.25 SDL **figures**, used where a figure is a confirmed upstream spec **defect**. The SDL tables (`Packet.Ax25.Sdl`, from `packet-net/ax25sdl`) stay faithful to the published figures — defects and all — so the canonical transcription tracks the in-progress draft; the runtime corrects provable figure errors here, behind named flags. Each flag is named `Ax25Spec<issue>…` after the `packethacking/ax25spec` issue it works around (greppable, removable once the spec is fixed). The default preset is spec-correct (quirks on); `Ax25SessionQuirks.StrictlyFaithful` runs the figures exactly as drawn for conformance testing.
 
 | Flag | What the figure draws | Correct behaviour | Evidence | Default | Remove when |
 |---|---|---|---|---|---|

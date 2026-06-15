@@ -61,17 +61,27 @@ cp -a "$ui/dist/." "$stage/opt/packetnet/app/wwwroot/"
 cp "$root/packaging/packetnet.service" "$stage/lib/systemd/system/packetnet.service"
 cp "$root/packaging/packetnet.yaml"    "$stage/etc/packetnet/packetnet.yaml"
 
-# Phase 7 in-app self-update (apt channel; docs/node-self-update-design.md):
-#  - install-channel: the build-stamped marker the node reads to decide HOW it updates
-#    (this .deb is an apt install → "apt"; the node defers to dpkg, never self-mutates).
-#  - packetnet-update.service: a privileged, on-demand oneshot the node triggers.
-#  - packetnet-apt-update: that oneshot's helper — a targeted `apt-get install
-#    --only-upgrade packetnet` with health-check rollback (mode 0755).
+# Phase 7 in-app self-update (docs/node-self-update-design.md):
+#  - install-channel: the build-stamped marker the node reads to decide HOW it updates.
+#    The .deb stamps "deb" — deb-vs-selfcontained is all the build knows; the node
+#    resolves apt-vs-github at runtime (dpkg ownership of the running binary + apt-cache
+#    repo origin). On both deb sub-channels the node defers to dpkg, never self-mutates.
+#  - packetnet-update.service: a privileged, on-demand oneshot the node triggers. Its
+#    ExecStart is the packetnet-update DISPATCHER, which reads the runtime-resolved channel
+#    the node spools to /run/packetnet/update.channel and execs the matching helper — so the
+#    SINGLE oneshot serves all the deb-side channels (apt + github).
+#  - packetnet-apt-update: a targeted `apt-get install --only-upgrade packetnet` with
+#    health-check rollback (the apt channel).
+#  - packetnet-github-update: download the next release .deb -> sha256-verify -> dpkg -i ->
+#    /healthz-gate -> dpkg -i rollback (the github channel; reads /run/packetnet/github-
+#    update.json staged by the node, re-validating every field).
 #  - the polkit rule: lets the unprivileged `packetnet` user start ONLY that one unit.
 install -d "$stage/usr/lib/packetnet" "$stage/usr/share/polkit-1/rules.d"
-install -m 0644 "$root/packaging/install-channel"          "$stage/usr/lib/packetnet/install-channel"
-install -m 0755 "$root/packaging/packetnet-apt-update"     "$stage/usr/lib/packetnet/packetnet-apt-update"
-install -m 0644 "$root/packaging/packetnet-update.service" "$stage/lib/systemd/system/packetnet-update.service"
+install -m 0644 "$root/packaging/install-channel"           "$stage/usr/lib/packetnet/install-channel"
+install -m 0755 "$root/packaging/packetnet-update"          "$stage/usr/lib/packetnet/packetnet-update"
+install -m 0755 "$root/packaging/packetnet-apt-update"      "$stage/usr/lib/packetnet/packetnet-apt-update"
+install -m 0755 "$root/packaging/packetnet-github-update"   "$stage/usr/lib/packetnet/packetnet-github-update"
+install -m 0644 "$root/packaging/packetnet-update.service"  "$stage/lib/systemd/system/packetnet-update.service"
 install -m 0644 "$root/packaging/49-packetnet-update.rules" "$stage/usr/share/polkit-1/rules.d/49-packetnet-update.rules"
 
 # The embedded Tailscale sidecar (docs/network-access.md §"The sidecar"): a
@@ -93,6 +103,26 @@ goarm=""                                  # armv7 (hard-float) for 32-bit ARM
   && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" GOARM="$goarm" \
      go build -trimpath -ldflags="-s -w" -o "$stage/usr/lib/packetnet/packetnet-tsnet" . )
 chmod 0755 "$stage/usr/lib/packetnet/packetnet-tsnet"
+# UPX-compress the sidecar (~21 MB stripped -> ~6 MB). The Go binary self-extracts
+# in memory at exec — no install-time decompression, no runtime tsnet behaviour change.
+# UPX packs foreign-arch ELF fine on this x64 host, so the one runner covers all three
+# arches. GUARD: if upx is absent we log + ship the uncompressed binary (it still works);
+# we never fail the build over a missing compressor. (Release runners for publish-node.yml
+# need 'upx'/'upx-ucl' installed to get the size win — see report / runner deps.)
+tsnet_bin="$stage/usr/lib/packetnet/packetnet-tsnet"
+if command -v upx >/dev/null 2>&1; then
+  before=$(stat -c%s "$tsnet_bin")
+  echo "==> compress tailscale sidecar with upx ($(upx --version 2>/dev/null | head -1))"
+  if upx --best --lzma -q "$tsnet_bin" >/dev/null 2>&1; then
+    after=$(stat -c%s "$tsnet_bin")
+    awk -v b="$before" -v a="$after" 'BEGIN{printf "    sidecar: %d -> %d bytes (%.1f%%, saved %.2f MB)\n",b,a,100*a/b,(b-a)/1048576}'
+  else
+    echo "WARNING: upx failed to compress the sidecar — shipping the uncompressed binary." >&2
+  fi
+else
+  echo "WARNING: upx not found — shipping the UNCOMPRESSED tailscale sidecar (~21 MB)." >&2
+  echo "         Install 'upx-ucl' (or 'upx') on this host/runner to shrink the .deb by ~15 MB/arch." >&2
+fi
 # The bundled app PACKAGES (docs/app-packages.md): each directory under
 # /usr/share/packetnet/apps carries a pdn-app.yaml manifest authored by the app; pdn
 # discovers them at startup/reload and the owner enables them with an `apps:` entry (or

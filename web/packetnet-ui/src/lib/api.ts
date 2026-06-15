@@ -15,7 +15,7 @@ import type {
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
-  AvailableApp, InstallOutcome, TailscaleStatus,
+  AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -228,6 +228,12 @@ export const api = {
   sessions: () => get<SessionInfo[]>("/sessions", () => mock.SESSIONS),
   routes: () => get<NetRomRoutingSnapshot>("/netrom/routes", () => mock.NETROM),
   config: () => get<NodeConfig>("/config", () => mock.NODE_CONFIG),
+  // The node's running version + install channel + available-update view (read-gated).
+  // The control panel's "About this node" panel shows version + channel; when
+  // updateAvailable it banners "vX → vY" with an admin Apply button. The Apply flow
+  // (systemUpdate + polling this until the version changes) is the fire-and-acknowledge
+  // reconnect — see api.systemUpdate.
+  systemInfo: () => get<SystemInfo>("/system/info", () => mock.SYSTEM_INFO),
   // The embedded Tailscale sidecar's live status (read-gated). The "Remote access"
   // config panel polls this while open: state, the assigned .ts.net FQDN, and any
   // pending interactive-login URL.
@@ -267,6 +273,19 @@ export const api = {
   // Upload a .pdnapp tarball (admin scope) — the air-gapped install path. Same staging
   // pipeline as install, bytes from a multipart file. 422 { error } on a bad package.
   appUpload: (file: File) => appUpload(file),
+
+  // ---- node self-update (Phase 7) ----
+  // Trigger a channel-aware self-update (admin scope, fire-and-acknowledge). The launch
+  // returns 202 — the update job restarts the very process that handled the request, so
+  // the outcome can't come back in-band; resolves void on a successful dispatch. A 409
+  // (unknown channel — won't self-update) / 501 (no launcher) / 503 (launch failed)
+  // surfaces the server's message as an Error so the UI can banner it. The UI then polls
+  // systemInfo (+ nodeHealthy) until the version changes — see waitForRestart below.
+  systemUpdate: () => systemUpdate(),
+  // Probe GET /healthz (the unauthenticated liveness endpoint at the app root, NOT under
+  // /api/v1). Resolves true when the node answers 200, false otherwise — never throws, so
+  // the restart-poll can use it as a "node is back" gate without a try/catch at the call site.
+  nodeHealthy: () => nodeHealthy(),
 
   // ---- config write (Slice-3 step 2) ----
   // PUT the whole config; dryRun returns the reconcile preview without applying.
@@ -581,6 +600,41 @@ async function appUpload(file: File): Promise<InstallOutcome> {
   });
   if (!res.ok) throw new Error(await errorMessage(res, `Upload failed (${res.status}).`));
   return (await res.json()) as InstallOutcome;
+}
+
+// Trigger a channel-aware self-update. Live mode POSTs /system/update; a 202 is the
+// fire-and-acknowledge success (the node will restart) → resolve void. Any non-2xx
+// (409 unknown channel / 501 no launcher / 503 launch failed) surfaces the server's
+// problem message as an Error so the caller can banner it. Mock mode resolves after a
+// short delay so the busy/spinner state is exercised with no node.
+async function systemUpdate(): Promise<void> {
+  if (MODE === "mock") { await new Promise((r) => setTimeout(r, 150)); return; }
+  const res = await authFetch("/system/update", {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  // 202 Accepted is the only success — a detached update job was dispatched.
+  if (res.status === 202) return;
+  // RFC7807 problem responses carry the human message under `detail`, not `error`.
+  let message = `Update could not be started (${res.status}).`;
+  try {
+    const body = (await res.json()) as { detail?: string; error?: string };
+    message = body.detail ?? body.error ?? message;
+  } catch { /* keep the default */ }
+  throw new Error(message);
+}
+
+// Liveness probe: GET /healthz at the app root (NOT under /api/v1, and never with a
+// token — it's the unauthenticated health endpoint). Resolves true on a 200, false on
+// anything else or a network error (the node still restarting). Mock mode reports true.
+async function nodeHealthy(): Promise<boolean> {
+  if (MODE === "mock") return true;
+  try {
+    const res = await fetch("/healthz", { headers: { accept: "application/json" }, cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // Shared PUT helper for the config write endpoints: returns the ReconcileResult,

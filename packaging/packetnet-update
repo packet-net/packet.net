@@ -1,0 +1,41 @@
+#!/bin/sh
+# packetnet-update — the per-channel update DISPATCHER.
+#
+# This is the ExecStart of packetnet-update.service (the privileged, detached oneshot the
+# node triggers via `systemctl start --no-block`, polkit-authorized). The build stamp only
+# encodes deb-vs-selfcontained; the apt-vs-github split is a RUNTIME decision the node makes
+# (dpkg ownership + apt-cache repo origin), so the node writes the resolved channel to the
+# spool (/run/packetnet/update.channel) just before triggering, and this dispatcher execs
+# the matching helper. That way the SINGLE oneshot serves all three deb-side channels.
+# docs/node-self-update-design.md.
+set -eu
+
+TAG=packetnet-update
+LIB="${PDN_HELPER_DIR:-/usr/lib/packetnet}"
+SPOOL="${PDN_UPDATE_SPOOL:-/run/packetnet}"
+CHANNEL_FILE="$SPOOL/update.channel"
+
+log() { logger -t "$TAG" -- "$*" 2>/dev/null || true; echo "$TAG: $*"; }
+
+# The node writes the resolved channel; if it's somehow absent, fall back to the install-
+# channel marker (which only distinguishes selfcontained from deb — a deb with no resolved
+# channel means we can't tell apt from github, so we refuse rather than guess).
+channel=""
+if [ -r "$CHANNEL_FILE" ]; then
+    channel="$(head -1 "$CHANNEL_FILE" | tr -d '[:space:]')"
+fi
+if [ -z "$channel" ]; then
+    marker="$(head -1 /usr/lib/packetnet/install-channel 2>/dev/null | tr -d '[:space:]' || true)"
+    case "$marker" in
+        selfcontained|self-contained) channel=selfcontained ;;
+        *) log "no resolved channel in $CHANNEL_FILE and the marker can't disambiguate apt/github — refusing"; exit 1 ;;
+    esac
+fi
+
+log "dispatching update on channel: $channel"
+case "$channel" in
+    apt)           exec "$LIB/packetnet-apt-update" ;;
+    github)        exec "$LIB/packetnet-github-update" ;;
+    selfcontained) exec "$LIB/packetnet-selfupdate" ;;
+    *)             log "unknown channel '$channel' — refusing"; exit 1 ;;
+esac

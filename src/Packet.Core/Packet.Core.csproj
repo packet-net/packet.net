@@ -14,7 +14,7 @@
          tag). -->
     <PackageId>Packet.Core</PackageId>
     <Title>Packet.Core — shared primitives for the Packet.NET stack</Title>
-    <Description>Shared primitive types (Callsign, Ax25Address, KissFrame, etc.) used across the Packet.NET libraries. Depended on by Packet.Ax25 / Packet.Kiss / Packet.Aprs and downstream applications. Source: github.com/m0lte/packet.net.</Description>
+    <Description>Shared primitive types (Callsign, Ax25Address, KissFrame, etc.) used across the Packet.NET libraries. Depended on by Packet.Ax25 / Packet.Kiss / Packet.Aprs and downstream applications. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;callsign</PackageTags>
   </PropertyGroup>
 

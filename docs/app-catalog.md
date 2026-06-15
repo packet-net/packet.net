@@ -24,7 +24,7 @@ Sideloading is untouched: an operator can still drop a package dir into `/var/li
 
 | id | source repo | shape | catalog `kind` |
 |----|-------------|-------|----------------|
-| `dapps`   | `m0lte/dapps`           | per-RID raw binary + `pdn-app.yaml` asset | `assets` |
+| `dapps`   | `packet-net/dapps`           | per-RID raw binary + `pdn-app.yaml` asset | `assets` |
 | `bpqchat` | `packet-net/pdn-bpqchat`| per-arch `.deb` (Go static)               | `deb` |
 | `convers` | `packet-net/pdn-convers`| per-arch `.deb` (.NET self-contained)     | `deb` |
 
@@ -68,8 +68,9 @@ apps:
     version: "0.34.1"            # the curated version (drives "update available")
     description: Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging.
     icon: inbox
-    capabilities: [network, web] # shown to the owner at install/enable time
-    homepage: https://github.com/m0lte/dapps
+    capabilities: [packet, web]  # shown to the owner at install/enable time (packet = full
+                                 # packet-radio network access; renamed from network — see below)
+    homepage: https://github.com/packet-net/dapps
     artifact:
       kind: assets
       manifest: { url: ".../v0.34.1/pdn-app.yaml", sha256: ae0b2f50… }
@@ -84,8 +85,8 @@ apps:
     version: "0.1.0"
     description: BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network.
     icon: chat
-    capabilities: [network, web]
-    homepage: https://github.com/m0lte/pdn-bpqchat
+    capabilities: [packet, web]
+    homepage: https://github.com/packet-net/pdn-bpqchat
     artifact:
       kind: deb
       debs:                      # RID → the per-arch .deb (Debian arch resolved from the RID)
@@ -109,24 +110,28 @@ Three `artifact.kind`s map onto the three real publishing shapes: **`assets`** c
 1. **List.** `GET /api/v1/apps/available` returns each catalog entry projected with the node's view: `installed` (is a package with this id present?), the installed `version` vs the catalog `version`, and `updateAvailable`. The node's RID (from `RuntimeInformation`) selects the right per-arch artifact for display/fetch.
 2. **Install** (`POST /api/v1/apps/available/{id}/install`, admin, audited): resolve the artifact for this RID → download to a temp area → **sha256-verify against the catalog pin** (hard refusal on mismatch) → assemble the package dir in a temp dir: for `kind: assets` write the verified manifest + binary at their `dest`/`mode`; for `kind: deb` run `dpkg-deb -x` and lift the `usr/share/packetnet/apps/<id>/` subtree; for `kind: pdnapp` untar with a path-traversal-safe extractor → **commit** into `/var/lib/packetnet/apps/<id>/` (the `pdn-app.yaml` lands at the package-dir root, exactly like a hand-installed package) and write a `.pdn-install.json` **payload marker** (see O1). The package then appears as discovered-but-**disabled** on the next `Discover()` (immediate; disk is scanned live; discovery is unchanged). The operator enables it via the existing toggle.
 3. **Upload** (`POST /api/v1/apps/packages/upload`, admin, audited): same staging pipeline, bytes from a multipart `.pdnapp` instead of a URL; the manifest id inside the tarball is authoritative and must equal the (validated) directory it lands in.
-4. **Update**: re-run the install pipeline for an installed app at a newer catalog version — the marker's recorded payload is deleted and the new payload committed, **preserving the app's state** (the O1 marker makes this safe). Under A1, "update available" only surfaces at pdn-release cadence; A2 makes it live.
+4. **Update**: re-run the install pipeline for an installed app at a newer catalog version — the marker's recorded payload is deleted and the new payload committed, **preserving the app's state** (the O1 marker makes this safe). Under A1, "update available" only surfaces at pdn-release cadence; A2 makes it live. **Auto-restart on update:** after the payload is committed, if the app is currently **enabled**, **pdn-managed** (`service.managed == pdn`), and **error-free**, the install endpoint drives the supervisor's `RestartAsync(id)` synchronously within the request so the freshly-laid binary actually runs. This is necessary because the supervisor only restarts a service when its *spawn fingerprint* (resolved command + args + working dir + merged environment) changes, and a version bump changes none of those — so a plain reconcile would keep the old process alive and the operator would otherwise have to restart by hand. The restart is **best-effort and never demotes a committed install to a failure**: a missing supervisor, a disabled/unmanaged/broken package, or any restart error yields `restarted: false` in the JSON response (alongside `ok: true`) and an audit line, never a 422 — the payload is already on disk and the operator can restart from the package row. A **fresh** install lands disabled (install ≠ enable), so nothing is restarted (`restarted: false`); the owner's separate enable grant is what first runs it.
 5. **Uninstall** (`POST /api/v1/apps/packages/{id}/uninstall`, admin, audited): only for catalog/upload-installed packages (those carrying a marker, always under `/var/lib/packetnet/apps/`, never the dpkg-owned `/usr/share/...` root); requires the app to be **disabled first** (removes nothing that is running); removes exactly the marker's recorded payload files + the marker, leaving app-created state, and removes the dir only if it ends up empty. A marker-less (hand-sideloaded) dir is refused — pdn never deletes files it did not place.
 
 ## Surfaces
 
-- `GET /api/v1/apps/available` — read scope. The available-apps list (catalog ⋈ installed state).
-- `POST /api/v1/apps/available/{id}/install` — admin, audited. Install from the catalog.
+- `GET /api/v1/apps/available` — read scope. The available-apps list (catalog ⋈ installed state). Each entry's `capabilities` are **display-normalised** before projection (`network` → `packet`, the back-compat alias — see § Capabilities), so the install confirm shows the new spelling even for an app whose catalog/manifest entry still says `network`.
+- `POST /api/v1/apps/available/{id}/install` — admin, audited. Install (or update) from the catalog. On a successful **update** of an already-enabled, pdn-managed, error-free app it also drives the supervisor's `RestartAsync` so the new binary runs (best-effort; reported as `restarted` in the response — see § Install flow item 4).
 - `POST /api/v1/apps/packages/{id}/uninstall` — admin, audited. Beside the existing enable/disable/restart.
 - `POST /api/v1/apps/packages/upload` — admin, audited; multipart `.pdnapp`.
 - Existing `GET /api/v1/apps/packages` + enable/disable/restart are unchanged; an installed catalog app shows up there exactly like any other package.
-- **UI**: an **"Available apps"** section on the Apps screen (`web/packetnet-ui/src/screens/apps.tsx`) listing not-yet-installed (and updatable) apps with Install / Update and the capability confirm step, plus an "upload a `.pdnapp`" affordance; Uninstall sits on the existing installed-package rows. It composes with the launcher grid + package manager. No "Store" label anywhere.
+- **UI**: an **"Available apps"** section on the Apps screen (`web/packetnet-ui/src/screens/apps.tsx`) listing not-yet-installed (and updatable) apps with Install / Update and the capability confirm step, plus an "upload a `.pdnapp`" affordance; Uninstall sits on the existing installed-package rows. The Apps screen is now **management-only** — the old launcher grid was dropped (enabled web apps are first-class **left-nav** entries now; see `docs/app-packages.md` § Surfaces); the page is "Available apps" + the package manager. No "Store" label anywhere.
+
+## Capabilities
+
+`capabilities` are free-form strings shown to the owner as the install/enable trust prompt (not enforced in v1). Conventional values: `session`, `packet`, `web`. **`packet`** — full packet-radio network access (the app binds a callsign and works over AX.25 / NET-ROM: RF / KISS-TCP / AXUDP / sim) — **replaces the old `network`** spelling, which read as TCP/IP / LAN. pdn still **accepts `network` as a back-compat alias** and display-normalises it to `packet` in every API projection (`AppCapabilities.Normalize`); the committed catalog ships `packet` directly. Full rationale + the back-compat rules: `docs/app-packages.md` § The `packet` capability.
 
 ## Implementation map
 
 - `catalog/apps.yaml` — the committed catalog (and the canonical home of the DAPPS pins, moved out of `build-deb.sh`).
 - `src/Packet.Node.Core/Applications/Catalog/` — catalog records + YAML parse + validation; `IAppCatalog` (v1: `EmbeddedAppCatalog` reading `/usr/share/packetnet/catalog/apps.yaml`; A2 adds a refreshing source + `ICatalogVerifier`). Mirrors the `SelfUpdate/` seam style. Named to distinguish from `IAppPackageCatalog` (which is *installed/discovered* packages); this is the *available* catalog.
 - `src/Packet.Node.Core/Applications/Catalog/IAppInstaller.cs` + impl — fetch/verify/stage; RID-aware; https-only; size-capped; atomic place; accepts a URL (assets/deb/pdnapp) or uploaded bytes (pdnapp). `kind: deb` shells to `dpkg-deb -x` behind an `IDebExtractor` seam (a pure-managed ar+tar+zstd extractor can replace it later).
-- `src/Packet.Node/Api/PdnAvailableAppsApi.cs` — the `MapGroup("/api/v1/apps/available")` endpoints; uninstall + upload added to `PdnAppPackagesApi`.
+- `src/Packet.Node/Api/PdnAvailableAppsApi.cs` — the `MapGroup("/api/v1/apps/available")` endpoints, including the post-install auto-restart (`TryRestartIfEnabledAsync`, driving `IAppServiceSupervisor.RestartAsync` for an enabled, pdn-managed, error-free app); uninstall + upload added to `PdnAppPackagesApi`.
 - `web/packetnet-ui/src/screens/apps.tsx` + `lib/api.ts` + `lib/types.ts` — the Available-apps UI + client.
 - `scripts/build-deb.sh` — **delete** the DAPPS fetch/stage block (current lines ~114-160) and the `dapps_version` + four sha256 pins (~24-39); **add** staging of `catalog/apps.yaml` to `/usr/share/packetnet/catalog/`. WALL/LOBBY staging (lines ~99-113) stays.
 - `NodeConfig` (`src/Packet.Node.Core/Configuration/NodeConfig.cs`) — A2 only: an optional `appCatalog:` block (`feedUrl`, refresh interval) behind the seam; v1 needs no config.
@@ -157,6 +162,6 @@ Three `artifact.kind`s map onto the three real publishing shapes: **`assets`** c
 ## Cross-references
 
 - The package model this extends: [`app-packages.md`](app-packages.md).
-- The trust-root + verify-seam precedent (cosign, polkit, channels): [`node-self-update-design.md`](node-self-update-design.md), OQ-003 / [#188](https://github.com/m0lte/packet.net/issues/188).
+- The trust-root + verify-seam precedent (cosign, polkit, channels): [`node-self-update-design.md`](node-self-update-design.md), OQ-003 / [#188](https://github.com/packet-net/packet.net/issues/188).
 - Packaging + release: `scripts/build-deb.sh`, `publish-node.yml`, [`releasing.md`](releasing.md).
 </content>

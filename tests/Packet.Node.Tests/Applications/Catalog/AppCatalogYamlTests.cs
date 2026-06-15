@@ -18,7 +18,8 @@ public class AppCatalogYamlTests
         var dapps = doc.Apps.Single(a => a.Id == "dapps");
         dapps.Name.Should().Be("DAPPS");
         dapps.Version.Should().Be("0.34.1");
-        dapps.Capabilities.Should().Contain(["network", "web"]);
+        // The catalog ships the transport-accurate `packet` spelling (the rename from `network`).
+        dapps.Capabilities.Should().Contain(["packet", "web"]);
         dapps.Artifact!.Kind.Should().Be(ArtifactKind.Assets);
         dapps.Artifact.Assets.Should().NotBeNull();
         dapps.Artifact.Assets!.Manifest.Sha256.Should()
@@ -43,7 +44,7 @@ public class AppCatalogYamlTests
 
         var bbs = doc.Apps.Single(a => a.Id == "bbs");
         bbs.Artifact!.Kind.Should().Be(ArtifactKind.Deb);
-        bbs.Version.Should().Be("0.2.0");
+        bbs.Version.Should().Be("0.2.8");
         bbs.Artifact.Deb!.Debs.Should().ContainKeys("linux-x64", "linux-arm64", "linux-arm");
     }
 

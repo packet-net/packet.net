@@ -24,8 +24,8 @@
     <Company>Packet.NET</Company>
     <Copyright>Copyright © 2026 Tom Fanning and Packet.NET contributors</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/m0lte/packet.net</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/m0lte/packet.net</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/packet-net/packet.net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/packet-net/packet.net</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
     <PackageReadmeFile Condition="Exists('$(MSBuildProjectDirectory)/README.md')">README.md</PackageReadmeFile>

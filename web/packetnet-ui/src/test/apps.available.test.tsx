@@ -78,9 +78,11 @@ describe("Apps — available apps section", () => {
     await mountApps();
 
     fireEvent.click(within(avail("dapps")).getByRole("button", { name: "Install" }));
-    // the confirm lists the declared capabilities before anything fires
+    // the confirm lists the declared capabilities before anything fires — the legacy `network`
+    // declaration is display-normalised to `packet`.
     expect(screen.getByText(/Install DAPPS\?/)).toBeInTheDocument();
-    expect(screen.getByText("network")).toBeInTheDocument();
+    expect(screen.getByText("packet")).toBeInTheDocument();
+    expect(screen.queryByText("network")).toBeNull();
     expect(install).not.toHaveBeenCalled();
 
     clickModalButton(/Install DAPPS\?/, "Install");

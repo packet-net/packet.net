@@ -9,7 +9,7 @@ import type {
   LinkStats, MonitorEvent, FrameType, ApplyImpact, NinoMode, RadioProfile,
   ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
-  TailscaleStatus,
+  TailscaleStatus, SystemInfo,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -38,6 +38,18 @@ export const NODE_CONFIG: NodeConfig = {
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
   tailscale: { enabled: false, authKey: null, authKeyFile: null, hostname: "pdn", tags: [], stateDir: "/var/lib/packetnet/tsnet", target: "127.0.0.1:8080", funnel: false },
+};
+
+// The node's version + install channel + available-update view (GET /api/v1/system/info).
+// The mock shows a github-channel node WITH an update available, so the About panel's
+// version/channel line AND the "update available" banner both demo with no node. The
+// version matches NODE_STATUS so the two surfaces agree.
+export const SYSTEM_INFO: SystemInfo = {
+  version: "0.7.0-rc2 (b57f327)",
+  channel: "github",
+  updateMechanism: "github",
+  updateAvailable: true,
+  latestVersion: "0.8.0",
 };
 
 // The embedded Tailscale sidecar's status — the mock shows a connected node so the
@@ -182,11 +194,19 @@ export const USERS: User[] = [
   { name: "tom", role: "admin", scopes: ["read", "operate", "admin"], passkeys: 2, lastLogin: "2026-06-08 14:02" },
 ];
 
-// Registered apps that expose a web UI (GET /api/v1/apps). The launcher lists these
-// and links to each app's reverse-proxied URL. Icons are lucide-react names; an app
-// with no icon falls back to a generic glyph in the UI.
+// Enabled, web-capable apps (GET /api/v1/apps). These become first-class left-nav entries
+// (rendered with their icon + name) AND were the old Apps-page launcher grid. Each links to
+// its reverse-proxied URL. Icons are lucide-react names; an app with no icon falls back to a
+// generic glyph. `uiMode` tells the nav how to open the app — standalone (full navigation, the
+// default), embedded (in-panel iframe of the app's own page) or slot (in-panel iframe with
+// ?pdn_embed=1 so the app renders chrome-less). `state` is the live supervisor state — the nav
+// shows a not-running warning when an enabled app is Stopped/Backoff/Faulted. WALL is a
+// standalone app running cleanly; lobby is a slot app (chrome-less, single-chrome); quiz is an
+// embedded app that is Faulted (its nav entry + its management row both warn).
 export const APPS: NodeApp[] = [
-  { id: "wall", name: "WALL", icon: "message-square", url: "/apps/wall/" },
+  { id: "wall", name: "WALL", icon: "message-square", url: "/apps/wall/", uiMode: "standalone", state: "Running" },
+  { id: "lobby", name: "LOBBY", icon: "users", url: "/apps/lobby/", uiMode: "slot", state: "Running" },
+  { id: "quiz", name: "QUIZ", icon: null, url: "/apps/quiz/", uiMode: "embedded", state: "Faulted" },
 ];
 
 // Every app package the node knows about (GET /api/v1/apps/packages) — the
@@ -215,9 +235,9 @@ export const APP_PACKAGES: AppPackage[] = [
 // no artifact for this node's architecture (installable:false → the button is disabled
 // with a hint). The api.ts mock install path returns a synthetic success.
 export const AVAILABLE_APPS: AvailableApp[] = [
-  { id: "dapps", name: "DAPPS", version: "0.34.1", description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging.", icon: "inbox", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/dapps", kind: "assets", installed: false, installedVersion: null, updateAvailable: false, installable: true },
-  { id: "bpqchat", name: "BPQ Chat", version: "0.1.0", description: "BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network.", icon: "message-square", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/pdn-bpqchat", kind: "deb", installed: true, installedVersion: "0.0.9", updateAvailable: true, installable: true },
-  { id: "convers", name: "Convers", version: "0.1.2", description: "Classic CONVERS multi-user conference bridge.", icon: "users", capabilities: ["network", "web"], homepage: "https://github.com/m0lte/pdn-convers", kind: "deb", installed: false, installedVersion: null, updateAvailable: false, installable: false },
+  { id: "dapps", name: "DAPPS", version: "0.34.1", description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging.", icon: "inbox", capabilities: ["network", "web"], homepage: "https://github.com/packet-net/dapps", kind: "assets", installed: false, installedVersion: null, updateAvailable: false, installable: true },
+  { id: "bpqchat", name: "BPQ Chat", version: "0.1.0", description: "BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network.", icon: "message-square", capabilities: ["network", "web"], homepage: "https://github.com/packet-net/pdn-bpqchat", kind: "deb", installed: true, installedVersion: "0.0.9", updateAvailable: true, installable: true },
+  { id: "convers", name: "Convers", version: "0.1.2", description: "Classic CONVERS multi-user conference bridge.", icon: "users", capabilities: ["network", "web"], homepage: "https://github.com/packet-net/pdn-convers", kind: "deb", installed: false, installedVersion: null, updateAvailable: false, installable: false },
 ];
 
 // formatters -------------------------------------------------

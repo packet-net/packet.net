@@ -15,7 +15,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <see cref="FakeTimeProvider"/> drives T1 expiries deterministically.
 /// </summary>
 /// <remarks>
-/// Phase 2 exit criterion ([#168](https://github.com/m0lte/packet.net/issues/168)):
+/// Phase 2 exit criterion ([#168](https://github.com/packet-net/packet.net/issues/168)):
 /// *"Timer Recovery entered + exited under scripted net-sim 100 % loss
 /// for (T1−1)·N2 then recovery."* These tests exercise the canonical
 /// §C4.5 cycle:

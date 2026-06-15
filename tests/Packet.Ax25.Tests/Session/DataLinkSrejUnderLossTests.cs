@@ -17,7 +17,7 @@ namespace Packet.Ax25.Tests.Session;
 /// instances exchange frames over a controllable link.
 /// </summary>
 /// <remarks>
-/// These were the tests that first surfaced m0lte/packet.net#231: retransmitted
+/// These were the tests that first surfaced packet-net/packet.net#231: retransmitted
 /// I-frames were renumbered with a fresh N(s) (the drained queue assigned
 /// N(s):=V(s)), so the peer never recognised the resend and no loss was
 /// recoverable. With the fix (retransmits emit with their original N(s)) a lost
@@ -65,7 +65,7 @@ public class DataLinkSrejUnderLossTests
     // NOTE: this variant pumps each recovery cycle to quiescence with Settle(),
     // which has NO T1 pacing — so the many T1-spaced retransmits of a real link
     // collapse into one instantaneous burst and the trace looks like a retransmit
-    // storm (m0lte/packet.net#233). It still recovers correctly. The T1-PACED
+    // storm (packet-net/packet.net#233). It still recovers correctly. The T1-PACED
     // companion Srej_under_loss_converges_under_T1_pacing_no_storm proves the
     // storm is a Settle artifact, not a recovery defect; and
     // Srej_response_drives_single_frame_selective_retransmit_on_the_wire proves
@@ -116,7 +116,7 @@ public class DataLinkSrejUnderLossTests
         rig.A.Context.VA.Should().Be((byte)4, "every I-frame must end acknowledged");
     }
 
-    // m0lte/packet.net#233 (a): the SREJ-selective quirk genuinely ENGAGES
+    // packet-net/packet.net#233 (a): the SREJ-selective quirk genuinely ENGAGES
     // end-to-end. Drive A into TimerRecovery, deliver EXACTLY ONE SREJ(nr=1)
     // response, and swallow A's reply before B can feed back more SREJs, so we
     // observe only the frames A puts on the wire in *direct* response to that one
@@ -143,7 +143,7 @@ public class DataLinkSrejUnderLossTests
         rig.A.Context.VA.Should().Be((byte)1, "the SREJ N(r)=1 acks through frame 0; V(a) advances to 1");
     }
 
-    // m0lte/packet.net#234: SREJ-as-COMMAND under Default retransmits nothing.
+    // packet-net/packet.net#234: SREJ-as-COMMAND under Default retransmits nothing.
     // §4.3.2.4 ("The SREJ frame is only sent as a response") makes SREJ
     // response-only; direwolf omits the command path entirely (src/ax25_link.c
     // srej_frame: "Command path has been omitted because SREJ can only be
@@ -176,7 +176,7 @@ public class DataLinkSrejUnderLossTests
                 : "an SREJ COMMAND is response-only per §4.3.2.4 — Default retransmits nothing (matches direwolf/linbpq)");
     }
 
-    // m0lte/packet.net#233 (b)+(c): the same recovery as
+    // packet-net/packet.net#233 (b)+(c): the same recovery as
     // Srej_under_loss_recovers_from_TimerRecovery_with_default_quirk, but driven
     // with T1 PACING — advance the FakeTimeProvider one T1 interval per round and
     // process only the frames already on the wire (DrainOnce), instead of pumping

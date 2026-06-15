@@ -249,7 +249,7 @@ public sealed class Ax25Session
     /// figc4.3's I-frame path the <c>LM-SEIZE Request</c> action runs
     /// <em>before</em> <c>Set Ack Pending</c>, so an inline confirm would
     /// match the no-ack-pending branch and silently drop the delayed ack
-    /// (m0lte/packet.net#327). If a dispatch throws, any not-yet-dispatched
+    /// (packet-net/packet.net#327). If a dispatch throws, any not-yet-dispatched
     /// deferred events are dropped — consistent with the #225 contract where a
     /// failed transition keeps the session alive and leaves recovery to
     /// T1/N2 rather than running follow-on work against half-applied state.
@@ -355,7 +355,7 @@ public sealed class Ax25Session
             // the pre-transition timers so a half-applied transition can't leave
             // the link watchdog (T1) cancelled and the session silently wedged —
             // it stays live so T1 / N2 drive recovery or a clean disconnect.
-            // CurrentState is only advanced on success. (m0lte/packet.net#225)
+            // CurrentState is only advanced on success. (packet-net/packet.net#225)
             var timerState = scheduler.CaptureState();
             var vaBefore = Context.VA;
             try

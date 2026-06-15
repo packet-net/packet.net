@@ -1,6 +1,6 @@
 [Unit]
 Description=Packet.NET node host (packetnet / pdn)
-Documentation=https://github.com/m0lte/packet.net
+Documentation=https://github.com/packet-net/packet.net
 After=network-online.target
 Wants=network-online.target
 
@@ -23,6 +23,11 @@ StateDirectory=packetnet
 # under ProtectSystem=strict; pdn-supervised app daemons inherit the sandbox, so
 # without this the socket path could never be bound.
 RuntimeDirectory=packetnet
+# Keep /run/packetnet across a restart. The in-app self-update (Phase 7) stages its request
+# here (update.channel + github-update.json) for the privileged packetnet-update.service
+# oneshot to read, and the update RESTARTS this very service — without preserve, systemd would
+# remove /run/packetnet on stop and the oneshot could lose the spool mid-update.
+RuntimeDirectoryPreserve=yes
 
 # The single-file self-contained binary extracts native libs at startup, and
 # .NET puts HOME-based state (data-protection keys etc.) under HOME. Both must

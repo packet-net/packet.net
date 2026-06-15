@@ -324,7 +324,9 @@ public static class PdnAppPackagesApi
             Version: manifest?.Version,
             Description: manifest?.Description,
             Icon: manifest?.Icon,
-            Capabilities: manifest?.Capabilities ?? [],
+            // Display-normalise capabilities (network → packet) for the trust prompt; the
+            // manifest's raw spelling is accepted on input (back-compat alias).
+            Capabilities: AppCapabilities.NormalizeAll(manifest?.Capabilities),
             Enabled: package.Enabled,
             Source: "package",
             Error: package.Error,
@@ -342,7 +344,8 @@ public static class PdnAppPackagesApi
         Version: null,
         Description: null,
         Icon: inline.Ui?.Icon,
-        Capabilities: inline.Capabilities,
+        // Display-normalise capabilities (network → packet) — same trust-prompt rule as packages.
+        Capabilities: AppCapabilities.NormalizeAll(inline.Capabilities),
         Enabled: inline.Enabled,
         Source: "inline",
         Error: null,

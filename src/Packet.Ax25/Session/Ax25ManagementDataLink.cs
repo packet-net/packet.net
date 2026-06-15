@@ -41,7 +41,7 @@ namespace Packet.Ax25.Session;
 /// The figc5.3–figc5.8 per-parameter "reverts-to" subroutines are collapsed in
 /// the SDL to a single <c>Apply Negotiated Parameters</c> placeholder; its
 /// runtime body lives in <see cref="XidNegotiator"/>. See the
-/// management-data-link YAML headers in m0lte/ax25sdl and §5.Z of docs/plan.md.
+/// management-data-link YAML headers in packet-net/ax25sdl and §5.Z of docs/plan.md.
 /// </para>
 /// </remarks>
 public sealed class Ax25ManagementDataLink

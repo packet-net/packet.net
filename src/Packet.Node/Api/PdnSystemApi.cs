@@ -33,7 +33,11 @@ namespace Packet.Node.Api;
 public static class PdnSystemApi
 {
     private const string AuditCategory = "Packet.Node.System";
-    private static readonly string NodeVersion = ResolveVersion();
+
+    /// <summary>The running version — resolved from the assembly informational version, build
+    /// metadata stripped. Exposed so the composition root seeds <see cref="ISystemVersionService"/>
+    /// with the same string the API reports.</summary>
+    public static string NodeVersion { get; } = ResolveVersion();
 
     /// <summary>Map the system endpoints. Called from the composition root before the SPA
     /// fallback (the specific <c>/api/v1/*</c> routes win over the catch-all).</summary>
@@ -42,13 +46,21 @@ public static class PdnSystemApi
         ArgumentNullException.ThrowIfNull(app);
         var system = app.MapGroup("/api/v1/system");
 
-        // Version + channel + what an update would do. Read scope (no-op when auth is off).
-        system.MapGet("/info", (IInstallChannelProvider channel) =>
-            Results.Ok(new SystemInfoResponse(
-                Version: NodeVersion,
+        // Version + channel + what an update would do + whether one's available. Read scope.
+        // updateAvailable/latestVersion come from ISystemVersionService — a cached, TTL-refreshed
+        // snapshot of the per-channel check (apt-cache policy / GitHub Releases API / latest.json),
+        // so /info stays an in-memory read and never blocks on the network. The check is total:
+        // offline / missing tool / API error → the safe default (updateAvailable:false).
+        system.MapGet("/info", (IInstallChannelProvider channel, ISystemVersionService versions) =>
+        {
+            var availability = versions.GetAvailabilitySnapshot();
+            return Results.Ok(new SystemInfoResponse(
+                Version: versions.Version,
                 Channel: ChannelName(channel.Channel),
-                UpdateMechanism: MechanismName(channel.Channel))))
-            .RequireAuthorization(PdnAuthPolicies.Read);
+                UpdateMechanism: MechanismName(channel.Channel),
+                UpdateAvailable: availability.UpdateAvailable,
+                LatestVersion: availability.LatestVersion));
+        }).RequireAuthorization(PdnAuthPolicies.Read);
 
         // The embedded Tailscale sidecar's live status (network-access.md § Status readback):
         // state, the assigned FQDN, any pending interactive-login URL, and the configured
@@ -72,6 +84,7 @@ public static class PdnSystemApi
             HttpContext http,
             IInstallChannelProvider channel,
             ISystemUpdateLauncher launcher,
+            GithubUpdateRequestBuilder githubRequests,
             IAuditLog auditLog,
             TimeProvider clock,
             ILoggerFactory logs) =>
@@ -85,12 +98,30 @@ public static class PdnSystemApi
             // whole node, so it belongs in the durable §6 record, not just the structured log.
             auditLog.RecordRest(http, clock, "system_update", ChannelName(ch), "requested", "");
 
-            // apt + self-contained both dispatch the same packetnet-update.service oneshot
-            // (its helper body differs per install); only an unknown channel declines.
-            if (ch is InstallChannel.Apt or InstallChannel.SelfContained)
+            // apt + github + self-contained all dispatch the same packetnet-update.service
+            // oneshot (its helper body differs per install); only an unknown channel declines.
+            if (ch is InstallChannel.Apt or InstallChannel.Github or InstallChannel.SelfContained)
             {
                 var via = ChannelName(ch);
-                var result = await launcher.StartUpdateAsync(http.RequestAborted).ConfigureAwait(false);
+
+                // The github channel needs a validated download request resolved first (latest
+                // release → per-arch .deb URL → expected sha256 from SHA256SUMS, all over HTTPS).
+                // If we can't build one (offline / no release / unsupported arch), decline rather
+                // than launch a helper with nothing to apply.
+                GithubUpdateRequest? githubReq = null;
+                if (ch is InstallChannel.Github)
+                {
+                    githubReq = await githubRequests.BuildAsync(http.RequestAborted).ConfigureAwait(false);
+                    if (githubReq is null)
+                    {
+                        return Declined(audit, via, "github-no-release", user, ip,
+                            StatusCodes.Status409Conflict,
+                            "Could not resolve a GitHub release to install (offline, no release, or an unsupported architecture).");
+                    }
+                }
+
+                var request = new SystemUpdateRequest(via, githubReq);
+                var result = await launcher.StartUpdateAsync(request, http.RequestAborted).ConfigureAwait(false);
                 return result.Outcome switch
                 {
                     UpdateLaunchOutcome.Started => Started(audit, via, user, ip),
@@ -110,9 +141,12 @@ public static class PdnSystemApi
     private static IResult Started(ILogger audit, string via, string user, string ip)
     {
         SystemLog.UpdateStarted(audit, via, user, ip);
-        var what = via == "apt"
-            ? "A targeted apt upgrade is running"
-            : "A self-contained update is downloading";
+        var what = via switch
+        {
+            "apt" => "A targeted apt upgrade is running",
+            "github" => "A GitHub-release update is downloading",
+            _ => "A self-contained update is downloading",
+        };
         return Results.Json(
             new UpdateStartedResponse("started", via,
                 $"{what}; the node will restart. Poll /api/v1/system/info until the version changes."),
@@ -131,10 +165,12 @@ public static class PdnSystemApi
         return Results.Problem($"Could not start the update: {detail}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
+    // The wire channel name — the shared API contract: "apt" | "github" | "selfcontained" | "unknown".
     private static string ChannelName(InstallChannel c) => c switch
     {
         InstallChannel.Apt => "apt",
-        InstallChannel.SelfContained => "self-contained",
+        InstallChannel.Github => "github",
+        InstallChannel.SelfContained => "selfcontained",
         _ => "unknown",
     };
 
@@ -142,7 +178,8 @@ public static class PdnSystemApi
     private static string MechanismName(InstallChannel c) => c switch
     {
         InstallChannel.Apt => "apt",
-        InstallChannel.SelfContained => "self-contained",
+        InstallChannel.Github => "github",
+        InstallChannel.SelfContained => "selfcontained",
         _ => "none",
     };
 
@@ -167,11 +204,16 @@ public static class PdnSystemApi
     }
 }
 
-/// <summary>The node's version, install channel, and what an update would do.</summary>
+/// <summary>The node's version, install channel, and what an update would do (the shared
+/// <c>GET /api/v1/system/info</c> contract the web UI consumes).</summary>
 /// <param name="Version">The running node version (assembly informational version, build-metadata stripped).</param>
-/// <param name="Channel">The install channel: <c>apt</c> / <c>self-contained</c> / <c>unknown</c>.</param>
-/// <param name="UpdateMechanism">What <c>POST /system/update</c> does here: <c>apt</c> / <c>self-contained</c> / <c>none</c>.</param>
-public sealed record SystemInfoResponse(string Version, string Channel, string UpdateMechanism);
+/// <param name="Channel">The install channel: <c>apt</c> / <c>github</c> / <c>selfcontained</c> / <c>unknown</c>.</param>
+/// <param name="UpdateMechanism">What <c>POST /system/update</c> does here: <c>apt</c> / <c>github</c> / <c>selfcontained</c> / <c>none</c>.</param>
+/// <param name="UpdateAvailable">Whether a newer version is known to be available (the per-channel
+/// available-version check; reports <c>false</c> until that check ships).</param>
+/// <param name="LatestVersion">The latest known version when <paramref name="UpdateAvailable"/>, else <c>null</c>.</param>
+public sealed record SystemInfoResponse(
+    string Version, string Channel, string UpdateMechanism, bool UpdateAvailable, string? LatestVersion);
 
 /// <summary>Acknowledgement that a detached update job was dispatched (the node will restart).</summary>
 /// <param name="Status">Always <c>started</c>.</param>

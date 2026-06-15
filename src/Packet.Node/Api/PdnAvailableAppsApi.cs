@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
@@ -25,9 +26,15 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Scopes.</b> Listing the catalog is <c>read</c>; installing is <c>admin</c> and audited —
-/// fetching+staging an app's bytes is a privileged action, the same gate enable carries. (Install
-/// still lands a <i>disabled</i> package: install ≠ enable. The owner's separate enable grant is
-/// what runs the code.)
+/// fetching+staging an app's bytes is a privileged action, the same gate enable carries. A
+/// <i>fresh</i> install still lands a <i>disabled</i> package: install ≠ enable, the owner's
+/// separate enable grant is what first runs the code. An <i>update</i> of an app the owner has
+/// already enabled is different: the installer re-lays the payload but the supervisor only
+/// restarts on a changed spawn fingerprint (command/args/cwd/env) — a version bump changes none
+/// of those, so the new binary would not run until a manual restart. So after a successful
+/// install of an already-enabled, pdn-managed, error-free package this endpoint drives
+/// <see cref="IAppServiceSupervisor.RestartAsync"/> so the freshly-laid binary takes over (a
+/// best-effort step: a restart failure never demotes a committed install to a failure).
 /// </para>
 /// <para>
 /// <b>Total at the client edge.</b> The installer never throws to the caller — failures come back
@@ -61,10 +68,15 @@ public static class PdnAvailableAppsApi
         // Install (or update) a catalog entry for this box's runtime. Admin + audited:
         // fetching+staging bytes is a privileged action. 404 unknown id; 409 not-installable
         // (no artifact for this RID); 422 on an installer failure (sha mismatch, unreachable
-        // host, …). On success the package appears discovered-but-DISABLED — the owner's
-        // separate enable grant is what runs it.
+        // host, …). On a FRESH install the package appears discovered-but-DISABLED — the owner's
+        // separate enable grant is what runs it. On an UPDATE of an app the owner has already
+        // enabled, we drive the supervisor's RestartAsync so the freshly-laid binary actually
+        // takes over (the spawn fingerprint is unchanged by a version bump, so a plain reconcile
+        // would keep the old process alive). The restart is best-effort: the payload is already
+        // committed, so a restart failure stays a 200 with restarted=false.
         group.MapPost("/{id}/install",
             async (string id, HttpContext ctx, IAppCatalog catalog, IAppInstaller installer,
+                IConfigProvider config, IAppPackageCatalog packages, IServiceProvider services,
                 IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
             {
                 audit.RecordRest(ctx, clock, "install_app", id, "requested", "");
@@ -85,10 +97,87 @@ public static class PdnAvailableAppsApi
                 }
 
                 var outcome = await installer.InstallFromCatalogAsync(entry, ct).ConfigureAwait(false);
-                return outcome.Ok
-                    ? Results.Ok(outcome)
-                    : Results.UnprocessableEntity(new { ok = false, id = outcome.Id, error = outcome.Error });
+                if (!outcome.Ok)
+                {
+                    return Results.UnprocessableEntity(new { ok = false, id = outcome.Id, error = outcome.Error });
+                }
+
+                // The payload is committed. If this id is now an enabled, pdn-managed, error-free
+                // package, the running daemon is still the OLD binary (same spawn fingerprint), so
+                // bounce it onto the new bits. A fresh install lands DISABLED and skips this.
+                var restarted = await TryRestartIfEnabledAsync(
+                    outcome.Id, config, packages, services, ctx, audit, clock, ct).ConfigureAwait(false);
+                return Results.Ok(new
+                {
+                    ok = outcome.Ok,
+                    id = outcome.Id,
+                    version = outcome.Version,
+                    restarted,
+                });
             }).RequireAuthorization(PdnAuthPolicies.Admin);
+    }
+
+    /// <summary>
+    /// After a committed install/update, re-discover the package and — only if it is currently
+    /// <b>enabled</b>, <b>pdn-managed</b> (<see cref="AppServiceManaged.Pdn"/>), and
+    /// <b>error-free</b> — drive the supervisor's <see cref="IAppServiceSupervisor.RestartAsync"/>
+    /// so the freshly-laid binary replaces the still-running old one. (A version bump leaves the
+    /// spawn fingerprint unchanged, so a plain reconcile would never swap the process — the
+    /// restart is the only thing that picks up the new bits.) Returns whether the service was
+    /// restarted.
+    /// </summary>
+    /// <remarks>
+    /// Total and best-effort by design: the payload is already committed before this runs, so a
+    /// missing supervisor, a disabled/unmanaged/broken package, or any restart failure must NOT
+    /// turn a successful install into a failure — each just yields <c>false</c> and an audit line.
+    /// Synchronous within the request so the response reflects the final state (the UI shows a
+    /// spinner during install, so the extra couple of seconds is acceptable).
+    /// </remarks>
+    private static async Task<bool> TryRestartIfEnabledAsync(
+        string id, IConfigProvider config, IAppPackageCatalog packages, IServiceProvider services,
+        HttpContext ctx, IAuditLog audit, TimeProvider clock, CancellationToken ct)
+    {
+        var package = packages.Discover(config.Current)
+            .FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+
+        // A fresh install lands disabled (install ≠ enable); a broken or non-pdn-managed package
+        // has no daemon for pdn to bounce. In every such case there is nothing to restart.
+        if (package is null
+            || !package.Enabled
+            || package.Error is not null
+            || package.Manifest?.Service is not { Managed: AppServiceManaged.Pdn })
+        {
+            return false;
+        }
+
+        var supervisor = services.GetService<IAppServiceSupervisor>();
+        if (supervisor is null)
+        {
+            // A degraded boot / test host without the supervisor: the install stands; the new
+            // binary runs whenever the supervisor next reconciles this enabled package.
+            audit.RecordRest(ctx, clock, "restart_app", id, "error", "supervisor not running");
+            return false;
+        }
+
+        try
+        {
+            await supervisor.RestartAsync(id, ct).ConfigureAwait(false);
+            audit.RecordRest(ctx, clock, "restart_app", id, "ok", "after install/update");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Never demote a committed install to a failure on a restart hiccup (the supervisor's
+            // own refusal, a spawn fault, …). Surface restarted=false + an audit line; the owner
+            // can restart manually from the package row.
+            var logger = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(PdnAvailableAppsApi).FullName!);
+            if (logger is not null)
+            {
+                AvailableAppsLog.PostInstallRestartFailed(logger, ex, id);
+            }
+            audit.RecordRest(ctx, clock, "restart_app", id, "error", ex.Message);
+            return false;
+        }
     }
 
     /// <summary>Project one catalog entry with the node's installed-state view.</summary>
@@ -119,7 +208,9 @@ public static class PdnAvailableAppsApi
             Version: entry.Version ?? "",
             Description: entry.Description,
             Icon: entry.Icon,
-            Capabilities: entry.Capabilities,
+            // Display-normalise capabilities (network → packet) for the install trust prompt;
+            // the catalog's raw spelling round-trips, the surfaced label is the new one.
+            Capabilities: AppCapabilities.NormalizeAll(entry.Capabilities),
             Homepage: entry.Homepage,
             Kind: KindName(entry.Artifact?.Kind),
             Installed: installed,

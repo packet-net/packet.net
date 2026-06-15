@@ -47,9 +47,9 @@ namespace Packet.Interop.Tests.Hardware;
 /// for the slower modes whose longer airtime increases per-frame
 /// exposure. Each wire dropout hits the same upstream SDL gaps as
 /// the scripted-loss path — both
-/// <a href="https://github.com/m0lte/ax25sdl/issues/44">ax25sdl#44</a>
+/// <a href="https://github.com/packet-net/ax25sdl/issues/44">ax25sdl#44</a>
 /// (<c>Invoke_Retransmission</c> single-iteration) and
-/// <a href="https://github.com/m0lte/ax25sdl/issues/43">ax25sdl#43</a>
+/// <a href="https://github.com/packet-net/ax25sdl/issues/43">ax25sdl#43</a>
 /// (<c>Enquiry_Response</c> doesn't set <c>F := 1</c>) — so the
 /// no-loss matrix is best-effort: each entry passes in the normal
 /// case, but a wire dropout during the ~60 s transfer can stall the
@@ -128,7 +128,7 @@ public class HardwareLoop10KBTransfer
     /// SREJ / 30 % rows once that is fixed.
     /// </para>
     /// <para>
-    /// Tracker: <see href="https://github.com/m0lte/packet.net/issues/214"/>.
+    /// Tracker: <see href="https://github.com/packet-net/packet.net/issues/214"/>.
     /// </para>
     /// </remarks>
     [SkippableTheory]

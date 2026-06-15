@@ -89,7 +89,7 @@ public class DataLinkConnectedRetransmitTests
         // Doesn't need network simulation — just craft the REJ frame and
         // post it. Asserts the runtime applies V(a) := N(r) and stays in
         // Connected (no Invoke_Retransmission semantics asserted here;
-        // see m0lte/ax25sdl#44).
+        // see packet-net/ax25sdl#44).
         var rig = BuildPair();
         Connect(rig);
 
@@ -116,7 +116,7 @@ public class DataLinkConnectedRetransmitTests
     [Fact]
     public void Invoke_Retransmission_Resends_Every_Unacked_Frame_With_Its_Original_Ns()
     {
-        // Regression for ax25sdl#44 (loop recovery) AND m0lte/packet.net#231
+        // Regression for ax25sdl#44 (loop recovery) AND packet-net/packet.net#231
         // (retransmit renumbering): the figc4.7 retransmit loop must resend
         // every unacked frame from N(r) up to X (= the saved V(s)) — and each
         // must go out with its ORIGINAL N(s), not a fresh V(s)-derived one.

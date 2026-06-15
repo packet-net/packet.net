@@ -197,11 +197,11 @@ public class Ax25AdapterTests
     }
 
     /// <summary>
-    /// m0lte/packet.net#327, adapter construction site: an I-frame received
+    /// packet-net/packet.net#327, adapter construction site: an I-frame received
     /// while the session has no reply data must still elicit the figc4.x
     /// delayed-ack RR. The adapter's <c>sendLinkMux</c> grants the SDL's
     /// <c>LM-SEIZE Request</c> by posting <c>LM-SEIZE Confirm</c> back —
-    /// deferred by the §6.7.1.2 T2 acknowledge delay (m0lte/packet.net#385),
+    /// deferred by the §6.7.1.2 T2 acknowledge delay (packet-net/packet.net#385),
     /// so nothing flushes until T2 expires; t22 then sends the RR via
     /// <c>Enquiry Response (F=0)</c> with the then-current V(R). The
     /// listener-site equivalent lives in <c>Ax25ListenerDelayedAckTests</c>.

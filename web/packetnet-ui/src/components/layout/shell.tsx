@@ -2,13 +2,14 @@
 // Ported from the handoff ui.jsx Shell; wired to react-router (NavLink/Outlet)
 // and the live NodeStatus for the topbar.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Icon, type IconName } from "@/components/icon";
+import { Icon, AppIcon, type IconName } from "@/components/icon";
 import { Button } from "@/components/ui";
 import { useAuth } from "@/app/auth";
 import { api, useQuery } from "@/lib/api";
 import { fmtUptime } from "@/lib/mock";
+import { isAppNotRunning } from "@/lib/types";
 
 export const NAV: { id: string; to: string; label: string; icon: IconName }[] = [
   { id: "dashboard", to: "/", label: "Dashboard", icon: "dashboard" },
@@ -77,6 +78,76 @@ function UserMenu() {
   );
 }
 
+// The dynamic "Apps" nav group: each enabled, web-capable app the node publishes
+// (GET /api/v1/apps) becomes a first-class nav entry below the core items, rendered with
+// its manifest icon + name. How clicking one opens the app depends on the app's `uiMode`:
+//   - standalone → a FULL navigation to the app's own reverse-proxied UI at /apps/{id}/ — an
+//     absolute same-origin server route OUTSIDE the SPA router — so a plain <a href>
+//     (target="_self"), NOT a react-router <Link>. The historical behaviour.
+//   - embedded / slot → an in-panel SPA route /apps/{id} (handled by <AppFrame>) that renders
+//     the panel shell around a borderless iframe of the app — so a react-router <Link>.
+// An enabled app whose service isn't running (Stopped/Backoff/Faulted) carries a warning glyph
+// (the feed lists only enabled apps, so isAppNotRunning(state) IS the not-running condition).
+// Empty/erroring feeds render nothing — the group only appears when there is at least one app.
+const APP_NAV_CLASS =
+  "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+
+function AppNav({ onNavigate }: { onNavigate: () => void }) {
+  const { data } = useQuery(api.apps, []);
+  const apps = data ?? [];
+  if (apps.length === 0) return null;
+  return (
+    <div className="pt-3" data-testid="app-nav">
+      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Apps</p>
+      {apps.map((app) => {
+        const warn = isAppNotRunning(app.state);
+        // The shared row content — icon + name + the optional not-running warning glyph.
+        const content = (
+          <>
+            <AppIcon name={app.icon} size={17} />
+            <span className="min-w-0 flex-1 truncate">{app.name}</span>
+            {warn && (
+              <span
+                data-warning="not-running"
+                title="This app is enabled but not running"
+                className="shrink-0 text-warning"
+              >
+                <Icon name="alert" size={14} />
+              </span>
+            )}
+          </>
+        );
+        // embedded/slot render in-panel → a SPA <Link> to /apps/{id}. standalone is a full
+        // navigation to the reverse-proxied page → a plain <a> (target="_self" keeps this tab).
+        return app.uiMode === "embedded" || app.uiMode === "slot" ? (
+          <Link
+            key={app.id}
+            to={`/apps/${app.id}`}
+            data-app-nav={app.id}
+            data-ui-mode={app.uiMode}
+            onClick={onNavigate}
+            className={APP_NAV_CLASS}
+          >
+            {content}
+          </Link>
+        ) : (
+          <a
+            key={app.id}
+            href={app.url}
+            target="_self"
+            data-app-nav={app.id}
+            data-ui-mode={app.uiMode}
+            onClick={onNavigate}
+            className={APP_NAV_CLASS}
+          >
+            {content}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Shell() {
   const [mobileNav, setMobileNav] = useState(false);
   const { data: status } = useQuery(api.status, []);
@@ -96,6 +167,7 @@ export function Shell() {
               {item.label}
             </NavLink>
           ))}
+          <AppNav onNavigate={() => setMobileNav(false)} />
         </nav>
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground">

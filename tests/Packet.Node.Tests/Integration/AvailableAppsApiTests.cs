@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Packet.Node.Core.Applications.Catalog;
+using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
 
 namespace Packet.Node.Tests.Integration;
@@ -43,6 +44,15 @@ public sealed class AvailableAppsApiTests : IDisposable
 
         // convers is NOT installed (no dir) → installed=false in the join.
 
+        // svc: a pdn-managed, service-bearing package, installed AND enabled (the apps: override
+        // below). Updating it must bounce the running daemon onto the new binary, since a version
+        // bump leaves the spawn fingerprint unchanged.
+        WriteServicePackage("svc");
+
+        // svcoff: the same shape but NOT enabled (no apps: override). Installing/updating it lands
+        // the bits and runs nothing — there is no daemon to restart.
+        WriteServicePackage("svcoff");
+
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, $"""
             schemaVersion: 1
@@ -55,6 +65,9 @@ public sealed class AvailableAppsApiTests : IDisposable
               http:
                 bind: 127.0.0.1
                 port: 8080
+            apps:
+              - id: svc
+                enabled: true
             appPackageRoots:
               - {packagesRoot}
             """);
@@ -81,6 +94,26 @@ public sealed class AvailableAppsApiTests : IDisposable
         }
     }
 
+    /// <summary>A discoverable, error-free package declaring a pdn-managed <c>service:</c> block
+    /// (never actually spawned — the supervisor is faked). The whole point of the restart-on-update
+    /// path: a service-bearing app whose binary must be swapped under a still-running daemon.</summary>
+    private void WriteServicePackage(string id)
+    {
+        var pkgDir = Path.Combine(packagesRoot, id);
+        Directory.CreateDirectory(pkgDir);
+        File.WriteAllText(Path.Combine(pkgDir, AppInstaller.ManifestFileName), $"""
+            manifest: 1
+            id: {id}
+            name: {id}
+            version: "1.0.0"
+            capabilities: [network]
+            service:
+              command: /bin/sh
+              args: [run.sh]
+              restart: never
+            """);
+    }
+
     /// <summary>The catalog the API reads: dapps (assets, installable on x64), bpqchat (deb),
     /// convers (deb, NOT installed), and noarch (assets but with NO binary for any RID → not
     /// installable). Versions are the curated release tags.</summary>
@@ -94,7 +127,7 @@ public sealed class AvailableAppsApiTests : IDisposable
             Description = "Store-and-forward messaging.",
             Icon = "inbox",
             Capabilities = ["network", "web"],
-            Homepage = "https://github.com/m0lte/dapps",
+            Homepage = "https://github.com/packet-net/dapps",
             Artifact = new ArtifactSpec
             {
                 Kind = ArtifactKind.Assets,
@@ -165,7 +198,34 @@ public sealed class AvailableAppsApiTests : IDisposable
                 },
             },
         },
+        // svc / svcoff: pdn-managed, service-bearing apps that exist on disk (svc enabled, svcoff
+        // disabled). Catalog version 2.0.0 (an "update" over the installed 1.0.0) — installable on
+        // every RID so the test runs on any CI box.
+        ServiceCatalogEntry("svc"),
+        ServiceCatalogEntry("svcoff"),
     ];
+
+    private static AppCatalogEntry ServiceCatalogEntry(string id) => new()
+    {
+        Id = id,
+        Name = id,
+        Version = "2.0.0",
+        Capabilities = ["network"],
+        Artifact = new ArtifactSpec
+        {
+            Kind = ArtifactKind.Assets,
+            Assets = new AssetsArtifact
+            {
+                Manifest = new ArtifactRef { Url = "https://example.invalid/pdn-app.yaml", Sha256 = new string('a', 64) },
+                Binaries = new Dictionary<string, BinaryRef>
+                {
+                    ["linux-x64"] = new() { Url = "https://example.invalid/" + id + "-x64", Sha256 = new string('b', 64), Dest = id, Mode = "0755" },
+                    ["linux-arm64"] = new() { Url = "https://example.invalid/" + id + "-arm64", Sha256 = new string('c', 64), Dest = id, Mode = "0755" },
+                    ["linux-arm"] = new() { Url = "https://example.invalid/" + id + "-arm", Sha256 = new string('d', 64), Dest = id, Mode = "0755" },
+                },
+            },
+        },
+    };
 
     /// <summary>A fixed catalog seam returning <see cref="CatalogEntries"/>.</summary>
     private sealed class FakeCatalog : IAppCatalog
@@ -205,7 +265,36 @@ public sealed class AvailableAppsApiTests : IDisposable
             Markers.TryGetValue(id, out var m) ? m : null;
     }
 
-    private sealed class NodeAppFactory(FakeInstaller installer) : WebApplicationFactory<Program>
+    /// <summary>A controllable supervisor stand-in: records the ids it was asked to restart and
+    /// can be told to refuse a restart (the post-install bounce must swallow that and still report
+    /// install success). The real supervisor would actually spawn daemons from the temp root.</summary>
+    private sealed class FakeSupervisor : IAppServiceSupervisor
+    {
+        public List<string> Restarted { get; } = [];
+        public Exception? ThrowOnRestart { get; set; }
+
+        public IReadOnlyList<AppServiceStatus> Statuses => [];
+
+        public Task ReconcileAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RestartAsync(string id, CancellationToken cancellationToken = default)
+        {
+            if (ThrowOnRestart is not null)
+            {
+                throw ThrowOnRestart;
+            }
+            Restarted.Add(id);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Boots the node with the catalog + installer seams faked, and — when
+    /// <paramref name="supervisor"/> is supplied — the supervisor swapped too (so the post-install
+    /// restart drives the fake instead of the real one, which would spawn from the temp root). A
+    /// null supervisor removes the registration entirely (the degraded-host path the install must
+    /// tolerate without failing).</summary>
+    private sealed class NodeAppFactory(FakeInstaller installer, FakeSupervisor? supervisor = null, bool removeSupervisor = false)
+        : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -215,6 +304,15 @@ public sealed class AvailableAppsApiTests : IDisposable
                 services.AddSingleton<IAppCatalog>(new FakeCatalog());
                 services.RemoveAll<IAppInstaller>();
                 services.AddSingleton<IAppInstaller>(installer);
+                if (supervisor is not null)
+                {
+                    services.RemoveAll<IAppServiceSupervisor>();
+                    services.AddSingleton<IAppServiceSupervisor>(supervisor);
+                }
+                else if (removeSupervisor)
+                {
+                    services.RemoveAll<IAppServiceSupervisor>();
+                }
             });
         }
     }
@@ -248,8 +346,10 @@ public sealed class AvailableAppsApiTests : IDisposable
         dapps.GetProperty("name").GetString().Should().Be("DAPPS");
         dapps.GetProperty("version").GetString().Should().Be("0.34.1");
         dapps.GetProperty("kind").GetString().Should().Be("assets");
+        // The API display-normalises the catalog's `network` declaration to `packet` (the
+        // back-compat rename) — the raw catalog entry still says network; the wire says packet.
         dapps.GetProperty("capabilities").EnumerateArray().Select(c => c.GetString())
-            .Should().Equal("network", "web");
+            .Should().Equal("packet", "web");
         dapps.GetProperty("installed").GetBoolean().Should().BeTrue();
         dapps.GetProperty("installedVersion").GetString().Should().Be("0.34.1");
         dapps.GetProperty("updateAvailable").GetBoolean().Should().BeFalse();
@@ -363,6 +463,123 @@ public sealed class AvailableAppsApiTests : IDisposable
         var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
         body.GetProperty("ok").GetBoolean().Should().BeFalse();
         body.GetProperty("error").GetString().Should().Contain("mismatch");
+    }
+
+    // --- restart-on-update (an enabled, pdn-managed app) -------------------------------------
+
+    [Fact]
+    public async Task Update_of_an_enabled_managed_app_restarts_it_so_the_new_binary_runs()
+    {
+        // svc is on disk, pdn-managed, and enabled (the apps: override). A version bump leaves the
+        // spawn fingerprint unchanged, so without this the old process would keep running — the
+        // endpoint must drive the supervisor's RestartAsync after the committed install.
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("svc", "2.0.0") };
+        var supervisor = new FakeSupervisor();
+        await using var factory = new NodeAppFactory(installer, supervisor);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/available/svc/install", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeTrue();
+        body.GetProperty("id").GetString().Should().Be("svc");
+        body.GetProperty("restarted").GetBoolean().Should().BeTrue();
+
+        installer.Installed.Should().Equal("svc");
+        supervisor.Restarted.Should().Equal("svc");
+    }
+
+    [Fact]
+    public async Task Install_of_a_disabled_managed_app_does_not_restart_anything()
+    {
+        // svcoff is on disk and pdn-managed but NOT enabled (no apps: override) → install lands the
+        // bits and runs nothing, so there is no daemon to bounce. restarted must be false.
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("svcoff", "2.0.0") };
+        var supervisor = new FakeSupervisor();
+        await using var factory = new NodeAppFactory(installer, supervisor);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/available/svcoff/install", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeTrue();
+        body.GetProperty("restarted").GetBoolean().Should().BeFalse();
+
+        installer.Installed.Should().Equal("svcoff");
+        supervisor.Restarted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Update_of_an_enabled_non_service_app_does_not_restart()
+    {
+        // dapps is enabled in neither config nor — more to the point — has no service: block, so
+        // there is no pdn-managed daemon. Updating it must not attempt a restart.
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("dapps", "0.35.0") };
+        var supervisor = new FakeSupervisor();
+        await using var factory = new NodeAppFactory(installer, supervisor);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/available/dapps/install", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("restarted").GetBoolean().Should().BeFalse();
+        supervisor.Restarted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_restart_failure_does_not_demote_a_committed_install_to_a_failure()
+    {
+        // The payload is already committed when the restart runs — a supervisor refusal (or any
+        // throw) must stay a 200 install success with restarted=false, never a 422.
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("svc", "2.0.0") };
+        var supervisor = new FakeSupervisor
+        {
+            ThrowOnRestart = new InvalidOperationException("service 'svc' is not in the desired set"),
+        };
+        await using var factory = new NodeAppFactory(installer, supervisor);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/available/svc/install", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        body.GetProperty("ok").GetBoolean().Should().BeTrue();
+        body.GetProperty("restarted").GetBoolean().Should().BeFalse();
+        installer.Installed.Should().Equal("svc");
+
+        // The failed restart is audited (error outcome) — the install audit line stays too.
+        var audit = factory.Services.GetRequiredService<IAuditLog>().Recent(50);
+        audit.Should().Contain(e => e.Action == "install_app" && e.Target == "svc");
+        audit.Should().Contain(e => e.Action == "restart_app" && e.Target == "svc" && e.Outcome == "error");
+    }
+
+    [Fact]
+    public async Task An_update_with_no_supervisor_wired_still_succeeds_without_a_restart()
+    {
+        // A degraded boot with no supervisor: the install stands (the new binary runs on the next
+        // reconcile). restarted=false, status still 200.
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("svc", "2.0.0") };
+        await using var factory = new NodeAppFactory(installer, supervisor: null, removeSupervisor: true);
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/apps/available/svc/install", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("restarted").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Update_of_an_enabled_managed_app_records_a_restart_audit_entry()
+    {
+        var installer = new FakeInstaller { NextOutcome = InstallOutcome.Success("svc", "2.0.0") };
+        var supervisor = new FakeSupervisor();
+        await using var factory = new NodeAppFactory(installer, supervisor);
+        using var client = factory.CreateClient();
+
+        (await client.PostAsync("/api/v1/apps/available/svc/install", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        factory.Services.GetRequiredService<IAuditLog>().Recent(50)
+            .Should().Contain(e => e.Action == "restart_app" && e.Target == "svc" && e.Outcome == "ok");
     }
 
     // --- the admin gate (auth ON) ------------------------------------------------------------

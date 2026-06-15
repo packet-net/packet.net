@@ -1,6 +1,6 @@
 # Node self-update — design
 
-How the pdn node host updates itself **without fighting a system package manager**. Phase 7 (`docs/plan.md` §5.7). Status: design (no code yet).
+How the pdn node host updates itself **without fighting a system package manager**. Phase 7 (`docs/plan.md` §5.7). Status: the `apt` + `selfcontained` channels are built (see **Implementation status**); the **`github`** channel, **runtime** channel detection, and the **web-UI Apply** surface are the current arc (everything except the maintainer-owned OARC apt repo).
 
 ## Context
 
@@ -21,14 +21,19 @@ An in-app updater that overwrites files in place is fine for (2) and **actively 
 
 `POST /api/system/update` branches on a build-stamped **install channel**, with a shared "is an update available?" check and a shared web-UI affordance. Only the *apply* path differs.
 
-### Channel detection
+### Channel detection (revised 2026-06-14 — runtime resolution, three channels)
 
-The artifact carries its provenance, set at build time:
+There are **three** channels — `apt`, `github`, `selfcontained` — and the build **cannot** know which of the first two applies, because the *same* `.deb` can be installed from an apt repo (`apt`) or `dpkg -i`'d from a GitHub Release (`github`). dpkg records no install method, and it does not matter: what we actually need is **the update mechanism available now**, not the historical provenance. So the build stamp carries only what the build genuinely knows, and the apt-vs-github split is resolved **at runtime**.
 
-- the `.deb` ships `InstallChannel=apt` (a one-liner the package owns, e.g. `/usr/lib/packetnet/install-channel`);
-- the self-contained tarball/installer ships `InstallChannel=selfcontained`.
+**The build stamp encodes `deb` vs `selfcontained` only** (`/usr/lib/packetnet/install-channel`): the `.deb` build stamps `deb`; the tarball / `install.sh` stamps `selfcontained`. (This supersedes the earlier "ship `InstallChannel=apt`" decision — baking `apt` into every `.deb` is exactly what makes a GitHub-installed node mislabel itself.)
 
-Belt-and-braces fallback if the marker is absent: `dpkg-query -S "$(readlink /proc/self/exe)"` — if the running binary is registered to the `packetnet` package, treat it as `apt` regardless. The node resolves the channel **once at boot** and caches it.
+**Runtime resolution, in order — every external probe guarded so a non-Debian / dpkg-less / Windows host never throws and never shells out to dpkg unless it has already proven itself a `.deb` install:**
+
+1. **stamp `selfcontained`** → `Selfcontained`, immediately, with **zero dpkg/apt calls** (so Alpine / Fedora / RaspiOS-without-dpkg / Windows self-contained installs are decided on the stamp alone).
+2. **stamp `deb` (or absent)** → probe **dpkg ownership of the running binary**, not repo presence: `dpkg-query -S "$(readlink -f /proc/self/exe)"` (our self-contained .NET apphost *is* `/proc/self/exe`, and it is the dpkg-tracked file). If `dpkg-query` is absent (caught as a missing-executable launch error) **or** the binary is not owned by `packetnet` → fall to `Selfcontained`.
+3. **dpkg owns it** → probe **apt's actual upgrade source** (not a `sources.list` line): `apt-cache policy packetnet`. A real repo origin in the version table (an http(s) source, not just `/var/lib/dpkg/status`) → `Apt`; only the installed dpkg status with no repo → `Github`; `apt-cache` absent → `Github`. Because `apt-cache policy` reports a package only after `apt-get update` has genuinely seen it in a repo, a configured-but-unused repo line does **not** force `Apt`, and a stale/absent cache falls **conservatively** to `Github` (worst case we self-update from Releases instead of apt, never the reverse).
+
+The node resolves once at boot and caches; `PDN_INSTALL_CHANNEL` overrides for testing. **Why repo *presence* is the wrong signal:** a box can carry the OARC repo in `sources.list.d` while the running binary was `dpkg -i`'d from a GitHub `.deb`, or vice-versa — repo presence proves nothing about *this* binary or its upgrade source. dpkg-ownership + `apt-cache policy` answer the two questions that actually matter: is it dpkg-managed, and can apt upgrade it from a repo.
 
 ### Channel = `apt` → apply button that drives a targeted `apt upgrade`
 
@@ -47,6 +52,15 @@ dpkg remains the source of truth; the package's own maintainer scripts restart t
 - **Targeted, never broad.** `--only-upgrade` + the explicit package name: the helper upgrades `packetnet` and its strict deps only, never a `dist-upgrade`, so a node "update" can't drag the whole box forward.
 - **Rollback.** If the upgrade or the post-restart `/healthz` fails, the helper pins back: `apt-get install --allow-downgrades -y packetnet=<prev>` from the apt cache / a retained prior version. (Requires the repo or local cache to retain the previous `.deb` — note for the maintainer.)
 - **Authorization + audit.** Apply is gated behind the **admin** scope and audit-logged (`Packet.Node.Auth`-style), same as the other privileged control-API actions.
+
+### Channel = `github` → apply button that pulls the next `.deb` from GitHub Releases
+
+A `.deb` that was `dpkg -i`'d from a GitHub Release (the common early-adopter case — and the lab) is dpkg-managed but has **no apt repo to upgrade from**. dpkg still owns the files, so the self-contained symlink-swap is wrong here — the update must go **through dpkg**. So this channel mirrors the `apt` channel's *shape* (detached oneshot, health-gate, rollback, UI reconnect) but with GitHub Releases as the source instead of a repo:
+
+- **Available-version check:** poll the GitHub Releases API for the latest `node-v*` tag and compare to the running version (rate-limited; unauthenticated is sufficient). A node running a `0.1.0+dev…` build sorts *above* any release, so it correctly reports "up to date" rather than offering a downgrade.
+- **Apply:** the helper downloads the matching per-arch `packetnet_<ver>_<arch>.deb` from the release → **verifies its sha256** against the release `SHA256SUMS` (HTTPS; the same trust model the app catalog uses) → `dpkg -i` it (the detached `packetnet-update.service` oneshot survives the postinst restart) → `/healthz`-gates → on failure **rolls back** with `dpkg -i` of the retained prior `.deb` (`/var/cache/apt/archives` or a retained copy).
+- **Trust root = the GitHub release `SHA256SUMS` over HTTPS** (checksum-only first cut, the same seam as the self-contained channel; cosign/minisign hardening is the shared follow-up). Distinct from `apt` (apt's repo GPG signature) and `selfcontained` (the feed digest).
+- **Targeted, dpkg-owned, never a dist-upgrade:** only the `packetnet` package moves and dpkg stays the sole owner of the files — no in-place self-mutation. The request file passes the target version + arch + download URL + expected sha256 so the helper validates rather than trusting the caller.
 
 ### Channel = `selfcontained` → atomic, rollback-safe self-update
 
@@ -97,9 +111,15 @@ These were the three open questions; all resolved with the maintainer.
 - **Update helper + API generalization (done):** **`packaging/packetnet-selfupdate`** — fetch `latest.json` → pick the arch tarball → download → **sha256-verify** (the cosign seam is marked for later) → unpack into `releases/<new>` via a temp dir + rename → atomically flip `current` → restart → `/healthz`-gate → **roll back** to `$prev` on failure → GC keeping `current`+`$prev`. Paths/restart/health are `PDN_*`-overridable for testing. The launcher + API are now channel-agnostic: `ISystemUpdateLauncher.StartUpdateAsync` starts the one `packetnet-update.service` (its helper body differs per install), and `POST /system/update` launches for **both** apt and self-contained (only `unknown` → 409). Covered by `scripts/selfupdate-smoke.sh` (happy/mismatch-refused/rollback, in `deb-smoke`) + the updated `SystemUpdateApiTests`.
 - **Still to build (slice 2c):** `installers/install.sh` — lay out `releases/<ver>` + `current` + the self-contained systemd unit (ExecStart at `current`) + the `selfcontained` marker + `packetnet-selfupdate` as `/usr/lib/packetnet/packetnet-update` + the polkit rule + `/etc/packetnet/update.conf` (`FEED_URL`/`HEALTH_URL`) + the user/state dirs + the admin-bootstrap print. Then: the configurable feed URL surfaced in node config + the available-version check feeding the UI; a **public feed host** (deployment — resolved if packet.net is public).
 
-**Deferred further:** the **web UI** Apply button + version-poll completion UX; deepening the apt-channel health gate from `systemctl is-active` to a real `/healthz` probe; **cosign** signing/verify (the checksum-only seam hardens to it later); the `dpkg-query` channel-sniff fallback.
+**Slice 3 — the `github` channel + runtime detection + the web-UI Apply surface — is the current arc** (everything except the OARC apt repo, which is maintainer-owned).
+
+- **Runtime channel detection** (the revised "Channel detection" section above): `FileInstallChannelProvider` → a runtime-resolving provider (dpkg-ownership + `apt-cache policy`, all probes guarded); `InstallChannel` gains `Github`; `build-deb.sh` stamps `deb` (not `apt`). This supersedes Decision #2 above.
+- **`github` apply + version check:** a `packetnet-github-update` helper (download the release `.deb` → sha-verify → `dpkg -i` → health-gate → rollback) behind the existing detached oneshot; the available-version check (per channel: `apt-cache policy` / GitHub Releases API / `latest.json`) surfaced on `GET /api/v1/system/info` as `{ …, updateAvailable: bool, latestVersion: string|null }`.
+- **web UI:** the node version + channel shown in the control panel (closing the "nothing distinguishes the running version" gap), an "update available · vX → vY" banner, and an admin Apply button that calls `POST /api/v1/system/update` then polls `GET /api/v1/system/info` (+ `/healthz`) until the version changes (the fire-and-acknowledge reconnect). Apply disabled on `unknown`.
+
+**Deferred further:** deepening the apt-channel health gate from `systemctl is-active` to a real `/healthz` probe; **cosign/minisign** signing/verify (the checksum-only seam hardens to it later, shared by the `github` + self-contained channels).
 
 ## Cross-references
 
-- Cosign key management for the trusted pubkey + rotation: OQ-003 ([#188](https://github.com/m0lte/packet.net/issues/188)).
+- Cosign key management for the trusted pubkey + rotation: OQ-003 ([#188](https://github.com/packet-net/packet.net/issues/188)).
 - Packaging status + the shipped `.deb` path: §9 and §5.7; `scripts/build-deb.sh`, `publish-node.yml`, `docs/releasing.md`.

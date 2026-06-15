@@ -45,7 +45,7 @@ multi-drop port nibble is supported at the framing level but not
 exposed on the driver API; POLL mode and the XOR checksum extension
 are intentionally out of scope.
 
-This is part of [Packet.NET](https://github.com/M0LTE/packet.net); see
+This is part of [Packet.NET](https://github.com/packet-net/packet.net); see
 the parent project's [`docs/plan.md`](../../docs/plan.md) for the
 big picture.
 

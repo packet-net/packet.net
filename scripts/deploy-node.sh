@@ -26,10 +26,16 @@ REMOTE_APP="${PACKETNET_REMOTE_APP:-/opt/packetnet/app}"
 HTTP_PORT="${PACKETNET_HTTP_PORT:-8080}"
 RID="linux-x64"
 ARCH="amd64"
-# A dev version that's distinct per build and sorts ABOVE the last release (the
-# +dev<timestamp> build-metadata segment makes `dpkg --compare-versions` rank it
-# above plain 0.1.0 while staying obviously non-release).
-VERSION="${PACKETNET_DEB_VERSION:-0.1.0+dev$(date +%Y%m%d%H%M%S)}"
+# A dev version that's distinct per build and genuinely sorts at/above the latest release:
+# base it on the newest published node-v* tag, so the node self-update's dev-above-release rule
+# reports "up to date" instead of offering a downgrade to that release. The +dev<timestamp>
+# build-metadata segment keeps it distinct per build and obviously non-release (and ranks it above
+# the plain release of the same base in both semver and `dpkg --compare-versions`). Falls back to
+# 0.1.0 if the tag can't be read (e.g. no gh / offline).
+_latest_node_tag="$(gh release list -R packet-net/packet.net --json tagName \
+  -q '[.[] | select(.tagName | startswith("node-v"))][0].tagName' 2>/dev/null || true)"
+_dev_base="${_latest_node_tag#node-v}"; _dev_base="${_dev_base:-0.1.0}"
+VERSION="${PACKETNET_DEB_VERSION:-${_dev_base}+dev$(date +%Y%m%d%H%M%S)}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

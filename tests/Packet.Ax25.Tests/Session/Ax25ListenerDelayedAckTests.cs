@@ -7,9 +7,9 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Regression coverage for m0lte/packet.net#327 — the figc4.x delayed
+/// Regression coverage for packet-net/packet.net#327 — the figc4.x delayed
 /// acknowledgement must actually reach the wire in the production wiring —
-/// updated for the §6.7.1.2 T2 acknowledge delay (m0lte/packet.net#385).
+/// updated for the §6.7.1.2 T2 acknowledge delay (packet-net/packet.net#385).
 ///
 /// The SDL's only path to a non-piggybacked ack runs through the link
 /// multiplexer: an in-sequence I-frame received with P=0 and no ack already

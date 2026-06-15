@@ -13,7 +13,7 @@ The strategy is forward-looking in places (the conformance suite is sketched, no
 Packet.NET ships AX.25 v2.2 multiple times, in multiple languages, from a single SDL source. Today:
 
 - **C#** — `src/Packet.Ax25/` — the reference runtime. The figures' transcribed transitions are walked by `Ax25Session`; predicates and action verbs bind through `Ax25SessionBindings` / `ActionDispatcher`; the figc4.7 subroutines run through `DefaultSubroutineRegistry`. Frame codec, KISS framing, and several transports (TCP, AGW, AXUDP, USB-serial / NinoTNC) live alongside.
-- **TypeScript** — `m0lte/ax25-ts` — a browser-first runtime that walks the same generated SDL transition tables (from `ts-spec/src/ax25sdl/`). Same architecture as the C# runtime (same dispatcher / guard / bindings shape) but a much smaller transport surface and a smaller subset of the figc4.7 subroutines wired.
+- **TypeScript** — `packet-net/ax25-ts` — a browser-first runtime that walks the same generated SDL transition tables (from `ts-spec/src/ax25sdl/`). Same architecture as the C# runtime (same dispatcher / guard / bindings shape) but a much smaller transport surface and a smaller subset of the figc4.7 subroutines wired.
 - **Go / Rust / C / JSON / Python** — emitters exist; no runtimes yet. The codegen ships *data* in those targets, not behaviour.
 
 Drift between runtimes shows up as cross-runtime interop bugs. A frame parsed differently on each side, a state-machine transition that gets walked in one runtime but not the other, a subroutine that's wired in C# but stubbed in TS — all of these produce a "wire-compatible but subtly different" footgun. The footgun is *much worse for a packet node* (the server side that's expected to interoperate with everything in the wild) than for a client app — a node operator inherits the bug surface of every peer that connects to it.
@@ -284,7 +284,7 @@ The highest-signal test we have. Already partially exists:
 - **C# vs LinBPQ over net-sim** — `tests/Packet.Interop.Tests/Linbpq/LinbpqViaNetsimConnectedMode.cs`
 - **C# vs XRouter over net-sim** — `XrouterViaNetsimConnectedMode.cs`
 - **C# vs rax25 over net-sim** — `Rax25ViaNetsimConnectedMode.cs`
-- **TS vs LinBPQ over net-sim** — `m0lte/ax25-ts: tests/integration/linbpq-via-netsim.test.ts`
+- **TS vs LinBPQ over net-sim** — `packet-net/ax25-ts: tests/integration/linbpq-via-netsim.test.ts`
 
 The pattern:
 
@@ -361,6 +361,6 @@ What it IS:
 - [`runtime-capability-matrix.md`](runtime-capability-matrix.md) — the current-state snapshot
 - [`plan.md`](plan.md) — project plan; particularly §6 (SDL discipline), §7 (test pyramid), §17 (amendment log)
 - [`../ts-spec/README.md`](../ts-spec/README.md) — TS-runtime narrative; "Not yet transcribed" section is the per-page status companion to the matrix
-- [`m0lte/ax25-ts: README.md`](https://github.com/m0lte/ax25-ts#readme) — TS-runtime public-API view; scope tables here are the consumer-facing companion
+- [`packet-net/ax25-ts: README.md`](https://github.com/packet-net/ax25-ts#readme) — TS-runtime public-API view; scope tables here are the consumer-facing companion
 - [`../spec-sdl/lint-targets.yaml`](../spec-sdl/lint-targets.yaml) — the codegen-time consistency check; catches the cheapest drift automatically
 - [`../tests/conformance/README.md`](../tests/conformance/README.md) — conformance-suite skeleton (worked example scenario, no executors)

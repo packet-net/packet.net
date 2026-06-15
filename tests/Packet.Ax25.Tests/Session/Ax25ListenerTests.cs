@@ -221,7 +221,7 @@ public class Ax25ListenerTests
         }
     }
 
-    // ─── T1V wiring (m0lte/packet.net#292) ──────────────────────────────
+    // ─── T1V wiring (packet-net/packet.net#292) ──────────────────────────────
     //
     // Regression cover for the per-port `ax25.t1Ms` lever that silently did
     // nothing on the live node: a configured T1V was seeded onto the session
@@ -405,7 +405,7 @@ public class Ax25ListenerTests
 
     // ─── T2 / k(mod-8) establishment seeds (the #292/#300 clobber class) ─────
     //
-    // Audit (m0lte/packet.net) of the establishment path for OTHER configured
+    // Audit (packet-net/packet.net) of the establishment path for OTHER configured
     // per-port params that a hard-coded establishment constant could clobber, the
     // same way figc4.x's `SRT := Initial Default` clobbered T1V (#292) and `N2 := 10`
     // clobbered N2 (#300). The figc4.7 `Set_Version` bodies carry `T2 := 3000` and

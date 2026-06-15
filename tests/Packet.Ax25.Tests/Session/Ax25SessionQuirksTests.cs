@@ -77,7 +77,7 @@ public class Ax25SessionQuirksTests
     [Fact]
     public void Quirk_on_skips_lone_Invoke_Retransmission_so_command_SREJ_paths_retransmit_nothing()
     {
-        // m0lte/packet.net#234: the figc4.5 SREJ *command* paths
+        // packet-net/packet.net#234: the figc4.5 SREJ *command* paths
         // (t24_srej_received_no_yes_yes_no / _no_yes_no_no) carry ONLY a go-back-N
         // "Invoke Retransmission" — no push verb. With the #38 quirk on, that
         // go-back-N is skipped and there is nothing to redirect, so nothing is

@@ -10,6 +10,14 @@
 // stdout is a JSON status stream (one object per line) the .NET supervisor
 // parses; stderr is free-form logs. SIGTERM → graceful shutdown, exit 0.
 //
+// SIGHUP → live-reload the --forwards-file ONLY: re-read it, diff against the
+// active forwards, and open/close just the listeners that changed — all on the
+// existing tsnet node (WireGuard, DERP, the netmap, and the web --target proxy
+// are untouched). This is what lets enabling/disabling a forward-declaring app
+// reconfigure forwards WITHOUT tearing down + rejoining the tailnet (which would
+// drop every tailnet connection, including the operator's control-panel session
+// over the tailnet). A forwards-only change is a SIGHUP, not a restart.
+//
 // Tags are NOT a flag here: a tsnet node inherits its tags from the pre-auth
 // key it joins with. Mint the key with the desired tags (e.g. tag:server).
 package main
@@ -54,7 +62,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	if err := run(ctx, *hostname, *stateDir, *target, *authKeyFile, *forwardsFile, *funnel); err != nil {
+	// SIGHUP → live-reload the forwards file (kept off the ctx so it never tears
+	// the node down — it only reconciles the forward listeners).
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+
+	if err := run(ctx, hup, *hostname, *stateDir, *target, *authKeyFile, *forwardsFile, *funnel); err != nil {
 		// A cancelled context is the clean SIGTERM path, not a fatal error.
 		if ctx.Err() != nil {
 			os.Exit(0)
@@ -64,7 +78,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, hostname, stateDir, target, authKeyFile, forwardsFile string, funnel bool) error {
+func run(ctx context.Context, hup <-chan os.Signal, hostname, stateDir, target, authKeyFile, forwardsFile string, funnel bool) error {
 	emit(status{State: "starting"})
 
 	authKey := readAuthKey(authKeyFile) // "" if absent/empty — falls back to interactive login.
@@ -96,8 +110,13 @@ func run(ctx context.Context, hostname, stateDir, target, authKeyFile, forwardsF
 
 	// App-declared port forwards run alongside the web reverse-proxy on the
 	// same tsnet node. They are best-effort: a missing/garbled forwards file
-	// or a single bad entry never blocks the web path.
-	startForwards(ctx, srv, forwardsFile)
+	// or a single bad entry never blocks the web path. The registry tracks the
+	// active forward per listen port so SIGHUP can diff + reconcile it live.
+	active := make(map[int]*activeForward)
+	openForward := newForwardOpener(srv)
+	startForwards(forwardsFile, active, openForward)
+	// On shutdown, close every active forward (their accept loops unblock).
+	defer closeAllForwards(active)
 
 	proxy := newProxy(target, fqdn)
 
@@ -115,17 +134,33 @@ func run(ctx context.Context, hostname, stateDir, target, authKeyFile, forwardsF
 	emit(status{State: "running", FQDN: fqdn})
 
 	httpSrv := &http.Server{Handler: proxy}
+	serveErr := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(shutCtx)
+		err := httpSrv.Serve(ln)
+		if err != nil && err != http.ErrServerClosed {
+			serveErr <- fmt.Errorf("serve: %w", err)
+			return
+		}
+		serveErr <- nil
 	}()
 
-	if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("serve: %w", err)
+	// The supervisor loop: serve the web proxy until ctx-cancel (SIGTERM →
+	// graceful shutdown) or a fatal serve error, reloading forwards on SIGHUP.
+	// SIGHUP never touches the node, WireGuard, or the web proxy — only the
+	// forward listeners — so existing tailnet connections survive a reload.
+	for {
+		select {
+		case <-ctx.Done():
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = httpSrv.Shutdown(shutCtx)
+			cancel()
+			return <-serveErr
+		case err := <-serveErr:
+			return err
+		case <-hup:
+			reloadForwards(forwardsFile, active, openForward)
+		}
 	}
-	return nil
 }
 
 // newProxy reverse-proxies to the loopback target, stamping the forwarded
@@ -228,11 +263,140 @@ type forward struct {
 	TLS    string `json:"tls"`
 }
 
-// tsListener is the slice of *tsnet.Server that startForwards depends on,
+// activeForward is a live entry in the forwards registry: the listener serving
+// it plus the desired spec it was opened for, so a reload can tell an unchanged
+// forward (leave it) from a changed one (same listen port, different tls/target
+// — close + reopen).
+type activeForward struct {
+	forward
+	listener net.Listener
+}
+
+// tsListener is the slice of *tsnet.Server that newForwardOpener depends on,
 // extracted as an interface so the wiring stays testable without a tailnet.
 type tsListener interface {
 	Listen(network, addr string) (net.Listener, error)
 	ListenTLS(network, addr string) (net.Listener, error)
+}
+
+// openFunc opens the listener for one desired forward (terminate ⇒ ListenTLS,
+// raw ⇒ Listen) and starts its accept/serve loop; closeFunc closes the listener
+// for a given listen port, ending that loop. Factored as functions so
+// reconcileForwards is unit-testable with fakes (no tsnet, no real sockets).
+type (
+	openFunc  func(forward) (net.Listener, error)
+	closeFunc func(listen int)
+)
+
+// newForwardOpener binds the open side to a real tsnet node: it opens the right
+// listener for the forward's tls mode and pumps it with serveForward. The
+// returned listener is handed back so the registry can close it on reload/exit.
+func newForwardOpener(srv tsListener) openFunc {
+	return func(f forward) (net.Listener, error) {
+		addr := fmt.Sprintf(":%d", f.Listen)
+		var (
+			ln  net.Listener
+			err error
+		)
+		if f.TLS == "terminate" {
+			ln, err = srv.ListenTLS("tcp", addr)
+		} else {
+			ln, err = srv.Listen("tcp", addr)
+		}
+		if err != nil {
+			return nil, err
+		}
+		go serveForward(ln, f.Target)
+		return ln, nil
+	}
+}
+
+// reconcileForwards diffs the desired forwards against the active registry and
+// applies the minimal set of open/close operations on the EXISTING tsnet node:
+//
+//   - a forward present in desired but not active            → open
+//   - a forward present in active but not desired            → close
+//   - a forward whose listen port matches but whose tls or
+//     target differs                                         → close, then open
+//   - an unchanged forward                                   → left alone
+//
+// It mutates active in place and returns the listen ports it opened/closed (for
+// logging + assertions). open/close are injected so this is testable with fakes:
+// the node, WireGuard, DERP, and the web proxy are never touched by a reconcile.
+func reconcileForwards(
+	desired []forward, active map[int]*activeForward, open openFunc, closeListen closeFunc,
+) (opened, closed []int) {
+	want := make(map[int]forward, len(desired))
+	for _, f := range desired {
+		want[f.Listen] = f
+	}
+
+	// Close anything that is gone, or whose tls/target changed (it is reopened
+	// from the want set below). Compare on the spec, not the listener identity.
+	for listen, act := range active {
+		w, keep := want[listen]
+		if keep && w == act.forward {
+			continue // unchanged — leave the live listener serving.
+		}
+		closeListen(listen)
+		delete(active, listen)
+		closed = append(closed, listen)
+	}
+
+	// Open anything desired that is not (now) active.
+	for _, f := range desired {
+		if _, live := active[f.Listen]; live {
+			continue
+		}
+		ln, err := open(f)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "forward +%d (%s): listen failed: %v — skipping\n", f.Listen, f.TLS, err)
+			continue
+		}
+		active[f.Listen] = &activeForward{forward: f, listener: ln}
+		opened = append(opened, f.Listen)
+		fmt.Fprintf(os.Stderr, "forward +%d (%s) -> %s\n", f.Listen, f.TLS, f.Target)
+	}
+	return opened, closed
+}
+
+// readDesiredForwards reads + parses the forwards file into the desired set. A
+// missing/garbled file logs and yields no forwards (so a reload with a bad file
+// closes everything rather than faulting) — forwards are a best-effort overlay.
+func readDesiredForwards(forwardsFile string) []forward {
+	if forwardsFile == "" {
+		return nil
+	}
+	b, err := os.ReadFile(forwardsFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "forwards-file %q: %v — treating as no forwards\n", forwardsFile, err)
+		return nil
+	}
+	forwards, err := parseForwards(b)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v — treating as no forwards\n", err)
+		return nil
+	}
+	return forwards
+}
+
+// closeActiveForward closes one active forward's listener by listen port, which
+// unblocks its serveForward accept loop. Used as the closeFunc for the real node.
+func closeActiveForward(active map[int]*activeForward) closeFunc {
+	return func(listen int) {
+		if act, ok := active[listen]; ok {
+			_ = act.listener.Close()
+			fmt.Fprintf(os.Stderr, "forward -%d\n", listen)
+		}
+	}
+}
+
+// closeAllForwards closes every active forward (the SIGTERM/exit teardown). The
+// registry entries are left for the caller to drop — the process is exiting.
+func closeAllForwards(active map[int]*activeForward) {
+	for _, act := range active {
+		_ = act.listener.Close()
+	}
 }
 
 // parseForwards parses the --forwards-file bytes into validated forward
@@ -272,44 +436,23 @@ func parseForwards(jsonBytes []byte) ([]forward, error) {
 	return out, nil
 }
 
-// startForwards reads the forwards file, opens a tsnet listener per entry, and
-// pumps each in a goroutine. It never returns an error: forwards are a
-// best-effort overlay on the web path, so every failure is logged and the
-// web reverse-proxy continues regardless.
-func startForwards(ctx context.Context, srv tsListener, forwardsFile string) {
-	if forwardsFile == "" {
-		return
-	}
-	b, err := os.ReadFile(forwardsFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "forwards-file %q: %v — running with no forwards\n", forwardsFile, err)
-		return
-	}
-	forwards, err := parseForwards(b)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v — running with no forwards\n", err)
-		return
-	}
-	for _, f := range forwards {
-		addr := fmt.Sprintf(":%d", f.Listen)
-		var ln net.Listener
-		if f.TLS == "terminate" {
-			ln, err = srv.ListenTLS("tcp", addr)
-		} else {
-			ln, err = srv.Listen("tcp", addr)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "forward %d (%s): listen failed: %v — skipping\n", f.Listen, f.TLS, err)
-			continue
-		}
-		fmt.Fprintf(os.Stderr, "forward %d (%s) -> %s\n", f.Listen, f.TLS, f.Target)
-		// Close the listener on ctx-cancel/SIGTERM so serveForward unblocks.
-		go func(ln net.Listener) {
-			<-ctx.Done()
-			_ = ln.Close()
-		}(ln)
-		go serveForward(ln, f.Target)
-	}
+// startForwards opens the initial forward set by reconciling the desired set
+// (from the forwards file) against the empty registry. It never returns an
+// error: forwards are a best-effort overlay on the web path, so every failure
+// is logged and the web reverse-proxy continues regardless.
+func startForwards(forwardsFile string, active map[int]*activeForward, open openFunc) {
+	reconcileForwards(readDesiredForwards(forwardsFile), active, open, closeActiveForward(active))
+}
+
+// reloadForwards is the SIGHUP path: re-read the forwards file and reconcile the
+// live registry against it on the existing tsnet node — open newly-added
+// forwards, close removed ones, close+reopen changed ones. The node, WireGuard,
+// and the web proxy are untouched, so existing tailnet connections survive.
+func reloadForwards(forwardsFile string, active map[int]*activeForward, open openFunc) {
+	desired := readDesiredForwards(forwardsFile)
+	opened, closed := reconcileForwards(desired, active, open, closeActiveForward(active))
+	fmt.Fprintf(os.Stderr, "forwards reloaded (SIGHUP): +%d listener(s), -%d listener(s), %d active\n",
+		len(opened), len(closed), len(active))
 }
 
 // serveForward accepts connections on ln and pipes each to a freshly-dialled

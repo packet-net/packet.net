@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docker-image.sh — build (and optionally push) the multi-arch m0lte/packet.net node image.
+# docker-image.sh — build (and optionally push) the multi-arch ghcr.io/packet-net/packet.net node image.
 #
 #   scripts/docker-image.sh <version>          # build host-arch only, load into local docker
 #   scripts/docker-image.sh <version> push     # build amd64+arm64 and push (needs docker login)
@@ -12,7 +12,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 version="${1:?usage: docker-image.sh <version> [push]}"
 mode="${2:-load}"
-image=m0lte/packet.net
+image=ghcr.io/packet-net/packet.net
 
 # docker arch -> dotnet RID
 declare -A RID=( [amd64]=linux-x64 [arm64]=linux-arm64 )

@@ -87,7 +87,7 @@ public class LossRecoveryProperties
         return true;
     }
 
-    // Regression for the ax25spec#40 SREJ livelock (m0lte/packet.net#242). A
+    // Regression for the ax25spec#40 SREJ livelock (packet-net/packet.net#242). A
     // multi-frame bidirectional SREJ burst like this used to spin to the pump's
     // 256-round bound: B SREJ'd out-of-window duplicates (figc4.4 has no
     // receive-window guard), A re-sent, the re-send was again out-of-window,

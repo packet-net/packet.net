@@ -14,7 +14,7 @@ namespace Packet.Ax25.Session;
 /// only XID parameter negotiation; its primitive set is much smaller — a single
 /// "negotiation complete" confirm and a letter-coded error indicate. The MDL
 /// pages are a prose-derived bootstrap (verification_pending; figc5.x not yet
-/// redrawn) — see the management-data-link YAML headers in m0lte/ax25sdl.
+/// redrawn) — see the management-data-link YAML headers in packet-net/ax25sdl.
 /// </remarks>
 public abstract record MdlSignal(string Name);
 

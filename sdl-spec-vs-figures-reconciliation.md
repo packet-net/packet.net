@@ -1,6 +1,6 @@
 # Reconciling the SDL prose (§C1.2), the SDL legend (figc1.1), and the actual figures
 
-When I first wrote [`sdl-interpretation-guide.md`](sdl-interpretation-guide.md) I worked from §C1.2 of the AX.25 v2.2.4 prose alone. When I then audited it against the GraphML/YAML transcriptions in `m0lte/ax25sdl`, I found apparent contradictions and corrected the guide. Both passes were partially right and partially wrong, because the three sources — prose, legend image, and actual state-machine figures — are not internally consistent with each other, and resolving "which is the protocol" requires looking at all three plus the §5 primitive catalogue.
+When I first wrote [`sdl-interpretation-guide.md`](sdl-interpretation-guide.md) I worked from §C1.2 of the AX.25 v2.2.4 prose alone. When I then audited it against the GraphML/YAML transcriptions in `packet-net/ax25sdl`, I found apparent contradictions and corrected the guide. Both passes were partially right and partially wrong, because the three sources — prose, legend image, and actual state-machine figures — are not internally consistent with each other, and resolving "which is the protocol" requires looking at all three plus the §5 primitive catalogue.
 
 This document walks through each contradiction, presents the visual evidence, and reasons out which source is the authority.
 
@@ -13,8 +13,8 @@ This document walks through each contradiction, presents the visual evidence, an
 3. **§C1.2** prose describes the SDL symbol conventions.
 4. **figc1.1** is the visual SDL legend. It has two layers of content: the shape *drawings* (left-notch vs right-notch SVG geometry) and the *text labels* attached to those drawings ("Signal reception from Lower Layer" etc.). Plus the *example labels* placed inside the shape drawings (`DL-RELEASE Request`, `SABM`, `UI command`, `DL-UNIT-DATA Indication`).
 5. **figc4.x** (and friends) — the actual state-machine figures.
-6. **`m0lte/ax25sdl` GraphML palette** — a yEd reimplementation of figc1.1's shapes. Each palette node has both an SVG (the shape geometry) and a `d6` text label (copy of figc1.1's text label).
-7. **`m0lte/ax25sdl` GraphML figure transcriptions** — a yEd reimplementation of figc4.x. Each node references a palette item by SVG `refid` (preserving the figure's shape geometry) and copies the palette's `d6` text into its own `d5`.
+6. **`packet-net/ax25sdl` GraphML palette** — a yEd reimplementation of figc1.1's shapes. Each palette node has both an SVG (the shape geometry) and a `d6` text label (copy of figc1.1's text label).
+7. **`packet-net/ax25sdl` GraphML figure transcriptions** — a yEd reimplementation of figc4.x. Each node references a palette item by SVG `refid` (preserving the figure's shape geometry) and copies the palette's `d6` text into its own `d5`.
 
 The authority order:
 
@@ -149,7 +149,7 @@ The right framing is: **the figures and §C1.2 prose agree on input/output direc
 
 ## What this means for reading a transcription
 
-When reading a `*.sdl.yaml` or `*.graphml` in `m0lte/ax25sdl`:
+When reading a `*.sdl.yaml` or `*.graphml` in `packet-net/ax25sdl`:
 
 1. **Identify events by name, plus the §5 primitive catalogue, plus the shape geometry.** Do not derive layer direction from the d5 string. If a transcribed node has `d5="Signal reception from Lower Layer"` and the label `DL-CONNECT Request`, the node correctly represents an upper-layer input — the d5 string is just a palette identifier inherited from a mislabelled legend.
 

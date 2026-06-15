@@ -9,7 +9,7 @@
   <PropertyGroup>
     <PackageId>Packet.Kiss.NinoTnc</PackageId>
     <Title>Packet.Kiss.NinoTnc — NinoTNC-specific KISS extensions</Title>
-    <Description>NinoTNC-specific KISS extensions for the Packet.NET stack — ACKMODE TX-completion correlation, SETHW mode switching, TX-Test frame classification, USB port discovery. Built on Packet.Kiss.Serial for generic serial-port plumbing. Source: github.com/m0lte/packet.net.</Description>
+    <Description>NinoTNC-specific KISS extensions for the Packet.NET stack — ACKMODE TX-completion correlation, SETHW mode switching, TX-Test frame classification, USB port discovery. Built on Packet.Kiss.Serial for generic serial-port plumbing. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;tnc;ninotnc</PackageTags>
   </PropertyGroup>
 

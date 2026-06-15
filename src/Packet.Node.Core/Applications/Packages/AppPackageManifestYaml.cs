@@ -29,6 +29,11 @@ public static class AppPackageManifestYaml
         // case-insensitive but not hyphen-tolerant ("on-failure" would never match
         // OnFailure), so a dedicated converter binds — and emits — the kebab forms.
         .WithTypeConverter(KebabCaseEnumYamlConverter.Instance)
+        // ui.mode is the one closed set the contract makes lenient: an unknown/missing value
+        // binds to the safe default (standalone) rather than erroring the whole manifest, so an
+        // app authored against a newer mode set still loads on an older node. A dedicated,
+        // non-throwing converter handles it (vs the strict KebabCaseEnumYamlConverter above).
+        .WithTypeConverter(SafeDefaultUiModeYamlConverter.Instance)
         // Interface-typed collections need concrete types to bind (same trick as
         // NodeConfigYaml): capabilities / args lists + the service environment map + the
         // forward: list of AppForwardSpec.
@@ -41,6 +46,7 @@ public static class AppPackageManifestYaml
     private static readonly ISerializer Serializer = new SerializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .WithTypeConverter(KebabCaseEnumYamlConverter.Instance)
+        .WithTypeConverter(SafeDefaultUiModeYamlConverter.Instance)
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
         .Build();
 
@@ -145,5 +151,42 @@ public static class AppPackageManifestYaml
         // is unhelpful; use the simple lowercase-first form which matches the YAML key style).
         private static string ToCamelCase(string name) =>
             string.IsNullOrEmpty(name) ? name : char.ToLowerInvariant(name[0]) + name[1..];
+    }
+
+    /// <summary>
+    /// Binds <see cref="AppUiMode"/> from its (kebab/camel/pascal, case-insensitive) names but —
+    /// unlike <see cref="KebabCaseEnumYamlConverter"/> — never throws: an unknown value falls back
+    /// to <see cref="AppUiMode.Standalone"/>, the contract's safe default (so an app written
+    /// against a future mode set still loads). Emits kebab-case, like the other manifest enums.
+    /// </summary>
+    private sealed class SafeDefaultUiModeYamlConverter : IYamlTypeConverter
+    {
+        public static readonly SafeDefaultUiModeYamlConverter Instance = new();
+
+        public bool Accepts(Type type) => type == typeof(AppUiMode);
+
+        public object ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer)
+        {
+            var scalar = parser.Consume<Scalar>();
+            var text = scalar.Value?.Replace("-", "", StringComparison.Ordinal)
+                                    .Replace("_", "", StringComparison.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(text)
+                && !char.IsAsciiDigit(text[0])  // names, not ordinals
+                && Enum.TryParse<AppUiMode>(text, ignoreCase: true, out var value)
+                && Enum.IsDefined(value))
+            {
+                return value;
+            }
+
+            // Unknown / empty → the safe default rather than an error (the contract's rule).
+            return AppUiMode.Standalone;
+        }
+
+        public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer)
+        {
+            // Standalone -> standalone, Embedded -> embedded, Slot -> slot.
+            emitter.Emit(new Scalar(value!.ToString()!.ToLowerInvariant()));
+        }
     }
 }

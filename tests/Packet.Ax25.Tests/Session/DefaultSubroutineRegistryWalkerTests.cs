@@ -24,7 +24,7 @@ public class DefaultSubroutineRegistryWalkerTests
         // Packet.Ax25.Sdl v0.5.0's figc4.7 transcription emits 11
         // subroutines (was 13 — Establish_Data_Link and
         // Establish_Extended_Data_Link are skipped pending the n50
-        // missing-edge graphml fix at m0lte/ax25sdl#11; supplied
+        // missing-edge graphml fix at packet-net/ax25sdl#11; supplied
         // hand-coded for now). The registry also exposes 4 legacy
         // aliases — the historic Enquiry_Response_F_0 / _F_1, plus the
         // post-rename aliases Select_T1_Value / Check_Need_For_Response

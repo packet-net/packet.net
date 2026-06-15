@@ -326,6 +326,27 @@ public sealed record ApplicationConfig
 }
 
 /// <summary>
+/// How the control panel opens an app's web UI from its left-nav entry — the <c>ui.mode</c>
+/// contract (<c>docs/app-packages.md</c> § UI surface modes). The pdn-bbs side is built to this
+/// exact set; unknown/missing → <see cref="Standalone"/>.
+/// </summary>
+public enum AppUiMode
+{
+    /// <summary>The nav entry is a full browser navigation to the app's own page at
+    /// <c>/apps/{id}/</c> (the historical behaviour). The default.</summary>
+    Standalone,
+
+    /// <summary>The nav entry is an in-panel SPA route (<c>/apps/:id</c>) that renders the panel
+    /// shell around a borderless iframe of the app's <c>/apps/{id}/</c> page. The app renders its
+    /// own full page inside the frame — no signal param is appended.</summary>
+    Embedded,
+
+    /// <summary>Like <see cref="Embedded"/>, but the iframe src carries <c>?pdn_embed=1</c> so the
+    /// app renders chrome-less and blends into the single PDN chrome.</summary>
+    Slot,
+}
+
+/// <summary>
 /// The human-plane manifest for an application: where its own web server lives and how its
 /// launcher tile reads. pdn reverse-proxies to <see cref="Upstream"/> and never imports the
 /// app — it is a broker (see <c>docs/app-gateway.md</c>).
@@ -342,6 +363,12 @@ public sealed record AppUiConfig
 
     /// <summary>An optional lucide icon name for the launcher tile (purely cosmetic).</summary>
     public string? Icon { get; init; }
+
+    /// <summary>How the panel opens this app from its nav entry. Default
+    /// <see cref="AppUiMode.Standalone"/> (a full navigation, the historical behaviour);
+    /// <see cref="AppUiMode.Embedded"/> / <see cref="AppUiMode.Slot"/> render it in an in-panel
+    /// iframe. Unknown/missing values bind to <see cref="AppUiMode.Standalone"/>.</summary>
+    public AppUiMode Mode { get; init; } = AppUiMode.Standalone;
 }
 
 /// <summary>

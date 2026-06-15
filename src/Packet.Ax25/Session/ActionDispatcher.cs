@@ -116,7 +116,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>SRT := Initial Default; T1V := 2 * SRT</c> verbatim, it just starts from
     /// the configured baseline. The previous hard-coded 3000 ms silently
     /// overwrote any <see cref="Ax25SessionContext.T1V"/> seeded on an accepted
-    /// session (m0lte/packet.net#292), so a port's configured <c>t1Ms</c> never
+    /// session (packet-net/packet.net#292), so a port's configured <c>t1Ms</c> never
     /// reached the session's T1 timer.
     /// </remarks>
     public TimeSpan InitialSrt { get; init; } = DefaultInitialSrt;
@@ -131,7 +131,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// Exposing it lets a node configure a per-port retry count that survives the
     /// establishment handshake: the previous hard-coded 10 silently overwrote any
     /// <see cref="Ax25SessionContext.N2"/> seeded on the session (the same defect
-    /// class as the SRT/T1V clobber in m0lte/packet.net#292), so a port's
+    /// class as the SRT/T1V clobber in packet-net/packet.net#292), so a port's
     /// configured <c>n2</c> never took effect and, transitively, the listener's
     /// <c>(N2+1)·T1V</c> connect backstop was always the 66 s spec maximum.
     /// </remarks>
@@ -147,7 +147,7 @@ public sealed class ActionDispatcher : IActionDispatcher
     /// <c>T2 := 3000</c> just seeds the default. The hard-coded 3000 ms previously
     /// written by this verb would silently overwrite any
     /// <see cref="Ax25SessionContext.T2"/> seeded on the session — the same defect
-    /// class as the SRT/T1V clobber (m0lte/packet.net#292) and the N2 clobber
+    /// class as the SRT/T1V clobber (packet-net/packet.net#292) and the N2 clobber
     /// (#300). Today the data-link establishment path does not invoke
     /// <c>Set_Version</c> as a subroutine (so the verb is inert on connect, and a
     /// configured T2 already survives), but threading the configured value through
@@ -407,7 +407,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         // figc4.4 "Push Old I Frame N(r) on Queue" behaviour, and skip the
         // go-back-N. Remove once ax25sdl ships a corrected figc4.5.
         //
-        // Note (m0lte/packet.net#234): this rewrite only has a push to redirect on
+        // Note (packet-net/packet.net#234): this rewrite only has a push to redirect on
         // the SREJ *response* paths (t24_srej_received_yes_yes_*_no). The SREJ
         // *command* paths (t24_srej_received_no_yes_*) carry only Invoke_Retransmission,
         // so skipping it retransmits nothing on the command form. That is
@@ -442,7 +442,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         // requests the gap). Retarget the SREJ to V(R), the next still-missing
         // frame. `N(r) := N(s)` appears only in this one I_received figure path, so
         // gating on the I_received trigger scopes the rewrite precisely. Remove once
-        // ax25sdl ships a corrected figc4.4. m0lte/packet.net#246.
+        // ax25sdl ships a corrected figc4.4. packet-net/packet.net#246.
         if (ctx.Quirks.Ax25Spec42SrejTargetsGap
             && tx.Trigger is IFrameReceived
             && verb == Ax25ActionVerb.NRAssignNS)
@@ -616,7 +616,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // upward. Previously the case label was left in display form so
             // the normalised verb fell through to the default throw — every
             // UI reception (UI_Check → DL-UNIT-DATA Indication) crashed
-            // (m0lte/packet.net#258). The typed verb makes that impossible.
+            // (packet-net/packet.net#258). The typed verb makes that impossible.
             Ax25ActionVerb.DLUNITDATAIndication   => Do(() => sendUpward(new DataLinkUnitDataIndication(ExtractIncomingInfo(tx), ExtractIncomingPid(tx)))),
 
             // DL_ERROR_indication_* — per §C5 error-code letter table. The
@@ -834,7 +834,7 @@ public sealed class ActionDispatcher : IActionDispatcher
             // self-amplifies (SRT' = 1.125·SRT) → unbounded growth → overflow.
             // Karn's algorithm: skip the update when there is no clean
             // measurement. packethacking/ax25spec#41; gated behind
-            // Ax25Spec41KarnSrtSampling (m0lte/packet.net#241).
+            // Ax25Spec41KarnSrtSampling (packet-net/packet.net#241).
             Ax25ActionVerb.SRTAssign7SRT8PlusT18RemainingTimeOnT1WhenLastStopped8 => Do(() =>
             {
                 var sample = ctx.T1V - ctx.T1RemainingWhenLastStopped;

@@ -446,7 +446,7 @@ public class ActionDispatcherTests
     [Fact]
     public void DL_UnitData_Indication_From_UI_Frame_Raises_UnitDataIndication()
     {
-        // Regression (m0lte/packet.net#258): UI_Check's figure verb
+        // Regression (packet-net/packet.net#258): UI_Check's figure verb
         // "DL-UNIT-DATA Indication" used to be reconciled to a snake_case
         // canonical via the runtime ActionVerbAliases map, but the dispatcher's
         // case label was left in display form so the normalised verb fell through
@@ -822,7 +822,7 @@ public class ActionDispatcherTests
         // push_old_I_frame_N_r_on_queue retransmits the stored frame whose N(S)
         // equals the incoming N(R). It must go out with its ORIGINAL N(s) — not
         // be enqueued for the fresh-frame drain (which would renumber it to V(s)
-        // and break the peer's gap-fill). See m0lte/packet.net#231.
+        // and break the peer's gap-fill). See packet-net/packet.net#231.
         var sentI = new List<IFrameSpec>();
         var time = new FakeTimeProvider();
         var s = new SystemTimerScheduler(time);
@@ -1121,7 +1121,7 @@ public class ActionDispatcherTests
         // when T1 expired (remaining = 0) there is no clean round-trip to measure,
         // so SRT is left unchanged rather than folding the full T1V back in. The
         // unguarded fold (3375 below) is self-amplifying and diverges under loss
-        // (m0lte/packet.net#241). T1V still backs off via the RC term.
+        // (packet-net/packet.net#241). T1V still backs off via the RC term.
         var (d, ctx, s, _, _, _, _, _, _, _, _) = NewRig();
         ctx.Srt = TimeSpan.FromMilliseconds(3000);
         ctx.T1V = TimeSpan.FromMilliseconds(6000);

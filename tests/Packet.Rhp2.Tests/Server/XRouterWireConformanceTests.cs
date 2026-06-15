@@ -13,7 +13,7 @@ namespace Packet.Rhp2.Tests.Server;
 /// reads case-insensitively, so the sibling suites (<see cref="RhpServerTests"/> /
 /// <see cref="RhpServerPassiveTests"/>) would still pass if the server regressed to, say,
 /// lowercase <c>errcode</c> — a break every real XRouter client would feel. Each fact names
-/// the rhp2lib reference assertion it mirrors (<c>m0lte/rhp2lib-net</c>:
+/// the rhp2lib reference assertion it mirrors (<c>packet-net/rhp2lib-net</c>:
 /// <c>tests/RhpV2.Client.IntegrationTests</c> + <c>docs/protocol.md</c>), which were pinned
 /// against live XRouter.
 /// </summary>

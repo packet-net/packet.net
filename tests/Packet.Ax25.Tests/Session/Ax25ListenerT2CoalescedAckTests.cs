@@ -7,7 +7,7 @@ using Xunit;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Regression coverage for m0lte/packet.net#385 — the §6.7.1.2 T2 acknowledge
+/// Regression coverage for packet-net/packet.net#385 — the §6.7.1.2 T2 acknowledge
 /// delay in the production listener wiring.
 ///
 /// Off-air capture of the lab node receiving a sustained I-frame stream from

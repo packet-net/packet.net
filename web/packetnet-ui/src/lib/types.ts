@@ -129,6 +129,24 @@ export interface NodeConfig {
   tailscale: TailscaleConfig;
 }
 
+// ---- system info / self-update (server: PdnSystemApi.SystemInfoResponse) ----
+// GET /api/v1/system/info — the node's running version, install channel, what an
+// update would do, and whether a newer version is known (the shared API contract the
+// control panel's About panel + "update available" banner consume).
+//   channel: "apt" | "github" | "selfcontained" | "unknown" — "unknown" disables Apply
+//     (the node won't self-update; update via the package manager / reinstall).
+//   updateMechanism: what POST /system/update does here ("apt" | "github" | "selfcontained" | "none").
+//   updateAvailable + latestVersion: the per-channel available-version check; when true,
+//     latestVersion is the version the banner offers (else null).
+export type InstallChannelName = "apt" | "github" | "selfcontained" | "unknown";
+export interface SystemInfo {
+  version: string;
+  channel: InstallChannelName;
+  updateMechanism: string;
+  updateAvailable: boolean;
+  latestVersion: string | null;
+}
+
 // ---- Tailscale sidecar status (server: PdnSystemApi.TailscaleStatusResponse) ----
 // GET /api/v1/system/tailscale. state: disabled | starting | needs-login | running | error.
 export type TailscaleState = "disabled" | "starting" | "needs-login" | "running" | "error";
@@ -321,7 +339,28 @@ export interface TotpEnrollState { enrolled: boolean; callsign: string | null }
 // icon name (kebab-case, e.g. "message-square"); may be null/absent → the launcher
 // falls back to a generic app glyph. `url` is always "/apps/{id}/" — an absolute path
 // on the same origin that pdn reverse-proxies, NOT a client-side SPA route.
-export interface NodeApp { id: string; name: string; icon?: string | null; url: string }
+// `state` is the live supervisor state (the same AppPackageState set the packages
+// inventory uses), or null when the app has no pdn-managed service to watch (an
+// inline app, or a package with no service: block). The left-nav uses it to warn
+// when an ENABLED app isn't running (Stopped/Backoff/Faulted) — sourced from this one
+// fetch so the nav needn't also hit /apps/packages. Every app the feed returns is
+// enabled (the feed lists only enabled web apps), so a non-healthy state IS the warning.
+// How the panel opens an app from its left-nav entry (the manifest `ui.mode` contract —
+// docs/app-packages.md § UI surface modes). `standalone` (the default) is a full browser
+// navigation to the app's own page at `url`; `embedded`/`slot` render the app in an in-panel
+// iframe inside the panel shell, `slot` additionally appending `?pdn_embed=1` to the iframe src
+// so the app renders chrome-less and blends into the single PDN chrome. Unknown/missing →
+// standalone (the server already normalises, so the wire value is always one of these three).
+export type AppUiMode = "standalone" | "embedded" | "slot";
+export interface NodeApp {
+  id: string;
+  name: string;
+  icon?: string | null;
+  url: string;
+  /** How the nav opens this app — standalone (full nav) vs embedded/slot (in-panel iframe). */
+  uiMode: AppUiMode;
+  state?: AppPackageState | null;
+}
 // ---- app packages (GET /api/v1/apps/packages) ---------------
 // One discovered app package — or inline config-authored app — with its manifest
 // summary + supervisor state (mirrors PdnAppPackagesApi.AppPackageEntry, camelCase
@@ -332,6 +371,26 @@ export interface NodeApp { id: string; name: string; icon?: string | null; url: 
 export type AppPackageSource = "package" | "inline";
 export type AppPackageService = "none" | "managed" | "external";
 export type AppPackageState = "Stopped" | "Starting" | "Running" | "Backoff" | "Faulted" | "External";
+
+// Whether an ENABLED app's supervisor state is a not-running warning: the supervisor should
+// have driven it to Running but it is Stopped/Backoff/Faulted instead (crashed/stopped). Used
+// by the left-nav badge and the management-row warning. Starting is transient (not a warning),
+// Running is healthy, External is owner-managed (pdn never tracks its health → never a warning),
+// and a null state means there is no service to run at all. ONLY meaningful for an enabled app —
+// a disabled app is expected to be Stopped, so callers must gate on `enabled` first.
+export function isAppNotRunning(state: AppPackageState | null | undefined): boolean {
+  return state === "Stopped" || state === "Backoff" || state === "Faulted";
+}
+
+// Display-normalise a declared capability string for the trust prompt: the `network` capability
+// is shown as `packet` (transport-accurate for packet-radio network access — RF/KISS-TCP/AXUDP/
+// sim — vs the TCP/IP/LAN reading of "network"). `network` stays a back-compat alias accepted on
+// the wire; only the surfaced label changes. Mirrors the C# AppCapabilities.Normalize so an app
+// whose manifest still declares the old spelling shows the new one even before the server projects
+// it (and so the mock fixtures, which still say "network", render "packet").
+export function displayCapability(capability: string): string {
+  return capability.toLowerCase() === "network" ? "packet" : capability;
+}
 // One declared tailnet port forward (mirrors PdnAppPackagesApi.AppForwardEntry). `listen` is
 // the tailnet-facing port the node's tsnet node exposes; `target` is the app's loopback
 // listener (host:port); `tls` is how the sidecar handles TLS. A capability the owner sees in

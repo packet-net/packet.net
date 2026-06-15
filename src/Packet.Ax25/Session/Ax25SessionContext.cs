@@ -138,7 +138,7 @@ public sealed class Ax25SessionContext
     /// at <c>Modulus/2</c> while Selective Repeat (<see cref="SrejEnabled"/>) is in
     /// effect, per the Selective-Repeat window-wrap invariant (ax25spec#13). Above
     /// that cap, two in-flight frames could share an N(S) and SREJ recovery can
-    /// silently deliver a stale stored frame (m0lte/packet.net#393). Gated by
+    /// silently deliver a stale stored frame (packet-net/packet.net#393). Gated by
     /// <see cref="Ax25SessionQuirks.Ax25Spec13ClampSrejWindowToHalfModulus"/>
     /// (default on); with the quirk off it is just <see cref="K"/>, reproducing the
     /// unbounded figure-literal behaviour. Go-back-N links (SREJ off) are never

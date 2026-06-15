@@ -9,7 +9,7 @@ namespace Packet.Kiss.NinoTnc;
 /// effective mode at runtime.
 /// </summary>
 /// <remarks>
-/// Ported from M0LTE/kissproxy@web-interface, <c>KissFrameBuilder.cs</c> lines
+/// Ported from packet-net/kissproxy@web-interface, <c>KissFrameBuilder.cs</c> lines
 /// 45–112. The DIP-position → human-name table and the firmware-byte →
 /// human-name table are both kept verbatim because:
 /// <list type="bullet">

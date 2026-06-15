@@ -14,6 +14,14 @@
 # sha256 from `gh release view <tag> -R <repo> --json assets`, and update the
 # `version:` to the release tag. (See docs/app-catalog.md § O3 for a future
 # regen script.)
+#
+# CAPABILITIES: free-form strings shown to the owner as the install/enable trust
+# prompt (not enforced in v1). Conventional values: `session`, `packet`, `web`.
+# `packet` means full packet-radio network access — the app binds a callsign and
+# sends/receives over AX.25/NET-ROM (RF/KISS-TCP/AXUDP/sim). It replaces the old
+# `network` spelling, which read as TCP/IP/LAN. pdn still ACCEPTS `network` as a
+# back-compat alias and display-normalises it to `packet` (AppCapabilities.Normalize),
+# so a third-party app whose manifest still says `network` is shown as `packet`.
 
 catalog: 1
 
@@ -25,26 +33,26 @@ apps:
     version: "0.34.1"
     description: "Distributed Asynchronous Packet Pub/Sub — store-and-forward messaging over packet radio."
     icon: inbox
-    capabilities: [network, web]
-    homepage: https://github.com/m0lte/dapps
+    capabilities: [packet, web]
+    homepage: https://github.com/packet-net/dapps
     artifact:
       kind: assets
       manifest:
-        url: https://github.com/m0lte/dapps/releases/download/v0.34.1/pdn-app.yaml
+        url: https://github.com/packet-net/dapps/releases/download/v0.34.1/pdn-app.yaml
         sha256: ae0b2f50b7a7f7f38ba1ce6eb182cee21073cbd1646eca9a5189a9aa386d8125
       binaries:
         linux-x64:
-          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-x64
+          url: https://github.com/packet-net/dapps/releases/download/v0.34.1/dapps-linux-x64
           sha256: a509c31d0be87e2cf7f10b2fde0614234381b6fbc623580da9c9757a969ddb4b
           dest: dapps
           mode: "0755"
         linux-arm64:
-          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-arm64
+          url: https://github.com/packet-net/dapps/releases/download/v0.34.1/dapps-linux-arm64
           sha256: 2205fed8ee4bf09cf5cfb24edbeb00017bbc6e68ca4611b9e4f055c570d4a76f
           dest: dapps
           mode: "0755"
         linux-arm:
-          url: https://github.com/m0lte/dapps/releases/download/v0.34.1/dapps-linux-arm
+          url: https://github.com/packet-net/dapps/releases/download/v0.34.1/dapps-linux-arm
           sha256: 54d0d0a9aa6be56e5703ec85343083fdfd3e28d35716833ae42e835622a57341
           dest: dapps
           mode: "0755"
@@ -57,7 +65,7 @@ apps:
     version: "0.1.0"
     description: "BPQ-Chat-compatible chat node — RF + web chat, peering with the BPQ Chat network."
     icon: chat
-    capabilities: [network, web]
+    capabilities: [packet, web]
     homepage: https://github.com/packet-net/pdn-bpqchat
     artifact:
       kind: deb
@@ -77,7 +85,7 @@ apps:
     version: "0.1.2"
     description: "Round-table packet chat — a leaf node on the worldwide convers network, for RF and web users."
     icon: chat
-    capabilities: [network, web]
+    capabilities: [packet, web]
     homepage: https://github.com/packet-net/pdn-convers
     artifact:
       kind: deb
@@ -94,20 +102,20 @@ apps:
 
   - id: bbs
     name: BBS
-    version: "0.2.0"
-    description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale."
+    version: "0.2.8"
+    description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less."
     icon: mail
-    capabilities: [network, web]
+    capabilities: [packet, web]
     homepage: https://github.com/packet-net/pdn-bbs
     artifact:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.0/pdn-bbs_0.2.0_amd64.deb
-          sha256: 69392401859587f44e8f8c218736ebe676ac77870024d21b5fced934e63addd3
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.8/pdn-bbs_0.2.8_amd64.deb
+          sha256: fe5b9c03da8457678efa5db96fda3f143749bd272922668af4802ec86ae42720
         linux-arm64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.0/pdn-bbs_0.2.0_arm64.deb
-          sha256: 9b00de5a97acd859298a3144079f0dfb207cc805ce4f044ec9ec23bf1aa109e5
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.8/pdn-bbs_0.2.8_arm64.deb
+          sha256: 855d19ed21b0d117820bf8848de7f35ceca1ba868d50c6c3ebfdac756862fb6f
         linux-arm:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.0/pdn-bbs_0.2.0_armhf.deb
-          sha256: c79f54c0895a82b75b5375802e8baa0ea4610c0a767a6c69e6f2151d8c0d9c84
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.8/pdn-bbs_0.2.8_armhf.deb
+          sha256: 60edb7eb82a5c95d0e87151b0a18c96a11b30fabc8da55226e5dd9950d294200

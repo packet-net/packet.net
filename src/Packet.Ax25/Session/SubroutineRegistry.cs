@@ -102,7 +102,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
     /// every response taking this code path must go out with F=1. The
     /// canonical encoding of the annotation in the yaml DSL is the open
     /// question — tracked at
-    /// <see href="https://github.com/M0LTE/ax25sdl/issues/45">m0lte/ax25sdl#45</see>.
+    /// <see href="https://github.com/packet-net/ax25sdl/issues/45">packet-net/ax25sdl#45</see>.
     /// </para>
     /// <para>
     /// The walker / codegen currently surfaces the annotation as a
@@ -215,7 +215,7 @@ public sealed class DefaultSubroutineRegistry : ISubroutineRegistry
         // Each context-binding alias mutates the trigger context then walks
         // the canonical body — see ContextBindingAliases doc for why the
         // mutation is needed and the open encoding question at
-        // m0lte/ax25sdl#45.
+        // packet-net/ax25sdl#45.
         foreach (var (alias, (canonicalName, bind)) in ContextBindingAliases)
         {
             if (userOverridden.Contains(alias)) continue;

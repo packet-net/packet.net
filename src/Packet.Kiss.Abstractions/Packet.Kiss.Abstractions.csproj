@@ -19,7 +19,7 @@
   <PropertyGroup>
     <PackageId>Packet.Kiss.Abstractions</PackageId>
     <Title>Packet.Kiss.Abstractions — KISS modem interface contract</Title>
-    <Description>Dependency-free abstractions package for the KISS modem layer of the Packet.NET stack — the IKissModem interface, KissFrame, KissCommand, AckModeReceipt. Take a dependency on this rather than Packet.Kiss when you only need the contract (e.g. Ax25Listener, session-layer consumers). Source: github.com/m0lte/packet.net.</Description>
+    <Description>Dependency-free abstractions package for the KISS modem layer of the Packet.NET stack — the IKissModem interface, KissFrame, KissCommand, AckModeReceipt. Take a dependency on this rather than Packet.Kiss when you only need the contract (e.g. Ax25Listener, session-layer consumers). Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;abstractions</PackageTags>
   </PropertyGroup>
 

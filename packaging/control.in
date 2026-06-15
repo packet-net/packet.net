@@ -6,7 +6,7 @@ Depends: adduser, libc6, polkitd | policykit-1
 Recommends: python3
 Section: hamradio
 Priority: optional
-Homepage: https://github.com/m0lte/packet.net
+Homepage: https://github.com/packet-net/packet.net
 Description: Packet.NET AX.25 packet-radio node (pdn)
  A modern AX.25 v2.2 packet-radio node host built on .NET. Connected-mode
  sessions over KISS (serial/USB or TCP) and AX.25-over-UDP, with a telnet

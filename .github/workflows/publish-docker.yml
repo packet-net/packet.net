@@ -1,13 +1,13 @@
 name: publish-docker
 
-# Builds + pushes the multi-arch (amd64 + arm64) m0lte/packet.net node image.
+# Builds + pushes the multi-arch (amd64 + arm64) ghcr.io/packet-net/packet.net node image to GHCR.
 # Triggered by a node-v* tag (alongside publish-node's .debs) or manually via
 # workflow_dispatch (so the image can be (re)published for an existing version without
 # cutting a release). Decoupled from publish-node so the .deb release never waits on it.
 #
 # Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). The arm64 image's
 # RUN steps (apt-get) run under QEMU; the .NET app tree itself is cross-published by the
-# SDK (PDN_FAST, no crossgen). Skips cleanly when the Docker Hub creds aren't set.
+# SDK (PDN_FAST, no crossgen). Pushes to GHCR with the built-in GITHUB_TOKEN — no external creds.
 
 on:
   push:
@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  packages: write   # push the image to GHCR via the built-in GITHUB_TOKEN
 
 jobs:
   publish:
@@ -46,24 +47,12 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to Docker Hub
-        if: ${{ env.DOCKERHUB_TOKEN != '' }}
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build + push multi-arch image
-        if: ${{ env.DOCKERHUB_TOKEN != '' }}
         env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           VERSION: ${{ steps.v.outputs.version }}
         # Exclusive box-wide flock around the CPU-heavy publish, so it doesn't oversubscribe
         # a concurrent ci / publish-node build (§7.2.2).
         run: flock -x /tmp/pdn-ci-heavy.lock scripts/docker-image.sh "$VERSION" push
-
-      - name: Skipped (no Docker Hub creds)
-        if: ${{ env.DOCKERHUB_TOKEN == '' }}
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: echo "::warning::DOCKERHUB_TOKEN not set — skipping the Docker image publish."

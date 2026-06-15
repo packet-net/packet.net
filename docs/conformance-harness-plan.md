@@ -9,7 +9,7 @@ The two-session integration rigs (`DataLinkSrejUnderLossTests`, `DataLinkTimerRe
 The ambition: **one substrate that stress-tests three layers** —
 
 1. **the runtime engine** (does packet.net implement the figures correctly?),
-2. **the SDL figures** in `m0lte/ax25sdl` (are the figures themselves correct?), and
+2. **the SDL figures** in `packet-net/ax25sdl` (are the figures themselves correct?), and
 3. **AX.25 itself** (does the protocol's design satisfy the invariants under adversarial conditions?).
 
 The repo already seeds this: FsCheck window invariants + the no-stuck-TimerRecovery property. This plan generalises that from hand-written single-session properties to **generated two-session scenarios judged against a shared invariant oracle**, and routes every failure to the right layer.
@@ -71,7 +71,7 @@ Dual-run each generated scenario under `Ax25SessionQuirks.StrictlyFaithful` (fig
 
 ### Phase A3 — Differential conformance (cross-implementation)
 
-Serialise scenarios to language-neutral JSON; run the *same* suite + invariants in `m0lte/ax25-ts` → C#↔TS differential. Then feed survivors into the docker interop stack (LinBPQ / Xrouter / rax25 / direwolf) → de-facto differential. Divergence on identical input means someone's wrong; cross-check against the figure + the de-facto citations. This is also how figures get validated against reality: all de-facto impls agree but `StrictlyFaithful` disagrees ⇒ the figure is the outlier (the #38 pattern, found automatically rather than on a hardware bench). This is the "shared conformance vectors" idea — except the vectors are *generated and shrunk*, not hand-authored.
+Serialise scenarios to language-neutral JSON; run the *same* suite + invariants in `packet-net/ax25-ts` → C#↔TS differential. Then feed survivors into the docker interop stack (LinBPQ / Xrouter / rax25 / direwolf) → de-facto differential. Divergence on identical input means someone's wrong; cross-check against the figure + the de-facto citations. This is also how figures get validated against reality: all de-facto impls agree but `StrictlyFaithful` disagrees ⇒ the figure is the outlier (the #38 pattern, found automatically rather than on a hardware bench). This is the "shared conformance vectors" idea — except the vectors are *generated and shrunk*, not hand-authored.
 
 ### Phase A4 — Coverage-guided generation + SDL coverage metric
 

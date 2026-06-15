@@ -7,7 +7,7 @@ using Packet.Core;
 namespace Packet.Ax25.Tests.Session;
 
 /// <summary>
-/// Robustness (m0lte/packet.net#225): a transition whose action sequence throws
+/// Robustness (packet-net/packet.net#225): a transition whose action sequence throws
 /// part-way through must not leave the session silently wedged. A path that ran
 /// "Stop T1" but threw before "Start T1" used to leave T1 cancelled forever, so
 /// the session sat in TimerRecovery doing nothing until the peer's N2 timeout

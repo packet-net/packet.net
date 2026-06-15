@@ -38,7 +38,8 @@ public sealed class AppPackagesGatewayTests : IDisposable
         packagesRoot = Path.Combine(dir, "apps");
         Directory.CreateDirectory(packagesRoot);
 
-        // pkgui: enabled (apps: grants trust below) with a ui: → tile + proxied.
+        // pkgui: enabled (apps: grants trust below) with a ui: → tile + proxied. Declares
+        // mode: slot so the launcher feed surfaces uiMode for the panel's in-panel iframe path.
         WriteManifest("pkgui", $"""
             manifest: 1
             id: pkgui
@@ -48,6 +49,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
               upstream: http://127.0.0.1:{port}
               name: Package UI
               icon: layout-grid
+              mode: slot
             """);
 
         // offpkg: a perfectly valid package the owner has NOT enabled → no tile, no proxy.
@@ -169,6 +171,49 @@ public sealed class AppPackagesGatewayTests : IDisposable
         // The wall id appears exactly once — the inline entry; the colliding package errored.
         tiles["wall"].GetProperty("name").GetString().Should().Be("WALL");
         json.Split("\"wall\"").Length.Should().Be(2, "the colliding package must not add a second wall tile");
+    }
+
+    [Fact]
+    public async Task Apps_feed_carries_a_uiMode_field_per_app()
+    {
+        // The launcher feed surfaces uiMode so the panel's nav knows how to open each app — a full
+        // navigation (standalone) vs an in-panel iframe (embedded/slot). The pkgui package declares
+        // mode: slot; the inline wall entry declares no mode → standalone (the safe default).
+        await using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient();
+
+        var json = await client.GetStringAsync("/api/v1/apps");
+        var tiles = JsonDocument.Parse(json).RootElement.EnumerateArray()
+            .ToDictionary(t => t.GetProperty("id").GetString()!, t => t);
+
+        // The field is present on every tile…
+        tiles["pkgui"].TryGetProperty("uiMode", out var pkguiMode).Should().BeTrue();
+        tiles["wall"].TryGetProperty("uiMode", out var wallMode).Should().BeTrue();
+        // …carrying the declared mode (lowercase contract spelling) and the standalone default.
+        pkguiMode.GetString().Should().Be("slot");
+        wallMode.GetString().Should().Be("standalone");
+    }
+
+    [Fact]
+    public async Task Apps_feed_carries_a_state_field_null_for_service_less_apps()
+    {
+        // The launcher feed now carries the supervisor `state` so the panel's nav can render a
+        // not-running warning from this one fetch. Neither the inline `wall` nor the `pkgui`
+        // package declares a service: block, so both have nothing to run → state is null (the
+        // managed/Faulted derivation mirrors PdnAppPackagesApi, covered there).
+        await using var factory = new WebApplicationFactory<Program>();
+        using var client = factory.CreateClient();
+
+        var json = await client.GetStringAsync("/api/v1/apps");
+        var tiles = JsonDocument.Parse(json).RootElement.EnumerateArray()
+            .ToDictionary(t => t.GetProperty("id").GetString()!, t => t);
+
+        // The field is present on every tile…
+        tiles["pkgui"].TryGetProperty("state", out var pkguiState).Should().BeTrue();
+        tiles["wall"].TryGetProperty("state", out var wallState).Should().BeTrue();
+        // …and null for these service-less apps (no daemon → nothing to warn about).
+        pkguiState.ValueKind.Should().Be(JsonValueKind.Null);
+        wallState.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 # A lightweight, v2.2-compliant AX.25 packet node on Pico W-class hardware (RP2040)
 
-*Research / options analysis — 2026-06-02. Exploratory; no code, no repo changes. Grounded against the live `m0lte/ax25sdl` + `m0lte/packet.net` trees and external prior art (links at the end).*
+*Research / options analysis — 2026-06-02. Exploratory; no code, no repo changes. Grounded against the live `packet-net/ax25sdl` + `packet-net/packet.net` trees and external prior art (links at the end).*
 
 ---
 
@@ -298,4 +298,4 @@ The in-flight v2.2 work (mod-128 framing, SABME, XID negotiation, segmentation) 
 - TinyGo build options / scheduler / GC notes: https://tinygo.org/docs/reference/usage/important-options/
 - C/C++/MicroPython/Rust/TinyGo MCU benchmark (MicroPython many× slower): https://www.mdpi.com/2079-9292/12/1/143
 - AX.25 v2.2 specification (link-layer reference): https://www.ax25.net/AX25.2.2-Jul%2098-2.pdf
-- ax25sdl source of truth (this analysis read `spec/c`, `spec/rust`): https://github.com/M0LTE/ax25sdl
+- ax25sdl source of truth (this analysis read `spec/c`, `spec/rust`): https://github.com/packet-net/ax25sdl
