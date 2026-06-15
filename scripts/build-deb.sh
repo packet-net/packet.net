@@ -165,6 +165,11 @@ dpkg-deb --build --root-owner-group "$stage" "$out"
 
 echo "==> built $out"
 dpkg-deb --info "$out"
+# These listings are pure diagnostics. Disable pipefail around them: each is a
+# `… | awk | head`/`grep` pipe where head closing early (SIGPIPE to awk) or a grep
+# no-match returns non-zero, which under `set -o pipefail` would abort the whole
+# build on a debug echo (the flaky publish-docker break — awk "broken pipe", exit 2).
+set +o pipefail
 echo "--- contents (top) ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | head -30
 echo "--- wwwroot (the served SPA) ---"
@@ -175,6 +180,7 @@ echo "--- app catalog (the Available-apps index) ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/catalog/'
 echo "--- tailscale sidecar ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/lib/packetnet/packetnet-tsnet'
+set -o pipefail
 if command -v lintian >/dev/null 2>&1; then
   lintian "$out" || true
 else
