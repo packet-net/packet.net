@@ -79,10 +79,12 @@ describe("Apps — available apps section", () => {
 
     fireEvent.click(within(avail("dapps")).getByRole("button", { name: "Install" }));
     // the confirm lists the declared capabilities before anything fires — the legacy `network`
-    // declaration is display-normalised to `packet`.
-    expect(screen.getByText(/Install DAPPS\?/)).toBeInTheDocument();
-    expect(screen.getByText("packet")).toBeInTheDocument();
-    expect(screen.queryByText("network")).toBeNull();
+    // declaration is display-normalised to `packet`. Scope to the open modal: the package
+    // manager below now shows the same capability text on its rows.
+    const title = screen.getByText(/Install DAPPS\?/);
+    const modal = title.closest("div.relative") as HTMLElement;
+    expect(within(modal).getByText("packet")).toBeInTheDocument();
+    expect(within(modal).queryByText("network")).toBeNull();
     expect(install).not.toHaveBeenCalled();
 
     clickModalButton(/Install DAPPS\?/, "Install");

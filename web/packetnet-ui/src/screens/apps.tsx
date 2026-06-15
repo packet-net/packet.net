@@ -11,10 +11,12 @@
 // "upload a .pdnapp" affordance (the air-gapped path).
 //
 // Below: the management section (GET /api/v1/apps/packages) — every discovered package +
-// inline config-authored app, with its supervisor state. Enable/disable/restart/uninstall
-// are admin-gated (the server is the real gate; this is the light-touch UI mirror, like
-// users.tsx). Enabling shows a confirm listing the manifest's declared capabilities — the
-// owner sees what they are trusting before the POST fires. Disabling needs no confirm.
+// inline config-authored app, with its supervisor state. Each row carries its declared
+// capabilities as inline chips (the same trust facts the enable confirm spells out, shown
+// at a glance for an already-installed app). Enable/disable/restart/uninstall are admin-
+// gated (the server is the real gate; this is the light-touch UI mirror, like users.tsx).
+// Enabling shows a confirm listing the manifest's declared capabilities — the owner sees
+// what they are trusting before the POST fires. Disabling needs no confirm.
 // Uninstall (catalog/upload-installed packages only) removes the installed files, keeps
 // app data, and needs the app disabled first. Inline entries are read-only here (their
 // enabled flag is config-authored; the API answers 404 for them); a broken package
@@ -537,6 +539,7 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall }: {
               {p.pid !== null && <span className="font-mono text-[11px] text-muted-foreground">pid {p.pid}</span>}
             </div>
             {p.description && <p className="mt-0.5 text-xs text-muted-foreground">{p.description}</p>}
+            <CapabilityBadges capabilities={p.capabilities} />
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -651,6 +654,43 @@ function StatePill({ state, service }: { state: AppPackageState | null; service:
     return <span className="text-xs text-muted-foreground">—</span>;
   }
   return <Badge variant={STATE_BADGE[state]}>{state.toLowerCase()}</Badge>;
+}
+
+// ---- granted capabilities: what the manifest's `capabilities:` grant the app ----
+// The same trust facts the enable confirm spells out, surfaced inline on the row so the
+// owner can see what an installed app is running with at a glance — not only at the enable
+// moment. Each known capability carries a one-line tooltip of what it grants (the meaning
+// the docs attach: `packet` = full packet-network access, the app binds its own callsign
+// over RHP; `web` = the app serves a web UI the node proxies). An unknown spelling renders
+// verbatim with a generic hint — capabilities are free-form strings, not a closed enum.
+const CAPABILITY_HINT: Record<string, { icon: string; help: string }> = {
+  // `network` is display-normalised to `packet` before lookup, so key on `packet`.
+  packet: { icon: "radio", help: "Full packet-network access — the app binds its own callsign and sends/receives over RHP." },
+  web: { icon: "link", help: "The app serves a web UI that the node proxies under /apps/." },
+};
+
+// The declared capabilities as inline chips on a package row. Renders nothing when the
+// manifest declares none (the row simply omits the line). `network` shows as `packet`
+// (displayCapability) — the same normalisation the enable confirm and available list use.
+function CapabilityBadges({ capabilities }: { capabilities: string[] }) {
+  if (capabilities.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-capabilities>
+      <span className="text-[11px] text-muted-foreground">Capabilities:</span>
+      {capabilities.map((c) => {
+        const label = displayCapability(c);
+        const hint = CAPABILITY_HINT[label.toLowerCase()];
+        return (
+          <Tooltip key={c} text={hint?.help ?? `Declared capability: ${label}`}>
+            <Badge variant="outline" className="font-mono">
+              {hint && <Icon name={hint.icon} size={11} className="mr-1 opacity-70" />}
+              {label}
+            </Badge>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
 }
 
 // ---- declared tailnet forwards: the "exposes on your tailnet" capability -------

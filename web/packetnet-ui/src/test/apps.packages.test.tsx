@@ -130,9 +130,36 @@ describe("Apps — package management section", () => {
     await mountApps();
     // mail's manifest declares the legacy `network` capability — the confirm shows `packet`.
     fireEvent.click(enableSeg("mail"));
-    expect(screen.getByText(/Enable Mail\?/)).toBeInTheDocument();
-    expect(screen.getByText("packet")).toBeInTheDocument();
-    expect(screen.queryByText("network")).toBeNull();
+    const title = screen.getByText(/Enable Mail\?/);
+    expect(title).toBeInTheDocument();
+    // Scope to the open modal: mail's row below now shows the same `packet` chip.
+    const modal = title.closest("div.relative") as HTMLElement;
+    expect(within(modal).getByText("packet")).toBeInTheDocument();
+    expect(within(modal).queryByText("network")).toBeNull();
+  });
+
+  it("renders each package's declared capabilities as chips on its row", async () => {
+    await mountApps();
+    // wall declares ["session", "web"] — both surface on the row.
+    const caps = within(row("wall")).getByText("Capabilities:").parentElement as HTMLElement;
+    expect(within(caps).getByText("session")).toBeInTheDocument();
+    expect(within(caps).getByText("web")).toBeInTheDocument();
+  });
+
+  it("display-normalises the `network` capability to `packet` on the row", async () => {
+    await mountApps();
+    // mail's manifest declares the legacy `network` capability — the row chip reads `packet`.
+    const caps = within(row("mail")).getByText("Capabilities:").parentElement as HTMLElement;
+    expect(within(caps).getByText("packet")).toBeInTheDocument();
+    expect(within(caps).queryByText("network")).toBeNull();
+  });
+
+  it("omits the capabilities line for a package that declares none", async () => {
+    await mountApps();
+    // notes declares [] — no Capabilities: line on its row.
+    expect(within(row("notes")).queryByText("Capabilities:")).toBeNull();
+    // a broken package (wx, []) likewise shows no capabilities line.
+    expect(within(row("wx")).queryByText("Capabilities:")).toBeNull();
   });
 
   it("shows a broken package's manifest error and keeps both segments disabled", async () => {
@@ -159,9 +186,12 @@ describe("Apps — package management section", () => {
     await mountApps();
 
     fireEvent.click(enableSeg("lobby"));
-    // the confirm lists the manifest's declared capabilities before anything fires
-    expect(screen.getByText(/Enable LOBBY\?/)).toBeInTheDocument();
-    expect(screen.getByText("session")).toBeInTheDocument();
+    // the confirm lists the manifest's declared capabilities before anything fires. Scope to
+    // the open modal: rows below now show the same capability text on their chips.
+    const title = screen.getByText(/Enable LOBBY\?/);
+    expect(title).toBeInTheDocument();
+    const modal = title.closest("div.relative") as HTMLElement;
+    expect(within(modal).getByText("session")).toBeInTheDocument();
     expect(enable).not.toHaveBeenCalled();
 
     clickModalButton(/Enable LOBBY\?/, "Enable");
