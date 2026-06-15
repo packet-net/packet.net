@@ -44,7 +44,7 @@ public class AppCatalogYamlTests
 
         var bbs = doc.Apps.Single(a => a.Id == "bbs");
         bbs.Artifact!.Kind.Should().Be(ArtifactKind.Deb);
-        bbs.Version.Should().Be("0.2.15");
+        bbs.Version.Should().Be("0.2.16");
         bbs.Artifact.Deb!.Debs.Should().ContainKeys("linux-x64", "linux-arm64", "linux-arm");
     }
 
