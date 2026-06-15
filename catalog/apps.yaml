@@ -102,7 +102,7 @@ apps:
 
   - id: bbs
     name: BBS
-    version: "0.2.22"
+    version: "0.2.23"
     description: "Packet-radio mailbox — personal mail, bulletins + NTS, FBB store-and-forward, webmail, and IMAP/SMTP for a phone mail app over Tailscale. Renders inside the pdn panel (slot UI mode), styled to match and following the panel's theme. Binds <node>-<ssid> + the BBS alias; mail addresses are SSID-less. Sysop forwarding dashboard; reverse collection."
     icon: mail
     capabilities: [packet, web]
@@ -111,11 +111,11 @@ apps:
       kind: deb
       debs:
         linux-x64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.22/pdn-bbs_0.2.22_amd64.deb
-          sha256: b402e47e1d4c329d4987fb80eb0b20ea6e6e9a8e20aec888f3692dd265f5101a
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.23/pdn-bbs_0.2.23_amd64.deb
+          sha256: d0c20a42feb696cd91eaa9f16209668f698488897d2170dd0fc01841cbedb905
         linux-arm64:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.22/pdn-bbs_0.2.22_arm64.deb
-          sha256: 21bc7c8b5bd35e21e99a21e32b5caccf2b93e49e61f5ae27536c4b0e729f863a
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.23/pdn-bbs_0.2.23_arm64.deb
+          sha256: c2fba39bb33c4ebb2e753006741e95312a85a70dad5e0da29eb551b228606542
         linux-arm:
-          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.22/pdn-bbs_0.2.22_armhf.deb
-          sha256: eff4575435c6f3f54b056ba78323b703b56a3dce7f2d8af0d2781dd81550ceb6
+          url: https://github.com/packet-net/pdn-bbs/releases/download/v0.2.23/pdn-bbs_0.2.23_armhf.deb
+          sha256: 3c7cbf111f25b62ac9e85307ed3a64c4af37d34b338d74c1e255ed87ec400aa3
