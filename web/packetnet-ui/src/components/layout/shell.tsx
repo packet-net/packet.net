@@ -2,7 +2,7 @@
 // Ported from the handoff ui.jsx Shell; wired to react-router (NavLink/Outlet)
 // and the live NodeStatus for the topbar.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Icon, AppIcon, type IconName } from "@/components/icon";
 import { Button } from "@/components/ui";
@@ -125,19 +125,21 @@ function AppNav({ onNavigate }: { onNavigate: () => void }) {
             )}
           </>
         );
-        // embedded/slot render in-panel → a SPA <Link> to /apps/{id}. standalone is a full
-        // navigation to the reverse-proxied page → a plain <a> (target="_self" keeps this tab).
+        // embedded/slot render in-panel → a SPA <NavLink> to /apps/{id} (so it highlights when that
+        // app is open — `end` keeps it exact, not also lit by deeper SPA routes). standalone is a
+        // full navigation to the reverse-proxied page → a plain <a> (target="_self" keeps this tab).
         return app.uiMode === "embedded" || app.uiMode === "slot" ? (
-          <Link
+          <NavLink
             key={app.id}
             to={`/apps/${app.id}`}
+            end
             data-app-nav={app.id}
             data-ui-mode={app.uiMode}
             onClick={onNavigate}
-            className={APP_NAV_CLASS}
+            className={({ isActive }) => cn(APP_NAV_CLASS, isActive && "bg-primary/10 text-primary")}
           >
             {content}
-          </Link>
+          </NavLink>
         ) : (
           <a
             key={app.id}
@@ -169,7 +171,9 @@ export function Shell() {
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {NAV.map((item) => (
-            <NavLink key={item.id} to={item.to} end={item.to === "/"} onClick={() => setMobileNav(false)}
+            // `end` for "/" (dashboard) AND "/apps": the Apps manager must light only on exactly
+            // /apps, not on an embedded app route like /apps/bbs (where the app's own nav entry lights).
+            <NavLink key={item.id} to={item.to} end={item.to === "/" || item.to === "/apps"} onClick={() => setMobileNav(false)}
               className={({ isActive }) => cn("flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors", isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
               <Icon name={item.icon} size={17} />
               {item.label}

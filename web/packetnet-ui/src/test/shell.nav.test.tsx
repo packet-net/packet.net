@@ -154,4 +154,32 @@ describe("Shell — Apps nav group", () => {
 
     await waitFor(() => expect(document.querySelector('[data-app-nav="lobby"]')).not.toBeNull());
   });
+
+  it("highlights the open app's nav entry — and not the core Apps item — when its route is active", async () => {
+    // Regression: opening an embedded/slot app (route /apps/{id}) lit the core "Apps" manager entry
+    // (because /apps/{id} is under /apps) while the app's own entry stayed unhighlighted. Now the
+    // app entry is a NavLink that lights on its exact route, and the Apps item is `end` so it doesn't.
+    seedScope();
+    vi.spyOn(api, "apps").mockResolvedValue([
+      { id: "lobby", name: "LOBBY", icon: "users", url: "/apps/lobby/", uiMode: "slot", state: "Running" },
+    ]);
+    render(
+      <MemoryRouter initialEntries={["/apps/lobby"]}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<Shell />}>
+              <Route index element={<div>home</div>} />
+              <Route path="apps/:id" element={<div>app</div>} />
+            </Route>
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(document.querySelector('[data-app-nav="lobby"]')).not.toBeNull());
+
+    // The open app's entry carries the active highlight.
+    expect(navEntry("lobby").className).toContain("text-primary");
+    // The core "Apps" manager item does NOT, while an app is open.
+    expect(screen.getByRole("link", { name: "Apps" }).className).not.toContain("text-primary");
+  });
 });
