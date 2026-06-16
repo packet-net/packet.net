@@ -680,6 +680,42 @@ Phase 2 delivered the mod-8 connected-mode data-link state machine end-to-end (d
 
 ---
 
+### 5.G GB7RDG (LinBPQ) replacement parity ⬜
+
+The flagship cutover target: replace the live LinBPQ node **GB7RDG** (OARC, M0LTE) with PDN. A full subsystem-by-subsystem audit of PDN vs the 2026-06-11 GB7RDG snapshot is in `gb7rdg-config/GAP-ANALYSIS.md` (forwarding-specific detail in `gb7rdg-config/ANALYSIS.md`). **Headline:** the hard protocol work is done — NET/ROM (L3+L4+INP3+connect-by-alias), AX.25 mod-8/128, multi-port KISS-TCP+ACKMODE, and the BBS engine (B1F/B2F/LZHUF/BID/routing) are all present and live-wired; the gaps are *breadth*, and most need individual design before building.
+
+Disposition legend: **DROP** (decided no), **PARK** (deferred / secondary — revisit later), **CONSIDER** (roadmap candidate, needs its own design pass). Dispositions are Tom's calls (2026-06-16) — see §17. **Nothing here is approved to build yet**; each CONSIDER item gets designed/scoped on its own before work starts.
+
+| Item | Disposition | Owner | Notes |
+|---|---|---|---|
+| **BBS content filtering** (RejFrom / RejTo / RefuseBulls / FBB filters) | CONSIDER | pdn-bbs | Biggest BBS gap — GB7RDG dropped 219 filter + 131 BID rejects in 9 days; PDN does only the BID half. Highest daily impact. |
+| **Prometheus metrics / exporter** | CONSIDER | packet.net | New (replaces the dropped bpqmon ask). "Something like Prometheus" for node/link/forwarding observability — design the metric set + `/metrics` exposure. |
+| **Chat federation: on-air validation** | CONSIDER | pdn-bpqchat | Wire protocol is done + docker-validated; needs a live RF link to GB7RDG's neighbours (GB7NDH-3 / GB7WOD-1 / GB7WOK-1), a tagged bpqchat release, and the inbound peer allow-list enforced (design.md §4.1). |
+| **M0LTEMap reporting** (`EnableM0LTEMap` + per-port `M0LTEMapInfo` + events) | CONSIDER | packet.net | Puts the node on the UK packet map — operator-facing, Tom runs it. |
+| **OARC API** (`ENABLEOARCAPI`) | CONSIDER | packet.net | OARC node-API integration. |
+| **Per-port NET/ROM QUALITY** | CONSIDER | packet.net | PDN has one global value; GB7RDG sets per port (191/192/…). |
+| **Per-port PACLEN / N1 knob** | CONSIDER | packet.net | Enforced at the 256 default / via XID only; no per-port config. The HF port needs ~80. |
+| **Housekeeping lifetime defaults + MaxMsgno** | CONSIDER | pdn-bbs | Kill-by-age machinery exists but all-30-day; GB7RDG keeps bulls ~7d. Mostly defaults/tuning + renumber. |
+| **L4Compress** (`L4Compress=1`) | CONSIDER | packet.net | NET/ROM L4 payload compression; efficiency on slow links. |
+| **Connect-script fidelity** (`!` force-direct, `NC`, INTERLOCK, PAUSE) | CONSIDER | packet.net + pdn-bbs | Matters for GB7RDG's shared-HF-PA partners, not the direct GB7RDG↔PDN link. `NC` currently sent verbatim; INTERLOCK recognised-but-ignored. |
+| **Receiver-side restart granting** (`FS !offset`) | CONSIDER | pdn-bbs | Sender honours it; receiver never persists partial inbound. RF-feed-only — doesn't bite the clean net-sim link. |
+| **Inbound FBB forwarding over internet-TCP** (BPQ `FBBPORT`) | CONSIDER | pdn-bbs | Protocol complete but inbound rides AX.25/RHP only; no raw-TCP forwarding port for an internet partner. |
+| **MHeard `MH` console verb + persisted heard log** | CONSIDER | packet.net | Exists as `/api/v1/links` telemetry; no `MH` verb, not persisted across port teardown. |
+| **White Pages (WP consume)** | CONSIDER | pdn-bbs | Already tracked as forwarding.md F-3; GB7RDG receives `WP@<bbs>` each cycle (PDN stores as ordinary mail). |
+| **APRS** (encoder + position/object beaconing + digipeater + APRS-IS IGate) | PARK | packet.net | "Very much a secondary thing." Largest single chunk; `Packet.Aprs` is decoder-only today. Revisit after the cutover essentials. |
+| **Mesh app reachability** (advertise app callsigns/aliases in NET/ROM NODES) | PARK | packet.net | Skeptical — publishing every app into the routing table is noisy; if ever done, must be **opt-in per app**. Today apps are reachable by direct callsign / on-node connect. |
+| **AX.25 digipeating** (`DIGIFLAG`) | DROP | — | "An antipattern for nodes anyhow." |
+| **Multi-user telnet login** | DROP | — | "More of an admin interface than anything nowadays" — the telnet/SSH console stays a sysop interface, not a public multi-user login. |
+| **BPQmon / MQTT node telemetry** | DROP | — | "We're not a BPQ port." Superseded by the Prometheus item above. |
+| **AGW emulator** (`AGWPORT`) | DROP | — | Apps use RHPv2, not AGW (a loopback AGW server remains Phase 6, but not for app-hosting). |
+| **IP gateway** (`IPGATEWAY`, IP-over-AX.25) | DROP | — | Non-goal (and GB7RDG's own AXIP port is commented out). |
+| **SNMP** (`ENABLESNMP`) | DROP | — | Non-goal — PDN monitoring is REST + SSE (+ the Prometheus item). |
+| **CMS / Winlink** | DROP | — | Explicitly deferred in pdn-bbs docs; separate product decision. |
+
+A **GitHub issue sweep** to file/triage the CONSIDER items against the org's trackers is wanted "at some point" (not yet done — noted here so it isn't lost).
+
+---
+
 ## 6. SDL transcription discipline
 
 Critical to the project. Read [§2.1](#21-trust-the-figure), [§2.2](#22-encode-then-verify-not-infer-then-encode), [§2.3](#23-pin-implementation-evidence) and [docs/sdl-primer.md](sdl-primer.md) before touching any `*.sdl.yaml`.
@@ -938,6 +974,11 @@ Design notes / open questions: TOTP needs a roughly-synced clock at both ends �
 - Multi-node clustering / Postgres backend.
 - AOT publish (revisit when Fido2NetLib + Konscious are AOT-trim-safe).
 - Localisation (English only in v1).
+- **AX.25 digipeating** (an antipattern for nodes). *(GB7RDG-parity decision 2026-06-16 — see §5.G.)*
+- **Public multi-user telnet login** (the console stays a sysop/admin interface). *(§5.G.)*
+- **BPQmon-style MQTT node telemetry** (we're not a BPQ port — replaced by a Prometheus item in §5.G). *(§5.G.)*
+- **IP-over-AX.25 gateway** and **SNMP** (monitoring is REST + SSE + Prometheus). *(§5.G.)*
+- **CMS / Winlink RMS gateway** (separate product decision; also deferred in pdn-bbs). *(§5.G.)*
 
 ---
 
@@ -1097,6 +1138,10 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-06-16 — GB7RDG (LinBPQ) replacement gap analysis + scoping decisions (new §5.G)
+
+A full subsystem audit of PDN vs the live GB7RDG node (the cutover target), to answer "what's missing to replace LinBPQ at GB7RDG." Four parallel read-only capability audits (node/RF/NET-ROM, BBS-vs-LINMAIL, APRS/servers/integrations, chat/apps) cross-referenced against the 2026-06-11 snapshot (`gb7rdg-config/bpq32.cfg` + the `/opt/oarc/bpq` tree); the consolidated, file-cited findings are in **`gb7rdg-config/GAP-ANALYSIS.md`** (forwarding-specific detail already in `gb7rdg-config/ANALYSIS.md`). Bottom line: the protocol core (NET/ROM L3+L4+INP3, AX.25 mod-8/128, multi-port KISS-TCP+ACKMODE, BBS B1F/B2F/LZHUF/BID/routing) is present and live-wired; the gaps are breadth, not depth. Recorded the outcomes as a roadmap table in **§5.G** with Tom's dispositions (2026-06-16): **DROP** — AX.25 digipeating (antipattern for nodes), public multi-user telnet login (the console is an admin interface now), BPQmon/MQTT telemetry (we're not a BPQ port), AGW emulator (apps use RHPv2), IP gateway, SNMP, CMS/Winlink; **PARK** — APRS (secondary), mesh app-alias-in-NODES (noisy; opt-in only if ever); **CONSIDER** (each needs its own design pass before building) — BBS content filtering (the highest-impact gap), a new **Prometheus** metrics/exporter (replacing the dropped bpqmon ask), chat on-air federation + bpqchat release + peer allow-list, M0LTEMap reporting, OARC API, per-port NET/ROM QUALITY + PACLEN/N1 knobs, housekeeping lifetime defaults + MaxMsgno, L4Compress, connect-script fidelity (`!`/`NC`/INTERLOCK), receiver-side restart granting, inbound FBB-over-internet-TCP, the MHeard `MH` verb, and WP consume. The DROP set is also reflected in §11. **No build authorised by this entry** — it's the roadmap of record so each item gets considered individually. A GitHub issue sweep to file/triage the CONSIDER items is wanted "at some point" (not yet done). The BBS-owned CONSIDER items are mirrored into pdn-bbs's roadmap (`forwarding.md`).
 
 ### 2026-06-15 — Remove the unagreed RHP `hello`/`helloReply` capability-discovery extension (#449)
 
