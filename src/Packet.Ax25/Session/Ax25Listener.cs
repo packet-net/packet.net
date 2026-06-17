@@ -472,12 +472,19 @@ public sealed class Ax25Listener : IAsyncDisposable
         {
             cached.Mdl.Negotiate();
 
-            // Bounded wait: enough for the peer's XID response (a couple of T1s + loss
-            // retries on a lossy channel) without stalling a non-XID peer's connect for
-            // long. The MDL leaves Negotiating on the XID response (success), a FRMR
-            // (v2.0 fallback), or after NM201 TM201 retries (give-up).
-            var budget = TimeSpan.FromMilliseconds(Math.Min(
-                12_000, (ctx.N2 + 1) * Math.Max(1500, ctx.T1V.TotalMilliseconds)));
+            // Optimistic short probe, NOT a full connection-retry budget. A peer that
+            // does pre-session XID (BPQ) answers on the FIRST frame — its XID response is
+            // immediate on the no-active-link path. A peer that doesn't (another PDN, a
+            // dumb v2.0 TNC) never answers, so waiting the full (N2+1)·T1V establishment
+            // budget (≈ up to 12 s) just stalls every mod-8 dial to it — including NET/ROM
+            // interlinks — before the SABM fallback. So wait only ~2·T1V (one command +
+            // one retry / a loss margin), floored at 1.5 s so a clean link gets a fair
+            // shot and capped at 3.5 s so a silent peer degrades to go-back-N promptly.
+            // The MDL leaves Negotiating on the XID response (success), a FRMR (v2.0
+            // fallback), or give-up. (Adaptive per-neighbour reuse is the capability cache,
+            // §5.G — remember who answers and skip the probe entirely.)
+            var budget = TimeSpan.FromMilliseconds(
+                Math.Min(3_500, Math.Max(1_500, 2 * ctx.T1V.TotalMilliseconds)));
             using var budgetCts = new CancellationTokenSource(budget, timeProvider);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetCts.Token);
 
@@ -837,7 +844,11 @@ public sealed class Ax25Listener : IAsyncDisposable
         //      correct for *cached* sessions in Connected/etc. but have
         //      no transition in Disconnected. The catch-all is named
         //      `all_other_commands` for exactly this case. (TEST never
-        //      reaches here — it is intercepted connectionlessly above.)
+        //      reaches here — it is intercepted connectionlessly above. An
+        //      XID *command* with AcceptIncoming=true is likewise intercepted
+        //      above — the pre-session responder path — and never reaches
+        //      here; an XID *response* with no negotiation, or any XID with
+        //      AcceptIncoming=false, still does and falls to t05.)
         //
         // The transient session uses the listener's current
         // AcceptIncoming for case (a)'s reject behaviour, and always
@@ -849,6 +860,47 @@ public sealed class Ax25Listener : IAsyncDisposable
         // transient responder AS the alias — fall silent (we no longer answer for it).
         if (!local.Equals(MyCall) && !localAliases.ContainsKey(local))
         {
+            return;
+        }
+
+        // Pre-session XID *command* (a peer doing pre-SABM negotiation to us, no
+        // active link yet). §4.3.3.7 makes answering an XID command unconditional —
+        // "A station receiving an XID command returns an XID response unless a UA is
+        // pending or a FRMR condition exists" — and §6.3.2 has negotiation happen
+        // *before* the connection so the subsequent SABM's link adopts the negotiated
+        // parameters. The MDL (Annex C5.3) is a connection-independent machine, so
+        // answering here is plain spec-compliant behaviour, not a pragmatic opt-in.
+        //
+        // The defect this closes is purely inbound routing: without this, the command
+        // fell through to a transient session, got reclassified to all_other_commands,
+        // and the peer's pre-connect XID went unanswered (figc4.1 t05 → DM) — stalling
+        // PDN↔PDN NET/ROM mod-8 interlinks where the initiator opens with XID.
+        //
+        // We build + cache a real session (NOT transient): object identity is the
+        // staging mechanism — the (local,remote)-keyed cache persists the negotiated
+        // link context across the XID→SABM sequence, and the inbound SABM's figc4.1
+        // t14 "Set Version 2.0" clears only IsExtended (it does NOT touch SrejEnabled),
+        // so a staged SrejEnabled survives into the connection. We seed the context
+        // SREJ-capable so the responder's DefaultOfferFor advertises SREJ; the §6.3.2
+        // lesser-of merge in RespondToXidCommand reverts it if the peer didn't offer
+        // SREJ. Gate only on AcceptIncoming, consistent with the SABM-accept path: if
+        // we won't accept the connection we shouldn't half-open from an XID.
+        if (classified is XidReceived && parsed.IsCommand && AcceptIncoming)
+        {
+            var xidSession = BuildSession(local, peer, allowAccept: true);
+            AddToCache(key, xidSession);
+            options.ConfigureSession?.Invoke(xidSession.Session);
+
+            // Seed SREJ-capable so DefaultOfferFor advertises SREJ in our response;
+            // the lesser-of merge reverts this if the peer's offer lacked SREJ.
+            xidSession.Session.Context.SrejEnabled = true;
+            xidSession.Session.Context.ImplicitReject = false;
+
+            // Build + send the F=1 XID response (the figc5.1 responder path). DO NOT
+            // raise SessionAccepted — there's no DL-CONNECT yet; the following SABM
+            // raises it. DO NOT dispose the scheduler — the session must persist for
+            // that SABM, and the responder arms no timer, so nothing leaks.
+            xidSession.Mdl.RespondToXidCommand(parsed);
             return;
         }
 
