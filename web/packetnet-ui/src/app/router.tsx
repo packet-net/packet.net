@@ -17,6 +17,7 @@ import { Ports } from "@/screens/ports";
 import { Config } from "@/screens/config";
 import { Users } from "@/screens/users";
 import { LinkTuner } from "@/screens/link-tuner";
+import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
 
 // ============================================================
 // The gate decides, on load, which of setup / login / app to show — and works
@@ -117,6 +118,7 @@ export const router = createBrowserRouter([
       { path: "ports", element: <Ports /> },
       { path: "config", element: <Config /> },
       { path: "users", element: <Users /> },
+      { path: "links", element: <LinkTroubleshoot /> },
       { path: "tools/tuner", element: <LinkTuner /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
