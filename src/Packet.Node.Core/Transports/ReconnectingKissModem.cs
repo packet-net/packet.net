@@ -24,6 +24,31 @@ namespace Packet.Node.Core.Transports;
 /// restarting), which is the actual bounce case.
 /// </para>
 /// <para>
+/// A drop is detected two ways, both surfacing as the inner stream ending: a
+/// graceful close (the peer sent a FIN — <c>KissTcpClient</c> reads 0 bytes and
+/// throws) and — the case that actually requires operator intervention without
+/// this (#464) — a <em>half-open</em> connection where the peer vanished with no
+/// FIN (rebooted TNC, net-sim restart, cable yank). The latter is caught by
+/// <c>KissTcpClient</c>'s read-idle liveness timeout (and OS TCP keepalive on a
+/// real socket): a stalled read past the idle budget is treated as a dead link
+/// and ends the stream, so this wrapper reconnects instead of the read hanging
+/// forever.
+/// </para>
+/// <para>
+/// In-flight AX.25 sessions on this port do NOT survive the bounce, and that is
+/// correct: the listener (and its accept loop) is built once over this wrapper
+/// and is never torn down across a reconnect — <see cref="ReadFramesAsync"/>
+/// loops internally and never yields end-of-stream during a re-dial — so the
+/// port stays in a working, listening state. But the far end (the TNC and the RF
+/// peer beyond it) is gone, so any connected-mode session keyed to it will see
+/// no acks, exhaust AX.25 T1/N2 retransmission, and disconnect by the normal
+/// state-machine path. The node recovers to "ready to accept/originate new
+/// connections," not "resumes the old session" — there is no AX.25 facility to
+/// resume a session across a transport identity change, and attempting to would
+/// leave a wedged half-open session. New connects work as soon as the link is
+/// back and the KISS params are replayed.
+/// </para>
+/// <para>
 /// Reads pump the current inner and reconnect on end-of-stream; sends and
 /// parameter-sets target the current inner and are dropped best-effort while the
 /// link is down — AX.25 T1 retransmits any lost I-frame once the link is back.

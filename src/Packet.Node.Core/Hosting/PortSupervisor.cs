@@ -570,7 +570,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         IKissModem modem;
         try
         {
-            modem = await transportFactory.CreateAsync(port.Transport, ct).ConfigureAwait(false);
+            modem = await transportFactory.CreateAsync(port.Transport, timeProvider, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -588,7 +588,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         {
             modem = new ReconnectingKissModem(
                 modem,
-                token => transportFactory.CreateAsync(port.Transport, token),
+                token => transportFactory.CreateAsync(port.Transport, timeProvider, token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
                 timeProvider);

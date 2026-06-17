@@ -39,7 +39,10 @@ public sealed class FakeTransportFactory : ITransportFactory
 
     /// <summary>The supervisor passes only the TransportConfig, so we key on its
     /// endpoint description which the tests make unique per port.</summary>
-    public Task<IKissModem> CreateAsync(TransportConfig transport, CancellationToken cancellationToken = default)
+    public Task<IKissModem> CreateAsync(
+        TransportConfig transport,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
     {
         var key = transport.DescribeEndpoint();
         if (faults.TryGetValue(key, out var fault))

@@ -39,10 +39,30 @@ public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
     /// </summary>
     private static readonly TimeSpan DefaultAckTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Default read-idle budget. A half-open TCP connection — the peer rebooted,
+    /// the cable was pulled, net-sim was restarted — sends no FIN, so a plain
+    /// <c>ReadAsync</c> blocks forever and the port silently dies (#464). If no
+    /// byte arrives within this window the link is treated as dead and the read
+    /// stream ends, which drives <c>ReconnectingKissModem</c> to re-dial. The
+    /// window is generous because a healthy packet-radio link is often quiet for
+    /// long stretches between frames; OS keepalive (enabled on real sockets) is
+    /// the faster probe, this is the backstop that also covers stacks/peers that
+    /// drop keepalive probes. <see cref="TimeSpan.Zero"/> (or
+    /// <see cref="Timeout.InfiniteTimeSpan"/>) disables idle detection entirely
+    /// — the pre-#464 block-forever behaviour.
+    /// </summary>
+    public static readonly TimeSpan DefaultReadIdleTimeout = TimeSpan.FromMinutes(5);
+
     private readonly TcpClient? tcp;
     private readonly Stream stream;
     private readonly KissDecoder decoder = new();
     private readonly byte[] readBuffer = new byte[4096];
+    private readonly TimeProvider time;
+
+    // How long a read may stall before the link is presumed dead. Zero or
+    // Timeout.InfiniteTimeSpan disables the check (block forever, as before).
+    private readonly TimeSpan readIdleTimeout;
 
     // In-flight ACKMODE sends, keyed by 16-bit sequence tag. The RX pump
     // completes the matching waiter when the TNC echoes the tag back; the
@@ -55,29 +75,96 @@ public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
     // always non-zero (callers may legitimately use 0 explicitly).
     private int ackSequenceCursor;
 
-    private KissTcpClient(TcpClient tcp)
+    private KissTcpClient(TcpClient tcp, TimeSpan readIdleTimeout, TimeProvider? timeProvider)
     {
         this.tcp = tcp;
         stream = tcp.GetStream();
+        time = timeProvider ?? TimeProvider.System;
+        this.readIdleTimeout = readIdleTimeout;
+        EnableTcpKeepAlive(tcp);
     }
 
     // Stream-injecting ctor for tests: drives the same read/write/ackmode
     // logic over an arbitrary duplex stream (e.g. a loopback pipe) without a
     // real socket. Not part of the public surface.
-    internal KissTcpClient(Stream stream)
+    internal KissTcpClient(Stream stream, TimeSpan? readIdleTimeout = null, TimeProvider? timeProvider = null)
     {
         tcp = null;
         this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        time = timeProvider ?? TimeProvider.System;
+        this.readIdleTimeout = readIdleTimeout ?? Timeout.InfiniteTimeSpan;
     }
 
     /// <summary>
     /// Connect to a KISS-over-TCP listener at <paramref name="host"/>:<paramref name="port"/>.
+    /// Uses <see cref="DefaultReadIdleTimeout"/> for half-open-link detection
+    /// (#464). For an explicit idle timeout or a test clock, use
+    /// <see cref="ConnectAsync(string,int,System.TimeSpan?,System.TimeProvider?,System.Threading.CancellationToken)"/>.
     /// </summary>
-    public static async Task<KissTcpClient> ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
+    public static Task<KissTcpClient> ConnectAsync(string host, int port, CancellationToken cancellationToken = default)
+        => ConnectAsync(host, port, readIdleTimeout: null, timeProvider: null, cancellationToken);
+
+    /// <summary>
+    /// Connect to a KISS-over-TCP listener, controlling the read-idle liveness
+    /// timeout that lets a supervisor reconnect after a half-open drop (#464).
+    /// </summary>
+    /// <param name="host">Listener host.</param>
+    /// <param name="port">Listener TCP port.</param>
+    /// <param name="readIdleTimeout">
+    /// How long a read may stall with no inbound byte before the link is presumed
+    /// dead and the inbound stream ends (so a supervisor can reconnect). Null uses
+    /// <see cref="DefaultReadIdleTimeout"/>; <see cref="Timeout.InfiniteTimeSpan"/>
+    /// or <see cref="TimeSpan.Zero"/> disables idle detection (block forever, the
+    /// pre-#464 behaviour).
+    /// </param>
+    /// <param name="timeProvider">Clock for the idle timeout (test seam).</param>
+    /// <param name="cancellationToken">Cancels the connect.</param>
+    public static async Task<KissTcpClient> ConnectAsync(
+        string host,
+        int port,
+        TimeSpan? readIdleTimeout,
+        TimeProvider? timeProvider,
+        CancellationToken cancellationToken = default)
     {
         var tcp = new TcpClient();
-        await tcp.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
-        return new KissTcpClient(tcp);
+        try
+        {
+            await tcp.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            tcp.Dispose();
+            throw;
+        }
+        return new KissTcpClient(tcp, readIdleTimeout ?? DefaultReadIdleTimeout, timeProvider);
+    }
+
+    // Ask the OS to probe a quiet peer so a half-open connection (peer rebooted
+    // without a FIN) surfaces as a read error in bounded time rather than hanging
+    // forever. Best-effort: keepalive knobs are platform-dependent and a failure
+    // to set them is non-fatal — the read-idle timeout is the portable backstop.
+    private static void EnableTcpKeepAlive(TcpClient tcp)
+    {
+        try
+        {
+            var socket = tcp.Client;
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            // Start probing after 30 s idle, every 10 s, give up after ~5 missed
+            // probes. Values are advisory; unsupported options are swallowed.
+            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveTime, 30);
+            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveInterval, 10);
+            TrySetSocketOption(socket, SocketOptionName.TcpKeepAliveRetryCount, 5);
+        }
+        catch
+        {
+            // best-effort; the read-idle timeout still detects a dead link
+        }
+    }
+
+    private static void TrySetSocketOption(Socket socket, SocketOptionName name, int value)
+    {
+        try { socket.SetSocketOption(SocketOptionLevel.Tcp, name, value); }
+        catch { /* not supported on this platform/stack */ }
     }
 
     /// <summary>
@@ -104,13 +191,43 @@ public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
     /// </remarks>
     public async Task<IReadOnlyList<KissFrame>> ReadAvailableAsync(CancellationToken cancellationToken = default)
     {
-        int bytesRead = await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
+        int bytesRead = await ReadWithIdleTimeoutAsync(cancellationToken).ConfigureAwait(false);
         if (bytesRead == 0)
         {
             throw new IOException("KISS-TCP peer closed the connection");
         }
         var frames = decoder.Push(readBuffer.AsSpan(0, bytesRead));
         return InterceptAckEchoes(frames);
+    }
+
+    // Read from the stream, but presume the link dead if no byte arrives within
+    // the read-idle budget. A half-open TCP connection (peer rebooted, no FIN)
+    // would otherwise block here forever and silently kill the port (#464); on
+    // idle we throw IOException — the SAME signal a graceful close produces — so
+    // ReadFramesAsync ends the stream and a supervisor reconnects. The caller's
+    // own cancellation still propagates as OperationCanceledException untouched.
+    private async Task<int> ReadWithIdleTimeoutAsync(CancellationToken cancellationToken)
+    {
+        if (readIdleTimeout <= TimeSpan.Zero || readIdleTimeout == Timeout.InfiniteTimeSpan)
+        {
+            return await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Construct with the TimeProvider so a test clock drives the timeout
+        // deterministically; the system clock is used in production.
+        using var idle = new CancellationTokenSource(readIdleTimeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, idle.Token);
+        try
+        {
+            return await stream.ReadAsync(readBuffer, linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (idle.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Idle budget elapsed with no inbound byte: treat the half-open link
+            // as dead so the reconnect machinery kicks in.
+            throw new IOException(
+                $"KISS-TCP link idle for {readIdleTimeout.TotalSeconds:0}s with no inbound data; presuming the peer is gone");
+        }
     }
 
     // Pull ACKMODE TX-completion echoes out of a freshly-decoded batch: each

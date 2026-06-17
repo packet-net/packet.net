@@ -33,7 +33,10 @@ public sealed class TransportFactory : ITransportFactory
     public static TransportFactory Instance { get; } = new();
 
     /// <inheritdoc/>
-    public async Task<IKissModem> CreateAsync(TransportConfig transport, CancellationToken cancellationToken = default)
+    public async Task<IKissModem> CreateAsync(
+        TransportConfig transport,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
 
@@ -58,7 +61,14 @@ public sealed class TransportFactory : ITransportFactory
             }
 
             case KissTcpTransport k:
-                return await KissTcpClient.ConnectAsync(k.Host, k.Port, cancellationToken).ConfigureAwait(false);
+                // The read-idle liveness timeout converts a half-open TCP drop
+                // (peer rebooted with no FIN) into an end-of-stream so the port
+                // self-heals via ReconnectingKissModem instead of hanging (#464).
+                return await KissTcpClient.ConnectAsync(
+                    k.Host, k.Port,
+                    readIdleTimeout: KissTcpClient.DefaultReadIdleTimeout,
+                    timeProvider: timeProvider,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
 
             case AxudpTransport a:
             {

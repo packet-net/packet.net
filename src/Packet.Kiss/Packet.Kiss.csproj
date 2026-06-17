@@ -19,10 +19,12 @@
     <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
   </ItemGroup>
 
-  <!-- Lets the test project drive KissTcpClient over an injected loopback
-       stream (the internal stream-injecting ctor) without a real socket. -->
+  <!-- Lets the test projects drive KissTcpClient over an injected loopback
+       stream (the internal stream-injecting ctor) without a real socket.
+       Packet.Node.Tests uses it for the #464 half-open → reconnect chain test. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Packet.Kiss.Tests" />
+    <InternalsVisibleTo Include="Packet.Node.Tests" />
   </ItemGroup>
 
   <PropertyGroup>
