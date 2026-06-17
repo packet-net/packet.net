@@ -23,12 +23,12 @@ public class AppCatalogYamlTests
         dapps.Artifact!.Kind.Should().Be(ArtifactKind.Assets);
         dapps.Artifact.Assets.Should().NotBeNull();
         dapps.Artifact.Assets!.Manifest.Sha256.Should()
-            .Be("ae0b2f50b7a7f7f38ba1ce6eb182cee21073cbd1646eca9a5189a9aa386d8125");
+            .Be("80bab3ad2f6b761149a6ac62386d0c66bd27c1e265e10f8111268aea4c90b2ad");
         dapps.Artifact.Assets.Binaries.Should().ContainKeys("linux-x64", "linux-arm64", "linux-arm");
         var x64 = dapps.Artifact.Assets.Binaries["linux-x64"];
         x64.Dest.Should().Be("dapps");
         x64.Mode.Should().Be("0755");
-        x64.Sha256.Should().Be("a509c31d0be87e2cf7f10b2fde0614234381b6fbc623580da9c9757a969ddb4b");
+        x64.Sha256.Should().Be("d8dab9f1f48eb2194c80c4318cd6a4706627b8fca730b2d430b35e1cd69ba0ec");
         x64.Url.Should().StartWith("https://");
 
         // bpqchat + convers — deb kind.
