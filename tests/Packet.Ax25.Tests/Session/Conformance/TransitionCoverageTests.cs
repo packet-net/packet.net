@@ -343,7 +343,27 @@ public class TransitionCoverageTests
         }
 
         // 10d-i. DM(F=1) tears the v2.2 connect down (t11_dm_received_yes →
-        // Disconnected). Fresh rig — this one leaves the state.
+        // Disconnected). This is the FIGURE-LITERAL path, which only fires with
+        // Ax25Spec48 OFF now: by default Ax25Spec48DmRejectionDegradesToV20 rewrites
+        // a DM to the FRMR-fallback (t14_frmr_received) so a DM-ing peer (XRouter)
+        // degrades to v2.0 instead of failing. Turn off ONLY Spec48 (keep Spec44 on
+        // so the connect still reaches AwaitingV22Connection — full StrictlyFaithful
+        // would park it in the mod-8 AwaitingConnection state). Fresh rig.
+        {
+            var h = TwoStationHarness.Build(extended: true,
+                quirks: Ax25SessionQuirks.Default with { Ax25Spec48DmRejectionDegradesToV20 = false });
+            h.CheckAfterEachStep = false;
+            h.Link.Drop = f => (f.Control & 0xEF) == 0x6F && f.Source.Callsign.Equals(h.A.Context.Local);
+            h.A.Session.PostEvent(new DlConnectRequest());
+            h.Settle();
+            if (h.A.State == "AwaitingV22Connection")
+                h.InjectFrameBytes(h.A, Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true).ToBytes());
+            Collect(h);
+        }
+
+        // 10d-i-bis. DM(F=1) DEGRADES to v2.0 by default (Ax25Spec48): the same DM
+        // that the StrictlyFaithful rig above tore down now runs t14_frmr_received
+        // (force v2.0 → Establish via SABM → AwaitingConnection). Default-on rig.
         {
             var h = New(extended: true);
             h.Link.Drop = f => (f.Control & 0xEF) == 0x6F && f.Source.Callsign.Equals(h.A.Context.Local);
@@ -355,9 +375,13 @@ public class TransitionCoverageTests
         }
 
         // 10d-ii. DM(F=0) drops to the mod-8 AwaitingConnection state
-        // (t11_dm_received_no → AwaitingConnection). Fresh rig.
+        // (t11_dm_received_no → AwaitingConnection). Figure-literal path — with
+        // Ax25Spec48 off (by default Ax25Spec48 degrades this to t14 too). Keep
+        // Spec44 on so the connect reaches AwaitingV22Connection. Fresh rig.
         {
-            var h = New(extended: true);
+            var h = TwoStationHarness.Build(extended: true,
+                quirks: Ax25SessionQuirks.Default with { Ax25Spec48DmRejectionDegradesToV20 = false });
+            h.CheckAfterEachStep = false;
             h.Link.Drop = f => (f.Control & 0xEF) == 0x6F && f.Source.Callsign.Equals(h.A.Context.Local);
             h.A.Session.PostEvent(new DlConnectRequest());
             h.Settle();

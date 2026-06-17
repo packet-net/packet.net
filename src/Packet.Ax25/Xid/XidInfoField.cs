@@ -111,7 +111,10 @@ public static class XidInfoField
 
         if (parameters.HdlcOptionalFunctions is { } hof)
         {
-            // PI=3, PL=3, PV = 24-bit field, big-endian, LSB-first per octet.
+            // PI=3, PL=3, PV = 24-bit field transmitted most-significant octet
+            // first (AX.25 v2.2 Fig 4.6 + direwolf + LinBPQ; see ToOctets). The
+            // historical LSB-first layout was an interop bug — BPQ silently drops
+            // it and never negotiates SREJ (proven on the wire, SrejXidViaNetsim).
             WriteParameter(pf, PiHdlcOptionalFunctions, hof.ToOctets());
         }
 

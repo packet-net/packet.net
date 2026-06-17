@@ -129,7 +129,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             ?? throw new InvalidOperationException($"NET/ROM interlink: port '{portId}' is not running.");
 
         using var ticket = ClaimOutbound(neighbour);
-        return await listener.ConnectAsync(neighbour, ct).ConfigureAwait(false);
+        // NET/ROM interlinks dial v2.0 (SABM) explicitly — NOT the listener's
+        // PreferExtendedConnect default. See NetRomService.OpenInterlink dial site for the
+        // rationale (mod-8 neighbour population; a SABME-ignoring peer would exhaust N2 and
+        // break circuit origination). Prefer-extended is for the user's point-to-point CONNECT.
+        return await listener.ConnectAsync(neighbour, listener.MyCall, extended: false, ct).ConfigureAwait(false);
     }
 
     // Run the node command service over an inbound connection (used for NET/ROM L4

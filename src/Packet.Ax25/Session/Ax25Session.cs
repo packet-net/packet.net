@@ -349,6 +349,16 @@ public sealed class Ax25Session
                 return;
             }
 
+            // figc4.6 DM-no-degrade gap (Ax25Spec48DmRejectionDegradesToV20): a DM
+            // received in AwaitingV22Connection means the peer can't do v2.2, so it
+            // must degrade to v2.0/SABM exactly like the FRMR fallback — NOT honour
+            // the figure-literal F=1 teardown. Substitute the matched DM transition
+            // for figc4.6's own t14_frmr_received transition (the v2.0 re-establish:
+            // SRT reset → Establish_Data_Link → AwaitingConnection). The companion
+            // IsExtended=false force (ApplyPreExecutionQuirks) makes Establish emit
+            // SABM. See ResolveDmDegradeMatch for the full rationale + scope.
+            match = ResolveDmDegradeMatch(match, stateTransitions);
+
             // Capture the armed-timer set before running the actions. If an
             // action throws part-way through (e.g. an unexpected verb for this
             // trigger), the side-effects already applied stay, but we restore
@@ -426,6 +436,50 @@ public sealed class Ax25Session
     /// with the fallback (a later connect from that mod-8 state stays mod-8).
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// figc4.6 DM-no-degrade gap (<see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/>):
+    /// when a <c>DM received</c> fires in <c>AwaitingV22Connection</c> and the quirk is on,
+    /// substitute the matched DM transition (either F-branch — the F=1
+    /// <c>t11_dm_received_yes</c> teardown <i>or</i> the F=0 <c>t11_dm_received_no</c>
+    /// passive drop) for figc4.6's <c>FRMR received</c> transition, so a DM degrades the
+    /// link to v2.0 and actively re-establishes via SABM — exactly as the FRMR fallback
+    /// (<see cref="Ax25SessionQuirks.Ax25Spec45FrmrFallbackReestablishesV20"/>) does for a
+    /// peer that signals "no v2.2" with an FRMR instead of a DM. The companion
+    /// <see cref="ApplyPreExecutionQuirks"/> step forces
+    /// <see cref="Ax25SessionContext.IsExtended"/> = <c>false</c> before the actions run,
+    /// so <c>Establish_Data_Link</c> (figc4.7, branches on <c>mod_128</c>) emits a SABM.
+    /// </summary>
+    /// <remarks>
+    /// Scope is deliberately tight: only a <c>DMReceived</c> trigger, only from
+    /// <c>AwaitingV22Connection</c>, only while the link is still extended. A DM received
+    /// in <c>AwaitingConnection</c> (in response to a later SABM) stays a genuine v2.0
+    /// refusal → <c>Disconnected</c> (figc4.2 t03), untouched. If the FRMR transition is
+    /// somehow absent from the state table the original DM match is returned unchanged
+    /// (defensive — every figc4.6 table carries t14_frmr_received). See
+    /// <see cref="Ax25SessionQuirks.Ax25Spec48DmRejectionDegradesToV20"/> for the full
+    /// rationale, the wire evidence, and the direwolf cross-reference.
+    /// </remarks>
+    private TransitionSpec ResolveDmDegradeMatch(TransitionSpec match, IReadOnlyList<TransitionSpec> stateTransitions)
+    {
+        if (!Context.Quirks.Ax25Spec48DmRejectionDegradesToV20
+            || !Context.IsExtended
+            || match.On != SdlEvent.DMReceived
+            || !string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal))
+        {
+            return match;
+        }
+
+        foreach (var t in stateTransitions)
+        {
+            if (t.On == SdlEvent.FRMRReceived)
+            {
+                return t;
+            }
+        }
+
+        return match;   // defensive: figc4.6 always carries t14_frmr_received
+    }
+
     private string ResolveNextState(TransitionSpec match)
     {
         if (Context.Quirks.Ax25Spec44Mod128ConnectRoutesToV22
@@ -465,6 +519,21 @@ public sealed class Ax25Session
             && Context.IsExtended
             && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal)
             && match.On == SdlEvent.FRMRReceived)
+        {
+            Context.IsExtended = false;
+        }
+
+        // figc4.6 DM-no-degrade gap (Ax25Spec48DmRejectionDegradesToV20): a DM in
+        // AwaitingV22Connection has had its match substituted for t14_frmr_received
+        // (ResolveDmDegradeMatch), so match.On is now FRMRReceived and the Spec45
+        // branch above already forces v2.0 when Spec45 is on. Key this companion
+        // force on the actual DM trigger so Spec48 stays self-contained even if
+        // Spec45 is off — without it, Establish_Data_Link would re-send a SABME
+        // (still extended) and the degrade would loop against the non-v2.2 peer.
+        if (Context.Quirks.Ax25Spec48DmRejectionDegradesToV20
+            && Context.IsExtended
+            && CurrentTrigger is DmReceived
+            && string.Equals(match.From, "AwaitingV22Connection", StringComparison.Ordinal))
         {
             Context.IsExtended = false;
         }

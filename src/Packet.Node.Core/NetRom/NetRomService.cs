@@ -1029,7 +1029,15 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             session = OpenInterlink is { } open
                 ? await open(attachment.PortId, neighbour, ct).ConfigureAwait(false)
-                : await attachment.Listener.ConnectAsync(neighbour, ct).ConfigureAwait(false);
+                // NET/ROM interlinks are mod-8 infrastructure: dial v2.0 (SABM) explicitly,
+                // NOT the listener's PreferExtendedConnect default. The NET/ROM neighbour
+                // population is overwhelmingly v2.0/mod-8 (BPQ/XRouter), and a peer that
+                // silently ignores our SABME (e.g. BPQ's AXUDP NET/ROM port) makes the dial
+                // exhaust N2 and throw instead of FRMR-degrading — breaking circuit
+                // origination. Prefer-extended is for the user's point-to-point CONNECT, not
+                // the L3/L4 plumbing. (Could go adaptive later via the per-peer capability
+                // cache, packet.net §5.G.)
+                : await attachment.Listener.ConnectAsync(neighbour, attachment.Listener.MyCall, extended: false, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

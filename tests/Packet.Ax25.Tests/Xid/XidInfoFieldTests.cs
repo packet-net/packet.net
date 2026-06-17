@@ -14,15 +14,28 @@ namespace Packet.Ax25.Tests.Xid;
 /// </summary>
 public class XidInfoFieldTests
 {
-    // The exact information field from Figure 4.6 (NJ7P → N7LEM), parameter
-    // field GL = 0x17 (23 octets):
+    // The information field from Figure 4.6 (NJ7P → N7LEM), parameter field
+    // GL = 0x17 (23 octets):
     //   FI GI  GL----  P2 ----------  P3 ---------------  P6 ----------  P8 ----  P9 ----------  PA ----
-    //   82 80  00 17   02 02 22 00    03 03 82 A8 22      06 02 04 00    08 01 02 09 02 10 00    0A 01 03
+    //   82 80  00 17   02 02 22 00    03 03 22 A8 82      06 02 04 00    08 01 02 09 02 10 00    0A 01 03
+    //
+    // NOTE on the HDLC Optional Functions PV (P3 = 03 03 ..): AX.25 v2.2 §3.8 ("Order of
+    // Octet and Bit Transmission") sends multiple-octet fields HIGH-ORDER OCTET FIRST, so
+    // we transmit/parse the 3-octet value MOST-SIGNIFICANT OCTET FIRST — the order
+    // direwolf's xid.c and LinBPQ's L2Code.c both use (verified on the wire: BPQ accepts
+    // the MSB-first PV and negotiates SREJ, and silently drops the historical LSB-first
+    // one). The printed Figure 4.6 octets `82 A8 22` are LSB-octet first and so CONTRADICT
+    // §3.8 — a figure-rendering error (like the same figure's documented ABM off-by-one).
+    // Our HdlcOptionalFunctions bit constants are numbered in the LSB-octet value space,
+    // so the SAME logical selection (REJ + modulo-128 + SREJ-multiframe + the always-1
+    // bits) serialises §3.8-correct to `22 A8 82` here (the byte-reverse of the figure's
+    // print). The decode below recovers the identical selection. See
+    // docs/strict-vs-pragmatic-audit.md (HDLC-Opt-Functions octet order).
     private static readonly byte[] Figure46Info =
     {
         0x82, 0x80, 0x00, 0x17,
         0x02, 0x02, 0x22, 0x00,
-        0x03, 0x03, 0x82, 0xA8, 0x22,
+        0x03, 0x03, 0x22, 0xA8, 0x82,
         0x06, 0x02, 0x04, 0x00,
         0x08, 0x01, 0x02,
         0x09, 0x02, 0x10, 0x00,
@@ -56,11 +69,11 @@ public class XidInfoFieldTests
         p!.ClassesOfProcedures.Should().NotBeNull();
         p.ClassesOfProcedures!.HalfDuplex.Should().BeTrue("PV 0x22 0x00 sets bit 5 (half-duplex)");
 
-        // HDLC Optional Functions: PV 0x82 0xA8 0x22. Per the normative §6.3.2
-        // bit map these bytes are REJ (bit 1) + modulo-128 (bit 11) + the
-        // always-1 bits + SREJ-multiframe (bit 21). NOTE: Figure 4.6's caption
-        // claims "SREJ/REJ"; the literal bytes select REJ (bit 1 set, bit 2
-        // clear), contradicting the caption. We decode the bytes faithfully.
+        // HDLC Optional Functions: PV 0x22 0xA8 0x82 (MSB-octet first — see the
+        // Figure46Info note). Decoded, these are REJ (bit 1) + modulo-128 (bit 11)
+        // + the always-1 bits + SREJ-multiframe (bit 21). NOTE: Figure 4.6's caption
+        // claims "SREJ/REJ"; the selection is REJ (bit 1 set, bit 2 clear),
+        // contradicting the caption. We decode the bytes faithfully.
         p.HdlcOptionalFunctions.Should().NotBeNull();
         p.HdlcOptionalFunctions!.Reject.Should().Be(RejectMode.ImplicitReject,
             "Fig 4.6 bytes set bit 1 (REJ), not bit 2 (SREJ) — the caption is loose");
@@ -111,9 +124,11 @@ public class XidInfoFieldTests
         // 4.5 table (and ¶1077 "Bit 0 is always a 1"), so half-duplex ABM
         // encodes as 0x21 0x00. Figure 4.6's worked example instead shows
         // 0x22 0x00 — it has placed the always-1 ABM bit at position 1, NOT 0.
-        // (Figure 4.6's HDLC field IS table-faithful: ext-addr=bit7, TEST=bit13,
-        // 16fcs=bit15, sync-tx=bit17 all land exactly per the table.) Per the
-        // repo's spec-compliant-by-default rule we follow the normative table,
+        // (The HDLC field's PV is serialised MSB-octet-first per §3.8 — `22 A8 82` for
+        // this selection — matching direwolf / BPQ on the wire; the figure's printed
+        // `82 A8 22` is the LSB-first contradiction, see the Figure46Info note.) Per the
+        // repo's spec-compliant-by-default rule we
+        // follow the normative table for the ABM bit,
         // so byte index 6 is 0x21, not the figure's 0x22. Everything else
         // reproduces Figure 4.6 byte-for-byte. The duplex selection (bit 5)
         // — the only field a peer actually reads — is identical either way.
@@ -225,8 +240,11 @@ public class XidInfoFieldTests
         // Default = SREJ + mod128. Verify the always-1 bits (7=ext addr,
         // 13=TEST, 15=16fcs, 17=sync tx) are set and the SREJ/mod bits encode
         // as the prose prescribes (SREJ ⇒ bit2; mod128 ⇒ bit11).
+        // ToOctets() serialises MSB-octet first (octets[0] is bits 16-23); rebuild
+        // the 24-bit field accordingly before checking the (order-independent) bit
+        // positions. See the Figure46Info octet-order note.
         var octets = HdlcOptionalFunctions.Default.ToOctets();
-        long field = octets[0] | ((long)octets[1] << 8) | ((long)octets[2] << 16);
+        long field = ((long)octets[0] << 16) | ((long)octets[1] << 8) | octets[2];
 
         ((field >> 7) & 1).Should().Be(1, "bit 7 extended address always 1");
         ((field >> 13) & 1).Should().Be(1, "bit 13 TEST always 1");

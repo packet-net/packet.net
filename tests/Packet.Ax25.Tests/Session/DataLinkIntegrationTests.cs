@@ -80,7 +80,8 @@ public class DataLinkIntegrationTests
 
     private static (Ax25Session session, RecordingActionDispatcher recorder, MutableGuards guards) NewSession(
         string initialState,
-        MutableGuards? overrides = null)
+        MutableGuards? overrides = null,
+        Action<Ax25SessionContext>? configureContext = null)
     {
         var guards = overrides ?? new MutableGuards();
         var time = new FakeTimeProvider();
@@ -91,6 +92,7 @@ public class DataLinkIntegrationTests
             Remote = new Callsign("G7XYZ", 7),
             Layer3Initiated = guards.Layer3Initiated,
         };
+        configureContext?.Invoke(ctx);
         var bindings = new Dictionary<Ax25Guard, Func<bool>>(Ax25SessionBindings.CreateDefault(ctx, scheduler))
         {
             [Ax25Guard.PEq1]               = () => guards.PEq1,
@@ -181,14 +183,107 @@ public class DataLinkIntegrationTests
     [Fact(DisplayName = "Peer refuses v2.2, drops back to v2.0: AwaitingV22Connection → AwaitingConnection")]
     public void V22_refused_falls_back_to_v20()
     {
+        // Mod-8 session (IsExtended=false): the Ax25Spec48 DM-degrade quirk is inert
+        // (it is scoped to an extended connect), so this exercises the figure-literal
+        // figc4.6 t11_dm_received_no path: DM with F=0 → AwaitingConnection.
         var (s, _, guards) = NewSession("AwaitingV22Connection",
             new MutableGuards { Layer3Initiated = true });
 
-        // figc4.6 t14: DM with F=0 → AwaitingConnection (v2.0 fallback).
         guards.FEq1 = false;
         s.PostEvent(new DmReceived(Frame()));
         s.CurrentState.Should().Be("AwaitingConnection",
-            "DM(F=0) in AwaitingV22Connection (figc4.6 t14) should drop to AwaitingConnection");
+            "DM(F=0) in AwaitingV22Connection (figc4.6 t11_dm_received_no) should drop to AwaitingConnection");
+    }
+
+    // ─── Ax25Spec48: DM-to-our-SABME degrades to v2.0 (the load-bearing fix) ───
+    //
+    // figc4.6's DM-received handler splits on the DM's P/F bit: F=0
+    // (t11_dm_received_no) passively drops to AwaitingConnection, F=1
+    // (t11_dm_received_yes) treats the DM as a §975 refusal and TEARS DOWN to
+    // Disconnected with no fallback. But a peer that DMs our *polled* SABME (P=1)
+    // — XRouter does exactly this on the wire — correctly answers F=1, so a real
+    // non-v2.2 peer hits the teardown branch and our v2.2-preferred connect dies
+    // with IsExtended stuck true. Ax25Spec48DmRejectionDegradesToV20 (default on)
+    // makes EITHER F-branch degrade to v2.0 + re-establish via SABM, exactly like
+    // the FRMR fallback (Ax25Spec45) — any DM to our SABME means "peer can't do
+    // v2.2, retry mod-8", never a refusal.
+
+    [Fact(DisplayName = "Ax25Spec48: DM(F=1) to our SABME degrades to v2.0 + re-establishes via SABM (not Disconnected)")]
+    public void V22_dm_f1_degrades_to_v20_via_quirk()
+    {
+        // Extended connect in flight (IsExtended=true) so the quirk is in scope;
+        // default quirks (Ax25Spec48 on).
+        var (s, recorder, guards) = NewSession("AwaitingV22Connection",
+            new MutableGuards { Layer3Initiated = true },
+            ctx => ctx.IsExtended = true);
+
+        // The figure-literal F=1 branch (t11_dm_received_yes) would tear down to
+        // Disconnected. The quirk substitutes the FRMR-fallback transition instead.
+        guards.FEq1 = true;
+        s.PostEvent(new DmReceived(Frame()));
+
+        s.CurrentState.Should().Be("AwaitingConnection",
+            "Ax25Spec48 must degrade a DM(F=1) to the v2.0 path, NOT tear down to Disconnected (the figure-literal refusal)");
+        s.Context.IsExtended.Should().BeFalse(
+            "the degrade forces version 2.0 so the re-establish emits SABM, not SABME");
+        recorder.Recorded.Select(r => r.Verb).Should().Contain(Ax25ActionVerb.EstablishDataLink,
+            "the degrade must run the FRMR-fallback action chain — Establish_Data_Link re-sends the connect (SABM, now mod-8)");
+        recorder.Recorded.Select(r => r.Verb).Should().Contain(Ax25ActionVerb.SetVersion20,
+            "the FRMR-fallback action chain sets version 2.0");
+    }
+
+    [Fact(DisplayName = "Ax25Spec48: DM(F=0) to our SABME also degrades to v2.0 + re-establishes via SABM")]
+    public void V22_dm_f0_degrades_to_v20_via_quirk()
+    {
+        var (s, recorder, guards) = NewSession("AwaitingV22Connection",
+            new MutableGuards { Layer3Initiated = true },
+            ctx => ctx.IsExtended = true);
+
+        // F=0 figure-literal would passively drop to AwaitingConnection with no
+        // re-establish; the quirk makes it actively re-establish via SABM too.
+        guards.FEq1 = false;
+        s.PostEvent(new DmReceived(Frame()));
+
+        s.CurrentState.Should().Be("AwaitingConnection",
+            "Ax25Spec48 degrades a DM(F=0) the same as F=1 — any DM means the peer can't do v2.2");
+        s.Context.IsExtended.Should().BeFalse("the degrade forces version 2.0");
+        recorder.Recorded.Select(r => r.Verb).Should().Contain(Ax25ActionVerb.EstablishDataLink,
+            "Ax25Spec48 must actively re-establish via SABM, not merely park in AwaitingConnection");
+    }
+
+    [Fact(DisplayName = "Ax25Spec48 off (StrictlyFaithful): DM(F=1) reproduces the figure-literal teardown to Disconnected")]
+    public void V22_dm_f1_strictly_faithful_tears_down()
+    {
+        var (s, _, guards) = NewSession("AwaitingV22Connection",
+            new MutableGuards { Layer3Initiated = true },
+            ctx => { ctx.IsExtended = true; ctx.Quirks = Ax25SessionQuirks.StrictlyFaithful; });
+
+        // figc4.6 t11_dm_received_yes as drawn: DM(F=1) is a §975 refusal → Disconnected.
+        guards.FEq1 = true;
+        s.PostEvent(new DmReceived(Frame()));
+
+        s.CurrentState.Should().Be("Disconnected",
+            "under StrictlyFaithful the figure runs as drawn — DM(F=1) tears the v2.2 connect down to Disconnected");
+        s.Context.IsExtended.Should().BeTrue(
+            "the figure-literal teardown does not force v2.0 — IsExtended stays as the connect left it");
+    }
+
+    [Fact(DisplayName = "Ax25Spec48 off (StrictlyFaithful): DM(F=0) reproduces the figure-literal drop to AwaitingConnection")]
+    public void V22_dm_f0_strictly_faithful_drops_passively()
+    {
+        var (s, recorder, guards) = NewSession("AwaitingV22Connection",
+            new MutableGuards { Layer3Initiated = true },
+            ctx => { ctx.IsExtended = true; ctx.Quirks = Ax25SessionQuirks.StrictlyFaithful; });
+
+        // figc4.6 t11_dm_received_no as drawn: DM(F=0) drops to AwaitingConnection
+        // with NO actions (no re-establish).
+        guards.FEq1 = false;
+        s.PostEvent(new DmReceived(Frame()));
+
+        s.CurrentState.Should().Be("AwaitingConnection",
+            "under StrictlyFaithful the figure runs as drawn — DM(F=0) drops to AwaitingConnection");
+        recorder.Recorded.Select(r => r.Verb).Should().NotContain(Ax25ActionVerb.EstablishDataLink,
+            "the figure-literal F=0 drop has no actions — it does not re-establish");
     }
 
     [Fact(DisplayName = "Disconnect from Connected: Connected → AwaitingRelease → Disconnected")]

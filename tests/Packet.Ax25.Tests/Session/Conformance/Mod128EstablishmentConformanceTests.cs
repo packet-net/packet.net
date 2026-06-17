@@ -170,13 +170,58 @@ public class Mod128EstablishmentConformanceTests
         h.B.Context.IsExtended.Should().BeFalse("the peer adopted mod-8 from the SABM (figc4.1 SABM-received → Set Version 2.0)");
     }
 
-    /// <summary>4 — a not-capable peer answers a SABME with DM (§975 DM case).
-    /// figc4.6 t11_dm_received_yes tears the connect attempt down to Disconnected
-    /// and indicates DL-DISCONNECT.</summary>
+    /// <summary>4 — a not-capable peer answers a SABME with DM. The figure-literal
+    /// figc4.6 t11_dm_received_yes (DM with F=1) would tear the connect down to
+    /// Disconnected as a §975 refusal — but a DM is precisely the signal the peer
+    /// can't do v2.2, and a peer that DMs our polled SABME (P=1) answers F=1, so the
+    /// figure-literal path fails a real v2.2-preferred dial against a DM-ing peer
+    /// (XRouter does exactly this). Ax25Spec48DmRejectionDegradesToV20 (default on)
+    /// makes the DM degrade to v2.0 and re-establish via SABM instead — the DM
+    /// analogue of the FRMR fallback above. Proven end-to-end against the v2.2-capable
+    /// peer station B: A degrades, re-sends SABM, B UAs it, both reach mod-8 Connected.</summary>
     [Fact]
-    public void DM_to_a_SABME_tears_the_connect_attempt_down_to_Disconnected()
+    public void DM_to_a_SABME_degrades_to_v20_and_reestablishes_via_SABM()
     {
         var h = TwoStationHarness.Build(extended: true, k: 8);
+
+        // Swallow the SABME so the v2.2 peer never auto-UAs; inject the DM(F=1) a
+        // not-capable peer would send to our polled SABME.
+        h.Link.Drop = f => IsSabme(f) && f.Source.Callsign.Equals(h.A.Context.Local);
+
+        h.A.Session.PostEvent(new DlConnectRequest());
+        h.Settle();
+        h.A.State.Should().Be("AwaitingV22Connection");
+        h.A.Context.IsExtended.Should().BeTrue("still v2.2 until the DM arrives");
+
+        h.Inject(h.A, new DmReceived(
+            Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true)));
+
+        // Ax25Spec48: the DM is rewritten to run figc4.6's FRMR-fallback transition
+        // (t14_frmr_received) — version 2.0 is forced and the link re-establishes
+        // via SABM, exactly like the FRMR fallback. The peer B (v2.2-capable) UAs
+        // the SABM and both reach mod-8 Connected.
+        h.FiredTransitions.Should().Contain(("AwaitingV22Connection", "t14_frmr_received"),
+            "Ax25Spec48 substitutes the DM for the figc4.6 FRMR-fallback transition (degrade to v2.0 + re-establish)");
+        h.B.ReceivedFromPeer.Should().Contain(f => IsSabm(f),
+            "the degrade re-establishes with SABM (v2.0), not SABME — IsExtended is forced false before Establish_Data_Link");
+        h.A.Context.IsExtended.Should().BeFalse("the DM fallback forces version 2.0 — the link is mod-8");
+        h.A.State.Should().Be("Connected", "the v2.0 SABM re-establish completed the connection");
+        h.B.State.Should().Be("Connected");
+        h.B.Context.IsExtended.Should().BeFalse("the peer adopted mod-8 from the SABM (figc4.1 SABM-received → Set Version 2.0)");
+    }
+
+    /// <summary>4b — with Ax25Spec48 off the figure runs as drawn: a DM with F=1
+    /// runs figc4.6 t11_dm_received_yes and tears the connect attempt down to
+    /// Disconnected (the §975 refusal, no fallback). Pins the quirk's off-behaviour
+    /// so the degrade stays a deliberate, named deviation. Note we keep Ax25Spec44
+    /// ON (so the connect still reaches AwaitingV22Connection) and turn off ONLY
+    /// Ax25Spec48 — full StrictlyFaithful would park the connect in the mod-8
+    /// AwaitingConnection state (the figc4.2 defect) and never reach figc4.6 at all.</summary>
+    [Fact]
+    public void Spec48Off_DM_F1_to_a_SABME_tears_the_connect_down_to_Disconnected()
+    {
+        var h = TwoStationHarness.Build(extended: true, k: 8,
+            quirks: Ax25SessionQuirks.Default with { Ax25Spec48DmRejectionDegradesToV20 = false });
 
         // Swallow the SABME so the v2.2 peer never auto-UAs; inject the DM(F=1) a
         // not-capable peer would send.
@@ -190,8 +235,8 @@ public class Mod128EstablishmentConformanceTests
             Ax25Frame.Dm(h.A.Context.Local, h.A.Context.Remote, finalBit: true)));
 
         h.FiredTransitions.Should().Contain(("AwaitingV22Connection", "t11_dm_received_yes"),
-            "a DM with F=1 runs the figc4.6 teardown transition");
-        h.A.State.Should().Be("Disconnected", "the not-capable DM abandons the connect");
+            "with the quirk off, a DM with F=1 runs the figure-literal figc4.6 teardown transition");
+        h.A.State.Should().Be("Disconnected", "the figure-literal not-capable DM abandons the connect");
         h.A.Signals.Should().Contain(s => s is DataLinkDisconnectIndication,
             "teardown indicates DL-DISCONNECT to the upper layer");
     }

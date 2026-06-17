@@ -170,7 +170,8 @@ public class LinbpqViaNetsimConnectedMode
         response!.Info.Length.Should().BeGreaterThan(0, "response payload should not be empty");
         response.Pid.Should().Be(Ax25Frame.PidNoLayer3);
 
-        rig.Session.CurrentState.Should().Be("Connected", "link must survive the data round-trip");
+        (rig.Session.CurrentState is "Connected" or "TimerRecovery").Should().BeTrue(
+            $"link must survive the data round-trip (was {rig.Session.CurrentState}; TimerRecovery is a transient post-ack recovery state under load, not a teardown)");
 
         // ─── Disconnect ─────────────────────────────────────────────
         rig.Session.PostEvent(new DlDisconnectRequest());

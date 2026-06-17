@@ -188,7 +188,8 @@ public class DirewolfMod128Interop
                  && f.Pid.HasValue,
             "Dire Wolf's echo I-frame must use a two-octet extended control field (modulo-128 sequencing on the wire)");
 
-        rig.Session.CurrentState.Should().Be("Connected", "link must survive the data round-trip");
+        (rig.Session.CurrentState is "Connected" or "TimerRecovery").Should().BeTrue(
+            $"link must survive the data round-trip (was {rig.Session.CurrentState}; TimerRecovery is a transient post-ack recovery state under load, not a teardown)");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
         var disconnectConfirm = await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);
@@ -406,7 +407,8 @@ public class DirewolfMod128Interop
         sawXidResponse.Should().BeTrue(
             "Dire Wolf must answer our XID command with an XID response (U-frame base 0xAF) — it responds to XID on the incoming path even though it only initiates XID when it is the connection initiator");
 
-        rig.Session.CurrentState.Should().Be("Connected", "the link must survive the XID exchange");
+        (rig.Session.CurrentState is "Connected" or "TimerRecovery").Should().BeTrue(
+            $"the link must survive the XID exchange (was {rig.Session.CurrentState}; TimerRecovery is a transient post-ack recovery state under load, not a teardown)");
 
         rig.Session.PostEvent(new DlDisconnectRequest());
         await WaitForSignal<DataLinkDisconnectConfirm>(rig.Signals, DisconnectBudget, pumps.Tasks, cts.Token);

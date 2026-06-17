@@ -341,6 +341,14 @@ public sealed class Ax25ManagementDataLink
             {
                 Reject = context.SrejEnabled ? RejectMode.SelectiveReject : RejectMode.ImplicitReject,
                 Modulo128 = context.IsExtended,
+                // Advertise SREJ-multiframe alongside SREJ. LinBPQ's XID responder
+                // (L2Code.c ProcessXIDCommand case 3) REQUIRES the OPSREJMult bit in
+                // the command or it rejects the whole XID (BadXID → FRMR) and never
+                // negotiates SREJ; direwolf offers it as part of its SREJ "menu". We
+                // recover any incoming SREJ regardless of the multi bit, so offering
+                // it is the interoperable, harmless choice. Only meaningful when we
+                // are actually offering SREJ.
+                SrejMultiframe = context.SrejEnabled,
                 SegmenterReassembler = context.SegmenterReassemblerEnabled,
             },
             IFieldLengthRxBits = XidParameters.OctetsToBits(context.N1),

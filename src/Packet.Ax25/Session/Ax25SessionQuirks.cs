@@ -321,6 +321,59 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec45FrmrFallbackReestablishesV20 { get; init; } = true;
 
     /// <summary>
+    /// Work around <c>packethacking/ax25spec#48</c>: the figc4.6 <c>DM received</c>
+    /// no-degrade gap. figc4.6's
+    /// <c>AwaitingV22Connection</c> <c>DM received</c> handler splits on the P/F bit
+    /// of the DM and only the <c>F=0</c> branch (<c>t11_dm_received_no</c>) drops back
+    /// toward v2.0 (→ <c>AwaitingConnection</c>); the <c>F=1</c> branch
+    /// (<c>t11_dm_received_yes</c>) treats the DM as a §975 connection <i>refusal</i> and
+    /// tears the link down to <c>Disconnected</c> with <b>no fallback</b> — leaving
+    /// <see cref="Ax25SessionContext.IsExtended"/> stuck <c>true</c>. But a DM is precisely
+    /// the signal that the peer cannot do v2.2 (it does not recognise our SABME), and a peer
+    /// that DMs our <i>polled</i> SABME (P=1) correctly answers <b>F=1</b> — so a real
+    /// non-v2.2 peer that refuses SABME with DM(F=1) hits the teardown branch and our
+    /// v2.2-preferred connect dies instead of degrading. (Verified on the wire: XRouter
+    /// answers our SABME(P=1) with DM(F=1) and figc4.6 routes it straight to
+    /// <c>Disconnected</c> — packet.net interop <c>XrouterViaNetsimExtendedMode</c>.) This
+    /// is the DM analogue of the FRMR fallback (<see cref="Ax25Spec45FrmrFallbackReestablishesV20"/>):
+    /// a pre-v2.2 peer signals "no v2.2" with <i>either</i> an FRMR (BPQ) <i>or</i> a DM
+    /// (XRouter), and both must degrade to v2.0/SABM rather than fail.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When <c>true</c> (default), a <c>DM_received</c> firing in
+    /// <c>AwaitingV22Connection</c> — for <b>either F=0 or F=1</b> — is treated exactly
+    /// like the figc4.6 <c>t14_frmr_received</c> v2.0 fallback: version 2.0 is forced
+    /// (<see cref="Ax25SessionContext.IsExtended"/> = <c>false</c>) and the link is
+    /// re-established via <b>SABM</b> (the matched DM transition is rewritten to run
+    /// <c>t14_frmr_received</c>'s action chain — SRT reset, <c>Establish_Data_Link</c>
+    /// → SABM since the link is now mod-8, <c>Set Layer 3 Initiated</c>,
+    /// <c>Set Version 2.0</c> — and lands in <c>AwaitingConnection</c>, the v2.0 path).
+    /// So <i>any</i> DM to our SABME means "peer can't do v2.2, retry mod-8", never a
+    /// refusal. When <c>false</c> (<see cref="StrictlyFaithful"/>), the figure runs as
+    /// drawn: DM(F=0) drops to <c>AwaitingConnection</c> with no re-establish and DM(F=1)
+    /// tears down to <c>Disconnected</c> (the §975 refusal, for strict conformance study).
+    /// </para>
+    /// <para>
+    /// <b>Scope is the extended-connect state only.</b> A DM received in
+    /// <c>AwaitingConnection</c> (in response to a subsequent <i>SABM</i>) stays a genuine
+    /// v2.0 refusal → <c>Disconnected</c> (figc4.2 <c>t03</c>), unchanged — the quirk is
+    /// keyed on <c>From == AwaitingV22Connection</c>, so it is inert once the fallback has
+    /// already dropped us to the mod-8 path. Like <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/>
+    /// / <see cref="Ax25Spec45FrmrFallbackReestablishesV20"/>, this rewrites a transition in
+    /// <see cref="Ax25Session"/>'s dispatch path (the matched DM <see cref="TransitionSpec"/>
+    /// is substituted for the FRMR one, and <c>IsExtended</c> is forced before the actions
+    /// run so <c>Establish_Data_Link</c> emits SABM). Only meaningful once
+    /// <see cref="Ax25Spec44Mod128ConnectRoutesToV22"/> makes figc4.6 reachable by an
+    /// initiator. De-facto corroboration: direwolf's author hit the analogous figc4.6
+    /// no-degrade gap and made his initiator fall back rather than honour the figure-literal
+    /// teardown. Delete once ax25sdl ships a figc4.6 carrying the DM-degrades-to-v2.0
+    /// resolution (tracked upstream at <c>packethacking/ax25spec#48</c>).
+    /// </para>
+    /// </remarks>
+    public bool Ax25Spec48DmRejectionDegradesToV20 { get; init; } = true;
+
+    /// <summary>
     /// Work around <c>packethacking/ax25spec#47</c>: figc4.5 (Timer Recovery) draws the
     /// in-sequence <c>I_received</c> stored-frame drain loop with
     /// <c>V(r) := V(r) - 1</c> in its body, where the structurally-identical
@@ -455,6 +508,7 @@ public sealed record Ax25SessionQuirks
         Ax25Spec43DlFlowOffEntersBusy = false,
         Ax25Spec44Mod128ConnectRoutesToV22 = false,
         Ax25Spec45FrmrFallbackReestablishesV20 = false,
+        Ax25Spec48DmRejectionDegradesToV20 = false,
         Ax25Spec47TimerRecoveryDrainAdvancesVR = false,
         Ax25Spec9AckProgressResetsRc = false,
         Ax25Spec13ClampSrejWindowToHalfModulus = false,

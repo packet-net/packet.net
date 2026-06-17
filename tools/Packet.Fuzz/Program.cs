@@ -290,12 +290,14 @@ public static class Program
     /// </summary>
     private static IEnumerable<(string Name, byte[] Bytes)> XidSeeds()
     {
-        // Figure 4.6 (NJ7P → N7LEM) verbatim — FI GI GL + the 6 PI/PL/PV triples.
+        // Figure 4.6 (NJ7P → N7LEM) — FI GI GL + the 6 PI/PL/PV triples. The HDLC
+        // Optional Functions PV is the MSB-octet-first form (`22 A8 82`) our codec
+        // emits/parses; see XidInfoFieldTests.Figure46Info for the octet-order note.
         yield return ("figure-4-6.bin", new byte[]
         {
             0x82, 0x80, 0x00, 0x17,
             0x02, 0x02, 0x22, 0x00,
-            0x03, 0x03, 0x82, 0xA8, 0x22,
+            0x03, 0x03, 0x22, 0xA8, 0x82,
             0x06, 0x02, 0x04, 0x00,
             0x08, 0x01, 0x02,
             0x09, 0x02, 0x10, 0x00,

@@ -18,7 +18,8 @@ public enum RejectMode
 /// segmenter/reassembler bit; every other bit is fixed.
 /// </summary>
 /// <remarks>
-/// <para>Bit layout (bits 0–23; LSB-first within each octet, octet 0 first):</para>
+/// <para>Bit layout (logical bits 0–23; bit 0 = the low bit of the low-order octet.
+/// Wire order is most-significant octet first per §3.8 — see "Octet order" below):</para>
 /// <list type="bullet">
 /// <item>bit 0 — Reserved: 0.</item>
 /// <item>bit 1 — REJ command/response (set ⇒ implicit reject selected).</item>
@@ -40,7 +41,16 @@ public enum RejectMode
 /// enforces both invariants and forces the always-1 bits (7, 13, 15, 17).
 /// </para>
 /// <para>
-/// <b>Spec worked-example note.</b> Figure 4.6 shows PV 0x82 0xA8 0x22, whose
+/// <b>Octet order.</b> The bit positions above are the logical field; the 3-octet
+/// PV goes on the wire <b>most-significant octet first</b> per AX.25 v2.2 §3.8
+/// ("high-order octet first"). See <see cref="ToOctets"/>. Figure 4.6 prints the
+/// PV least-significant-octet first (<c>82 A8 22</c>; §3.8-correct it is
+/// <c>22 A8 82</c>) — a figure-rendering error that contradicts §3.8; we follow
+/// §3.8, matching direwolf and LinBPQ on the wire.
+/// </para>
+/// <para>
+/// <b>Spec worked-example note.</b> Figure 4.6 shows PV 0x82 0xA8 0x22 (LSB-octet
+/// first), whose
 /// caption says "SREJ/REJ … Modulo 128 …". Decoded against this (prose-correct)
 /// bit map, those bytes are REJ (bit 1) + Modulo 128 (bit 11) + the always-1
 /// bits + SREJ-multiframe (bit 21) — i.e. the figure selects REJ, not SREJ,
@@ -86,11 +96,31 @@ public sealed record HdlcOptionalFunctions
     };
 
     /// <summary>
-    /// Encode to the 3-octet PV (octet 0 transmitted first). Forces the
-    /// always-1 bits (extended address, TEST, 16-bit FCS, synchronous Tx) and
-    /// sets exactly one reject bit and exactly one modulo bit.
+    /// Encode to the 3-octet PV. Forces the always-1 bits (extended address, TEST,
+    /// 16-bit FCS, synchronous Tx) and sets exactly one reject bit and exactly one
+    /// modulo bit. Octet order is governed by <paramref name="lsbOctetFirst"/>
+    /// (default = spec-correct most-significant octet first).
     /// </summary>
-    public byte[] ToOctets()
+    /// <param name="lsbOctetFirst">
+    /// When <c>false</c> (the default, spec-correct) the 3-octet value is
+    /// transmitted <b>most-significant octet first</b> (big-endian), as mandated by
+    /// AX.25 v2.2 <b>§3.8</b> ("Order of Octet and Bit Transmission"): multiple-octet
+    /// fields are sent "high-order octet first, the next lower octet next". This is
+    /// also the order every real peer uses (Dire Wolf <c>xid.c</c> writes
+    /// <c>(x&gt;&gt;16),(x&gt;&gt;8),x</c>; LinBPQ <c>L2Code.c</c> writes
+    /// <c>xidval&gt;&gt;16</c> first and parses <c>value = (value&lt;&lt;8) + *p++</c>).
+    /// NOTE: Figure 4.6's printed PV <c>82 A8 22</c> is the <i>least</i>-significant
+    /// octet first (it only decodes to the captioned selection read LSB-first) and so
+    /// <b>contradicts §3.8</b> — a figure-rendering error (the same worked example also
+    /// carries the documented Classes-of-Procedures ABM off-by-one). The §3.8-correct
+    /// serialisation of that selection is <c>22 A8 82</c>. When <c>true</c>, this
+    /// reproduces the repo's historical (and §3.8-violating) least-significant-octet-first
+    /// layout — kept only for regression study and never put on the wire by the production
+    /// connect path. See <c>docs/strict-vs-pragmatic-audit.md</c> (HDLC-Optional-Functions
+    /// octet order) and the <c>SrejXidViaNetsim</c> interop proof: BPQ accepts the
+    /// MSB-first PV and negotiates SREJ, and silently drops the LSB-first one.
+    /// </param>
+    public byte[] ToOctets(bool lsbOctetFirst = false)
     {
         int field = (1 << BitExtendedAddress)
                   | (1 << BitTest)
@@ -103,13 +133,19 @@ public sealed record HdlcOptionalFunctions
         if (SrejMultiframe) field |= 1 << BitSrejMultiframe;
         if (SegmenterReassembler) field |= 1 << BitSegmenter;
 
-        // LSB-first per octet, octet 0 first.
-        return new[]
-        {
-            (byte)(field & 0xFF),
-            (byte)((field >> 8) & 0xFF),
-            (byte)((field >> 16) & 0xFF),
-        };
+        return lsbOctetFirst
+            ? new[]   // legacy (incorrect) least-significant octet first
+            {
+                (byte)(field & 0xFF),
+                (byte)((field >> 8) & 0xFF),
+                (byte)((field >> 16) & 0xFF),
+            }
+            : new[]   // spec-correct most-significant octet first (§3.8; direwolf / BPQ)
+            {
+                (byte)((field >> 16) & 0xFF),
+                (byte)((field >> 8) & 0xFF),
+                (byte)(field & 0xFF),
+            };
     }
 
     /// <summary>
@@ -119,12 +155,20 @@ public sealed record HdlcOptionalFunctions
     /// always-1/always-0 bits are not validated on receive — only the
     /// negotiable selections are meaningful.
     /// </summary>
-    public static HdlcOptionalFunctions FromOctets(ReadOnlySpan<byte> pv)
+    /// <param name="lsbOctetFirst">
+    /// The on-the-wire octet order of <paramref name="pv"/>; must match the order
+    /// the peer used. <c>false</c> (default, spec-correct) reads the first octet as
+    /// the high byte (§3.8 "high-order octet first"; direwolf / BPQ); <c>true</c> reads
+    /// the legacy least-significant-octet-first layout. See <see cref="ToOctets(bool)"/>.
+    /// </param>
+    public static HdlcOptionalFunctions FromOctets(ReadOnlySpan<byte> pv, bool lsbOctetFirst = false)
     {
         int field = 0;
-        for (int i = 0; i < pv.Length && i < 3; i++)
+        int n = Math.Min(pv.Length, 3);
+        for (int i = 0; i < n; i++)
         {
-            field |= pv[i] << (8 * i);
+            int shift = lsbOctetFirst ? 8 * i : 8 * (n - 1 - i);
+            field |= pv[i] << shift;
         }
 
         bool rej = (field & (1 << BitRej)) != 0;
