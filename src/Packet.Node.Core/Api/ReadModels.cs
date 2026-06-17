@@ -65,6 +65,22 @@ public sealed record LinkStats(
 /// <summary>A node log line for the dashboard tail.</summary>
 public sealed record LogLine(string T, string Lvl, string Msg);
 
+/// <summary>
+/// One heard station for the MHeard surface (#454) — the REST projection of a
+/// <c>HeardEntry</c> / <c>HeardStationSummary</c>. The two instants render as relative-ago
+/// strings (the NetRom/Capabilities row style) so the client needs no clock of its own. For the
+/// node-wide view <see cref="PortId"/> is null and <see cref="Ports"/> is the count of distinct
+/// ports the station was heard on; for the per-port view <see cref="PortId"/> is the port id and
+/// <see cref="Ports"/> is 1.
+/// </summary>
+public sealed record HeardStation(
+    string Callsign,
+    string? PortId,
+    string FirstHeard,
+    string LastHeard,
+    long Count,
+    int Ports);
+
 /// <summary>One learned per-peer AX.25 capability record, projected for the operator
 /// surface (the web Capabilities screen + the MCP read tool). Mirrors the live
 /// <c>PeerCapabilityCache</c> record, with the two <see cref="DateTimeOffset"/> instants

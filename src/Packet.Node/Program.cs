@@ -88,6 +88,18 @@ builder.Services.AddSingleton(sp => new PeerCapabilityCache(
     sp.GetService<IPeerCapabilityStore>(),
     sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
+// The MHeard log (#454; same pdn.db, same resilient discipline). The durable store + the log
+// service are registered eagerly here (Program.cs composes manually); the store hydrates the log
+// on construction and the telemetry tap feeds it every received frame's source station. A node
+// without a writable db degrades to an in-memory log (the store still constructs, just stays empty).
+var heardStore = new Packet.Node.Core.Heard.SqliteHeardStore(
+    dbPath,
+    bootstrapLoggers.CreateLogger<Packet.Node.Core.Heard.SqliteHeardStore>());
+builder.Services.AddSingleton<Packet.Node.Core.Heard.IHeardStore>(heardStore);
+builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
+    sp.GetService<Packet.Node.Core.Heard.IHeardStore>(),
+    sp.GetService<TimeProvider>() ?? TimeProvider.System));
+
 // --- Web control-API auth foundation (default-OFF behind management.auth.enabled) ---
 //
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope

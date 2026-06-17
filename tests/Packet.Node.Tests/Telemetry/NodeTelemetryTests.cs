@@ -191,4 +191,23 @@ public sealed class NodeTelemetryTests
 
         t.SubscriberCount.Should().Be(0);
     }
+
+    [Fact]
+    public void Received_frames_feed_the_heard_log_with_the_source_station_transmitted_do_not()
+    {
+        // The tap records the SOURCE of a RECEIVED frame as a hearing (#454); a TX frame is ours,
+        // never a hearing. One feed, the same stream that drives the link telemetry.
+        var heard = new Packet.Node.Core.Heard.HeardLog(store: null);
+        var t = new NodeTelemetry(logger: null, heardLog: heard);
+
+        t.Observe(Port, Rx(Ax25Frame.Ui(Local, Peer, "x"u8), At(0)));
+        t.Observe(Port, Rx(Ax25Frame.Ui(Local, Peer, "y"u8), At(5)));
+        t.Observe(Port, Tx(Ax25Frame.Ui(Peer, Local, "z"u8), At(6)));   // our TX — not a hearing
+
+        var rows = heard.ForPort(Port);
+        rows.Should().ContainSingle();
+        rows[0].Callsign.Should().Be(Peer.ToString());   // the heard station is the RX source
+        rows[0].Count.Should().Be(2);                    // the two received frames
+        rows[0].LastHeard.Should().Be(At(5));
+    }
 }

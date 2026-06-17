@@ -152,6 +152,28 @@ public class NodeCommandParserTests
     public void Parses_reload(string line) =>
         NodeCommandParser.Parse(line).Should().BeOfType<ReloadCommand>();
 
+    // ─── MH — the MHeard log ────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("MH")]
+    [InlineData("mh")]
+    [InlineData("MHE")]      // a prefix of MHEARD from the ≥2-char MH stem
+    [InlineData("MHEARD")]
+    public void Bare_mh_is_node_wide(string line) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<MhCommand>().Which.PortId.Should().BeNull();
+
+    [Theory]
+    [InlineData("MH vhf", "vhf")]
+    [InlineData("mh hf", "hf")]
+    [InlineData("MH vhf extra", "vhf")]   // first token after MH is the port; extras ignored
+    public void Mh_with_a_port_is_per_port(string line, string port) =>
+        NodeCommandParser.Parse(line).Should().BeOfType<MhCommand>().Which.PortId.Should().Be(port);
+
+    [Fact]
+    public void Bare_M_does_not_trigger_mh()
+        // A single "M" is not enough — the MH stem needs ≥2 chars, so a lone M is just unknown.
+        => NodeCommandParser.Parse("M").Should().BeOfType<UnknownCommand>();
+
     // ─── CAP — the per-peer capability cache ────────────────────────────
 
     [Theory]

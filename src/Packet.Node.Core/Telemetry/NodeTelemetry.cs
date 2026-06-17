@@ -64,9 +64,16 @@ public sealed partial class NodeTelemetry
     private readonly object historyLock = new();
     private readonly Queue<MonitorEvent> history = new(HistoryCapacity);
 
-    public NodeTelemetry(ILogger<NodeTelemetry>? logger = null)
+    // The MHeard log (#454) — an optional collaborator fed from this very tap so the heard log is a
+    // derivation of the same frame-trace stream, not a parallel tap. Null ⇒ no heard log on this
+    // node (older tests / an embedder that didn't register one); Observe then behaves exactly as
+    // before. Every RECEIVED frame's source callsign is recorded as a hearing on its port.
+    private readonly Heard.HeardLog? heardLog;
+
+    public NodeTelemetry(ILogger<NodeTelemetry>? logger = null, Heard.HeardLog? heardLog = null)
     {
         this.logger = logger ?? NullLogger<NodeTelemetry>.Instance;
+        this.heardLog = heardLog;
     }
 
     // ─── port lifecycle (mirrors NetRomService.AttachPort/DetachPort) ───────
@@ -156,6 +163,14 @@ public sealed partial class NodeTelemetry
             {
                 case "REJ": Interlocked.Increment(ref lc.RejCount); break;
                 case "SREJ": Interlocked.Increment(ref lc.SrejCount); break;
+            }
+
+            // MHeard (#454): a RECEIVED frame means we heard its SOURCE station on this port. The
+            // heard log owns persistence + survival-across-teardown; this is just the feed. TX
+            // frames are ours, so they are never a "hearing".
+            if (rx)
+            {
+                heardLog?.Record(portId, evt.Source, e.Timestamp);
             }
 
             lock (historyLock)

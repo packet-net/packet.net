@@ -89,6 +89,13 @@ public static class PdnReadApi
         // Per-link rollup (frame/byte/REJ/SREJ counters) from the telemetry tap.
         v1.MapGet("/links", (NodeHostedService host) => Results.Ok(BuildLinks(host)));
 
+        // The persisted MHeard log (#454): recently heard stations, the REST companion to the MH
+        // console verb. No `port` query ⇒ the node-wide view (each callsign merged across ports);
+        // `?port=<id>` ⇒ that port's stations. Most-recently-heard first. Empty when the heard log
+        // is absent (default-off host) or nothing has been heard yet — never a throw.
+        v1.MapGet("/heard", (NodeHostedService host, TimeProvider clock, string? port)
+            => Results.Ok(BuildHeard(host, clock, port)));
+
         // The learned per-peer AX.25 capability cache (which neighbours speak v2.2 /
         // answer a pre-connect XID). Projects host.Capabilities.All() with the two instants
         // rendered relative-ago, same model as /links + the NetRom rows. Empty when the cache
@@ -309,6 +316,39 @@ public static class PdnReadApi
         var ctx = session.Context;
         int rtt = (int)Math.Clamp(ctx.Srt.TotalMilliseconds, 0, int.MaxValue);
         return (rtt, ctx.RC);
+    }
+
+    internal static HeardStation[] BuildHeard(NodeHostedService host, TimeProvider clock, string? port)
+    {
+        // The log handle is null on a host built without one (older tests / an embedder that didn't
+        // register the singleton) — an empty array is the honest read, never a throw.
+        var log = host.Heard;
+        if (log is null)
+        {
+            return [];
+        }
+        var now = clock.GetUtcNow();
+
+        if (string.IsNullOrWhiteSpace(port))
+        {
+            // Node-wide: one row per callsign, merged across the ports it was heard on.
+            return log.NodeWide().Select(s => new HeardStation(
+                Callsign: s.Callsign,
+                PortId: null,
+                FirstHeard: RelativeAgo(now, s.FirstHeard),
+                LastHeard: RelativeAgo(now, s.LastHeard),
+                Count: s.Count,
+                Ports: s.Ports)).ToArray();
+        }
+
+        // Per-port: one row per callsign heard on that port.
+        return log.ForPort(port).Select(e => new HeardStation(
+            Callsign: e.Callsign,
+            PortId: e.PortId,
+            FirstHeard: RelativeAgo(now, e.FirstHeard),
+            LastHeard: RelativeAgo(now, e.LastHeard),
+            Count: e.Count,
+            Ports: 1)).ToArray();
     }
 
     internal static PeerCapability[] BuildCapabilities(NodeHostedService host, TimeProvider clock)

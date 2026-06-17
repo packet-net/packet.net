@@ -161,6 +161,10 @@ public sealed partial class NodeCommandService : INodeApplication
                 await WriteLineAsync(connection, PortsText(), ct).ConfigureAwait(false);
                 return DispatchOutcome.Continue;
 
+            case MhCommand mh:
+                await WriteLineAsync(connection, MhText(mh.PortId), ct).ConfigureAwait(false);
+                return DispatchOutcome.Continue;
+
             case ByeCommand:
                 await WriteLineAsync(connection, "73", ct).ConfigureAwait(false);
                 return DispatchOutcome.Disconnect;
@@ -424,6 +428,66 @@ public sealed partial class NodeCommandService : INodeApplication
         return sb.ToString();
     }
 
+    // MHeard (#454): the persisted heard log. Bare MH ⇒ node-wide (each callsign merged across the
+    // ports it was heard on, with a port count); MH <port> ⇒ that port's stations. Read-only; no
+    // elevation (it leaks only which stations were on the air, the same data the monitor shows).
+    // Columns: callsign, last-heard (relative h:mm:ss ago), count, and port(s). Most-recent first.
+    private string MhText(string? portId)
+    {
+        var log = env.Heard;
+        if (log is null)
+        {
+            return "MHeard: (heard log not available)";
+        }
+
+        var now = clock.GetUtcNow();
+
+        if (portId is null)
+        {
+            // Node-wide: one row per callsign, merged across ports.
+            var stations = log.NodeWide();
+            if (stations.Count == 0)
+            {
+                return "MHeard: (nothing heard yet)";
+            }
+            var sb = new StringBuilder("Heard (node-wide):");
+            sb.Append('\n').Append("  Callsign    Last heard  Count  Ports");
+            foreach (var s in stations)
+            {
+                sb.Append('\n').Append("  ")
+                  .Append(Pad(s.Callsign, 10)).Append("  ")
+                  .Append(Pad(RelativeAgo(now, s.LastHeard), 10)).Append("  ")
+                  .Append(Pad(s.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), 5)).Append("  ")
+                  .Append(s.Ports);
+            }
+            return sb.ToString();
+        }
+        else
+        {
+            // Per-port: one row per callsign heard on that port.
+            var rows = log.ForPort(portId);
+            if (rows.Count == 0)
+            {
+                return $"MHeard on {portId}: (nothing heard yet)";
+            }
+            var sb = new StringBuilder($"Heard on {portId}:");
+            sb.Append('\n').Append("  Callsign    Last heard  Count");
+            foreach (var r in rows)
+            {
+                sb.Append('\n').Append("  ")
+                  .Append(Pad(r.Callsign, 10)).Append("  ")
+                  .Append(Pad(RelativeAgo(now, r.LastHeard), 10)).Append("  ")
+                  .Append(r.Count);
+            }
+            return sb.ToString();
+        }
+    }
+
+    // Right-pad a column to a fixed width (left-aligned), never truncating an over-long value (a
+    // long callsign just pushes the next column — readability over strict alignment).
+    private static string Pad(string value, int width) =>
+        value.Length >= width ? value : value + new string(' ', width - value.Length);
+
     // The per-peer AX.25 capability cache (read-only; no elevation — it leaks no secret, only
     // which neighbours speak v2.2 / answer an XID). One line per (port, peer):
     //   port:peer  v2.2|v2.0|v2.2?  SREJ|REJ|SREJ?  probed <h:mm:ss>  [refused <h:mm:ss>]
@@ -540,6 +604,7 @@ public sealed partial class NodeCommandService : INodeApplication
           .Append("  C[onnect] <call>   connect to a station\n")
           .Append("  N[odes]            this node + the NET/ROM table\n")
           .Append("  P[orts]            list the radio ports\n")
+          .Append("  MH [port]          recently heard stations\n")
           .Append("  CAP[s]             peer AX.25 capability cache\n")
           .Append("  I[nfo]             node info and version\n")
           .Append("  B[ye] / D          disconnect\n")

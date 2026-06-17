@@ -56,11 +56,22 @@ public static class NodeServiceCollectionExtensions
             services.TryAddSingleton<IPeerCapabilityStore>(sp => new SqlitePeerCapabilityStore(
                 dbPath,
                 sp.GetService<ILoggerFactory>()?.CreateLogger<SqlitePeerCapabilityStore>()));
+
+            // The MHeard log persists to the same pdn.db (#454). Same pattern as the capability
+            // store — a durable store with a dbPath, in-memory otherwise.
+            services.TryAddSingleton<Heard.IHeardStore>(sp => new Heard.SqliteHeardStore(
+                dbPath,
+                sp.GetService<ILoggerFactory>()?.CreateLogger<Heard.SqliteHeardStore>()));
         }
 
         // The capability cache itself is always available (in-memory when no store is registered).
         services.TryAddSingleton(sp => new PeerCapabilityCache(
             sp.GetService<IPeerCapabilityStore>(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System));
+
+        // The MHeard log is always available (in-memory when no store is registered).
+        services.TryAddSingleton(sp => new Heard.HeardLog(
+            sp.GetService<Heard.IHeardStore>(),
             sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
         services.AddHostedService<NodeHostedService>();

@@ -30,6 +30,14 @@ public sealed record NodesCommand : NodeCommand;
 /// <summary><c>P[orts]</c> — list the node's radio ports (split out of NODES).</summary>
 public sealed record PortsCommand : NodeCommand;
 
+/// <summary>
+/// <c>MH</c> (node-wide) / <c>MH &lt;port&gt;</c> (per-port) — list recently heard stations from
+/// the persisted heard log (#454). <see cref="PortId"/> is null for the node-wide view (each
+/// callsign merged across the ports it was heard on) or the requested port id for the per-port
+/// view (one row per callsign heard on that port). Read-only; no elevation.
+/// </summary>
+public sealed record MhCommand(string? PortId) : NodeCommand;
+
 /// <summary><c>I[nfo]</c> — node identity + version banner.</summary>
 public sealed record InfoCommand : NodeCommand;
 

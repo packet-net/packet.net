@@ -35,6 +35,11 @@ public sealed partial class NodeHostedService : BackgroundService
     // defaults and records nothing (default-off). Threaded into NetRomService (interlinks) and
     // the PortSupervisor (user CONNECT) at start.
     private readonly PeerCapabilityCache? capabilityCache;
+    // Optional MHeard log (#454). DI passes the registered singleton; null in older tests / a host
+    // that didn't register one — the node then keeps no persisted heard log (the MH verb reports
+    // "not available"). Fed from the telemetry tap (every received frame's source station) and
+    // surfaced read-only by the MH console verb + the REST /api/v1/heard surface.
+    private readonly Heard.HeardLog? heardLog;
     private readonly NodeTelemetry telemetry;
     private readonly BeaconService beacons;
     // Optional over-RF sysop dependencies (DI passes the registered user store + TOTP
@@ -73,7 +78,8 @@ public sealed partial class NodeHostedService : BackgroundService
         TotpService? totp = null,
         Applications.Packages.IAppPackageCatalog? appPackages = null,
         Applications.Packages.IAppServiceSupervisor? appServices = null,
-        PeerCapabilityCache? capabilityCache = null)
+        PeerCapabilityCache? capabilityCache = null,
+        Heard.HeardLog? heardLog = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? TransportFactory.Instance;
@@ -81,9 +87,12 @@ public sealed partial class NodeHostedService : BackgroundService
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.routingStore = routingStore;
         this.capabilityCache = capabilityCache;
+        this.heardLog = heardLog;
         this.userStore = userStore;
         this.totp = totp;
-        telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>());
+        // Feed the heard log (when wired) from the same tap that feeds the link telemetry — one
+        // source of truth (#454). Null heard log ⇒ telemetry behaves exactly as before.
+        telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>(), heardLog);
         // The ID-beacon service. Optional ctor param (DI passes the registered singleton);
         // when null — every existing direct-construction test — we build one over the same
         // config + clock, so beacons are always wired but inert by default (default-off).
@@ -132,6 +141,14 @@ public sealed partial class NodeHostedService : BackgroundService
     /// the API then projects an empty list and treats every forget as a 404, the same
     /// default-off behaviour the rest of the cache wiring keeps.</summary>
     public PeerCapabilityCache? Capabilities => capabilityCache;
+
+    /// <summary>The MHeard log (#454) — the persisted record of stations heard on each port,
+    /// surfaced by the <c>MH</c> console verb and the REST <c>/api/v1/heard</c> projection. Fed
+    /// from <see cref="Telemetry"/>'s received-frame tap. Null when the host was constructed without
+    /// one (older tests / an embedder that didn't register one) — the MH verb then reports "not
+    /// available" and the REST surface projects an empty list, the default-off behaviour the rest
+    /// of the heard-log wiring keeps.</summary>
+    public Heard.HeardLog? Heard => heardLog;
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -405,7 +422,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // one, deterministically). If no port is up, Connect reports "not available".
         var connector = supervisor?.ResolveDefaultConnector();
         var router = supervisor?.CreateConnectRouter(connector);
-        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost, router, capabilityCache);
+        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost, router, capabilityCache, heardLog);
         return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
     }
 

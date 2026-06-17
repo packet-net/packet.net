@@ -65,6 +65,13 @@ public sealed class NodeConsoleEnvironment
     /// </summary>
     public PeerCapabilityCache? Capabilities { get; }
 
+    /// <summary>
+    /// The MHeard log, surfaced by the <c>MH</c> console verb (read-only list of stations heard,
+    /// node-wide or per-port). Null when the heard log isn't wired (older call sites / tests) — the
+    /// console then reports "not available" for MH. Read-only; no elevation.
+    /// </summary>
+    public Heard.HeardLog? Heard { get; }
+
     public NodeConsoleEnvironment(
         IConfigProvider config,
         IOutboundConnector? outboundConnector,
@@ -72,7 +79,8 @@ public sealed class NodeConsoleEnvironment
         SysopContext? sysop = null,
         IApplicationHost? applications = null,
         IConnectRouter? connectRouter = null,
-        PeerCapabilityCache? capabilities = null)
+        PeerCapabilityCache? capabilities = null,
+        Heard.HeardLog? heard = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         OutboundConnector = outboundConnector;
@@ -81,6 +89,7 @@ public sealed class NodeConsoleEnvironment
         Applications = applications;
         ConnectRouter = connectRouter;
         Capabilities = capabilities;
+        Heard = heard;
     }
 
     /// <summary>The default over-RF elevation lifetime when the config leaves it unset.</summary>

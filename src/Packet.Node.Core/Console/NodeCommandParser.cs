@@ -123,6 +123,13 @@ public static class NodeCommandParser
         {
             return new HelpCommand();
         }
+        // MH(EARD) — the heard log. Require ≥2 chars (the "MH" stem) so a bare "M" never triggers
+        // it; any prefix of MHEARD from "MH" up (MH/MHE/MHEARD) matches. Bare ⇒ node-wide list;
+        // "MH <port>" ⇒ that port's list.
+        if (upper.Length >= 2 && Matches(upper, "MHEARD"))
+        {
+            return ParseMh(rest);
+        }
 
         // Over-RF sysop verbs (auth part 4). SYSOP and SESSIONS both start with 'S', so a
         // bare "S" is ambiguous — require ≥2 chars for those two (SY… → SYSOP, SE… →
@@ -218,6 +225,19 @@ public static class NodeCommandParser
             "DOWN" => new PortPowerCommand(id, false),
             _ => new MalformedPort(usage),
         };
+    }
+
+    // MH            → node-wide heard list
+    // MH <port>     → that port's heard list (first token after MH is the port id; extras ignored)
+    private static MhCommand ParseMh(string rest)
+    {
+        if (string.IsNullOrWhiteSpace(rest))
+        {
+            return new MhCommand(PortId: null);
+        }
+        int ws = IndexOfWhitespace(rest);
+        string port = ws < 0 ? rest : rest[..ws];
+        return new MhCommand(port);
     }
 
     // CAP / CAPS          → list the per-peer capability cache (read-only)
