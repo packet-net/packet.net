@@ -1,8 +1,9 @@
 // App shell — sidebar (7-nav) + translucent topbar + theme toggle + user menu.
 // Ported from the handoff ui.jsx Shell; wired to react-router (NavLink/Outlet)
 // and the live NodeStatus for the topbar.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Icon, AppIcon, type IconName } from "@/components/icon";
 import { Button } from "@/components/ui";
@@ -49,35 +50,47 @@ export function ThemeToggle() {
   );
 }
 
+// The account menu, built on @radix-ui/react-dropdown-menu so it gets proper menu
+// semantics: a button trigger with aria-haspopup/aria-expanded, a role="menu"
+// surface whose role="menuitem" entries are arrow-key navigable, type-ahead, and
+// dismissable with Escape or an outside click (with focus restored to the
+// trigger). Visual parity with the previous bespoke popover is preserved.
 function UserMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const { username, scope, logout } = useAuth();
   const navigate = useNavigate();
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
   // username is null when we entered tokenless (auth off / mock) — label it so.
   const name = username || "node";
   const initials = name.slice(0, 2);
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary">{initials}</button>
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-48 rounded-lg border border-border bg-popover p-1 shadow-lg">
-          <div className="px-3 py-2">
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          aria-label="Account menu"
+          className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+        >
+          {initials}
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={8}
+          className="z-50 w-48 rounded-lg border border-border bg-popover p-1 shadow-lg"
+        >
+          <DropdownMenu.Label className="px-3 py-2">
             <p className="text-sm font-medium">{name}</p>
             <p className="text-xs text-muted-foreground">{scope ?? "unauthenticated"}</p>
-          </div>
-          <div className="my-1 h-px bg-border" />
-          <button onClick={() => { logout(); navigate("/login"); }} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
+          </DropdownMenu.Label>
+          <DropdownMenu.Separator className="my-1 h-px bg-border" />
+          <DropdownMenu.Item
+            onSelect={() => { logout(); navigate("/login"); }}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground outline-none data-[highlighted]:bg-accent data-[highlighted]:text-foreground"
+          >
             <Icon name="power" size={14} /> Sign out
-          </button>
-        </div>
-      )}
-    </div>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

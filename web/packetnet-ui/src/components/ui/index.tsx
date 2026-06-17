@@ -3,8 +3,9 @@
 // flavoured Tailwind components). Faithful to the target screenshots; tokens
 // come from index.css. Icons are lucide via ../icon.
 // ============================================================
-import { useEffect, useRef, useState, useCallback, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type LabelHTMLAttributes, type TdHTMLAttributes } from "react";
-import { createPortal } from "react-dom";
+import { type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type LabelHTMLAttributes, type TdHTMLAttributes } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as RadixTooltip from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/icon";
 
@@ -120,46 +121,35 @@ export function Field({ label, hint, impact, info, badge, className, children }:
   );
 }
 
-// ---- Tooltip (hover/focus; panel PORTALED to <body>) -------
-// The panel is rendered into document.body with fixed positioning rather than
-// as an absolutely-positioned descendant, so it can't be clipped or stacked
-// under an ancestor's overflow / stacking context — e.g. the info hints in a
-// table heading, where the table lives in an `overflow-hidden` Card wrapping an
-// `overflow-x-auto` scroll box. Shown on hover OR focus (focus = tap on touch).
+// ---- Tooltip (Radix; hover/focus, portaled, ARIA + keyboard) -------
+// Built on @radix-ui/react-tooltip so the hint is properly announced
+// (role="tooltip", described-by wiring), reachable by keyboard focus (focus = tap
+// on touch), and dismissable with Escape. The content is PORTALED to <body> so it
+// can't be clipped or stacked under an ancestor's overflow / stacking context —
+// e.g. the info hints in a table heading, where the table lives in an
+// `overflow-hidden` Card wrapping an `overflow-x-auto` scroll box. The trigger
+// stays `inline-flex` (and focusable) to preserve the previous layout + visuals.
 export function Tooltip({ text, children, className }: { text: ReactNode; children: ReactNode; className?: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  const show = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    setPos({ top: r.top, left: r.left + r.width / 2 });
-  }, []);
-  const hide = useCallback(() => setPos(null), []);
-
   return (
-    <span
-      ref={ref}
-      className={cn("relative inline-flex", className)}
-      tabIndex={0}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
-    >
-      {children}
-      {pos !== null && createPortal(
-        <span
-          role="tooltip"
-          style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translate(-50%, calc(-100% - 6px))" }}
-          className="pointer-events-none z-[100] w-64 max-w-[calc(100vw-1rem)] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-normal leading-snug text-popover-foreground shadow-lg"
-        >
-          {text}
-        </span>,
-        document.body,
-      )}
-    </span>
+    <RadixTooltip.Provider delayDuration={150}>
+      <RadixTooltip.Root>
+        <RadixTooltip.Trigger asChild>
+          <span className={cn("relative inline-flex outline-none", className)} tabIndex={0}>
+            {children}
+          </span>
+        </RadixTooltip.Trigger>
+        <RadixTooltip.Portal>
+          <RadixTooltip.Content
+            side="top"
+            sideOffset={6}
+            collisionPadding={8}
+            className="z-[100] w-64 max-w-[calc(100vw-1rem)] rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-normal leading-snug text-popover-foreground shadow-lg"
+          >
+            {text}
+          </RadixTooltip.Content>
+        </RadixTooltip.Portal>
+      </RadixTooltip.Root>
+    </RadixTooltip.Provider>
   );
 }
 export function InfoHint({ text }: { text: ReactNode }) {
@@ -243,55 +233,80 @@ export function Tabs({ tabs, active, onChange, className }: { tabs: { id: string
   );
 }
 
-// ---- Sheet / Drawer (right side) ---------------------------
+// Bridge the controlled open/onClose prop API every call site uses onto Radix's
+// onOpenChange (fired with `false` on Escape, overlay click, or a Close button).
+function dialogOpenChange(onClose: () => void) {
+  return (next: boolean) => { if (!next) onClose(); };
+}
+
+// ---- Sheet / Drawer (Radix Dialog; right side) -------------
+// A right-edge drawer built on @radix-ui/react-dialog: focus is trapped inside
+// while open and restored to the opener on close, Escape + overlay-click dismiss,
+// and the surface carries role="dialog" + aria-modal with the title wired as its
+// accessible name. Visuals (slide-in, border, shadow, header/body/footer) are
+// preserved; the controlled open/onClose prop API is unchanged. The slide
+// transition rides Radix's data-[state] attributes so it animates both ways.
 export function Sheet({ open, onClose, title, subtitle, children, footer, width = "max-w-xl" }: {
   open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; width?: string;
 }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    if (open) window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open, onClose]);
   return (
-    <div className={cn("fixed inset-0 z-50 transition", open ? "pointer-events-auto" : "pointer-events-none")}>
-      <div className={cn("absolute inset-0 bg-black/50 transition-opacity", open ? "opacity-100" : "opacity-0")} onClick={onClose} />
-      <div className={cn("absolute right-0 top-0 flex h-full w-full flex-col border-l border-border bg-card shadow-2xl transition-transform duration-300", width, open ? "translate-x-0" : "translate-x-full")}>
-        <div className="flex items-start justify-between border-b border-border p-4">
-          <div>
-            <h2 className="text-base font-semibold">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+    <Dialog.Root open={open} onOpenChange={dialogOpenChange(onClose)}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:opacity-0 data-[state=open]:opacity-100 transition-opacity" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className={cn(
+            "fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-border bg-card shadow-2xl outline-none transition-transform duration-300 data-[state=closed]:translate-x-full data-[state=open]:translate-x-0",
+            width,
+          )}
+        >
+          <div className="flex items-start justify-between border-b border-border p-4">
+            <div>
+              <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
+              {subtitle && <Dialog.Description className="mt-0.5 text-xs text-muted-foreground">{subtitle}</Dialog.Description>}
+            </div>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="iconSm" aria-label="Close"><Icon name="x" /></Button>
+            </Dialog.Close>
           </div>
-          <Button variant="ghost" size="iconSm" onClick={onClose}><Icon name="x" /></Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 p-4">{footer}</div>}
-      </div>
-    </div>
+          <div className="flex-1 overflow-y-auto p-4">{children}</div>
+          {footer && <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 p-4">{footer}</div>}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
-// ---- Modal -------------------------------------------------
+// ---- Modal (Radix Dialog; centred) -------------------------
+// A centred modal built on @radix-ui/react-dialog — same accessibility as Sheet
+// (focus trap + restore, Escape/overlay dismiss, role/aria-modal/labelled-by) and
+// the same controlled open/onClose API. Visuals (centred card, border, shadow,
+// header/body/footer) preserved.
 export function Modal({ open, onClose, title, children, footer, width = "max-w-md" }: {
   open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; width?: string;
 }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    if (open) window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open, onClose]);
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={cn("relative w-full rounded-xl border border-border bg-card shadow-2xl", width)}>
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="text-base font-semibold">{title}</h2>
-          <Button variant="ghost" size="iconSm" onClick={onClose}><Icon name="x" /></Button>
+    <Dialog.Root open={open} onOpenChange={dialogOpenChange(onClose)}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <Dialog.Content
+            aria-describedby={undefined}
+            className={cn("relative w-full rounded-xl border border-border bg-card shadow-2xl outline-none", width)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border p-4">
+              <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
+              <Dialog.Close asChild>
+                <Button variant="ghost" size="iconSm" aria-label="Close"><Icon name="x" /></Button>
+              </Dialog.Close>
+            </div>
+            <div className="p-4">{children}</div>
+            {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-4">{footer}</div>}
+          </Dialog.Content>
         </div>
-        <div className="p-4">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-4">{footer}</div>}
-      </div>
-    </div>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
