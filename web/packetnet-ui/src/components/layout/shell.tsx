@@ -14,6 +14,7 @@ import { isAppNotRunning } from "@/lib/types";
 export const NAV: { id: string; to: string; label: string; icon: IconName }[] = [
   { id: "dashboard", to: "/", label: "Dashboard", icon: "dashboard" },
   { id: "monitor", to: "/monitor", label: "Monitor", icon: "monitor" },
+  { id: "links", to: "/links", label: "Link troubleshoot", icon: "gauge" },
   { id: "sessions", to: "/sessions", label: "Sessions", icon: "sessions" },
   { id: "console", to: "/console", label: "Console", icon: "console" },
   { id: "apps", to: "/apps", label: "Apps", icon: "apps" },

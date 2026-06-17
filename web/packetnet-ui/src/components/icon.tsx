@@ -6,7 +6,8 @@ import {
   Sun, Moon, ChevronDown, ChevronRight, X, Plus, Search, Pause, Play, Trash2,
   Power, RotateCw, ArrowDown, ArrowUp, TriangleAlert, Check, Link as LinkIcon,
   Radio, Send, Copy, Filter, Menu, KeyRound, Fingerprint, Download, ExternalLink,
-  Info, Signal, LayoutGrid, AppWindow, SquareTerminal, Pencil, icons as lucideIcons, type LucideIcon,
+  Info, Signal, LayoutGrid, AppWindow, SquareTerminal, Pencil, Gauge,
+  icons as lucideIcons, type LucideIcon,
 } from "lucide-react";
 
 const MAP: Record<string, LucideIcon> = {
@@ -49,6 +50,7 @@ const MAP: Record<string, LucideIcon> = {
   signal: Signal,
   console: SquareTerminal,
   edit: Pencil,
+  gauge: Gauge,
 };
 
 export interface IconProps {

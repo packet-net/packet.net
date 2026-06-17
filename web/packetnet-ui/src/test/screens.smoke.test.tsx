@@ -23,6 +23,7 @@ import { Users } from "@/screens/users";
 import { Login } from "@/screens/login";
 import { Setup } from "@/screens/setup";
 import { LinkTuner } from "@/screens/link-tuner";
+import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
 
 function mount(node: ReactElement, route = "/"): RenderResult {
   return render(
@@ -171,5 +172,15 @@ describe("screens render without crashing", () => {
   it("LinkTuner renders for a port", () => {
     const { container } = mount(<LinkTuner />, "/tools/tuner?port=vhf-1");
     expect(container.firstChild).toBeTruthy();
+  });
+
+  it("LinkTroubleshoot renders per-link T1/T3/SRTT/retries", async () => {
+    const { container } = mount(<LinkTroubleshoot />, "/links");
+    expect(container.firstChild).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Link troubleshoot/i)).toBeInTheDocument());
+    // The mock /links fixtures seed live links — wait for a peer row + the SRTT/retries columns.
+    await waitFor(() => expect(screen.getAllByText("M0LTE").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/SRTT/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Retries/i).length).toBeGreaterThan(0);
   });
 });
