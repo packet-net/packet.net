@@ -53,6 +53,14 @@ public sealed record ReconcilePlan
     /// untouched. Keyed by the new config.</summary>
     public IReadOnlyList<PortConfig> CompatChanged { get; init; } = [];
 
+    /// <summary>Ports whose per-port NET/ROM <see cref="PortConfig.NetRomQuality"/>
+    /// changed but nothing restart-class did → hot-apply the new route quality to the
+    /// port's NET/ROM attachment (no restart). QUALITY only affects how the next NODES
+    /// broadcast on this port is quality-combined — read-only awareness/advertisement, it
+    /// can never disturb a live session — so it is the lightest possible hot edit. Keyed
+    /// by the new config.</summary>
+    public IReadOnlyList<PortConfig> NetRomQualityChanged { get; init; } = [];
+
     /// <summary>True if the telnet console bind/port/enabled changed → restart
     /// just the telnet listener.</summary>
     public bool TelnetChanged { get; init; }
@@ -67,5 +75,6 @@ public sealed record ReconcilePlan
         !NodeWideReset && !TelnetChanged && !ServicesChanged &&
         ToBringUp.Count == 0 && ToTearDown.Count == 0 && ToRestart.Count == 0 &&
         ToDisable.Count == 0 && ToEnable.Count == 0 &&
-        KissParamsChanged.Count == 0 && Ax25ParamsChanged.Count == 0 && CompatChanged.Count == 0;
+        KissParamsChanged.Count == 0 && Ax25ParamsChanged.Count == 0 && CompatChanged.Count == 0 &&
+        NetRomQualityChanged.Count == 0;
 }

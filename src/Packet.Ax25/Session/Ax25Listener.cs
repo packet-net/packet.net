@@ -1102,6 +1102,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         if (sp.Quirks is { } quirks) ctx.Quirks = quirks;
         if (sp.N2 is { } n2)   ctx.N2 = n2;
         if (sp.K  is { } k)    ctx.K  = k;
+        if (sp.N1 is { } n1)   ctx.N1 = n1;   // PACLEN: seed the offered N1 (XID can still lower it)
         if (sp.T2  is { } t2)  ctx.T2  = t2;
         if (sp.T1V is { } t1v)
         {
@@ -1630,6 +1631,23 @@ public sealed record Ax25SessionParameters
 
     /// <summary>k (send-window size) override. <c>null</c> ⇒ spec default (4 for mod-8).</summary>
     public int? K { get; init; }
+
+    /// <summary>
+    /// N1 (maximum information-field length, octets) seed for newly-built sessions —
+    /// the PACLEN cap. <c>null</c> ⇒ the session-context default (256, the AX.25 v2.2
+    /// default + XID-offered N1). Seeds <see cref="Ax25SessionContext.N1"/> at build
+    /// time; XID negotiation may still LOWER it (the negotiator takes the min of the
+    /// two ends' offered N1), and the segmenter/accept-bound read the live
+    /// <c>context.N1</c>. Build-time only, like the timer/window knobs — a reseed
+    /// changes the value for <em>future</em> sessions, never a live session's N1.
+    /// </summary>
+    /// <remarks>
+    /// This is a node-host per-port config seed, not a parity-tracked listener flag — it
+    /// lives on the live-reseed parameter record (not <see cref="Ax25ListenerOptions"/>),
+    /// so a freshly-constructed listener carries it via a post-construction
+    /// <see cref="Ax25Listener.UpdateSessionParameters"/> reseed (the node host does this).
+    /// </remarks>
+    public int? N1 { get; init; }
 
     /// <summary>LRU cap on cached per-peer sessions. Defaults to 64 (the <see cref="Ax25ListenerOptions"/> default).</summary>
     public int MaxCachedPeers { get; init; } = 64;

@@ -116,6 +116,49 @@ public class Ax25ListenerSegmentationTests
     }
 
     [Fact]
+    public async Task A_configured_N1_via_session_parameters_drives_segmentation_for_new_sessions()
+    {
+        // The per-port PACLEN path (packet.net#458): N1 is carried on the live-reseed
+        // Ax25SessionParameters record (not Ax25ListenerOptions — that is parity-tracked),
+        // seeded into a NEW session's context at build time. Prove a configured N1=64
+        // (set via UpdateSessionParameters, exactly as the node-host PortSupervisor does
+        // after constructing the listener) actually drives segmentation on the wire.
+        var modem = new LoopbackModem();
+        var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        {
+            MyCall = LocalCall,
+            // The segmenter must be negotiated for the over-N1 SDU to segment rather
+            // than throw; N1 itself comes from the session parameters below, not here.
+            ConfigureSession = s => s.Context.SegmenterReassemblerEnabled = true,
+        });
+        await using var _ = listener;
+
+        // Reseed N1 BEFORE the session is built (the node-host post-construction reseed).
+        listener.UpdateSessionParameters(new Ax25SessionParameters { N1 = 64, K = 16 });
+
+        var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
+        await listener.StartAsync();
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCall));
+        var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
+        await modem.SentFrames.WaitForCountAsync(1, TimeSpan.FromSeconds(2));   // the UA
+
+        // The new session picked up the configured N1.
+        session.Context.N1.Should().Be(64, "the per-port N1 seeds the new session's context");
+
+        var ua = modem.SentFrames.Count;
+        var payload = Enumerable.Range(0, 300).Select(i => (byte)i).ToArray();   // 5 segments at N1=64
+        listener.SendData(session, payload, Ax25Frame.PidNetRom);
+
+        await modem.SentFrames.WaitForCountAsync(ua + 5, TimeSpan.FromSeconds(2));
+        var iFrames = modem.SentFrames.SnapshotList().Skip(ua)
+            .Select(b => { Ax25Frame.TryParse(b.Span, out var f); return f!; })
+            .ToList();
+        iFrames.Should().HaveCount(5, "300 bytes segmented at the configured N1=64 → 5 I-frames");
+        iFrames.Should().OnlyContain(f => f.Pid == Ax25Frame.PidSegmented);
+    }
+
+    [Fact]
     public async Task SendData_passes_a_within_N1_payload_as_a_single_iframe()
     {
         var (listener, modem, session) = await AcceptedSession(ctx =>

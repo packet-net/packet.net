@@ -131,6 +131,7 @@ public static class ChannelProfiles
             T3Ms = e?.T3Ms ?? profile.T3Ms,
             N2 = e?.N2 ?? profile.N2,
             WindowSize = e?.WindowSize ?? profile.WindowSize,
+            N1 = e?.N1 ?? profile.N1,
             MaxCachedPeers = e?.MaxCachedPeers ?? profile.MaxCachedPeers,
         };
     }

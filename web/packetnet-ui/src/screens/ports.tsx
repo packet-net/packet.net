@@ -39,6 +39,9 @@ interface PortDraft {
   // AX.25 compatibility profile. The editor only drives the preset dropdown;
   // YAML-set flag overrides / quirks are carried through untouched.
   compat: PortCompatConfig | null;
+  // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
+  // node-wide netRom.defaultNeighbourQuality.
+  netRomQuality: number | null;
   _new?: boolean;
   // The id the draft was opened against (the reconcile key for an edit) — set on edit,
   // unset on add. Lets a rename in the editor edit the original entry rather than 404.
@@ -114,6 +117,7 @@ export function Ports() {
     setup: { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: false },
     beacon: null,
     compat: null,
+    netRomQuality: null,
     _new: true,
   });
 
@@ -127,6 +131,7 @@ export function Ports() {
       setup: PORT_SETUP[p.id] ?? { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: true },
       beacon: p.beacon,
       compat: p.compat ?? null,
+      netRomQuality: p.netRomQuality ?? null,
       _origId: p.id,
     });
   };
@@ -146,6 +151,7 @@ export function Ports() {
       // Beacons tab); a brand-new port inherits the system default.
       beacon: d.beacon ?? null,
       compat: d.compat,
+      netRomQuality: d.netRomQuality,
     };
     try {
       if (d._new) await api.addPort(saved);
@@ -586,6 +592,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                   <ParamField k="t3Ms" value={model.ax25.t3Ms} base={baseline.t3Ms} onChange={(v) => setAx("t3Ms", v)} />
                   <ParamField k="n2" value={model.ax25.n2} base={baseline.n2} onChange={(v) => setAx("n2", v)} />
                   <ParamField k="windowSize" value={model.ax25.windowSize} base={baseline.windowSize} onChange={(v) => setAx("windowSize", v)} />
+                  <ParamField k="n1" value={model.ax25.n1} base={baseline.n1} onChange={(v) => setAx("n1", v)} />
                 </div>
               </div>
               {usesKiss && (
@@ -604,6 +611,27 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
             </div>
           )}
         </details>
+
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">NET/ROM</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Field label={PARAM_HELP.netRomQuality.label} info={PARAM_HELP.netRomQuality.help}>
+              <Input
+                type="number"
+                min={0}
+                max={255}
+                value={model.netRomQuality ?? ""}
+                placeholder="inherit"
+                onChange={(e) =>
+                  setModel((d) =>
+                    d ? { ...d, netRomQuality: e.target.value === "" ? null : +e.target.value } : d,
+                  )
+                }
+                className="font-mono"
+              />
+            </Field>
+          </div>
+        </div>
       </div>
 
       <Modal

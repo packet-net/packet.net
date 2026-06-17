@@ -48,6 +48,60 @@ public class NetRomRoutingTableTests
     }
 
     [Fact]
+    public void A_per_port_quality_overrides_the_default_for_a_neighbour_on_that_port()
+    {
+        var table = NewTable(out _);
+        // This port advertises quality 191 (e.g. a slightly worse-grade link).
+        table.Ingest(NbrA, Me, "hf", Broadcast("RDGBPQ"), neighbourQuality: 191);
+
+        var snap = table.Snapshot();
+        snap.Neighbours.Single().PathQuality.Should().Be(191);
+        snap.Destinations.Single(d => d.Destination == NbrA).BestRoute!.Quality.Should().Be(191);
+    }
+
+    [Fact]
+    public void A_null_per_port_quality_falls_back_to_the_table_default()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, "vhf", Broadcast("RDGBPQ"), neighbourQuality: null);
+
+        table.Snapshot().Neighbours.Single().PathQuality.Should().Be(192);   // the canonical default
+    }
+
+    [Fact]
+    public void A_mixed_grade_node_advertises_the_correct_quality_per_port()
+    {
+        // The #455 scenario: GB7RDG-style mixed-grade node — 191 on one port, 192 on
+        // another. Two neighbours heard on two different-grade ports learn their port's
+        // quality independently, and a destination learned via each is combined against
+        // that port's basis — so the node advertises an accurate quality on each leg.
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, "port-191", Broadcast("RDG", (DestSot, "SOT", NbrB, 200)), neighbourQuality: 191);
+        table.Ingest(NbrB, Me, "port-192", Broadcast("XYZ", (DestMnc, "MNC", NbrA, 200)), neighbourQuality: 192);
+
+        var snap = table.Snapshot();
+        snap.Neighbours.Single(n => n.Neighbour == NbrA).PathQuality.Should().Be(191);
+        snap.Neighbours.Single(n => n.Neighbour == NbrB).PathQuality.Should().Be(192);
+        snap.Destinations.Single(d => d.Destination == DestSot).BestRoute!.Quality
+            .Should().Be(NetRomQuality.Combine(200, 191));
+        snap.Destinations.Single(d => d.Destination == DestMnc).BestRoute!.Quality
+            .Should().Be(NetRomQuality.Combine(200, 192));
+    }
+
+    [Fact]
+    public void A_per_port_quality_change_is_reflected_on_the_next_broadcast()
+    {
+        // A QUALITY edit (hot-reload) takes effect on the next NODES ingest — the cached
+        // neighbour path quality is refreshed, not pinned to first-heard.
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, "hf", Broadcast("RDGBPQ"), neighbourQuality: 191);
+        table.Snapshot().Neighbours.Single().PathQuality.Should().Be(191);
+
+        table.Ingest(NbrA, Me, "hf", Broadcast("RDGBPQ"), neighbourQuality: 200);
+        table.Snapshot().Neighbours.Single().PathQuality.Should().Be(200);
+    }
+
+    [Fact]
     public void A_direct_route_to_the_originator_is_assumed_at_path_quality()
     {
         var table = NewTable(out _);

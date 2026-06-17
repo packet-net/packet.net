@@ -237,6 +237,13 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Ax25 is not null, () =>
             RuleFor(p => p.Ax25!).SetValidator(new Ax25ParamsValidator()));
 
+        // Per-port NET/ROM route quality (BPQ per-port QUALITY): 0..255 — the NET/ROM
+        // quality range. A typo'd value is rejected rather than silently clamped,
+        // matching the per-port tuning discipline. Null = inherit the global default.
+        RuleFor(p => p.NetRomQuality!.Value).InclusiveBetween(0, 255)
+            .When(p => p.NetRomQuality.HasValue)
+            .WithMessage("Port.netRomQuality must be in 0..255 (the NET/ROM quality range).");
+
         When(p => p.Beacon is not null, () =>
             RuleFor(p => p.Beacon!).SetValidator(new PortBeaconValidator()));
 
@@ -489,6 +496,13 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
         RuleFor(p => p.N2!.Value).GreaterThan(0).When(p => p.N2.HasValue).WithMessage("N2 must be positive.");
         RuleFor(p => p.WindowSize!.Value).InclusiveBetween(1, 127).When(p => p.WindowSize.HasValue)
             .WithMessage("WindowSize (k) must be in 1..127.");
+        // N1 / PACLEN: a sensible floor (>= 16 — below that an I-frame is almost all
+        // header, and the segmenter needs room for a payload) up to the AX.25 v2.2
+        // ceiling (256 octets — the XID-default N1 and the largest the spec negotiates).
+        // An HF port wanting ~80 sits comfortably in range. Out-of-range is rejected,
+        // not clamped, matching the per-port tuning discipline.
+        RuleFor(p => p.N1!.Value).InclusiveBetween(16, 256).When(p => p.N1.HasValue)
+            .WithMessage("N1 (PACLEN) must be in 16..256 octets (the AX.25 v2.2 max info-field length).");
         RuleFor(p => p.MaxCachedPeers!.Value).GreaterThan(0).When(p => p.MaxCachedPeers.HasValue)
             .WithMessage("MaxCachedPeers must be positive.");
     }

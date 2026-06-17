@@ -84,6 +84,52 @@ public class NodeConfigYamlTests
     }
 
     [Fact]
+    public void Parses_and_round_trips_per_port_n1_paclen_and_netrom_quality()
+    {
+        const string yaml = """
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: hf
+                enabled: true
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8001
+                ax25:
+                  n1: 80
+                netRomQuality: 191
+              - id: vhf
+                enabled: true
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8002
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+
+        var hf = config.Ports[0];
+        hf.Ax25!.N1.Should().Be(80);
+        hf.NetRomQuality.Should().Be(191);
+        // The effective resolution falls back to the global default then 192.
+        hf.EffectiveNetRomQuality(globalDefault: 200).Should().Be(191);   // explicit wins
+
+        var vhf = config.Ports[1];
+        vhf.Ax25.Should().BeNull();           // N1 unset ⇒ engine default 256
+        vhf.NetRomQuality.Should().BeNull();   // inherits the global default
+        vhf.EffectiveNetRomQuality(globalDefault: 200).Should().Be(200);
+        vhf.EffectiveNetRomQuality(globalDefault: null).Should().Be(192);
+
+        // Survives a serialise → re-parse round trip.
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(config));
+        reparsed.Ports[0].Ax25!.N1.Should().Be(80);
+        reparsed.Ports[0].NetRomQuality.Should().Be(191);
+        reparsed.Ports[1].NetRomQuality.Should().BeNull();
+    }
+
+    [Fact]
     public void Parses_a_netrom_block_with_overridden_knobs()
     {
         const string yaml = """

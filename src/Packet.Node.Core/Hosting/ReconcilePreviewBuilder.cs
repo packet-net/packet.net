@@ -91,6 +91,11 @@ public static class ReconcilePreviewBuilder
             live.Add(new ReconcileChange($"ports.{p.Id}.compat", Live,
                 $"Port '{p.Id}' AX.25 compatibility profile applied live (inbound parsing from the next frame; session quirks for new sessions)."));
         }
+        foreach (var p in plan.NetRomQualityChanged)
+        {
+            live.Add(new ReconcileChange($"ports.{p.Id}.netRomQuality", Live,
+                $"Port '{p.Id}' NET/ROM route quality applied live (the next NODES broadcast on this port uses it)."));
+        }
 
         if (plan.TelnetChanged)
         {

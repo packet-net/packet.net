@@ -340,6 +340,65 @@ public class NodeConfigValidatorTests
         Validator.Validate(ok).IsValid.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(80, true)]     // an HF-friendly PACLEN
+    [InlineData(256, true)]    // the AX.25 v2.2 ceiling
+    [InlineData(16, true)]     // the floor
+    [InlineData(15, false)]    // below the floor
+    [InlineData(257, false)]   // above the ceiling
+    [InlineData(0, false)]
+    public void Validates_per_port_n1_paclen_range(int n1, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            Ax25 = new Ax25PortParams { N1 = n1 },
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Accepts_an_unset_n1_preserving_the_default()
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            Ax25 = new Ax25PortParams { N2 = 8 },   // N1 unset
+        });
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(191, true)]
+    [InlineData(255, true)]
+    [InlineData(256, false)]
+    [InlineData(-1, false)]
+    public void Validates_per_port_netrom_quality_range(int quality, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            NetRomQuality = quality,
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Accepts_an_unset_per_port_netrom_quality()
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            // NetRomQuality unset — inherits the global default.
+        });
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
     [Fact]
     public void Rejects_telnet_port_out_of_range()
     {

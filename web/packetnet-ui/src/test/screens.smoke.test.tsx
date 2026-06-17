@@ -5,7 +5,7 @@
 // (the host LXC blocks Chrome's network sockets, so visual screenshotting isn't
 // possible in CI here).
 import { describe, it, expect } from "vitest";
-import { render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/app/auth";
 import type { ReactElement } from "react";
@@ -91,6 +91,28 @@ describe("screens render without crashing", () => {
     const { container } = mount(<Ports />);
     expect(container.firstChild).toBeTruthy();
     await waitFor(() => expect(screen.getAllByText(/Ports/i).length).toBeGreaterThan(0));
+  });
+
+  it("Ports editor surfaces the per-port PACLEN (N1) and NET/ROM quality fields", async () => {
+    // The custom-tuned mock port (uhf-2) opens the editor with the advanced section
+    // expanded, so the N1 / PACLEN field is shown; the NET/ROM quality field is always
+    // shown. Proves both new per-port settings (#455 / #458) are wired into the form.
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("uhf-2")).toBeInTheDocument());
+
+    // Walk up from the uhf-2 label to the enclosing card (the first ancestor that
+    // contains an Edit button), then open its editor.
+    let card: HTMLElement | null = screen.getByText("uhf-2");
+    while (card && !within(card).queryByRole("button", { name: "Edit" })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: "Edit" }));
+
+    // The editor (a Sheet) opens with the per-port fields. Both new settings appear.
+    await waitFor(() => expect(screen.getByText(/Edit port — uhf-2/i)).toBeInTheDocument());
+    expect(screen.getByText(/Max frame \(PACLEN\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/NET\/ROM quality/i)).toBeInTheDocument();
   });
 
   it("Capabilities renders the per-peer capability cache", async () => {

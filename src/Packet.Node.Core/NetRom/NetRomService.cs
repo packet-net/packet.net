@@ -290,7 +290,17 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// Begin hearing NODES on a port and, when connect is enabled, make the port
     /// available for interlinks. No-op if NET/ROM is disabled or already attached.
     /// </summary>
-    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener)
+    /// <param name="portId">The node-host port id.</param>
+    /// <param name="myCall">This node's callsign (all ports share the identity).</param>
+    /// <param name="listener">The port's AX.25 listener whose frame/session taps we subscribe.</param>
+    /// <param name="neighbourQuality">
+    /// The per-port NET/ROM route quality (BPQ per-port <c>QUALITY</c>) to assume for a
+    /// directly-heard neighbour on this port. <c>null</c> (the default) ⇒ the node-wide
+    /// <see cref="NetRomConfig.DefaultNeighbourQuality"/> — byte-for-byte the prior behaviour.
+    /// When set, routes learned on this port are quality-combined against this value, so a
+    /// mixed-grade node advertises an accurate per-port quality.
+    /// </param>
+    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(listener);
@@ -312,7 +322,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         void FrameHandler(object? sender, Ax25FrameEventArgs e) => OnFrameTraced(portId, myCall, e);
         void SessionHandler(object? sender, Ax25SessionEventArgs e) => OnSessionAccepted(portId, e.Session);
 
-        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler);
+        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler, neighbourQuality);
         if (!attachments.TryAdd(portId, attachment))
         {
             return;
@@ -328,6 +338,22 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
         var callText = myCall.ToString();
         LogAttached(portId, callText);
+    }
+
+    /// <summary>
+    /// Hot-apply a new per-port NET/ROM route quality (BPQ per-port <c>QUALITY</c>) to a
+    /// running attachment without re-subscribing its taps. No-op if the port isn't attached.
+    /// QUALITY only affects how the <em>next</em> NODES broadcast on this port is
+    /// quality-combined (read-only awareness) — it can never disturb a live session — so it
+    /// is applied live rather than via a port restart.
+    /// </summary>
+    public void UpdatePortQuality(string portId, int? neighbourQuality)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        if (attachments.TryGetValue(portId, out var existing) && existing.NeighbourQuality != neighbourQuality)
+        {
+            attachments[portId] = existing with { NeighbourQuality = neighbourQuality };
+        }
     }
 
     /// <summary>Stop hearing NODES on a port and unsubscribe its taps. Learned routes
@@ -530,7 +556,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 return;
             }
 
-            table.Ingest(originator, myCall, portId, broadcast);
+            // Per-port QUALITY (BPQ per-port QUALITY): the directly-heard neighbour on
+            // this port gets the port's configured quality (null ⇒ the table-wide default).
+            int? portQuality = attachments.TryGetValue(portId, out var att) ? att.NeighbourQuality : null;
+            table.Ingest(originator, myCall, portId, broadcast, portQuality);
             LogHeard(portId, originatorText, broadcast.SenderAlias, broadcast.Entries.Count);
             ArmPersist();
         }
@@ -1223,7 +1252,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     private sealed record Attachment(
         string PortId, Callsign MyCall, Ax25Listener Listener,
-        EventHandler<Ax25FrameEventArgs> FrameHandler, EventHandler<Ax25SessionEventArgs> SessionHandler);
+        EventHandler<Ax25FrameEventArgs> FrameHandler, EventHandler<Ax25SessionEventArgs> SessionHandler,
+        int? NeighbourQuality);
 
     private sealed record Interlink(string PortId, Ax25Listener? Listener, Ax25Session? Session);
 

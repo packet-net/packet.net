@@ -150,6 +150,36 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void N1_paclen_change_only_is_a_hot_ax25_reseed()
+    {
+        // N1 (PACLEN) rides the Ax25PortParams record, so an N1-only edit is the same
+        // HOT live-reseed as any other AX.25 param — no restart, new sessions only.
+        var before = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N1 = 256 }));
+        var to = Config("M0LTE-1", Tcp("a", ax25: new Ax25PortParams { N1 = 80 }));
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.Ax25ParamsChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+        plan.NetRomQualityChanged.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void NetRom_quality_change_only_is_hot_no_restart()
+    {
+        // A per-port NET/ROM QUALITY edit is the lightest hot class — applied by swapping
+        // the port's NET/ROM attachment quality (read-only awareness, never touches a
+        // session). It must not trip a restart or an AX.25 reseed.
+        var before = Config("M0LTE-1", Tcp("a") with { NetRomQuality = 192 });
+        var to = Config("M0LTE-1", Tcp("a") with { NetRomQuality = 191 });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.NetRomQualityChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+        plan.Ax25ParamsChanged.Should().BeEmpty();
+        plan.KissParamsChanged.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Compat_change_only_is_hot_no_restart()
     {
         // A compat-profile-only change is HOT: classified into CompatChanged with

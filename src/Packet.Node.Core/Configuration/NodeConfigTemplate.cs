@@ -54,6 +54,14 @@ public static class NodeConfigTemplate
         #      t1Ms: 3000
         #      n2: 10
         #      windowSize: 4
+        #      n1: 256             # max info-field length (PACLEN / N1), 16..256 octets.
+        #                          # Default 256. Lower it on a slow/lossy medium — e.g.
+        #                          # ~80 on a shared-HF port — to keep on-air frames short;
+        #                          # XID can negotiate it lower but never higher.
+        #    netRomQuality: 192    # optional — per-port NET/ROM route quality (BPQ per-port
+        #                          # QUALITY), 0..255. Omit to inherit netRom.defaultNeighbourQuality.
+        #                          # Set per port on a mixed-grade node (e.g. 191 on one link,
+        #                          # 192 on another) so neighbours pick routes correctly.
         #    compat:               # optional — AX.25 compatibility profile, applied live
         #      preset: lenient     # which inbound wire frames the port accepts:
         #                          #   strict   - exactly AX.25 v2.2, nothing else
@@ -161,6 +169,7 @@ public static class NodeConfigTemplate
           # routing: none                 # none | endpoint | transit (routing role; TX/interlinks are opt-in)
           # alias: NODE                   # your NET/ROM alias in broadcasts (defaults to the identity alias)
           # defaultNeighbourQuality: 192  # assumed quality of a directly-heard link
+          #                               # (override per port with a port's netRomQuality:)
           # minQuality: 0                 # drop routes below this (raise to reject mislabelled qualities)
           # obsoleteInitial: 6            # obsolescence count a route starts at (OBSINIT)
           # obsoleteMinimum: 4            # stop advertising a route below this (OBSMIN) before it is purged

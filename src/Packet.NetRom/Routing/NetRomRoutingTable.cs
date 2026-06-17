@@ -113,19 +113,29 @@ public sealed class NetRomRoutingTable
     /// <param name="myCall">Our own node callsign — an advertised best-neighbour matching this is loop-guarded to quality 0.</param>
     /// <param name="portId">The node-host port id the broadcast was heard on.</param>
     /// <param name="broadcast">The parsed broadcast content.</param>
-    public void Ingest(Callsign originator, Callsign myCall, string portId, NodesBroadcast broadcast)
+    /// <param name="neighbourQuality">
+    /// The path quality to assume for the directly-heard neighbour on this port (the BPQ
+    /// per-port <c>QUALITY</c>). <c>null</c> (the default) ⇒ the table-wide
+    /// <see cref="NetRomRoutingOptions.DefaultNeighbourQuality"/> — byte-for-byte the prior
+    /// behaviour. When supplied, it overrides that default for routes learned on this port,
+    /// so a mixed-grade node advertises an accurate per-port quality. Clamped to 0..255.
+    /// The cached neighbour path quality is refreshed to this value on every ingest, so a
+    /// per-port quality change (or a neighbour moving ports) takes effect on the next broadcast.
+    /// </param>
+    public void Ingest(Callsign originator, Callsign myCall, string portId, NodesBroadcast broadcast, int? neighbourQuality = null)
     {
         ArgumentNullException.ThrowIfNull(broadcast);
         ArgumentNullException.ThrowIfNull(portId);
 
         var now = timeProvider.GetUtcNow();
-        byte pathQuality = (byte)Math.Clamp(options.DefaultNeighbourQuality, NetRomQuality.Min, NetRomQuality.Max);
+        byte pathQuality = (byte)Math.Clamp(neighbourQuality ?? options.DefaultNeighbourQuality, NetRomQuality.Min, NetRomQuality.Max);
 
         lock (gate)
         {
-            // Heuristic 3: ensure a neighbour-list entry for the originator,
-            // created with the default-port path quality. Refresh its alias +
-            // last-heard each time.
+            // Heuristic 3: ensure a neighbour-list entry for the originator, created with
+            // the (per-port or default) path quality. Refresh its alias + last-heard each
+            // time — and refresh its path quality too, so a per-port QUALITY change (or a
+            // neighbour newly heard on a different-grade port) reflects on the next broadcast.
             if (!neighbours.TryGetValue(originator, out var nbr))
             {
                 nbr = new NeighbourState { PathQuality = pathQuality };
@@ -133,6 +143,7 @@ public sealed class NetRomRoutingTable
             }
             nbr.Alias = broadcast.SenderAlias;
             nbr.PortId = portId;
+            nbr.PathQuality = pathQuality;
             nbr.LastHeard = now;
             byte originatorPathQuality = nbr.PathQuality;
 

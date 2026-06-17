@@ -76,6 +76,7 @@ public static class ReconcilePlanner
         var kissChanged = new List<PortConfig>();
         var ax25Changed = new List<PortConfig>();
         var compatChanged = new List<PortConfig>();
+        var netRomQualityChanged = new List<PortConfig>();
 
         // Removed ports.
         foreach (var oldPort in from.Ports)
@@ -147,6 +148,12 @@ public static class ReconcilePlanner
             {
                 compatChanged.Add(newPort);
             }
+            // Per-port NET/ROM QUALITY: a hot edit (NET/ROM awareness is read-only — it
+            // never disturbs a session), applied by swapping the port's attachment quality.
+            if (oldPort.NetRomQuality != newPort.NetRomQuality)
+            {
+                netRomQualityChanged.Add(newPort);
+            }
         }
 
         return new ReconcilePlan
@@ -159,6 +166,7 @@ public static class ReconcilePlanner
             KissParamsChanged = kissChanged,
             Ax25ParamsChanged = ax25Changed,
             CompatChanged = compatChanged,
+            NetRomQualityChanged = netRomQualityChanged,
             TelnetChanged = telnetChanged,
             ServicesChanged = servicesChanged,
         };

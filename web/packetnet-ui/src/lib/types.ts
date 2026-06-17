@@ -24,6 +24,10 @@ export type TransportConfig =
 export interface Ax25PortParams {
   t1Ms?: number; t2Ms?: number; t3Ms?: number;
   n2?: number; windowSize?: number; maxCachedPeers?: number;
+  // N1 / PACLEN: max information-field length (octets). Null = engine default (256).
+  // Lower it (~80) on a slow/lossy medium (HF) to keep frames short. XID can only
+  // negotiate it down. See Packet.Node.Core.Configuration.Ax25PortParams.N1.
+  n1?: number;
 }
 export interface KissParams {
   txDelay?: number; persistence?: number; slotTime?: number; txTail?: number;
@@ -54,6 +58,9 @@ export interface PortConfig {
   kiss: KissParams | null;
   beacon: PortBeacon | null;
   compat?: PortCompatConfig | null;
+  // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
+  // node-wide netRom.defaultNeighbourQuality. See Packet.Node.Core.Configuration.PortConfig.NetRomQuality.
+  netRomQuality?: number | null;
 }
 // The system-default ID beacon (Packet.Node.Core.Configuration.BeaconConfig).
 // enabled defaults false (a node that never beaconed keeps not beaconing).

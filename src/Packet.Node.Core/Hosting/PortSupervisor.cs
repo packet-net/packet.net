@@ -536,6 +536,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable
                 ApplyCompat(port);
             }
         }
+
+        // Per-port NET/ROM QUALITY changes — hot-apply the new route quality to the
+        // port's NET/ROM attachment (no restart, no session disturbance). NET/ROM
+        // awareness is read-only; the new quality governs the next NODES ingest.
+        foreach (var port in plan.NetRomQualityChanged)
+        {
+            netRom?.UpdatePortQuality(port.Id, port.NetRomQuality);
+            RebaselineConfig(port);
+            LogNetRomQualityApplied(port.Id);
+        }
     }
 
     private async Task BringUpAsync(PortConfig port, Identity identity, CancellationToken ct)
@@ -605,6 +615,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true);
         var listener = new Ax25Listener(modem, options, timeProvider);
+
+        // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
+        // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
+        // library listener flag). The constructor seeds its params from `options`, which
+        // has no N1 — so reseed once now with the full MapAx25Params (which carries N1)
+        // so this freshly-built listener's NEW sessions pick up the configured PACLEN. A
+        // null N1 leaves the context default (256) — byte-for-byte today's behaviour.
+        listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat));
         var connector = new Ax25OutboundConnector(port.Id, listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache);
         listener.SessionAccepted += (_, e) => OnSessionAccepted(listener, connector, e.Session);
 
@@ -637,8 +655,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable
 
         // NET/ROM read-only awareness: subscribe this port's frame-trace tap so the
         // node-level service hears NODES broadcasts on it. Observation-only — it
-        // cannot disturb the session path. Detached on teardown.
-        netRom?.AttachPort(port.Id, myCall, listener);
+        // cannot disturb the session path. Detached on teardown. The per-port NET/ROM
+        // QUALITY (null = inherit the global default) governs the quality assumed for a
+        // neighbour heard on this port.
+        netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality);
 
         // Live telemetry: tap the same frame trace for the node's frame/byte counters
         // + the monitor SSE feed. Also observation-only; detached on teardown.
@@ -809,6 +829,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable
         T3 = ax25?.T3Ms is { } t3 ? TimeSpan.FromMilliseconds(t3) : null,
         N2 = ax25?.N2,
         K = ax25?.WindowSize,
+        N1 = ax25?.N1,   // PACLEN seed (null ⇒ context default 256)
         MaxCachedPeers = ax25?.MaxCachedPeers ?? 64,
         ParseOptions = Ax25CompatPresets.ResolveParseOptions(compat),
         Quirks = Ax25CompatPresets.ResolveQuirks(compat),
@@ -968,6 +989,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: AX.25 compatibility profile applied live — inbound parsing from the next frame, session quirks for new sessions (existing sessions untouched).")]
     private partial void LogCompatApplied(string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: NET/ROM route quality applied live; the next NODES broadcast on this port uses it.")]
+    private partial void LogNetRomQualityApplied(string id);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} faulted.")]
     private partial void LogConsoleFaulted(Exception ex, string peerId);

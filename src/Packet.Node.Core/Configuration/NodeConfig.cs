@@ -510,6 +510,30 @@ public sealed record PortConfig
     /// see <see cref="EffectiveBeacon"/>).
     /// </summary>
     public PortBeaconConfig? Beacon { get; init; }
+
+    /// <summary>
+    /// Optional per-port NET/ROM <b>route quality</b> (0..255) — the quality assumed
+    /// for a directly-heard neighbour on this port, and the quality basis the routes
+    /// it advertises are combined against. Overrides the node-wide
+    /// <see cref="NetRomConfig.DefaultNeighbourQuality"/> for routes learned on this
+    /// port. Null (the default) ⇒ inherit the global value (then the canonical 192).
+    /// This is the BPQ per-port <c>QUALITY</c> knob: a mixed-grade node advertises an
+    /// accurate quality on each port (e.g. 191 on one link, 192 on another) instead of
+    /// one uniform value, so neighbours pick routes correctly. See
+    /// <see cref="EffectiveNetRomQuality"/> for the resolution chain.
+    /// </summary>
+    public int? NetRomQuality { get; init; }
+
+    /// <summary>
+    /// Resolve this port's effective NET/ROM neighbour quality: the explicit per-port
+    /// <see cref="NetRomQuality"/> if set, else the node-wide
+    /// <paramref name="globalDefault"/> (<see cref="NetRomConfig.DefaultNeighbourQuality"/>),
+    /// else the canonical default (192 — see <c>NetRomRoutingOptions.DefaultNeighbourQuality</c>).
+    /// The returned value is clamped to 0..255 defensively (validation already rejects
+    /// out-of-range, but a clamp keeps the routing math total).
+    /// </summary>
+    public int EffectiveNetRomQuality(int? globalDefault)
+        => Math.Clamp(NetRomQuality ?? globalDefault ?? 192, 0, 255);
 }
 
 /// <summary>
@@ -540,6 +564,26 @@ public sealed record Ax25PortParams
 
     /// <summary>Send-window size k. Null = engine default (4 for mod-8).</summary>
     public int? WindowSize { get; init; }
+
+    /// <summary>
+    /// Maximum information-field length in octets — N1 / PACLEN. This is the per-port
+    /// frame-length limit: the node segments an outbound SDU into I-frames of at most
+    /// this many info octets, and an inbound frame larger than this is not accepted into
+    /// a session. Null = engine default (256, the AX.25 v2.2 default + the XID-offered N1).
+    /// A heterogeneous node sets a small value on a slow/lossy medium — e.g. ~80 on a
+    /// shared-HF port — so on-air frame durations stay short and robust, while leaving the
+    /// VHF/UHF ports at the 256 default.
+    /// </summary>
+    /// <remarks>
+    /// <b>Precedence vs XID.</b> The configured value is the port's <em>offered N1</em>
+    /// (the link's starting cap). XID negotiation can only LOWER it — the negotiator takes
+    /// the minimum of the two ends' offered N1 — so a peer offering a smaller N1 still wins,
+    /// but the configured cap is never exceeded on the wire. With no per-port value the
+    /// session starts at 256 and XID behaves exactly as before. Like the timer/window knobs
+    /// this is a new-sessions-only reseed: it seeds <c>Ax25SessionContext.N1</c> at session
+    /// build time and never reaches into a live session's negotiated N1.
+    /// </remarks>
+    public int? N1 { get; init; }
 
     /// <summary>LRU cap on cached per-peer sessions. Null = engine default (64).</summary>
     public int? MaxCachedPeers { get; init; }

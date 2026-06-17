@@ -81,6 +81,50 @@ public sealed class NetRomAwareIntegrationTests
     }
 
     [Fact]
+    public async Task A_per_port_QUALITY_is_honoured_end_to_end_through_the_supervisor()
+    {
+        // #455 end-to-end: the port is configured with netRomQuality: 191. A NODES
+        // broadcast heard on it must learn the neighbour at 191 (not the global 192),
+        // proving the per-port QUALITY flows config → PortSupervisor → AttachPort →
+        // NetRomService → routing table on the real frame-trace tap.
+        var bus = new SharedRadioBus();
+        var nodeModem = bus.Attach();
+        var broadcaster = bus.Attach();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 4, 12, 0, 0, TimeSpan.Zero));
+        var netRom = new NetRomService(new NetRomConfig { Enabled = true }, clock, NullLogger<NetRomService>.Instance);
+
+        var config = new TestConfigProvider(Config() with
+        {
+            Ports =
+            [
+                new PortConfig
+                {
+                    Id = "p1",
+                    Enabled = true,
+                    Transport = new KissTcpTransport { Host = "mem", Port = 1 },
+                    Ax25 = new Ax25PortParams { N2 = TestAx25Timing.NodeN2 },
+                    NetRomQuality = 191,   // the per-port QUALITY override
+                },
+            ],
+        });
+        var factory = new FakeTransportFactory().Provide("kiss-tcp:mem:1", nodeModem);
+        await using var supervisor = new PortSupervisor(config, factory, clock, NullLoggerFactory.Instance, netRom);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("p1"), "port p1 should come up");
+
+        var info = BuildNodesInfo("RDGBPQ", (DestSot, "SOT", ViaXyz, 200));
+        await BroadcastNodesAsync(broadcaster, Neighbour, info);
+        await Wait.ForAsync(() => netRom.Snapshot().NeighbourCount > 0, "the node should hear the NODES broadcast");
+
+        var snap = netRom.Snapshot();
+        snap.Neighbours.Single().PathQuality.Should().Be(191, "the per-port QUALITY governs the directly-heard neighbour");
+        // The destination via this neighbour is combined against the per-port 191 basis.
+        snap.Destinations.Single(d => d.Destination == DestSot).BestRoute!.Quality
+            .Should().Be(Packet.NetRom.Routing.NetRomQuality.Combine(200, 191));
+    }
+
+    [Fact]
     public async Task The_Nodes_console_command_surfaces_the_learned_routes()
     {
         var bus = new SharedRadioBus();
