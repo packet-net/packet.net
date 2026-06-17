@@ -49,6 +49,12 @@ echo "== 2. dpkg state + payload =="
 dpkg -s packetnet 2>/dev/null | grep -q "^Status: install ok installed" || fail "dpkg status != installed"
 [ -x /opt/packetnet/app/packetnet ]          || fail "binary missing / not executable"
 [ -f /lib/systemd/system/packetnet.service ] || fail "systemd unit missing"
+# The unit must grant CAP_NET_BIND_SERVICE so the non-root service (and the
+# pdn-supervised app daemons that inherit its ambient caps) can bind privileged
+# ports (<1024) on a fresh install — IMAP 993 / SMTP 465/587 — with no manual
+# systemd surgery (packet.net#469). Bounding set is pinned to the same single cap.
+grep -q "^AmbientCapabilities=CAP_NET_BIND_SERVICE\b"     /lib/systemd/system/packetnet.service || fail "unit missing AmbientCapabilities=CAP_NET_BIND_SERVICE (cannot bind privileged ports)"
+grep -q "^CapabilityBoundingSet=CAP_NET_BIND_SERVICE\b"   /lib/systemd/system/packetnet.service || fail "unit missing CapabilityBoundingSet=CAP_NET_BIND_SERVICE (ambient cap would be outside the bounding set)"
 [ -f /etc/packetnet/packetnet.yaml ]         || fail "conffile missing"
 id packetnet >/dev/null 2>&1                 || fail "postinst did not create the packetnet user"
 # The management API rewrites the conffile in place, so postinst must hand the

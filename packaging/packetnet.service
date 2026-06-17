@@ -43,7 +43,12 @@ Environment=DOTNET_gcServer=0
 # iPhone Mail's port-less account setup auto-discovers. Ambient caps are inherited by
 # the supervised app daemons and survive NoNewPrivileges (systemd grants them at exec,
 # not via setuid). Nothing uses it unless an app is configured on a privileged port.
+# CapabilityBoundingSet pins the ceiling to exactly that one capability: the service
+# (and its inherited app daemons) can hold CAP_NET_BIND_SERVICE and nothing else —
+# every other capability is dropped from the bounding set, so even a compromised app
+# cannot raise (e.g.) CAP_NET_ADMIN. Ambient ⊆ bounding, so both must list the cap.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 # --- sandboxing (ProtectSystem=strict makes the FS read-only bar the paths below) ---
 NoNewPrivileges=true
