@@ -31,6 +31,16 @@ ports: []
 #      txDelay: 30         # units of 10 ms
 #      persistence: 63
 #      slotTime: 10
+#      # txTail (units of 10 ms) defaults to an IMPLICIT 0 and is ALWAYS sent to the
+#      # modem (on bring-up + on every config change), so you only set it to OVERRIDE.
+#      # 0 is correct for MOST configs — e.g. a NinoTNC into a fully analogue audio path,
+#      # even on a slow AFSK1200 channel. Set a NON-ZERO tail ONLY for:
+#      #   - a software modem (samoyed / Dire Wolf), or
+#      #   - a NinoTNC driving a radio with a non-zero-latency audio path
+#      #     (NinoTNC re-added TXTAIL for a specific radio — see its release notes).
+#      # The need is a MODEM + radio-audio-path-latency property, NOT a channel/baud one,
+#      # which the node can't infer — so you set it per port when your path needs it.
+#      # txTail: 5         # 50 ms — software-modem / latency-audio-path override
 #  - id: hf
 #    enabled: false
 #    transport:

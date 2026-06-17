@@ -771,11 +771,21 @@ public sealed partial class PortSupervisor : IAsyncDisposable
 
     private static async Task ApplyKissParamsToModemAsync(IKissModem modem, KissParams? kiss, CancellationToken ct)
     {
-        if (kiss is null) return;
-        if (kiss.TxDelay is { } txd) await modem.SetTxDelayAsync(txd, ct).ConfigureAwait(false);
-        if (kiss.Persistence is { } per) await modem.SetPersistenceAsync(per, ct).ConfigureAwait(false);
-        if (kiss.SlotTime is { } slot) await modem.SetSlotTimeAsync(slot, ct).ConfigureAwait(false);
-        if (kiss.TxTail is { } tail) await modem.SetTxTailAsync(tail, ct).ConfigureAwait(false);
+        // TXDELAY/PERSIST/SLOTTIME stay opt-in — unset means "leave the modem at its
+        // own default", because the right value for those is firmware-specific and a
+        // wrong guess degrades CSMA. TXTAIL is different (#465): its default is an
+        // IMPLICIT 0, sent UNCONDITIONALLY on every apply — bring-up, the regular
+        // KISS-param cadence, and a hot config change — so the modem always gets a
+        // deterministic, explicit tail. 0 is correct for most paths (a NinoTNC into a
+        // fully analogue audio path, even on a slow AFSK1200 channel); a non-zero tail
+        // is a MODEM + radio-audio-path-latency property (a software modem — samoyed /
+        // Dire Wolf — or a NinoTNC into a non-zero-latency audio path), which the node
+        // can't infer, so the operator sets `kiss.txTail` per port and that explicit
+        // value wins here (the `?? 0` only supplies the default when unset).
+        if (kiss?.TxDelay is { } txd) await modem.SetTxDelayAsync(txd, ct).ConfigureAwait(false);
+        if (kiss?.Persistence is { } per) await modem.SetPersistenceAsync(per, ct).ConfigureAwait(false);
+        if (kiss?.SlotTime is { } slot) await modem.SetSlotTimeAsync(slot, ct).ConfigureAwait(false);
+        await modem.SetTxTailAsync(kiss?.TxTail ?? 0, ct).ConfigureAwait(false);
     }
 
     // Update the stored baseline config for a still-running port without

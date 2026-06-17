@@ -69,6 +69,30 @@ public sealed class ReconnectingKissModemTests
     }
 
     [Fact]
+    public async Task Replays_an_explicit_zero_tx_tail_to_the_reconnected_modem()
+    {
+        // #465 composes with #483: once the supervisor always sets TXTAIL (implicit 0
+        // default), the last-set value the wrapper replays onto a freshly re-dialed
+        // modem includes that explicit 0 — a new connection that starts at the modem's
+        // defaults is brought back to the deterministic 0 the operator's config implies.
+        var first = new FakeModem(endAfterFrames: true);                // no frames → drops immediately
+        var second = new FakeModem(endAfterFrames: false, Data("X"));
+        Func<CancellationToken, Task<IKissModem>> reconnect = _ => Task.FromResult<IKissModem>(second);
+        await using var modem = new ReconnectingKissModem(
+            first, reconnect, "test", NullLogger.Instance, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
+
+        await modem.SetTxTailAsync(0);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await foreach (var _ in modem.ReadFramesAsync(cts.Token).ConfigureAwait(false))
+        {
+            break;   // first frame off the reconnected modem
+        }
+
+        second.TxTail.Should().Be((byte)0, "the explicit 0 is replayed, not skipped as 'unset'");
+    }
+
+    [Fact]
     public async Task Send_while_the_link_is_down_is_dropped_not_thrown()
     {
         var down = new FakeModem(endAfterFrames: false) { ThrowOnSend = true };

@@ -66,7 +66,7 @@ public static class InMemoryRadio
         public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default) { Applied.TxDelay = tenMsUnits; return Task.CompletedTask; }
         public Task SetPersistenceAsync(byte value, CancellationToken cancellationToken = default) { Applied.Persistence = value; return Task.CompletedTask; }
         public Task SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken = default) { Applied.SlotTime = tenMsUnits; return Task.CompletedTask; }
-        public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) { Applied.TxTail = tenMsUnits; return Task.CompletedTask; }
+        public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) { Applied.TxTail = tenMsUnits; Applied.TxTailSendCount++; return Task.CompletedTask; }
     }
 
     /// <summary>Records the last KISS params applied to an in-memory modem.</summary>
@@ -76,5 +76,9 @@ public static class InMemoryRadio
         public byte? Persistence { get; set; }
         public byte? SlotTime { get; set; }
         public byte? TxTail { get; set; }
+
+        /// <summary>How many times TXTAIL was sent to the modem — proves the
+        /// always-send-on-apply cadence (#465), not just the final value.</summary>
+        public int TxTailSendCount { get; set; }
     }
 }

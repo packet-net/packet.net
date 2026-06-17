@@ -605,7 +605,21 @@ public sealed record KissParams
     /// <summary>KISS SLOTTIME (0x03), in units of 10 ms.</summary>
     public byte? SlotTime { get; init; }
 
-    /// <summary>KISS TXTAIL (0x04), in units of 10 ms. Most modern modems ignore it.</summary>
+    /// <summary>
+    /// KISS TXTAIL (0x04), in units of 10 ms. Unlike the other KISS knobs here this has
+    /// an <b>implicit default of 0</b> (not "leave the modem alone"): the node sends an
+    /// explicit, deterministic tail to the modem on bring-up, on the regular KISS-param
+    /// apply cadence, and on a hot config change — so a port whose <c>txTail</c> is
+    /// unset still receives <c>0</c> (see <c>PortSupervisor.ApplyKissParamsToModemAsync</c>).
+    /// <para>
+    /// 0 is correct for most paths — a NinoTNC into a fully analogue audio path, even on
+    /// a slow AFSK1200 channel. A <b>non-zero</b> tail is needed only for a software modem
+    /// (samoyed / Dire Wolf) or a NinoTNC driving a radio with a non-zero-latency audio
+    /// path: the need is a <em>modem + radio-audio-path-latency</em> property, NOT a
+    /// channel/baud one, which the node can't infer — so the operator overrides per port
+    /// and that explicit value wins. Set non-null to override the implicit 0.
+    /// </para>
+    /// </summary>
     public byte? TxTail { get; init; }
 
     /// <summary>

@@ -50,20 +50,36 @@ public class ChannelProfilesTests
         kiss!.TxDelay.Should().Be((byte)30);
         kiss.Persistence.Should().Be((byte)63);
         kiss.SlotTime.Should().Be((byte)10);
-        kiss.TxTail.Should().BeNull(
-            "a channel profile must NOT set a TX tail — the need for one is a modem + radio-audio-path "
-            + "property (software modem / latency path = yes; fully analogue NinoTNC path = no), which the "
-            + "node can't infer from the channel; it stays an explicit per-port operator setting");
+        kiss.TxTail.Should().Be((byte)0,
+            "a channel profile must NOT set a NON-ZERO TX tail — the need for one is a modem + "
+            + "radio-audio-path property (software modem / latency path = yes; fully analogue NinoTNC "
+            + "path = no), which the node can't infer from the channel; but the resolved tail defaults "
+            + "to an implicit 0 (#465) so a profiled port still gets a deterministic explicit tail, with "
+            + "a non-zero value left as a per-port operator override");
     }
 
     [Fact]
-    public void No_profile_supplies_no_tx_tail()
+    public void No_profile_supplies_no_tx_tail_at_the_resolver_layer()
     {
-        // A port with no profile asserts nothing — including no tail. TX tail is
-        // never auto-defaulted (profile or global): the operator sets it per the
-        // attached modem + radio audio path.
+        // A port with no profile is a pass-through: the resolver asserts nothing,
+        // including no tail. The implicit-0 TX tail (#465) is supplied at the APPLY
+        // boundary (PortSupervisor.ApplyKissParamsToModemAsync sends `txTail ?? 0`
+        // unconditionally), NOT here — so a non-profiled port still gets a
+        // deterministic 0 sent to its modem even though the resolver returns null.
         var (_, kiss) = ChannelProfiles.Resolve(Port());
-        kiss.Should().BeNull("no profile, no params → nothing is asserted, including TX tail");
+        kiss.Should().BeNull("no profile, no params → the resolver passes through unchanged");
+    }
+
+    [Fact]
+    public void A_non_zero_tx_tail_override_survives_the_profile_resolve()
+    {
+        // The per-port non-zero override (software-modem / latency-audio-path configs)
+        // must win over the implicit-0 default the profile resolve now supplies.
+        var (_, kiss) = ChannelProfiles.Resolve(
+            Port(profile: "slow-afsk1200", kiss: new KissParams { TxTail = 5 }));
+
+        kiss!.TxTail.Should().Be((byte)5,
+            "an explicit non-zero kiss.txTail override wins over the implicit-0 default");
     }
 
     [Fact]

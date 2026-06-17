@@ -148,6 +148,8 @@ public sealed class ReconfigDeltaIntegrationTests
         await supervisor.StartAsync();
         await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("a"), "port up");
         nodeModem.Applied.TxDelay.Should().Be((byte)10, "initial KISS params applied on bring-up");
+        nodeModem.Applied.TxTail.Should().Be((byte)0,
+            "TXTAIL has an implicit-0 default and is sent on bring-up even when txTail is unset (#465)");
         var listenerBefore = supervisor.GetPort("a")!.Listener;
 
         // Connect a remote in so there's a live session to protect.
@@ -164,6 +166,55 @@ public sealed class ReconfigDeltaIntegrationTests
         nodeModem.Applied.TxDelay.Should().Be((byte)50, "the new KISS param applied live");
         supervisor.GetPort("a")!.Listener.Should().BeSameAs(listenerBefore, "a hot KISS change must not restart the port");
         remote.CurrentState.Should().Be("Connected", "the session survives a hot KISS change");
+    }
+
+    [Fact]
+    public async Task Tx_tail_is_sent_to_the_modem_on_bring_up_even_with_no_kiss_block()
+    {
+        // #465: TXTAIL defaults to an implicit 0 sent to the modem UNCONDITIONALLY on
+        // bring-up — even for a port that sets no KISS params at all (no kiss block).
+        var (nodeModem, _) = InMemoryRadio.CreatePair();
+
+        var config = new TestConfigProvider(Config(Port("a", 1)));   // no kiss block
+        var factory = new FakeTransportFactory().Provide(Endpoint(1), nodeModem);
+
+        await using var supervisor = new PortSupervisor(config, factory, TimeProvider.System, NullLoggerFactory.Instance);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("a"), "port up");
+
+        nodeModem.Applied.TxTailSendCount.Should().BeGreaterThanOrEqualTo(1,
+            "TXTAIL is sent on bring-up regardless of whether the port sets any KISS params");
+        nodeModem.Applied.TxTail.Should().Be((byte)0, "the implicit default is 0");
+    }
+
+    [Fact]
+    public async Task A_non_zero_tx_tail_override_is_sent_to_the_modem_and_re_applied_on_change()
+    {
+        // #465: the per-port non-zero override (software-modem / latency-audio-path
+        // configs) is sent to the modem, and a hot change re-applies it live.
+        var (nodeModem, remoteModem) = InMemoryRadio.CreatePair();
+
+        var before = Config(Port("a", 1, kiss: new KissParams { TxTail = 5 }));
+        var config = new TestConfigProvider(before);
+        var factory = new FakeTransportFactory().Provide(Endpoint(1), nodeModem);
+
+        await using var supervisor = new PortSupervisor(config, factory, TimeProvider.System, NullLoggerFactory.Instance);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("a"), "port up");
+        nodeModem.Applied.TxTail.Should().Be((byte)5, "the explicit non-zero TX tail override is sent on bring-up");
+
+        await using var remote = new RemoteStation(remoteModem, RemoteCall);
+        await remote.StartAsync();
+        await remote.ConnectAsync(NodeCall);
+        await Wait.ForAsync(() => remote.Saw("Welcome"), "session up");
+
+        // Hot change: override 5 → 8.
+        var after = Config(Port("a", 1, kiss: new KissParams { TxTail = 8 }));
+        config.Apply(after);
+        await supervisor.ApplyAsync(ReconcilePlanner.Plan(before, after), after);
+
+        nodeModem.Applied.TxTail.Should().Be((byte)8, "the new TX tail override is applied live");
+        remote.CurrentState.Should().Be("Connected", "the session survives a hot TX-tail change");
     }
 
     [Fact]

@@ -7,11 +7,13 @@ namespace Packet.Node.Core.Configuration;
 /// — an explicit value on the port always wins.
 /// <para>
 /// A profile captures <em>channel</em> properties (timing under contention, CSMA,
-/// TX warm-up). It deliberately does <b>not</b> set a TX tail: the need for a
-/// non-zero TXTAIL is a <em>modem + radio-audio-path</em> property (software modems
-/// and latency audio paths need one; a fully analogue path doesn't) that the node
-/// can't infer from the channel — so <c>kiss.txTail</c> stays an explicit per-port
-/// operator setting.
+/// TX warm-up). It deliberately does <b>not</b> set a non-zero TX tail: the need for
+/// one is a <em>modem + radio-audio-path</em> property (software modems and latency
+/// audio paths need one; a fully analogue path doesn't) that the node can't infer
+/// from the channel — so a non-zero <c>kiss.txTail</c> stays an explicit per-port
+/// operator override. The default tail is an <b>implicit 0</b> sent to the modem on
+/// every apply (#465); the resolver supplies that 0 when neither the operator nor
+/// the profile set one, so a profiled port still gets a deterministic explicit tail.
 /// </para>
 /// </summary>
 /// <remarks>
@@ -103,15 +105,16 @@ public static class ChannelProfiles
             // default, comfortably above a fast modem's floor (operator should
             // tune down for a known-fast TNC).
             //
-            // NB this profile deliberately does NOT set a TX tail. The need for a
-            // non-zero TXTAIL is a property of the MODEM + the radio's audio-path
-            // latency, NOT of the channel or the baud rate: a software modem
-            // (samoyed / Dire Wolf) needs one, and so does a NinoTNC into a radio
-            // with a latency audio path — but a NinoTNC into a fully analogue
-            // audio path needs none, even on this exact slow AFSK1200 channel. The
-            // node can't infer the audio-path latency, so TXTAIL stays an explicit
-            // per-port operator setting (`kiss.txTail`), documented in the config
-            // template, rather than being bundled into a channel profile.
+            // NB this profile deliberately does NOT set a non-zero TX tail. The need
+            // for one is a property of the MODEM + the radio's audio-path latency, NOT
+            // of the channel or the baud rate: a software modem (samoyed / Dire Wolf)
+            // needs one, and so does a NinoTNC into a radio with a latency audio path —
+            // but a NinoTNC into a fully analogue audio path needs none, even on this
+            // exact slow AFSK1200 channel. The node can't infer the audio-path latency,
+            // so a non-zero TXTAIL stays an explicit per-port operator override
+            // (`kiss.txTail`), documented in the config template. The profile leaving it
+            // unset resolves (with the operator also unset) to the implicit 0 default
+            // sent on every apply (#465) — not bundled into the channel profile.
             "slowafsk1200" => (
                 new Ax25PortParams { T1Ms = 10000, N2 = 15 },
                 new KissParams { TxDelay = 30, Persistence = 63, SlotTime = 10 }),
@@ -144,7 +147,13 @@ public static class ChannelProfiles
             TxDelay = e?.TxDelay ?? profile.TxDelay,
             Persistence = e?.Persistence ?? profile.Persistence,
             SlotTime = e?.SlotTime ?? profile.SlotTime,
-            TxTail = e?.TxTail ?? profile.TxTail,
+            // TxTail has an IMPLICIT default of 0 (#465): a channel profile still does
+            // not SET a tail (a non-zero tail is a modem/audio-path-latency property no
+            // profile can know — see the class remarks), but the resolved value resolves
+            // to a deterministic 0 when neither the operator nor the profile set one, so
+            // a profiled port gets an explicit 0 sent to its modem rather than nothing.
+            // The explicit per-port override (e?.TxTail) still wins.
+            TxTail = e?.TxTail ?? profile.TxTail ?? 0,
             // No profile sets ackMode (no profile knows your link is half-duplex +
             // ACKMODE-capable); carry the explicit per-port choice straight through.
             AckMode = e?.AckMode ?? profile.AckMode,
