@@ -115,6 +115,31 @@ export interface Inp3Config {
   l3RttInterval: number; l3RttResetWindow: number;
   rifInterval: number; positiveDebounce: number;
 }
+// OARC network-map reporting (server: Packet.Node.Core.Configuration.OarcConfig).
+// Default-off: nothing is reported until `enabled`. All outbound — the node POSTs its
+// own telemetry to the OARC collector; the collector never reaches in. Each category is
+// independently toggleable; traces is the high-volume per-frame firehose (opt-in).
+//   baseUrl                   — collector URL (an absolute http(s) URL).
+//   reportNodeStatus          — node up/status/down heartbeats.
+//   reportLinks               — L2 link events + stats.
+//   reportCircuits            — L4 NET/ROM circuit events + stats.
+//   reportTraces              — per-frame L2 trace firehose (high volume, most revealing).
+//   tracesRfOnly              — when traces on, only over-air (RF) frames.
+//   publishExactPosition      — publish exact lat/lon vs locator-only.
+//   statusIntervalSecs        — node-status heartbeat cadence.
+//   sessionStatusIntervalSecs — link/circuit status refresh cadence.
+export interface OarcConfig {
+  enabled: boolean;
+  baseUrl: string;
+  reportNodeStatus: boolean;
+  reportLinks: boolean;
+  reportCircuits: boolean;
+  reportTraces: boolean;
+  tracesRfOnly: boolean;
+  publishExactPosition: boolean;
+  statusIntervalSecs: number;
+  sessionStatusIntervalSecs: number;
+}
 export type NetRomForwardMode = "PerFlow" | "Single";
 // The node's NET/ROM routing role — the single 3-state successor to the old
 // connect+forward bools (server: Packet.Node.Core.Configuration.NetRomRouting):
@@ -142,6 +167,7 @@ export interface NodeConfig {
   netRom: NetRomConfig;
   beacon: BeaconConfig;
   tailscale: TailscaleConfig;
+  oarc: OarcConfig;
 }
 
 // ---- system info / self-update (server: PdnSystemApi.SystemInfoResponse) ----

@@ -827,4 +827,53 @@ public class NodeConfigValidatorTests
         var config = Valid() with { Applications = [InlineApp("a", "NODES")] };
         Validator.Validate(config).IsValid.Should().BeFalse();
     }
+
+    // --- OARC reporting (#459) ---
+
+    [Fact]
+    public void Oarc_defaults_are_valid()
+    {
+        // The default OARC block (disabled, OARC base URL, 300/60s) must validate — a stock node.
+        Validator.Validate(Valid()).IsValid.Should().BeTrue();
+        Validator.Validate(Valid() with { Oarc = new OarcConfig() }).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("https://node-api.packet.oarc.uk/", true)]
+    [InlineData("http://localhost:5000/", true)]      // a local test collector
+    [InlineData("", false)]                            // required
+    [InlineData("node-api.packet.oarc.uk", false)]     // not absolute
+    [InlineData("ftp://node-api.packet.oarc.uk", false)] // not http(s)
+    public void Oarc_baseUrl_must_be_an_absolute_http_url(string baseUrl, bool expectValid)
+    {
+        var config = Valid() with { Oarc = new OarcConfig { BaseUrl = baseUrl } };
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Theory]
+    [InlineData(300, 60, true)]
+    [InlineData(1, 1, true)]
+    [InlineData(0, 60, false)]    // status interval must be > 0
+    [InlineData(300, 0, false)]   // session-status interval must be > 0
+    [InlineData(-1, 60, false)]
+    public void Oarc_intervals_must_be_positive(int statusSecs, int sessionSecs, bool expectValid)
+    {
+        var config = Valid() with
+        {
+            Oarc = new OarcConfig { StatusIntervalSecs = statusSecs, SessionStatusIntervalSecs = sessionSecs },
+        };
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Oarc_shape_is_validated_even_when_disabled()
+    {
+        // A disabled-but-edited block must not be allowed to hold junk that would fail the day
+        // it is enabled — the URL/interval rules apply unconditionally (cf. RHP/Tailscale).
+        var config = Valid() with
+        {
+            Oarc = new OarcConfig { Enabled = false, BaseUrl = "not-a-url", StatusIntervalSecs = 0 },
+        };
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
 }

@@ -149,6 +149,35 @@ public static class NodeConfigArbitraries
                 Funnel = funnel,
             });
 
+    private static Gen<OarcConfig> OarcGen() =>
+        Gen.OneOf(
+            Gen.Constant(new OarcConfig()),
+            // Only VALID blocks (the round-trip property generates configs that must pass the
+            // validator): an absolute http(s) baseUrl and strictly-positive intervals.
+            from enabled in Gen.Elements(false, true)
+            from baseUrl in Gen.Elements("https://node-api.packet.oarc.uk/", "http://localhost:5000/", "https://staging.example/")
+            from nodeStatus in Gen.Elements(false, true)
+            from links in Gen.Elements(false, true)
+            from circuits in Gen.Elements(false, true)
+            from traces in Gen.Elements(false, true)
+            from rfOnly in Gen.Elements(false, true)
+            from exactPos in Gen.Elements(false, true)
+            from statusSecs in Gen.Choose(1, 3600)
+            from sessionSecs in Gen.Choose(1, 3600)
+            select new OarcConfig
+            {
+                Enabled = enabled,
+                BaseUrl = baseUrl,
+                ReportNodeStatus = nodeStatus,
+                ReportLinks = links,
+                ReportCircuits = circuits,
+                ReportTraces = traces,
+                TracesRfOnly = rfOnly,
+                PublishExactPosition = exactPos,
+                StatusIntervalSecs = statusSecs,
+                SessionStatusIntervalSecs = sessionSecs,
+            });
+
     private static Gen<NodeConfig> NodeConfigGen() =>
         from call in CallsignGen()
         from nPorts in Gen.Choose(0, 4)
@@ -156,6 +185,7 @@ public static class NodeConfigArbitraries
         from netrom in NetRomGen()
         from traffic in TrafficGen()
         from tailscale in TailscaleGen()
+        from oarc in OarcGen()
         select new NodeConfig
         {
             SchemaVersion = 1,
@@ -164,6 +194,7 @@ public static class NodeConfigArbitraries
             NetRom = netrom,
             Traffic = traffic,
             Tailscale = tailscale,
+            Oarc = oarc,
         };
 
     public static Arbitrary<NodeConfig> NodeConfig() => Arb.From(NodeConfigGen());

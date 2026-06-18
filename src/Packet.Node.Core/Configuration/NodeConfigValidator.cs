@@ -61,6 +61,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         RuleFor(c => c.Tailscale).NotNull().SetValidator(new TailscaleConfigValidator());
 
+        RuleFor(c => c.Oarc).NotNull().SetValidator(new OarcConfigValidator());
+
         // Empty applications is the default (a node with no apps). Each entry is validated,
         // and ids / match-verbs must be unique across the list (the launch + log keys).
         RuleForEach(c => c.Applications).SetValidator(new ApplicationConfigValidator());
@@ -334,6 +336,35 @@ public sealed class TrafficConfigValidator : AbstractValidator<TrafficConfig>
             .When(t => t.Path is not null)
             .WithMessage("traffic.path must be a non-empty path when set (omit it for the default beside pdn.db).");
     }
+}
+
+/// <summary>
+/// Validates the OARC network-map reporting block (<see cref="OarcConfig"/>). The shape constraints
+/// (an absolute http(s) base URL, positive intervals) are checked <b>always</b> — even when
+/// disabled — so a disabled-but-edited block can't hold junk that would 500 the day it is enabled.
+/// The locator precondition (a node can't report without a valid Maidenhead grid) is a runtime
+/// concern surfaced by the reporter + UI, not a hard config error: a node may legitimately enable
+/// reporting before its grid is set.
+/// </summary>
+public sealed class OarcConfigValidator : AbstractValidator<OarcConfig>
+{
+    public OarcConfigValidator()
+    {
+        RuleFor(o => o.BaseUrl)
+            .NotEmpty().WithMessage("oarc.baseUrl is required (the collector URL).")
+            .Must(BeAbsoluteHttpUrl)
+            .WithMessage("oarc.baseUrl must be an absolute http(s) URL, e.g. https://node-api.packet.oarc.uk/.");
+
+        RuleFor(o => o.StatusIntervalSecs).GreaterThan(0)
+            .WithMessage("oarc.statusIntervalSecs must be greater than 0.");
+
+        RuleFor(o => o.SessionStatusIntervalSecs).GreaterThan(0)
+            .WithMessage("oarc.sessionStatusIntervalSecs must be greater than 0.");
+    }
+
+    private static bool BeAbsoluteHttpUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
 
 /// <summary>Validates the RHPv2 server block: a sane port always (so a disabled-but-edited

@@ -108,6 +108,85 @@ public sealed record NodeConfig
     /// DNS, port-forward, or cert management. <b>S1 only parses + validates this block;
     /// nothing reads it yet.</b> See <c>docs/network-access.md</c>.</summary>
     public TailscaleConfig Tailscale { get; init; } = new();
+
+    /// <summary>Reporting to the OARC packet-network map (the community telemetry collector at
+    /// <c>node-api.packet.oarc.uk</c>) — outbound only, so this node appears on the map alongside
+    /// the BPQ/XRouter estate. <b>Default-OFF</b> (<see cref="OarcConfig.Enabled"/> = <c>false</c>):
+    /// nothing is sent until the operator opts in, and each telemetry category is an independent
+    /// toggle. See <see cref="OarcConfig"/> and <c>docs/oarc-reporting-design.md</c>.</summary>
+    public OarcConfig Oarc { get; init; } = new();
+}
+
+/// <summary>
+/// Reporting to the OARC packet-network map (<c>docs/oarc-reporting-design.md</c>). The node pushes
+/// its telemetry — node up/status/down, L2 links, L4 circuits, and (opt-in) per-frame L2 traces —
+/// to the OARC collector's typed ingest endpoints over HTTPS, so a pdn station shows on the map.
+/// <b>Outbound only</b> (no consumption in v1) and <b>default-OFF</b>: a stock node reports nothing.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <see cref="Enabled"/> is the master switch. The three aggregate categories
+/// (<see cref="ReportNodeStatus"/>/<see cref="ReportLinks"/>/<see cref="ReportCircuits"/>) default
+/// ON so enabling the master "just works"; the high-volume, most-revealing per-frame trace feed
+/// (<see cref="ReportTraces"/>) defaults OFF and is opt-in, RF-only by default
+/// (<see cref="TracesRfOnly"/>). Position is the locator only unless
+/// <see cref="PublishExactPosition"/> is set.
+/// </para>
+/// <para>
+/// <b>Locator is a hard precondition.</b> The collector requires a valid 6-char Maidenhead locator
+/// on node-up/node-status (<c>^[A-R]{2}\d{2}[A-Xa-x]{2}$</c>). The node's
+/// <see cref="Identity.Grid"/> is free-form, so the reporter validates it and will not report node
+/// events without a valid locator (the UI flags this). The auth model is <b>open</b> — the collector
+/// requires no credential — so there is no secret in this block.
+/// </para>
+/// <para>
+/// <see cref="Enabled"/> and the category toggles are hot-reload aware (a master flip sends
+/// node-up/node-down at the boundary); the intervals are re-read on the live config each cycle.
+/// </para>
+/// </remarks>
+public sealed record OarcConfig
+{
+    /// <summary>The master switch. Default <c>false</c> — a node joins the OARC map only when the
+    /// operator opts in; with it off the reporter is dormant and sends nothing.</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>The collector base URL. Default the OARC production collector. Overridable for a
+    /// staging collector or a local test double; must be an absolute http(s) URL.</summary>
+    public string BaseUrl { get; init; } = "https://node-api.packet.oarc.uk/";
+
+    /// <summary>Report node up/status/down (identity, locator, software/version, link &amp; circuit
+    /// counts, L3-relayed). Default <c>true</c> — the baseline "this node is on the map" report.</summary>
+    public bool ReportNodeStatus { get; init; } = true;
+
+    /// <summary>Report L2 link lifecycle + status (link-up/-status/-down: frames, bytes, throughput,
+    /// RTT). Default <c>true</c>.</summary>
+    public bool ReportLinks { get; init; } = true;
+
+    /// <summary>Report L4 NET/ROM circuit lifecycle + status (circuit-up/-status/-down: segment
+    /// stats). Default <c>true</c>.</summary>
+    public bool ReportCircuits { get; init; } = true;
+
+    /// <summary>Report the per-frame L2 trace feed (the wire-monitor firehose — every frame's
+    /// src/dest/ctrl/seq/len). Default <c>false</c> — the highest-volume, most-revealing category,
+    /// opt-in only.</summary>
+    public bool ReportTraces { get; init; }
+
+    /// <summary>When <see cref="ReportTraces"/> is on, report only over-air (RF) frames and skip
+    /// internal/loopback/inter-process traffic. Default <c>true</c> — the firehose is rarely wanted
+    /// unfiltered.</summary>
+    public bool TracesRfOnly { get; init; } = true;
+
+    /// <summary>Publish exact latitude/longitude alongside the locator. Default <c>false</c> — the
+    /// node reports its Maidenhead locator (grid-square resolution) only, unless the operator opts
+    /// in to precise coordinates.</summary>
+    public bool PublishExactPosition { get; init; }
+
+    /// <summary>Seconds between periodic node-status heartbeats. Default 300 (5 min). Must be &gt; 0.</summary>
+    public int StatusIntervalSecs { get; init; } = 300;
+
+    /// <summary>Seconds between link-status / circuit-status refreshes for each active session.
+    /// Default 60. Must be &gt; 0.</summary>
+    public int SessionStatusIntervalSecs { get; init; } = 60;
 }
 
 /// <summary>

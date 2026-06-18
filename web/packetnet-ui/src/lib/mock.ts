@@ -38,6 +38,12 @@ export const NODE_CONFIG: NodeConfig = {
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
   tailscale: { enabled: false, authKey: null, authKeyFile: null, hostname: "pdn", tags: [], stateDir: "/var/lib/packetnet/tsnet", target: "127.0.0.1:8080", funnel: false },
+  oarc: {
+    enabled: false, baseUrl: "https://node-api.packet.oarc.uk/",
+    reportNodeStatus: true, reportLinks: true, reportCircuits: true,
+    reportTraces: false, tracesRfOnly: true, publishExactPosition: false,
+    statusIntervalSecs: 300, sessionStatusIntervalSecs: 60,
+  },
 };
 
 // The node's version + install channel + available-update view (GET /api/v1/system/info).
@@ -70,6 +76,7 @@ export const APPLY_IMPACT: Record<string, ApplyImpact> = {
   "port.enabled": "port-restart",
   "netRom": "live",
   "services": "live",
+  "oarc": "live",
   "management.http": "node-reset",
   "management.telnet": "port-restart",
 };

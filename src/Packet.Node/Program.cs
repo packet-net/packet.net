@@ -11,6 +11,7 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Oarc;
 using Packet.Node.Core.Traffic;
 using Packet.Node.Core.Transports;
 using Packet.Node.Mcp;
@@ -484,6 +485,31 @@ if (configProvider.Current.Traffic.Enabled)
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<TrafficLogService>()));
     builder.Services.AddHostedService(sp => sp.GetRequiredService<TrafficLogService>());
 }
+
+// OARC network-map reporting (#459, default-off behind oarc.enabled): a background reporter that
+// pushes this node's telemetry (node up/status/down, L2 links, L4 circuits, opt-in per-frame traces)
+// to the OARC collector so the node appears on the packet-network map. Outbound only; open ingest (no
+// secret). Registered UNCONDITIONALLY — it self-gates on oarc.enabled + the per-category toggles and
+// handles a master edge, so a hot-enable needs no restart. The state source reads the live
+// Supervisor/NetRom/Telemetry off NodeHostedService; the ingest client is a thin HttpClient layer.
+// See docs/oarc-reporting-design.md.
+builder.Services.AddSingleton<IOarcStateSource>(sp => new NodeOarcStateSource(
+    sp.GetRequiredService<NodeHostedService>(),
+    sp.GetRequiredService<IConfigProvider>(),
+    sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddHttpClient(nameof(OarcIngestClient), c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<IOarcIngestClient>(sp => new OarcIngestClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(OarcIngestClient)),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<OarcIngestClient>()));
+builder.Services.AddSingleton(sp => new OarcReporter(
+    sp.GetRequiredService<IConfigProvider>(),
+    sp.GetRequiredService<IOarcStateSource>(),
+    sp.GetRequiredService<IOarcIngestClient>(),
+    sp.GetRequiredService<NodeHostedService>().Telemetry,
+    sp.GetRequiredService<TimeProvider>(),
+    NodeCommandService.Version,
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<OarcReporter>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OarcReporter>());
 
 // RHPv2 server (the app platform's network plane, default-off behind rhp.enabled): the
 // JSON-over-TCP host API bridged onto the running supervisor. See docs/rhp2-server.md.

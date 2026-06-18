@@ -23,13 +23,14 @@ import {
 // a pending change, identified by its dotted config path + apply impact
 interface DirtyEntry { path: string; impact: ApplyImpact }
 
-type FormTab = "identity" | "services" | "management" | "netrom" | "beacons";
+type FormTab = "identity" | "services" | "management" | "netrom" | "beacons" | "oarc";
 const TABS: { id: FormTab; label: string }[] = [
   { id: "identity", label: "Identity" },
   { id: "services", label: "Services" },
   { id: "management", label: "Management" },
   { id: "netrom", label: "NET/ROM + INP3" },
   { id: "beacons", label: "Beacons" },
+  { id: "oarc", label: "OARC Network Map" },
 ];
 
 export function Config() {
@@ -239,6 +240,8 @@ export function Config() {
             {tab === "netrom" && <NetRomSection cfg={cfg} set={set} />}
 
             {tab === "beacons" && <BeaconsSection cfg={cfg} set={set} />}
+
+            {tab === "oarc" && <OarcSection cfg={cfg} set={set} />}
           </Card>
         </div>
       ) : (
@@ -764,6 +767,116 @@ function BeaconsSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val
           })}
         </div>
       </div>
+    </section>
+  );
+}
+
+// ---------- OARC network map (outbound telemetry) -----------
+// Reports this node's telemetry to the OARC packet-network map. Outbound only — the
+// node POSTs to the collector; nothing reaches in. Default-off: with `enabled` off
+// nothing is sent. Every write is hot-applied (the node re-reads the reporter config
+// without restarting), so all edits go through set(..., "live"). The collector only
+// places a node on the map when it carries a valid Maidenhead locator, so when status
+// reporting is on but identity.grid is missing/invalid we surface an inline warning
+// pointing back at the Identity tab.
+const MAIDENHEAD_GRID = /^[A-R]{2}\d{2}[A-Xa-x]{2}$/;
+function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: unknown, impact: ApplyImpact) => void }) {
+  const o = cfg.oarc;
+  const grid = cfg.identity.grid ?? "";
+  const gridMissing = o.enabled && o.reportNodeStatus && !MAIDENHEAD_GRID.test(grid);
+
+  return (
+    <section className="space-y-5">
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Label className="text-foreground">Report to the OARC network map</Label>
+            <p className="mt-1.5 max-w-2xl text-xs leading-snug text-muted-foreground">
+              Reports this node&apos;s telemetry to the OARC packet-network map — outbound only, and off by default. Traces are the highest-volume and most revealing category.
+            </p>
+          </div>
+          <div className="shrink-0 pt-0.5"><Switch checked={o.enabled} onChange={(v) => set("oarc.enabled", v, "live")} /></div>
+        </div>
+      </div>
+
+      {o.enabled && (
+        <>
+          {gridMissing && (
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-warning">
+              <p className="flex items-center gap-2 text-sm font-medium"><Icon name="alert" size={14} /> No valid locator</p>
+              <p className="mt-1 text-xs leading-snug opacity-90">Set a valid Maidenhead grid in Identity — the node can&apos;t appear on the map without one.</p>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">What to report</p>
+            <div className="space-y-2">
+              <ToggleRow
+                label="Node status"
+                desc="The node coming up, periodic status, and going down."
+                checked={o.reportNodeStatus}
+                onChange={(v) => set("oarc.reportNodeStatus", v, "live")}
+              />
+              <ToggleRow
+                label="Links (L2)"
+                desc="AX.25 link events and per-link statistics."
+                checked={o.reportLinks}
+                onChange={(v) => set("oarc.reportLinks", v, "live")}
+              />
+              <ToggleRow
+                label="Circuits (L4)"
+                desc="NET/ROM circuit events and statistics."
+                checked={o.reportCircuits}
+                onChange={(v) => set("oarc.reportCircuits", v, "live")}
+              />
+              <ToggleRow
+                label="Traces (per-frame L2)"
+                desc="The per-frame trace firehose — the highest-volume and most revealing category. Off by default."
+                checked={o.reportTraces}
+                onChange={(v) => set("oarc.reportTraces", v, "live")}
+              />
+              {o.reportTraces && (
+                <ToggleRow
+                  label="Over-air frames only"
+                  desc="When tracing, only report frames seen over the air (RF) — not loopback or sim traffic."
+                  checked={o.tracesRfOnly}
+                  onChange={(v) => set("oarc.tracesRfOnly", v, "live")}
+                />
+              )}
+            </div>
+          </div>
+
+          <ToggleRow
+            label="Publish exact position"
+            desc="Publish the node's exact latitude/longitude rather than only its Maidenhead locator."
+            checked={o.publishExactPosition}
+            onChange={(v) => set("oarc.publishExactPosition", v, "live")}
+          />
+
+          <div className="max-w-xl">
+            <Field label="Collector URL" info="The OARC collector this node POSTs its telemetry to. An absolute http(s) URL.">
+              <Input value={o.baseUrl} onChange={(e) => set("oarc.baseUrl", e.target.value, "live")} className="font-mono text-xs" />
+            </Field>
+          </div>
+
+          <AdvancedDetails title="Reporting cadence">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Node-status interval" info="How often the node-status heartbeat is sent.">
+                <div className="relative">
+                  <Input type="number" min={1} value={o.statusIntervalSecs} onChange={(e) => set("oarc.statusIntervalSecs", +e.target.value, "live")} className="pr-16 font-mono" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">seconds</span>
+                </div>
+              </Field>
+              <Field label="Link/circuit interval" info="How often link and circuit status is refreshed.">
+                <div className="relative">
+                  <Input type="number" min={1} value={o.sessionStatusIntervalSecs} onChange={(e) => set("oarc.sessionStatusIntervalSecs", +e.target.value, "live")} className="pr-16 font-mono" />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">seconds</span>
+                </div>
+              </Field>
+            </div>
+          </AdvancedDetails>
+        </>
+      )}
     </section>
   );
 }
