@@ -13,6 +13,8 @@ on:
       - 'scripts/build-deb.sh'
       - 'scripts/deb-install-smoke.sh'
       - 'scripts/selfupdate-smoke.sh'
+      - 'scripts/install-smoke.sh'
+      - 'scripts/build-selfcontained-support.sh'
       - 'packaging/**'
       - '.github/workflows/deb-smoke.yml'
   workflow_dispatch:
@@ -39,3 +41,8 @@ jobs:
         # no systemd. The self-contained channel's helper isn't in the .deb (apt channel),
         # so this is its CI coverage.
         run: scripts/selfupdate-smoke.sh
+      - name: Self-contained installer smoke (install.sh end-to-end)
+        # Exercises packaging/install.sh against a file:// feed (support bundle + fake app
+        # payload + latest.json) with systemd/user-creation stubbed — the layout flip,
+        # support-file placement, feed config, and sha256 refusal. No network, no root.
+        run: scripts/install-smoke.sh

@@ -121,3 +121,42 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "pdn node-v${VERSION}" \
             --notes "Packet.NET node host (pdn) ${VERSION}. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (no .NET runtime required), runs as a hardened systemd unit; edit /etc/packetnet/packetnet.yaml. **Self-contained:** the \`*.tar.gz\` + \`latest.json\` are the self-contained-channel artifacts (Phase 7 in-app self-update); \`SHA256SUMS\` covers everything. **Docker:** \`docker run -p 8080:8080 ghcr.io/packet-net/packet.net:${VERSION}\` (also \`:latest\`; multi-arch amd64+arm64 — published by publish-docker.yml)."
+
+      - name: Publish self-contained feed to OARC (pdn-dist)
+        # The self-contained update channel's feed host: latest.json + the per-arch tarballs +
+        # the install-time support bundle + install.sh, served from pdn-dist.m0lte.compute.oarc.uk
+        # (OARC static hosting, folder 4858). A node on this channel polls latest.json here and
+        # `curl … | sh` of install.sh first-installs from here. See docs/node-self-update-design.md
+        # + the oarc-pdn-dist-feed note. Mirrors the m0lte/packet-term-web OARC publish pattern.
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          OARC_TOKEN: ${{ secrets.OARC_TOKEN }}
+          FOLDER: "4858"
+        run: |
+          set -euo pipefail
+          if [ -z "${OARC_TOKEN:-}" ]; then
+            echo "::warning::OARC_TOKEN secret not set — skipping the self-contained feed publish to pdn-dist. The GitHub release is published; set the OARC_TOKEN repo secret to auto-publish the feed."
+            exit 0
+          fi
+          # Install-time support bundle (units + update helper + polkit + template), single-sourced from packaging/.
+          scripts/build-selfcontained-support.sh artifacts/packetnet-selfcontained-support.tar.gz
+          # Fetch the OARC object-storage CLI fresh (not vendored) + its one dep in a venv (PEP 668 on the runner).
+          curl -fsSL https://compute.oarc.uk/static/downloads/object-storage-cli.zip -o /tmp/oarc-os.zip
+          rm -rf /tmp/oarc-os && python3 -m zipfile -e /tmp/oarc-os.zip /tmp/oarc-os/
+          cli="$(find /tmp/oarc-os -name object_storage_cli.py | head -1)"
+          [ -n "$cli" ] || { echo "OARC CLI not found in the downloaded zip" >&2; exit 1; }
+          python3 -m venv /tmp/oarc-venv && /tmp/oarc-venv/bin/pip -q install requests
+          up() {
+            out="$(/tmp/oarc-venv/bin/python "$cli" --token "$OARC_TOKEN" --upload "$1" --folder "$FOLDER" --upload-as "$2" --overwrite --json)" \
+              || { echo "OARC upload failed (exit): $2" >&2; return 1; }
+            printf '%s' "$out" | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin).get('success') else 1)" \
+              || { echo "OARC upload reported failure: $2 -> $out" >&2; return 1; }
+            echo "  uploaded $2"
+          }
+          up artifacts/latest.json latest.json
+          for arch in amd64 arm64 armhf; do
+            up "artifacts/packetnet_${VERSION}_${arch}.tar.gz" "packetnet_${VERSION}_${arch}.tar.gz"
+          done
+          up artifacts/packetnet-selfcontained-support.tar.gz packetnet-selfcontained-support.tar.gz
+          up packaging/install.sh install.sh
+          echo "Published self-contained feed for ${VERSION} → https://pdn-dist.m0lte.compute.oarc.uk/"
