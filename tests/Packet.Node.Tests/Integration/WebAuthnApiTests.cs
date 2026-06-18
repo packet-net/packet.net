@@ -33,27 +33,34 @@ public sealed class WebAuthnApiTests : IDisposable
         dbPath = Path.Combine(dir, "pdn.db");
     }
 
-    private void WriteConfig(bool authEnabled)
-    {
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: M0LTE-1
-              alias: LONDON
-            ports: []
-            management:
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-              auth:
-                enabled: {(authEnabled ? "true" : "false")}
-                webAuthn:
-                  relyingPartyId: localhost
-                  relyingPartyName: pdn test node
-            """);
-    }
+    private static string ConfigYaml(bool authEnabled) => $"""
+        schemaVersion: 1
+        identity:
+          callsign: M0LTE-1
+          alias: LONDON
+        ports: []
+        management:
+          telnet:
+            enabled: false
+          http:
+            bind: 127.0.0.1
+            port: 8080
+          auth:
+            enabled: {(authEnabled ? "true" : "false")}
+            webAuthn:
+              relyingPartyId: localhost
+              relyingPartyName: pdn test node
+        """;
+
+    private void WriteConfig(bool authEnabled) => File.WriteAllText(configPath, ConfigYaml(authEnabled));
+
+    // Config now lives in pdn.db (config-in-DB, #473): flipping auth on between boots is a
+    // write through the live seam (PUT /config/raw, ungated while auth is off), not a YAML
+    // rewrite (the file is read once on first boot, then vestigial). Persists to the DB so the
+    // next boot loads it.
+    private static async Task FlipAuthOnViaApi(HttpClient client) =>
+        (await client.PutAsync("/api/v1/config/raw",
+            new StringContent(ConfigYaml(authEnabled: true)))).StatusCode.Should().Be(HttpStatusCode.OK);
 
     private sealed class NodeAppFactory(string configPath, string dbPath) : WebApplicationFactory<Program>
     {
@@ -144,7 +151,8 @@ public sealed class WebAuthnApiTests : IDisposable
     [Fact]
     public async Task Register_begin_requires_auth_when_enabled_then_works_for_the_logged_in_user()
     {
-        // Bootstrap an admin with auth off, then flip auth on and re-boot.
+        // Bootstrap an admin with auth off, then flip auth on via the live write seam (it
+        // persists to pdn.db; config-in-DB makes the YAML rewrite inert between boots).
         WriteConfig(authEnabled: false);
         await using (var setupFactory = Factory())
         using (var setupClient = setupFactory.CreateClient())
@@ -154,9 +162,9 @@ public sealed class WebAuthnApiTests : IDisposable
                 identity = new { callsign = "M0LTE-1", alias = "LONDON" },
                 admin = new { username = "sysop", password = "hunter2hunter2" },
             }, Web)).StatusCode.Should().Be(HttpStatusCode.OK);
+            await FlipAuthOnViaApi(setupClient);
         }
 
-        WriteConfig(authEnabled: true);
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
@@ -205,9 +213,9 @@ public sealed class WebAuthnApiTests : IDisposable
                 identity = new { callsign = "M0LTE-1" },
                 admin = new { username = "sysop", password = "hunter2hunter2" },
             }, Web)).StatusCode.Should().Be(HttpStatusCode.OK);
+            await FlipAuthOnViaApi(setupClient);
         }
 
-        WriteConfig(authEnabled: true);
         await using var factory = Factory();
         using var client = factory.CreateClient();
         var token = await Login(client, "sysop", "hunter2hunter2");

@@ -7,11 +7,18 @@ case "$1" in
       systemctl disable packetnet.service || true
       systemctl daemon-reload || true
     fi
+    # /var/lib/packetnet holds pdn.db, which now ALSO holds the live config
+    # (config-in-DB, #473) — so this also drops the config on purge.
     rm -rf /var/lib/packetnet
     if getent passwd packetnet >/dev/null; then
       deluser --system packetnet || true
     fi
-    # /etc/packetnet/packetnet.yaml is a conffile — dpkg removes it on purge.
+    # The legacy /etc YAML is no longer a dpkg-tracked conffile (config-in-DB dropped it
+    # from packaging/conffiles), so dpkg won't auto-remove it on purge — remove it (and the
+    # migration sibling) explicitly, then drop the dir if it is now empty. A pre-0.17 install
+    # whose YAML was imported into pdn.db leaves these orphaned files behind otherwise.
+    rm -f /etc/packetnet/packetnet.yaml /etc/packetnet/packetnet.yaml.migrated
+    rmdir /etc/packetnet 2>/dev/null || true
     ;;
   remove)
     if [ -d /run/systemd/system ]; then

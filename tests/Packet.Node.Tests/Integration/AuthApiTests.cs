@@ -34,29 +34,40 @@ public sealed class AuthApiTests : IDisposable
         dbPath = Path.Combine(dir, "pdn.db");
     }
 
-    private void WriteConfig(bool authEnabled)
+    private static string ConfigYaml(bool authEnabled) => $"""
+        schemaVersion: 1
+        identity:
+          callsign: M0LTE-1
+          alias: LONDON
+        ports:
+          - id: vhf
+            enabled: false
+            transport:
+              kind: kiss-tcp
+              host: 127.0.0.1
+              port: 8101
+        management:
+          telnet:
+            enabled: false
+          http:
+            bind: 127.0.0.1
+            port: 8080
+          auth:
+            enabled: {(authEnabled ? "true" : "false")}
+        """;
+
+    private void WriteConfig(bool authEnabled) => File.WriteAllText(configPath, ConfigYaml(authEnabled));
+
+    // Config now lives in pdn.db (config-in-DB, #473), so flipping auth on between boots is
+    // no longer a YAML-file rewrite (the file is read once on first boot, then vestigial). To
+    // turn auth ON before a re-boot, persist the auth-on config through the live write seam
+    // (PUT /config/raw is ungated while auth is still off) — the DB then carries it and the
+    // next boot loads it. Replaces the old "rewrite the file + reboot" idiom.
+    private static async Task FlipAuthOnViaApi(HttpClient client)
     {
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: M0LTE-1
-              alias: LONDON
-            ports:
-              - id: vhf
-                enabled: false
-                transport:
-                  kind: kiss-tcp
-                  host: 127.0.0.1
-                  port: 8101
-            management:
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-              auth:
-                enabled: {(authEnabled ? "true" : "false")}
-            """);
+        var resp = await client.PutAsync("/api/v1/config/raw",
+            new StringContent(ConfigYaml(authEnabled: true)));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // A factory bound to THIS test's temp config/db via per-factory env vars set
@@ -369,10 +380,12 @@ public sealed class AuthApiTests : IDisposable
 
             readToken = await Login(setupClient, "reader", "readerpassword");
             operateToken = await Login(setupClient, "operator", "operatorpassword");
+
+            // Turn auth ON via the live write seam (persists to pdn.db) while still ungated.
+            await FlipAuthOnViaApi(setupClient);
         }
 
-        // Now turn auth ON and boot a fresh host over the SAME db (users + key persist).
-        WriteConfig(authEnabled: true);
+        // Now boot a fresh host over the SAME db (users + key + auth-on config persist).
         await using var factory = Factory();
         using var client = factory.CreateClient();
 
@@ -414,15 +427,15 @@ public sealed class AuthApiTests : IDisposable
     [Fact]
     public async Task With_auth_enabled_the_login_and_setup_state_endpoints_stay_open()
     {
-        // Bootstrap with auth off, then flip on.
+        // Bootstrap with auth off, then flip on via the live write seam (persists to pdn.db).
         WriteConfig(authEnabled: false);
         await using (var setupFactory = Factory())
         using (var setupClient = setupFactory.CreateClient())
         {
             await BootstrapAdmin(setupClient, "admin", "adminpassword");
+            await FlipAuthOnViaApi(setupClient);
         }
 
-        WriteConfig(authEnabled: true);
         await using var factory = Factory();
         using var client = factory.CreateClient();
 

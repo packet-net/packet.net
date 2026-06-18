@@ -36,31 +36,30 @@ public sealed class AppGatewayChallengeTests : IDisposable
 
     // The node config with one web app and auth on/off. The app's upstream is never reached in
     // these tests (auth rejects before the proxy runs), so a bogus loopback upstream is fine.
-    private void WriteConfig(bool authEnabled)
-    {
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: M0LTE-1
-            ports: []
-            management:
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-              auth:
-                enabled: {(authEnabled ? "true" : "false")}
-            applications:
-              - id: bbs
-                command: BBS
-                executable: /bin/cat
-                ui:
-                  upstream: http://127.0.0.1:9
-                  name: BBS
-                  icon: mail
-            """);
-    }
+    private static string ConfigYaml(bool authEnabled) => $"""
+        schemaVersion: 1
+        identity:
+          callsign: M0LTE-1
+        ports: []
+        management:
+          telnet:
+            enabled: false
+          http:
+            bind: 127.0.0.1
+            port: 8080
+          auth:
+            enabled: {(authEnabled ? "true" : "false")}
+        applications:
+          - id: bbs
+            command: BBS
+            executable: /bin/cat
+            ui:
+              upstream: http://127.0.0.1:9
+              name: BBS
+              icon: mail
+        """;
+
+    private void WriteConfig(bool authEnabled) => File.WriteAllText(configPath, ConfigYaml(authEnabled));
 
     private sealed class NodeAppFactory(string configPath, string dbPath) : WebApplicationFactory<Program>
     {
@@ -72,7 +71,10 @@ public sealed class AppGatewayChallengeTests : IDisposable
     }
 
     // Bootstrap an admin (so the user store is non-empty + the signing key exists) with auth OFF,
-    // then return a fresh auth-ON factory over the SAME db so the gate enforces.
+    // then return a fresh auth-ON factory over the SAME db so the gate enforces. Config now lives
+    // in pdn.db (config-in-DB, #473), so auth is flipped on through the live write seam
+    // (PUT /config/raw is ungated while auth is off) — not a YAML rewrite, which the next boot
+    // would ignore since the DB row already exists.
     private async Task<NodeAppFactory> AuthOnFactoryAsync()
     {
         WriteConfig(authEnabled: false);
@@ -85,8 +87,9 @@ public sealed class AppGatewayChallengeTests : IDisposable
                 admin = new { username = "sysop", password = "hunter2hunter2" },
             });
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            (await client.PutAsync("/api/v1/config/raw",
+                new StringContent(ConfigYaml(authEnabled: true)))).StatusCode.Should().Be(HttpStatusCode.OK);
         }
-        WriteConfig(authEnabled: true);
         return new NodeAppFactory(configPath, dbPath);
     }
 

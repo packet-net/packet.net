@@ -40,24 +40,23 @@ public sealed class TotpApiTests : IDisposable
         dbPath = Path.Combine(dir, "pdn.db");
     }
 
-    private void WriteConfig(bool authEnabled)
-    {
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: M0LTE-1
-              alias: LONDON
-            ports: []
-            management:
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-              auth:
-                enabled: {(authEnabled ? "true" : "false")}
-            """);
-    }
+    private static string ConfigYaml(bool authEnabled) => $"""
+        schemaVersion: 1
+        identity:
+          callsign: M0LTE-1
+          alias: LONDON
+        ports: []
+        management:
+          telnet:
+            enabled: false
+          http:
+            bind: 127.0.0.1
+            port: 8080
+          auth:
+            enabled: {(authEnabled ? "true" : "false")}
+        """;
+
+    private void WriteConfig(bool authEnabled) => File.WriteAllText(configPath, ConfigYaml(authEnabled));
 
     private sealed class NodeAppFactory(string configPath, string dbPath) : WebApplicationFactory<Program>
     {
@@ -243,7 +242,9 @@ public sealed class TotpApiTests : IDisposable
 
     private async Task BootstrapAdmin()
     {
-        // Bootstrap an admin with auth off, then the caller flips auth on and re-boots.
+        // Bootstrap an admin with auth off, then persist auth-ON through the live write seam
+        // (config-in-DB, #473: the DB row, not a YAML rewrite, carries config between boots —
+        // PUT /config/raw is ungated while auth is still off). The caller's reboot loads it.
         WriteConfig(authEnabled: false);
         await using var setupFactory = Factory();
         using var setupClient = setupFactory.CreateClient();
@@ -252,6 +253,8 @@ public sealed class TotpApiTests : IDisposable
             identity = new { callsign = "M0LTE-1", alias = "LONDON" },
             admin = new { username = "sysop", password = "hunter2hunter2" },
         }, Web)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await setupClient.PutAsync("/api/v1/config/raw",
+            new StringContent(ConfigYaml(authEnabled: true)))).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     private static async Task<JsonElement> BeginEnroll(HttpClient client, string token)

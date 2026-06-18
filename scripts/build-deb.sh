@@ -51,8 +51,11 @@ dotnet publish "$proj" -c Release -r "$rid" --self-contained true \
 
 echo "==> stage .deb tree for $arch"
 rm -rf "$stage"
-install -d "$stage/opt/packetnet/app" "$stage/lib/systemd/system" \
-           "$stage/etc/packetnet" "$stage/DEBIAN"
+# NOTE: no $stage/etc/packetnet — config now lives in pdn.db (config-in-DB, #473), not a
+# dpkg-tracked /etc YAML conffile. The node seeds the DB itself on first boot (from a
+# pre-existing /etc YAML if one is left over from a pre-0.17 install, else the bootstrap
+# template staged below). Dropping the conffile is what makes dpkg stop prompting on upgrade.
+install -d "$stage/opt/packetnet/app" "$stage/lib/systemd/system" "$stage/DEBIAN"
 # The publish output already carries the built SPA under wwwroot/ (the BuildWebUi
 # csproj target — VITE_API_MODE=live), so copying $pub stages it at
 # {ContentRoot=/opt/packetnet/app}/wwwroot with no separate step. Guard it: a publish
@@ -62,7 +65,13 @@ cp -a "$pub/." "$stage/opt/packetnet/app/"
   echo "publish produced no wwwroot/index.html — the web UI didn't build (BuildWebUi)" >&2; exit 1
 }
 cp "$root/packaging/packetnet.service" "$stage/lib/systemd/system/packetnet.service"
-cp "$root/packaging/packetnet.yaml"    "$stage/etc/packetnet/packetnet.yaml"
+# The pristine config TEMPLATE — config-in-DB bootstrap (#473). Staged to /usr/share (NOT
+# /etc, so it is never a dpkg conffile and never prompts). The node's first-boot seed reads
+# it when there is no DB row, no legacy /etc YAML, and no PACKETNET_CONFIG_SEED; the in-code
+# NodeConfigTemplate.Yaml is the ultimate fallback if even this is missing, so the node can
+# never fail to boot for lack of a template.
+install -d "$stage/usr/share/packetnet"
+install -m 0644 "$root/packaging/packetnet.yaml" "$stage/usr/share/packetnet/packetnet.yaml.example"
 
 # Phase 7 in-app self-update (docs/node-self-update-design.md):
 #  - install-channel: the build-stamped marker the node reads to decide HOW it updates.
@@ -157,8 +166,13 @@ install -d "$stage/usr/share/packetnet/catalog"
 install -m 0644 "$root/catalog/apps.yaml" "$stage/usr/share/packetnet/catalog/apps.yaml"
 sed -e "s/@ARCH@/$arch/" -e "s/@VERSION@/$version/" \
     "$root/packaging/control.in" > "$stage/DEBIAN/control"
-cp "$root/packaging/conffiles" "$root/packaging/postinst" \
-   "$root/packaging/prerm" "$root/packaging/postrm" "$stage/DEBIAN/"
+cp "$root/packaging/postinst" "$root/packaging/prerm" "$root/packaging/postrm" "$stage/DEBIAN/"
+# conffiles: only staged when NON-EMPTY. config-in-DB (#473) dropped the /etc YAML conffile,
+# so packaging/conffiles is now empty and we ship NO DEBIAN/conffiles at all — dpkg then never
+# runs its md5 conffile comparison and the keep/replace upgrade prompt vanishes structurally.
+if [ -s "$root/packaging/conffiles" ]; then
+  cp "$root/packaging/conffiles" "$stage/DEBIAN/conffiles"
+fi
 chmod 0755 "$stage/DEBIAN/postinst" "$stage/DEBIAN/prerm" "$stage/DEBIAN/postrm"
 
 echo "==> build .deb"
@@ -181,6 +195,10 @@ echo "--- bundled app packages ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/apps/'
 echo "--- app catalog (the Available-apps index) ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/catalog/'
+echo "--- config bootstrap template (config-in-DB seed) ---"
+dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/share/packetnet/packetnet.yaml.example'
+echo "--- conffiles (config-in-DB: must be EMPTY — no upgrade prompt) ---"
+dpkg-deb --info "$out" | grep -i 'conffiles' || echo "    (no Conffiles — correct)"
 echo "--- tailscale sidecar ---"
 dpkg-deb --contents "$out" | awk '{print $1, $6}' | grep '/usr/lib/packetnet/packetnet-tsnet'
 set -o pipefail

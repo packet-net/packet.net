@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Packet.Node.Api;
+using Packet.Node.Cli;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Beacons;
 using Packet.Node.Core.Capabilities;
@@ -27,11 +28,24 @@ using Packet.Node.Mcp;
 if (args.Length > 0 && args[0] == "mcp")
 {
     await McpStdioEntry.RunAsync(args);
-    return;
+    return 0;
+}
+
+// `pdn config export [--out <path>]` / `pdn config import <path>` — the headless
+// inspect/diff/restore CLI for config-in-DB (#473). Like `pdn mcp` they short-circuit
+// BEFORE the web host is built: they boot ONLY the SqliteConfigProvider over pdn.db
+// (no Kestrel, no hosted services), so an operator with shell access can export the
+// live config to YAML, diff it, edit it, and import it back — preserving the
+// edit-as-text ergonomic now that config lives in the DB, not a watched file.
+if (args.Length > 0 && args[0] == "config")
+{
+    return await PdnConfigCli.RunAsync(args);
 }
 
 var configPath = ResolveConfigPath(args);
 var dbPath = ResolveDbPath(args);
+var seedPath = ResolveSeedPath();
+var templatePath = ResolveBootstrapTemplatePath();
 
 // ContentRoot = the app's own directory (where the published web UI's wwwroot
 // sits), NOT the working directory. The packaged node runs with a WorkingDirectory
@@ -45,17 +59,32 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
 });
 
-// Build the config provider eagerly: it writes the first-start template if the
-// file is absent and gives us the HTTP bind to hand to Kestrel before the host
-// starts. Registered as the singleton IConfigProvider so the hosted service
-// reuses this very instance (a single source of truth + a single file watcher).
-// The eager provider logs to the bootstrap console; once the host is up,
-// NodeHostedService logs through the configured pipeline.
+// Build the config provider eagerly: it loads the live config from pdn.db (or, on a
+// FIRST boot with no row, migrates the legacy --config YAML / seed / template into the
+// DB) and gives us the HTTP bind to hand to Kestrel before the host starts. Registered
+// as the singleton IConfigProvider so the hosted service reuses this very instance (a
+// single source of truth). The eager provider logs to the bootstrap console; once the
+// host is up, NodeHostedService logs through the configured pipeline.
+//
+// Config-in-DB (#473): config now lives in the same pdn.db as routing/auth/heard, as a
+// single versioned JSON blob, NOT in a watched /etc YAML. A config write (PUT /config,
+// port CRUD) persists to the DB and raises the SAME OnChange the file watcher used to —
+// so the reconcile path is unchanged. The --config YAML is read ONLY on first boot (to
+// migrate a hand-tuned config across the 0.17 upgrade) and is vestigial thereafter; edit
+// config via the web UI / API / `pdn config import`. See docs/config-in-db.md.
 using var bootstrapLoggers = LoggerFactory.Create(b => b.AddConsole());
-var configProvider = new FileConfigProvider(
-    configPath,
+var configStore = new SqliteConfigStore(
+    dbPath,
     TimeProvider.System,
-    bootstrapLoggers.CreateLogger<FileConfigProvider>());
+    bootstrapLoggers.CreateLogger<SqliteConfigStore>());
+var configProvider = new SqliteConfigProvider(
+    configStore,
+    configPath,                                            // the legacy YAML to import on first boot
+    seedPath,                                              // PACKETNET_CONFIG_SEED (headless image bootstrap)
+    templatePath,                                          // /usr/share/packetnet/packetnet.yaml.example
+    markerDir: Path.GetDirectoryName(Path.GetFullPath(dbPath)),
+    TimeProvider.System,
+    bootstrapLoggers.CreateLogger<SqliteConfigProvider>());
 builder.Services.AddSingleton<IConfigProvider>(configProvider);
 // The same instance is also the WRITE seam for the config API (PUT /config et al.).
 // Registered separately so read-only consumers + the test fakes stay on the plain
@@ -65,6 +94,9 @@ builder.Services.AddSingleton<IWritableConfigProvider>(configProvider);
 // Teach the minimal-API JSON layer to (de)serialise the polymorphic TransportConfig
 // union (a PUT /config body needs the `kind`-discriminated read; this is transparent
 // for the existing GET serialisation). Web defaults (camelCase) are otherwise intact.
+// This is the SAME converter SqliteConfigStore persists the blob with (NodeConfigJson),
+// so the structured PUT /config body and the on-disk DB bytes are byte-identical — one
+// canonical serialisation, no second JSON dialect to drift.
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new TransportConfigJsonConverter()));
 
@@ -725,6 +757,7 @@ app.MapFallbackToFile("index.html", new StaticFileOptions
 });
 
 app.Run();
+return 0;   // top-level program returns an int (the `pdn config` subcommand returns a code)
 
 static string ResolveConfigPath(string[] args)
 {
@@ -754,6 +787,26 @@ static string ResolveDbPath(string[] args)
     }
     var env = Environment.GetEnvironmentVariable("PACKETNET_DB");
     return !string.IsNullOrWhiteSpace(env) ? env : Path.Combine(Directory.GetCurrentDirectory(), "pdn.db");
+}
+
+static string? ResolveSeedPath()
+{
+    // PACKETNET_CONFIG_SEED: an explicit seed-file path consulted ONLY on first boot
+    // when neither a DB row nor the --config YAML exists — so a headless image can seed
+    // a full config without touching /etc. Null when unset (the common case).
+    var env = Environment.GetEnvironmentVariable("PACKETNET_CONFIG_SEED");
+    return string.IsNullOrWhiteSpace(env) ? null : env;
+}
+
+static string ResolveBootstrapTemplatePath()
+{
+    // The packaged pristine template the first-boot seed reads when there is no DB row,
+    // no --config YAML, and no PACKETNET_CONFIG_SEED. build-deb.sh stages it here; the
+    // in-code NodeConfigTemplate is the ultimate fallback if even this is missing.
+    var env = Environment.GetEnvironmentVariable("PACKETNET_CONFIG_TEMPLATE");
+    return string.IsNullOrWhiteSpace(env)
+        ? "/usr/share/packetnet/packetnet.yaml.example"
+        : env;
 }
 
 static string ResolveTrafficDbPath(Packet.Node.Core.Configuration.TrafficConfig traffic, string dbPath)

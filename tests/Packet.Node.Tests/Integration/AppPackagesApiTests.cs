@@ -273,9 +273,13 @@ public sealed class AppPackagesApiTests : IDisposable
         body.GetProperty("id").GetString().Should().Be("alpha");
         body.GetProperty("enabled").GetBoolean().Should().BeTrue();
 
-        // The toggle is a config write: the YAML on disk now carries the apps: override.
-        var yaml = await File.ReadAllTextAsync(configPath);
-        yaml.Should().Contain("apps:").And.Contain("alpha");
+        // The toggle is a config write: it now persists to pdn.db (config-in-DB, #473), NOT
+        // the YAML file (which is read-only/vestigial post-first-boot). Read the persisted
+        // config row back from the same pdn.db and confirm it carries the apps: override.
+        var persisted = new Packet.Node.Core.Configuration.SqliteConfigStore(
+            Path.Combine(dir, "pdn.db")).Load();
+        persisted.Should().NotBeNull();
+        persisted!.Value.Config.Apps.Should().Contain(a => a.Id == "alpha" && a.Enabled == true);
 
         // And the next inventory read reflects the flip.
         var alpha = Entry(await GetInventoryAsync(client), "alpha");
@@ -452,8 +456,11 @@ public sealed class AppPackagesApiTests : IDisposable
         installer.Uninstalled.Should().Equal("alpha");
 
         // The override was stripped from the persisted config (so a reinstall starts fresh).
-        var yaml = await File.ReadAllTextAsync(configPath);
-        yaml.Should().NotContain("- id: alpha");
+        // Config now persists to pdn.db (config-in-DB, #473), so read the row back.
+        var persisted = new Packet.Node.Core.Configuration.SqliteConfigStore(
+            Path.Combine(dir, "pdn.db")).Load();
+        persisted.Should().NotBeNull();
+        persisted!.Value.Config.Apps.Should().NotContain(a => a.Id == "alpha");
     }
 
     [Fact]
