@@ -24,7 +24,7 @@ public sealed record NodeConfig
     /// every <c>Save</c>, and the load-time migration chain
     /// (<see cref="NodeConfigSchemaMigrations"/>) targets it. When a schema bump changes the
     /// persisted JSON shape: bump this AND register one <c>vN → vN+1</c> migration.</summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>Schema version of the persisted config. Bumped when the shape
     /// changes incompatibly; lets a future loader migrate older blobs. Defaults to
@@ -526,11 +526,17 @@ public sealed record Identity
     /// validated by <see cref="NodeConfigValidator"/>; never bound as a struct.</summary>
     public required string Callsign { get; init; }
 
-    /// <summary>Optional human-facing alias / node name (e.g. <c>"LONDON"</c>).</summary>
+    /// <summary>The node's alias / mnemonic — the single node-name concept (the BPQ NODEALIAS
+    /// model). Optional; when set it must be ≤6 uppercase alphanumerics (the NET/ROM wire field is
+    /// 6 octets). Used both for display (the OARC map name, the <c>{node}</c> banner/prompt token,
+    /// the console name, <c>PDN_NODE_ALIAS</c>) AND as the alias advertised in the node's NODES
+    /// broadcast. Null = fall back to the callsign for display, and the callsign base on the wire.
+    /// Long friendly text belongs in <see cref="ServicesConfig.Banner"/>, not here.</summary>
     public string? Alias { get; init; }
 
-    /// <summary>Optional Maidenhead grid locator (e.g. <c>"IO91wm"</c>). Free-form
-    /// in slice 1 — not validated as a grid square yet.</summary>
+    /// <summary>Optional Maidenhead grid locator (e.g. <c>"IO91wm"</c>). Free-form here; the OARC
+    /// reporter validates it as a 6-char grid before reporting (a node needs a valid grid to appear
+    /// on the map).</summary>
     public string? Grid { get; init; }
 }
 
@@ -1280,12 +1286,10 @@ public sealed record NetRomConfig
     /// </summary>
     public NetRomForwardMode ForwardMode { get; init; } = NetRomForwardMode.PerFlow;
 
-    /// <summary>
-    /// Our NET/ROM node alias / mnemonic, advertised in our NODES broadcast (the
-    /// 6-char field). Null/empty = fall back to the node identity alias (then the
-    /// callsign). Only the first 6 characters reach the wire.
-    /// </summary>
-    public string? Alias { get; init; }
+    // The node's NET/ROM alias is no longer a separate field here — it is unified with
+    // Identity.Alias (the single node-name concept, the BPQ NODEALIAS model). The NODES broadcast
+    // takes its alias from Identity.Alias; a pre-v2 config's netRom.alias is folded into
+    // Identity.Alias by the v1→v2 schema migration (NodeConfigSchemaMigrations).
 
     /// <summary>Path quality assumed for a directly-heard neighbour (the canonical
     /// default-port quality). Null = canonical default (192).</summary>

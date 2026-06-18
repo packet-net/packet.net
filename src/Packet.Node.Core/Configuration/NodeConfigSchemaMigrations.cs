@@ -48,13 +48,60 @@ public static class NodeConfigSchemaMigrations
 
     /// <summary>
     /// The production registry, keyed by from-version: <c>Registry[N]</c> migrates a v<c>N</c>
-    /// blob to v<c>N+1</c>. EMPTY today because <see cref="NodeConfig.CurrentSchemaVersion"/>
-    /// is 1 and no shape change has happened yet — the mechanism is proven by tests that drive
-    /// the dispatch with a synthetic registry (see the test suite). The first real bump adds
-    /// exactly one entry here.
+    /// blob to v<c>N+1</c>. The first (and currently only) entry is the v1→v2 alias unification
+    /// (<see cref="MigrateV1ToV2"/>): a pre-v2 config carried a separate <c>netRom.alias</c>; v2
+    /// unifies the node alias into <c>identity.alias</c> (the single node-name concept).
     /// </summary>
     public static readonly IReadOnlyDictionary<int, Migration> Registry =
-        new Dictionary<int, Migration>();
+        new Dictionary<int, Migration>
+        {
+            [1] = MigrateV1ToV2,
+        };
+
+    /// <summary>
+    /// v1 → v2: unify the node alias. Folds a pre-v2 <c>netRom.alias</c> into
+    /// <c>identity.alias</c> (the single node-name concept — the NET/ROM broadcast now takes its
+    /// alias from there) unless <c>identity.alias</c> is already set, then drops the dead
+    /// <c>netRom.alias</c> field. Lossless for the common case (only one was ever set); when both
+    /// were set the display alias (<c>identity.alias</c>) wins and the on-air alias converges to it.
+    /// </summary>
+    private static JsonObject MigrateV1ToV2(JsonObject root)
+    {
+        var identityAlias = root["identity"] is JsonObject id ? AsString(id["alias"]) : null;
+        var netromAlias = root["netRom"] is JsonObject nr ? AsString(nr["alias"]) : null;
+
+        // The unified alias: a pre-existing identity.alias wins; otherwise fold in netRom.alias.
+        var unified = !string.IsNullOrWhiteSpace(identityAlias) ? identityAlias : netromAlias;
+
+        if (!string.IsNullOrWhiteSpace(unified))
+        {
+            // Normalise to the ≤6 the v2 schema requires. This is faithful: the NODES wire field is
+            // 6 octets, so a longer netRom.alias (never length-validated pre-v2) only ever reached
+            // the air as its first 6 chars — and a long identity.alias from the old unvalidated UI
+            // is brought into range too, so the migrated config always passes v2 validation (a node
+            // never boots on an over-long alias).
+            var trimmed = unified.Trim();
+            var capped = trimmed.Length > 6 ? trimmed[..6] : trimmed;
+
+            if (root["identity"] is not JsonObject identity)
+            {
+                identity = new JsonObject();
+                root["identity"] = identity;
+            }
+            identity["alias"] = capped;
+        }
+
+        // Drop the dead netRom.alias field regardless.
+        if (root["netRom"] is JsonObject netrom)
+        {
+            netrom.Remove("alias");
+        }
+
+        return root;
+    }
+
+    private static string? AsString(JsonNode? node) =>
+        node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
     /// <summary>
     /// Migrate <paramref name="root"/> from <paramref name="fromVersion"/> up to the running

@@ -40,7 +40,6 @@ public sealed class NetRomL3L4IntegrationTests
             Enabled = true,
             Broadcast = true,
             Connect = true,
-            Alias = alias,
             // Fast retransmit so a circuit settles inside the test budget.
             TransportTimeoutSeconds = 2,
         },
@@ -70,7 +69,7 @@ public sealed class NetRomL3L4IntegrationTests
     private static async Task<Node> StartNodeAsync(SharedRadioBus bus, Callsign call, string alias)
     {
         var modem = bus.Attach();
-        var netRom = new NetRomService(NodeConfig(call, alias).NetRom, TimeProvider.System, NullLogger<NetRomService>.Instance);
+        var netRom = new NetRomService(NodeConfig(call, alias).NetRom, TimeProvider.System, NullLogger<NetRomService>.Instance, nodeAlias: alias);
         var config = new TestConfigProvider(NodeConfig(call, alias));
         var factory = new FakeTransportFactory().Provide($"kiss-tcp:{call.Base}:1", modem);
         var supervisor = new PortSupervisor(config, factory, TimeProvider.System, NullLoggerFactory.Instance, netRom);
@@ -96,7 +95,6 @@ public sealed class NetRomL3L4IntegrationTests
                 Enabled = true,
                 Broadcast = true,
                 Connect = true,   // Forward defaults on under Connect — the transit role
-                Alias = alias,
                 TransportTimeoutSeconds = 2,
             },
             Ports = [.. ports.Select(p => new PortConfig
@@ -108,7 +106,7 @@ public sealed class NetRomL3L4IntegrationTests
             })],
         };
 
-        var netRom = new NetRomService(nodeConfig.NetRom, TimeProvider.System, NullLogger<NetRomService>.Instance);
+        var netRom = new NetRomService(nodeConfig.NetRom, TimeProvider.System, NullLogger<NetRomService>.Instance, nodeAlias: alias);
         var config = new TestConfigProvider(nodeConfig);
         var factory = new FakeTransportFactory();
         foreach (var p in ports)

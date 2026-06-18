@@ -31,7 +31,7 @@ export const NODE_CONFIG: NodeConfig = {
   },
   netRom: {
     enabled: true, broadcast: true, routing: "Transit", forwardMode: "PerFlow",
-    alias: "RDGGW", defaultNeighbourQuality: 192, minQuality: 40,
+    defaultNeighbourQuality: 192, minQuality: 40,
     obsoleteInitial: 6, obsoleteMinimum: 4, sweepIntervalSeconds: 300,
     window: 4, transportTimeoutSeconds: 60, transportRetries: 3, timeToLive: 25,
     inp3: { enabled: true, preferInp3Routes: true, l3RttInterval: 3600, l3RttResetWindow: 5, rifInterval: 60, positiveDebounce: 3 },
@@ -353,7 +353,6 @@ export const NETROM_ROUTING_HELP: { label: string; help: string; options: { valu
   ],
 };
 export const NETROM_FIELD_HELP: Record<string, FieldHelp> = {
-  alias: { label: "Node alias", unit: "", help: "A short friendly name for your node on the network (e.g. RDGGW), shown alongside your callsign." },
   defaultNeighbourQuality: { label: "New-neighbour quality", unit: "0–255", help: "The starting quality score given to a neighbour you've just heard, before its path has been measured. Higher = more willing to route through unproven neighbours." },
   minQuality: { label: "Minimum usable quality", unit: "0–255", help: "Routes scoring below this are ignored — a noise floor that keeps poor, unreliable paths out of your routing table." },
   sweepIntervalSeconds: { label: "Routing sweep", unit: "seconds", help: "How often the node re-checks its routing table and ages out routes it hasn't heard about recently." },

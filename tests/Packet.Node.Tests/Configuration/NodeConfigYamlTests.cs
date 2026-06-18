@@ -135,11 +135,11 @@ public class NodeConfigYamlTests
         const string yaml = """
             identity:
               callsign: M0LTE-1
+              alias: NODE
             netRom:
               enabled: true
               broadcast: true
               connect: true
-              alias: NODE
               defaultNeighbourQuality: 203
               minQuality: 150
               obsoleteInitial: 5
@@ -159,7 +159,7 @@ public class NodeConfigYamlTests
         // (connect:true with forward defaulting on).
         config.NetRom.Connect.Should().BeTrue();
         config.NetRom.EffectiveRouting.Should().Be(NetRomRouting.Transit);
-        config.NetRom.Alias.Should().Be("NODE");
+        config.Identity.Alias.Should().Be("NODE", "the node alias is unified into Identity.Alias");
         config.NetRom.DefaultNeighbourQuality.Should().Be(203);
         config.NetRom.MinQuality.Should().Be(150);
         config.NetRom.ObsoleteInitial.Should().Be(5);

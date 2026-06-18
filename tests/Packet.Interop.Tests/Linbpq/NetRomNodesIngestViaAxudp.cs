@@ -120,8 +120,7 @@ public class NetRomNodesIngestViaAxudp
             // Broadcast so BPQ's AUTOADDQUIET learns pdn's reply route on the AXIP port
             // (the static MAP pins it; broadcasting keeps the AUTOADD entry warm).
             Broadcast = true,
-            Alias = OurAlias,
-        });
+        }, nodeAlias: OurAlias);
         netRom.AttachPort("axudp", OurCall, listener);
         await listener.StartAsync(cts.Token);
 

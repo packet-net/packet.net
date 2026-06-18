@@ -440,7 +440,7 @@ public class NodeConfigValidatorTests
         {
             NetRom = new NetRomConfig
             {
-                Enabled = true, Broadcast = true, Connect = true, Alias = "NODE",
+                Enabled = true, Broadcast = true, Connect = true,
                 ObsoleteMinimum = 4, Window = 7, TransportTimeoutSeconds = 8,
                 TransportRetries = 5, TimeToLive = 30,
             },
@@ -804,12 +804,13 @@ public class NodeConfigValidatorTests
     }
 
     [Fact]
-    public void An_app_alias_equal_to_the_nodes_own_netrom_alias_is_rejected()
+    public void An_app_alias_equal_to_the_nodes_own_alias_is_rejected()
     {
+        // The node's own alias is now Identity.Alias (unified); an app may not advertise it.
         var config = Valid() with
         {
-            NetRom = new NetRomConfig { Alias = "RDGNODE" },
-            Applications = [InlineApp("a", "ALPHA", netrom: new AppNetromConfig { Alias = "RDGNODE" })],
+            Identity = new Identity { Callsign = "M0LTE-1", Alias = "RDGBBS" },
+            Applications = [InlineApp("a", "ALPHA", netrom: new AppNetromConfig { Alias = "RDGBBS" })],
         };
         Validator.Validate(config).IsValid.Should().BeFalse();
     }
@@ -875,5 +876,20 @@ public class NodeConfigValidatorTests
             Oarc = new OarcConfig { Enabled = false, BaseUrl = "not-a-url", StatusIntervalSecs = 0 },
         };
         Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
+    // --- Node alias (unified Identity.Alias, the single node-name concept) ---
+
+    [Theory]
+    [InlineData(null, true)]       // unset → use the callsign for display + callsign base on the wire
+    [InlineData("LONDON", true)]   // 6 chars — the NET/ROM mnemonic shape
+    [InlineData("RDG", true)]
+    [InlineData("A", true)]
+    [InlineData("LONDON1", false)] // 7 — exceeds the 6-octet NET/ROM alias field
+    [InlineData("VERYLONGNAME", false)]
+    public void Identity_alias_is_capped_at_six_characters(string? alias, bool expectValid)
+    {
+        var config = Valid() with { Identity = new Identity { Callsign = "M0LTE-1", Alias = alias } };
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
     }
 }

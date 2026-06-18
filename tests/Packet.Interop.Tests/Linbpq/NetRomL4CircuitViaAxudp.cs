@@ -152,11 +152,10 @@ public class NetRomL4CircuitViaAxudp
             Enabled = true,
             Broadcast = true,
             Connect = true,
-            Alias = OurAlias,
             // Fast-ish L4 retransmit; on a lossless tunnel this rarely fires.
             TransportTimeoutSeconds = 4,
             TransportRetries = 5,
-        });
+        }, nodeAlias: OurAlias);
 
         // Bridge an inbound NET/ROM circuit (BPQ -> pdn) to a tiny echo console so we
         // observe IncomingCircuit AND prove data round-trips over the circuit.

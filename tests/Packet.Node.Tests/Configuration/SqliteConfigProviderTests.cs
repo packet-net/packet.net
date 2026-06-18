@@ -101,10 +101,13 @@ public sealed class SqliteConfigProviderTests : IDisposable
             File.Exists(Path.Combine(dir, SqliteConfigProvider.MigrationMarkerName)).Should().BeTrue();
         }
 
-        // (d) the DB now holds the imported config (byte-identical canonical JSON).
+        // (d) the DB now holds the imported config (byte-identical canonical JSON). The legacy YAML
+        // is schemaVersion:1, so a fresh load brings it forward to the current schema via the v1→v2
+        // migration (identity.alias is already "LONDON", so only the version stamp changes here).
         var inDb = NewStore().Load();
         inDb.Should().NotBeNull();
-        NodeConfigJson.Serialize(inDb!.Value.Config).Should().Be(NodeConfigJson.Serialize(expected));
+        NodeConfigJson.Serialize(inDb!.Value.Config).Should()
+            .Be(NodeConfigJson.Serialize(expected with { SchemaVersion = NodeConfig.CurrentSchemaVersion }));
 
         // SECOND boot: row present → read the DB, NOT the YAML. Prove it by HAND-EDITING the
         // YAML on disk to a different callsign; the provider must ignore it (no hot file-watch,

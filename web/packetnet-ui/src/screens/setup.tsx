@@ -128,7 +128,7 @@ export function Setup() {
                 <Input value={data.callsign} onChange={(e) => set("callsign", e.target.value.toUpperCase())} placeholder="GB7RDG" className="font-mono" autoFocus />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Alias"><Input value={data.alias} onChange={(e) => set("alias", e.target.value.toUpperCase())} placeholder="RDGGW" className="font-mono" /></Field>
+                <Field label="Alias"><Input value={data.alias} maxLength={6} onChange={(e) => set("alias", e.target.value.toUpperCase())} placeholder="RDGGW" className="font-mono" /></Field>
                 <Field label="Locator"><Input value={data.grid} onChange={(e) => set("grid", e.target.value)} placeholder="IO91nl" className="font-mono" /></Field>
               </div>
             </div>
