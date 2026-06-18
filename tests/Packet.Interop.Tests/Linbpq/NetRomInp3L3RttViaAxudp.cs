@@ -123,7 +123,6 @@ public class NetRomInp3L3RttViaAxudp
             Enabled = true,
             Broadcast = true,
             Connect = true,
-            Alias = OurAlias,
             TransportTimeoutSeconds = 4,
             TransportRetries = 5,
             Inp3 = new NetRomInp3Options
@@ -131,7 +130,7 @@ public class NetRomInp3L3RttViaAxudp
                 Enabled = true,
                 L3RttInterval = TimeSpan.FromSeconds(5),   // probe BPQ promptly for CI observability
             },
-        });
+        }, nodeAlias: OurAlias);
 
         netRom.AttachPort("axudp", OurCall, listener);
         await listener.StartAsync(cts.Token);

@@ -28,7 +28,6 @@ public sealed class InterlinkCapabilityCacheWiringTests
     {
         Enabled = true,
         Connect = true,   // routing role opens connected-mode interlinks
-        Alias = "ANODE",
         TransportTimeoutSeconds = 2,
     };
 

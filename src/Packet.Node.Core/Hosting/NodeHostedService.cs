@@ -159,7 +159,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // The NET/ROM read-only service is created once at start from the initial
         // config. It's a pure consumer of each port's frame-trace tap (subscribed
         // by the supervisor as ports come up), so it can never disturb a session.
-        netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>(), routingStore, capabilityCache);
+        netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>(), routingStore, capabilityCache, nodeAlias: startConfig.Identity.Alias);
 
         // Feed the opt-in app NET/ROM adverts (docs/app-packages.md § Application packet identity):
         // when an enabled app's owner set netrom.alias, the node advertises alias → the app's

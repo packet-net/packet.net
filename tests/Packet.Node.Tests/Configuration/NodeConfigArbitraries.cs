@@ -188,7 +188,7 @@ public static class NodeConfigArbitraries
         from oarc in OarcGen()
         select new NodeConfig
         {
-            SchemaVersion = 1,
+            SchemaVersion = Packet.Node.Core.Configuration.NodeConfig.CurrentSchemaVersion,
             Identity = new Identity { Callsign = call },
             Ports = ports.ToList(),
             NetRom = netrom,

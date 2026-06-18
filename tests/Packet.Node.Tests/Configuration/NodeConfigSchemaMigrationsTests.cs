@@ -11,11 +11,11 @@ namespace Packet.Node.Tests.Configuration;
 /// <see cref="NodeConfigJson.Deserialize(JsonNode)"/>).
 /// </summary>
 /// <remarks>
-/// <see cref="NodeConfig.CurrentSchemaVersion"/> is 1 with no real migration yet, so these
-/// drive the dispatch with SYNTHETIC registries and explicit from/to versions (the test-only
-/// 4-arg <c>Migrate</c> overload). That proves the mechanism itself — ordered chaining,
+/// The dispatch-mechanism tests drive it with SYNTHETIC registries and explicit from/to versions
+/// (the test-only 4-arg <c>Migrate</c> overload) to prove the mechanism itself — ordered chaining,
 /// idempotency, the version stamp, the future-schema fail-safe, and a real older-shape blob
-/// migrating to a loadable <see cref="NodeConfig"/> — not just a stub.
+/// migrating to a loadable <see cref="NodeConfig"/>. The production-registry tests at the end
+/// exercise the real v1→v2 alias-unification migration.
 /// </remarks>
 public sealed class NodeConfigSchemaMigrationsTests
 {
@@ -157,5 +157,66 @@ public sealed class NodeConfigSchemaMigrationsTests
     {
         var act = () => NodeConfigJson.ParseObject("[1,2,3]");
         act.Should().Throw<JsonException>().WithMessage("*not a JSON object*");
+    }
+
+    // --- The production v1→v2 alias-unification migration ---
+
+    private static JsonObject MigrateV1ToV2(string json) =>
+        NodeConfigSchemaMigrations.Migrate(NodeConfigJson.ParseObject(json), fromVersion: 1);
+
+    [Fact]
+    public void V1_to_v2_folds_netrom_alias_into_identity_alias_and_drops_the_dead_field()
+    {
+        var root = MigrateV1ToV2("""
+            { "schemaVersion": 1, "identity": { "callsign": "M0LTE-1" },
+              "netRom": { "enabled": true, "alias": "LONDON" } }
+            """);
+
+        ((string?)root["identity"]!["alias"]).Should().Be("LONDON", "the on-air alias becomes the unified node alias");
+        (root["netRom"]!.AsObject().ContainsKey("alias")).Should().BeFalse("the dead netRom.alias is removed");
+        ((int?)root["schemaVersion"]).Should().Be(2);
+
+        // …and the migrated blob deserialises to a loadable, valid config.
+        var config = NodeConfigJson.Deserialize(root);
+        config.Identity.Alias.Should().Be("LONDON");
+        new NodeConfigValidator().Validate(config).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void V1_to_v2_keeps_an_existing_identity_alias_when_both_are_set()
+    {
+        var root = MigrateV1ToV2("""
+            { "schemaVersion": 1, "identity": { "callsign": "M0LTE-1", "alias": "RDG" },
+              "netRom": { "alias": "LONDON" } }
+            """);
+
+        ((string?)root["identity"]!["alias"]).Should().Be("RDG", "an existing identity.alias wins over netRom.alias");
+        (root["netRom"]!.AsObject().ContainsKey("alias")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void V1_to_v2_caps_an_overlong_alias_to_six_so_the_migrated_config_is_valid()
+    {
+        // netRom.alias was never length-validated pre-v2 (it was silently truncated to 6 on the
+        // wire). The migration brings it into the ≤6 the v2 schema requires, so a node never fails
+        // to boot on an over-long legacy alias.
+        var root = MigrateV1ToV2("""
+            { "schemaVersion": 1, "identity": { "callsign": "M0LTE-1" },
+              "netRom": { "alias": "LONDONBRIDGE" } }
+            """);
+
+        ((string?)root["identity"]!["alias"]).Should().Be("LONDON", "capped to the 6-octet wire field");
+        new NodeConfigValidator().Validate(NodeConfigJson.Deserialize(root)).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void V1_to_v2_is_a_no_op_when_there_was_no_alias_anywhere()
+    {
+        var root = MigrateV1ToV2("""
+            { "schemaVersion": 1, "identity": { "callsign": "M0LTE-1" }, "netRom": { "enabled": true } }
+            """);
+
+        (root["identity"]!.AsObject().ContainsKey("alias")).Should().BeFalse("no alias to fold ⇒ none added");
+        ((int?)root["schemaVersion"]).Should().Be(2);
     }
 }

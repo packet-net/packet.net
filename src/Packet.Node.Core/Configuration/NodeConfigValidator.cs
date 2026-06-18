@@ -163,9 +163,9 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     private static bool HaveUniqueAppNetromAliases(NodeConfig c)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(c.NetRom.Alias))
+        if (!string.IsNullOrWhiteSpace(c.Identity.Alias))
         {
-            seen.Add(c.NetRom.Alias!.Trim());
+            seen.Add(c.Identity.Alias!.Trim());
         }
         var aliases = c.Applications.Select(a => a.Netrom?.Alias)
             .Concat(c.Apps.Select(a => a.Netrom?.Alias));
@@ -204,6 +204,14 @@ public sealed class IdentityValidator : AbstractValidator<Identity>
             .WithMessage(i =>
                 $"Identity.Callsign '{i.Callsign}' is not a valid AX.25 callsign " +
                 "(1–6 uppercase alphanumerics, optional -SSID in 0–15).");
+
+        // The node alias is the single node-name concept (the BPQ NODEALIAS). It is also the alias
+        // advertised in the NODES broadcast, whose wire field is 6 octets — so it is capped at 6
+        // chars. Optional (null/blank = use the callsign for display + the callsign base on the wire).
+        RuleFor(i => i.Alias!)
+            .Must(a => a.Trim().Length is >= 1 and <= 6)
+            .When(i => !string.IsNullOrWhiteSpace(i.Alias))
+            .WithMessage("Identity.Alias must be 1–6 characters (the NET/ROM alias wire field is 6 octets); put longer friendly text in services.banner.");
     }
 }
 

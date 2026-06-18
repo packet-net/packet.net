@@ -152,7 +152,7 @@ export type NetRomRouting = "None" | "Endpoint" | "Transit";
 export interface NetRomConfig {
   enabled: boolean; broadcast: boolean;
   routing: NetRomRouting; forwardMode: NetRomForwardMode;
-  alias?: string | null;
+  // The node's NET/ROM alias is unified with identity.alias (the single node-name concept).
   defaultNeighbourQuality?: number; minQuality?: number;
   obsoleteInitial?: number; obsoleteMinimum?: number; sweepIntervalSeconds?: number;
   window?: number; transportTimeoutSeconds?: number; transportRetries?: number; timeToLive?: number;

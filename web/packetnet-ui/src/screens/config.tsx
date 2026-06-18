@@ -168,8 +168,8 @@ export function Config() {
                 <Field label="Callsign (required)" impact="node-reset" hint="Changing identity resets the node.">
                   <Input value={cfg.identity.callsign} onChange={(e) => set("identity.callsign", e.target.value, "node-reset")} className="font-mono" />
                 </Field>
-                <Field label="Alias" impact="node-reset">
-                  <Input value={cfg.identity.alias ?? ""} onChange={(e) => set("identity.alias", e.target.value, "node-reset")} className="font-mono" />
+                <Field label="Alias" info="The node mnemonic (≤6 chars) — shown on the network map and advertised as the NET/ROM alias. Long friendly text belongs in the service banner." impact="node-reset">
+                  <Input value={cfg.identity.alias ?? ""} maxLength={6} onChange={(e) => set("identity.alias", e.target.value.toUpperCase(), "node-reset")} className="font-mono" />
                 </Field>
                 <Field label="Locator (grid)" impact="live">
                   <Input value={cfg.identity.grid ?? ""} onChange={(e) => set("identity.grid", e.target.value, "live")} className="font-mono" />
@@ -589,12 +589,6 @@ function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val:
           </Select>
         </Field>
         {routingDesc && <p className="mt-2 text-xs leading-snug text-muted-foreground">{routingDesc}</p>}
-      </div>
-
-      <div className="max-w-xs">
-        <Field label={NETROM_FIELD_HELP.alias.label} info={NETROM_FIELD_HELP.alias.help}>
-          <Input value={nr.alias ?? ""} onChange={(e) => set("netRom.alias", e.target.value, "live")} className="font-mono" />
-        </Field>
       </div>
 
       <AdvancedDetails title="Advanced routing tuning">

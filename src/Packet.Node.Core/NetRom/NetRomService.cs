@@ -60,6 +60,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private static readonly TimeSpan PersistDebounce = TimeSpan.FromSeconds(30);
 
     private readonly NetRomConfig config;
+    // The node's own NET/ROM alias for the NODES broadcast — unified with Identity.Alias (the
+    // single node-name concept); passed in at construction since identity.alias is node-reset impact.
+    private readonly string? nodeAlias;
     // The resolved routing role (Endpoint/Transit ⇒ interlinks; Transit ⇒ also relay
     // transit). Resolved once from config.ResolveRouting() so every gate below reads one
     // settled value, not the raw routing/connect/forward fields.
@@ -207,9 +210,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         TimeProvider? timeProvider = null,
         ILogger<NetRomService>? logger = null,
         INetRomRoutingStore? store = null,
-        PeerCapabilityCache? capabilityCache = null)
+        PeerCapabilityCache? capabilityCache = null,
+        string? nodeAlias = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
+        this.nodeAlias = nodeAlias;
         routing = this.config.EffectiveRouting;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.logger = logger ?? NullLogger<NetRomService>.Instance;
@@ -682,9 +687,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     private string ResolveAlias()
     {
-        if (!string.IsNullOrWhiteSpace(config.Alias))
+        // The node alias is unified with Identity.Alias (the single node-name concept).
+        if (!string.IsNullOrWhiteSpace(nodeAlias))
         {
-            return config.Alias!;
+            return nodeAlias!;
         }
         // Fall back to the node callsign base (the first 6 chars reach the wire).
         return nodeCallSet ? nodeCall.Base : string.Empty;

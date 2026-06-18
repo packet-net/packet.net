@@ -10,8 +10,9 @@ schemaVersion: 1
 
 identity:
   callsign: N0CALL        # <-- your station callsign, e.g. M0LTE-1
-  # alias: LONDON         # optional node name
-  # grid: IO91wm          # optional Maidenhead locator
+  # alias: LONDON         # optional node mnemonic, <=6 chars — shown on the network map AND
+                          # advertised as the NET/ROM alias. Long friendly text -> services.banner.
+  # grid: IO91wm          # optional Maidenhead locator (required to appear on the OARC map)
 
 # AX.25 ports. Empty = an idle node (still serves telnet + /healthz).
 # Each port needs a stable, unique `id` (the hot-reload reconcile key)
