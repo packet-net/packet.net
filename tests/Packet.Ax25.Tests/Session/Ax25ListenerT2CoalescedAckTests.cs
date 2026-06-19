@@ -99,8 +99,19 @@ public class Ax25ListenerT2CoalescedAckTests
                 info: new[] { ns }, pollBit: false));
         }
 
-        await ListenerTestSupport.WaitFor(() => session.Context.VR == 5, Budget,
-            "all five I-frames must be processed");
+        // Gate the clock advance on the delayed ack being *armed*, not merely on
+        // V(R) having advanced. The Connected in-sequence-I-frame transition
+        // (SDL t26_i_received_yes_yes_yes_no_yes_no_no) runs its actions in the
+        // order: V(R):=V(R)+1 … LM-SEIZE Request (this arms T2 via the listener's
+        // sendLinkMux grant) … Set Acknowledge Pending (last). So V(R) is observable
+        // from the test thread *before* T2 is armed — advancing the FakeTimeProvider
+        // in that window sets the timer's due-time against the already-advanced clock,
+        // and it then never fires (no further advance) → the coalesced RR never lands.
+        // AcknowledgePending is the final action, so observing it true guarantees the
+        // preceding LM-SEIZE/arm has run. (#385 flake — caught on a 2026-06-19 CI run.)
+        await ListenerTestSupport.WaitFor(
+            () => session.Context.VR == 5 && session.Context.AcknowledgePending, Budget,
+            "all five I-frames must be processed and the delayed ack (T2) armed");
         modem.SentFrames.Count.Should().Be(1, "no ack before T2 expires — only the connect UA is on the wire");
 
         time.Advance(session.Context.T2 + TimeSpan.FromMilliseconds(1));
@@ -117,7 +128,14 @@ public class Ax25ListenerT2CoalescedAckTests
         // And the cycle re-arms cleanly: the next frame starts a new burst.
         modem.InjectInbound(Ax25Frame.I(LocalCall, PeerCall, nr: 0, ns: 5,
             info: "again"u8.ToArray(), pollBit: false));
-        await ListenerTestSupport.WaitFor(() => session.Context.VR == 6, Budget);
+        // This is the window the CI flake actually hit: frame ns=5 is the FIRST frame
+        // of the new burst, so the single transition that brings V(R) to 6 is also the
+        // one that arms T2 — and it sets V(R) before it arms. Gating on V(R)==6 alone
+        // races the arm; gate on AcknowledgePending (set last) so the arm is guaranteed
+        // done before we advance the clock.
+        await ListenerTestSupport.WaitFor(
+            () => session.Context.VR == 6 && session.Context.AcknowledgePending, Budget,
+            "the next burst's first frame must be processed and its delayed ack (T2) armed");
         time.Advance(session.Context.T2 + TimeSpan.FromMilliseconds(1));
         await modem.SentFrames.WaitForCountAsync(3, Budget);
         var second = ParseAll(modem)[2];

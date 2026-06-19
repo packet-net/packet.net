@@ -296,6 +296,17 @@ def make_server(path):
     Unlinks any stale socket file first (a leftover from a previous run would
     make bind() fail with EADDRINUSE), then chmods it so the node — running as
     the same ``packetnet`` service user/group — can connect.
+
+    Readiness is published atomically: a Unix socket becomes *visible on the
+    filesystem at ``bind()``* but only *accepts connections after ``listen()``*.
+    A client that connects in that window gets ECONNREFUSED. Anything that treats
+    "the socket file exists" as "the daemon is ready" (the node's per-connect
+    dial, a systemd readiness probe, the integration test) therefore races the
+    bind→listen gap — which widens to whole milliseconds when the box is CPU-
+    saturated and this process is preempted between the two calls. So we bind +
+    chmod + listen on a *temporary* sibling path and then ``os.rename`` it onto
+    the final path: rename is atomic, so the final path appears already-listening
+    and the window is gone.
     """
     # Remove a stale socket file, if any. Only unlink an actual socket, never a
     # regular file the user pointed us at by mistake.
@@ -309,13 +320,25 @@ def make_server(path):
     except FileNotFoundError:
         pass
 
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(path)
+    # Bind + listen on a temp sibling path, then atomically rename it onto the
+    # final path so `path` only ever appears once the listener is accepting. The
+    # pid suffix keeps the staging name unique; clear any same-pid leftover from a
+    # crash mid-rename so the bind below can't fail with EADDRINUSE.
+    staging = "{}.staging.{}".format(path, os.getpid())
     try:
-        os.chmod(path, SOCKET_MODE)
+        os.unlink(staging)
+    except OSError:
+        pass
+
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(staging)
+    try:
+        os.chmod(staging, SOCKET_MODE)
     except OSError as e:
-        log("could not chmod socket {}: {}".format(path, e))
+        log("could not chmod socket {}: {}".format(staging, e))
     srv.listen(LISTEN_BACKLOG)
+    # Atomic publish: the final path springs into existence already-listening.
+    os.rename(staging, path)
     return srv
 
 
