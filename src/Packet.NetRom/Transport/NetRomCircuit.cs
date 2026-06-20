@@ -37,6 +37,13 @@ public sealed class NetRomCircuit
     private readonly TimeProvider time;
     private readonly object gate = new();
 
+    // Outbound packets queued by Emit during a locked section, flushed to SendPacket
+    // AFTER the gate is released (see FlushSends). The sink reaches into the AX.25
+    // session, which takes its own lock; invoking it while we hold the gate deadlocks
+    // against the inbound pump, which holds the session lock and then takes the gate
+    // (OnPacket). Guarded by gate.
+    private readonly List<NetRomPacket> pendingSends = new();
+
     // Identity. "Local" index/id are the values WE chose and put in our outgoing
     // headers' index/id so the peer addresses replies to us; "remote" index/id are
     // the values the PEER chose (learned from its Connect / Connect-Ack) that we
@@ -157,6 +164,7 @@ public sealed class NetRomCircuit
             SendConnectRequest();
             ArmControlTimer();
         }
+        FlushSends();
     }
 
     // ─── Application send ───────────────────────────────────────────────
@@ -191,6 +199,7 @@ public sealed class NetRomCircuit
 
             PumpSendQueue();
         }
+        FlushSends();
     }
 
     // ─── Disconnect ─────────────────────────────────────────────────────
@@ -201,24 +210,33 @@ public sealed class NetRomCircuit
     /// </summary>
     public void Disconnect()
     {
-        lock (gate)
+        // try/finally so the queued Disconnect Request is flushed even though the
+        // switch returns from inside the lock (see FlushSends — deadlock fix).
+        try
         {
-            switch (state)
+            lock (gate)
             {
-                case NetRomCircuitState.Disconnected:
-                case NetRomCircuitState.Disconnecting:
-                    return;
-                case NetRomCircuitState.Connecting:
-                    // Never established — close locally; nothing to disconnect-ack.
-                    Close(NetRomCircuitCloseReason.Normal);
-                    return;
-                case NetRomCircuitState.Connected:
-                    state = NetRomCircuitState.Disconnecting;
-                    controlRetries = 0;
-                    SendDisconnectRequest();
-                    ArmControlTimer();
-                    return;
+                switch (state)
+                {
+                    case NetRomCircuitState.Disconnected:
+                    case NetRomCircuitState.Disconnecting:
+                        return;
+                    case NetRomCircuitState.Connecting:
+                        // Never established — close locally; nothing to disconnect-ack.
+                        Close(NetRomCircuitCloseReason.Normal);
+                        return;
+                    case NetRomCircuitState.Connected:
+                        state = NetRomCircuitState.Disconnecting;
+                        controlRetries = 0;
+                        SendDisconnectRequest();
+                        ArmControlTimer();
+                        return;
+                }
             }
+        }
+        finally
+        {
+            FlushSends();
         }
     }
 
@@ -261,6 +279,7 @@ public sealed class NetRomCircuit
                     break;
             }
         }
+        FlushSends();
     }
 
     /// <summary>
@@ -280,6 +299,7 @@ public sealed class NetRomCircuit
             SendConnectAcknowledge(refused: false);
             Connected?.Invoke();
         }
+        FlushSends();
     }
 
     /// <summary>
@@ -296,6 +316,7 @@ public sealed class NetRomCircuit
             SendConnectAcknowledge(refused: true);
             state = NetRomCircuitState.Disconnected;
         }
+        FlushSends();
     }
 
     // ─── Timer ──────────────────────────────────────────────────────────
@@ -308,50 +329,59 @@ public sealed class NetRomCircuit
     /// </summary>
     public void Tick()
     {
-        lock (gate)
+        // try/finally so queued retransmits are flushed even on the timeout-Close
+        // early returns from inside the lock (see FlushSends — deadlock fix).
+        try
         {
-            var now = time.GetUtcNow();
-
-            // Control (connect/disconnect) retransmit.
-            if (controlTimerArmed && now >= controlDeadline)
+            lock (gate)
             {
-                if (controlRetries >= options.MaxRetries)
-                {
-                    controlTimerArmed = false;
-                    Close(NetRomCircuitCloseReason.Timeout);
-                    return;
-                }
-                controlRetries++;
-                switch (state)
-                {
-                    case NetRomCircuitState.Connecting: SendConnectRequest(); break;
-                    case NetRomCircuitState.Disconnecting: SendDisconnectRequest(); break;
-                }
-                ArmControlTimer();
-            }
+                var now = time.GetUtcNow();
 
-            // Information retransmit — oldest unacked first.
-            if (state == NetRomCircuitState.Connected && unacked.Count > 0)
-            {
-                var oldest = unacked[0];
-                if (now >= oldest.SentAt + options.RetransmitTimeout)
+                // Control (connect/disconnect) retransmit.
+                if (controlTimerArmed && now >= controlDeadline)
                 {
-                    if (oldest.Retries >= options.MaxRetries)
+                    if (controlRetries >= options.MaxRetries)
                     {
+                        controlTimerArmed = false;
                         Close(NetRomCircuitCloseReason.Timeout);
                         return;
                     }
-                    // Retransmit every in-flight frame from the oldest (go-back style),
-                    // bumping their timers — NET/ROM has no cumulative-ack guarantee
-                    // the peer kept later frames after a gap.
-                    for (int i = 0; i < unacked.Count; i++)
+                    controlRetries++;
+                    switch (state)
                     {
-                        var u = unacked[i];
-                        SendInformation(u.Sequence, u.Payload, u.MoreFollows);
-                        unacked[i] = u with { SentAt = now, Retries = u.Retries + 1 };
+                        case NetRomCircuitState.Connecting: SendConnectRequest(); break;
+                        case NetRomCircuitState.Disconnecting: SendDisconnectRequest(); break;
+                    }
+                    ArmControlTimer();
+                }
+
+                // Information retransmit — oldest unacked first.
+                if (state == NetRomCircuitState.Connected && unacked.Count > 0)
+                {
+                    var oldest = unacked[0];
+                    if (now >= oldest.SentAt + options.RetransmitTimeout)
+                    {
+                        if (oldest.Retries >= options.MaxRetries)
+                        {
+                            Close(NetRomCircuitCloseReason.Timeout);
+                            return;
+                        }
+                        // Retransmit every in-flight frame from the oldest (go-back style),
+                        // bumping their timers — NET/ROM has no cumulative-ack guarantee
+                        // the peer kept later frames after a gap.
+                        for (int i = 0; i < unacked.Count; i++)
+                        {
+                            var u = unacked[i];
+                            SendInformation(u.Sequence, u.Payload, u.MoreFollows);
+                            unacked[i] = u with { SentAt = now, Retries = u.Retries + 1 };
+                        }
                     }
                 }
             }
+        }
+        finally
+        {
+            FlushSends();
         }
     }
 
@@ -373,6 +403,7 @@ public sealed class NetRomCircuit
             }
             MaybeReleaseChoke();
         }
+        FlushSends();
     }
 
     // ─── FSM handlers (caller holds the lock) ───────────────────────────
@@ -645,7 +676,39 @@ public sealed class NetRomCircuit
             TimeToLive = options.TimeToLive,
         };
         var packet = new NetRomPacket { Network = network, Transport = transport, Payload = payload };
-        SendPacket?.Invoke(packet);
+        // Queue, don't send: the caller holds the gate. FlushSends ships these to the
+        // sink once the gate is released (deadlock fix — see pendingSends).
+        pendingSends.Add(packet);
+    }
+
+    /// <summary>
+    /// Ship packets queued by <see cref="Emit"/> during a locked section to the
+    /// <see cref="SendPacket"/> sink, <b>outside</b> the gate. The sink reaches into the
+    /// AX.25 session (which locks); holding the circuit gate across that call deadlocks
+    /// against the inbound pump (session lock → gate). Every public entry point that may
+    /// emit calls this immediately after its <c>lock (gate)</c> block.
+    /// </summary>
+    private void FlushSends()
+    {
+        NetRomPacket[] toSend;
+        lock (gate)
+        {
+            if (pendingSends.Count == 0)
+            {
+                return;
+            }
+            toSend = pendingSends.ToArray();
+            pendingSends.Clear();
+        }
+        var sink = SendPacket;
+        if (sink is null)
+        {
+            return;
+        }
+        foreach (var p in toSend)
+        {
+            sink(p);
+        }
     }
 
     // ─── Window + ack mechanics (caller holds the lock) ─────────────────
