@@ -368,16 +368,34 @@ public sealed class Ax25Session
             // CurrentState is only advanced on success. (packet-net/packet.net#225)
             var timerState = scheduler.CaptureState();
             var vaBefore = Context.VA;
+            var stateBefore = CurrentState;
             try
             {
                 var tx = new TransitionContext(Context, scheduler, evt);
                 ApplyPreExecutionQuirks(match);
-                SdlLoopExecutor.Execute(match.Actions, match.Loops, dispatcher, guards, tx);
+                // Advance CurrentState BEFORE running the actions, not after. The action
+                // chain raises the upward DL signals (DL-CONNECT-confirm, DL-DISCONNECT-…)
+                // that callers block on — e.g. Ax25Listener.ConnectAsync resolves on
+                // DataLinkConnectConfirm. With the advance ordered after the actions, a
+                // caller resuming from ConnectAsync (on another thread) could read
+                // CurrentState a hair before the dispatch thread settled it and see the
+                // pre-transition state ("AwaitingV22Connection" instead of "Connected") —
+                // a real race that flaked the interop connect tests under CPU contention,
+                // and a latent one behind every "await connect-confirm; assert Connected"
+                // assertion. Settling the state first makes the signal and the observable
+                // state consistent: when the confirm fires, CurrentState is already the
+                // next state. Nothing in the action/guard path reads CurrentState (guards
+                // matched above off the pre-transition state; SDL verbs work on Context),
+                // so this only changes what synchronous signal observers see — correctly.
                 CurrentState = ResolveNextState(match);
+                SdlLoopExecutor.Execute(match.Actions, match.Loops, dispatcher, guards, tx);
             }
             catch
             {
+                // #225: a half-applied transition must not advance CurrentState — restore
+                // the pre-transition state (and timers) so the link watchdog stays live.
                 scheduler.RestoreState(timerState);
+                CurrentState = stateBefore;
                 throw;
             }
 

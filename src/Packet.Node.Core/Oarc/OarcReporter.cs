@@ -398,6 +398,14 @@ public sealed partial class OarcReporter : BackgroundService
         catch (OperationCanceledException) { /* shutdown */ }
     }
 
+    // Test seam (InternalsVisibleTo Packet.Node.Tests): raised the instant a retry's
+    // backoff timer has been ARMED on the clock (Task.Delay registers synchronously) and
+    // the send loop is about to await it. Lets a FakeTimeProvider test Advance the clock
+    // deterministically instead of racing the background loop's park (the old "hammer
+    // Advance in a loop" helper could miss the timer under CI contention). Null in
+    // production — a no-op.
+    internal Action? RetryBackoffArmed;
+
     private async Task SendWithRetryAsync(OarcEvent ev, CancellationToken ct)
     {
         var baseUrl = config.Current.Oarc.BaseUrl;
@@ -413,7 +421,12 @@ public sealed partial class OarcReporter : BackgroundService
                 LogGaveUp(ev.EndpointPath, attempt + 1);
                 return;
             }
-            await Task.Delay(Backoff[attempt], clock, ct).ConfigureAwait(false);
+            // Arm the timer (registered on `clock` synchronously by Task.Delay), THEN signal,
+            // THEN await — so a test observing the signal knows the timer is live and an
+            // Advance past it will fire deterministically.
+            var backoff = Task.Delay(Backoff[attempt], clock, ct);
+            RetryBackoffArmed?.Invoke();
+            await backoff.ConfigureAwait(false);
         }
     }
 

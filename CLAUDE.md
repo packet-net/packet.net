@@ -46,7 +46,7 @@ The outbound construction path (frame factories, encoder construction-time `Call
 
 ### Releasing is a tag-driven cascade — follow the doc
 
-Shipping a change to the world is more than merging the PR: it's a **release cascade** (tag `lib-v*`/`node-v*` on green main → NuGet + `.deb`s → downstream `axcall`/`packet-term-tui` releases → TS leg if `ax25-ts` moved → plan §17 ledger). The full ordered procedure — preconditions, what each tag publishes, the downstream fan-out, the known interop flakes — lives in **[`docs/releasing.md`](docs/releasing.md)**. Read it before tagging; don't rediscover it.
+Shipping a change to the world is more than merging the PR: it's a **release cascade** (tag `lib-v*`/`node-v*` on green main → NuGet + `.deb`s → downstream `axcall`/`packet-term-tui` releases → TS leg if `ax25-ts` moved → plan §17 ledger). The full ordered procedure — preconditions, what each tag publishes, the downstream fan-out, and the green-CI gate (investigate reds, don't reflexively re-run — they keep turning out to be real bugs) — lives in **[`docs/releasing.md`](docs/releasing.md)**. Read it before tagging; don't rediscover it.
 
 ### SDL state-machine library is a NuGet dependency
 

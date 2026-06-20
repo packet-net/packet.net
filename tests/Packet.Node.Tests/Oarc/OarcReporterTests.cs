@@ -292,8 +292,17 @@ public sealed class OarcReporterTests
             ? new OarcIngestResult(OarcIngestOutcome.TransportError, 503, "boom")
             : new OarcIngestResult(OarcIngestOutcome.Accepted, 202, null);
 
+        // Gate the clock advance on the reporter having ARMED its backoff timer, so this is
+        // deterministic rather than racing the background send loop's park (the old
+        // AdvanceUntil hammered Advance in a loop and could miss the timer under CI
+        // contention — it flaked exactly that way: "condition not met within 30s").
+        var backoffArmed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Reporter.RetryBackoffArmed = () => backoffArmed.TrySetResult();
+
         await Wait.ForAsync(() => h.Client.CountOf<OarcNodeUpEvent>() >= 1, "first (failing) attempt");
-        await AdvanceUntil(h.Clock, () => h.Client.CountOf<OarcNodeUpEvent>() >= 2, "the retry after backoff");
+        await backoffArmed.Task.WaitAsync(TimeSpan.FromSeconds(30));   // retry backoff timer is live
+        h.Clock.Advance(TimeSpan.FromSeconds(5));                       // > the first backoff step → fires it
+        await Wait.ForAsync(() => h.Client.CountOf<OarcNodeUpEvent>() >= 2, "the retry after backoff");
     }
 
     [Fact]
@@ -311,10 +320,11 @@ public sealed class OarcReporterTests
     private static Ax25FrameEventArgs Rx(Ax25Frame frame) => new() { Frame = frame, Direction = FrameDirection.Received, Timestamp = T0 };
     private static Ax25FrameEventArgs Tx(Ax25Frame frame) => new() { Frame = frame, Direction = FrameDirection.Transmitted, Timestamp = T0 };
 
-    /// <summary>Repeatedly advance the fake clock (with real-time yields between steps) until
-    /// <paramref name="condition"/> holds. Robust against the "advanced before the loop parked at its
-    /// Task.Delay" race that a single advance suffers under CPU load — each step gives the autonomous
-    /// reporter loop another chance to park and then fire on the next advance.</summary>
+    /// <summary>Repeatedly advance the fake clock until <paramref name="condition"/> holds. Used for
+    /// assertions driven by the reporter's <em>periodic poll</em> timer, which continuously re-arms —
+    /// so hammering Advance reliably catches it. (The one-shot retry-backoff timer is NOT robust this
+    /// way; <see cref="A_transport_error_is_retried_then_accepted"/> gates on
+    /// <c>RetryBackoffArmed</c> and advances deterministically instead.)</summary>
     private static async Task AdvanceUntil(FakeTimeProvider clock, Func<bool> condition, string because)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);

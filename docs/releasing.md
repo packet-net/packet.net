@@ -18,10 +18,11 @@ Tag only a commit whose **`ci` and `interop`** workflows both went green **on th
 gh run list --repo packet-net/packet.net --branch main --limit 6
 ```
 
-Both `ci` and `interop` must show `success` for the HEAD merge commit. The interop job stands up a docker stack on the self-hosted runner and has two known flake classes — re-run, don't investigate, when they bite:
+Both `ci` and `interop` must show `success` for the HEAD merge commit. The interop job stands up a docker stack on the self-hosted runner.
 
-- **Runner contention** — `AxudpNodeToNodeIntegrationTests`, `Ax25ConsoleIntegrationTests` (Bye-timeout), or a bare `Internal CLR error (0x80131506)` / exit 134 during `dotnet build`. *Different* tests failing on *different* runs = contention. Same test failing repeatedly = a real bug, investigate.
-- Fix flakes with `gh run rerun <run-id> --failed`.
+**Investigate test failures — don't reflexively re-run.** This used to list "known flake classes" to wave through, but every one we actually chased turned out to be a *real bug* hiding behind runner contention: a `NetRomCircuit` teardown deadlock, an `Ax25Session` connect-confirm/`CurrentState` ordering race, and several test-side timing/ordering races (plan §17, 2026-06-19/20). The playbook that found them — reproduce under CPU load (`nproc-1` busy loops), and for a hang add `--blame-hang` + `dotnet-dump` `syncblk`/`clrstack` — is the default response to a red, not `rerun`. A test failing, *especially the same test twice*, is a bug to fix.
+
+The one genuinely re-runnable, non-code blip is a bare `Internal CLR error (0x80131506)` / exit 134 during `dotnet build` (a runtime/host hiccup). For that — and only that — `gh run rerun <run-id> --failed`.
 
 ## Step 1 — tag the libraries → NuGet (`publish-libs.yml`)
 
