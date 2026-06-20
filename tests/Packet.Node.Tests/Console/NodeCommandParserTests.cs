@@ -274,7 +274,10 @@ public class NodeCommandParserTests
             // (mirrors the parser — bare "C" stays CONNECT, never CAP).
             (firstTokenUpper.Length >= 2 &&
                 (IsPrefixOf(firstTokenUpper, "CAPABILITIES") || firstTokenUpper == "CAPS")) ||
-            IsPrefixOf(firstTokenUpper, "KICK") || IsPrefixOf(firstTokenUpper, "PORT") ||
+            // MH — the MHeard log verb (#454). The parser accepts a ≥2-char prefix of MHEARD
+            // (so MH/MHE/…/MHEARD all parse; bare "M" stays Unknown — see the parser).
+            (firstTokenUpper.Length >= 2 && IsPrefixOf(firstTokenUpper, "MHEARD")) ||
+            IsPrefixOf(firstTokenUpper, "KICK") || IsPrefixOf(firstTokenUpper, "PORTS") ||
             IsPrefixOf(firstTokenUpper, "RELOAD");
 
         var cmd = NodeCommandParser.Parse(text);
