@@ -102,6 +102,18 @@ public sealed class TrafficLogServiceTests : IDisposable
         await service.StartAsync(CancellationToken.None);
         try
         {
+            // TrafficLogService is a BackgroundService whose ExecuteAsync does
+            // `await Task.Yield()` before it calls telemetry.Subscribe(...), so the
+            // base StartAsync returns to us at that yield — BEFORE the subscription is
+            // live. NodeTelemetry has no backlog, so a frame observed in that window is
+            // delivered to no subscriber and never reaches the store (the 30s "both
+            // traced frames reach the store" timeout — surfaced under CI CPU
+            // contention, which delays the post-yield continuation). Gate the Observe
+            // calls on the service actually being subscribed so the sequence is
+            // deterministic.
+            await Wait.ForAsync(() => telemetry.SubscriberCount > 0,
+                "the traffic-log writer has subscribed to telemetry");
+
             var at = new DateTimeOffset(2026, 6, 11, 12, 0, 0, TimeSpan.Zero);
             telemetry.Observe("vhf", Rx(Ax25Frame.I(Local, Peer, nr: 0, ns: 0, "ab"u8), at));
             telemetry.Observe("vhf", Tx(Ax25Frame.Rr(Peer, Local, nr: 1, isCommand: false), at.AddSeconds(1)));
