@@ -1153,6 +1153,10 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-06-19 — Flakiness soak follow-up: TrafficLogService subscription-timing race (found by whole-suite repeat)
+
+Ran the whole standard suite on repeat under CPU contention to flush out anything the targeted fixes missed; it broke on iteration 2 in `TrafficLogServiceTests.Frames_traced_through_telemetry_are_persisted` — `TimeoutException: condition not met within 30s: both traced frames reach the store`. Root cause: a subscription-timing race in the **test**. `TrafficLogService` is a `BackgroundService` whose `ExecuteAsync` does `await Task.Yield()` *before* `telemetry.Subscribe(...)`, so the base `StartAsync` returns to the test at that yield — before the subscription is live. `NodeTelemetry` keeps no backlog for the SSE/Subscribe channel, so the two `telemetry.Observe(...)` calls the test fires right after `StartAsync` could be delivered to **no subscriber** and never reach the store → the 30s wait. CI CPU contention (and the soak's 2-core hog) delays the post-yield continuation, opening the window. Fix is test-only: gate the `Observe` calls on `telemetry.SubscriberCount > 0` (already a public test seam) so the observe-then-persist sequence is deterministic. The production startup gap is sub-millisecond and frames rarely flow exactly then, so the service itself is left unchanged. 80/80 under 2-core stress, green. See `tests/Packet.Node.Tests/Traffic/TrafficLogServiceTests.cs`.
+
 ### 2026-06-19 — CI test-flakiness pass: T2 coalesced-ack race + LOBBY connect race (reproduced off the self-hosted runners)
 
 Mined ~90 recent `ci.yml`/`interop.yml`/`fuzz.yml` runs for intermittent failures and reproduced the genuine ones in an **ephemeral cloud sandbox** (a fresh .NET 10 SDK, deliberately NOT the self-hosted runner box) — running each suspect test individually and repeatedly, several under all-core CPU-hog stress, to prove or disprove robustness before touching anything. Findings:
