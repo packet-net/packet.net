@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
+using Packet.Ax25.Transport;
 
 namespace Packet.Kiss;
 
@@ -29,7 +30,7 @@ namespace Packet.Kiss;
 /// behaviour so the live transport stack behaves identically across modems.
 /// </para>
 /// </remarks>
-public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
+public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTransport, ICsmaChannelParams, IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Default ACKMODE timeout when the caller doesn't supply one. Matches
@@ -289,15 +290,52 @@ public sealed class KissTcpClient : IKissModem, IDisposable, IAsyncDisposable
 
     /// <summary>
     /// <see cref="IKissModem"/> shape: write a KISS-Data frame on
-    /// port 0. Delegates to <see cref="SendAsync"/>.
+    /// port 0. Delegates to <see cref="SendAsync(byte,KissCommand,ReadOnlyMemory{byte},CancellationToken)"/>.
     /// </summary>
     public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
         => SendAsync(port: 0, KissCommand.Data, ax25Bytes, cancellationToken);
 
     /// <summary>
+    /// <see cref="IAx25Transport"/>: send one AX.25 frame body (KISS Data, cmd 0x00),
+    /// fire-and-forget. Same path as <see cref="SendFrameAsync"/>.
+    /// </summary>
+    public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
+        => SendFrameAsync(ax25, cancellationToken);
+
+    /// <summary>
+    /// <see cref="IAx25Transport"/>: async stream of inbound AX.25 frames, pre-filtered to KISS
+    /// Data (non-Data KISS commands are dropped here). Explicit interface implementation because
+    /// the KISS-shaped <see cref="ReceiveAsync(CancellationToken)"/> (returning a list of
+    /// <see cref="KissFrame"/>) has the same signature but a different return type.
+    /// </summary>
+    async IAsyncEnumerable<Ax25InboundFrame> IAx25Transport.ReceiveAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var kiss in ReadFramesAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (kiss.Command != KissCommand.Data) continue;
+            yield return new Ax25InboundFrame(kiss.Payload, kiss.Port, time.GetUtcNow());
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ITxCompletionTransport"/>: send an AX.25 frame in ACKMODE and await its
+    /// TX-completion. Maps the KISS ACKMODE receipt onto the neutral <see cref="TxCompletion"/>
+    /// (the 16-bit sequence tag stays an internal wire artefact). NotSupported / Timeout
+    /// propagate unchanged.
+    /// </summary>
+    public async Task<TxCompletion> SendAwaitingCompletionAsync(
+        ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        var receipt = await SendFrameWithAckAsync(ax25, timeout, sequenceTag: null, cancellationToken)
+            .ConfigureAwait(false);
+        return new TxCompletion(receipt.Queued, receipt.Acknowledged);
+    }
+
+    /// <summary>
     /// <see cref="IKissModem"/> shape: async stream of every inbound
     /// KISS frame until the socket closes or the token fires. Loops
-    /// internally over <see cref="ReceiveAsync"/>.
+    /// internally over <see cref="ReceiveAsync(CancellationToken)"/>.
     /// </summary>
     public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)

@@ -1,18 +1,21 @@
+using Packet.Ax25.Transport;
 using Packet.Kiss.Adaptive;
 
 namespace Packet.Kiss;
 
 /// <summary>
 /// Glues an <see cref="IAdaptiveParameterEstimator"/> to any
-/// <see cref="IKissModem"/>. Before each TX it asks the estimator what
-/// parameters to use for the destination peer, applies them via KISS
-/// parameter commands, sends the frame using ACKMODE so the host gets
-/// a real TX-completion signal, then feeds the outcome back into the
+/// <see cref="IAx25Transport"/> that can both confirm TX-completion
+/// (<see cref="ITxCompletionTransport"/>) and set the CSMA channel-access
+/// params (<see cref="ICsmaChannelParams"/>). Before each TX it asks the
+/// estimator what parameters to use for the destination peer, applies them via
+/// the channel-param setters, sends the frame awaiting TX-completion so the host
+/// gets a real completion signal, then feeds the outcome back into the
 /// estimator.
 /// </summary>
 /// <remarks>
 /// <para>
-/// KISS parameters (TXDELAY etc.) are <em>per-modem</em>, not per-peer
+/// CSMA channel params (TXDELAY etc.) are <em>per-modem</em>, not per-peer
 /// — the TNC applies whatever value was last configured to every
 /// subsequent transmission. To realise per-peer adaptive parameters on
 /// a single modem, this transport re-applies the per-peer recommendation
@@ -33,7 +36,8 @@ namespace Packet.Kiss;
 /// </remarks>
 public sealed class AdaptiveKissTransport : IAsyncDisposable, IDisposable
 {
-    private readonly IKissModem modem;
+    private readonly ITxCompletionTransport modem;
+    private readonly ICsmaChannelParams channelParams;
     private readonly IAdaptiveParameterEstimator estimator;
     private readonly SemaphoreSlim sendLock = new(1, 1);
     private readonly TimeProvider time;
@@ -41,30 +45,40 @@ public sealed class AdaptiveKissTransport : IAsyncDisposable, IDisposable
     private KissParameters lastApplied;
     private int disposed;
 
-    /// <summary>The default ACKMODE timeout if the caller doesn't supply one.</summary>
+    /// <summary>The default TX-completion timeout if the caller doesn't supply one.</summary>
     public TimeSpan DefaultAckTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <param name="modem">The TX-completion-capable transport to drive (a KISS TNC with
+    /// ACKMODE, etc.). Must also implement <see cref="ICsmaChannelParams"/> so the per-peer
+    /// channel-access params can be applied before each TX.</param>
+    /// <param name="estimator">The per-peer parameter estimator.</param>
+    /// <param name="time">Clock for observation timestamps (test seam).</param>
+    /// <exception cref="ArgumentException"><paramref name="modem"/> does not also implement
+    /// <see cref="ICsmaChannelParams"/>.</exception>
     public AdaptiveKissTransport(
-        IKissModem modem,
+        ITxCompletionTransport modem,
         IAdaptiveParameterEstimator estimator,
         TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(modem);
         ArgumentNullException.ThrowIfNull(estimator);
         this.modem = modem;
+        channelParams = modem as ICsmaChannelParams
+            ?? throw new ArgumentException(
+                "the adaptive transport needs a transport that also exposes ICsmaChannelParams.", nameof(modem));
         this.estimator = estimator;
         this.time = time ?? TimeProvider.System;
         lastApplied = new KissParameters(null, null, null, null);
     }
 
     /// <summary>
-    /// Send <paramref name="ax25Bytes"/> to the given peer over ACKMODE.
+    /// Send <paramref name="ax25Bytes"/> to the given peer, awaiting TX-completion.
     /// Applies the estimator's per-peer parameter recommendation first.
     /// </summary>
     /// <param name="peer">Peer identifier (typically a callsign in canonical text form).</param>
     /// <param name="ax25Bytes">AX.25 frame body (no FCS, no KISS framing).</param>
-    /// <param name="ackTimeout">Override the default ACKMODE timeout.</param>
-    public async Task<AckModeReceipt> SendAsync(
+    /// <param name="ackTimeout">Override the default TX-completion timeout.</param>
+    public async Task<TxCompletion> SendAsync(
         string peer,
         ReadOnlyMemory<byte> ax25Bytes,
         TimeSpan? ackTimeout = null,
@@ -78,13 +92,12 @@ public sealed class AdaptiveKissTransport : IAsyncDisposable, IDisposable
             var recommendation = estimator.Recommend(peer);
             await ApplyParameterDiffAsync(recommendation, cancellationToken).ConfigureAwait(false);
 
-            AckModeReceipt receipt;
+            TxCompletion receipt;
             try
             {
-                receipt = await modem.SendFrameWithAckAsync(
+                receipt = await modem.SendAwaitingCompletionAsync(
                     ax25Bytes,
                     timeout: ackTimeout ?? DefaultAckTimeout,
-                    sequenceTag: null,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             catch (TimeoutException)
@@ -158,22 +171,22 @@ public sealed class AdaptiveKissTransport : IAsyncDisposable, IDisposable
     {
         if (recommendation.TxDelayTenMsUnits is byte tx && lastApplied.TxDelayTenMsUnits != tx)
         {
-            await modem.SetTxDelayAsync(tx, cancellationToken).ConfigureAwait(false);
+            await channelParams.SetTxDelayAsync(tx, cancellationToken).ConfigureAwait(false);
             lastApplied = lastApplied with { TxDelayTenMsUnits = tx };
         }
         if (recommendation.Persistence is byte p && lastApplied.Persistence != p)
         {
-            await modem.SetPersistenceAsync(p, cancellationToken).ConfigureAwait(false);
+            await channelParams.SetPersistenceAsync(p, cancellationToken).ConfigureAwait(false);
             lastApplied = lastApplied with { Persistence = p };
         }
         if (recommendation.SlotTimeTenMsUnits is byte s && lastApplied.SlotTimeTenMsUnits != s)
         {
-            await modem.SetSlotTimeAsync(s, cancellationToken).ConfigureAwait(false);
+            await channelParams.SetSlotTimeAsync(s, cancellationToken).ConfigureAwait(false);
             lastApplied = lastApplied with { SlotTimeTenMsUnits = s };
         }
         if (recommendation.TxTailTenMsUnits is byte tt && lastApplied.TxTailTenMsUnits != tt)
         {
-            await modem.SetTxTailAsync(tt, cancellationToken).ConfigureAwait(false);
+            await channelParams.SetTxTailAsync(tt, cancellationToken).ConfigureAwait(false);
             lastApplied = lastApplied with { TxTailTenMsUnits = tt };
         }
     }

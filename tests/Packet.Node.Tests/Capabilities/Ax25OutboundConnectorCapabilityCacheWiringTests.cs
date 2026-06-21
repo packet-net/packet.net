@@ -1,7 +1,7 @@
 using Packet.Ax25;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Console;
 using Packet.Node.Tests.Support;
@@ -27,7 +27,7 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
     private const byte XidBase = 0xAF;
     private static byte UBase(Ax25Frame f) => (byte)(f.Control & 0xEF);
 
-    private static Ax25Listener CallerListener(IKissModem modem) => new(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
+    private static Ax25Listener CallerListener(IAx25Transport transport) => new(transport, new Ax25ListenerOptions
     {
         MyCall = LocalCall,
         N2 = 1,

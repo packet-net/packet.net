@@ -4,7 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Tests.Transports;
@@ -12,11 +12,11 @@ namespace Packet.Node.Tests.Transports;
 /// <summary>
 /// <see cref="PacingKissModem"/> — the ACKMODE host-side pacing decorator. A port
 /// with <c>kiss.ackMode</c> on must serialise its outbound frames onto the
-/// half-duplex channel: each frame is sent in ACKMODE and the next is held until the
-/// prior frame's TX-completion echo arrives (or a short timeout). The pacing must
+/// half-duplex channel: each frame is sent awaiting TX-completion and the next is held
+/// until the prior frame's completion arrives (or a short timeout). The pacing must
 /// never block the caller (the listener sink is fire-and-forget), one frame must
 /// never wedge the pump, and the pass-through surface (reads + KISS-param setters)
-/// must reach the inner modem unchanged.
+/// must reach the inner transport unchanged.
 /// </summary>
 public sealed class PacingKissModemTests
 {
@@ -26,14 +26,14 @@ public sealed class PacingKissModemTests
         await using var inner = new GatedModem();
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
 
-        // Enqueue three frames. SendFrameAsync is fire-and-forget — it returns at once.
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("A"));
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("B"));
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("C"));
+        // Enqueue three frames. SendAsync is fire-and-forget — it returns at once.
+        await modem.SendAsync(Encoding.ASCII.GetBytes("A"));
+        await modem.SendAsync(Encoding.ASCII.GetBytes("B"));
+        await modem.SendAsync(Encoding.ASCII.GetBytes("C"));
 
-        // Frame A enters inner.SendFrameWithAckAsync and BLOCKS there (not yet acked).
+        // Frame A enters inner.SendAwaitingCompletionAsync and BLOCKS there (not yet acked).
         (await inner.WaitForInFlightAsync("A")).Should().BeTrue();
-        // B and C must NOT have started — the pump is awaiting A's echo.
+        // B and C must NOT have started — the pump is awaiting A's completion.
         inner.Started.Should().Equal("A");
 
         // Ack A → the pump releases B.
@@ -57,18 +57,18 @@ public sealed class PacingKissModemTests
     public async Task A_timeout_on_one_frame_does_not_wedge_the_pump()
     {
         await using var inner = new GatedModem();
-        // A tiny pacing window: the first frame's ack is never signalled, so it times out;
-        // the pump must still go on to send the next frame.
+        // A tiny pacing window: the first frame's completion is never signalled, so it times
+        // out; the pump must still go on to send the next frame.
         await using var modem = new PacingKissModem(inner, TimeSpan.FromMilliseconds(50), NullLogger.Instance);
 
-        // The first frame throws TimeoutException from inner (simulating the echo never
+        // The first frame throws TimeoutException from inner (simulating the completion never
         // arriving within the pacing window); the second completes normally.
         inner.ThrowTimeoutOnce = true;
 
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("X"));   // will time out
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("Y"));   // must still be sent
+        await modem.SendAsync(Encoding.ASCII.GetBytes("X"));   // will time out
+        await modem.SendAsync(Encoding.ASCII.GetBytes("Y"));   // must still be sent
 
-        // Y must reach the inner modem despite X timing out — the pump kept going.
+        // Y must reach the inner transport despite X timing out — the pump kept going.
         (await inner.WaitForInFlightAsync("Y")).Should().BeTrue();
         inner.SignalAck();
         (await inner.WaitForCompletedCountAsync(1)).Should().BeTrue();
@@ -80,28 +80,28 @@ public sealed class PacingKissModemTests
     public async Task Explicit_ack_send_is_routed_through_the_queue_in_arrival_order()
     {
         // The TX-complete→T1 seam depends on this: an explicit
-        // SendFrameWithAckAsync must NOT bypass the pacing queue (which would
+        // SendAwaitingCompletionAsync must NOT bypass the pacing queue (which would
         // reorder it against the fire-and-forget frames around it) — it takes
-        // its place in line and resolves with ITS frame's receipt.
+        // its place in line and resolves with ITS frame's completion.
         await using var inner = new GatedModem();
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
 
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("A"));        // fire-and-forget
-        var bTask = modem.SendFrameWithAckAsync(Encoding.ASCII.GetBytes("B"));  // explicit receipt
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("C"));        // fire-and-forget
+        await modem.SendAsync(Encoding.ASCII.GetBytes("A"));        // fire-and-forget
+        var bTask = modem.SendAwaitingCompletionAsync(Encoding.ASCII.GetBytes("B"));  // explicit completion
+        await modem.SendAsync(Encoding.ASCII.GetBytes("C"));        // fire-and-forget
 
         // A is in flight; B must be queued BEHIND it, not racing it via a bypass.
         (await inner.WaitForInFlightAsync("A")).Should().BeTrue();
         inner.Started.Should().Equal("A");
-        bTask.IsCompleted.Should().BeFalse("B's receipt can only resolve after B's own echo");
+        bTask.IsCompleted.Should().BeFalse("B's completion can only resolve after B's own echo");
 
-        inner.SignalAck();                                                // A's echo
+        inner.SignalAck();                                                // A's completion
         (await inner.WaitForInFlightAsync("B")).Should().BeTrue();
         inner.Started.Should().Equal("A", "B");
 
-        inner.SignalAck();                                                // B's echo
+        inner.SignalAck();                                                // B's completion
         var receipt = await bTask.WaitAsync(TimeSpan.FromSeconds(5));
-        receipt.Should().NotBeNull();
+        receipt.Completed.Should().BeOnOrAfter(receipt.Queued);
 
         (await inner.WaitForInFlightAsync("C")).Should().BeTrue();
         inner.Started.Should().Equal("A", "B", "C");
@@ -117,8 +117,8 @@ public sealed class PacingKissModemTests
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
 
         inner.ThrowTimeoutOnce = true;
-        var xTask = modem.SendFrameWithAckAsync(Encoding.ASCII.GetBytes("X"));  // echo never comes
-        await modem.SendFrameAsync(Encoding.ASCII.GetBytes("Y"));
+        var xTask = modem.SendAwaitingCompletionAsync(Encoding.ASCII.GetBytes("X"));  // completion never comes
+        await modem.SendAsync(Encoding.ASCII.GetBytes("Y"));
 
         // The caller sees ITS frame's timeout (it can decide what that means —
         // the T1 wiring just leaves T1 alone); the pump moves on to Y regardless.
@@ -136,17 +136,17 @@ public sealed class PacingKissModemTests
         await using var inner = new GatedModem(Frame("hello"));
         await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(5), NullLogger.Instance);
 
-        // ReadFramesAsync must surface the inner modem's frames verbatim.
+        // ReceiveAsync must surface the inner transport's frames verbatim.
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var got = new List<string>();
-        await foreach (var f in modem.ReadFramesAsync(cts.Token).ConfigureAwait(false))
+        await foreach (var f in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
         {
-            got.Add(Encoding.ASCII.GetString(f.Payload));
+            got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
             break;
         }
         got.Should().Equal("hello");
 
-        // The four KISS setters must reach the inner modem with their values intact.
+        // The four KISS setters must reach the inner transport with their values intact.
         await modem.SetTxDelayAsync(30);
         await modem.SetPersistenceAsync(63);
         await modem.SetSlotTimeAsync(10);
@@ -168,23 +168,23 @@ public sealed class PacingKissModemTests
         inner.Disposed.Should().BeTrue();
     }
 
-    private static KissFrame Frame(string s) => new(0, KissCommand.Data, Encoding.ASCII.GetBytes(s));
+    private static Ax25InboundFrame Frame(string s) => new(Encoding.ASCII.GetBytes(s), 0, DateTimeOffset.UtcNow);
 
     /// <summary>
-    /// An inner modem whose <see cref="SendFrameWithAckAsync"/> blocks until the test
-    /// explicitly signals an ack — so a test can observe exactly when each frame enters
-    /// (and leaves) the send, proving the pump serialises. Records the order frames start
-    /// and complete.
+    /// An inner transport whose <see cref="SendAwaitingCompletionAsync"/> blocks until the
+    /// test explicitly signals a completion — so a test can observe exactly when each frame
+    /// enters (and leaves) the send, proving the pump serialises. Records the order frames
+    /// start and complete.
     /// </summary>
-    private sealed class GatedModem : IKissModem, IAsyncDisposable
+    private sealed class GatedModem : ITxCompletionTransport, ICsmaChannelParams
     {
-        private readonly KissFrame[] frames;
+        private readonly Ax25InboundFrame[] frames;
         private readonly SemaphoreSlim ackGate = new(0);
         private readonly object gate = new();
         private readonly List<string> started = new();
         private readonly List<string> completed = new();
 
-        public GatedModem(params KissFrame[] frames) => this.frames = frames;
+        public GatedModem(params Ax25InboundFrame[] frames) => this.frames = frames;
 
         public bool ThrowTimeoutOnce { get; set; }
         public bool Disposed { get; private set; }
@@ -196,7 +196,7 @@ public sealed class PacingKissModemTests
         public IReadOnlyList<string> Started { get { lock (gate) return started.ToArray(); } }
         public IReadOnlyList<string> Completed { get { lock (gate) return completed.ToArray(); } }
 
-        /// <summary>Release one blocked send (one frame's TX-completion echo).</summary>
+        /// <summary>Release one blocked send (one frame's TX-completion).</summary>
         public void SignalAck() => ackGate.Release();
 
         /// <summary>Spin (bounded) until a frame with the given payload has entered the send.</summary>
@@ -222,28 +222,28 @@ public sealed class PacingKissModemTests
             return false;
         }
 
-        public async Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
+        public async Task<TxCompletion> SendAwaitingCompletionAsync(
+            ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
         {
-            var payload = Encoding.ASCII.GetString(ax25Bytes.Span);
+            var payload = Encoding.ASCII.GetString(ax25.Span);
             lock (gate) started.Add(payload);
 
             if (ThrowTimeoutOnce)
             {
                 ThrowTimeoutOnce = false;
-                // Simulate the echo never arriving within the pacing window.
+                // Simulate the completion never arriving within the pacing window.
                 throw new TimeoutException("ackmode echo timed out");
             }
 
-            // Block until the test signals this frame's ack — this is what lets the test
-            // prove the pump holds the next frame.
+            // Block until the test signals this frame's completion — this is what lets the
+            // test prove the pump holds the next frame.
             await ackGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             lock (gate) completed.Add(payload);
             var now = DateTimeOffset.UtcNow;
-            return new AckModeReceipt(sequenceTag ?? 0, now, now);
+            return new TxCompletion(now, now);
         }
 
-        public async IAsyncEnumerable<KissFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct = default)
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
             foreach (var f in frames)
             {
@@ -255,8 +255,8 @@ public sealed class PacingKissModemTests
         }
 
         // The fire-and-forget send is unused by the decorator's pacing path (it routes
-        // through SendFrameWithAckAsync), but must exist on the interface.
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        // through SendAwaitingCompletionAsync), but must exist on the interface.
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task SetTxDelayAsync(byte v, CancellationToken cancellationToken = default) { TxDelay = v; return Task.CompletedTask; }

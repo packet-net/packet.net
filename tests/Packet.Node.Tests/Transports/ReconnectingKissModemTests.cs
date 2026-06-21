@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Tests.Transports;
@@ -13,12 +13,12 @@ namespace Packet.Node.Tests.Transports;
 /// <summary>
 /// <see cref="ReconnectingKissModem"/> — the #50 fix. A kiss-tcp port must survive
 /// the far end bouncing: when the inbound stream ends (a drop), the wrapper
-/// re-dials a fresh inner modem and resumes, replaying the configured KISS
+/// re-dials a fresh inner transport and resumes, replaying the configured KISS
 /// parameters; sends while the link is down are dropped, not thrown.
 /// </summary>
 public sealed class ReconnectingKissModemTests
 {
-    private static KissFrame Data(string s) => new(0, KissCommand.Data, Encoding.ASCII.GetBytes(s));
+    private static Ax25InboundFrame Data(string s) => new(Encoding.ASCII.GetBytes(s), 0, DateTimeOffset.UtcNow);
 
     [Fact]
     public async Task Reconnects_after_a_drop_and_keeps_delivering_frames()
@@ -26,19 +26,19 @@ public sealed class ReconnectingKissModemTests
         var first = new FakeModem(endAfterFrames: true, Data("A"));     // yields A, then the stream ends = a drop
         var second = new FakeModem(endAfterFrames: false, Data("B"));   // yields B, then holds the link open
         var reconnects = 0;
-        Func<CancellationToken, Task<IKissModem>> reconnect = _ =>
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = _ =>
         {
             Interlocked.Increment(ref reconnects);
-            return Task.FromResult<IKissModem>(second);
+            return Task.FromResult<IAx25Transport>(second);
         };
         await using var modem = new ReconnectingKissModem(
             first, reconnect, "test", NullLogger.Instance, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var got = new List<string>();
-        await foreach (var f in modem.ReadFramesAsync(cts.Token).ConfigureAwait(false))
+        await foreach (var f in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
         {
-            got.Add(Encoding.ASCII.GetString(f.Payload));
+            got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
             if (got.Count == 2) break;   // A from the first modem, B from the reconnected one
         }
 
@@ -51,7 +51,7 @@ public sealed class ReconnectingKissModemTests
     {
         var first = new FakeModem(endAfterFrames: true);                // no frames → drops immediately
         var second = new FakeModem(endAfterFrames: false, Data("X"));
-        Func<CancellationToken, Task<IKissModem>> reconnect = _ => Task.FromResult<IKissModem>(second);
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = _ => Task.FromResult<IAx25Transport>(second);
         await using var modem = new ReconnectingKissModem(
             first, reconnect, "test", NullLogger.Instance, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
 
@@ -59,7 +59,7 @@ public sealed class ReconnectingKissModemTests
         await modem.SetTxTailAsync(5);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await foreach (var _ in modem.ReadFramesAsync(cts.Token).ConfigureAwait(false))
+        await foreach (var _ in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
         {
             break;   // first frame off the reconnected modem
         }
@@ -77,14 +77,14 @@ public sealed class ReconnectingKissModemTests
         // defaults is brought back to the deterministic 0 the operator's config implies.
         var first = new FakeModem(endAfterFrames: true);                // no frames → drops immediately
         var second = new FakeModem(endAfterFrames: false, Data("X"));
-        Func<CancellationToken, Task<IKissModem>> reconnect = _ => Task.FromResult<IKissModem>(second);
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = _ => Task.FromResult<IAx25Transport>(second);
         await using var modem = new ReconnectingKissModem(
             first, reconnect, "test", NullLogger.Instance, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
 
         await modem.SetTxTailAsync(0);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await foreach (var _ in modem.ReadFramesAsync(cts.Token).ConfigureAwait(false))
+        await foreach (var _ in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
         {
             break;   // first frame off the reconnected modem
         }
@@ -96,20 +96,20 @@ public sealed class ReconnectingKissModemTests
     public async Task Send_while_the_link_is_down_is_dropped_not_thrown()
     {
         var down = new FakeModem(endAfterFrames: false) { ThrowOnSend = true };
-        Func<CancellationToken, Task<IKissModem>> reconnect = _ => Task.FromResult<IKissModem>(new FakeModem(false));
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = _ => Task.FromResult<IAx25Transport>(new FakeModem(false));
         await using var modem = new ReconnectingKissModem(down, reconnect, "test", NullLogger.Instance);
 
         // Must not throw — the link being down is a drop-and-retransmit, not a fault.
-        var act = async () => await modem.SendFrameAsync(Encoding.ASCII.GetBytes("hi"));
+        var act = async () => await modem.SendAsync(Encoding.ASCII.GetBytes("hi"));
         await act.Should().NotThrowAsync();
     }
 
-    private sealed class FakeModem : IKissModem
+    private sealed class FakeModem : IAx25Transport, ICsmaChannelParams
     {
-        private readonly KissFrame[] frames;
+        private readonly Ax25InboundFrame[] frames;
         private readonly bool endAfterFrames;
 
-        public FakeModem(bool endAfterFrames, params KissFrame[] frames)
+        public FakeModem(bool endAfterFrames, params Ax25InboundFrame[] frames)
         {
             this.endAfterFrames = endAfterFrames;
             this.frames = frames;
@@ -121,7 +121,7 @@ public sealed class ReconnectingKissModemTests
         public byte? SlotTime { get; private set; }
         public byte? TxTail { get; private set; }
 
-        public async IAsyncEnumerable<KissFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct = default)
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync([EnumeratorCancellation] CancellationToken ct = default)
         {
             foreach (var f in frames)
             {
@@ -137,16 +137,14 @@ public sealed class ReconnectingKissModemTests
             // else: returning ends the stream → the wrapper treats it as a drop
         }
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
             => ThrowOnSend ? throw new IOException("link down") : Task.CompletedTask;
-
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
 
         public Task SetTxDelayAsync(byte v, CancellationToken cancellationToken = default) { TxDelay = v; return Task.CompletedTask; }
         public Task SetPersistenceAsync(byte v, CancellationToken cancellationToken = default) { Persistence = v; return Task.CompletedTask; }
         public Task SetSlotTimeAsync(byte v, CancellationToken cancellationToken = default) { SlotTime = v; return Task.CompletedTask; }
         public Task SetTxTailAsync(byte v, CancellationToken cancellationToken = default) { TxTail = v; return Task.CompletedTask; }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

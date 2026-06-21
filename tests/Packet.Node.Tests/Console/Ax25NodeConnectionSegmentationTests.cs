@@ -4,8 +4,8 @@ using System.Threading.Channels;
 using AwesomeAssertions;
 using Packet.Ax25;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 using Packet.Node.Core.Console;
 using Packet.Node.Tests.Support;
 using Xunit;
@@ -80,7 +80,7 @@ public class Ax25NodeConnectionSegmentationTests
     private static async Task<(Ax25Listener Listener, CapturingModem Modem, Ax25Session Session)> AcceptedV20Session()
     {
         var modem = new CapturingModem();
-        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = NodeCall });
+        var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = NodeCall });
 
         var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
@@ -93,25 +93,25 @@ public class Ax25NodeConnectionSegmentationTests
         return (listener, modem, session);
     }
 
-    /// <summary>An in-memory modem that records every frame the listener transmits and lets a test inject inbound frames.</summary>
-    private sealed class CapturingModem : IKissModem
+    /// <summary>An in-memory transport that records every frame the listener transmits and lets a test inject inbound frames.</summary>
+    private sealed class CapturingModem : IAx25Transport, ICsmaChannelParams
     {
         private readonly ConcurrentQueue<byte[]> sent = new();
-        private readonly Channel<KissFrame> rx =
-            Channel.CreateUnbounded<KissFrame>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+        private readonly Channel<Ax25InboundFrame> rx =
+            Channel.CreateUnbounded<Ax25InboundFrame>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
         public byte[][] Sent => sent.ToArray();
 
         public void InjectInbound(Ax25Frame frame) =>
-            rx.Writer.TryWrite(new KissFrame((byte)0, KissCommand.Data, frame.ToBytes()));
+            rx.Writer.TryWrite(new Ax25InboundFrame(frame.ToBytes(), 0, DateTimeOffset.UtcNow));
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            sent.Enqueue(ax25Bytes.ToArray());
+            sent.Enqueue(ax25.ToArray());
             return Task.CompletedTask;
         }
 
-        public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             while (await rx.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -123,13 +123,11 @@ public class Ax25NodeConnectionSegmentationTests
             }
         }
 
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
         public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetPersistenceAsync(byte value, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

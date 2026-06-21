@@ -1,7 +1,7 @@
 using System.Text;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 
 namespace Packet.Node.Tests.Support;
 
@@ -16,10 +16,10 @@ public sealed class EchoStation : IAsyncDisposable
     private readonly string reply;
     private volatile bool sawConnect;
 
-    public EchoStation(IKissModem modem, Callsign myCall, string reply)
+    public EchoStation(IAx25Transport transport, Callsign myCall, string reply)
     {
         this.reply = reply;
-        listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
+        listener = new Ax25Listener(transport, new Ax25ListenerOptions
         {
             MyCall = myCall,
             ConfigureSession = WireSession,

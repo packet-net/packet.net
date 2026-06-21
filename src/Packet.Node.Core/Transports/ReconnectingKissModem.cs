@@ -1,7 +1,7 @@
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 
 namespace Packet.Node.Core.Transports;
 
@@ -52,16 +52,16 @@ namespace Packet.Node.Core.Transports;
 /// Reads pump the current inner and reconnect on end-of-stream; sends and
 /// parameter-sets target the current inner and are dropped best-effort while the
 /// link is down — AX.25 T1 retransmits any lost I-frame once the link is back.
-/// ACKMODE sends delegate straight to the current inner: the inner KissTcpClient
+/// TX-completion sends delegate straight to the current inner: the inner KissTcpClient
 /// intercepts its own TX-completion echoes on the same RX pump this wrapper
-/// already delegates to (<see cref="ReadFramesAsync"/> drives the inner's
+/// already delegates to (<see cref="ReceiveAsync"/> drives the inner's
 /// enumerator), so the pending waiter and the echo live in one instance and a
-/// mid-flight reconnect simply faults the in-flight ACK (the caller retries).
+/// mid-flight reconnect simply faults the in-flight completion (the caller retries).
 /// </para>
 /// </remarks>
-internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposable
+internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, ICsmaChannelParams, IAsyncDisposable
 {
-    private readonly Func<CancellationToken, Task<IKissModem>> reconnect;
+    private readonly Func<CancellationToken, Task<IAx25Transport>> reconnect;
     private readonly string endpoint;
     private readonly ILogger logger;
     private readonly TimeProvider time;
@@ -69,9 +69,9 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     private readonly TimeSpan maxBackoff;
     private readonly CancellationTokenSource lifecycle = new();
 
-    // The live inner modem. Swapped on reconnect; read by sends/param-sets. Volatile
+    // The live inner transport. Swapped on reconnect; read by sends/param-sets. Volatile
     // because the read pump (which swaps it) and a sending caller run concurrently.
-    private volatile IKissModem inner;
+    private volatile IAx25Transport inner;
 
     private readonly object paramGate = new();
     private byte? txDelay, persistence, slotTime, txTail;
@@ -79,8 +79,8 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     private int disposed;
 
     public ReconnectingKissModem(
-        IKissModem initial,
-        Func<CancellationToken, Task<IKissModem>> reconnect,
+        IAx25Transport initial,
+        Func<CancellationToken, Task<IAx25Transport>> reconnect,
         string endpoint,
         ILogger logger,
         TimeProvider? timeProvider = null,
@@ -97,7 +97,7 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     }
 
     /// <inheritdoc/>
-    public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+    public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifecycle.Token);
@@ -109,7 +109,7 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
             // Pump the current inner until its stream ends. The await-using is a
             // try/finally (no catch), so yielding inside it is legal; the per-step
             // try/catch around MoveNextAsync contains no yield.
-            await using (var e = live.ReadFramesAsync(ct).GetAsyncEnumerator(ct))
+            await using (var e = live.ReceiveAsync(ct).GetAsyncEnumerator(ct))
             {
                 while (true)
                 {
@@ -147,8 +147,8 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     }
 
     // Try to reconnect, immediately first, then with capped exponential backoff on
-    // each failure. Returns the fresh modem, or null if cancelled.
-    private async Task<IKissModem?> ReconnectAsync(CancellationToken ct)
+    // each failure. Returns the fresh transport, or null if cancelled.
+    private async Task<IAx25Transport?> ReconnectAsync(CancellationToken ct)
     {
         var backoff = minBackoff;
         while (!ct.IsCancellationRequested)
@@ -180,11 +180,11 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     }
 
     /// <inheritdoc/>
-    public async Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+    public async Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
     {
         try
         {
-            await inner.SendFrameAsync(ax25Bytes, cancellationToken).ConfigureAwait(false);
+            await inner.SendAsync(ax25, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsTransient(ex))
         {
@@ -195,16 +195,22 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Delegates to the current inner modem. The echo that resolves this send is
+    /// Delegates to the current inner transport. The echo that resolves this send is
     /// intercepted inside that same inner instance's RX pump (which this wrapper
-    /// drives via <see cref="ReadFramesAsync"/>), so the pending waiter and the
+    /// drives via <see cref="ReceiveAsync"/>), so the pending waiter and the
     /// echo never split across instances. If the link drops mid-flight the inner
     /// faults the waiter (TimeoutException / ObjectDisposedException) and AX.25
     /// T1 retransmits once the link is back, exactly like a plain send.
+    /// Throws <see cref="NotSupportedException"/> if the live inner is not
+    /// TX-completion-capable — but a port only wraps in this decorator over a
+    /// transport that is (the kiss-tcp path), matching the pre-migration behaviour
+    /// where the inner always exposed <c>SendFrameWithAckAsync</c>.
     /// </remarks>
-    public Task<AckModeReceipt> SendFrameWithAckAsync(
-        ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
-        => inner.SendFrameWithAckAsync(ax25Bytes, timeout, sequenceTag, cancellationToken);
+    public Task<TxCompletion> SendAwaitingCompletionAsync(
+        ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => inner is ITxCompletionTransport tx
+            ? tx.SendAwaitingCompletionAsync(ax25, timeout, cancellationToken)
+            : throw new NotSupportedException("the current inner transport does not support TX-completion.");
 
     /// <inheritdoc/>
     public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default)
@@ -234,13 +240,16 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
         return ApplyParamAsync(m => m.SetTxTailAsync(tenMsUnits, cancellationToken));
     }
 
-    // Best-effort apply to the current inner; if the link is down it's a no-op now
-    // and gets replayed on reconnect.
-    private async Task ApplyParamAsync(Func<IKissModem, Task> op)
+    // Best-effort apply to the current inner (when it exposes the CSMA params); if the
+    // link is down it's a no-op now and gets replayed on reconnect. An inner with no
+    // CSMA params (a transport that doesn't implement ICsmaChannelParams) silently
+    // no-ops, exactly as the KissModemTransport-wrapped AXUDP path did.
+    private async Task ApplyParamAsync(Func<ICsmaChannelParams, Task> op)
     {
+        if (inner is not ICsmaChannelParams csma) return;
         try
         {
-            await op(inner).ConfigureAwait(false);
+            await op(csma).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsTransient(ex))
         {
@@ -248,18 +257,20 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
         }
     }
 
-    // Re-send the last-set value of each KISS parameter to a freshly-connected
-    // modem (a new connection starts at the modem's defaults).
-    private async Task ReplayParamsAsync(IKissModem m, CancellationToken ct)
+    // Re-send the last-set value of each CSMA parameter to a freshly-connected
+    // transport (a new connection starts at the modem's defaults). A transport with
+    // no CSMA params is skipped.
+    private async Task ReplayParamsAsync(IAx25Transport m, CancellationToken ct)
     {
+        if (m is not ICsmaChannelParams csma) return;
         byte? d, p, s, t;
         lock (paramGate) { d = txDelay; p = persistence; s = slotTime; t = txTail; }
         try
         {
-            if (d is { } dd) await m.SetTxDelayAsync(dd, ct).ConfigureAwait(false);
-            if (p is { } pp) await m.SetPersistenceAsync(pp, ct).ConfigureAwait(false);
-            if (s is { } ss) await m.SetSlotTimeAsync(ss, ct).ConfigureAwait(false);
-            if (t is { } tt) await m.SetTxTailAsync(tt, ct).ConfigureAwait(false);
+            if (d is { } dd) await csma.SetTxDelayAsync(dd, ct).ConfigureAwait(false);
+            if (p is { } pp) await csma.SetPersistenceAsync(pp, ct).ConfigureAwait(false);
+            if (s is { } ss) await csma.SetSlotTimeAsync(ss, ct).ConfigureAwait(false);
+            if (t is { } tt) await csma.SetTxTailAsync(tt, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (IsTransient(ex))
         {
@@ -270,19 +281,15 @@ internal sealed partial class ReconnectingKissModem : IKissModem, IAsyncDisposab
     private static bool IsTransient(Exception ex)
         => ex is IOException or ObjectDisposedException or SocketException or InvalidOperationException;
 
-    private static async ValueTask DisposeQuietlyAsync(IKissModem m)
+    private static async ValueTask DisposeQuietlyAsync(IAx25Transport m)
     {
         try
         {
-            switch (m)
-            {
-                case IAsyncDisposable ad: await ad.DisposeAsync().ConfigureAwait(false); break;
-                case IDisposable d: d.Dispose(); break;
-            }
+            await m.DisposeAsync().ConfigureAwait(false);
         }
         catch
         {
-            // best-effort — we're discarding this modem anyway
+            // best-effort — we're discarding this transport anyway
         }
     }
 

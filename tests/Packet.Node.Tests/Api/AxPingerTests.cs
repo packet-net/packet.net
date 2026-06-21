@@ -254,8 +254,8 @@ public sealed class AxPingerTests
     public async Task Real_listener_over_in_memory_radio_measures_an_echo()
     {
         var (a, b) = InMemoryRadio.CreatePair();
-        await using var pinger = new Ax25Listener(new Packet.Kiss.KissModemTransport(a), new Ax25ListenerOptions { MyCall = Us }, TimeProvider.System);
-        await using var responder = new Ax25Listener(new Packet.Kiss.KissModemTransport(b), new Ax25ListenerOptions { MyCall = Peer }, TimeProvider.System);
+        await using var pinger = new Ax25Listener(a, new Ax25ListenerOptions { MyCall = Us }, TimeProvider.System);
+        await using var responder = new Ax25Listener(b, new Ax25ListenerOptions { MyCall = Peer }, TimeProvider.System);
 
         // Spec-compliant TEST responder: when a TEST *command* addressed to us arrives, echo
         // its info field back as a TEST *response* (§4.3.4.2). This is what a node that
@@ -275,7 +275,7 @@ public sealed class AxPingerTests
                 var echo = Ax25Frame.Test(
                     destination: f.Source.Callsign, source: Peer, info: f.Info.Span,
                     isCommand: false, pollFinal: false);
-                _ = b.SendFrameAsync(echo.ToBytes());
+                _ = b.SendAsync(echo.ToBytes());
             }
         };
 

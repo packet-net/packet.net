@@ -1,31 +1,35 @@
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Core.Transports;
 
 /// <summary>
-/// Builds a live <see cref="IKissModem"/> from a <see cref="TransportConfig"/>.
+/// Builds a live <see cref="IAx25Transport"/> from a <see cref="TransportConfig"/>.
 /// The seam between config and hardware/network: the port supervisor calls this
 /// to bring a port up, and only this class knows how each transport kind maps
-/// onto a concrete modem.
+/// onto a concrete transport.
 /// </summary>
 public interface ITransportFactory
 {
     /// <summary>
-    /// Open the modem described by <paramref name="transport"/>. For serial
+    /// Open the transport described by <paramref name="transport"/>. For serial
     /// transports this opens the port; for KISS-TCP it dials the endpoint; for a
-    /// NinoTNC it opens the port and applies the configured mode.
+    /// NinoTNC it opens the port and applies the configured mode. The KISS-speaking
+    /// transports implement <see cref="IAx25Transport"/> natively; AXUDP (still an
+    /// <c>IKissModem</c>) is adapted via the migration shim so the factory uniformly
+    /// returns <see cref="IAx25Transport"/>.
     /// </summary>
     /// <param name="transport">The transport to open.</param>
     /// <param name="timeProvider">
     /// Clock for any transport-internal timers (e.g. the KISS-TCP read-idle
-    /// liveness timeout — #464). Null uses the system clock; the port supervisor
-    /// threads its own clock through so component tests stay deterministic.
+    /// liveness timeout — #464) and inbound-frame timestamping. Null uses the system
+    /// clock; the port supervisor threads its own clock through so component tests
+    /// stay deterministic.
     /// </param>
     /// <param name="cancellationToken">Cancels the open/connect.</param>
     /// <exception cref="NotSupportedException">If the transport kind has no
-    /// <see cref="IKissModem"/> implementation in this build (e.g. AXUDP).</exception>
-    Task<IKissModem> CreateAsync(
+    /// implementation in this build.</exception>
+    Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
         CancellationToken cancellationToken = default);

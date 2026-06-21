@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Session;
 using Packet.Core;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.NetRom.Wire;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
@@ -85,7 +85,7 @@ public sealed class NetRomL3L4IntegrationTests
     /// supplied modem.
     /// </summary>
     private static async Task<Node> StartBridgeNodeAsync(
-        Callsign call, string alias, params (string PortId, int Port, IKissModem Modem)[] ports)
+        Callsign call, string alias, params (string PortId, int Port, IAx25Transport Modem)[] ports)
     {
         var nodeConfig = new NodeConfig
         {

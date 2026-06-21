@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 
 namespace Packet.LinkBench.Channel;
@@ -39,7 +40,7 @@ internal sealed record InProcChannelOptions
 }
 
 /// <summary>
-/// The in-process channel (link-bench plan §3.1): two <see cref="IKissModem"/>
+/// The in-process channel (link-bench plan §3.1): two <see cref="IAx25Transport"/>
 /// endpoints joined by a channel model — per-frame airtime, optional
 /// half-duplex, optional loss — that emits the ackmode TX-complete echo to the
 /// sender <b>after the modeled airtime</b>, so ackmode pacing is exercised
@@ -68,8 +69,8 @@ internal sealed class InProcChannel : IBenchChannel
         B = b;
     }
 
-    public IKissModem EndpointA => A;
-    public IKissModem EndpointB => B;
+    public IAx25Transport EndpointA => A;
+    public IAx25Transport EndpointB => B;
     public bool SupportsAckMode => true;
 
     internal Endpoint A { get; }
@@ -174,17 +175,16 @@ internal sealed class InProcChannel : IBenchChannel
     /// <summary>
     /// One side's modem. TX is a queue + single pump — a radio transmits one
     /// frame at a time — so the engine's fire-and-forget sink serialises here
-    /// just like a real TNC's buffer. <see cref="SendFrameWithAckAsync"/>
+    /// just like a real TNC's buffer. <see cref="SendAwaitingCompletionAsync"/>
     /// resolves when the frame has cleared the modeled air: the ackmode echo.
     /// </summary>
-    internal sealed class Endpoint : IKissModem, IAsyncDisposable
+    internal sealed class Endpoint : ITxCompletionTransport, ICsmaChannelParams, IAsyncDisposable
     {
         private readonly InProcChannel channel;
         private readonly Channel<TxJob> txQueue;
-        private readonly Channel<KissFrame> rx;
+        private readonly Channel<Ax25InboundFrame> rx;
         private readonly CancellationTokenSource lifecycle = new();
         private readonly Task pump;
-        private int nextSeq;
         private int disposed;
 
         private readonly record struct TxJob(
@@ -196,7 +196,7 @@ internal sealed class InProcChannel : IBenchChannel
             Name = name;
             txQueue = System.Threading.Channels.Channel.CreateUnbounded<TxJob>(
                 new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-            rx = System.Threading.Channels.Channel.CreateUnbounded<KissFrame>(
+            rx = System.Threading.Channels.Channel.CreateUnbounded<Ax25InboundFrame>(
                 new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
             pump = Task.Run(() => PumpAsync(lifecycle.Token));
         }
@@ -205,24 +205,22 @@ internal sealed class InProcChannel : IBenchChannel
         internal Endpoint Peer { get; set; } = null!;
 
         internal void Deliver(byte[] frame) =>
-            rx.Writer.TryWrite(new KissFrame(0, KissCommand.Data, frame));
+            rx.Writer.TryWrite(new Ax25InboundFrame(frame, 0, DateTimeOffset.UtcNow));
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
             // Snapshot — the listener's sink may reuse its buffer the instant
             // this returns (same contract PacingKissModem honours).
-            txQueue.Writer.TryWrite(new TxJob(ax25Bytes.ToArray(), DateTimeOffset.UtcNow, null));
+            txQueue.Writer.TryWrite(new TxJob(ax25.ToArray(), DateTimeOffset.UtcNow, null));
             return Task.CompletedTask;
         }
 
-        public async Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null,
-            CancellationToken cancellationToken = default)
+        public async Task<TxCompletion> SendAwaitingCompletionAsync(
+            ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
         {
             var queued = DateTimeOffset.UtcNow;
-            var seq = sequenceTag ?? (ushort)(Interlocked.Increment(ref nextSeq) & 0xFFFF);
             var tcs = new TaskCompletionSource<DateTimeOffset>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!txQueue.Writer.TryWrite(new TxJob(ax25Bytes.ToArray(), queued, tcs)))
+            if (!txQueue.Writer.TryWrite(new TxJob(ax25.ToArray(), queued, tcs)))
             {
                 throw new ObjectDisposedException(nameof(Endpoint));
             }
@@ -236,7 +234,7 @@ internal sealed class InProcChannel : IBenchChannel
             }
 
             var acked = await tcs.Task.ConfigureAwait(false);
-            return new AckModeReceipt(seq, queued, acked);
+            return new TxCompletion(queued, acked);
         }
 
         private async Task PumpAsync(CancellationToken ct)
@@ -262,7 +260,7 @@ internal sealed class InProcChannel : IBenchChannel
             }
         }
 
-        public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var frame in rx.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))

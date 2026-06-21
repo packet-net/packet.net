@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
@@ -290,7 +290,7 @@ public sealed class NetRomAwareIntegrationTests
 
     // ─── Helpers: build + broadcast a NODES UI frame on the shared bus ───
 
-    private static async Task BroadcastNodesAsync(IKissModem broadcaster, Callsign source, byte[] info)
+    private static async Task BroadcastNodesAsync(IAx25Transport broadcaster, Callsign source, byte[] info)
     {
         // A genuine NODES broadcast: UI frame, source = the broadcasting node,
         // destination = the literal text callsign "NODES", PID 0xCF.
@@ -300,7 +300,7 @@ public sealed class NetRomAwareIntegrationTests
             info: info,
             pid: Ax25Frame.PidNetRom,
             isCommand: true);
-        await broadcaster.SendFrameAsync(frame.ToBytes());
+        await broadcaster.SendAsync(frame.ToBytes());
     }
 
     // Mirror the NET/ROM NODES info-field wire format (the production library is

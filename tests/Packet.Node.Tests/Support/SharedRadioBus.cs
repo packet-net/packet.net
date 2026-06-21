@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 
 namespace Packet.Node.Tests.Support;
@@ -16,8 +17,8 @@ public sealed class SharedRadioBus
     private readonly List<Endpoint> endpoints = new();
     private readonly object gate = new();
 
-    /// <summary>Attach a new endpoint (a modem) to the bus.</summary>
-    public IKissModem Attach()
+    /// <summary>Attach a new endpoint (a transport) to the bus.</summary>
+    public IAx25Transport Attach()
     {
         var ep = new Endpoint(this);
         lock (gate) endpoints.Add(ep);
@@ -31,7 +32,7 @@ public sealed class SharedRadioBus
         foreach (var e in others) e.Deliver(frame);
     }
 
-    private sealed class Endpoint : IKissModem
+    private sealed class Endpoint : IAx25Transport, ICsmaChannelParams
     {
         private readonly SharedRadioBus bus;
         private readonly Channel<KissFrame> rx =
@@ -41,31 +42,30 @@ public sealed class SharedRadioBus
 
         internal void Deliver(KissFrame frame) => rx.Writer.TryWrite(frame);
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            bus.Broadcast(this, new KissFrame((byte)0, KissCommand.Data, ax25Bytes.ToArray()));
+            bus.Broadcast(this, new KissFrame((byte)0, KissCommand.Data, ax25.ToArray()));
             return Task.CompletedTask;
         }
 
-        public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             while (await rx.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 while (rx.Reader.TryRead(out var f))
                 {
-                    yield return f;
+                    if (f.Command != KissCommand.Data) continue;
+                    yield return new Ax25InboundFrame(f.Payload, f.Port, DateTimeOffset.UtcNow);
                 }
             }
         }
-
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetPersistenceAsync(byte value, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetSlotTimeAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

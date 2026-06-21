@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Transports;
 
@@ -7,25 +7,25 @@ namespace Packet.Node.Tests.Support;
 
 /// <summary>
 /// A test <see cref="ITransportFactory"/> that hands out pre-supplied in-memory
-/// modems instead of opening real hardware/sockets — so the
+/// transports instead of opening real hardware/sockets — so the
 /// <see cref="Packet.Node.Core.Hosting.PortSupervisor"/> can bring up real
-/// <c>Ax25Listener</c>s over the in-memory radio. Modems are registered per port
-/// id; each port-id can be given a sequence of modems so a restart (tear down +
+/// <c>Ax25Listener</c>s over the in-memory radio. Transports are registered per port
+/// id; each port-id can be given a sequence of transports so a restart (tear down +
 /// bring up) gets a fresh one.
 /// </summary>
 public sealed class FakeTransportFactory : ITransportFactory
 {
-    private readonly ConcurrentDictionary<string, ConcurrentQueue<IKissModem>> byEndpoint = new();
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<IAx25Transport>> byEndpoint = new();
     private readonly ConcurrentDictionary<string, Exception> faults = new();
 
-    /// <summary>Supply the modem(s) a transport endpoint will receive, in order.
+    /// <summary>Supply the transport(s) an endpoint will receive, in order.
     /// The key is the transport's <c>DescribeEndpoint()</c> (e.g.
     /// <c>kiss-tcp:mem:1</c>), since the supervisor only passes the
     /// <see cref="TransportConfig"/>.</summary>
-    public FakeTransportFactory Provide(string endpoint, params IKissModem[] modems)
+    public FakeTransportFactory Provide(string endpoint, params IAx25Transport[] transports)
     {
-        var q = byEndpoint.GetOrAdd(endpoint, _ => new ConcurrentQueue<IKissModem>());
-        foreach (var m in modems) q.Enqueue(m);
+        var q = byEndpoint.GetOrAdd(endpoint, _ => new ConcurrentQueue<IAx25Transport>());
+        foreach (var m in transports) q.Enqueue(m);
         return this;
     }
 
@@ -39,7 +39,7 @@ public sealed class FakeTransportFactory : ITransportFactory
 
     /// <summary>The supervisor passes only the TransportConfig, so we key on its
     /// endpoint description which the tests make unique per port.</summary>
-    public Task<IKissModem> CreateAsync(
+    public Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
         CancellationToken cancellationToken = default)
@@ -49,12 +49,12 @@ public sealed class FakeTransportFactory : ITransportFactory
         {
             throw fault;
         }
-        if (byEndpoint.TryGetValue(key, out var q) && q.TryDequeue(out var modem))
+        if (byEndpoint.TryGetValue(key, out var q) && q.TryDequeue(out var provided))
         {
-            return Task.FromResult(modem);
+            return Task.FromResult(provided);
         }
         throw new InvalidOperationException(
-            $"FakeTransportFactory has no modem registered for endpoint '{key}'. " +
-            "Register it with Provide(endpoint, modem).");
+            $"FakeTransportFactory has no transport registered for endpoint '{key}'. " +
+            "Register it with Provide(endpoint, transport).");
     }
 }

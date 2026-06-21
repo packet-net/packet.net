@@ -1,22 +1,28 @@
 using System.IO.Ports;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Packet.Ax25.Transport;
 
 namespace Packet.Kiss.Serial;
 
 /// <summary>
-/// A generic serial-port KISS modem implementing <see cref="IKissModem"/>.
+/// A generic serial-port KISS modem implementing <see cref="IKissModem"/> and the neutral
+/// <see cref="IAx25Transport"/> seam (plus the <see cref="ICsmaChannelParams"/> capability).
 /// Opens a serial port, runs a background read pump, and surfaces inbound
-/// KISS frames through <see cref="ReadFramesAsync"/> and
-/// <see cref="FrameReceived"/>. Writes are serialised through an internal
-/// semaphore. Suitable for any TNC that speaks standard KISS over a serial
+/// KISS frames through <see cref="ReadFramesAsync"/> /
+/// <see cref="ReceiveAsync"/> and <see cref="FrameReceived"/>. Writes are serialised through an
+/// internal semaphore. Suitable for any TNC that speaks standard KISS over a serial
 /// (USB-CDC) connection.
 /// </summary>
 /// <remarks>
+/// Plain serial KISS has no ACKMODE TX-completion signal, so this transport deliberately does
+/// NOT implement <see cref="ITxCompletionTransport"/> — a consumer probing
+/// <c>is ITxCompletionTransport</c> correctly skips it and falls back to fire-and-forget sends.
 /// For NinoTNC-specific features (ACKMODE TX-completion correlation,
 /// SETHW mode switching, TX-Test frame classification), use
 /// <c>Packet.Kiss.NinoTnc.NinoTncSerialPort</c> instead.
 /// </remarks>
-public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
+public sealed class KissSerialModem : IKissModem, IAx25Transport, ICsmaChannelParams, IAsyncDisposable, IDisposable
 {
     public const int DefaultBaudRate = 57600;
 
@@ -25,14 +31,16 @@ public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
     private readonly Channel<KissFrame> inbound;
     private readonly SemaphoreSlim writeLock = new(1, 1);
     private readonly CancellationTokenSource pumpCts = new();
+    private readonly TimeProvider clock;
     private Task? readPump;
     private int disposed;
 
     private const byte KissPort = 0;
 
-    private KissSerialModem(SerialPort serial)
+    private KissSerialModem(SerialPort serial, TimeProvider? timeProvider)
     {
         this.serial = serial;
+        clock = timeProvider ?? TimeProvider.System;
         inbound = Channel.CreateUnbounded<KissFrame>(new UnboundedChannelOptions
         {
             SingleReader = false,
@@ -54,7 +62,13 @@ public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
     /// <summary>
     /// Open the named serial port and start the background read pump.
     /// </summary>
-    public static KissSerialModem Open(string portName, int baudRate = DefaultBaudRate)
+    /// <param name="portName">The serial port to open (e.g. "COM6" or "/dev/ttyACM0").</param>
+    /// <param name="baudRate">The serial baud rate.</param>
+    /// <param name="timeProvider">
+    /// Clock used to stamp inbound frames' <see cref="Ax25InboundFrame.ReceivedAt"/> on the
+    /// <see cref="IAx25Transport"/> seam. Null uses the system clock.
+    /// </param>
+    public static KissSerialModem Open(string portName, int baudRate = DefaultBaudRate, TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(portName);
         var serial = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
@@ -70,7 +84,7 @@ public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
             RtsEnable = true,
         };
         serial.Open();
-        var modem = new KissSerialModem(serial);
+        var modem = new KissSerialModem(serial, timeProvider);
         modem.readPump = Task.Factory.StartNew(
             () => modem.PumpReadsBlocking(modem.pumpCts.Token),
             TaskCreationOptions.LongRunning);
@@ -83,6 +97,27 @@ public sealed class KissSerialModem : IKissModem, IAsyncDisposable, IDisposable
     /// </summary>
     public IAsyncEnumerable<KissFrame> ReadFramesAsync(CancellationToken cancellationToken = default) =>
         inbound.Reader.ReadAllAsync(cancellationToken);
+
+    /// <summary>
+    /// <see cref="IAx25Transport"/>: send one AX.25 frame body (KISS Data, cmd 0x00).
+    /// Same fire-and-forget path as <see cref="SendFrameAsync"/>.
+    /// </summary>
+    public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default) =>
+        SendFrameAsync(ax25, cancellationToken);
+
+    /// <summary>
+    /// <see cref="IAx25Transport"/>: async stream of inbound AX.25 frames, pre-filtered to KISS
+    /// Data (non-Data KISS commands are dropped here so the consumer never sees them).
+    /// </summary>
+    public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var kiss in ReadFramesAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (kiss.Command != KissCommand.Data) continue;
+            yield return new Ax25InboundFrame(kiss.Payload, kiss.Port, clock.GetUtcNow());
+        }
+    }
 
     /// <summary>
     /// Send a plain KISS Data frame (command 0x00). Returns once the bytes

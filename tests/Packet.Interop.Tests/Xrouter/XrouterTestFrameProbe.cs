@@ -39,7 +39,7 @@ public class XrouterTestFrameProbe(ITestOutputHelper output)
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
-        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kiss), new Ax25ListenerOptions { MyCall = OurCall });
+        await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions { MyCall = OurCall });
         await listener.StartAsync(cts.Token);
 
         // Brief settle so net-sim's per-port queue is ready and XRouter's KISS dial

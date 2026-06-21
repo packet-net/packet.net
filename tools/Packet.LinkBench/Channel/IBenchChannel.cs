@@ -1,4 +1,5 @@
 using System.Net;
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 using Packet.Node.Core.Transports;
 
@@ -6,39 +7,41 @@ namespace Packet.LinkBench.Channel;
 
 /// <summary>
 /// A pluggable channel joining the two bench engines (link-bench plan §3): each
-/// engine talks to its own <see cref="IKissModem"/>; the channel model joins
+/// engine talks to its own <see cref="IAx25Transport"/>; the channel model joins
 /// them. Implementations: <see cref="InProcChannel"/> (primary, deterministic),
 /// <see cref="AxudpChannel"/> (lossless cross-check, no ackmode by nature),
 /// <see cref="NetSimChannel"/> (rung 2 — real AFSK over net-sim).
 /// </summary>
 internal interface IBenchChannel : IAsyncDisposable
 {
-    IKissModem EndpointA { get; }
-    IKissModem EndpointB { get; }
+    IAx25Transport EndpointA { get; }
+    IAx25Transport EndpointB { get; }
 
-    /// <summary>Whether <see cref="IKissModem.SendFrameWithAckAsync"/> works here.
-    /// AXUDP is a tunnel — no TNC, no TX-complete echo — so it cannot.</summary>
+    /// <summary>Whether <see cref="ITxCompletionTransport.SendAwaitingCompletionAsync"/> works
+    /// here. AXUDP is a tunnel — no TNC, no TX-complete echo — so it cannot.</summary>
     bool SupportsAckMode { get; }
 }
 
 /// <summary>
 /// Two <see cref="AxudpKissModem"/>s on UDP loopback — real sockets, real
 /// async/serialisation, full-duplex, lossless. Tom's "lossless AXUDP" baseline:
-/// confirms an in-proc result isn't an artifact of the in-proc model.
+/// confirms an in-proc result isn't an artifact of the in-proc model. AXUDP is
+/// still an <c>IKissModem</c> (its frame synthesis migrates in a later step), so
+/// the migration shim adapts it to the neutral seam.
 /// </summary>
 internal sealed class AxudpChannel : IBenchChannel
 {
-    private readonly AxudpKissModem a;
-    private readonly AxudpKissModem b;
+    private readonly KissModemTransport a;
+    private readonly KissModemTransport b;
 
     public AxudpChannel(int portA, int portB)
     {
-        a = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portB), localPort: portA);
-        b = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portA), localPort: portB);
+        a = new KissModemTransport(new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portB), localPort: portA));
+        b = new KissModemTransport(new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portA), localPort: portB));
     }
 
-    public IKissModem EndpointA => a;
-    public IKissModem EndpointB => b;
+    public IAx25Transport EndpointA => a;
+    public IAx25Transport EndpointB => b;
     public bool SupportsAckMode => false;
 
     public async ValueTask DisposeAsync()
@@ -61,8 +64,8 @@ internal sealed class NetSimChannel : IBenchChannel
         EndpointB = b;
     }
 
-    public IKissModem EndpointA { get; }
-    public IKissModem EndpointB { get; }
+    public IAx25Transport EndpointA { get; }
+    public IAx25Transport EndpointB { get; }
     public bool SupportsAckMode => true;
 
     public static async Task<NetSimChannel> ConnectAsync(
@@ -83,7 +86,7 @@ internal sealed class NetSimChannel : IBenchChannel
 
     public async ValueTask DisposeAsync()
     {
-        await ((KissTcpClient)EndpointA).DisposeAsync().ConfigureAwait(false);
-        await ((KissTcpClient)EndpointB).DisposeAsync().ConfigureAwait(false);
+        await EndpointA.DisposeAsync().ConfigureAwait(false);
+        await EndpointB.DisposeAsync().ConfigureAwait(false);
     }
 }

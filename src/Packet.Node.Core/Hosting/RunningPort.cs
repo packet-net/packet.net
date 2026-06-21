@@ -1,11 +1,11 @@
 using Packet.Ax25.Session;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Core.Hosting;
 
 /// <summary>
-/// A live AX.25 port the <see cref="PortSupervisor"/> owns: its modem, its
+/// A live AX.25 port the <see cref="PortSupervisor"/> owns: its transport, its
 /// single <see cref="Ax25Listener"/>, and the <see cref="PortConfig"/> it was
 /// built from (so the next reconcile can field-diff against it). One per
 /// configured, enabled, successfully-started port.
@@ -18,7 +18,11 @@ public sealed class RunningPort : IAsyncDisposable
     /// the next reconcile diffs against to classify the change.</summary>
     public required PortConfig Config { get; init; }
 
-    public required IKissModem Modem { get; init; }
+    /// <summary>The neutral AX.25 transport this port runs over (a native KISS transport,
+    /// optionally wrapped in the reconnect / pacing decorators; an AXUDP modem via the
+    /// migration shim). May also expose <see cref="ITxCompletionTransport"/> /
+    /// <see cref="ICsmaChannelParams"/> — consumers feature-detect with <c>is</c>.</summary>
+    public required IAx25Transport Transport { get; init; }
 
     public required Ax25Listener Listener { get; init; }
 
@@ -31,14 +35,6 @@ public sealed class RunningPort : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Listener.DisposeAsync().ConfigureAwait(false);
-        switch (Modem)
-        {
-            case IAsyncDisposable ad:
-                await ad.DisposeAsync().ConfigureAwait(false);
-                break;
-            case IDisposable d:
-                d.Dispose();
-                break;
-        }
+        await Transport.DisposeAsync().ConfigureAwait(false);
     }
 }

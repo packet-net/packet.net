@@ -1,7 +1,7 @@
 using Packet.Ax25;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 using Packet.LinkBench.Channel;
 using Packet.LinkBench.Metrics;
 using Packet.Node.Core.Transports;
@@ -56,16 +56,22 @@ internal static class BenchRunner
         // Ackmode wiring: PacingKissModem serialises the engine's fire-and-forget
         // blast onto the channel one frame at a time, releasing each frame only on
         // the prior frame's TX-complete echo; the tap underneath records echo RTTs.
-        var receipts = new List<AckModeReceipt>();
+        var receipts = new List<TxCompletion>();
         var receiptsGate = new object();
-        void Record(AckModeReceipt r)
+        void Record(TxCompletion r)
         {
             lock (receiptsGate) { receipts.Add(r); }
         }
 
         var pacingTimeout = Scale(PacingKissModem.DefaultPacingTimeout, cfg.TimeScale);
-        var modemA = cfg.AckMode ? new PacingKissModem(new AckReceiptTap(channel.EndpointA, Record), pacingTimeout) : channel.EndpointA;
-        var modemB = cfg.AckMode ? new PacingKissModem(new AckReceiptTap(channel.EndpointB, Record), pacingTimeout) : channel.EndpointB;
+        // Ackmode is only enabled on a channel whose endpoints are TX-completion-capable
+        // (InProc, NetSim — see IBenchChannel.SupportsAckMode), so the cast is safe.
+        IAx25Transport modemA = cfg.AckMode
+            ? new PacingKissModem(new AckReceiptTap((ITxCompletionTransport)channel.EndpointA, Record), pacingTimeout)
+            : channel.EndpointA;
+        IAx25Transport modemB = cfg.AckMode
+            ? new PacingKissModem(new AckReceiptTap((ITxCompletionTransport)channel.EndpointB, Record), pacingTimeout)
+            : channel.EndpointB;
 
         // Engine timer config. With a scaled channel, scale the timer defaults by
         // the same factor so T1:airtime and T2:airtime ratios survive the speedup.
@@ -107,7 +113,7 @@ internal static class BenchRunner
             s.TransitionFired += (_, t) => Journal(endpoint, $"{t.From} → {t.Next} ({t.Id})");
         }
 
-        var listenerA = new Ax25Listener(new Packet.Kiss.KissModemTransport(modemA), new Ax25ListenerOptions
+        var listenerA = new Ax25Listener(modemA, new Ax25ListenerOptions
         {
             MyCall = callA,
             K = cfg.K,
@@ -125,7 +131,7 @@ internal static class BenchRunner
                 WireSessionJournal(s, "A");
             },
         });
-        var listenerB = new Ax25Listener(new Packet.Kiss.KissModemTransport(modemB), new Ax25ListenerOptions
+        var listenerB = new Ax25Listener(modemB, new Ax25ListenerOptions
         {
             MyCall = callB,
             K = cfg.K,
@@ -322,7 +328,7 @@ internal static class BenchRunner
 
     private static BenchResult Fail(
         RunConfig cfg, string reason, FrameTap tapA, FrameTap tapB,
-        List<AckModeReceipt> receipts, object receiptsGate,
+        List<TxCompletion> receipts, object receiptsGate,
         List<(DateTimeOffset, string, string)> events)
     {
         var (min, mean, max, n) = SummariseReceipts(receipts, receiptsGate);
@@ -344,7 +350,7 @@ internal static class BenchRunner
     }
 
     private static (TimeSpan? Min, TimeSpan? Mean, TimeSpan? Max, int Count) SummariseReceipts(
-        List<AckModeReceipt> receipts, object gate)
+        List<TxCompletion> receipts, object gate)
     {
         lock (gate)
         {

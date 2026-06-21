@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
 using Packet.Kiss.Serial;
@@ -33,7 +34,7 @@ public sealed class TransportFactory : ITransportFactory
     public static TransportFactory Instance { get; } = new();
 
     /// <inheritdoc/>
-    public async Task<IKissModem> CreateAsync(
+    public async Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
         CancellationToken cancellationToken = default)
@@ -43,11 +44,12 @@ public sealed class TransportFactory : ITransportFactory
         switch (transport)
         {
             case SerialKissTransport s:
-                return KissSerialModem.Open(s.Device, s.Baud);
+                // Native IAx25Transport (no ACKMODE — no ITxCompletionTransport).
+                return KissSerialModem.Open(s.Device, s.Baud, timeProvider);
 
             case NinoTncTransport n:
             {
-                var tnc = NinoTncSerialPort.Open(n.Device, n.Baud);
+                var tnc = NinoTncSerialPort.Open(n.Device, n.Baud, timeProvider);
                 try
                 {
                     await tnc.SetModeAsync((byte)n.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
@@ -61,9 +63,9 @@ public sealed class TransportFactory : ITransportFactory
             }
 
             case KissTcpTransport k:
-                // The read-idle liveness timeout converts a half-open TCP drop
-                // (peer rebooted with no FIN) into an end-of-stream so the port
-                // self-heals via ReconnectingKissModem instead of hanging (#464).
+                // Native IAx25Transport. The read-idle liveness timeout converts a
+                // half-open TCP drop (peer rebooted with no FIN) into an end-of-stream
+                // so the port self-heals via ReconnectingKissModem instead of hanging (#464).
                 return await KissTcpClient.ConnectAsync(
                     k.Host, k.Port,
                     readIdleTimeout: KissTcpClient.DefaultReadIdleTimeout,
@@ -72,13 +74,17 @@ public sealed class TransportFactory : ITransportFactory
 
             case AxudpTransport a:
             {
+                // AxudpKissModem is still IKissModem (its frame synthesis migrates in a later
+                // step); wrap it with the migration shim so the factory uniformly returns
+                // IAx25Transport. The shim exposes the CSMA params as no-ops, so the operator-
+                // visible "set channel param" semantics on an AXUDP port are unchanged.
                 var remote = await ResolveAsync(a.Host, a.Port, cancellationToken).ConfigureAwait(false);
-                return new AxudpKissModem(remote, a.LocalPort);
+                return new KissModemTransport(new AxudpKissModem(remote, a.LocalPort), timeProvider);
             }
 
             default:
                 throw new NotSupportedException(
-                    $"transport kind '{transport.Kind}' has no IKissModem implementation in this build.");
+                    $"transport kind '{transport.Kind}' has no IAx25Transport implementation in this build.");
         }
     }
 

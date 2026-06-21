@@ -1,6 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Tests.Transports;
@@ -8,8 +8,8 @@ namespace Packet.Node.Tests.Transports;
 /// <summary>
 /// <see cref="KissParamWriter"/> — the MCP <c>set_kiss_param</c> write path. It owns
 /// the settable-param set + range validation and dispatches to the matching
-/// <see cref="IKissModem"/> setter so the value reaches the modem. These tests prove
-/// each settable param is dispatched (not a no-op), and that bad input is rejected
+/// <see cref="ICsmaChannelParams"/> setter so the value reaches the transport. These tests
+/// prove each settable param is dispatched (not a no-op), and that bad input is rejected
 /// with a clear message instead of being silently dropped or faked as success.
 /// </summary>
 public sealed class KissParamWriterTests
@@ -83,7 +83,7 @@ public sealed class KissParamWriterTests
     }
 
     [Theory]
-    [InlineData("fullduplex")] // a real KISS knob, but not on the IKissModem surface — not settable here
+    [InlineData("fullduplex")] // a real KISS knob, but not on the ICsmaChannelParams surface — not settable here
     [InlineData("sethardware")]
     [InlineData("bogus")]
     public async Task Unknown_param_is_rejected_with_the_settable_set_listed(string param)
@@ -129,8 +129,9 @@ public sealed class KissParamWriterTests
         hi.Persistence.Should().Be(255);
     }
 
-    /// <summary>A minimal <see cref="IKissModem"/> that records the last value set per param.</summary>
-    private sealed class RecordingModem : IKissModem
+    /// <summary>A minimal <see cref="IAx25Transport"/> with the <see cref="ICsmaChannelParams"/>
+    /// capability that records the last value set per param.</summary>
+    private sealed class RecordingModem : IAx25Transport, ICsmaChannelParams
     {
         public byte? TxDelay { get; private set; }
         public byte? Persistence { get; private set; }
@@ -142,11 +143,9 @@ public sealed class KissParamWriterTests
         public Task SetSlotTimeAsync(byte v, CancellationToken cancellationToken = default) { SlotTime = v; return Task.CompletedTask; }
         public Task SetTxTailAsync(byte v, CancellationToken cancellationToken = default) { TxTail = v; return Task.CompletedTask; }
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

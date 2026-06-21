@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Node.Core.Applications;
@@ -589,10 +590,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // = spec defaults. Opt-in tuning at the node-host layer (see ChannelProfiles).
         var (effectiveAx25, effectiveKiss) = ChannelProfiles.Resolve(port);
 
-        IKissModem modem;
+        IAx25Transport transport;
         try
         {
-            modem = await transportFactory.CreateAsync(port.Transport, timeProvider, ct).ConfigureAwait(false);
+            transport = await transportFactory.CreateAsync(port.Transport, timeProvider, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -603,13 +604,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
 
         // kiss-tcp ports self-heal across a TNC/softmodem bounce: wrap the connected
-        // modem so a dropped link reconnects (backoff + KISS-param replay) instead of
+        // transport so a dropped link reconnects (backoff + KISS-param replay) instead of
         // the port silently dying. The eager connect above preserves initial fault
         // isolation; this only adds reconnect-after-drop. (#50)
         if (port.Transport is KissTcpTransport)
         {
-            modem = new ReconnectingKissModem(
-                modem,
+            transport = new ReconnectingKissModem(
+                transport,
                 token => transportFactory.CreateAsync(port.Transport, timeProvider, token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
@@ -617,16 +618,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
 
         // ACKMODE pacing (opt-in, default-off): when this port's kiss.ackMode is set,
-        // wrap the modem so the listener's outbound frames are serialised over the
-        // half-duplex channel — each sent in ACKMODE, the next held until the prior
-        // frame's TX-completion echo arrives (or a short timeout). The wrapper owns the
-        // modem it wraps, so RunningPort.DisposeAsync (which disposes Modem) tears the
-        // whole chain down. Off → the listener gets the modem unwrapped, exactly as
-        // before. (See PacingKissModem + KissParams.AckMode.)
-        if (effectiveKiss?.AckMode == true)
+        // wrap the transport so the listener's outbound frames are serialised over the
+        // half-duplex channel — each sent awaiting TX-completion, the next held until the
+        // prior frame's completion arrives (or a short timeout). The pacing decorator needs
+        // a TX-completion-capable inner; a transport with no completion signal (plain serial
+        // KISS, AXUDP) cannot be paced, so the wrap is skipped and the port stays
+        // fire-and-forget. The wrapper owns the transport it wraps, so RunningPort.DisposeAsync
+        // (which disposes Transport) tears the whole chain down. (See PacingKissModem +
+        // KissParams.AckMode.)
+        if (effectiveKiss?.AckMode == true && transport is ITxCompletionTransport txCapable)
         {
-            modem = new PacingKissModem(
-                modem,
+            transport = new PacingKissModem(
+                txCapable,
                 PacingKissModem.DefaultPacingTimeout,
                 loggerFactory.CreateLogger<PacingKissModem>());
         }
@@ -636,10 +639,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true);
-        // Adapt the KISS modem to the neutral IAx25Transport seam the listener now consumes.
-        // (Transitional: the concrete transports implement IAx25Transport natively in a later
-        // migration step, at which point this wrap goes away.)
-        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem, timeProvider), options, timeProvider);
+        // The transport speaks the neutral IAx25Transport seam the listener consumes directly.
+        var listener = new Ax25Listener(transport, options, timeProvider);
 
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
@@ -654,13 +655,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         try
         {
             await listener.StartAsync(ct).ConfigureAwait(false);
-            await ApplyKissParamsToModemAsync(modem, effectiveKiss, ct).ConfigureAwait(false);
+            await ApplyKissParamsToModemAsync(transport, effectiveKiss, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             LogPortFaultedEx(ex, port.Id, endpointText);
             await listener.DisposeAsync().ConfigureAwait(false);
-            await DisposeModemAsync(modem).ConfigureAwait(false);
+            await transport.DisposeAsync().ConfigureAwait(false);
             return;
         }
 
@@ -668,7 +669,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             Id = port.Id,
             Config = port,
-            Modem = modem,
+            Transport = transport,
             Listener = listener,
             Started = true,
         };
@@ -750,7 +751,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Resolve the profile here too so a live KISS re-apply uses the same
         // effective values a fresh bring-up would (explicit wins, profile fills).
         var (_, effectiveKiss) = ChannelProfiles.Resolve(port);
-        await ApplyKissParamsToModemAsync(running.Modem, effectiveKiss, ct).ConfigureAwait(false);
+        await ApplyKissParamsToModemAsync(running.Transport, effectiveKiss, ct).ConfigureAwait(false);
         RebaselineConfig(port);
         LogKissParamsApplied(port.Id);
     }
@@ -794,8 +795,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         LogCompatApplied(port.Id);
     }
 
-    private static async Task ApplyKissParamsToModemAsync(IKissModem modem, KissParams? kiss, CancellationToken ct)
+    private static async Task ApplyKissParamsToModemAsync(IAx25Transport transport, KissParams? kiss, CancellationToken ct)
     {
+        // CSMA params are meaningful only on a transport that exposes them. A transport
+        // with no CSMA channel (none today — AXUDP exposes them as no-ops through the
+        // migration shim) is simply skipped, preserving today's behaviour.
+        if (transport is not ICsmaChannelParams csma) return;
+
         // TXDELAY/PERSIST/SLOTTIME stay opt-in — unset means "leave the modem at its
         // own default", because the right value for those is firmware-specific and a
         // wrong guess degrades CSMA. TXTAIL is different (#465): its default is an
@@ -807,10 +813,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Dire Wolf — or a NinoTNC into a non-zero-latency audio path), which the node
         // can't infer, so the operator sets `kiss.txTail` per port and that explicit
         // value wins here (the `?? 0` only supplies the default when unset).
-        if (kiss?.TxDelay is { } txd) await modem.SetTxDelayAsync(txd, ct).ConfigureAwait(false);
-        if (kiss?.Persistence is { } per) await modem.SetPersistenceAsync(per, ct).ConfigureAwait(false);
-        if (kiss?.SlotTime is { } slot) await modem.SetSlotTimeAsync(slot, ct).ConfigureAwait(false);
-        await modem.SetTxTailAsync(kiss?.TxTail ?? 0, ct).ConfigureAwait(false);
+        if (kiss?.TxDelay is { } txd) await csma.SetTxDelayAsync(txd, ct).ConfigureAwait(false);
+        if (kiss?.Persistence is { } per) await csma.SetPersistenceAsync(per, ct).ConfigureAwait(false);
+        if (kiss?.SlotTime is { } slot) await csma.SetSlotTimeAsync(slot, ct).ConfigureAwait(false);
+        await csma.SetTxTailAsync(kiss?.TxTail ?? 0, ct).ConfigureAwait(false);
     }
 
     // Update the stored baseline config for a still-running port without
@@ -826,7 +832,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 {
                     Id = running.Id,
                     Config = port,
-                    Modem = running.Modem,
+                    Transport = running.Transport,
                     Listener = running.Listener,
                     Started = running.Started,
                 };
@@ -978,15 +984,6 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 consoleSessions.TryRemove(session, out byte _);
             }
         }, CancellationToken.None);
-    }
-
-    private static async Task DisposeModemAsync(IKissModem modem)
-    {
-        switch (modem)
-        {
-            case IAsyncDisposable ad: await ad.DisposeAsync().ConfigureAwait(false); break;
-            case IDisposable d: d.Dispose(); break;
-        }
     }
 
     /// <inheritdoc/>

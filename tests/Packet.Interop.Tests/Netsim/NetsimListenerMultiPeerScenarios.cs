@@ -72,15 +72,15 @@ public class NetsimListenerMultiPeerScenarios
         await using var kissPeer1    = await KissTcpClient.ConnectAsync(Host, PeerPort, cts.Token);
         await using var kissPeer2    = await KissTcpClient.ConnectAsync(Host, PeerPort, cts.Token);
 
-        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissListener), new Ax25ListenerOptions
+        await using var listener = new Ax25Listener(kissListener, new Ax25ListenerOptions
         {
             MyCall = listenerCall,
         });
-        await using var peer1Listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissPeer1), new Ax25ListenerOptions
+        await using var peer1Listener = new Ax25Listener(kissPeer1, new Ax25ListenerOptions
         {
             MyCall = peer1Call,
         });
-        await using var peer2Listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissPeer2), new Ax25ListenerOptions
+        await using var peer2Listener = new Ax25Listener(kissPeer2, new Ax25ListenerOptions
         {
             MyCall = peer2Call,
         });
@@ -141,11 +141,11 @@ public class NetsimListenerMultiPeerScenarios
         await using var kissListener = await KissTcpClient.ConnectAsync(Host, ListenerPort, cts.Token);
         await using var kissPeer     = await KissTcpClient.ConnectAsync(Host, PeerPort, cts.Token);
 
-        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissListener), new Ax25ListenerOptions
+        await using var listener = new Ax25Listener(kissListener, new Ax25ListenerOptions
         {
             MyCall = listenerCall,
         });
-        await using var peerListener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissPeer), new Ax25ListenerOptions
+        await using var peerListener = new Ax25Listener(kissPeer, new Ax25ListenerOptions
         {
             MyCall = peerCall,
         });

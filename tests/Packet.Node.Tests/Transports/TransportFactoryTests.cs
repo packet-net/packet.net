@@ -1,3 +1,4 @@
+using Packet.Kiss;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Transports;
 
@@ -5,9 +6,13 @@ namespace Packet.Node.Tests.Transports;
 
 /// <summary>
 /// The real <see cref="TransportFactory"/>'s AXUDP arm: an <see cref="AxudpTransport"/>
-/// is mapped onto a live <see cref="AxudpKissModem"/> over a UDP socket. (The serial
-/// / kiss-tcp arms open real hardware/sockets and are covered through the
-/// integration harness with a fake factory; this pins the new AXUDP wiring.)
+/// is mapped onto a live <see cref="AxudpKissModem"/> over a UDP socket. AXUDP is still
+/// an <c>IKissModem</c> (its frame synthesis migrates in a later step), so the factory
+/// adapts it to the neutral <c>IAx25Transport</c> seam through the migration shim
+/// (<see cref="KissModemTransport"/>) — the factory uniformly returns
+/// <c>IAx25Transport</c>. (The serial / kiss-tcp arms open real hardware/sockets and
+/// are covered through the integration harness with a fake factory; this pins the
+/// AXUDP wiring.)
 /// </summary>
 public sealed class TransportFactoryTests
 {
@@ -16,10 +21,11 @@ public sealed class TransportFactoryTests
     {
         var transport = new AxudpTransport { Host = "127.0.0.1", Port = 10093, LocalPort = 0 };
 
-        var modem = await TransportFactory.Instance.CreateAsync(transport);
-        await using ((IAsyncDisposable)modem)
+        var created = await TransportFactory.Instance.CreateAsync(transport);
+        await using (created)
         {
-            var axudp = modem.Should().BeOfType<AxudpKissModem>().Subject;
+            var shim = created.Should().BeOfType<KissModemTransport>().Subject;
+            var axudp = shim.Modem.Should().BeOfType<AxudpKissModem>().Subject;
             axudp.LocalPort.Should().BeGreaterThan(0, "localPort 0 resolves to a real ephemeral bind");
         }
     }
@@ -30,10 +36,11 @@ public sealed class TransportFactoryTests
         // localhost always resolves; this exercises the DNS path (not a literal IP).
         var transport = new AxudpTransport { Host = "localhost", Port = 10093, LocalPort = 0 };
 
-        var modem = await TransportFactory.Instance.CreateAsync(transport);
-        await using ((IAsyncDisposable)modem)
+        var created = await TransportFactory.Instance.CreateAsync(transport);
+        await using (created)
         {
-            modem.Should().BeOfType<AxudpKissModem>();
+            var shim = created.Should().BeOfType<KissModemTransport>().Subject;
+            shim.Modem.Should().BeOfType<AxudpKissModem>();
         }
     }
 }

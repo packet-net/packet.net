@@ -1,3 +1,4 @@
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 using Packet.Kiss.Adaptive;
 
@@ -146,7 +147,7 @@ public class AdaptiveKissTransportTests
         modem.MaxConcurrentSendObserved.Should().Be(1);
     }
 
-    private sealed class FakeModem : IKissModem
+    private sealed class FakeModem : ITxCompletionTransport, ICsmaChannelParams
     {
         public enum Mode { Success, SuccessDelayed, AlwaysTimeOut }
 
@@ -160,16 +161,15 @@ public class AdaptiveKissTransportTests
 
         private int currentSendDepth;
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            SentFrames.Add(ax25Bytes.ToArray());
+            SentFrames.Add(ax25.ToArray());
             return Task.CompletedTask;
         }
 
-        public async Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes,
+        public async Task<TxCompletion> SendAwaitingCompletionAsync(
+            ReadOnlyMemory<byte> ax25,
             TimeSpan? timeout = null,
-            ushort? sequenceTag = null,
             CancellationToken cancellationToken = default)
         {
             int depth = Interlocked.Increment(ref currentSendDepth);
@@ -188,15 +188,17 @@ public class AdaptiveKissTransportTests
                     await Task.Delay(SuccessDelay, cancellationToken).ConfigureAwait(false);
                 }
 
-                SentFrames.Add(ax25Bytes.ToArray());
+                SentFrames.Add(ax25.ToArray());
                 var now = DateTimeOffset.UtcNow;
-                return new AckModeReceipt(sequenceTag ?? 1, now, now);
+                return new TxCompletion(now, now);
             }
             finally
             {
                 Interlocked.Decrement(ref currentSendDepth);
             }
         }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default)
         {

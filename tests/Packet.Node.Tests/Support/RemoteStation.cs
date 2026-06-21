@@ -1,7 +1,7 @@
 using System.Text;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 
 namespace Packet.Node.Tests.Support;
 
@@ -19,9 +19,9 @@ public sealed class RemoteStation : IAsyncDisposable
     private readonly object gate = new();
     private Ax25Session? session;
 
-    public RemoteStation(IKissModem modem, Callsign myCall)
+    public RemoteStation(IAx25Transport transport, Callsign myCall)
     {
-        listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
+        listener = new Ax25Listener(transport, new Ax25ListenerOptions
         {
             MyCall = myCall,
             ConfigureSession = s => s.DataLinkSignalEmitted += OnSignal,

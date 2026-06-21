@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
-using Packet.Kiss;
 using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.NetRom;
@@ -33,9 +33,9 @@ public sealed class InterlinkCapabilityCacheWiringTests
 
     // A bare started listener over one InMemoryRadio endpoint, for AttachPort (its identity is
     // all EnsureInterlinkAsync's no-route fallback needs — it picks the first attachment).
-    private static async Task<Ax25Listener> StartListenerAsync(IKissModem modem, Callsign myCall)
+    private static async Task<Ax25Listener> StartListenerAsync(IAx25Transport transport, Callsign myCall)
     {
-        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
+        var listener = new Ax25Listener(transport, new Ax25ListenerOptions
         {
             MyCall = myCall,
             N2 = TestAx25Timing.StationN2,

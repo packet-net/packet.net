@@ -201,11 +201,11 @@ public sealed class LiveNodeMcpBackend(
             return new KissParamResult(false, false, "the node is still starting.");
         }
 
-        // Push the parameter to the live modem through the same exclusive gate the
+        // Push the parameter to the live transport through the same exclusive gate the
         // reconcile / restart paths use, so a KISS-param write can't race a port
-        // teardown and write to a half-disposed modem. KissParamWriter owns the
+        // teardown and write to a half-disposed transport. KissParamWriter owns the
         // settable-param set + range validation and dispatches to the matching
-        // IKissModem setter, which emits the KISS command frame on the wire.
+        // ICsmaChannelParams setter, which emits the KISS command frame on the wire.
         return await host.RunExclusiveAsync(async () =>
         {
             if (supervisor.GetPort(req.Port) is not { Started: true } port)
@@ -214,7 +214,7 @@ public sealed class LiveNodeMcpBackend(
             }
 
             var r = await Packet.Node.Core.Transports.KissParamWriter
-                .ApplyAsync(port.Modem, req.Param, req.Value, ct).ConfigureAwait(false);
+                .ApplyAsync(port.Transport, req.Param, req.Value, ct).ConfigureAwait(false);
             return new KissParamResult(r.Accepted, r.RequiresRestart, r.Message);
         }, ct).ConfigureAwait(false);
     }

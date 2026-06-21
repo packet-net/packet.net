@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Console;
 /// A plain TCP listener that accepts telnet dial-ins and runs a
 /// <see cref="NodeCommandService"/> over each as a <see cref="TcpNodeConnection"/>.
 /// This is the operator-local console — bound to loopback by default. It is NOT
-/// a transport (not an <c>IKissModem</c>); it is a second source of
+/// an AX.25 transport (not an <c>IAx25Transport</c>); it is a second source of
 /// <see cref="INodeConnection"/>s feeding the same console.
 /// </summary>
 /// <remarks>

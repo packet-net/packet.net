@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
+using Packet.Ax25.Transport;
 using Packet.Kiss;
 using Packet.Node.Core.Transports;
 
@@ -53,14 +54,14 @@ public sealed class KissTcpReconnectIntegrationTests
         dials.Enqueue(secondPeer);
 
         var reconnectCount = 0;
-        Func<CancellationToken, Task<IKissModem>> dial = _ =>
+        Func<CancellationToken, Task<IAx25Transport>> dial = _ =>
         {
             Interlocked.Increment(ref reconnectCount);
             if (!dials.TryDequeue(out var ep))
             {
                 throw new IOException("no more endpoints provisioned");
             }
-            return Task.FromResult<IKissModem>(ep.Client);
+            return Task.FromResult<IAx25Transport>(ep.Client);
         };
 
         await using var modem = new ReconnectingKissModem(
@@ -81,9 +82,9 @@ public sealed class KissTcpReconnectIntegrationTests
         var got = new List<string>();
         var pump = Task.Run(async () =>
         {
-            await foreach (var f in modem.ReadFramesAsync(cts.Token))
+            await foreach (var f in modem.ReceiveAsync(cts.Token))
             {
-                got.Add(Encoding.ASCII.GetString(f.Payload));
+                got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
                 if (got.Count == 1) break;
             }
         });
@@ -125,14 +126,14 @@ public sealed class KissTcpReconnectIntegrationTests
         // The dial refuses twice (peer still rebooting) then succeeds — proving
         // the bounded-backoff retry loop, not just a single re-dial.
         var attempts = 0;
-        Func<CancellationToken, Task<IKissModem>> dial = _ =>
+        Func<CancellationToken, Task<IAx25Transport>> dial = _ =>
         {
             var n = Interlocked.Increment(ref attempts);
             if (n <= 2)
             {
                 throw new SocketExceptionLike();
             }
-            return Task.FromResult<IKissModem>(goodPeer.Client);
+            return Task.FromResult<IAx25Transport>(goodPeer.Client);
         };
 
         await using var modem = new ReconnectingKissModem(
@@ -143,9 +144,9 @@ public sealed class KissTcpReconnectIntegrationTests
         var got = new List<string>();
         var pump = Task.Run(async () =>
         {
-            await foreach (var f in modem.ReadFramesAsync(cts.Token))
+            await foreach (var f in modem.ReceiveAsync(cts.Token))
             {
-                got.Add(Encoding.ASCII.GetString(f.Payload));
+                got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
                 if (got.Count == 1) break;
             }
         });
