@@ -15,7 +15,7 @@ namespace Packet.Node.Core.Configuration;
 /// </para>
 /// <para>
 /// AXUDP (AX.25 frames over UDP, <see cref="AxudpTransport"/>) plugs into the
-/// same seam via the <c>AxudpKissModem</c> adapter, which presents a
+/// same seam via the <c>AxudpFrameTransport</c> adapter, which presents a
 /// <see cref="Packet.Axudp.AxudpSocket"/> as an <c>IKissModem</c> — so the
 /// listener / console / reconcile path is shared with the KISS transports. The
 /// telnet console is <b>not</b> a transport (it is not an <c>IKissModem</c>); it
@@ -108,7 +108,7 @@ public sealed record KissTcpTransport : TransportConfig
 /// KISS-form octets the listener produces) followed by the 2-octet AX.25 FCS.
 /// The FCS is unconditional — it is the de-facto wire form that every real peer
 /// (LinBPQ's BPQAXIP, XRouter, ax25ipd, JNOS, per RFC 1226) requires; see
-/// <c>docs/strict-vs-pragmatic-audit.md</c>. Driven by the <c>AxudpKissModem</c>
+/// <c>docs/strict-vs-pragmatic-audit.md</c>. Driven by the <c>AxudpFrameTransport</c>
 /// adapter over a <see cref="Packet.Axudp.AxudpSocket"/>.
 /// </summary>
 /// <remarks>
@@ -116,7 +116,7 @@ public sealed record KissTcpTransport : TransportConfig
 /// every outbound frame to one configured remote (<see cref="Host"/>:<see cref="Port"/>)
 /// and receives on its own bound <see cref="LocalPort"/>. There is no CSMA on a
 /// UDP link, so the KISS TXDELAY/PERSIST/SLOTTIME knobs are inert for this kind
-/// (the adapter accepts and ignores them — see <c>AxudpKissModem</c>).
+/// (the adapter accepts and ignores them — see <c>AxudpFrameTransport</c>).
 /// </remarks>
 public sealed record AxudpTransport : TransportConfig
 {

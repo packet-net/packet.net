@@ -21,14 +21,14 @@ namespace Packet.Interop.Tests.Linbpq;
 /// over AXUDP.</b> The AXUDP analog of <see cref="NetRomNodesIngestViaNetsim"/>:
 /// it asserts the same protocol behaviour — pdn ingests LinBPQ's on-the-wire
 /// NODES broadcast and learns it as a neighbour — but over a BPQAXIP/UDP tunnel
-/// (<see cref="AxudpKissModem"/>) instead of net-sim's software-AFSK channel, so
+/// (<see cref="AxudpFrameTransport"/>) instead of net-sim's software-AFSK channel, so
 /// it is deterministic and load-insensitive (no audio decode to glitch under CPU
 /// contention). See <c>docs/plan.md</c> §7 for the three-tier layering.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
-/// <see cref="AxudpKissModem"/> bound to a fixed host UDP port, pointed at BPQ's
+/// <see cref="AxudpFrameTransport"/> bound to a fixed host UDP port, pointed at BPQ's
 /// BPQAXIP/UDP listener (127.0.0.1:8093) — the exact <c>IKissModem</c> seam a
 /// deployed pdn AXUDP port uses. A <see cref="NetRomService"/> taps the listener's
 /// <c>FrameTraced</c> stream (read-only; no engine change), parses the NODES UI
@@ -110,10 +110,10 @@ public class NetRomNodesIngestViaAxudp
 
         using var cts = new CancellationTokenSource(HearBpqBudget + TimeSpan.FromSeconds(45));
 
-        await using var modem = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
+        await using var modem = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
         // A real listener over the AXUDP tunnel + the read-only NET/ROM service tap —
         // the exact production pipeline, point-to-point over UDP rather than the RF sim.
-        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = OurCall });
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
         await using var netRom = new NetRomService(new NetRomConfig
         {
             Enabled = true,

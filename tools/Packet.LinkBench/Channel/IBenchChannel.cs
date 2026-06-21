@@ -23,21 +23,20 @@ internal interface IBenchChannel : IAsyncDisposable
 }
 
 /// <summary>
-/// Two <see cref="AxudpKissModem"/>s on UDP loopback — real sockets, real
+/// Two <see cref="AxudpFrameTransport"/>s on UDP loopback — real sockets, real
 /// async/serialisation, full-duplex, lossless. Tom's "lossless AXUDP" baseline:
-/// confirms an in-proc result isn't an artifact of the in-proc model. AXUDP is
-/// still an <c>IKissModem</c> (its frame synthesis migrates in a later step), so
-/// the migration shim adapts it to the neutral seam.
+/// confirms an in-proc result isn't an artifact of the in-proc model. AXUDP is a
+/// native <see cref="IAx25Transport"/> (no KISS), used directly.
 /// </summary>
 internal sealed class AxudpChannel : IBenchChannel
 {
-    private readonly KissModemTransport a;
-    private readonly KissModemTransport b;
+    private readonly AxudpFrameTransport a;
+    private readonly AxudpFrameTransport b;
 
     public AxudpChannel(int portA, int portB)
     {
-        a = new KissModemTransport(new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portB), localPort: portA));
-        b = new KissModemTransport(new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, portA), localPort: portB));
+        a = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, portB), localPort: portA);
+        b = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, portA), localPort: portB);
     }
 
     public IAx25Transport EndpointA => a;

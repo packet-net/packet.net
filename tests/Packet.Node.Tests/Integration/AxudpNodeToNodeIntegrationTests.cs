@@ -16,7 +16,7 @@ namespace Packet.Node.Tests.Integration;
 /// other over AXUDP</b> on the loopback interface — a full AX.25 connected-mode
 /// session (SABM/UA + I-frames carrying the node banner) carried over real UDP
 /// datagrams, end-to-end through the node-host machinery (the real
-/// <see cref="TransportFactory"/> → <see cref="AxudpKissModem"/> → port supervisor
+/// <see cref="TransportFactory"/> → <see cref="AxudpFrameTransport"/> → port supervisor
 /// → console). This is the "AXUDP connectivity to another node over a standard
 /// mechanism" capability: the C# node is the AXUDP peer a remote node (e.g. the
 /// Rust Pico-W) can dial.
