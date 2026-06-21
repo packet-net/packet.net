@@ -10,7 +10,7 @@ namespace Packet.Node.Core.Transports;
 
 /// <summary>
 /// The slice-1 <see cref="ITransportFactory"/>: maps each
-/// <see cref="TransportConfig"/> arm onto its concrete <see cref="IKissModem"/>.
+/// <see cref="TransportConfig"/> arm onto its concrete IAx25Transport.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -19,7 +19,7 @@ namespace Packet.Node.Core.Transports;
 /// <c>SetModeAsync</c>.</item>
 /// <item><see cref="KissTcpTransport"/> → <c>KissTcpClient.ConnectAsync</c> — a
 /// softmodem / net-sim (the software-RF channel).</item>
-/// <item><see cref="AxudpTransport"/> → <c>AxudpKissModem</c> over a
+/// <item><see cref="AxudpTransport"/> → <c>AxudpFrameTransport</c> over a
 /// <c>Packet.Axudp.AxudpSocket</c> (AX.25 frames over UDP — the BPQAXIP tunnel).</item>
 /// </list>
 /// <para>
@@ -74,12 +74,10 @@ public sealed class TransportFactory : ITransportFactory
 
             case AxudpTransport a:
             {
-                // AxudpKissModem is still IKissModem (its frame synthesis migrates in a later
-                // step); wrap it with the migration shim so the factory uniformly returns
-                // IAx25Transport. The shim exposes the CSMA params as no-ops, so the operator-
-                // visible "set channel param" semantics on an AXUDP port are unchanged.
+                // AXUDP is a native IAx25Transport — no KISS, no synthesis, no CSMA/ACKMODE
+                // capabilities (a UDP link has none). Returned directly.
                 var remote = await ResolveAsync(a.Host, a.Port, cancellationToken).ConfigureAwait(false);
-                return new KissModemTransport(new AxudpKissModem(remote, a.LocalPort), timeProvider);
+                return new AxudpFrameTransport(remote, a.LocalPort, timeProvider);
             }
 
             default:

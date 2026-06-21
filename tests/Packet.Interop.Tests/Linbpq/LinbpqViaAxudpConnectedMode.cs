@@ -18,13 +18,13 @@ namespace Packet.Interop.Tests.Linbpq;
 
 /// <summary>
 /// Connected-mode AXUDP interop against the real LinBPQ container — the gap
-/// PR #299 left open. The node host's <see cref="AxudpKissModem"/> (an
+/// PR #299 left open. The node host's <see cref="AxudpFrameTransport"/> (an
 /// <c>IKissModem</c> presenting <see cref="AxudpSocket"/> over UDP) was only
 /// ever exercised pdn↔pdn on loopback; AXUDP exists for real-peer interop and
 /// LinBPQ is the de-facto reference, so these tests prove it actually talks to
 /// BPQ through the SAME node-host machinery a deployed pdn uses
 /// (<see cref="PortSupervisor"/> + <see cref="TransportFactory"/> →
-/// <c>AxudpKissModem</c> → <c>Ax25Listener</c> → node console), in BOTH
+/// <c>AxudpFrameTransport</c> → <c>Ax25Listener</c> → node console), in BOTH
 /// directions, end-to-end.
 /// </summary>
 /// <remarks>

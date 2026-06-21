@@ -5,7 +5,7 @@ The AX.25 connected-mode link bench from [`docs/link-bench-plan.md`](../../docs/
 ## Channels (plan §3)
 
 - `inproc` (default) — in-memory channel model: per-frame airtime (`frameBits/baud` + txdelay/txtail), optional half-duplex with turnaround, optional seeded frame loss, and an ackmode TX-complete echo emitted **after the modeled airtime**. `--baud 0` (the default) disables airtime modelling entirely: rung 1, pure lossless engine↔engine. `--baud 1200 --half-duplex` is rung 1b.
-- `axudp` — two `AxudpKissModem`s over UDP loopback. Real sockets, lossless, full-duplex, and **no ackmode by nature** (no TNC, no echo) — the cross-check that an in-proc result isn't an artifact of the in-proc model.
+- `axudp` — two `AxudpFrameTransport`s over UDP loopback. Real sockets, lossless, full-duplex, and **no ackmode by nature** (no TNC, no echo) — the cross-check that an in-proc result isn't an artifact of the in-proc model.
 - `netsim` — two KISS-TCP clients into net-sim ports (rung 2). Needs the ackmode-capable image pinned in plan §7. `--netsim host:8101,host:8102`.
 
 ## ackmode (plan §2)

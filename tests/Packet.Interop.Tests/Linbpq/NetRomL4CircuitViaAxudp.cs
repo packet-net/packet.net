@@ -25,7 +25,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// net-sim <c>NetRomL4CircuitViaNetsim</c> (removed): it asserts the <em>same</em>
 /// protocol behaviour against a real LinBPQ 6.0.25.23 — NODES both ways, an L4 circuit each
 /// way with Information round-tripping, and the Connect-Request info-field framing
-/// — but over a BPQAXIP/UDP tunnel (<see cref="AxudpKissModem"/>) rather than
+/// — but over a BPQAXIP/UDP tunnel (<see cref="AxudpFrameTransport"/>) rather than
 /// net-sim's software-AFSK channel. AXUDP is AX.25-frames-over-UDP, so it sheds the
 /// net-sim flakiness (CPU-glitch → audio-decode-fail → fake loss / half-duplex
 /// collision) while staying a genuine real-BPQ interop. See <c>docs/plan.md</c> §7.
@@ -33,7 +33,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <remarks>
 /// <para>
 /// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
-/// <see cref="AxudpKissModem"/> bound to a fixed host UDP port, pointed at BPQ's
+/// <see cref="AxudpFrameTransport"/> bound to a fixed host UDP port, pointed at BPQ's
 /// BPQAXIP/UDP listener (127.0.0.1:8093). A <see cref="NetRomService"/> with
 /// broadcast + connect on rides that one listener — the whole NET/ROM stack
 /// (NODES origination, interlink AX.25 PID-0xCF sessions, L4 circuits) is
@@ -139,8 +139,8 @@ public class NetRomL4CircuitViaAxudp
         using var cts = new CancellationTokenSource(
             HearBpqBudget + BpqLearnsUsBudget + OutboundConnectBudget + InboundCircuitBudget + TimeSpan.FromSeconds(90));
 
-        await using var modem = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
-        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = OurCall });
+        await using var modem = new AxudpFrameTransport(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
 
         // `await using` (not `using`): NetRomService.DisposeAsync runs the GRACEFUL
         // teardown — DISCs the interlink AX.25 session + waits (bounded) for DISC/UA on
