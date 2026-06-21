@@ -93,7 +93,17 @@ public sealed class OarcReporterTests
         }
     }
 
-    private static async Task<Harness> StartAsync(OarcConfig oarc, string? grid = "IO91wm")
+    /// <param name="configure">Optional seam-wiring hook, invoked after the reporter is constructed
+    /// but BEFORE its background send loop is started. Tests that depend on intercepting the very
+    /// first <see cref="CapturingClient.ReportAsync"/> call (e.g. the node-up POST) MUST install their
+    /// <see cref="CapturingClient.Responder"/> and/or <see cref="OarcReporter.RetryBackoffArmed"/> seam
+    /// here — installing them after <see cref="OarcReporter.StartAsync"/> returns races the loop, which
+    /// may already have posted (and the responder default of Accepted / a null RetryBackoffArmed makes
+    /// the signal it depends on never fire). See <see cref="A_transport_error_is_retried_then_accepted"/>.</param>
+    private static async Task<Harness> StartAsync(
+        OarcConfig oarc,
+        string? grid = "IO91wm",
+        Action<OarcReporter, CapturingClient>? configure = null)
     {
         var clock = new FakeTimeProvider(T0);
         var telemetry = new NodeTelemetry();
@@ -102,6 +112,7 @@ public sealed class OarcReporterTests
         var state = new FakeStateSource();
         var logger = new CapturingLogger<OarcReporter>();
         var reporter = new OarcReporter(config, state, client, telemetry, clock, "v1.2.3", logger);
+        configure?.Invoke(reporter, client);   // wire test seams BEFORE the send loop can post anything
         await reporter.StartAsync(CancellationToken.None);
         return new Harness(reporter, config, state, client, telemetry, clock, logger);
     }
@@ -286,18 +297,27 @@ public sealed class OarcReporterTests
     [Fact]
     public async Task A_transport_error_is_retried_then_accepted()
     {
-        await using var h = await StartAsync(On() with { ReportLinks = false, ReportCircuits = false });
-        // Fail the very first POST (the node-up) once, accept thereafter.
-        h.Client.Responder = (i, _) => i == 0
-            ? new OarcIngestResult(OarcIngestOutcome.TransportError, 503, "boom")
-            : new OarcIngestResult(OarcIngestOutcome.Accepted, 202, null);
-
         // Gate the clock advance on the reporter having ARMED its backoff timer, so this is
         // deterministic rather than racing the background send loop's park (the old
         // AdvanceUntil hammered Advance in a loop and could miss the timer under CI
         // contention — it flaked exactly that way: "condition not met within 30s").
+        //
+        // BOTH seams (the failing responder AND the backoff hook) are wired via `configure:`,
+        // i.e. BEFORE the background send loop is started — otherwise the loop can post the
+        // node-up before they are installed: the responder would default to Accepted (no retry,
+        // so the hook never fires → 30 s timeout), and even a failing post would Invoke a null
+        // hook (signal lost → 30 s timeout). Installing them pre-start closes both races.
         var backoffArmed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        h.Reporter.RetryBackoffArmed = () => backoffArmed.TrySetResult();
+        await using var h = await StartAsync(
+            On() with { ReportLinks = false, ReportCircuits = false },
+            configure: (reporter, client) =>
+            {
+                // Fail the very first POST (the node-up) once, accept thereafter.
+                client.Responder = (i, _) => i == 0
+                    ? new OarcIngestResult(OarcIngestOutcome.TransportError, 503, "boom")
+                    : new OarcIngestResult(OarcIngestOutcome.Accepted, 202, null);
+                reporter.RetryBackoffArmed = () => backoffArmed.TrySetResult();
+            });
 
         await Wait.ForAsync(() => h.Client.CountOf<OarcNodeUpEvent>() >= 1, "first (failing) attempt");
         await backoffArmed.Task.WaitAsync(TimeSpan.FromSeconds(30));   // retry backoff timer is live
@@ -308,8 +328,13 @@ public sealed class OarcReporterTests
     [Fact]
     public async Task A_rejected_payload_is_not_retried()
     {
-        await using var h = await StartAsync(On() with { ReportLinks = false, ReportCircuits = false });
-        h.Client.Responder = (_, _) => new OarcIngestResult(OarcIngestOutcome.Rejected, 400, "bad");
+        // Install the rejecting responder via `configure:` (pre-start) so the FIRST post — the node-up
+        // — is the one rejected. Installing it after StartAsync races the loop: the node-up could post
+        // before the responder is set, defaulting to Accepted, so the test would silently exercise the
+        // accepted-not-retried path instead of the rejected-not-retried path it means to cover.
+        await using var h = await StartAsync(
+            On() with { ReportLinks = false, ReportCircuits = false },
+            configure: (_, client) => client.Responder = (_, _) => new OarcIngestResult(OarcIngestOutcome.Rejected, 400, "bad"));
 
         await Wait.ForAsync(() => h.Client.CountOf<OarcNodeUpEvent>() >= 1, "the single attempt");
         h.Clock.Advance(TimeSpan.FromSeconds(10));
