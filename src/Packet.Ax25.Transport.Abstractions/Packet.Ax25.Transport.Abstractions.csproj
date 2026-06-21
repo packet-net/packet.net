@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Dependency-free transport-contract package — the seam between the AX.25 data-link
+    layer (Packet.Ax25.Session.Ax25Listener, the driving consumer) and whatever moves
+    AX.25 frames on/off a channel: a KISS TNC, an AXUDP socket, a future AGW/native
+    transport. The currency is AX.25 frame bytes, NOT a wire protocol — KISS is one
+    implementation detail behind this contract, never a property of it.
+
+    ZERO ProjectReferences by design: Ax25InboundFrame carries ReadOnlyMemory<byte>,
+    not a parsed Ax25Frame, so this package does not depend on Packet.Ax25 and cannot
+    create an Ax25<->transport cycle. Packet.Ax25 depends on THIS; transports depend on
+    THIS (and on Packet.Ax25 where they parse). Replaces the KISS-shaped role that
+    Packet.Kiss.Abstractions held (retired later in the migration).
+  -->
+
+  <PropertyGroup>
+    <PackageId>Packet.Ax25.Transport.Abstractions</PackageId>
+    <Title>Packet.Ax25.Transport.Abstractions — AX.25 frame-transport contract</Title>
+    <Description>Dependency-free contract for the AX.25 frame-transport layer of the Packet.NET stack — IAx25Transport (send/receive AX.25 frames), Ax25InboundFrame, and the optional ITxCompletionTransport / ICsmaChannelParams capabilities. Take a dependency on this rather than a concrete transport or the KISS package when you only need to move AX.25 frames. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>ax25;amateur-radio;packet-radio;transport;abstractions</PackageTags>
+  </PropertyGroup>
+
+</Project>

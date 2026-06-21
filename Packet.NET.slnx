@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Packet.Agw/Packet.Agw.csproj" />
     <Project Path="src/Packet.Ax25/Packet.Ax25.csproj" />
+    <Project Path="src/Packet.Ax25.Transport.Abstractions/Packet.Ax25.Transport.Abstractions.csproj" />
     <Project Path="src/Packet.Aprs/Packet.Aprs.csproj" />
     <Project Path="src/Packet.Axudp/Packet.Axudp.csproj" />
     <Project Path="src/Packet.Core/Packet.Core.csproj" />
