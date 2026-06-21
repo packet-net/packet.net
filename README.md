@@ -8,6 +8,8 @@ A modern AX.25 v2.2 stack and packet-radio node, written in .NET 10. Connected-m
 
 Each library is its own NuGet package (or planned package). They compose: the node host depends on all of them, but you can pull just `Packet.Ax25` + `Packet.Kiss` if you're building an app of your own.
 
+> **Building your own tooling on the libraries?** Start with the [developer guide](guide/index.md) — it walks the public API from a raw frame dumper up through a beacon sender, a channel monitor, a connect client, and a hand-rolled node, all the way to NET/ROM.
+
 | Path | Purpose | NuGet |
 | --- | --- | --- |
 | `src/Packet.Core/` | Shared primitives (Callsign, Ax25Address) | [`Packet.Core`](https://www.nuget.org/packages/Packet.Core) |
