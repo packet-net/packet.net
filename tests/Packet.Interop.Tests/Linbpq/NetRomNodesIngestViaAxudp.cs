@@ -113,7 +113,7 @@ public class NetRomNodesIngestViaAxudp
         await using var modem = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
         // A real listener over the AXUDP tunnel + the read-only NET/ROM service tap —
         // the exact production pipeline, point-to-point over UDP rather than the RF sim.
-        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
+        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = OurCall });
         await using var netRom = new NetRomService(new NetRomConfig
         {
             Enabled = true,

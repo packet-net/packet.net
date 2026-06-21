@@ -29,8 +29,8 @@ public sealed class AxPingRoundTripIntegrationTests
 
         var (radioA, radioB) = InMemoryRadio.CreatePair();
 
-        await using var listenerA = new Ax25Listener(radioA, new Ax25ListenerOptions { MyCall = StationA });
-        await using var listenerB = new Ax25Listener(radioB, new Ax25ListenerOptions { MyCall = StationB });
+        await using var listenerA = new Ax25Listener(new Packet.Kiss.KissModemTransport(radioA), new Ax25ListenerOptions { MyCall = StationA });
+        await using var listenerB = new Ax25Listener(new Packet.Kiss.KissModemTransport(radioB), new Ax25ListenerOptions { MyCall = StationB });
 
         await listenerA.StartAsync(cts.Token);
         await listenerB.StartAsync(cts.Token);
@@ -65,7 +65,7 @@ public sealed class AxPingRoundTripIntegrationTests
         // Only A is on the air — B's endpoint exists but no listener is attached,
         // so nothing answers (the LinBPQ-on-the-lab situation). A must report 100%
         // loss as a normal result, not an error.
-        await using var listenerA = new Ax25Listener(radioA, new Ax25ListenerOptions { MyCall = StationA });
+        await using var listenerA = new Ax25Listener(new Packet.Kiss.KissModemTransport(radioA), new Ax25ListenerOptions { MyCall = StationA });
         await listenerA.StartAsync(cts.Token);
 
         var result = await AxPinger.RunAsync(

@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
 using Packet.Ax25.Sdl;
 using Packet.Core;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 
 namespace Packet.Ax25.Session;
 
 /// <summary>
 /// First-class AX.25 inbound-acceptance coordinator. Owns one
-/// <see cref="IKissModem"/>, address-filters inbound frames against
+/// <see cref="IAx25Transport"/>, address-filters inbound frames against
 /// <see cref="MyCall"/>, dispatches to the per-peer <see cref="Ax25Session"/>
 /// (creating one on first contact — inbound SABM or outbound
 /// <see cref="ConnectAsync(Callsign, CancellationToken)"/>), and surfaces
@@ -50,7 +50,13 @@ public sealed class Ax25Listener : IAsyncDisposable
     private const byte UFrameControlMask = 0xEF;   // mask off the P/F bit
     private const byte TestControl       = 0xE3;   // TEST, P/F-masked (mirrors AxPinger)
 
-    private readonly IKissModem modem;
+    private readonly IAx25Transport modem;
+
+    // The transport's optional TX-completion capability (ACKMODE), probed once at construction.
+    // Non-null means "this transport CAN attempt confirmed-TX"; a runtime NotSupportedException
+    // still latches ackmodeUnsupported as the backstop (a wrapping adapter exposes the capability
+    // even when the underlying modem turns out not to support it).
+    private readonly ITxCompletionTransport? txCompletion;
     private readonly Ax25ListenerOptions options;
     private readonly TimeProvider timeProvider;
 
@@ -217,10 +223,10 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// options. The listener does not start its inbound pump until
     /// <see cref="StartAsync"/> is called.
     /// </summary>
-    /// <param name="modem">KISS modem the listener attaches to. Reads frames via
-    /// <see cref="IKissModem.ReadFramesAsync"/>; sends via <see cref="IKissModem.SendFrameAsync"/>.</param>
+    /// <param name="modem">The AX.25 frame transport the listener attaches to. Reads frames via
+    /// <see cref="IAx25Transport.ReceiveAsync"/>; sends via <see cref="IAx25Transport.SendAsync"/>.</param>
     /// <param name="options">Listener options — required <see cref="Ax25ListenerOptions.MyCall"/> and optional timing / cache knobs.</param>
-    public Ax25Listener(IKissModem modem, Ax25ListenerOptions options)
+    public Ax25Listener(IAx25Transport modem, Ax25ListenerOptions options)
         : this(modem, options, TimeProvider.System)
     {
     }
@@ -229,11 +235,13 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// Test-injection ctor: supply a custom <see cref="TimeProvider"/>
     /// so tests can drive T1/T2/T3 with a <c>FakeTimeProvider</c>.
     /// </summary>
-    public Ax25Listener(IKissModem modem, Ax25ListenerOptions options, TimeProvider timeProvider)
+    public Ax25Listener(IAx25Transport modem, Ax25ListenerOptions options, TimeProvider timeProvider)
     {
         this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        // Probe the optional confirmed-TX (ACKMODE) capability once; null ⇒ never attempt it.
+        txCompletion = modem as ITxCompletionTransport;
         sessionParameters = Ax25SessionParameters.FromOptions(options);
     }
 
@@ -602,7 +610,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         EnsureNotDisposed();
         var frame = Ax25Frame.Ui(destination, MyCall, info.Span, pid, isCommand: true);
         var bytes = frame.ToBytes();
-        await modem.SendFrameAsync(bytes, ct).ConfigureAwait(false);
+        await modem.SendAsync(bytes, ct).ConfigureAwait(false);
         // Trace AFTER the send so the monitor's TX order matches the wire (mirrors
         // the per-session SendBytes ordering).
         TraceFrame(frame, FrameDirection.Transmitted);
@@ -628,7 +636,7 @@ public sealed class Ax25Listener : IAsyncDisposable
         EnsureNotDisposed();
         var frame = Ax25Frame.Test(destination, MyCall, info.Span, isCommand: true, pollFinal: pollFinal);
         var bytes = frame.ToBytes();
-        await modem.SendFrameAsync(bytes, ct).ConfigureAwait(false);
+        await modem.SendAsync(bytes, ct).ConfigureAwait(false);
         TraceFrame(frame, FrameDirection.Transmitted);
     }
 
@@ -701,16 +709,17 @@ public sealed class Ax25Listener : IAsyncDisposable
         pumpStarted.TrySetResult(true);
         try
         {
-            await foreach (var kiss in modem.ReadFramesAsync(ct).ConfigureAwait(false))
+            await foreach (var frame in modem.ReceiveAsync(ct).ConfigureAwait(false))
             {
-                if (kiss.Command != KissCommand.Data) continue;
+                // The transport already delivers only AX.25 frames (a KISS transport drops
+                // non-Data KISS commands itself), so there is no wire-protocol filter here.
                 // Parse under the port's configured options (read live, so a
                 // reseed applies from the next frame). A frame the options
                 // reject is dropped here — before tracing and dispatch — so a
                 // Strict port is deaf to it end-to-end (no session can open
                 // from it, and the monitor/NET-ROM taps don't see it either).
                 var parseOptions = Volatile.Read(ref sessionParameters).ParseOptions ?? Ax25ParseOptions.Lenient;
-                if (!Ax25Frame.TryParse(kiss.Payload, parseOptions, out var parsed)) continue;
+                if (!Ax25Frame.TryParse(frame.Ax25.Span, parseOptions, out var parsed)) continue;
 
                 // Each per-frame step is isolated from the next so a
                 // throwing event-handler or a misbehaving session
@@ -719,7 +728,7 @@ public sealed class Ax25Listener : IAsyncDisposable
                 try { TraceFrame(parsed, FrameDirection.Received); }
                 catch (Exception) { /* swallowed: see Note on event-handler exceptions */ }
 
-                try { DispatchInbound(parsed, kiss.Payload, parseOptions); }
+                try { DispatchInbound(parsed, frame.Ax25, parseOptions); }
                 catch (Exception) { /* swallowed: see Note on event-handler exceptions */ }
             }
         }
@@ -991,7 +1000,7 @@ public sealed class Ax25Listener : IAsyncDisposable
                 var frame = Ax25Frame.Test(
                     destination: responder, source: respondAs, info: echo,
                     isCommand: false, pollFinal: pollFinal);
-                await modem.SendFrameAsync(frame.ToBytes()).ConfigureAwait(false);
+                await modem.SendAsync(frame.ToBytes()).ConfigureAwait(false);
                 // Trace AFTER the send so the monitor's TX order matches the wire
                 // (mirrors SendUiAsync / the per-session SendBytes ordering).
                 TraceFrame(frame, FrameDirection.Transmitted);
@@ -1148,13 +1157,13 @@ public sealed class Ax25Listener : IAsyncDisposable
             // when the frame actually finished transmitting. If the SDL already
             // stopped T1 (the ack won the race), RearmIfRunning touches nothing.
             // Echo loss / no ACKMODE support degrades to enqueue-time semantics.
-            if (options.RestartT1OnTxComplete && !ackmodeUnsupported && parsedTx is not null && FrameArmsT1(parsedTx))
+            if (options.RestartT1OnTxComplete && txCompletion is not null && !ackmodeUnsupported && parsedTx is not null && FrameArmsT1(parsedTx))
             {
                 _ = SendAndRearmT1Async(bytes.ToArray());
             }
             else
             {
-                _ = modem.SendFrameAsync(bytes);
+                _ = modem.SendAsync(bytes);
             }
 
             if (parsedTx is not null)
@@ -1166,15 +1175,18 @@ public sealed class Ax25Listener : IAsyncDisposable
             {
                 try
                 {
-                    await modem.SendFrameWithAckAsync(frame).ConfigureAwait(false);
+                    // txCompletion is non-null here (gated by the caller's probe), but the
+                    // underlying transport may still NotSupport at runtime (a wrapping adapter
+                    // exposes the capability even when the modem turns out not to have it).
+                    await txCompletion!.SendAwaitingCompletionAsync(frame).ConfigureAwait(false);
                     scheduler.RearmIfRunning("T1", ctx.T1V);
                 }
                 catch (NotSupportedException)
                 {
-                    // The modem has no ACKMODE — latch and stop trying (the frame
+                    // The transport has no ACKMODE — latch and stop trying (the frame
                     // was NOT sent by the failed call, so send it plainly now).
                     ackmodeUnsupported = true;
-                    _ = modem.SendFrameAsync(frame);
+                    _ = modem.SendAsync(frame);
                 }
                 catch
                 {
@@ -1586,8 +1598,8 @@ public sealed class Ax25ListenerOptions
     /// smoothing samples genuine round trips instead of queue noise.
     /// </para>
     /// <para>
-    /// Requires an ACKMODE-capable modem (<see cref="IKissModem.SendFrameWithAckAsync"/>);
-    /// on a modem without it the listener latches back to plain sends after one
+    /// Requires a transport that implements <see cref="ITxCompletionTransport"/>;
+    /// on a transport without it the listener latches back to plain sends after one
     /// failed attempt. Construction-time only (not part of the
     /// <see cref="Ax25SessionParameters"/> live-reseed). The re-arm is atomic
     /// against the SDL stopping T1 (<see cref="ITimerScheduler.RearmIfRunning"/>),

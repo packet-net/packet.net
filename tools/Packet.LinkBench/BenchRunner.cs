@@ -107,7 +107,7 @@ internal static class BenchRunner
             s.TransitionFired += (_, t) => Journal(endpoint, $"{t.From} → {t.Next} ({t.Id})");
         }
 
-        var listenerA = new Ax25Listener(modemA, new Ax25ListenerOptions
+        var listenerA = new Ax25Listener(new Packet.Kiss.KissModemTransport(modemA), new Ax25ListenerOptions
         {
             MyCall = callA,
             K = cfg.K,
@@ -125,7 +125,7 @@ internal static class BenchRunner
                 WireSessionJournal(s, "A");
             },
         });
-        var listenerB = new Ax25Listener(modemB, new Ax25ListenerOptions
+        var listenerB = new Ax25Listener(new Packet.Kiss.KissModemTransport(modemB), new Ax25ListenerOptions
         {
             MyCall = callB,
             K = cfg.K,

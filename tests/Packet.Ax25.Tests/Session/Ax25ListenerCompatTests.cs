@@ -35,7 +35,7 @@ public class Ax25ListenerCompatTests
     }
 
     private static void InjectRaw(LoopbackModem modem, byte[] bytes) =>
-        modem.InjectInboundRaw(new KissFrame(0, KissCommand.Data, bytes));
+        modem.InjectInboundRaw(bytes);
 
     /// <summary>
     /// A Strict port is deaf to a response-direction SABM: dropped at decode,

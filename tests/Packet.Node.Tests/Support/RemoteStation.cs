@@ -21,7 +21,7 @@ public sealed class RemoteStation : IAsyncDisposable
 
     public RemoteStation(IKissModem modem, Callsign myCall)
     {
-        listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
         {
             MyCall = myCall,
             ConfigureSession = s => s.DataLinkSignalEmitted += OnSignal,

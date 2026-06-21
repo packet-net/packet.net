@@ -59,8 +59,8 @@ public class NetsimListenerScenarios
         await using var kissA = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var kissB = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
 
-        await using var listenerA = new Ax25Listener(kissA, new Ax25ListenerOptions { MyCall = nodeA });
-        await using var listenerB = new Ax25Listener(kissB, new Ax25ListenerOptions { MyCall = nodeB });
+        await using var listenerA = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissA), new Ax25ListenerOptions { MyCall = nodeA });
+        await using var listenerB = new Ax25Listener(new Packet.Kiss.KissModemTransport(kissB), new Ax25ListenerOptions { MyCall = nodeB });
 
         Ax25Session? acceptedOnB = null;
         var bAccepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -9,7 +9,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
-    <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
+    <!-- The transport seam (IAx25Transport) the listener consumes — neutral AX.25-frame
+         currency, NOT KISS. Packet.Ax25 no longer depends on the KISS package. -->
+    <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
     <!-- Packet.Ax25.Sdl moved to packet-net/ax25sdl on 2026-05-17 — consumed via NuGet. -->
     <PackageReference Include="Packet.Ax25.Sdl" />
   </ItemGroup>

@@ -80,7 +80,7 @@ public class Ax25NodeConnectionSegmentationTests
     private static async Task<(Ax25Listener Listener, CapturingModem Modem, Ax25Session Session)> AcceptedV20Session()
     {
         var modem = new CapturingModem();
-        var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = NodeCall });
+        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = NodeCall });
 
         var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);

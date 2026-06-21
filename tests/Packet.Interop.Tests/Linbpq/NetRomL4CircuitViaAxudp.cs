@@ -140,7 +140,7 @@ public class NetRomL4CircuitViaAxudp
             HearBpqBudget + BpqLearnsUsBudget + OutboundConnectBudget + InboundCircuitBudget + TimeSpan.FromSeconds(90));
 
         await using var modem = new AxudpKissModem(new IPEndPoint(IPAddress.Loopback, BpqAxudpPort), PdnLocalPort);
-        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = OurCall });
+        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions { MyCall = OurCall });
 
         // `await using` (not `using`): NetRomService.DisposeAsync runs the GRACEFUL
         // teardown — DISCs the interlink AX.25 session + waits (bounded) for DISC/UA on

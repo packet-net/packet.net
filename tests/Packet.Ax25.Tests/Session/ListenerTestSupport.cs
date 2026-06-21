@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 
 namespace Packet.Ax25.Tests.Session;
 
@@ -35,41 +35,41 @@ internal static class ListenerTestSupport
 }
 
 /// <summary>
-/// In-memory <see cref="IKissModem"/> whose inbound stream is a channel
-/// the test writes <see cref="KissFrame"/>s into. Outbound
-/// <c>SendFrameAsync</c> appends to <see cref="SentFrames"/> for the test
-/// to assert against.
+/// In-memory <see cref="IAx25Transport"/> whose inbound stream is a channel the test writes
+/// <see cref="Ax25InboundFrame"/>s into. Outbound <c>SendAsync</c> appends to
+/// <see cref="SentFrames"/> for the test to assert against. Also implements the optional
+/// <see cref="ITxCompletionTransport"/> (gated by <see cref="AckEchoGate"/>) and
+/// <see cref="ICsmaChannelParams"/> (no-ops), so it exercises the listener's capability paths.
 /// </summary>
 /// <remarks>
-/// Extended over the original (private nested in <c>Ax25ListenerTests</c>)
-/// with these utilities the broader coverage tests need:
+/// Utilities the broader coverage tests need:
 /// <list type="bullet">
 /// <item><see cref="DropOutbound"/> — if <c>true</c>, outbound frames are
 /// counted but not appended to <see cref="SentFrames"/>. Lets tests
 /// simulate "peer never saw our UA" without changing the listener API.</item>
 /// <item><see cref="SendDelay"/> — sleep this long inside
-/// <see cref="SendFrameAsync"/> before recording. Lets tests probe whether
+/// <see cref="SendAsync"/> before recording. Lets tests probe whether
 /// the listener's outbound path is on a separate thread from the inbound
 /// pump (it should be — fire-and-forget).</item>
 /// <item><see cref="OutboundFrameCount"/> — count of every send attempt
 /// regardless of <see cref="DropOutbound"/>.</item>
 /// </list>
 /// </remarks>
-internal sealed class LoopbackModem : IKissModem
+internal sealed class LoopbackModem : ITxCompletionTransport, ICsmaChannelParams
 {
-    private readonly Channel<KissFrame> rx = Channel.CreateUnbounded<KissFrame>(new UnboundedChannelOptions
+    private readonly Channel<Ax25InboundFrame> rx = Channel.CreateUnbounded<Ax25InboundFrame>(new UnboundedChannelOptions
     {
         SingleReader = true,
         SingleWriter = false,
     });
 
-    /// <summary>Outbound frames the listener / session has handed to the modem.</summary>
+    /// <summary>Outbound frames the listener / session has handed to the transport.</summary>
     public ObservableList<ReadOnlyMemory<byte>> SentFrames { get; } = new();
 
     /// <summary>If <c>true</c>, outbound frames are dropped — <see cref="SentFrames"/> stays empty.</summary>
     public bool DropOutbound { get; set; }
 
-    /// <summary>If non-zero, <see cref="SendFrameAsync"/> sleeps for this long before recording.</summary>
+    /// <summary>If non-zero, <see cref="SendAsync"/> sleeps for this long before recording.</summary>
     public TimeSpan SendDelay { get; set; } = TimeSpan.Zero;
 
     private int outboundCount;
@@ -80,20 +80,21 @@ internal sealed class LoopbackModem : IKissModem
     /// <summary>Push an inbound AX.25 frame as if it had been heard off the air.</summary>
     public void InjectInbound(Ax25Frame frame)
     {
-        var kf = new KissFrame((byte)0, KissCommand.Data, frame.ToBytes().ToArray());
-        rx.Writer.TryWrite(kf);
+        rx.Writer.TryWrite(new Ax25InboundFrame(frame.ToBytes().ToArray(), 0, DateTimeOffset.UtcNow));
     }
 
     /// <summary>
-    /// Push an inbound raw KISS frame. Useful for non-Data commands the
-    /// listener should skip (TX echoes etc.).
+    /// Push raw inbound AX.25 bytes (which may be malformed / strict-rejected) as a single
+    /// frame — for tests that assert the listener drops a frame at parse time. The transport
+    /// seam is already AX.25-only, so there is no non-Data KISS-command case to inject here
+    /// (that filtering now lives in the KISS transport, tested there).
     /// </summary>
-    public void InjectInboundRaw(KissFrame frame)
+    public void InjectInboundRaw(ReadOnlyMemory<byte> ax25Bytes)
     {
-        rx.Writer.TryWrite(frame);
+        rx.Writer.TryWrite(new Ax25InboundFrame(ax25Bytes, 0, DateTimeOffset.UtcNow));
     }
 
-    public async Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+    public async Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref outboundCount);
         if (SendDelay > TimeSpan.Zero)
@@ -102,11 +103,11 @@ internal sealed class LoopbackModem : IKissModem
         }
         if (!DropOutbound)
         {
-            SentFrames.Add(ax25Bytes);
+            SentFrames.Add(ax25);
         }
     }
 
-    public async IAsyncEnumerable<KissFrame> ReadFramesAsync(
+    public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         while (await rx.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -119,35 +120,37 @@ internal sealed class LoopbackModem : IKissModem
     }
 
     /// <summary>
-    /// When non-null, <see cref="SendFrameWithAckAsync"/> is supported: the frame
-    /// is recorded like a plain send and the call's receipt resolves when the test
-    /// releases this gate (one release = one TX-completion echo) — letting tests
-    /// control exactly when a frame "clears the air". When null (default), ACKMODE
-    /// is unsupported and the call throws, like a plain non-ACKMODE modem.
+    /// When non-null, <see cref="SendAwaitingCompletionAsync"/> is supported: the frame is
+    /// recorded like a plain send and the call's completion resolves when the test releases
+    /// this gate (one release = one TX-completion echo) — letting tests control exactly when a
+    /// frame "clears the air". When null (default), confirmed-TX is unsupported and the call
+    /// throws, like a transport with no ACKMODE — and the listener latches back to plain sends.
     /// </summary>
     public SemaphoreSlim? AckEchoGate { get; set; }
 
-    public async Task<AckModeReceipt> SendFrameWithAckAsync(
-        ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null,
-        CancellationToken cancellationToken = default)
+    public async Task<TxCompletion> SendAwaitingCompletionAsync(
+        ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         if (AckEchoGate is not { } gate)
         {
-            throw new NotSupportedException("this LoopbackModem has no ACKMODE (AckEchoGate not set).");
+            throw new NotSupportedException("this LoopbackModem has no confirmed-TX (AckEchoGate not set).");
         }
         var queued = DateTimeOffset.UtcNow;
         Interlocked.Increment(ref outboundCount);
         if (!DropOutbound)
         {
-            SentFrames.Add(ax25Bytes.ToArray());
+            SentFrames.Add(ax25.ToArray());
         }
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return new AckModeReceipt(sequenceTag ?? 0, queued, DateTimeOffset.UtcNow);
+        return new TxCompletion(queued, DateTimeOffset.UtcNow);
     }
+
     public Task SetTxDelayAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
     public Task SetPersistenceAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
     public Task SetSlotTimeAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
     public Task SetTxTailAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 /// <summary>

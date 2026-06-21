@@ -69,7 +69,7 @@ public class LinbpqListenerScenarios
             ConnectBudget + DisconnectBudget + TimeSpan.FromSeconds(30));
 
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
-        await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions
+        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kiss), new Ax25ListenerOptions
         {
             MyCall = OurCall,
         });

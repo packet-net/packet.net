@@ -16,6 +16,7 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
     <ProjectReference Include="..\Packet.Kiss.Abstractions\Packet.Kiss.Abstractions.csproj" />
   </ItemGroup>
 

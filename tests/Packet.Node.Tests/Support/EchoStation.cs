@@ -19,7 +19,7 @@ public sealed class EchoStation : IAsyncDisposable
     public EchoStation(IKissModem modem, Callsign myCall, string reply)
     {
         this.reply = reply;
-        listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
         {
             MyCall = myCall,
             ConfigureSession = WireSession,

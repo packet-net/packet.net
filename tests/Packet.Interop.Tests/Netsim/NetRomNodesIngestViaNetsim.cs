@@ -119,7 +119,7 @@ public class NetRomNodesIngestViaNetsim
         // node-level NET/ROM service subscribed to its frame-trace tap. The
         // listener never transmits here (we don't connect to anyone) — it is a
         // pure promiscuous receiver, exactly the read-only slice.
-        await using var listener = new Ax25Listener(kiss, new Ax25ListenerOptions { MyCall = OurCall });
+        await using var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(kiss), new Ax25ListenerOptions { MyCall = OurCall });
         using var netRom = new NetRomService(new NetRomConfig { Enabled = true });
         netRom.AttachPort("vhf", OurCall, listener);
         await listener.StartAsync(cts.Token);

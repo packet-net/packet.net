@@ -35,7 +35,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
     // all EnsureInterlinkAsync's no-route fallback needs — it picks the first attachment).
     private static async Task<Ax25Listener> StartListenerAsync(IKissModem modem, Callsign myCall)
     {
-        var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem), new Ax25ListenerOptions
         {
             MyCall = myCall,
             N2 = TestAx25Timing.StationN2,

@@ -636,7 +636,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true);
-        var listener = new Ax25Listener(modem, options, timeProvider);
+        // Adapt the KISS modem to the neutral IAx25Transport seam the listener now consumes.
+        // (Transitional: the concrete transports implement IAx25Transport natively in a later
+        // migration step, at which point this wrap goes away.)
+        var listener = new Ax25Listener(new Packet.Kiss.KissModemTransport(modem, timeProvider), options, timeProvider);
 
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
