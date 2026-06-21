@@ -673,9 +673,10 @@ public sealed class Ax25Listener : IAsyncDisposable
     // ─── Internals ────────────────────────────────────────────────────
 
     // TX-complete→T1: latched true on the first NotSupportedException from
-    // SendFrameWithAckAsync so a non-ACKMODE modem costs one failed attempt,
-    // not one per frame. (RestartT1OnTxComplete is documented to require an
-    // ACKMODE-capable port; this is the graceful-degradation backstop.)
+    // ITxCompletionTransport.SendAwaitingCompletionAsync so a non-ACKMODE modem
+    // costs one failed attempt, not one per frame. (RestartT1OnTxComplete is
+    // documented to require an ACKMODE-capable port; this is the
+    // graceful-degradation backstop.)
     private volatile bool ackmodeUnsupported;
 
     /// <summary>

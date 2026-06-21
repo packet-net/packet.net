@@ -16,7 +16,7 @@
     <!-- The host shell, for the WebApplicationFactory-driven boot test. -->
     <ProjectReference Include="..\..\src\Packet.Node\Packet.Node.csproj" />
     <!-- AX.25 engine — the integration tests drive real Ax25Listeners over an
-         in-memory IKissModem (the TwoStationHarness shape). -->
+         in-memory IAx25Transport (the TwoStationHarness shape). -->
     <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
   </ItemGroup>
 

@@ -29,7 +29,7 @@ namespace Packet.Interop.Tests.Linbpq;
 /// <para>
 /// <b>Transport.</b> pdn runs a real <see cref="Ax25Listener"/> over an
 /// <see cref="AxudpFrameTransport"/> bound to a fixed host UDP port, pointed at BPQ's
-/// BPQAXIP/UDP listener (127.0.0.1:8093) — the exact <c>IKissModem</c> seam a
+/// BPQAXIP/UDP listener (127.0.0.1:8093) — the exact <c>IAx25Transport</c> seam a
 /// deployed pdn AXUDP port uses. A <see cref="NetRomService"/> taps the listener's
 /// <c>FrameTraced</c> stream (read-only; no engine change), parses the NODES UI
 /// frame, and builds the routing table.

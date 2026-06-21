@@ -14,10 +14,10 @@ public interface ITransportFactory
     /// <summary>
     /// Open the transport described by <paramref name="transport"/>. For serial
     /// transports this opens the port; for KISS-TCP it dials the endpoint; for a
-    /// NinoTNC it opens the port and applies the configured mode. The KISS-speaking
-    /// transports implement <see cref="IAx25Transport"/> natively; AXUDP (still an
-    /// <c>IKissModem</c>) is adapted via the migration shim so the factory uniformly
-    /// returns <see cref="IAx25Transport"/>.
+    /// NinoTNC it opens the port and applies the configured mode. Every transport
+    /// kind — the KISS-speaking ones and AXUDP alike — implements
+    /// <see cref="IAx25Transport"/> natively, so the factory uniformly returns
+    /// <see cref="IAx25Transport"/>.
     /// </summary>
     /// <param name="transport">The transport to open.</param>
     /// <param name="timeProvider">

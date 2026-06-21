@@ -30,7 +30,7 @@ namespace Packet.Kiss;
 /// behaviour so the live transport stack behaves identically across modems.
 /// </para>
 /// </remarks>
-public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTransport, ICsmaChannelParams, IDisposable, IAsyncDisposable
+public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsmaChannelParams, IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Default ACKMODE timeout when the caller doesn't supply one. Matches
@@ -66,10 +66,10 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
     private readonly TimeSpan readIdleTimeout;
 
     // In-flight ACKMODE sends, keyed by 16-bit sequence tag. The RX pump
-    // completes the matching waiter when the TNC echoes the tag back; the
-    // send path inserts on submit and removes on timeout/cancellation. Both
-    // run concurrently, hence the concurrent map.
-    private readonly ConcurrentDictionary<ushort, TaskCompletionSource<AckModeReceipt>> pendingAcks = new();
+    // completes the matching waiter (with the echo-arrival instant) when the
+    // TNC echoes the tag back; the send path inserts on submit and removes on
+    // timeout/cancellation. Both run concurrently, hence the concurrent map.
+    private readonly ConcurrentDictionary<ushort, TaskCompletionSource<DateTimeOffset>> pendingAcks = new();
 
     // Auto-assigned tag cursor for callers that don't choose their own. Bumped
     // with Interlocked and masked to 16 bits; 0 is skipped so an auto tag is
@@ -249,10 +249,9 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
             var frame = frames[i];
             if (KissAckMode.TryParseAcknowledgement(frame, out var tag) && pendingAcks.TryRemove(tag, out var waiter))
             {
-                var now = DateTimeOffset.UtcNow;
-                // Queued is stamped with the real submit time by the sender via
-                // 'receipt with { Queued = ... }'; the RX pump only knows 'now'.
-                waiter.TrySetResult(new AckModeReceipt(tag, now, now));
+                // Complete the waiter with the echo-arrival instant; the sender
+                // pairs it with the real submit time to build the TxCompletion.
+                waiter.TrySetResult(DateTimeOffset.UtcNow);
                 passThrough ??= CopyUpTo(frames, i);
                 continue;
             }
@@ -289,7 +288,7 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
     }
 
     /// <summary>
-    /// <see cref="IKissModem"/> shape: write a KISS-Data frame on
+    /// KISS-shaped helper: write a KISS-Data frame on
     /// port 0. Delegates to <see cref="SendAsync(byte,KissCommand,ReadOnlyMemory{byte},CancellationToken)"/>.
     /// </summary>
     public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
@@ -320,20 +319,16 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
 
     /// <summary>
     /// <see cref="ITxCompletionTransport"/>: send an AX.25 frame in ACKMODE and await its
-    /// TX-completion. Maps the KISS ACKMODE receipt onto the neutral <see cref="TxCompletion"/>
-    /// (the 16-bit sequence tag stays an internal wire artefact). NotSupported / Timeout
-    /// propagate unchanged.
+    /// TX-completion as the neutral <see cref="TxCompletion"/> (the 16-bit sequence tag is
+    /// auto-assigned and stays an internal wire artefact). NotSupported / Timeout propagate
+    /// unchanged.
     /// </summary>
-    public async Task<TxCompletion> SendAwaitingCompletionAsync(
+    public Task<TxCompletion> SendAwaitingCompletionAsync(
         ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
-    {
-        var receipt = await SendFrameWithAckAsync(ax25, timeout, sequenceTag: null, cancellationToken)
-            .ConfigureAwait(false);
-        return new TxCompletion(receipt.Queued, receipt.Acknowledged);
-    }
+        => SendFrameWithAckAsync(ax25, timeout, sequenceTag: null, cancellationToken);
 
     /// <summary>
-    /// <see cref="IKissModem"/> shape: async stream of every inbound
+    /// KISS-shaped helper: async stream of every inbound
     /// KISS frame until the socket closes or the token fires. Loops
     /// internally over <see cref="ReceiveAsync(CancellationToken)"/>.
     /// </summary>
@@ -352,23 +347,26 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
 
     /// <summary>
     /// Send <paramref name="ax25Bytes"/> in ACKMODE (KISS command 0x0C) and
-    /// await the TNC's TX-completion echo. Resolves with an
-    /// <see cref="AckModeReceipt"/> carrying the round-trip timing when the
+    /// await the TNC's TX-completion echo. Resolves with a
+    /// <see cref="TxCompletion"/> carrying the round-trip timing when the
     /// echo arrives. Throws <see cref="TimeoutException"/> if no echo arrives
     /// within <paramref name="timeout"/> (default 30 s) and
     /// <see cref="OperationCanceledException"/> on caller cancellation — the
     /// same contract as the NinoTNC and serial drivers, so the adaptive layer
     /// records <see cref="Adaptive.FrameOutcome.AckModeTimedOut"/> uniformly.
+    /// This is the KISS-specific entry point that lets a caller pin the 16-bit
+    /// sequence tag; <see cref="SendAwaitingCompletionAsync"/> is the neutral
+    /// <see cref="ITxCompletionTransport"/> form that auto-assigns the tag.
     /// </summary>
     /// <param name="ax25Bytes">AX.25 frame to transmit.</param>
     /// <param name="timeout">Maximum time to wait for the echo. Defaults to 30 s.</param>
     /// <param name="sequenceTag">Caller-supplied 16-bit tag, or <c>null</c> to auto-assign.</param>
     /// <param name="cancellationToken">Cancels the wait (does not un-queue the frame at the TNC).</param>
-    public async Task<AckModeReceipt> SendFrameWithAckAsync(
+    public async Task<TxCompletion> SendFrameWithAckAsync(
         ReadOnlyMemory<byte> ax25Bytes, TimeSpan? timeout = null, ushort? sequenceTag = null, CancellationToken cancellationToken = default)
     {
         ushort tag = sequenceTag ?? NextSequenceTag();
-        var waiter = new TaskCompletionSource<AckModeReceipt>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiter = new TaskCompletionSource<DateTimeOffset>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!pendingAcks.TryAdd(tag, waiter))
         {
             throw new InvalidOperationException($"sequence tag 0x{tag:X4} already has a pending ACK; pick a unique tag");
@@ -403,8 +401,8 @@ public sealed class KissTcpClient : IKissModem, IAx25Transport, ITxCompletionTra
             }
         }).ConfigureAwait(false);
 
-        var receipt = await waiter.Task.ConfigureAwait(false);
-        return receipt with { Queued = queuedAt };
+        var completedAt = await waiter.Task.ConfigureAwait(false);
+        return new TxCompletion(queuedAt, completedAt);
     }
 
     // Roll the auto-assign cursor to the next non-zero 16-bit value.

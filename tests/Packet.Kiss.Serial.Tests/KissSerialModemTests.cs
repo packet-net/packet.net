@@ -1,4 +1,4 @@
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Kiss.Serial;
 
 namespace Packet.Kiss.Serial.Tests;
@@ -18,9 +18,15 @@ public class KissSerialModemTests
     }
 
     [Fact]
-    public void Implements_IKissModem()
+    public void Implements_IAx25Transport()
     {
-        typeof(KissSerialModem).Should().Implement<IKissModem>();
+        typeof(KissSerialModem).Should().Implement<IAx25Transport>();
+    }
+
+    [Fact]
+    public void Implements_ICsmaChannelParams()
+    {
+        typeof(KissSerialModem).Should().Implement<ICsmaChannelParams>();
     }
 
     [Fact]

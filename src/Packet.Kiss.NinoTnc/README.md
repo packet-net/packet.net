@@ -3,10 +3,10 @@
 NinoTNC (N9600A) driver for Packet.NET. A thin overlay over
 [`Packet.Kiss`](../Packet.Kiss/) that adds firmware-specific bits
 (mode catalog, SETHW byte semantics, TX-Test parsing, USB VID/PID
-discovery). All the *generic* KISS surface — `IKissModem`,
-`AdaptiveKissTransport`, the typed-event hierarchy, the adaptive
-estimators — lives in `Packet.Kiss` and works with any KISS-speaking
-modem (QtSoundModem, Dire Wolf, etc.).
+discovery). All the *generic* KISS surface — the `IAx25Transport`
+transports, `AdaptiveKissTransport`, the typed-event hierarchy, the
+adaptive estimators — lives in `Packet.Kiss` and works with any
+KISS-speaking modem (QtSoundModem, Dire Wolf, etc.).
 
 This package adds:
 
@@ -30,7 +30,8 @@ From `Packet.Kiss` you also get (and which work with any KISS modem):
 - KISS framing (`KissEncoder`, `KissDecoder`, `KissFrame`,
   `KissCommand`, `KissFraming`).
 - The G8BPQ `ACKMODE` KISS extension (KISS command `0x0C`) with
-  per-tag TX-completion correlation through `IKissModem.SendFrameWithAckAsync`.
+  per-tag TX-completion correlation through `SendFrameWithAckAsync`
+  (or the neutral `ITxCompletionTransport.SendAwaitingCompletionAsync`).
 - The typed inbound event hierarchy (`KissInboundEvent`,
   `Ax25FrameReceivedEvent`, `AckModeDataReceivedEvent`,
   `UnknownInboundEvent`) and `KissFrameClassifier`.
@@ -38,7 +39,7 @@ From `Packet.Kiss` you also get (and which work with any KISS modem):
   `TxDelayHillClimbEstimator` (TXDELAY) + `CsmaContentionEstimator`
   (PERSIST + SLOTTIME), composed with `CompositeAdaptiveEstimator`.
 - `AdaptiveKissTransport` that ties an estimator to any
-  `IKissModem`.
+  `ITxCompletionTransport` (+ `ICsmaChannelParams`).
 
 The driver models one modem = one serial port = one radio. The KISS
 multi-drop port nibble is supported at the framing level but not
@@ -122,7 +123,7 @@ multi-drop bus) sends an ACKMODE-Data frame your way, it surfaces as
 `AckModeDataReceivedEvent` on `InboundEvent` with the tag pre-decoded
 and the AX.25 payload sliced out. The TX-completion echo for your
 *own* outbound frames is *not* exposed as a typed event — it returns
-through `SendFrameWithAckAsync`'s `AckModeReceipt`.
+through `SendFrameWithAckAsync`'s `TxCompletion`.
 
 ## Adaptive parameters
 

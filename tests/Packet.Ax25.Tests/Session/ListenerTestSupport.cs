@@ -13,7 +13,7 @@ namespace Packet.Ax25.Tests.Session;
 /// <remarks>
 /// Keep this internal to the test assembly. The Listener API doesn't
 /// expose any kind of fake-modem fixture and shouldn't — the listener's
-/// dependency on <see cref="IKissModem"/> is the seam tests poke through.
+/// dependency on <see cref="IAx25Transport"/> is the seam tests poke through.
 /// </remarks>
 internal static class ListenerTestSupport
 {

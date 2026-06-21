@@ -50,16 +50,18 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         {
             var tag = await ReadOneAckModeSendTagAsync();
             await WriteAckEchoAsync(tag);
+            return tag;
         });
 
         var receipt = await client.SendFrameWithAckAsync(
             ax25Bytes: new byte[] { 0xDE, 0xAD, 0xBE, 0xEF },
             timeout: TimeSpan.FromSeconds(5));
 
-        await peerLoop;
-        // Auto-assigned tag is the first non-zero cursor value = 1.
-        receipt.SequenceTag.Should().Be((ushort)1);
-        receipt.Acknowledged.Should().BeOnOrAfter(receipt.Queued);
+        var wireTag = await peerLoop;
+        // Auto-assigned tag is the first non-zero cursor value = 1 — asserted
+        // on the wire (the neutral TxCompletion no longer carries the tag).
+        wireTag.Should().Be((ushort)1);
+        receipt.Completed.Should().BeOnOrAfter(receipt.Queued);
 
         pumpCts.Cancel();
         await pump;
@@ -75,15 +77,17 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         {
             var tag = await ReadOneAckModeSendTagAsync();
             await WriteAckEchoAsync(tag);
+            return tag;
         });
 
-        var receipt = await client.SendFrameWithAckAsync(
+        await client.SendFrameWithAckAsync(
             ax25Bytes: new byte[] { 0x01 },
             timeout: TimeSpan.FromSeconds(5),
             sequenceTag: 0xBEEF);
 
-        await peerLoop;
-        receipt.SequenceTag.Should().Be((ushort)0xBEEF);
+        var wireTag = await peerLoop;
+        // The caller-supplied tag must be the one written on the wire.
+        wireTag.Should().Be((ushort)0xBEEF);
 
         pumpCts.Cancel();
         await pump;
@@ -124,11 +128,15 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         await WriteAckEchoAsync(0x0022);
         await WriteAckEchoAsync(0x0011);
 
+        // Each send resolves from ITS OWN echo (keyed by tag), proven by both
+        // completing despite the echoes arriving B-before-A — a cross-resolution
+        // would deadlock one of them. The tag correctness is asserted on the
+        // wire above; the neutral TxCompletion no longer carries the tag.
         var receiptA = await sendA;
         var receiptB = await sendB;
 
-        receiptA.SequenceTag.Should().Be((ushort)0x0011);
-        receiptB.SequenceTag.Should().Be((ushort)0x0022);
+        receiptA.Completed.Should().BeOnOrAfter(receiptA.Queued);
+        receiptB.Completed.Should().BeOnOrAfter(receiptB.Queued);
 
         pumpCts.Cancel();
         await pump;
@@ -161,8 +169,10 @@ public sealed class KissTcpClientAckModeTests : IDisposable
         await WriteAckEchoAsync(0x00AB);
         await WriteFrameAsync(KissCommand.Data, new byte[] { 0x33, 0x44 });
 
+        // The echo (tag 0x00AB, asserted on the wire above) resolves the send;
+        // the neutral TxCompletion no longer carries the tag.
         var receipt = await send;
-        receipt.SequenceTag.Should().Be((ushort)0x00AB);
+        receipt.Completed.Should().BeOnOrAfter(receipt.Queued);
 
         await pump;
         surfaced.Should().HaveCount(2);

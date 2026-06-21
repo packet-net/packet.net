@@ -7,7 +7,6 @@ name: publish-libs
 #
 # Today's publish set:
 #   Packet.Core
-#   Packet.Kiss.Abstractions
 #   Packet.Kiss
 #   Packet.Kiss.Serial
 #   Packet.Kiss.NinoTnc
@@ -71,7 +70,6 @@ jobs:
       matrix:
         project:
           - Packet.Core
-          - Packet.Kiss.Abstractions
           - Packet.Kiss
           - Packet.Kiss.Serial
           - Packet.Kiss.NinoTnc

@@ -16,10 +16,10 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// AXUDP (AX.25 frames over UDP, <see cref="AxudpTransport"/>) plugs into the
 /// same seam via the <c>AxudpFrameTransport</c> adapter, which presents a
-/// <see cref="Packet.Axudp.AxudpSocket"/> as an <c>IKissModem</c> — so the
-/// listener / console / reconcile path is shared with the KISS transports. The
-/// telnet console is <b>not</b> a transport (it is not an <c>IKissModem</c>); it
-/// lives under <see cref="ManagementConfig.Telnet"/>.
+/// <see cref="Packet.Axudp.AxudpSocket"/> as a native <c>IAx25Transport</c> — so
+/// the listener / console / reconcile path is shared with the KISS transports.
+/// The telnet console is <b>not</b> a transport (it is not an
+/// <c>IAx25Transport</c>); it lives under <see cref="ManagementConfig.Telnet"/>.
 /// </para>
 /// </remarks>
 public abstract record TransportConfig

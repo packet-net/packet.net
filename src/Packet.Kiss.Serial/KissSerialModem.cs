@@ -6,7 +6,7 @@ using Packet.Ax25.Transport;
 namespace Packet.Kiss.Serial;
 
 /// <summary>
-/// A generic serial-port KISS modem implementing <see cref="IKissModem"/> and the neutral
+/// A generic serial-port KISS modem implementing the neutral
 /// <see cref="IAx25Transport"/> seam (plus the <see cref="ICsmaChannelParams"/> capability).
 /// Opens a serial port, runs a background read pump, and surfaces inbound
 /// KISS frames through <see cref="ReadFramesAsync"/> /
@@ -22,7 +22,7 @@ namespace Packet.Kiss.Serial;
 /// SETHW mode switching, TX-Test frame classification), use
 /// <c>Packet.Kiss.NinoTnc.NinoTncSerialPort</c> instead.
 /// </remarks>
-public sealed class KissSerialModem : IKissModem, IAx25Transport, ICsmaChannelParams, IAsyncDisposable, IDisposable
+public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsyncDisposable, IDisposable
 {
     public const int DefaultBaudRate = 57600;
 
@@ -136,14 +136,6 @@ public sealed class KissSerialModem : IKissModem, IAx25Transport, ICsmaChannelPa
         var encoded = KissEncoder.Encode(KissPort, command, payload.Span);
         return WriteAsync(encoded, cancellationToken);
     }
-
-    Task<AckModeReceipt> IKissModem.SendFrameWithAckAsync(
-        ReadOnlyMemory<byte> ax25Bytes,
-        TimeSpan? timeout,
-        ushort? sequenceTag,
-        CancellationToken cancellationToken)
-        => throw new NotSupportedException(
-            "KissSerialModem does not implement KISS ACKMODE; use SendFrameAsync for fire-and-forget transmission.");
 
     /// <summary>Send a KISS TXDELAY (0x01) command. Units are 10 ms.</summary>
     public Task SetTxDelayAsync(byte tenMsUnits, CancellationToken cancellationToken = default) =>

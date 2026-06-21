@@ -6,7 +6,6 @@
     <Project Path="src/Packet.Aprs/Packet.Aprs.csproj" />
     <Project Path="src/Packet.Axudp/Packet.Axudp.csproj" />
     <Project Path="src/Packet.Core/Packet.Core.csproj" />
-    <Project Path="src/Packet.Kiss.Abstractions/Packet.Kiss.Abstractions.csproj" />
     <Project Path="src/Packet.Kiss.NinoTnc/Packet.Kiss.NinoTnc.csproj" />
     <Project Path="src/Packet.Kiss.Serial/Packet.Kiss.Serial.csproj" />
     <Project Path="src/Packet.Kiss/Packet.Kiss.csproj" />

@@ -16,8 +16,8 @@
     ZERO ProjectReferences by design: Ax25InboundFrame carries ReadOnlyMemory<byte>,
     not a parsed Ax25Frame, so this package does not depend on Packet.Ax25 and cannot
     create an Ax25<->transport cycle. Packet.Ax25 depends on THIS; transports depend on
-    THIS (and on Packet.Ax25 where they parse). Replaces the KISS-shaped role that
-    Packet.Kiss.Abstractions held (retired later in the migration).
+    THIS (and on Packet.Ax25 where they parse). Replaces the KISS-shaped role the
+    now-retired Packet.Kiss.Abstractions package once held.
   -->
 
   <PropertyGroup>

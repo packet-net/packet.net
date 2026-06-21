@@ -11,7 +11,7 @@
   <PropertyGroup>
     <PackageId>Packet.Kiss.Serial</PackageId>
     <Title>Packet.Kiss.Serial — generic serial-port KISS modem</Title>
-    <Description>Generic serial-port KISS modem implementing IKissModem for the Packet.NET stack. Opens a USB-CDC or hardware serial port, speaks KISS framing in both directions, and surfaces inbound frames as an async stream. Pair with Packet.Kiss.NinoTnc for NinoTNC-specific extensions (ACKMODE, SetMode, frame classification). Source: github.com/packet-net/packet.net.</Description>
+    <Description>Generic serial-port KISS modem implementing IAx25Transport for the Packet.NET stack. Opens a USB-CDC or hardware serial port, speaks KISS framing in both directions, and surfaces inbound frames as an async stream. Pair with Packet.Kiss.NinoTnc for NinoTNC-specific extensions (ACKMODE, SetMode, frame classification). Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;tnc;serial</PackageTags>
   </PropertyGroup>
 

@@ -684,8 +684,8 @@ public sealed record Ax25PortParams
 
 /// <summary>
 /// KISS modem tuning knobs, all in the units the KISS spec uses. Each is
-/// optional. Applied via the <c>IKissModem</c> setters once the port is up, and
-/// re-applied live on a hot reconfigure (no port restart).
+/// optional. Applied via the <c>ICsmaChannelParams</c> setters once the port is
+/// up, and re-applied live on a hot reconfigure (no port restart).
 /// </summary>
 public sealed record KissParams
 {

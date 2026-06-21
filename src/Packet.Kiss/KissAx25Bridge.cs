@@ -1,17 +1,18 @@
 using Packet.Ax25;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 
 namespace Packet.Kiss;
 
 /// <summary>
-/// Glue between <see cref="Ax25Adapter"/> and any KISS-speaking modem
-/// (<see cref="IKissModem"/>). The bridge does two things:
+/// Glue between <see cref="Ax25Adapter"/> and any frame transport
+/// (<see cref="IAx25Transport"/>). The bridge does two things:
 /// </summary>
 /// <list type="bullet">
 ///   <item><see cref="CreateOutbound"/> — builds an <see cref="Ax25Adapter"/>
 ///   whose <c>sendBytes</c> callback fans out to
-///   <see cref="IKissModem.SendFrameAsync"/>, so outgoing frames the
+///   <see cref="IAx25Transport.SendAsync"/>, so outgoing frames the
 ///   dispatcher emits end up on the wire.</item>
 ///   <item><see cref="RouteInboundToAdapter"/> — translates a typed
 ///   <see cref="KissInboundEvent"/> from the driver's inbound event
@@ -41,9 +42,10 @@ public static class KissAx25Bridge
     /// <summary>
     /// Build an <see cref="Ax25Adapter"/> whose outbound <c>sendBytes</c>
     /// is wired to <paramref name="modem"/>. Frames emitted by the
-    /// dispatcher arrive at the modem as KISS Data frames.
+    /// dispatcher arrive at the transport, which applies whatever wire
+    /// framing its medium needs (KISS Data, for a KISS transport).
     /// </summary>
-    /// <param name="modem">Outbound KISS modem (send side).</param>
+    /// <param name="modem">Outbound frame transport (send side).</param>
     /// <param name="context">Session state.</param>
     /// <param name="scheduler">Timer scheduler driving T1/T2/T3.</param>
     /// <param name="transitions">Codegen-emitted state → transitions map.</param>
@@ -51,7 +53,7 @@ public static class KissAx25Bridge
     /// <param name="bindings">Optional custom guard bindings.</param>
     /// <param name="subroutines">Optional subroutine registry override.</param>
     public static Ax25Adapter CreateOutbound(
-        IKissModem modem,
+        IAx25Transport modem,
         Ax25SessionContext context,
         ITimerScheduler scheduler,
         IReadOnlyDictionary<string, IReadOnlyList<TransitionSpec>> transitions,
@@ -64,9 +66,9 @@ public static class KissAx25Bridge
             context, scheduler, transitions, initialState,
             sendBytes: bytes =>
             {
-                // Fire-and-forget. SendFrameAsync handles KISS framing
-                // internally; we just hand it the raw AX.25 bytes.
-                _ = modem.SendFrameAsync(bytes);
+                // Fire-and-forget. SendAsync applies whatever wire framing the
+                // transport's medium needs; we just hand it the raw AX.25 bytes.
+                _ = modem.SendAsync(bytes);
             },
             bindings: bindings,
             subroutines: subroutines);

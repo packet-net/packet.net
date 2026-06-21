@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using Packet.Ax25;
+using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.Adaptive;
@@ -304,12 +305,12 @@ internal static class Soak
             byte[] bytes = ax25.ToBytes();
 
             var sw = Stopwatch.StartNew();
-            var tasks = new List<Task<AckModeReceipt>>(n);
+            var tasks = new List<Task<TxCompletion>>(n);
             for (int i = 0; i < n; i++)
             {
                 tasks.Add(a.SendFrameWithAckAsync(bytes, TimeSpan.FromSeconds(30)));
             }
-            AckModeReceipt[] receipts;
+            TxCompletion[] receipts;
             try
             {
                 receipts = await Task.WhenAll(tasks);

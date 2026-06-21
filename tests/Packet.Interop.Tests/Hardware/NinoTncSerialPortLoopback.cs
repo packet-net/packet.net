@@ -2,6 +2,7 @@ using System.IO.Ports;
 using System.Runtime.InteropServices;
 using System.Text;
 using Packet.Ax25;
+using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
@@ -133,18 +134,22 @@ public class NinoTncSerialPortLoopback
             source: new Callsign("M0LTE", 1),
             info: "ACKMODE PROBE"u8);
 
-        // Send three frames with distinct tags; each must be acknowledged
-        // by the TX-complete echo.
-        var receipts = new List<AckModeReceipt>(3);
-        for (int i = 0; i < 3; i++)
+        // Send three frames with distinct tags (pinned on the wire); each must
+        // be acknowledged by the TX-complete echo, correlated back to its own
+        // send. (The neutral TxCompletion no longer carries the tag, so the
+        // distinctness lives in the pinned inputs; the per-tag correlation is
+        // proven by all three sends completing.)
+        var receipts = new List<TxCompletion>(3);
+        for (ushort tag = 1; tag <= 3; tag++)
         {
             var receipt = await a.SendFrameWithAckAsync(
                 frame.ToBytes(),
-                timeout: TimeSpan.FromSeconds(FrameWaitSeconds));
+                timeout: TimeSpan.FromSeconds(FrameWaitSeconds),
+                sequenceTag: tag);
             receipts.Add(receipt);
         }
 
-        receipts.Select(r => r.SequenceTag).Distinct().Should().HaveCount(3);
+        receipts.Should().HaveCount(3);
         receipts.All(r => r.Elapsed > TimeSpan.Zero).Should().BeTrue();
     }
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
 using Packet.Ax25.Sdl;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Kiss;
 
@@ -13,28 +14,18 @@ public class KissAx25BridgeTests
     private static readonly Callsign Local  = new("M0LTE", 0);
     private static readonly Callsign Remote = new("G7XYZ", 7);
 
-    /// <summary>Captures outbound sends; ignores all other IKissModem surface.</summary>
-    private sealed class FakeModem : IKissModem
+    /// <summary>Captures outbound sends; leaves the inbound stream empty (the default).</summary>
+    private sealed class FakeModem : IAx25Transport
     {
         public List<byte[]> Sent { get; } = new();
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            Sent.Add(ax25Bytes.ToArray());
+            Sent.Add(ax25.ToArray());
             return Task.CompletedTask;
         }
 
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes,
-            TimeSpan? timeout = null,
-            ushort? sequenceTag = null,
-            CancellationToken cancellationToken = default)
-            => throw new NotImplementedException("not exercised by bridge tests");
-
-        public Task SetTxDelayAsync   (byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetPersistenceAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetSlotTimeAsync  (byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetTxTailAsync    (byte v, CancellationToken c = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<TransitionSpec>> Transitions => new Dictionary<string, IReadOnlyList<TransitionSpec>>
@@ -71,8 +62,8 @@ public class KissAx25BridgeTests
         adapter.Session.PostEvent(new DlUnitDataRequest("hello"u8.ToArray(), Pid: Ax25Frame.PidNoLayer3));
 
         modem.Sent.Should().ContainSingle();
-        // Bytes are AX.25 body bytes; SendFrameAsync wraps in KISS internally
-        // (KissEncoder handles flags/escapes/command byte).
+        // Bytes are AX.25 body bytes; a real KISS transport's SendAsync wraps
+        // them in KISS internally (KissEncoder handles flags/escapes/command byte).
         var bytes = modem.Sent[0];
         bytes[14].Should().Be(Ax25Frame.ControlUi);
     }
@@ -168,7 +159,7 @@ public class KissAx25BridgeTests
     {
         // Two adapters, two fake modems wired so each modem's send
         // becomes the other adapter's inbound. Verifies the full path:
-        //   adapter A sendBytes → modem A.SendFrameAsync (captures)
+        //   adapter A sendBytes → modem A.SendAsync (captures)
         //   → loopback delivery → adapter B.OnReceivedAx25Frame
         //   → BOTH sides reach Connected: the loopback is synchronous, so
         //   B's UA arrives back at A while A's DL-CONNECT dispatch is still
@@ -199,7 +190,7 @@ public class KissAx25BridgeTests
             var sabm = Ax25Frame.Sabm(tx.Session.Remote, tx.Session.Local, pollBit: true);
             // Use the modem to send so the bridge's outbound path is
             // exercised. Synchronously: the LoopbackModem is in-process.
-            modemA.SendFrameAsync(sabm.ToBytes(), default).GetAwaiter().GetResult();
+            modemA.SendAsync(sabm.ToBytes(), default).GetAwaiter().GetResult();
             schedA.Arm("T1", tx.Session.T1V, () => { });
         });
 
@@ -226,28 +217,18 @@ public class KissAx25BridgeTests
         bRef.Session.CurrentState.Should().Be("Connected");
     }
 
-    /// <summary>Loopback IKissModem that hands off sent bytes to a delivery callback.</summary>
-    private sealed class LoopbackModem : IKissModem
+    /// <summary>Loopback transport that hands off sent bytes to a delivery callback.</summary>
+    private sealed class LoopbackModem : IAx25Transport
     {
         private readonly Action<ReadOnlyMemory<byte>> deliver;
         public LoopbackModem(Action<ReadOnlyMemory<byte>> deliver) => this.deliver = deliver;
 
-        public Task SendFrameAsync(ReadOnlyMemory<byte> ax25Bytes, CancellationToken cancellationToken = default)
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
         {
-            deliver(ax25Bytes);
+            deliver(ax25);
             return Task.CompletedTask;
         }
 
-        public Task<AckModeReceipt> SendFrameWithAckAsync(
-            ReadOnlyMemory<byte> ax25Bytes,
-            TimeSpan? timeout = null,
-            ushort? sequenceTag = null,
-            CancellationToken cancellationToken = default)
-            => throw new NotImplementedException();
-
-        public Task SetTxDelayAsync   (byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetPersistenceAsync(byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetSlotTimeAsync  (byte v, CancellationToken c = default) => Task.CompletedTask;
-        public Task SetTxTailAsync    (byte v, CancellationToken c = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

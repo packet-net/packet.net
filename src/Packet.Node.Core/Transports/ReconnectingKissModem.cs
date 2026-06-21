@@ -204,7 +204,7 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
     /// Throws <see cref="NotSupportedException"/> if the live inner is not
     /// TX-completion-capable — but a port only wraps in this decorator over a
     /// transport that is (the kiss-tcp path), matching the pre-migration behaviour
-    /// where the inner always exposed <c>SendFrameWithAckAsync</c>.
+    /// where the inner always exposed <c>SendAwaitingCompletionAsync</c>.
     /// </remarks>
     public Task<TxCompletion> SendAwaitingCompletionAsync(
         ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
@@ -243,7 +243,7 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
     // Best-effort apply to the current inner (when it exposes the CSMA params); if the
     // link is down it's a no-op now and gets replayed on reconnect. An inner with no
     // CSMA params (a transport that doesn't implement ICsmaChannelParams) silently
-    // no-ops, exactly as the KissModemTransport-wrapped AXUDP path did.
+    // no-ops, exactly as the native AXUDP transport (no ICsmaChannelParams) does.
     private async Task ApplyParamAsync(Func<ICsmaChannelParams, Task> op)
     {
         if (inner is not ICsmaChannelParams csma) return;
