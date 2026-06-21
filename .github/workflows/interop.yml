@@ -39,6 +39,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read   # pull the ghcr.io/packethacking/* interop images (xrouter, net-sim)
 
 env:
   # Opt into Node.js 24 for JavaScript actions ahead of GitHub's
@@ -60,6 +61,21 @@ jobs:
         # Build once up front (no stack needed); every phase below runs
         # --no-build against this output.
         run: dotnet build --configuration Release
+
+      # Authenticate to GHCR so the compose stack can pull ghcr.io/packethacking/*
+      # (xrouter, net-sim). The packages are public, but a stale/expired ghcr.io
+      # credential left in a self-hosted runner's docker config makes docker send it
+      # and get `denied` instead of falling back to anonymous — which is exactly what
+      # broke the stack recreate. login-action writes a FRESH valid token for this run
+      # and logs out in its post-step, so no stale credential ever accumulates on the
+      # runner (the durable, runner-agnostic fix). GITHUB_TOKEN can pull these public
+      # cross-org packages.
+      - name: log in to GHCR (interop images)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # ────────────────────────────────────────────────────────────────────
       # The matrix is split into clean-stack-fenced phases. The stack is ONE
