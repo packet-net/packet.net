@@ -30,10 +30,11 @@ Recall the primitives from
 ```csharp
 using Packet.Core;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 
-await using IKissModem modem = /* chapter 2 */;
+await using IAx25Transport transport = /* chapter 2 */;
 
-var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+var listener = new Ax25Listener(transport, new Ax25ListenerOptions
 {
     MyCall = Callsign.Parse(args[0]),   // who we are
 });
@@ -135,16 +136,23 @@ session.PostEvent(new DlDisconnectRequest());
 
 ## Tool #3 — `axcall`, end to end
 
+The real `axcall` ([`axcall/src/Axcall`](https://github.com/packet-net/axcall))
+builds its transport from command-line flags — `KissTcpClient.ConnectAsync(host,
+port)` for `--tcp`, `KissSerialModem.Open(port, baud)` for `--port` — into an
+`IAx25Transport`, then hands that to a small `SessionRelay` that wraps an
+`Ax25Listener` and pumps stdin↔session. The condensed version below inlines that
+relay so the whole client fits on one page:
+
 ```csharp
 using Packet.Core;
 using Packet.Ax25.Session;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Kiss.Serial;
 
 // usage: axcall <port> <mycall> <remote>
-await using IKissModem modem = KissSerialModem.Open(args[0]);
+await using IAx25Transport transport = KissSerialModem.Open(args[0]);
 
-var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+var listener = new Ax25Listener(transport, new Ax25ListenerOptions
 {
     MyCall = Callsign.Parse(args[1]),
 });

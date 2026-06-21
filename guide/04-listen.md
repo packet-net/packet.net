@@ -9,15 +9,16 @@ We'll build it twice — once at the raw transport level (full control, no sessi
 context), and once through `Ax25Listener.FrameTraced` (less code, and it also
 sees the frames *you* transmit).
 
-## Decoding off the raw modem
+## Decoding off the raw transport
 
-The receive loop from [chapter 2](02-transports.md) handed us `KissFrame`s;
-[chapter 3](03-frames-and-callsigns.md) gave us `Ax25Frame.TryParse`. Join them:
+The receive loop from [chapter 2](02-transports.md) handed us
+`Ax25InboundFrame`s; [chapter 3](03-frames-and-callsigns.md) gave us
+`Ax25Frame.TryParse`. Join them:
 
 ```csharp
 using Packet.Core;
 using Packet.Ax25;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 
 static string Fmt(Ax25Frame f)
 {
@@ -39,14 +40,12 @@ static string Fmt(Ax25Frame f)
     return $"{src,-9} > {dst,-9}{path}  [{kind} pid={f.Pid:X2}]{text}";
 }
 
-await foreach (KissFrame kf in modem.ReadFramesAsync(ct))
+await foreach (Ax25InboundFrame inbound in transport.ReceiveAsync(ct))
 {
-    if (kf.Command != KissCommand.Data) continue;
-
-    if (Ax25Frame.TryParse(kf.Payload, Ax25ParseOptions.Lenient, out var frame))
+    if (Ax25Frame.TryParse(inbound.Ax25.Span, Ax25ParseOptions.Lenient, out var frame))
         Console.WriteLine(Fmt(frame));
     else
-        Console.WriteLine($"  (undecodable: {Convert.ToHexString(kf.Payload)})");
+        Console.WriteLine($"  (undecodable: {Convert.ToHexString(inbound.Ax25.Span)})");
 }
 ```
 
@@ -75,7 +74,7 @@ monitoring for free, including a view of your own transmissions:
 ```csharp
 using Packet.Ax25.Session;
 
-var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+var listener = new Ax25Listener(transport, new Ax25ListenerOptions
 {
     MyCall = Callsign.Parse("M0LTE-1"),
     ParseOptions = Ax25ParseOptions.Lenient,   // how this port decodes the air
@@ -98,10 +97,10 @@ callsign** — it's the promiscuous tap, exactly what a monitor wants — wherea
 *session* layer (next chapter) only acts on frames addressed to `MyCall`.
 
 !!! note "Which approach to use"
-    Use the **raw modem** loop for a pure, standalone monitor that does nothing
-    else. Use **`FrameTraced`** when monitoring is one feature of a larger station
-    — you avoid running two readers against one modem (you can't; only one
-    consumer can drain `ReadFramesAsync`), and you get TX visibility for free.
+    Use the **raw transport** loop for a pure, standalone monitor that does
+    nothing else. Use **`FrameTraced`** when monitoring is one feature of a larger
+    station — you avoid running two readers against one transport (you can't; only
+    one consumer can drain `ReceiveAsync`), and you get TX visibility for free.
 
 ## Building a "heard" list
 

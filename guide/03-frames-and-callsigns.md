@@ -106,22 +106,24 @@ var rr   = Ax25Frame.Rr(them, me, nr: 3, isCommand: false, pollFinal: false,
 ### Frames to bytes and back
 
 ```csharp
-byte[] kissForm = frame.ToBytes();          // address+control+pid+info, no FCS — for an IKissModem
-byte[] withFcs  = frame.ToBytesWithFcs();   // append CRC-16-CCITT — for AXUDP / raw HDLC
+byte[] body    = frame.ToBytes();           // address+control+pid+info, no FCS — for an IAx25Transport
+byte[] withFcs = frame.ToBytesWithFcs();    // append CRC-16-CCITT — for raw HDLC / FCS-carrying wires
 ```
 
-`ToBytes()` is precisely the KISS-form payload an `IKissModem` wants, closing the
-loop with [chapter 2](02-transports.md).
+`ToBytes()` is precisely the AX.25 frame body an `IAx25Transport.SendAsync` wants,
+closing the loop with [chapter 2](02-transports.md). (A transport whose wire
+*does* carry the FCS — AXUDP — appends it internally; you still hand it the
+bodies.)
 
 Parsing is the inverse:
 
 ```csharp
-if (Ax25Frame.TryParse(kissForm, out Ax25Frame? frame))         // lenient by default
+if (Ax25Frame.TryParse(body, out Ax25Frame? frame))             // lenient by default
 { /* use frame */ }
 
 // or with explicit options / known modulo:
-Ax25Frame.TryParse(kissForm, Ax25ParseOptions.Strict, out frame);
-Ax25Frame.TryParse(kissForm, Ax25ParseOptions.Bpq, extended: true, out frame);
+Ax25Frame.TryParse(body, Ax25ParseOptions.Strict, out frame);
+Ax25Frame.TryParse(body, Ax25ParseOptions.Bpq, extended: true, out frame);
 ```
 
 The `extended` overload matters because an I/S frame's control field is 1 octet
@@ -166,7 +168,7 @@ the bytes to the modem. No state machine, no connection.
 ```csharp
 using Packet.Core;
 using Packet.Ax25;
-using Packet.Kiss;
+using Packet.Ax25.Transport;
 using Packet.Kiss.Serial;
 
 // args: <port> <mycall> <text>
@@ -174,7 +176,7 @@ string port = args[0];
 var me      = Callsign.Parse(args[1]);
 string text = args[2];
 
-await using IKissModem modem = KissSerialModem.Open(port);
+await using IAx25Transport transport = KissSerialModem.Open(port);
 
 // "BEACON" is a conventional UI destination; APRS uses "APRS", etc.
 var frame = Ax25Frame.Ui(
@@ -183,7 +185,7 @@ var frame = Ax25Frame.Ui(
     info: System.Text.Encoding.ASCII.GetBytes(text),
     pid: Ax25Frame.PidNoLayer3);
 
-await modem.SendFrameAsync(frame.ToBytes());
+await transport.SendAsync(frame.ToBytes());
 Console.WriteLine($"Beaconed {frame.ToBytes().Length} bytes from {me}.");
 ```
 

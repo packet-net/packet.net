@@ -164,7 +164,7 @@ layer down: you `Send` bytes and handle `DataReceived`, it owns the protocol.
 Putting the whole guide together, a NET/ROM-capable node is:
 
 ```
-IKissModem (ch.2)
+IAx25Transport (ch.2)
   └─ Ax25Listener (ch.5/6)            one per RF port
        ├─ FrameTraced ──► NODES filter ──► NetRomRoutingTable.Ingest   (routing)
        ├─ SessionAccepted ──► local console / app                       (users, ch.6)

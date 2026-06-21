@@ -39,20 +39,23 @@ NuGet package; you reference only the layers you need. They compose upward:
 │  Packet.Ax25 (frames)     Ax25Frame encode/decode, factories   │
 │  Packet.Core              Callsign, Ax25Address, primitives     │
 ├─────────────────────────────────────────────────────────────┤
-│  Packet.Kiss.Abstractions IKissModem — the transport seam       │
-│  Packet.Kiss / .Serial /  KISS over TCP / serial / NinoTNC      │
-│  .NinoTnc · Packet.Agw ·  AGW · AXUDP                            │
-│  Packet.Axudp                                                   │
+│  Packet.Ax25.Transport.   IAx25Transport — the transport seam   │
+│    Abstractions                                                 │
+│  Packet.Kiss / .Serial /  KISS transports (TCP / serial / Nino) │
+│  .NinoTnc                  — each implements IAx25Transport      │
+│  Packet.Axudp · Packet.Agw  AXUDP (non-KISS) · AGW (session)    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Two interfaces are the load-bearing seams you will design against:
 
-- **`IKissModem`** (`Packet.Kiss`) — "a thing that sends and receives AX.25
-  frames as bytes." Every transport implements it, so the layers above never
-  care whether you are on a USB TNC, a TCP KISS socket, or AXUDP.
+- **`IAx25Transport`** (`Packet.Ax25.Transport`) — "a thing that sends and
+  receives AX.25 frames as bytes." Every frame transport implements it, so the
+  layers above never care whether you are on a USB TNC, a TCP KISS socket, or an
+  AXUDP tunnel. **KISS is one implementation behind this seam, never a property
+  of it.**
 - **`Ax25Listener`** (`Packet.Ax25.Session`) — "a station." It owns one
-  `IKissModem`, runs the AX.25 state machine per peer, accepts inbound
+  `IAx25Transport`, runs the AX.25 state machine per peer, accepts inbound
   connections, dials outbound ones, and traces every frame. Almost everything
   node-shaped goes through it.
 
@@ -64,7 +67,7 @@ order; later chapters assume the vocabulary of earlier ones.
 | # | Chapter | You build | New API |
 |---|---------|-----------|---------|
 | 1 | [Architecture & the two seams](01-architecture.md) | — | the mental model |
-| 2 | [Transports: talking to a TNC](02-transports.md) | a raw frame dumper | `IKissModem`, `KissTcpClient`, `KissSerialModem`, `NinoTncSerialPort` |
+| 2 | [Transports: talking to a TNC](02-transports.md) | a raw frame dumper | `IAx25Transport`, `Ax25InboundFrame`, `KissTcpClient`, `KissSerialModem`, `NinoTncSerialPort` |
 | 3 | [Frames & callsigns](03-frames-and-callsigns.md) | **`axbeacon`** — a UI/beacon sender | `Callsign`, `Ax25Frame`, the factories, `Ax25ParseOptions` |
 | 4 | [Listen: a channel monitor](04-listen.md) | **`axlisten`** | `Ax25Frame.TryParse`, frame inspection |
 | 5 | [Call: a connected-mode client](05-axcall.md) | **`axcall`** | `Ax25Listener.ConnectAsync`, `Ax25Session`, DL primitives |
@@ -82,7 +85,11 @@ SDK). Add the layers you need as NuGet packages:
 dotnet add package Packet.Core
 dotnet add package Packet.Ax25
 
-# A transport (pick what your hardware/peer speaks):
+# The transport seam (a tiny, dependency-free contracts package; pulled in
+# transitively by Packet.Ax25, so you rarely add it explicitly):
+dotnet add package Packet.Ax25.Transport.Abstractions
+
+# A concrete transport (pick what your hardware/peer speaks):
 dotnet add package Packet.Kiss             # KISS over TCP
 dotnet add package Packet.Kiss.Serial      # KISS over a serial port
 dotnet add package Packet.Kiss.NinoTnc     # NinoTNC USB
@@ -92,9 +99,10 @@ dotnet add package Packet.Agw              # AGWPE / SV2AGW client
 ```
 
 !!! note "Published vs. in-tree packages"
-    `Packet.Core`, `Packet.Ax25`, `Packet.Kiss*` are published to NuGet.
-    `Packet.Agw`, `Packet.Axudp`, and `Packet.NetRom` build from source in this
-    repository and may not yet be on NuGet at the time you read this — check the
+    `Packet.Core`, `Packet.Ax25`, `Packet.Ax25.Transport.Abstractions`, and
+    `Packet.Kiss*` are published to NuGet. `Packet.Agw`, `Packet.Axudp`, and
+    `Packet.NetRom` build from source in this repository and may not yet be on
+    NuGet at the time you read this — check the
     [top-level README](../README.md#libraries) for the current publication
     matrix. If a package isn't published, reference the project directly.
 

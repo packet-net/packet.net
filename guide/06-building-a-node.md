@@ -20,8 +20,11 @@ exists and is mid-handshake:
 ```csharp
 using Packet.Core;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 
-var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+await using IAx25Transport transport = /* chapter 2: a KISS or AXUDP transport */;
+
+var listener = new Ax25Listener(transport, new Ax25ListenerOptions
 {
     MyCall = Callsign.Parse("GB7XYZ-1"),
 });
@@ -127,12 +130,14 @@ are reference-counted — balance each `AddLocalAlias` with a `RemoveLocalAlias`
 ## Several ports at once
 
 A node usually has more than one RF port (a 2 m channel and a 70 cm channel, say).
-Each port is its own `IKissModem` and its own `Ax25Listener`. Build one per port,
-share your `SessionAccepted` handler, and you have a multi-port node:
+Each port is its own `IAx25Transport` and its own `Ax25Listener`. Build one per
+port, share your `SessionAccepted` handler, and you have a multi-port node:
 
 ```csharp
-IKissModem[] modems = { vhf, uhf };
-var listeners = modems.Select(m => new Ax25Listener(m, new Ax25ListenerOptions { MyCall = me })).ToArray();
+IAx25Transport[] transports = { vhf, uhf };
+var listeners = transports
+    .Select(t => new Ax25Listener(t, new Ax25ListenerOptions { MyCall = me }))
+    .ToArray();
 foreach (var l in listeners)
 {
     l.SessionAccepted += (_, e) => _ = HandleConnectionAsync(e.Session);

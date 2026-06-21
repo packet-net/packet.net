@@ -98,13 +98,14 @@ same seams:
 
     ```csharp
     var time = new FakeTimeProvider();
-    var listener = new Ax25Listener(fakeModem, options, time);
+    var listener = new Ax25Listener(fakeTransport, options, time);
     // …advance time.Advance(TimeSpan.FromSeconds(6)) to fire T1, etc.
     ```
 
-- **A fake transport.** `IKissModem` is a tiny interface — implement it over an
-  in-memory queue (or pair two together) to script frames in and assert on frames
-  out, no hardware required.
+- **A fake transport.** `IAx25Transport` is a tiny interface — implement it over
+  an in-memory queue (or pair two together) to script frames in and assert on
+  frames out, no hardware required. `SendAsync` enqueues what your code transmits;
+  `ReceiveAsync` yields the `Ax25InboundFrame`s you want it to hear.
 
 - **The interop stack.** For end-to-end confidence against real implementations,
   the repo ships a docker compose stack (LinBPQ + XRouter + rax25 + net-sim) and
