@@ -8,6 +8,10 @@
     <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Kiss.Serial.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <PackageId>Packet.Kiss.Serial</PackageId>
     <Title>Packet.Kiss.Serial — generic serial-port KISS modem</Title>

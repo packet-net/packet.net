@@ -26,7 +26,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
 {
     public const int DefaultBaudRate = 57600;
 
-    private readonly SerialPort serial;
+    private readonly ISerialPortIo serial;
     private readonly KissDecoder decoder = new();
     private readonly Channel<KissFrame> inbound;
     private readonly SemaphoreSlim writeLock = new(1, 1);
@@ -37,7 +37,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
 
     private const byte KissPort = 0;
 
-    private KissSerialModem(SerialPort serial, TimeProvider? timeProvider)
+    private KissSerialModem(ISerialPortIo serial, TimeProvider? timeProvider)
     {
         this.serial = serial;
         clock = timeProvider ?? TimeProvider.System;
@@ -84,7 +84,24 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
             RtsEnable = true,
         };
         serial.Open();
-        var modem = new KissSerialModem(serial, timeProvider);
+        return StartPumping(new SystemSerialPortIo(serial), timeProvider);
+    }
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo <c>Packet.Kiss.Serial.Tests</c>): build a modem
+    /// over a substitute <see cref="ISerialPortIo"/> and start the read pump, without
+    /// touching a real serial port. Lets tests drive the read pump, KISS encoding, and
+    /// dispose ordering deterministically.
+    /// </summary>
+    internal static KissSerialModem OpenForTest(ISerialPortIo io, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(io);
+        return StartPumping(io, timeProvider);
+    }
+
+    private static KissSerialModem StartPumping(ISerialPortIo io, TimeProvider? timeProvider)
+    {
+        var modem = new KissSerialModem(io, timeProvider);
         modem.readPump = Task.Factory.StartNew(
             () => modem.PumpReadsBlocking(modem.pumpCts.Token),
             TaskCreationOptions.LongRunning);
