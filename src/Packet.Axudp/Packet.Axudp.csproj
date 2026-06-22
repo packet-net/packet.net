@@ -1,5 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <PackageId>Packet.Axudp</PackageId>
+    <Title>Packet.Axudp — AXUDP (AX.25-over-IP / RFC 1226) transport</Title>
+    <Description>AXUDP transport for the Packet.NET stack: AxudpSocket, a bidirectional AX.25-over-IP (RFC 1226) endpoint that UDP-encapsulates AX.25 frames. It unconditionally appends + validates the 2-octet AX.25 FCS (CRC-16-CCITT) exactly as every real AXIP/AXUDP peer does (ax25ipd, LinBPQ BPQAXIP, XRouter), with a raw escape hatch for replaying captures. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>ax25;amateur-radio;packet-radio;axudp;axip;rfc1226;udp</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Packet.Core\Packet.Core.csproj" />
     <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />

@@ -12,10 +12,11 @@ name: publish-libs
 #   Packet.Kiss.NinoTnc
 #   Packet.Ax25
 #   Packet.Ax25.Transport.Abstractions
+#   Packet.Axudp
 #
-# Add more by appending to the `projects:` array below and giving
+# Add more by appending to the `projects:` matrix below and giving
 # each csproj the same PackageId / Title / Description / Tags shape
-# as the four already configured.
+# as those already configured.
 
 on:
   push:
@@ -75,6 +76,7 @@ jobs:
           - Packet.Kiss.NinoTnc
           - Packet.Ax25
           - Packet.Ax25.Transport.Abstractions
+          - Packet.Axudp
     env:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       VERSION: ${{ needs.resolve-version.outputs.version }}

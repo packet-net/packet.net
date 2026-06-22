@@ -18,7 +18,7 @@ Each library is its own NuGet package (or planned package). They compose: the no
 | `src/Packet.Kiss/` | KISS framing, ACKMODE, multi-drop, TCP transport (`KissFrame`, `KissTcpClient`) | [`Packet.Kiss`](https://www.nuget.org/packages/Packet.Kiss) |
 | `src/Packet.Aprs/` | APRS frame codec | _not yet published_ |
 | `src/Packet.Agw/` | AGW (SV2AGW) client | _not yet published_ |
-| `src/Packet.Axudp/` | AXUDP transport | _not yet published_ |
+| `src/Packet.Axudp/` | AXUDP (AX.25-over-IP / RFC 1226) transport (`AxudpSocket`) | [`Packet.Axudp`](https://www.nuget.org/packages/Packet.Axudp) |
 | `src/Packet.Kiss.Serial/` | Generic serial-port KISS modem | [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) |
 | `src/Packet.Kiss.NinoTnc/` | NinoTNC-specific KISS extensions (ACKMODE, SETHW, frame classification) | [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) |
 | `src/Packet.Mcp/` | MCP server scaffolding | _not yet published_ |
