@@ -193,10 +193,48 @@ public static class NodeConfigArbitraries
         from mdns in MdnsGen()
         select new ManagementConfig { Mdns = mdns };
 
+    // A valid inline application: unique id + a launch verb that isn't a built-in console
+    // verb (APPV<n> never collides), a process executable, and small Args/Capabilities lists.
+    // The collection members are what exercise ApplicationConfig's hand-rolled value equality
+    // through the serialise→parse round-trip (the bug class the equality override fixes).
+    private static Gen<ApplicationConfig> ApplicationGen(int index) =>
+        from enabled in Gen.Elements(true, false)
+        from args in Gen.Elements<IReadOnlyList<string>>([], ["run"], ["run", "--port=1"])
+        from caps in Gen.Elements<IReadOnlyList<string>>([], ["session"], ["session", "network"])
+        select new ApplicationConfig
+        {
+            Id = $"app{index}",
+            Command = $"APPV{index}",
+            Enabled = enabled,
+            Kind = ApplicationKind.Process,
+            Executable = "/usr/bin/app",
+            Args = args,
+            Capabilities = caps,
+        };
+
+    // A valid app-package override: only the id is constrained; the Environment dict is the
+    // collection member that exercises AppOverrideConfig's value equality across the round-trip.
+    private static Gen<AppOverrideConfig> AppOverrideGen(int index) =>
+        from enabled in Gen.Elements(true, false)
+        from env in Gen.Elements<IReadOnlyDictionary<string, string>>(
+            new Dictionary<string, string>(),
+            new Dictionary<string, string> { ["K"] = "V" },
+            new Dictionary<string, string> { ["A"] = "1", ["B"] = "2" })
+        select new AppOverrideConfig
+        {
+            Id = $"pkg{index}",
+            Enabled = enabled,
+            Environment = env,
+        };
+
     private static Gen<NodeConfig> NodeConfigGen() =>
         from call in CallsignGen()
         from nPorts in Gen.Choose(0, 4)
         from ports in Gen.CollectToList(Enumerable.Range(0, nPorts).Select(PortGen))
+        from nApps in Gen.Choose(0, 2)
+        from apps in Gen.CollectToList(Enumerable.Range(0, nApps).Select(ApplicationGen))
+        from nOverrides in Gen.Choose(0, 2)
+        from overrides in Gen.CollectToList(Enumerable.Range(0, nOverrides).Select(AppOverrideGen))
         from netrom in NetRomGen()
         from traffic in TrafficGen()
         from tailscale in TailscaleGen()
@@ -207,6 +245,8 @@ public static class NodeConfigArbitraries
             SchemaVersion = Packet.Node.Core.Configuration.NodeConfig.CurrentSchemaVersion,
             Identity = new Identity { Callsign = call },
             Ports = ports.ToList(),
+            Applications = apps.ToList(),
+            Apps = overrides.ToList(),
             NetRom = netrom,
             Traffic = traffic,
             Tailscale = tailscale,

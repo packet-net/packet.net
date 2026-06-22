@@ -81,7 +81,25 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     public static NinoTncSerialPort Open(string portName, int baudRate = DefaultBaudRate, TimeProvider? timeProvider = null)
     {
         var inner = KissSerialModem.Open(portName, baudRate, timeProvider);
-        var tnc = new NinoTncSerialPort(inner, timeProvider);
+        return StartDispatching(inner, timeProvider);
+    }
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo <c>Packet.Kiss.NinoTnc.Tests</c>): wrap a pre-built
+    /// <see cref="KissSerialModem"/> (typically one over a fake <c>ISerialPortIo</c> via
+    /// <c>KissSerialModem.OpenForTest</c>) and start the dispatch loop, without opening a real
+    /// serial port. Lets tests drive the ACKMODE TX-completion correlation, frame
+    /// classification/fan-out, and dispose-fails-pending-acks teardown deterministically.
+    /// </summary>
+    internal static NinoTncSerialPort OpenForTest(KissSerialModem modem, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(modem);
+        return StartDispatching(modem, timeProvider);
+    }
+
+    private static NinoTncSerialPort StartDispatching(KissSerialModem modem, TimeProvider? timeProvider)
+    {
+        var tnc = new NinoTncSerialPort(modem, timeProvider);
         tnc.dispatchLoop = Task.Run(() => tnc.DispatchFramesAsync(tnc.dispatchCts.Token));
         return tnc;
     }

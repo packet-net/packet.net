@@ -10,6 +10,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Packet.Kiss.Serial.Tests" />
+    <!-- The NinoTNC tests drive NinoTncSerialPort over a fake ISerialPortIo built through
+         KissSerialModem.OpenForTest, so they need this assembly's test seam too. -->
+    <InternalsVisibleTo Include="Packet.Kiss.NinoTnc.Tests" />
   </ItemGroup>
 
   <PropertyGroup>
