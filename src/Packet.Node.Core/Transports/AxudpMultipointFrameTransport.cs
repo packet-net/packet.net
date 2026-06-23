@@ -65,6 +65,18 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
     // for but have heard from. A configured peer endpoint always takes precedence.
     private readonly ConcurrentDictionary<Callsign, IPEndPoint> learned = new();
 
+    // Cutover-observability state (logging only — never gates a send/receive). Per-endpoint
+    // last-sent instant so the "sent to {Call}" log is a first-contact / resume-after-silence
+    // TRANSITION, not a per-frame line on a busy port. The learned set above doubles as the
+    // first-time-learned guard for the inbound "learned peer endpoint" Debug log; this tracks
+    // which endpoints we have already logged-as-heard so that stays a transition too.
+    private readonly ConcurrentDictionary<IPEndPoint, DateTimeOffset> lastSentTo = new();
+    private readonly ConcurrentDictionary<IPEndPoint, byte> heardEndpoints = new();
+
+    // After this much silence to a peer, the next send re-logs as a resume (so a peer that
+    // goes quiet then comes back is visible at the cutover, not buried as a one-time line).
+    private static readonly TimeSpan SendResumeAfter = TimeSpan.FromMinutes(5);
+
     private int disposed;
 
     /// <summary>The local UDP port this transport is bound to (the one shared socket).</summary>
@@ -121,6 +133,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         // 1) Direct: the destination is a configured peer (a MAP entry).
         if (peersByCall.TryGetValue(destination, out var direct))
         {
+            NoteSendTo(direct, destination, broadcast: false);
             await socket.SendAsync(direct, ax25, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -136,6 +149,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
             }
             foreach (var endpoint in broadcastEndpoints)
             {
+                NoteSendTo(endpoint, EndpointCall(endpoint, destination), broadcast: true);
                 await socket.SendAsync(endpoint, ax25, cancellationToken).ConfigureAwait(false);
             }
             return;
@@ -145,6 +159,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         //    heard from (e.g. an ephemeral-port peer that called us first).
         if (learned.TryGetValue(destination, out var heard))
         {
+            NoteSendTo(heard, destination, broadcast: false);
             await socket.SendAsync(heard, ax25, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -173,10 +188,21 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
                 yield break;   // socket disposed out from under us (shutdown)
             }
 
+            // Cutover observability: a per-datagram Trace (who we heard + from where) and a
+            // first-time-per-endpoint Debug (the endpoint became reachable). Reading the source
+            // here is cheap — we read it for the learn step below anyway. Logging never gates
+            // delivery: a frame whose source slot doesn't read is still surfaced.
+            bool haveSource = TryReadSource(result.RawFrame, out var source);
+            LogHeard(LocalPort, haveSource ? source.ToString() : "?", result.From);
+            if (heardEndpoints.TryAdd(result.From, 0))
+            {
+                LogLearnedEndpoint(LocalPort, haveSource ? source.ToString() : "?", result.From);
+            }
+
             // Learn the SOURCE callsign → sender endpoint as a reply fallback (a configured
             // peer endpoint still wins on send). Best-effort: a body whose source slot
             // doesn't read is still delivered up — the listener routes by destination.
-            if (TryReadSource(result.RawFrame, out var source) && !peersByCall.ContainsKey(source))
+            if (haveSource && !peersByCall.ContainsKey(source))
             {
                 learned[source] = result.From;
             }
@@ -184,6 +210,36 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
             // The FCS is already stripped + validated; yield the bare body straight up.
             yield return new Ax25InboundFrame(result.RawFrame, PortId: 0, ReceivedAt: clock.GetUtcNow());
         }
+    }
+
+    // Cutover observability (logging only): emit the "sent to {Call}" Debug the FIRST time we
+    // send to an endpoint, and again if it resumes after a silence — a transition, not a
+    // per-frame line on a busy port. The stamp is best-effort under concurrency; a duplicated
+    // transition log is harmless and far cheaper than locking the send path.
+    private void NoteSendTo(IPEndPoint endpoint, Callsign call, bool broadcast)
+    {
+        var now = clock.GetUtcNow();
+        bool transition = !lastSentTo.TryGetValue(endpoint, out var last) || now - last >= SendResumeAfter;
+        lastSentTo[endpoint] = now;
+        if (transition)
+        {
+            LogSentToPeer(LocalPort, call, endpoint, broadcast);
+        }
+    }
+
+    // Reverse-resolve a configured endpoint to its callsign for the broadcast fan-out log
+    // (the loop has the endpoint, not the call). Falls back to the frame destination (a
+    // broadcast pseudo-dest such as NODES) when no MAP entry owns the endpoint.
+    private Callsign EndpointCall(IPEndPoint endpoint, Callsign fallback)
+    {
+        foreach (var (call, ep) in peersByCall)
+        {
+            if (ep.Equals(endpoint))
+            {
+                return call;
+            }
+        }
+        return fallback;
     }
 
     // Read the DESTINATION callsign (the first 7-octet address slot) from an AX.25 frame
@@ -262,6 +318,15 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: no route for destination {Destination} (no MAP entry, not a broadcast, not learned); dropped.")]
     private partial void LogNoRoute(Callsign destination);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint {LocalPort}: sent to {Call} at {Endpoint} (broadcast={Broadcast}).")]
+    private partial void LogSentToPeer(int localPort, Callsign call, IPEndPoint endpoint, bool broadcast);
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "AXUDP-multipoint {LocalPort}: heard {Source} from {Endpoint}.")]
+    private partial void LogHeard(int localPort, string source, IPEndPoint endpoint);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint {LocalPort}: learned peer endpoint {Source} -> {Endpoint}.")]
+    private partial void LogLearnedEndpoint(int localPort, string source, IPEndPoint endpoint);
 }
 
 /// <summary>

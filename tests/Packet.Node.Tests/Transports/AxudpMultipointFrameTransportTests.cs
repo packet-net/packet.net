@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using Packet.Ax25;
 using Packet.Ax25.Transport;
 using Packet.Axudp;
@@ -194,6 +195,69 @@ public sealed class AxudpMultipointFrameTransportTests
         (transport is ITxCompletionTransport).Should().BeFalse("there is no TNC to echo a TX-completion");
     }
 
+    [Fact]
+    public async Task Logs_a_first_contact_outbound_transition_per_peer_not_per_frame()
+    {
+        // Cutover observability: the FIRST send to a peer renders a Debug "sent to" line; a
+        // SECOND send to the same peer (no silence) does NOT — it is a transition log, so a
+        // busy port stays quiet after first contact.
+        using var peer = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)peer.Client.LocalEndPoint!).Port;
+        var log = new CapturingLogger<AxudpMultipointFrameTransport>();
+
+        await using var transport = new AxudpMultipointFrameTransport(
+            [new(new Callsign("GB7NDH"), new IPEndPoint(IPAddress.Loopback, port), Broadcast: false)],
+            localPort: 0, logger: log);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var frame = Ui("GB7NDH", "M0LTE", "x");
+
+        var recv = peer.ReceiveAsync(cts.Token);
+        await transport.SendAsync(frame, cts.Token);
+        await recv;
+        await transport.SendAsync(frame, cts.Token);   // second send — must NOT re-log
+
+        log.Render(LogLevel.Debug).Should().ContainSingle(
+            m => m.Contains("sent to GB7NDH", StringComparison.Ordinal) && m.Contains("broadcast=False", StringComparison.Ordinal),
+            "first contact logs once at Debug; the busy follow-up send does not re-log");
+    }
+
+    [Fact]
+    public async Task Logs_inbound_heard_at_trace_and_a_learned_endpoint_at_debug()
+    {
+        // Cutover observability: every inbound datagram renders a Trace "heard {Source}" line;
+        // the FIRST datagram from a new source endpoint also renders a Debug "learned peer
+        // endpoint" line (a transition — a second datagram from the same endpoint does not).
+        var log = new CapturingLogger<AxudpMultipointFrameTransport>();
+        await using var transport = new AxudpMultipointFrameTransport([], localPort: 0, logger: log);
+        using var sender = new AxudpMultipointSocket(localPort: 0);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var to = new IPEndPoint(IPAddress.Loopback, transport.LocalPort);
+
+        var seen = 0;
+        var reader = Task.Run(async () =>
+        {
+            await foreach (var _ in transport.ReceiveAsync(cts.Token))
+            {
+                if (Interlocked.Increment(ref seen) == 2)
+                {
+                    break;
+                }
+            }
+        }, cts.Token);
+
+        await sender.SendAsync(to, Ui("M0LTE", "GB7BDH", "a"), cts.Token);
+        await sender.SendAsync(to, Ui("M0LTE", "GB7BDH", "b"), cts.Token);
+        await reader;
+
+        log.Render(LogLevel.Trace).Should().Contain(
+            m => m.Contains("heard GB7BDH", StringComparison.Ordinal),
+            "each inbound datagram renders a Trace heard line");
+        log.Render(LogLevel.Debug).Should().ContainSingle(
+            m => m.Contains("learned peer endpoint GB7BDH", StringComparison.Ordinal),
+            "the source endpoint is learned-and-logged once, on first contact");
+    }
+
     private static async Task<Ax25InboundFrame> FirstFrameAsync(AxudpMultipointFrameTransport transport, CancellationToken ct)
     {
         await foreach (var f in transport.ReceiveAsync(ct).ConfigureAwait(false))
@@ -201,5 +265,30 @@ public sealed class AxudpMultipointFrameTransportTests
             return f;
         }
         throw new InvalidOperationException("no frame arrived");
+    }
+
+    // Captures rendered log STRINGS per level so a test asserts the message a human reads — not
+    // just that something was logged (catches a placeholder/arg swap the source-gen would hide).
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        private readonly object gate = new();
+        private readonly List<(LogLevel Level, string Text)> messages = new();
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> fmt)
+        {
+            lock (gate)
+            {
+                messages.Add((level, fmt(state, ex)));
+            }
+        }
+        public List<string> Render(LogLevel level)
+        {
+            lock (gate)
+            {
+                return messages.Where(m => m.Level == level).Select(m => m.Text).ToList();
+            }
+        }
+        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
     }
 }

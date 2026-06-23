@@ -202,6 +202,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
+    // Reverse-resolve a listener to the id of the running port that owns it (for logging).
+    // "?" when no running port matches — e.g. a SessionAccepted racing a teardown.
+    private string PortIdFor(Ax25Listener listener)
+    {
+        lock (ports)
+        {
+            return ports.Values.FirstOrDefault(p => ReferenceEquals(p.Listener, listener))?.Id ?? "?";
+        }
+    }
+
     /// <summary>
     /// An outbound connector for the first running port (by id order), or null if
     /// no port is up. The telnet console uses this so a <c>Connect</c> from a
@@ -959,6 +969,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             return;
         }
 
+        // Cutover observability: a genuine inbound caller (the outbound guard above ruled out
+        // our own connect-out). Logged once here, before the console/app split, so every
+        // accepted inbound circuit is positively visible — not just faults. Guarded so the
+        // ToString()/port reverse-lookup are skipped when Information is off (CA1873).
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            var peer = session.Context.Remote.ToString();
+            var portId = PortIdFor(listener);
+            LogInboundSessionAccepted(peer, portId);
+        }
+
         // An inbound session addressed to an APP callsign (the session's Local is a
         // registered alias, not the port's own call) routes to the app's handler —
         // the RHPv2 server's accept path — never to the node console.
@@ -1023,11 +1044,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             appCallsigns.TryGetValue(session.Context.Local, out registration);
         }
 
-        string portId;
-        lock (ports)
-        {
-            portId = ports.Values.FirstOrDefault(p => ReferenceEquals(p.Listener, listener))?.Id ?? "?";
-        }
+        string portId = PortIdFor(listener);
 
         _ = Task.Run(async () =>
         {
@@ -1095,6 +1112,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: NET/ROM route quality applied live; the next NODES broadcast on this port uses it.")]
     private partial void LogNetRomQualityApplied(string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Inbound session accepted from {Peer} on port {Port}.")]
+    private partial void LogInboundSessionAccepted(string peer, string port);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} faulted.")]
     private partial void LogConsoleFaulted(Exception ex, string peerId);
