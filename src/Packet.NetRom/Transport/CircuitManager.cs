@@ -211,7 +211,7 @@ public sealed class CircuitManager : IDisposable
     public static void AcceptIncoming(IncomingCircuitEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        e.Circuit.AcceptInbound(e.PeerIndex, e.PeerId, e.ProposedWindow);
+        e.Circuit.AcceptInbound(e.PeerIndex, e.PeerId, e.ProposedWindow, e.PeerOffersCompression);
     }
 
     /// <summary>Refuse a circuit raised by <see cref="IncomingCircuit"/>: send a
@@ -259,6 +259,12 @@ public sealed class CircuitManager : IDisposable
             originatingUser = user;
         }
 
+        // LinBPQ extended connect: the peer advertises compression via a bit in the
+        // Connect Request trailer (see ConnectRequestInfo.OffersCompression). We only
+        // ACT on it if our own options enable compression — the negotiated result
+        // (both ends agreed) is settled by AcceptInbound; this is just the peer's offer.
+        bool peerOffersCompression = ConnectRequestInfo.OffersCompression(request.Payload.Span);
+
         var peerKey = (remoteNode, t.CircuitIndex, t.CircuitId);
         NetRomCircuit circuit;
         lock (gate)
@@ -275,7 +281,7 @@ public sealed class CircuitManager : IDisposable
 
         // The peer's own (index,id) live in the Connect Request's index/id fields;
         // its proposed window came from the info field (ConnectRequestInfo, above).
-        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, proposedWindow);
+        var args = new IncomingCircuitEventArgs(circuit, remoteNode, originatingUser, t.CircuitIndex, t.CircuitId, proposedWindow, peerOffersCompression);
         var handler = IncomingCircuit;
         if (handler is null)
         {
@@ -355,7 +361,7 @@ public sealed class IncomingCircuitEventArgs : EventArgs
 {
     internal IncomingCircuitEventArgs(
         NetRomCircuit circuit, Callsign remoteNode, Callsign originatingUser,
-        byte peerIndex, byte peerId, int proposedWindow)
+        byte peerIndex, byte peerId, int proposedWindow, bool peerOffersCompression)
     {
         Circuit = circuit;
         RemoteNode = remoteNode;
@@ -363,6 +369,7 @@ public sealed class IncomingCircuitEventArgs : EventArgs
         PeerIndex = peerIndex;
         PeerId = peerId;
         ProposedWindow = proposedWindow;
+        PeerOffersCompression = peerOffersCompression;
     }
 
     /// <summary>The freshly-minted circuit (registered, not yet acknowledged).</summary>
@@ -382,4 +389,10 @@ public sealed class IncomingCircuitEventArgs : EventArgs
 
     /// <summary>The window size the peer proposed in its Connect Request.</summary>
     public int ProposedWindow { get; }
+
+    /// <summary>True if the peer advertised LinBPQ-style L4 compression in its Connect
+    /// Request (the extended-connect compress bit). The circuit enables compression only
+    /// when this is true <em>and</em> this node's <see cref="NetRomCircuitOptions.CompressionEnabled"/>
+    /// is set — i.e. both ends agreed.</summary>
+    public bool PeerOffersCompression { get; }
 }

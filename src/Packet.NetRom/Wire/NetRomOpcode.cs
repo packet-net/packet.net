@@ -56,6 +56,15 @@ public enum NetRomTransportFlags : byte
     /// <summary>No flags.</summary>
     None = 0,
 
+    /// <summary>Compressed (bit 4): a <b>BPQ-specific</b> extension flag marking an
+    /// Information message whose payload is a (zlib / RFC 1950) compressed stream
+    /// rather than raw user data — see LinBPQ <c>L4COMP</c> in <c>asmstrucs.h</c>.
+    /// Only ever set on a circuit where both ends negotiated compression at connect
+    /// time (the <c>L4Compress</c> capability handshake), so a peer that did not
+    /// agree never receives it. Reassemble all the <see cref="MoreFollows"/>
+    /// fragments first, then inflate the concatenation as one stream.</summary>
+    Compressed = 0x10,
+
     /// <summary>More-follows (bit 5): this Information message is a non-final
     /// fragment of a logical frame larger than one 236-byte payload.</summary>
     MoreFollows = 0x20,

@@ -70,6 +70,11 @@ public sealed record NetRomTransportHeader
     /// <summary>True if the more-follows flag (bit 5) is set (a non-final fragment).</summary>
     public bool MoreFollows => (Flags & NetRomTransportFlags.MoreFollows) != 0;
 
+    /// <summary>True if the BPQ compressed flag (bit 4) is set — the Information
+    /// payload is a zlib stream (only on a compression-negotiated circuit). See
+    /// <see cref="NetRomTransportFlags.Compressed"/>.</summary>
+    public bool Compressed => (Flags & NetRomTransportFlags.Compressed) != 0;
+
     /// <summary>The raw opcode-and-flags byte (opcode nibble OR-ed with the flag bits).</summary>
     public byte OpcodeAndFlags => (byte)(((byte)Opcode & OpcodeMask) | ((byte)Flags & FlagsMask));
 

@@ -76,6 +76,20 @@ public sealed class NetRomCircuit
     private bool localChoked;                           // we told the peer to stop (receive backlog)
     private int pendingDeliveries;                      // received-but-not-yet-delivered count
 
+    // Compression negotiation (BPQ L4Compress). `compressionEnabled` is the settled
+    // per-circuit result — true only when BOTH ends advertised compression at connect
+    // time. Until then it is false, so the always-safe path (send raw) is the default
+    // and we never emit a compressed frame a peer can't read. `reassemblyCompressed`
+    // tracks whether the more-follows fragments currently being accumulated were
+    // flagged compressed, so we inflate the whole logical frame exactly once at the end.
+    private bool compressionEnabled;
+    private bool reassemblyCompressed;
+
+    /// <summary>The cap on a single decompressed logical frame — generous headroom over
+    /// the 236-byte fragment size, matching LinBPQ's 8 KB inflate buffer. A compressed
+    /// frame that expands past this is treated as corrupt and dropped.</summary>
+    private const int MaxDecompressedFrame = 8192;
+
     // Connect/disconnect retransmit bookkeeping (Information uses per-message timers
     // inside `unacked`). The control frame is rebuilt on each retry, so no bytes
     // are cached.
@@ -138,6 +152,12 @@ public sealed class NetRomCircuit
     /// <summary>The negotiated send-window size (after connect).</summary>
     public int Window { get { lock (gate) { return window; } } }
 
+    /// <summary>True once the circuit is connected and <em>both</em> ends negotiated
+    /// LinBPQ-style L4 payload compression — i.e. outbound data on this circuit is being
+    /// zlib-compressed and flagged <see cref="NetRomTransportFlags.Compressed"/>. False
+    /// (the safe default) when either end declined, in which case data is sent raw.</summary>
+    public bool CompressionNegotiated { get { lock (gate) { return compressionEnabled; } } }
+
     /// <summary>True while the peer has us choked (we are holding Information back).</summary>
     public bool PeerChoked { get { lock (gate) { return peerChoked; } } }
 
@@ -184,16 +204,36 @@ public sealed class NetRomCircuit
                 return;
             }
 
+            // If compression was negotiated on this circuit, compress the WHOLE logical
+            // send into one zlib stream, then fragment that stream. Every fragment of a
+            // compressed frame carries the Compressed flag; the receiver reassembles all
+            // its more-follows fragments and inflates the concatenation once (mirroring
+            // LinBPQ's L4COMP / L4MORE framing). Falls back to raw on the (rare) case
+            // that compression would not shrink the data — BPQ does the same ("if
+            // complen >= dataLen … just send"): no point paying the zlib header for an
+            // expansion, and raw is always decodable.
+            ReadOnlyMemory<byte> body = data;
+            bool compressed = false;
+            if (compressionEnabled)
+            {
+                var z = NetRomCompression.Compress(data.Span);
+                if (z.Length < data.Length)
+                {
+                    body = z;
+                    compressed = true;
+                }
+            }
+
             // Fragment into ≤FragmentSize chunks. Each fragment carries more-follows
             // except the last of THIS logical frame; the flag is stored alongside
             // the bytes so it survives across multiple Send() calls in the queue.
             int frag = Math.Max(1, options.FragmentSize);
             int offset = 0;
-            while (offset < data.Length)
+            while (offset < body.Length)
             {
-                int take = Math.Min(frag, data.Length - offset);
-                bool more = (offset + take) < data.Length;
-                sendQueue.Enqueue(new Fragment(data.Slice(offset, take).ToArray(), more));
+                int take = Math.Min(frag, body.Length - offset);
+                bool more = (offset + take) < body.Length;
+                sendQueue.Enqueue(new Fragment(body.Slice(offset, take).ToArray(), more, compressed));
                 offset += take;
             }
 
@@ -260,7 +300,7 @@ public sealed class NetRomCircuit
                     OnConnectRequest(t);
                     break;
                 case NetRomOpcode.ConnectAcknowledge:
-                    OnConnectAcknowledge(t);
+                    OnConnectAcknowledge(t, packet.Payload);
                     break;
                 case NetRomOpcode.DisconnectRequest:
                     OnDisconnectRequest(t);
@@ -288,13 +328,19 @@ public sealed class NetRomCircuit
     /// and send the Connect Acknowledge. Used by <see cref="CircuitManager"/> when
     /// it mints a circuit for an incoming connect.
     /// </summary>
-    internal void AcceptInbound(byte peerIndex, byte peerId, int proposedWindow)
+    internal void AcceptInbound(byte peerIndex, byte peerId, int proposedWindow, bool peerOffersCompression = false)
     {
         lock (gate)
         {
             remoteIndex = peerIndex;
             remoteId = peerId;
             window = Math.Clamp(Math.Min(proposedWindow <= 0 ? options.WindowSize : proposedWindow, options.WindowSize), 1, 127);
+
+            // Compression is enabled on this circuit only if BOTH ends advertised it:
+            // the peer's Connect Request carried the offer AND our options enable it.
+            // The Connect Acknowledge mirrors the agreement back so the originator knows.
+            compressionEnabled = options.CompressionEnabled && peerOffersCompression;
+
             state = NetRomCircuitState.Connected;
             SendConnectAcknowledge(refused: false);
             Connected?.Invoke();
@@ -372,7 +418,7 @@ public sealed class NetRomCircuit
                         for (int i = 0; i < unacked.Count; i++)
                         {
                             var u = unacked[i];
-                            SendInformation(u.Sequence, u.Payload, u.MoreFollows);
+                            SendInformation(u.Sequence, u.Payload, u.MoreFollows, u.Compressed);
                             unacked[i] = u with { SentAt = now, Retries = u.Retries + 1 };
                         }
                     }
@@ -408,7 +454,7 @@ public sealed class NetRomCircuit
 
     // ─── FSM handlers (caller holds the lock) ───────────────────────────
 
-    private void OnConnectAcknowledge(NetRomTransportHeader t)
+    private void OnConnectAcknowledge(NetRomTransportHeader t, ReadOnlyMemory<byte> info)
     {
         if (state != NetRomCircuitState.Connecting)
         {
@@ -435,6 +481,13 @@ public sealed class NetRomCircuit
         // window ≤ its own proposal; vanilla NET/ROM does not require us to shrink
         // ours below what we proposed, and our send window is bounded by `window`
         // either way.)
+
+        // Compression negotiation: enable only if WE offered (options.CompressionEnabled)
+        // AND the peer's Connect Acknowledge mirrored the agreement back. A peer that
+        // ignored our offer (or that we never offered to) replies with the vanilla
+        // empty/short ack ⇒ compressionEnabled stays false ⇒ we send raw, always safe.
+        compressionEnabled = options.CompressionEnabled && ConnectAckInfo.AgreesCompression(info.Span);
+
         state = NetRomCircuitState.Connected;
         Connected?.Invoke();
         PumpSendQueue();
@@ -496,14 +549,42 @@ public sealed class NetRomCircuit
 
             if (!payload.IsEmpty)
             {
+                // Track whether this logical frame is a compressed stream. The flag is
+                // taken from the FIRST fragment (BPQ sets L4COMP on every fragment of a
+                // compressed frame, so any fragment is authoritative; we read it at the
+                // start of accumulation and hold it until the frame completes).
+                if (reassembly.Count == 0)
+                {
+                    reassemblyCompressed = t.Compressed;
+                }
                 reassembly.AddRange(payload.ToArray());
             }
 
             if (!t.MoreFollows && reassembly.Count > 0)
             {
-                // Logical frame complete — deliver upward.
-                var whole = reassembly.ToArray();
+                // Logical frame complete — deliver upward, inflating first if it was
+                // sent compressed. A corrupt/undecodable compressed stream is dropped
+                // (fail closed) rather than delivered as garbage or throwing.
+                var assembled = reassembly.ToArray();
                 reassembly.Clear();
+                bool wasCompressed = reassemblyCompressed;
+                reassemblyCompressed = false;
+
+                byte[] whole;
+                if (wasCompressed)
+                {
+                    if (!NetRomCompression.TryDecompress(assembled, MaxDecompressedFrame, out whole))
+                    {
+                        // Undecodable compressed payload — drop it but still ack so the
+                        // sender advances (a NAK can't recover a corrupt zlib stream).
+                        SendInformationAcknowledge(nak: false);
+                        return;
+                    }
+                }
+                else
+                {
+                    whole = assembled;
+                }
 
                 // Backpressure accounting only matters when a choke threshold is
                 // configured; otherwise the consumer drains synchronously (the node
@@ -573,7 +654,17 @@ public sealed class NetRomCircuit
         };
 
         var user = connectUser.Base.Length == 0 ? localNode : connectUser;
-        Emit(t, ConnectRequestInfo.Build((byte)Math.Clamp(options.WindowSize, 1, 127), user, localNode));
+        var win = (byte)Math.Clamp(options.WindowSize, 1, 127);
+
+        // When compression is enabled we OFFER it via the LinBPQ extended-connect form
+        // (canonical 15 octets + a 2-octet timer trailer carrying the compress bit). A
+        // peer that ignores the trailer just sees a normal Connect Request, so offering
+        // is interop-safe; we only actually compress once the peer's Connect Acknowledge
+        // confirms it agreed (OnConnectAcknowledge). Compression off ⇒ canonical form.
+        var info = options.CompressionEnabled
+            ? ConnectRequestInfo.BuildExtended(win, user, localNode, options.ProposedTimerSeconds, offerCompression: true)
+            : ConnectRequestInfo.Build(win, user, localNode);
+        Emit(t, info);
     }
 
     private void SendConnectAcknowledge(bool refused)
@@ -590,7 +681,15 @@ public sealed class NetRomCircuit
             Opcode = NetRomOpcode.ConnectAcknowledge,
             Flags = refused ? NetRomTransportFlags.Choke : NetRomTransportFlags.None,
         };
-        Emit(t, ReadOnlyMemory<byte>.Empty);
+
+        // Mirror the compression agreement back to the originator (LinBPQ extended
+        // Connect Acknowledge). Only emits a non-empty info field when compression was
+        // actually agreed; otherwise the canonical empty-info Connect Acknowledge is
+        // sent, so a non-compressing circuit is byte-for-byte vanilla NET/ROM.
+        var info = (!refused && compressionEnabled)
+            ? ConnectAckInfo.Build((byte)window, options.TimeToLive, agreeCompression: true)
+            : [];
+        Emit(t, info);
     }
 
     private void SendDisconnectRequest()
@@ -621,12 +720,16 @@ public sealed class NetRomCircuit
         Emit(t, ReadOnlyMemory<byte>.Empty);
     }
 
-    private void SendInformation(byte seq, ReadOnlyMemory<byte> payload, bool moreFollows)
+    private void SendInformation(byte seq, ReadOnlyMemory<byte> payload, bool moreFollows, bool compressed)
     {
         var flags = NetRomTransportFlags.None;
         if (moreFollows)
         {
             flags |= NetRomTransportFlags.MoreFollows;
+        }
+        if (compressed)
+        {
+            flags |= NetRomTransportFlags.Compressed;
         }
         if (localChoked)
         {
@@ -726,8 +829,8 @@ public sealed class NetRomCircuit
             var fragment = sendQueue.Dequeue();
             byte seq = vs;
             vs = (byte)((vs + 1) & 0xFF);
-            unacked.Add(new Unacked(seq, fragment.Bytes, fragment.MoreFollows, now, 0));
-            SendInformation(seq, fragment.Bytes, fragment.MoreFollows);
+            unacked.Add(new Unacked(seq, fragment.Bytes, fragment.MoreFollows, fragment.Compressed, now, 0));
+            SendInformation(seq, fragment.Bytes, fragment.MoreFollows, fragment.Compressed);
         }
     }
 
@@ -772,7 +875,7 @@ public sealed class NetRomCircuit
             var u = unacked[i];
             if (u.Sequence == seq || Mod256After(u.Sequence, seq))
             {
-                SendInformation(u.Sequence, u.Payload, u.MoreFollows);
+                SendInformation(u.Sequence, u.Payload, u.MoreFollows, u.Compressed);
                 unacked[i] = u with { SentAt = now, Retries = u.Retries + 1 };
             }
         }
@@ -840,10 +943,12 @@ public sealed class NetRomCircuit
         unacked.Clear();
         sendQueue.Clear();
         reassembly.Clear();
+        reassemblyCompressed = false;
+        compressionEnabled = false;
         Closed?.Invoke(reason);
     }
 
-    private readonly record struct Unacked(byte Sequence, byte[] Payload, bool MoreFollows, DateTimeOffset SentAt, int Retries);
+    private readonly record struct Unacked(byte Sequence, byte[] Payload, bool MoreFollows, bool Compressed, DateTimeOffset SentAt, int Retries);
 
-    private readonly record struct Fragment(byte[] Bytes, bool MoreFollows);
+    private readonly record struct Fragment(byte[] Bytes, bool MoreFollows, bool Compressed);
 }

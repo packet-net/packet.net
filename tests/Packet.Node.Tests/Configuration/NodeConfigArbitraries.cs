@@ -105,6 +105,7 @@ public static class NodeConfigArbitraries
             from minQ in Gen.Choose(0, 255)
             from obs in Gen.Choose(1, 12)
             from sweep in Gen.Choose(1, 7200)
+            from compress in Gen.Elements(false, true)
             select new NetRomConfig
             {
                 Enabled = true,
@@ -113,6 +114,7 @@ public static class NodeConfigArbitraries
                 MinQuality = minQ,
                 ObsoleteInitial = obs,
                 SweepIntervalSeconds = sweep,
+                Compress = compress,
             },
             // A disabled, passive node (no routing knob) — the other valid axis.
             from defQ in Gen.Choose(0, 255)

@@ -64,6 +64,29 @@ public sealed record NetRomCircuitOptions
     /// </summary>
     public int ChokeThreshold { get; init; }
 
+    /// <summary>
+    /// Offer (and accept) LinBPQ-style negotiated NET/ROM L4 payload compression on
+    /// circuits this node originates or accepts — the BPQ <c>L4Compress</c> /
+    /// <c>L2Compress</c> capability. <b>Default <c>false</c></b> (decline): a circuit
+    /// then runs uncompressed, which every NET/ROM peer can read, so this is the
+    /// always-safe interop path. When <c>true</c>, the circuit advertises compression in
+    /// its Connect Request / Acknowledge and only actually compresses outbound data when
+    /// the <em>other end</em> also agreed (the <see cref="NetRomCircuit"/> tracks the
+    /// per-circuit negotiated result). Compressed payloads are a zlib stream (RFC 1950)
+    /// flagged with the BPQ <c>L4COMP</c> bit — see <see cref="NetRomCompression"/>.
+    /// </summary>
+    public bool CompressionEnabled { get; init; }
+
+    /// <summary>
+    /// The proposed session timer (T1, whole seconds) carried in the trailing 2 octets
+    /// of a LinBPQ extended Connect Request — the carrier for the compression-supported
+    /// bit. Only emitted when <see cref="CompressionEnabled"/> is set (otherwise the
+    /// canonical 15-octet Connect Request is sent). Default <b>60</b> s, matching BPQ's
+    /// <c>L4TIMEOUT</c>; the high nibble is reserved for the compress flag so the value
+    /// is masked to the low 12 bits on the wire.
+    /// </summary>
+    public ushort ProposedTimerSeconds { get; init; } = 60;
+
     /// <summary>The canonical / widely-interoperable defaults.</summary>
     public static NetRomCircuitOptions Default { get; } = new();
 

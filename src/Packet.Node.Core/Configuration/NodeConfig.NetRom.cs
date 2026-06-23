@@ -180,6 +180,19 @@ public sealed record NetRomConfig
     public int? TimeToLive { get; init; }
 
     /// <summary>
+    /// Offer LinBPQ-style negotiated NET/ROM L4 payload compression on circuits (the BPQ
+    /// <c>L4Compress</c> / <c>L2Compress</c> capability). <b>Default <c>false</c></b>
+    /// (decline) — compression is always negotiated, so declining simply runs every link
+    /// uncompressed, which any NET/ROM peer can read (the interop-safe path). When set,
+    /// the node advertises compression in its Connect Request / Acknowledge and only
+    /// actually compresses outbound data to peers that also agreed; a peer that declines
+    /// (or doesn't understand the extension) transparently gets uncompressed data. This is
+    /// the only NET/ROM knob whose <em>safe</em> default is to stay off — turn it on only
+    /// for links to compression-capable BPQ neighbours (e.g. GB7RDG).
+    /// </summary>
+    public bool Compress { get; init; }
+
+    /// <summary>
     /// The INP3 link-timing routing overlay (default-off). When
     /// <see cref="NetRomInp3Options.Enabled"/> is <c>false</c> — which is the
     /// default, since the property initialises to <c>new()</c> ⇒

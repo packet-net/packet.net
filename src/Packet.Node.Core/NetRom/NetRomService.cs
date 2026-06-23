@@ -313,6 +313,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 ? TimeSpan.FromSeconds(config.TransportTimeoutSeconds.Value) : d.RetransmitTimeout,
             MaxRetries = config.TransportRetries ?? d.MaxRetries,
             TimeToLive = config.TimeToLive is > 0 and <= 255 ? (byte)config.TimeToLive.Value : d.TimeToLive,
+            CompressionEnabled = config.Compress,
         };
     }
 

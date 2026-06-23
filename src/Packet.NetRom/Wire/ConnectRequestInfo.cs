@@ -39,6 +39,18 @@ public static class ConnectRequestInfo
     /// two shifted callsigns). A peer may append extension octets after these.</summary>
     public const int Length = 1 + NetRomCallsign.ShiftedLength + NetRomCallsign.ShiftedLength; // 15
 
+    /// <summary>Octets in the LinBPQ "extended connect" form: the canonical 15 plus
+    /// a 2-octet trailer carrying the proposed session timer (T1, little-endian) — and,
+    /// in the high byte of that timer, the BPQ compression-supported bit.</summary>
+    public const int ExtendedLength = Length + 2; // 17
+
+    /// <summary>The BPQ "compression supported" bit, OR-ed into the <em>high</em>
+    /// byte of the trailing T1 timer of an extended Connect Request (LinBPQ
+    /// <c>L4Code.c</c>: <c>MSG->L4DATA[16] |= 0x40</c>). The receiver masks it off
+    /// (<c>BPQPARAMS[1] &amp;= 0xf</c>) before reading the timer, so it does not corrupt
+    /// the timer value for a non-BPQ peer that ignores the trailer.</summary>
+    public const byte CompressBit = 0x40;
+
     /// <summary>Build the Connect Request info field: proposed window then the
     /// originating user + node callsigns (both AX.25 shifted).</summary>
     public static byte[] Build(byte proposedWindow, Callsign originatingUser, Callsign originatingNode)
@@ -49,6 +61,40 @@ public static class ConnectRequestInfo
         NetRomCallsign.WriteShifted(originatingNode, buf.AsSpan(1 + NetRomCallsign.ShiftedLength));
         return buf;
     }
+
+    /// <summary>
+    /// Build the LinBPQ <b>extended</b> Connect Request info field: the canonical 15
+    /// octets followed by the 2-octet T1 timer trailer, with the compression-supported
+    /// bit (<see cref="CompressBit"/>) OR-ed into the timer's high byte when
+    /// <paramref name="offerCompression"/> is set. This is the exact shape LinBPQ both
+    /// originates and parses (<c>L4Code.c</c> CREQ build: window, user, node, T1 lo/hi
+    /// with <c>L4DATA[16] |= 0x40</c>). A peer that ignores the trailer (vanilla
+    /// NET/ROM, or pdn with compression off) simply sees a normal Connect Request.
+    /// </summary>
+    public static byte[] BuildExtended(byte proposedWindow, Callsign originatingUser, Callsign originatingNode, ushort timerSeconds, bool offerCompression)
+    {
+        var buf = new byte[ExtendedLength];
+        buf[0] = proposedWindow;
+        NetRomCallsign.WriteShifted(originatingUser, buf.AsSpan(1));
+        NetRomCallsign.WriteShifted(originatingNode, buf.AsSpan(1 + NetRomCallsign.ShiftedLength));
+        buf[Length] = (byte)(timerSeconds & 0xFF);          // T1 low
+        byte hi = (byte)((timerSeconds >> 8) & 0x0F);       // T1 high — only low nibble is the timer
+        if (offerCompression)
+        {
+            hi |= CompressBit;
+        }
+        buf[Length + 1] = hi;
+        return buf;
+    }
+
+    /// <summary>
+    /// Read the BPQ compression-supported bit from a Connect Request info field, if the
+    /// peer sent the extended (≥17-octet) form. Returns <c>false</c> for the canonical
+    /// 15-octet form (no trailer ⇒ no offer). Mirrors LinBPQ's <c>BPQPARAMS[1] &amp; 0x40</c>
+    /// test on the second trailing octet.
+    /// </summary>
+    public static bool OffersCompression(ReadOnlySpan<byte> info)
+        => info.Length >= ExtendedLength && (info[Length + 1] & CompressBit) != 0;
 
     /// <summary>
     /// Parse the proposed window + originating user/node from a Connect Request info

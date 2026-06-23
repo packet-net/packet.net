@@ -165,6 +165,7 @@ public class NodeConfigYamlTests
               transportTimeoutSeconds: 8
               transportRetries: 5
               timeToLive: 30
+              compress: true
             """;
 
         var config = NodeConfigYaml.Parse(yaml);
@@ -185,6 +186,24 @@ public class NodeConfigYamlTests
         config.NetRom.TransportTimeoutSeconds.Should().Be(8);
         config.NetRom.TransportRetries.Should().Be(5);
         config.NetRom.TimeToLive.Should().Be(30);
+        config.NetRom.Compress.Should().BeTrue("the L4 compression knob parses from YAML");
+    }
+
+    [Fact]
+    public void Netrom_compress_defaults_off()
+    {
+        // The compression knob defaults OFF — declining is the interop-safe path (every
+        // NET/ROM peer can read an uncompressed link). It is opt-in per BPQ neighbour.
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+              alias: NODE
+            netRom:
+              enabled: true
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+        config.NetRom.Compress.Should().BeFalse("compression is opt-in, declined by default");
     }
 
     [Fact]
