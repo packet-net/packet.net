@@ -100,6 +100,8 @@ public class NodeConfigYamlTests
                 ax25:
                   n1: 80
                 netRomQuality: 191
+                netRomMinQuality: 100
+                nodesPaclen: 160
               - id: vhf
                 enabled: true
                 transport:
@@ -115,18 +117,32 @@ public class NodeConfigYamlTests
         hf.NetRomQuality.Should().Be(191);
         // The effective resolution falls back to the global default then 192.
         hf.EffectiveNetRomQuality(globalDefault: 200).Should().Be(191);   // explicit wins
+        // Per-port MINQUAL (GB7RDG's RF floor) + NODESPACLEN (the UI-frame size cap).
+        hf.NetRomMinQuality.Should().Be(100);
+        hf.EffectiveNetRomMinQuality(globalDefault: 0).Should().Be(100);   // explicit wins
+        hf.NodesPaclen.Should().Be(160);
 
         var vhf = config.Ports[1];
         vhf.Ax25.Should().BeNull();           // N1 unset ⇒ engine default 256
         vhf.NetRomQuality.Should().BeNull();   // inherits the global default
         vhf.EffectiveNetRomQuality(globalDefault: 200).Should().Be(200);
         vhf.EffectiveNetRomQuality(globalDefault: null).Should().Be(192);
+        // MINQUAL unset ⇒ inherits the node-wide floor (then the canonical 0).
+        vhf.NetRomMinQuality.Should().BeNull();
+        vhf.EffectiveNetRomMinQuality(globalDefault: 50).Should().Be(50);
+        vhf.EffectiveNetRomMinQuality(globalDefault: null).Should().Be(0);
+        // NODESPACLEN unset ⇒ no cap (today's behaviour).
+        vhf.NodesPaclen.Should().BeNull();
 
         // Survives a serialise → re-parse round trip.
         var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(config));
         reparsed.Ports[0].Ax25!.N1.Should().Be(80);
         reparsed.Ports[0].NetRomQuality.Should().Be(191);
+        reparsed.Ports[0].NetRomMinQuality.Should().Be(100);
+        reparsed.Ports[0].NodesPaclen.Should().Be(160);
         reparsed.Ports[1].NetRomQuality.Should().BeNull();
+        reparsed.Ports[1].NetRomMinQuality.Should().BeNull();
+        reparsed.Ports[1].NodesPaclen.Should().BeNull();
     }
 
     [Fact]

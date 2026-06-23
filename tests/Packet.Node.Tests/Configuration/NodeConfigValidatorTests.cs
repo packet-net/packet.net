@@ -420,6 +420,52 @@ public class NodeConfigValidatorTests
         Validator.Validate(config).IsValid.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(100, true)]
+    [InlineData(255, true)]
+    [InlineData(256, false)]
+    [InlineData(-1, false)]
+    public void Validates_per_port_netrom_minquality_range(int minQuality, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            NetRomMinQuality = minQuality,
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Theory]
+    [InlineData(28, true)]     // header (7) + one whole entry (21) — the floor
+    [InlineData(160, true)]    // GB7RDG's NODESPACLEN
+    [InlineData(256, true)]    // the AX.25 UI ceiling
+    [InlineData(27, false)]    // below one whole entry
+    [InlineData(257, false)]   // above the UI ceiling
+    public void Validates_per_port_nodespaclen_range(int paclen, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            NodesPaclen = paclen,
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Accepts_unset_per_port_netrom_minquality_and_nodespaclen()
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            // NetRomMinQuality + NodesPaclen unset — inherit defaults / no cap.
+        });
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
     [Fact]
     public void Rejects_telnet_port_out_of_range()
     {

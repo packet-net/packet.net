@@ -87,6 +87,41 @@ public sealed record PortConfig
     /// </summary>
     public int EffectiveNetRomQuality(int? globalDefault)
         => Math.Clamp(NetRomQuality ?? globalDefault ?? 192, 0, 255);
+
+    /// <summary>
+    /// Optional per-port NET/ROM <b>minimum quality</b> (0..255) — the worst quality a
+    /// route learned on this port may have and still be kept (the BPQ per-port
+    /// <c>MINQUAL</c>). Overrides the node-wide <see cref="NetRomConfig.MinQuality"/> for
+    /// NODES broadcasts heard on this port. Null (the default) ⇒ inherit the global value
+    /// (then the canonical 0 — keep everything above zero). A mixed-grade node sets a high
+    /// floor on a busy/poor port (GB7RDG's 100 on RF) so only good routes survive there,
+    /// while keeping a permissive floor elsewhere. See <see cref="EffectiveNetRomMinQuality"/>
+    /// for the resolution chain.
+    /// </summary>
+    public int? NetRomMinQuality { get; init; }
+
+    /// <summary>
+    /// Resolve this port's effective NET/ROM minimum quality (MINQUAL): the explicit per-port
+    /// <see cref="NetRomMinQuality"/> if set, else the node-wide <paramref name="globalDefault"/>
+    /// (<see cref="NetRomConfig.MinQuality"/>), else the canonical default (0 — keep everything
+    /// above zero, <c>NetRomRoutingOptions.MinQuality</c>). The returned value is clamped to
+    /// 0..255 defensively (validation already rejects out-of-range, but a clamp keeps the
+    /// floor comparison total).
+    /// </summary>
+    public int EffectiveNetRomMinQuality(int? globalDefault)
+        => Math.Clamp(NetRomMinQuality ?? globalDefault ?? 0, 0, 255);
+
+    /// <summary>
+    /// Optional per-port cap (in octets) on the size of a NET/ROM NODES-broadcast UI frame
+    /// (the BPQ per-port <c>NODESPACLEN</c>). When set, a large NODES table fragments into
+    /// several smaller UI frames each no larger than this, so the broadcast stays robust on a
+    /// slow / shared channel (GB7RDG's <c>NODESPACLEN=160</c> on an RF port). Null (the
+    /// default) ⇒ no cap: the broadcast uses the canonical structural limit of
+    /// <see cref="Packet.NetRom.Wire.NodesBroadcast.MaxEntriesPerFrame"/> (11) entries per
+    /// frame — byte-for-byte today's behaviour. This is the NODES-UI-frame size cap, distinct
+    /// from <see cref="Ax25PortParams.N1"/> (the connected-mode I-frame / PACLEN limit).
+    /// </summary>
+    public int? NodesPaclen { get; init; }
 }
 
 /// <summary>

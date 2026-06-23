@@ -314,6 +314,62 @@ public class NetRomRoutingTableTests
         sot.Should().BeNull("the route decayed below the floor and the destination has no other route");
     }
 
+    // ─── Per-port MINQUAL (route-keep decision) ───
+
+    [Fact]
+    public void A_per_port_minqual_drops_a_route_the_table_default_would_keep()
+    {
+        // RDG advertises SOT via XYZ at quality 80 → derived (80*192+128)/256 = 60.
+        var bc = Broadcast("RDG", (DestSot, "SOT", NbrB, 80));
+
+        // Table-wide floor is the default 0; without a per-port override the route is kept.
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, "vhf", bc, neighbourQuality: null, minQuality: null);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+
+        // The SAME table-default, but a per-port MINQUAL of 100 on this port's ingest: the
+        // derived 60 is below the per-port floor → the route is NOT kept (the route-keep
+        // decision honours the per-port floor over the table default).
+        var perPort = NewTable(out _);
+        perPort.Ingest(NbrA, Me, "rf", bc, neighbourQuality: null, minQuality: 100);
+        perPort.Snapshot().Destinations.Should().NotContain(d => d.Destination == DestSot);
+    }
+
+    [Fact]
+    public void A_per_port_minqual_of_null_falls_back_to_the_table_floor()
+    {
+        // Table-wide MINQUAL 128; per-port unset → the table floor (128) applies, so the
+        // derived-60 route is dropped exactly as the table-wide case would.
+        var table = NewTable(NetRomRoutingOptions.Default with { MinQuality = 128 }, out _);
+        table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)), neighbourQuality: null, minQuality: null);
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == DestSot);
+    }
+
+    [Fact]
+    public void A_per_port_minqual_overrides_a_higher_table_floor_to_keep_a_route()
+    {
+        // Table-wide MINQUAL 128 would drop a derived-60 route — but this port relaxes the
+        // floor to 0, so the route IS kept on that port (the per-port value wins both ways).
+        var table = NewTable(NetRomRoutingOptions.Default with { MinQuality = 128 }, out _);
+        table.Ingest(NbrA, Me, "open", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)), neighbourQuality: null, minQuality: 0);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+    }
+
+    [Fact]
+    public void A_re_advertisement_below_the_per_port_floor_removes_an_existing_route()
+    {
+        var table = NewTable(out _);
+        // First a strong advert (derived 187) is kept under the per-port floor of 100.
+        table.Ingest(NbrA, Me, "rf", Broadcast("RDG", (DestSot, "SOT", NbrB, 250)), neighbourQuality: null, minQuality: 100);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+
+        // A weaker re-advert (derived 60) on the same port now falls below the per-port floor
+        // → the existing route is removed.
+        table.Ingest(NbrA, Me, "rf", Broadcast("RDG", (DestSot, "SOT", NbrB, 80)), neighbourQuality: null, minQuality: 100);
+        table.Snapshot().Destinations.FirstOrDefault(d => d.Destination == DestSot)
+            .Should().BeNull("the route fell below the per-port floor and the destination has no other route");
+    }
+
     // ─── Destination cap ───
 
     [Fact]

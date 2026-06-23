@@ -180,6 +180,35 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void NetRom_minquality_change_only_is_hot_no_restart()
+    {
+        // A per-port MINQUAL edit is the same lightest hot class as QUALITY — read-only
+        // route-keep awareness, never a session. It joins NetRomQualityChanged for the
+        // light-touch hot-apply.
+        var before = Config("M0LTE-1", Tcp("a") with { NetRomMinQuality = 0 });
+        var to = Config("M0LTE-1", Tcp("a") with { NetRomMinQuality = 100 });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.NetRomQualityChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+        plan.Ax25ParamsChanged.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Nodespaclen_change_only_is_hot_no_restart()
+    {
+        // A per-port NODESPACLEN edit only changes how the next NODES broadcast is framed
+        // (outbound advertisement) — never a session — so it is the same light-touch hot class.
+        var before = Config("M0LTE-1", Tcp("a"));   // NodesPaclen null (no cap)
+        var to = Config("M0LTE-1", Tcp("a") with { NodesPaclen = 160 });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.NetRomQualityChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+        plan.Ax25ParamsChanged.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Compat_change_only_is_hot_no_restart()
     {
         // A compat-profile-only change is HOT: classified into CompatChanged with

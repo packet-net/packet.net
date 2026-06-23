@@ -125,6 +125,52 @@ public sealed class NetRomAwareIntegrationTests
     }
 
     [Fact]
+    public async Task A_per_port_MINQUAL_drops_a_low_route_end_to_end_through_the_supervisor()
+    {
+        // The per-port MINQUAL route-keep decision, end-to-end: the port sets
+        // netRomMinQuality: 100. A NODES broadcast advertises GB7SOT via GB7XYZ at quality
+        // 80 → derived Combine(80, 192) = 60, which is BELOW the per-port floor → GB7SOT must
+        // NOT be kept, while the direct route to the broadcaster (path quality 192 ≥ 100)
+        // still is. Proves netRomMinQuality flows config → PortSupervisor → AttachPort →
+        // NetRomService → routing table's route-keep decision.
+        var bus = new SharedRadioBus();
+        var nodeModem = bus.Attach();
+        var broadcaster = bus.Attach();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 4, 12, 0, 0, TimeSpan.Zero));
+        var netRom = new NetRomService(new NetRomConfig { Enabled = true }, clock, NullLogger<NetRomService>.Instance);
+
+        var config = new TestConfigProvider(Config() with
+        {
+            Ports =
+            [
+                new PortConfig
+                {
+                    Id = "p1",
+                    Enabled = true,
+                    Transport = new KissTcpTransport { Host = "mem", Port = 1 },
+                    Ax25 = new Ax25PortParams { N2 = TestAx25Timing.NodeN2 },
+                    NetRomMinQuality = 100,   // the per-port MINQUAL floor
+                },
+            ],
+        });
+        var factory = new FakeTransportFactory().Provide("kiss-tcp:mem:1", nodeModem);
+        await using var supervisor = new PortSupervisor(config, factory, clock, NullLoggerFactory.Instance, netRom);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("p1"), "port p1 should come up");
+
+        var info = BuildNodesInfo("RDGBPQ", (DestSot, "SOT", ViaXyz, 80));   // derived 60 — below the floor
+        await BroadcastNodesAsync(broadcaster, Neighbour, info);
+        await Wait.ForAsync(() => netRom.Snapshot().NeighbourCount > 0, "the node should hear the NODES broadcast");
+
+        var snap = netRom.Snapshot();
+        snap.Destinations.Should().Contain(d => d.Destination == Neighbour,
+            "the direct route to the broadcaster (quality 192) is above the per-port floor");
+        snap.Destinations.Should().NotContain(d => d.Destination == DestSot,
+            "the advertised route derives to 60, below the per-port MINQUAL of 100 — not kept");
+    }
+
+    [Fact]
     public async Task The_Nodes_console_command_surfaces_the_learned_routes()
     {
         var bus = new SharedRadioBus();

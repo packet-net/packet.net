@@ -41,6 +41,20 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             .When(p => p.NetRomQuality.HasValue)
             .WithMessage("Port.netRomQuality must be in 0..255 (the NET/ROM quality range).");
 
+        // Per-port NET/ROM MINQUAL (BPQ per-port MINQUAL): 0..255 — the NET/ROM quality
+        // range, same discipline as netRomQuality above. Null = inherit the global default.
+        RuleFor(p => p.NetRomMinQuality!.Value).InclusiveBetween(0, 255)
+            .When(p => p.NetRomMinQuality.HasValue)
+            .WithMessage("Port.netRomMinQuality must be in 0..255 (the NET/ROM quality range).");
+
+        // Per-port NODESPACLEN: the NODES-broadcast UI-frame octet cap. A floor of one whole
+        // entry past the header (7 + 21 = 28) — below that no entry fits — up to the AX.25 UI
+        // ceiling (256). Out-of-range is rejected, not clamped (the per-port tuning discipline).
+        // Null = no cap (today's behaviour).
+        RuleFor(p => p.NodesPaclen!.Value).InclusiveBetween(28, 256)
+            .When(p => p.NodesPaclen.HasValue)
+            .WithMessage("Port.nodesPaclen must be in 28..256 octets (28 = the 7-octet header + one 21-octet entry; 256 = the AX.25 UI-frame ceiling).");
+
         When(p => p.Beacon is not null, () =>
             RuleFor(p => p.Beacon!).SetValidator(new PortBeaconValidator()));
 

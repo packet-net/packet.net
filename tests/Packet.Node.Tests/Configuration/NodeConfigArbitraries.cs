@@ -78,6 +78,10 @@ public static class NodeConfigArbitraries
         from ax25 in Ax25Gen()
         from kiss in KissGen()
         from compat in CompatGen()
+        // Per-port NET/ROM knobs: each is null (inherit) ~half the time, else an in-range value.
+        from netRomQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
+        from netRomMinQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
+        from nodesPaclen in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(28, 256).Select(p => (int?)p))
         select new PortConfig
         {
             Id = $"port{index}",
@@ -86,6 +90,9 @@ public static class NodeConfigArbitraries
             Ax25 = ax25,
             Kiss = kiss,
             Compat = compat,
+            NetRomQuality = netRomQuality,
+            NetRomMinQuality = netRomMinQuality,
+            NodesPaclen = nodesPaclen,
         };
 
     private static Gen<NetRomConfig> NetRomGen() =>

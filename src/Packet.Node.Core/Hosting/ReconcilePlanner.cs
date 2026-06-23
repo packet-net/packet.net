@@ -155,9 +155,13 @@ public static class ReconcilePlanner
             {
                 compatChanged.Add(newPort);
             }
-            // Per-port NET/ROM QUALITY: a hot edit (NET/ROM awareness is read-only — it
-            // never disturbs a session), applied by swapping the port's attachment quality.
-            if (oldPort.NetRomQuality != newPort.NetRomQuality)
+            // Per-port NET/ROM awareness knobs (QUALITY / MINQUAL / NODESPACLEN): a hot edit
+            // (NET/ROM awareness + advertisement is read-only — it never disturbs a session),
+            // applied by swapping the port's attachment quality/minqual/paclen. Any of the
+            // three changing schedules the same light-touch hot-apply.
+            if (oldPort.NetRomQuality != newPort.NetRomQuality ||
+                oldPort.NetRomMinQuality != newPort.NetRomMinQuality ||
+                oldPort.NodesPaclen != newPort.NodesPaclen)
             {
                 netRomQualityChanged.Add(newPort);
             }

@@ -603,12 +603,13 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             }
         }
 
-        // Per-port NET/ROM QUALITY changes — hot-apply the new route quality to the
-        // port's NET/ROM attachment (no restart, no session disturbance). NET/ROM
-        // awareness is read-only; the new quality governs the next NODES ingest.
+        // Per-port NET/ROM awareness changes (QUALITY / MINQUAL / NODESPACLEN) — hot-apply
+        // the new values to the port's NET/ROM attachment (no restart, no session
+        // disturbance). NET/ROM awareness + advertisement is read-only; QUALITY/MINQUAL
+        // govern the next NODES ingest, NODESPACLEN the next broadcast's framing.
         foreach (var port in plan.NetRomQualityChanged)
         {
-            netRom?.UpdatePortQuality(port.Id, port.NetRomQuality);
+            netRom?.UpdatePortQuality(port.Id, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen);
             RebaselineConfig(port);
             LogNetRomQualityApplied(port.Id);
         }
@@ -728,9 +729,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // NET/ROM read-only awareness: subscribe this port's frame-trace tap so the
         // node-level service hears NODES broadcasts on it. Observation-only — it
         // cannot disturb the session path. Detached on teardown. The per-port NET/ROM
-        // QUALITY (null = inherit the global default) governs the quality assumed for a
-        // neighbour heard on this port.
-        netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality);
+        // knobs (all null = inherit the node-wide defaults) govern this port: QUALITY the
+        // quality assumed for a neighbour heard here, MINQUAL the route-keep floor, and
+        // NODESPACLEN the size cap on our NODES broadcast on this port.
+        netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen);
 
         // Live telemetry: tap the same frame trace for the node's frame/byte counters
         // + the monitor SSE feed. Also observation-only; detached on teardown.

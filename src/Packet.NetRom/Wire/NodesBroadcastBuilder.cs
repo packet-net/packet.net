@@ -38,6 +38,28 @@ public static class NodesBroadcastBuilder
     public readonly record struct Entry(Callsign Destination, string DestinationAlias, Callsign BestNeighbour, byte Quality);
 
     /// <summary>
+    /// The largest number of entries the canonical format ever packs into one frame —
+    /// the <see cref="NodesBroadcast.MaxEntriesPerFrame"/> structural cap. A per-port
+    /// byte cap (NODESPACLEN) can only lower the entries-per-frame below this; it never
+    /// raises it.
+    /// </summary>
+    private static int EntriesPerFrame(int? maxFrameBytes)
+    {
+        if (maxFrameBytes is not { } cap)
+        {
+            return NodesBroadcast.MaxEntriesPerFrame;   // unlimited — the structural cap (today's behaviour).
+        }
+
+        // How many whole entries fit after the 7-octet header within the byte cap. A cap
+        // too small for even one entry still emits one entry per frame (we never produce a
+        // header-only data frame that drops an entry on the floor); the cap is then a
+        // best-effort soft limit, but a real NODESPACLEN (≥ ~120) always admits ≥ 1.
+        int room = cap - HeaderLength;
+        int fit = room / NodesRoutingEntry.EncodedLength;
+        return Math.Clamp(fit, 1, NodesBroadcast.MaxEntriesPerFrame);
+    }
+
+    /// <summary>
     /// Build the NODES broadcast frames advertising <paramref name="entries"/> from
     /// a node whose alias is <paramref name="senderAlias"/>. Returns one info-field
     /// byte array per UI frame (entries chunked 11 per frame). An empty
@@ -48,23 +70,45 @@ public static class NodesBroadcastBuilder
     /// <param name="entries">The destinations to advertise, best-first within the table.</param>
     /// <returns>One info field per UI frame to transmit.</returns>
     public static IReadOnlyList<byte[]> Build(string senderAlias, IReadOnlyList<Entry> entries)
+        => Build(senderAlias, entries, maxFrameBytes: null);
+
+    /// <summary>
+    /// Build the NODES broadcast frames, capping each frame's info field at
+    /// <paramref name="maxFrameBytes"/> octets (the BPQ per-port <c>NODESPACLEN</c>) so a
+    /// large NODES table fragments into several smaller UI frames. <c>null</c> (the default,
+    /// via the parameterless overload) keeps the canonical structural cap of
+    /// <see cref="NodesBroadcast.MaxEntriesPerFrame"/> (11) entries per frame —
+    /// byte-for-byte today's behaviour. A non-null cap can only <em>lower</em> the
+    /// entries-per-frame; it never raises it above the structural maximum. Each frame is a
+    /// self-contained broadcast (full header + whole entries only — an entry is never split
+    /// across frames), so the receiver merges them by destination exactly as for the
+    /// multi-frame split a full table already produces.
+    /// </summary>
+    /// <param name="senderAlias">The broadcasting node's alias / mnemonic.</param>
+    /// <param name="entries">The destinations to advertise, best-first within the table.</param>
+    /// <param name="maxFrameBytes">The per-frame info-field octet cap (NODESPACLEN), or
+    /// <c>null</c> for the unlimited (structural-cap) default.</param>
+    /// <returns>One info field per UI frame to transmit, each ≤ <paramref name="maxFrameBytes"/>
+    /// octets when a cap is supplied (subject to admitting at least one entry per frame).</returns>
+    public static IReadOnlyList<byte[]> Build(string senderAlias, IReadOnlyList<Entry> entries, int? maxFrameBytes)
     {
         ArgumentNullException.ThrowIfNull(senderAlias);
         ArgumentNullException.ThrowIfNull(entries);
 
         var frames = new List<byte[]>();
+        int perFrame = EntriesPerFrame(maxFrameBytes);
 
         // Header-only broadcast when there's nothing to advertise — a node still
         // announces itself. (The receiver creates a neighbour entry for us from
         // the UI frame's source callsign regardless of the entry list.)
         int frameCount = entries.Count == 0
             ? 1
-            : (entries.Count + NodesBroadcast.MaxEntriesPerFrame - 1) / NodesBroadcast.MaxEntriesPerFrame;
+            : (entries.Count + perFrame - 1) / perFrame;
 
         for (int frame = 0; frame < frameCount; frame++)
         {
-            int start = frame * NodesBroadcast.MaxEntriesPerFrame;
-            int take = Math.Min(NodesBroadcast.MaxEntriesPerFrame, entries.Count - start);
+            int start = frame * perFrame;
+            int take = Math.Min(perFrame, entries.Count - start);
             if (take < 0)
             {
                 take = 0;

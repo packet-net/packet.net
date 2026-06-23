@@ -93,8 +93,8 @@ public static class ReconcilePreviewBuilder
         }
         foreach (var p in plan.NetRomQualityChanged)
         {
-            live.Add(new ReconcileChange($"ports.{p.Id}.netRomQuality", Live,
-                $"Port '{p.Id}' NET/ROM route quality applied live (the next NODES broadcast on this port uses it)."));
+            live.Add(new ReconcileChange($"ports.{p.Id}.netRom", Live,
+                $"Port '{p.Id}' NET/ROM settings (quality / minQuality / nodesPaclen) applied live (the next NODES ingest/broadcast on this port uses them)."));
         }
 
         if (plan.TelnetChanged)

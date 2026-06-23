@@ -330,7 +330,19 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// When set, routes learned on this port are quality-combined against this value, so a
     /// mixed-grade node advertises an accurate per-port quality.
     /// </param>
-    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null)
+    /// <param name="minQuality">
+    /// The per-port NET/ROM minimum quality (BPQ per-port <c>MINQUAL</c>): the worst quality a
+    /// route learned on this port may have and still be kept. <c>null</c> (the default) ⇒ the
+    /// node-wide <see cref="NetRomConfig.MinQuality"/> — byte-for-byte the prior behaviour. When
+    /// set, a route heard on this port deriving below it is not kept (the route-keep decision).
+    /// </param>
+    /// <param name="nodesPaclen">
+    /// The per-port NODES-broadcast UI-frame octet cap (BPQ per-port <c>NODESPACLEN</c>):
+    /// our NODES broadcast on this port fragments into frames no larger than this. <c>null</c>
+    /// (the default) ⇒ no cap (the canonical 11-entries-per-frame structural limit) —
+    /// byte-for-byte the prior behaviour.
+    /// </param>
+    public void AttachPort(string portId, Callsign myCall, Ax25Listener listener, int? neighbourQuality = null, int? minQuality = null, int? nodesPaclen = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(listener);
@@ -352,7 +364,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         void FrameHandler(object? sender, Ax25FrameEventArgs e) => OnFrameTraced(portId, myCall, e);
         void SessionHandler(object? sender, Ax25SessionEventArgs e) => OnSessionAccepted(portId, e.Session);
 
-        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler, neighbourQuality);
+        var attachment = new Attachment(portId, myCall, listener, FrameHandler, SessionHandler, neighbourQuality, minQuality, nodesPaclen);
         if (!attachments.TryAdd(portId, attachment))
         {
             return;
@@ -371,18 +383,28 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     }
 
     /// <summary>
-    /// Hot-apply a new per-port NET/ROM route quality (BPQ per-port <c>QUALITY</c>) to a
-    /// running attachment without re-subscribing its taps. No-op if the port isn't attached.
-    /// QUALITY only affects how the <em>next</em> NODES broadcast on this port is
-    /// quality-combined (read-only awareness) — it can never disturb a live session — so it
-    /// is applied live rather than via a port restart.
+    /// Hot-apply the per-port NET/ROM awareness/advertisement knobs — route quality (BPQ
+    /// per-port <c>QUALITY</c>), minimum quality (<c>MINQUAL</c>), and the NODES-broadcast
+    /// UI-frame cap (<c>NODESPACLEN</c>) — to a running attachment without re-subscribing its
+    /// taps. No-op if the port isn't attached. All three affect only how the <em>next</em>
+    /// NODES ingest/broadcast on this port is handled (read-only awareness + outbound
+    /// advertisement) — none can ever disturb a live session — so they are applied live rather
+    /// than via a port restart.
     /// </summary>
-    public void UpdatePortQuality(string portId, int? neighbourQuality)
+    public void UpdatePortQuality(string portId, int? neighbourQuality, int? minQuality = null, int? nodesPaclen = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
-        if (attachments.TryGetValue(portId, out var existing) && existing.NeighbourQuality != neighbourQuality)
+        if (attachments.TryGetValue(portId, out var existing) &&
+            (existing.NeighbourQuality != neighbourQuality ||
+             existing.MinQuality != minQuality ||
+             existing.NodesPaclen != nodesPaclen))
         {
-            attachments[portId] = existing with { NeighbourQuality = neighbourQuality };
+            attachments[portId] = existing with
+            {
+                NeighbourQuality = neighbourQuality,
+                MinQuality = minQuality,
+                NodesPaclen = nodesPaclen,
+            };
         }
     }
 
@@ -586,10 +608,14 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 return;
             }
 
-            // Per-port QUALITY (BPQ per-port QUALITY): the directly-heard neighbour on
-            // this port gets the port's configured quality (null ⇒ the table-wide default).
-            int? portQuality = attachments.TryGetValue(portId, out var att) ? att.NeighbourQuality : null;
-            table.Ingest(originator, myCall, portId, broadcast, portQuality);
+            // Per-port QUALITY + MINQUAL (BPQ per-port QUALITY / MINQUAL): the directly-heard
+            // neighbour on this port gets the port's configured quality, and a route learned via
+            // this broadcast is kept only if it derives at/above the port's MINQUAL floor (both
+            // null ⇒ the table-wide defaults — byte-for-byte the prior behaviour).
+            attachments.TryGetValue(portId, out var att);
+            int? portQuality = att?.NeighbourQuality;
+            int? portMinQuality = att?.MinQuality;
+            table.Ingest(originator, myCall, portId, broadcast, portQuality, portMinQuality);
             LogHeard(portId, originatorText, broadcast.SenderAlias, broadcast.Entries.Count);
             ArmPersist();
         }
@@ -660,11 +686,16 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         var appAdverts = AppAdvertSource?.Invoke() ?? [];
         var entries = appAdverts.Count == 0 ? learned : [.. learned, .. appAdverts];
 
-        var frames = NodesBroadcastBuilder.Build(alias, entries);
         var dest = new Callsign(NodesBroadcast.NodesDestination, 0);
 
+        // The entry list is identical on every port, but the FRAMING is per-port: a port with
+        // a NODESPACLEN cap fragments the same entries into more, smaller UI frames so a large
+        // NODES table stays robust on a slow/shared channel. A port with no cap (the default)
+        // uses the canonical structural limit (11 entries/frame) — byte-for-byte today's
+        // behaviour. Build once per port so the cap is honoured per port.
         foreach (var (portId, attachment) in attachments)
         {
+            var frames = NodesBroadcastBuilder.Build(alias, entries, attachment.NodesPaclen);
             foreach (var info in frames)
             {
                 _ = SendUiSafe(attachment.Listener, dest, info, portId);
@@ -1294,7 +1325,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private sealed record Attachment(
         string PortId, Callsign MyCall, Ax25Listener Listener,
         EventHandler<Ax25FrameEventArgs> FrameHandler, EventHandler<Ax25SessionEventArgs> SessionHandler,
-        int? NeighbourQuality);
+        int? NeighbourQuality, int? MinQuality, int? NodesPaclen);
 
     private sealed record Interlink(string PortId, Ax25Listener? Listener, Ax25Session? Session);
 

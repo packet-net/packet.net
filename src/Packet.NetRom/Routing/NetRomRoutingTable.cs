@@ -122,13 +122,28 @@ public sealed class NetRomRoutingTable
     /// The cached neighbour path quality is refreshed to this value on every ingest, so a
     /// per-port quality change (or a neighbour moving ports) takes effect on the next broadcast.
     /// </param>
-    public void Ingest(Callsign originator, Callsign myCall, string portId, NodesBroadcast broadcast, int? neighbourQuality = null)
+    /// <param name="minQuality">
+    /// The worst quality a learned route may have and still be kept on this port (the BPQ
+    /// per-port <c>MINQUAL</c>). <c>null</c> (the default) ⇒ the table-wide
+    /// <see cref="NetRomRoutingOptions.MinQuality"/> — byte-for-byte the prior behaviour. When
+    /// supplied, it overrides that floor for routes <em>learned via this ingest</em> (a NODES
+    /// broadcast heard on this port), so a node can keep only high-grade routes off a busy port
+    /// (e.g. <c>MINQUAL 100</c> on RF) while keeping everything off another. Clamped to 0..255.
+    /// A re-advertisement that derives below the effective floor removes an existing route, exactly
+    /// as the table-wide floor does. Note this gates the <em>direct</em> route to the originator
+    /// too — a neighbour whose own assumed path quality is below the floor is not kept.
+    /// </param>
+    public void Ingest(Callsign originator, Callsign myCall, string portId, NodesBroadcast broadcast, int? neighbourQuality = null, int? minQuality = null)
     {
         ArgumentNullException.ThrowIfNull(broadcast);
         ArgumentNullException.ThrowIfNull(portId);
 
         var now = timeProvider.GetUtcNow();
         byte pathQuality = (byte)Math.Clamp(neighbourQuality ?? options.DefaultNeighbourQuality, NetRomQuality.Min, NetRomQuality.Max);
+        // The effective MINQUAL floor for this ingest: the per-port override if supplied,
+        // else the table-wide default. Clamped defensively to 0..255 (validation already
+        // rejects out-of-range, but a clamp keeps the floor comparison total).
+        int floor = Math.Clamp(minQuality ?? options.MinQuality, NetRomQuality.Min, NetRomQuality.Max);
 
         lock (gate)
         {
@@ -156,7 +171,8 @@ public sealed class NetRomRoutingTable
                 destination: originator,
                 alias: broadcast.SenderAlias,
                 viaNeighbour: originator,
-                quality: originatorPathQuality);
+                quality: originatorPathQuality,
+                minQuality: floor);
 
             // Heuristic 5/6/7/8: each advertised destination becomes a route via
             // this neighbour at the combined quality, loop-guarded against us.
@@ -170,7 +186,8 @@ public sealed class NetRomRoutingTable
                     destination: entry.Destination,
                     alias: entry.DestinationAlias,
                     viaNeighbour: originator,
-                    quality: quality);
+                    quality: quality,
+                    minQuality: floor);
             }
         }
     }
@@ -179,7 +196,7 @@ public sealed class NetRomRoutingTable
     /// Ingest an INP3 <see cref="Inp3Rif"/> heard on a connected interlink from
     /// <paramref name="receivedFromNeighbour"/>, learning a measured <em>target-time</em>
     /// route (the second metric space) per RIP. This is the time-space analogue of
-    /// <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?)"/> for the quality
+    /// <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?, int?)"/> for the quality
     /// space: it mirrors <see cref="UpsertRoute"/>'s discipline (per-destination route
     /// cap, best-first ordering, the trivial-loop guard) and is pure table maintenance —
     /// it never transmits.
@@ -189,7 +206,7 @@ public sealed class NetRomRoutingTable
     /// <b>Host-free.</b> The table never reaches for the INP3 engine; the caller (the
     /// node host) supplies the smoothed neighbour transport time
     /// (<paramref name="neighbourSnttMs"/>) it read from <c>Inp3Engine</c>, exactly as
-    /// <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?)"/> takes
+    /// <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?, int?)"/> takes
     /// <c>myCall</c>/<c>portId</c> rather than reaching for them.
     /// </para>
     /// <para>
@@ -215,7 +232,7 @@ public sealed class NetRomRoutingTable
     /// un-probed link must never <em>remove</em> a time-route it never learned), when
     /// <c>localHopCount</c> exceeds <paramref name="hopLimit"/> (the hop horizon), or when
     /// the destination is <paramref name="myCall"/> (the receive-side trivial-loop guard,
-    /// mirroring <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?)"/>).
+    /// mirroring <see cref="Ingest(Callsign, Callsign, string, NodesBroadcast, int?, int?)"/>).
     /// </para>
     /// <para>
     /// <b>Coexistence (does not disturb quality ingestion).</b> An INP3 upsert only sets
@@ -826,15 +843,17 @@ public sealed class NetRomRoutingTable
     // ─── Internals ────────────────────────────────────────────────────
 
     // Add or refresh a route to `destination` via `viaNeighbour`. Applies the
-    // quality-0 / MINQUAL floor (heuristic 8), resets obsolescence to OBSINIT,
-    // enforces the per-destination route cap (heuristic 7) and the destination
-    // cap (heuristic 9). Caller holds the lock.
-    private void UpsertRoute(Callsign destination, string alias, Callsign viaNeighbour, byte quality)
+    // quality-0 / MINQUAL floor (heuristic 8) — using the caller-supplied effective
+    // floor, which is the per-port MINQUAL when this ingest carried one, else the
+    // table-wide options.MinQuality — resets obsolescence to OBSINIT, enforces the
+    // per-destination route cap (heuristic 7) and the destination cap (heuristic 9).
+    // Caller holds the lock.
+    private void UpsertRoute(Callsign destination, string alias, Callsign viaNeighbour, byte quality, int minQuality)
     {
         // A quality-0 route is never usable / kept; likewise anything under the
-        // configured floor. If such a route already existed (from a prior, better
+        // effective floor. If such a route already existed (from a prior, better
         // advertisement), a now-too-low re-advertisement removes it.
-        bool acceptable = quality > NetRomQuality.Min && quality >= options.MinQuality;
+        bool acceptable = quality > NetRomQuality.Min && quality >= minQuality;
 
         if (!destinations.TryGetValue(destination, out var dest))
         {
