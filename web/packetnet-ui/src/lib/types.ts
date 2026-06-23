@@ -9,17 +9,28 @@
 // ============================================================
 
 // ---- 6.1 NodeConfig tree -----------------------------------
-export type TransportKind = "kiss-tcp" | "serial-kiss" | "nino-tnc" | "axudp";
+export type TransportKind = "kiss-tcp" | "serial-kiss" | "nino-tnc" | "axudp" | "axudp-multipoint";
 
 export interface KissTcpTransport { kind: "kiss-tcp"; host: string; port: number }
 export interface SerialKissTransport { kind: "serial-kiss"; device: string; baud: number }
 export interface NinoTncTransport { kind: "nino-tnc"; device: string; baud: number; mode: number }
 export interface AxudpTransport { kind: "axudp"; host: string; port: number; localPort: number }
+// One multipoint-AXUDP partner — a BPQ `MAP <call> <ip> UDP <port> [B]` line
+// (server: Packet.Node.Core.Configuration.AxudpPeerConfig). `call` is the routing
+// key (an outbound frame whose AX.25 destination is this callsign goes to this peer);
+// `broadcast` is the BPQ `B` suffix — fan NODES/ID/BEACON broadcasts to this peer.
+export interface AxudpPeer { call: string; host: string; port: number; broadcast: boolean }
+// Multipoint AXUDP — the BPQ BPQAXIP analog: ONE UDP socket bound to `localPort`
+// reaches MANY partners, each addressed by callsign (server:
+// Packet.Node.Core.Configuration.AxudpMultipointTransport). Replaces the point-to-point
+// `axudp` host/port with a `peers[]` partner table.
+export interface AxudpMultipointTransport { kind: "axudp-multipoint"; localPort: number; peers: AxudpPeer[] }
 export type TransportConfig =
   | KissTcpTransport
   | SerialKissTransport
   | NinoTncTransport
-  | AxudpTransport;
+  | AxudpTransport
+  | AxudpMultipointTransport;
 
 export interface Ax25PortParams {
   t1Ms?: number; t2Ms?: number; t3Ms?: number;
@@ -61,6 +72,14 @@ export interface PortConfig {
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality. See Packet.Node.Core.Configuration.PortConfig.NetRomQuality.
   netRomQuality?: number | null;
+  // Per-port NET/ROM minimum quality (BPQ per-port MINQUAL), 0..255. The worst quality a
+  // route learned on this port may have and still be kept. Null = inherit the node-wide
+  // netRom.minQuality. See Packet.Node.Core.Configuration.PortConfig.NetRomMinQuality.
+  netRomMinQuality?: number | null;
+  // Per-port cap (octets) on a NET/ROM NODES-broadcast UI frame (BPQ per-port NODESPACLEN),
+  // ~28..256. Large NODES tables fragment into frames no larger than this. Null = no cap
+  // (the structural 11-entries limit). See Packet.Node.Core.Configuration.PortConfig.NodesPaclen.
+  nodesPaclen?: number | null;
 }
 // The system-default ID beacon (Packet.Node.Core.Configuration.BeaconConfig).
 // enabled defaults false (a node that never beaconed keeps not beaconing).
@@ -156,6 +175,10 @@ export interface NetRomConfig {
   defaultNeighbourQuality?: number; minQuality?: number;
   obsoleteInitial?: number; obsoleteMinimum?: number; sweepIntervalSeconds?: number;
   window?: number; transportTimeoutSeconds?: number; transportRetries?: number; timeToLive?: number;
+  // Offer LinBPQ-style negotiated NET/ROM L4 payload compression on circuits (BPQ L4Compress).
+  // Default false (decline) — the interop-safe path. Turn on only for links to compression-capable
+  // BPQ neighbours. See Packet.Node.Core.Configuration.NetRomConfig.Compress.
+  compress: boolean;
   inp3: Inp3Config;
 }
 export interface NodeConfig {

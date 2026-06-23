@@ -13,7 +13,7 @@ import { Page, PageHeader } from "@/components/layout/shell";
 import { cn } from "@/lib/utils";
 import { PingButton } from "@/components/ping";
 import type {
-  PortConfig, PortStatus, TransportConfig, Ax25PortParams, KissParams, PortSetup, PortBeacon,
+  PortConfig, PortStatus, TransportConfig, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
   PortCompatConfig, CompatPreset,
 } from "@/lib/types";
 import {
@@ -42,6 +42,11 @@ interface PortDraft {
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality.
   netRomQuality: number | null;
+  // Per-port NET/ROM minimum quality (BPQ per-port MINQUAL), 0..255. Null = inherit the
+  // node-wide netRom.minQuality.
+  netRomMinQuality: number | null;
+  // Per-port NODES-broadcast frame-size cap (BPQ per-port NODESPACLEN), ~28..256. Null = no cap.
+  nodesPaclen: number | null;
   _new?: boolean;
   // The id the draft was opened against (the reconcile key for an edit) — set on edit,
   // unset on add. Lets a rename in the editor edit the original entry rather than 404.
@@ -61,6 +66,8 @@ function transportDesc(t: TransportConfig): string {
     }
     case "axudp":
       return `${t.host}:${t.port}`;
+    case "axudp-multipoint":
+      return `local:${t.localPort} · ${t.peers.length} peer${t.peers.length === 1 ? "" : "s"}`;
   }
 }
 
@@ -118,6 +125,8 @@ export function Ports() {
     beacon: null,
     compat: null,
     netRomQuality: null,
+    netRomMinQuality: null,
+    nodesPaclen: null,
     _new: true,
   });
 
@@ -132,6 +141,8 @@ export function Ports() {
       beacon: p.beacon,
       compat: p.compat ?? null,
       netRomQuality: p.netRomQuality ?? null,
+      netRomMinQuality: p.netRomMinQuality ?? null,
+      nodesPaclen: p.nodesPaclen ?? null,
       _origId: p.id,
     });
   };
@@ -152,6 +163,8 @@ export function Ports() {
       beacon: d.beacon ?? null,
       compat: d.compat,
       netRomQuality: d.netRomQuality,
+      netRomMinQuality: d.netRomMinQuality,
+      nodesPaclen: d.nodesPaclen,
     };
     try {
       if (d._new) await api.addPort(saved);
@@ -356,6 +369,7 @@ function transportDefaults(kind: TransportConfig["kind"]): TransportConfig {
     case "serial-kiss": return { kind, device: "/dev/ttyUSB0", baud: 38400 };
     case "nino-tnc": return { kind, device: "/dev/ttyACM0", baud: 57600, mode: 4 }; // wire baud fixed at 57600
     case "axudp": return { kind, host: "44.0.0.1", port: 10093, localPort: 10093 };
+    case "axudp-multipoint": return { kind, localPort: 10093, peers: [] };
   }
 }
 
@@ -388,6 +402,26 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
     setModel((d) => (d ? { ...d, transport: { ...d.transport, ...patch } as TransportConfig } : d));
   const setKind = (kind: TransportConfig["kind"]) =>
     setModel((d) => (d ? { ...d, transport: transportDefaults(kind) } : d));
+  // Multipoint-AXUDP peer table edits. Each operation rebuilds the peers list on the
+  // (already narrowed) axudp-multipoint transport; a no-op on any other kind.
+  const setPeer = (i: number, patch: Partial<AxudpPeer>) =>
+    setModel((d) => {
+      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+      const peers = d.transport.peers.map((p, j) => (j === i ? { ...p, ...patch } : p));
+      return { ...d, transport: { ...d.transport, peers } };
+    });
+  const addPeer = () =>
+    setModel((d) => {
+      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+      const peers = [...d.transport.peers, { call: "", host: "", port: 10093, broadcast: false }];
+      return { ...d, transport: { ...d.transport, peers } };
+    });
+  const removePeer = (i: number) =>
+    setModel((d) => {
+      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+      const peers = d.transport.peers.filter((_, j) => j !== i);
+      return { ...d, transport: { ...d.transport, peers } };
+    });
   const setSetup = (patch: Partial<PortSetup>) =>
     setModel((d) => (d ? { ...d, setup: { ...d.setup, ...patch } } : d));
   const setAx = (k: keyof Ax25PortParams, v: number) =>
@@ -474,6 +508,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 <option value="serial-kiss">{KIND_LABEL["serial-kiss"]} — KISS TNC over serial</option>
                 <option value="nino-tnc">{KIND_LABEL["nino-tnc"]} — NinoTNC</option>
                 <option value="axudp">{KIND_LABEL["axudp"]} — AXUDP network link</option>
+                <option value="axudp-multipoint">{KIND_LABEL["axudp-multipoint"]} — AXUDP multipoint (BPQAXIP)</option>
               </Select>
             </Field>
           </div>
@@ -515,6 +550,18 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 <Field label="Peer port"><Input type="number" value={t.port} onChange={(e) => setT({ port: +e.target.value })} className="font-mono" /></Field>
                 <Field label="Local port"><Input type="number" value={t.localPort} onChange={(e) => setT({ localPort: +e.target.value })} className="font-mono" /></Field>
               </>
+            )}
+            {t.kind === "axudp-multipoint" && (
+              <div className="col-span-2 space-y-3">
+                <Field
+                  label="Local port"
+                  info="The one shared UDP port this link binds for send and receive across every peer (1–65535). Conventionally a fixed well-known port so partners can map back to you."
+                  className="max-w-[12rem]"
+                >
+                  <Input type="number" min={1} max={65535} value={t.localPort} onChange={(e) => setT({ localPort: +e.target.value })} className="font-mono" />
+                </Field>
+                <PeerTable peers={t.peers} onChange={setPeer} onAdd={addPeer} onRemove={removePeer} />
+              </div>
             )}
           </div>
         </div>
@@ -630,6 +677,36 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 className="font-mono"
               />
             </Field>
+            <Field label={PARAM_HELP.netRomMinQuality.label} info={PARAM_HELP.netRomMinQuality.help}>
+              <Input
+                type="number"
+                min={0}
+                max={255}
+                value={model.netRomMinQuality ?? ""}
+                placeholder="inherit"
+                onChange={(e) =>
+                  setModel((d) =>
+                    d ? { ...d, netRomMinQuality: e.target.value === "" ? null : +e.target.value } : d,
+                  )
+                }
+                className="font-mono"
+              />
+            </Field>
+            <Field label={PARAM_HELP.nodesPaclen.label} info={PARAM_HELP.nodesPaclen.help}>
+              <Input
+                type="number"
+                min={28}
+                max={256}
+                value={model.nodesPaclen ?? ""}
+                placeholder="no cap"
+                onChange={(e) =>
+                  setModel((d) =>
+                    d ? { ...d, nodesPaclen: e.target.value === "" ? null : +e.target.value } : d,
+                  )
+                }
+                className="font-mono"
+              />
+            </Field>
           </div>
         </div>
       </div>
@@ -661,6 +738,78 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
         </div>
       </Modal>
     </Sheet>
+  );
+}
+
+// ---- multipoint-AXUDP peer table: callsign → host:port + a broadcast flag ----
+// One row per partner (a BPQ `MAP <call> <ip> UDP <port> [B]` line). Mirrors the
+// backend validation inline: peer call non-empty, port 1..65535, and no two peers
+// sharing a call (the duplicate is flagged on the offending rows). Add/remove a row;
+// an empty table is allowed (a receive-only listener).
+function PeerTable({ peers, onChange, onAdd, onRemove }: {
+  peers: AxudpPeer[];
+  onChange: (i: number, patch: Partial<AxudpPeer>) => void;
+  onAdd: () => void;
+  onRemove: (i: number) => void;
+}) {
+  // Calls that appear on more than one row (case-insensitive, ignoring blanks) — the
+  // set the backend's "no two peers share a call" rule would reject.
+  const seen = new Map<string, number>();
+  for (const p of peers) {
+    const key = p.call.trim().toUpperCase();
+    if (key) seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  const isDup = (call: string) => {
+    const key = call.trim().toUpperCase();
+    return key.length > 0 && (seen.get(key) ?? 0) > 1;
+  };
+
+  return (
+    <Field
+      label="Peers"
+      info="The partner table — each row maps a callsign to a UDP endpoint (the BPQ MAP line). An outbound frame is routed to the peer whose callsign matches its AX.25 destination; broadcast peers also receive NODES/ID/beacon frames. An empty table is a receive-only listener."
+    >
+      <div className="space-y-2">
+        {peers.length === 0 && (
+          <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            No peers yet — add a partner callsign and its host:port below.
+          </p>
+        )}
+        {peers.map((p, i) => {
+          const dup = isDup(p.call);
+          return (
+            <div key={i} className="flex items-end gap-2">
+              <Field label={i === 0 ? "Callsign" : ""} className="flex-1">
+                <Input
+                  value={p.call}
+                  onChange={(e) => onChange(i, { call: e.target.value })}
+                  placeholder="N0CALL-1"
+                  className={cn("font-mono", (dup || p.call.trim() === "") && "border-warning/60")}
+                />
+              </Field>
+              <Field label={i === 0 ? "Host" : ""} className="flex-[1.4]">
+                <Input value={p.host} onChange={(e) => onChange(i, { host: e.target.value })} placeholder="44.0.0.1" className="font-mono" />
+              </Field>
+              <Field label={i === 0 ? "Port" : ""} className="w-24">
+                <Input type="number" min={1} max={65535} value={p.port} onChange={(e) => onChange(i, { port: +e.target.value })} className="font-mono" />
+              </Field>
+              <Field label={i === 0 ? "Broadcast" : ""} className="shrink-0">
+                <div className="flex h-9 items-center justify-center">
+                  <Switch checked={p.broadcast} onChange={(v) => onChange(i, { broadcast: v })} title="Fan NODES / ID / beacon broadcasts to this peer (the BPQ B suffix)" />
+                </div>
+              </Field>
+              <Button variant="ghost" size="iconSm" className="mb-px text-muted-foreground hover:text-danger" title="Remove this peer" onClick={() => onRemove(i)}>
+                <Icon name="trash" size={14} />
+              </Button>
+            </div>
+          );
+        })}
+        {peers.some((p) => isDup(p.call)) && (
+          <p className="text-[11px] text-warning">Two or more peers share a callsign — each callsign must be unique.</p>
+        )}
+        <Button variant="outline" size="sm" onClick={onAdd}><Icon name="plus" size={14} /> Add peer</Button>
+      </div>
+    </Field>
   );
 }
 

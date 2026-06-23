@@ -56,6 +56,10 @@ function buildPort(d: SetupData): PortConfig {
     case "serial-kiss": transport = { kind: "serial-kiss", device: d.device, baud: d.baud }; break;
     case "kiss-tcp": transport = { kind: "kiss-tcp", host: d.device || "127.0.0.1", port: d.baud || 8001 }; break;
     case "axudp": transport = { kind: "axudp", host: d.device || "127.0.0.1", port: d.baud || 10093, localPort: d.baud || 10093 }; break;
+    // The wizard's port-kind picker doesn't offer multipoint (its partner table doesn't
+    // fit the simple first-port form), but the switch stays exhaustive over TransportKind:
+    // seed an empty peers table the operator fills in later from the Ports editor.
+    case "axudp-multipoint": transport = { kind: "axudp-multipoint", localPort: d.baud || 10093, peers: [] }; break;
   }
   return { id: d.portId, enabled: true, transport, profile: null, ax25: null, kiss: null, beacon: null };
 }

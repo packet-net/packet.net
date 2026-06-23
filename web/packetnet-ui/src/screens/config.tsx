@@ -548,7 +548,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
 function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: unknown, impact: ApplyImpact) => void }) {
   const nr = cfg.netRom;
   const inp3 = nr.inp3;
-  const toggleKeys = ["enabled", "broadcast"] as const;
+  const toggleKeys = ["enabled", "broadcast", "compress"] as const;
   const numKeys = ["defaultNeighbourQuality", "minQuality", "sweepIntervalSeconds", "timeToLive", "window"] as const;
   const routingDesc = NETROM_ROUTING_HELP.options.find((o) => o.value === nr.routing)?.desc;
   const inp3Keys = ["l3RttInterval", "l3RttResetWindow", "rifInterval", "positiveDebounce"] as const;

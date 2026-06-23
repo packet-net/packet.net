@@ -20,6 +20,7 @@ export const NODE_CONFIG: NodeConfig = {
     { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null } },
     { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 400, persistence: 63, slotTime: 100, txTail: 80 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
+    { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
     { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
@@ -34,6 +35,7 @@ export const NODE_CONFIG: NodeConfig = {
     defaultNeighbourQuality: 192, minQuality: 40,
     obsoleteInitial: 6, obsoleteMinimum: 4, sweepIntervalSeconds: 300,
     window: 4, transportTimeoutSeconds: 60, transportRetries: 3, timeToLive: 25,
+    compress: false,
     inp3: { enabled: true, preferInp3Routes: true, l3RttInterval: 3600, l3RttResetWindow: 5, rifInterval: 60, positiveDebounce: 3 },
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
@@ -275,8 +277,8 @@ export function fmtBytes(n: number): string {
 export function hex(n: number, w?: number): string { return n.toString(16).toUpperCase().padStart(w || 2, "0"); }
 
 // operator-facing config model ------------------------------
-export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp" };
-export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false };
+export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp", "axudp-multipoint": "axudp-mp" };
+export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false, "axudp-multipoint": false };
 
 export const NINO_MODES: NinoMode[] = [
   { mode: 0, label: "300 baud · AFSK · AX.25 (HF/NBEMS)" },
@@ -319,6 +321,8 @@ export const PARAM_HELP: Record<string, ParamHelp> = {
   windowSize: { label: "Window", unit: "frames", help: "How many frames may be in flight (sent but not yet acknowledged) at once. Bigger = more throughput on a clean link; smaller is safer on a lossy one." },
   n1: { label: "Max frame (PACLEN)", unit: "bytes", help: "Largest information-field a frame carries (PACLEN / N1). Smaller frames are shorter on the air and recover faster on a noisy/slow medium — set ~80 on an HF port; leave it at 256 on VHF/UHF. The far station can negotiate it lower via XID but never higher." },
   netRomQuality: { label: "NET/ROM quality", unit: "", help: "Route quality this port advertises for a directly-heard neighbour (0–255). Higher = a better link the network prefers. Leave blank to inherit the node-wide default. Set per port on a mixed-grade node (e.g. 191 on one link, 192 on another)." },
+  netRomMinQuality: { label: "NET/ROM min quality", unit: "", help: "The worst route quality (0–255) a route learned on this port may have and still be kept (BPQ MINQUAL). Leave blank to inherit the node-wide minimum. Set a high floor on a busy or poor port (e.g. 100 on RF) so only good routes survive there." },
+  nodesPaclen: { label: "NODES PACLEN", unit: "bytes", help: "Cap on the size of each NET/ROM NODES-broadcast frame (~28–256, BPQ NODESPACLEN). A large routing table fragments into several smaller frames so the broadcast stays robust on a slow or shared channel. Leave blank for no cap. Distinct from the connected-mode PACLEN (N1) above." },
   txDelay: { label: "TX delay", unit: "ms", help: "Silence held after keying the transmitter before data starts, giving the far radio's receiver time to lock on. In software-control mode pdn sets this on the modem." },
   txTail: { label: "TX tail", unit: "ms", help: "Extra carrier held after the last byte before the transmitter unkeys, so the final bits aren't clipped." },
   slotTime: { label: "Slot time", unit: "ms", help: "The back-off slot length used when sharing the channel — how long pdn waits between 'is the channel free?' checks." },
@@ -339,6 +343,7 @@ export const NINO_TEST: NinoTest = {
 export const NETROM_TOGGLE_HELP: Record<string, ToggleHelp> = {
   enabled: { label: "NET/ROM networking", desc: "The layer that lets your node route across the wider packet network, not just direct AX.25 links. Turn this off and the node only handles point-to-point connections." },
   broadcast: { label: "Advertise my routes", desc: "Tell neighbours which destinations your node can reach, so they'll route through you. Turn off to be a silent leaf that uses the network but doesn't carry others' traffic." },
+  compress: { label: "Compress circuit data", desc: "Offer LinBPQ-style payload compression on NET/ROM circuits (BPQ L4Compress). It's negotiated per link, so a peer that doesn't support it transparently gets uncompressed data. Off by default — turn on only for links to compression-capable BPQ neighbours." },
 };
 // The single routing-role control (replaces the old connect + forward toggles, which
 // had an inert combination). Each option is a clean escalation of how much routing work

@@ -116,6 +116,35 @@ describe("screens render without crashing", () => {
     expect(screen.getByText(/NET\/ROM quality/i)).toBeInTheDocument();
   });
 
+  it("Ports editor surfaces the multipoint-AXUDP peer table + per-port MINQUAL / NODESPACLEN", async () => {
+    // The mp-net mock port is an axudp-multipoint transport with 2 peers + a per-port
+    // netRomMinQuality (MINQUAL) and nodesPaclen (NODESPACLEN). Opening its editor proves
+    // the multipoint editor (local port + peer rows + broadcast switches) and both new
+    // per-port NET/ROM number inputs are wired into the Forms editor.
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("mp-net")).toBeInTheDocument());
+
+    let card: HTMLElement | null = screen.getByText("mp-net");
+    while (card && !within(card).queryByRole("button", { name: "Edit" })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(screen.getByText(/Edit port — mp-net/i)).toBeInTheDocument());
+    // Multipoint transport surface: the AXUDP-multipoint option, the shared local port,
+    // the peers table, and both seeded peer callsigns (round-tripped from the fixture).
+    expect(screen.getByText(/AXUDP multipoint \(BPQAXIP\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Peers/)).toBeInTheDocument();
+    expect((screen.getByDisplayValue("N0CALL-1") as HTMLInputElement).value).toBe("N0CALL-1");
+    expect((screen.getByDisplayValue("N0CALL-7") as HTMLInputElement).value).toBe("N0CALL-7");
+    // The broadcast flag is a Switch per row — the fixture has one broadcast peer.
+    expect(screen.getAllByRole("switch").length).toBeGreaterThanOrEqual(2);
+    // The new per-port NET/ROM fields both render.
+    expect(screen.getByText(/NET\/ROM min quality/i)).toBeInTheDocument();
+    expect(screen.getByText(/NODES PACLEN/i)).toBeInTheDocument();
+  });
+
   it("Capabilities renders the per-peer capability cache", async () => {
     const { container } = mount(<Capabilities />);
     expect(container.firstChild).toBeTruthy();
