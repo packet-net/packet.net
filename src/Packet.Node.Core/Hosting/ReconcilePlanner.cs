@@ -17,6 +17,9 @@ namespace Packet.Node.Core.Hosting;
 /// <item><b>Channel profile changed</b> (on an enabled port) → single-port restart
 /// (it can move both the AX.25 timer seed and the CSMA params; restart resolves
 /// the effective values cleanly).</item>
+/// <item><b>Radio attachment changed</b> (<see cref="PortConfig.Radio"/>, on an
+/// enabled port) → single-port restart: the radio control channel is opened and the
+/// RSSI-tagging transport wrap decided at construction time.</item>
 /// <item><b>Enabled toggled</b> → bring up / tear down that port.</item>
 /// <item><b>KISS params changed</b> (only) → apply live, no restart.</item>
 /// <item><b>AX.25 params changed</b> (only) → live-reseed, no restart: the
@@ -134,11 +137,16 @@ public static class ReconcilePlanner
             // applied live (unlike the TXDELAY/PERSIST/SLOTTIME/TXTAIL knobs, which the
             // KISS-live path re-sends to the running modem). Toggling it restarts the
             // port so the change actually takes effect rather than silently no-op'ing.
+            // The radio attachment (port.radio) is construction-time too: it opens a
+            // serial control channel and wraps the transport in the RSSI-tagging
+            // decorator at bring-up, so adding / removing / re-pointing it restarts
+            // the port.
             if (!Equals(oldPort.Transport, newPort.Transport) ||
                 !string.Equals(oldPort.Profile, newPort.Profile, StringComparison.OrdinalIgnoreCase) ||
-                AckModeChanged(oldPort.Kiss, newPort.Kiss))
+                AckModeChanged(oldPort.Kiss, newPort.Kiss) ||
+                !Equals(oldPort.Radio, newPort.Radio))
             {
-                restart.Add(newPort);   // transport / profile / ackMode change → single-port restart
+                restart.Add(newPort);   // transport / profile / ackMode / radio change → single-port restart
                 continue;
             }
 

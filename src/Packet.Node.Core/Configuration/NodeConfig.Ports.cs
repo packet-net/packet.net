@@ -44,6 +44,17 @@ public sealed record PortConfig
     public KissParams? Kiss { get; init; }
 
     /// <summary>
+    /// Optional radio-control attachment: the serial control channel of the radio
+    /// behind this port's modem (e.g. a Tait CCDI programming/control port). When
+    /// present, the port's transport is wrapped at bring-up so inbound frames carry
+    /// per-frame RSSI/SNR metadata; a radio that fails to open degrades cleanly (the
+    /// port runs without metadata). Only valid on the serial-modem transport kinds
+    /// (<c>serial-kiss</c>, <c>nino-tnc</c>). Null = no radio attached. See
+    /// <see cref="PortRadioConfig"/>.
+    /// </summary>
+    public PortRadioConfig? Radio { get; init; }
+
+    /// <summary>
     /// Optional AX.25 compatibility profile for this port: which wire frames it
     /// accepts (an <c>Ax25ParseOptions</c> preset — <c>strict</c> / <c>lenient</c> /
     /// <c>bpq</c> / <c>xrouter</c> / <c>direwolf</c> — plus per-flag overrides) and

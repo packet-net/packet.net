@@ -547,6 +547,80 @@ public class NodeConfigValidatorTests
         Validator.Validate(config).IsValid.Should().BeTrue();
     }
 
+    // ── the optional per-port radio-control attachment (radio:) ──
+
+    private static PortConfig SerialPort(string id, PortRadioConfig? radio, TransportConfig? transport = null) => new()
+    {
+        Id = id,
+        Transport = transport ?? new SerialKissTransport { Device = "/dev/ttyACM0" },
+        Radio = radio,
+    };
+
+    private static PortRadioConfig TaitRadio(string kind = "tait-ccdi", string port = "/dev/ttyUSB0", int baud = 28800)
+        => new() { Kind = kind, Port = port, Baud = baud };
+
+    [Fact]
+    public void Accepts_a_tait_ccdi_radio_block_on_a_serial_kiss_port()
+    {
+        var config = Valid(SerialPort("p", TaitRadio()));
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Accepts_a_tait_ccdi_radio_block_on_a_nino_tnc_port()
+    {
+        var config = Valid(SerialPort("p", TaitRadio(),
+            new NinoTncTransport { Device = "/dev/ttyACM1", Mode = 6 }));
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("tait-ccdi", true)]
+    [InlineData("TaitCcdi", true)]    // kind matching is case/hyphen-insensitive
+    [InlineData("yaesu-cat", false)]  // no such driver in this build
+    [InlineData("", false)]           // a radio block must say what it speaks
+    public void Radio_kind_must_be_a_known_radio_control_kind(string kind, bool expectValid)
+    {
+        var config = Valid(SerialPort("p", TaitRadio(kind: kind)));
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Rejects_a_radio_block_with_an_empty_control_port()
+    {
+        var config = Valid(SerialPort("p", TaitRadio(port: "")));
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(28800, true)]
+    [InlineData(1, true)]
+    [InlineData(0, false)]
+    [InlineData(-9600, false)]
+    public void Radio_baud_must_be_positive(int baud, bool expectValid)
+    {
+        var config = Valid(SerialPort("p", TaitRadio(baud: baud)));
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Rejects_a_radio_block_on_a_kiss_tcp_port()
+    {
+        // The radio control channel is a second serial cable beside the modem's —
+        // a network transport has no locally-cabled radio to control.
+        var config = Valid(SerialPort("p", TaitRadio(),
+            new KissTcpTransport { Host = "127.0.0.1", Port = 8001 }));
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Rejects_a_radio_block_on_an_axudp_port()
+    {
+        var config = Valid(SerialPort("p", TaitRadio(),
+            new AxudpTransport { Host = "10.0.0.2", Port = 10093, LocalPort = 10093 }));
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
     [Fact]
     public void Rejects_telnet_port_out_of_range()
     {

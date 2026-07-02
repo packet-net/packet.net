@@ -72,9 +72,26 @@ public static class NodeConfigArbitraries
                 AllowEmptyCallsignBase = emptyBase,
             });
 
+    // The optional radio-control attachment: only generated when the transport is a
+    // serial-modem kind (serial-kiss / nino-tnc) — validation rejects it elsewhere —
+    // and null ~half the time even then (most ports have no radio cabled).
+    private static Gen<PortRadioConfig?> RadioGen(TransportConfig transport, int index) =>
+        transport is not (SerialKissTransport or NinoTncTransport)
+            ? Gen.Constant<PortRadioConfig?>(null)
+            : Gen.OneOf(
+                Gen.Constant<PortRadioConfig?>(null),
+                from baud in Gen.Choose(1, 115200)
+                select (PortRadioConfig?)new PortRadioConfig
+                {
+                    Kind = RadioKinds.TaitCcdi,
+                    Port = $"/dev/radio{index}",
+                    Baud = baud,
+                });
+
     private static Gen<PortConfig> PortGen(int index) =>
         from enabled in Gen.Elements(false, true)
         from transport in TransportGen(index)
+        from radio in RadioGen(transport, index)
         from ax25 in Ax25Gen()
         from kiss in KissGen()
         from compat in CompatGen()
@@ -87,6 +104,7 @@ public static class NodeConfigArbitraries
             Id = $"port{index}",
             Enabled = enabled,
             Transport = transport,
+            Radio = radio,
             Ax25 = ax25,
             Kiss = kiss,
             Compat = compat,

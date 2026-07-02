@@ -16,6 +16,8 @@
     <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\Packet.Kiss.Serial\Packet.Kiss.Serial.csproj" />
     <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+    <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
+    <ProjectReference Include="..\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
   </ItemGroup>
 
   <ItemGroup>

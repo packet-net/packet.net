@@ -146,6 +146,72 @@ public class NodeConfigYamlTests
     }
 
     [Fact]
+    public void Parses_and_round_trips_a_port_radio_block()
+    {
+        const string yaml = """
+            schemaVersion: 1
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: nino
+                enabled: true
+                transport:
+                  kind: nino-tnc
+                  device: /dev/ttyACM1
+                  baud: 57600
+                  mode: 6
+                radio:
+                  kind: tait-ccdi
+                  port: /dev/ttyUSB0
+                  baud: 28800
+              - id: bare
+                enabled: true
+                transport:
+                  kind: serial-kiss
+                  device: /dev/ttyACM0
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+
+        var radio = config.Ports[0].Radio;
+        radio.Should().NotBeNull();
+        radio!.Kind.Should().Be("tait-ccdi");
+        radio.Port.Should().Be("/dev/ttyUSB0");
+        radio.Baud.Should().Be(28800);
+
+        // No radio: block → null (no radio attached — today's behaviour).
+        config.Ports[1].Radio.Should().BeNull();
+
+        // Survives a serialise → re-parse round trip; the radio-less port's
+        // serialisation carries no radio key at all (OmitNull).
+        var serialised = NodeConfigYaml.Serialize(config);
+        var reparsed = NodeConfigYaml.Parse(serialised);
+        reparsed.Ports[0].Radio.Should().Be(
+            new PortRadioConfig { Kind = "tait-ccdi", Port = "/dev/ttyUSB0", Baud = 28800 });
+        reparsed.Ports[1].Radio.Should().BeNull();
+    }
+
+    [Fact]
+    public void Radio_baud_defaults_to_the_tait_ccdi_default_when_unset()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: nino
+                transport:
+                  kind: serial-kiss
+                  device: /dev/ttyACM0
+                radio:
+                  kind: tait-ccdi
+                  port: /dev/ttyUSB0
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+        config.Ports[0].Radio!.Baud.Should().Be(28800, "the Tait CCDI factory default");
+    }
+
+    [Fact]
     public void Parses_a_netrom_block_with_overridden_knobs()
     {
         const string yaml = """
