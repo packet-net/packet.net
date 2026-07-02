@@ -157,11 +157,25 @@ TNCs SETHW'd per mode; full table in `artifacts/nino-tnc-soak/20260702-211619/re
 | 0/2/3 — 9600 GFSK/IL2P/4FSK | 0/5 | 0/5 | dead |
 | 1 — 19200 4FSK | 0/5 | 0/5 | dead |
 
-Reading: the mic-socket audio path is a filtered voice channel (~300–3000 Hz, pre/de-emphasis),
-which AFSK sails through and 9600-class direct-FSK cannot survive. If the fast modes matter,
-the radios' auxiliary/options connector with flat (discriminator/direct-mod) audio is the
-hardware route to investigate — a wiring question, not a software one. The SNR here is ~38 dB,
-so these failures are bandwidth/filtering, not level.
+Reading (per Tom): the audio path IS flat — the TNCs use the correct tap points in the Taits —
+the 9600-class failures are the **narrow (12.5 kHz) channels** these radios are programmed for,
+a necessity on UK 2 m; 9600 GFSK doesn't fit a narrow channel. The SNR here is ~38 dB, so it is
+occupied-bandwidth, not level. Follow-up tried: parking both radios in CCR and setting
+bandwidth wide (`H01324`, ACKed by both) did NOT make 9600 decode (0/3) — the CCR bandwidth
+switch alone doesn't reconfigure enough of the chain (deviation scaling / IF filtering for the
+flat tap presumably follow the programmed channel); a wideband *programmed* channel is the
+thing to test when regulations/bench allow. Caveat on all mode results: the NinoTNC TX audio
+pots are untuned (midpoint), so deviation is uncalibrated — AFSK clearly tolerates it; 9600 is
+far more deviation-sensitive, so retest after a proper level set before calling it definitively
+dead even on a wide channel.
+
+### SDM validated over the air (radios reprogrammed: IDs PDN00001/PDN00002, CCDI3+CCDI2 Text, auto-acks on)
+
+Addressed SDM delivered (RING + buffered message on the target); wildcard `PDN0****` delivered;
+wrong-ID correctly filtered (carrier + FFSK progress seen, no RING, buffer empty). **Delivery
+receipts work both ways on the sender**: PROGRESS `1D1` (acked) on success, `1D0` after the 6 s
+wait for the wrong-ID send — surfaced as the driver's typed `SdmDeliveryReceipt` event.
+Radio-native messaging with acknowledgements, zero TNC involvement.
 
 ## Follow-ups (rough priority)
 

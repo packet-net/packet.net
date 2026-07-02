@@ -109,6 +109,14 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <summary>Unsolicited RING messages — incoming Selcall / status / SDM / data calls.</summary>
     public event EventHandler<CcdiRingMessage>? RingReceived;
 
+    /// <summary>
+    /// Over-air delivery receipt for a sent SDM (PROGRESS type 1D, requires auto-ack enabled in
+    /// both radios' programming): <c>Acknowledged</c> true = the addressed radio confirmed
+    /// receipt; false = no acknowledgement within the radio's configured wait time — which a
+    /// wrong/absent destination also produces. Hardware-verified both ways on the bench.
+    /// </summary>
+    public event EventHandler<TaitSdmReceipt>? SdmDeliveryReceipt;
+
     /// <summary>Health transitions from the built-in watchdog (see
     /// <see cref="TaitCcdiRadioOptions.KeepAliveInterval"/>) and from the read pump: a dead
     /// serial link or an unresponsive radio raises <see cref="TaitConnectionState.Faulted"/>;
@@ -774,6 +782,11 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
                     }
                     CarrierSenseChanged?.Invoke(this, new CarrierSenseChange(busy, clock.GetUtcNow()));
                 }
+                else if (progress.Type == CcdiProgressType.SdmAutoAcknowledge)
+                {
+                    SdmDeliveryReceipt?.Invoke(this, new TaitSdmReceipt(
+                        Acknowledged: progress.Para.StartsWith('1'), At: clock.GetUtcNow()));
+                }
                 else if (progress.Type is CcdiProgressType.PttActivated or CcdiProgressType.PttDeactivated)
                 {
                     TransmitterStateChanged?.Invoke(this, new TransmitterStateChange(
@@ -978,6 +991,12 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         }
     }
 }
+
+/// <summary>An over-air SDM delivery receipt (PROGRESS 1D).</summary>
+/// <param name="Acknowledged"><c>true</c> = the destination radio auto-acknowledged;
+/// <c>false</c> = no ack within the configured wait (wrong destination looks the same).</param>
+/// <param name="At">When the radio reported it, stamped from the driver's clock.</param>
+public readonly record struct TaitSdmReceipt(bool Acknowledged, DateTimeOffset At);
 
 /// <summary>One transmitter keying edge reported by the radio (PROGRESS PTT
 /// activated/deactivated).</summary>
