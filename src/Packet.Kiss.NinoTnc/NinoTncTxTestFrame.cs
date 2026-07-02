@@ -103,7 +103,12 @@ public sealed record NinoTncTxTestFrame
     /// <summary>Count of transmitted packets since boot.</summary>
     public long? TxPacketCount { get; init; }
 
-    /// <summary>Count of received preambles since boot.</summary>
+    /// <summary>
+    /// The preamble word counter (the same register the numeric report
+    /// exposes as 0B — see <see cref="NinoTncStatusFrame.PreambleWordCount"/>).
+    /// Bench note: on firmware 3.41 this register was never observed to
+    /// increment for ordinary host traffic (TX or RX, modes 6/7).
+    /// </summary>
     public long? PreambleCount { get; init; }
 
     /// <summary>Firmware main-loop cycle count since boot.</summary>

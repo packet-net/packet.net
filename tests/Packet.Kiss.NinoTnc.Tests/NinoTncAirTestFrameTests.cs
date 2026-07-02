@@ -36,6 +36,7 @@ public class NinoTncAirTestFrameTests
         NinoTncAirTestFrame.TryRecognise(ax25, out var air).Should().BeTrue();
         air.Should().NotBeNull();
         air!.LearnedCallsign.Should().Be(new Callsign("M0LTE"));
+        air.DestinationSsid.Should().Be((byte)5, "the front-panel button always sends CQBEEP-5");
         air.SequenceCounter.Should().Be(1);
         air.Pattern.Length.Should().Be(50);
         air.PatternAsAscii().Should().StartWith("!\"#$%&'()*").And.EndWith("OPQR");
@@ -65,13 +66,19 @@ public class NinoTncAirTestFrameTests
     }
 
     [Fact]
-    public void Wrong_SSID_On_Destination_Is_Not_Recognised()
+    public void Any_CqBeep_Ssid_Is_Recognised_And_Exposed()
     {
+        // CQBEEP-N with any N is a valid air-test/beep-request frame — the
+        // SSID is the seconds of tone an armed responder will transmit
+        // (the front-panel button's own frames use SSID 5; host-built
+        // requests built by NinoTncCqBeep vary N deliberately).
         var ax25 = Ax25Frame.Ui(
-            destination: new Callsign("CQBEEP", 4),   // not -5
+            destination: new Callsign("CQBEEP", 4),
             source: new Callsign("M0LTE"),
             info: FirstPressInfo);
-        NinoTncAirTestFrame.TryRecognise(ax25, out _).Should().BeFalse();
+
+        NinoTncAirTestFrame.TryRecognise(ax25, out var air).Should().BeTrue();
+        air!.DestinationSsid.Should().Be((byte)4);
     }
 
     [Fact]

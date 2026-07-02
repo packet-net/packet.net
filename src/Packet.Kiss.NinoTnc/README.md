@@ -80,7 +80,22 @@ transport.RecordLoss("N0CALL-9", payloadBytes: 100);
 ```
 
 ## TX-Test diagnostic frame
-The front-panel TX-Test button is the only readback path on this hardware — KISS has no read commands and the firmware does not answer a query SETHW. Pressing it transmits a test signal *and* sends a synthetic KISS data frame to the host carrying firmware version, identity, uptime, counters, and the running mode. `NinoTncFrameClassifier` recognises it (via the `=FirmwareVr:` marker) and raises `NinoTncTxTestFrameReceivedEvent`. The separate over-air UI frame heard when a *partner* presses *their* button is raised as `NinoTncAirTestFrameReceivedEvent` (partner's learned callsign, per-press sequence counter, deterministic ASCII pattern).
+Pressing the front-panel TX-Test button transmits a test signal *and* sends a synthetic KISS data frame to the host carrying firmware version, identity, uptime, counters, and the running mode. `NinoTncFrameClassifier` recognises it (via the `=FirmwareVr:` marker) and raises `NinoTncTxTestFrameReceivedEvent`. The separate over-air UI frame heard when a *partner* presses *their* button is raised as `NinoTncAirTestFrameReceivedEvent` (partner's learned callsign, per-press sequence counter, deterministic ASCII pattern).
+
+## Firmware queries + remote diagnostics
+The firmware also answers host-side query commands (NinoTNC extensions, not standard KISS — payload builders in `NinoTncCommands`, replies on the raw command byte `0xE0`):
+
+```csharp
+var status  = await tnc.GetAllAsync();      // GETALL → NinoTncStatusFrame (registers 00–11)
+var version = await tnc.GetVersionAsync();  // GETVER → "3.41"
+var levelDb = await tnc.GetRssiAsync();     // GETRSSI → RX-audio RMS level in dB (not dBm!)
+await tnc.StopTxAsync();                    // STOPTX
+await tnc.SetBeaconIntervalAsync(5);        // SETBCNINT, minutes
+```
+
+`NinoTncStatusFrame` is the numeric `=II:HEXDATA` register report — the TNC also emits it spontaneously as a periodic status frame (default every 60 s; SETBCNINT re-paces it), and `NinoTncStatusDelta.Between(before, after)` turns two snapshots into per-register deltas (e.g. preamble words → effective TXDELAY seconds). On firmware 3.41 GETALL answers with the *labelled* diagnostic instead; `GetAllAsync` maps it so callers see one shape either way. GETRSSI is bench-calibrated as an RX-audio RMS meter (open-squelch flat-tap noise ≈ −33 dB, a carrier quieting the channel with a 440 Hz tone ≈ −62 dB) — a remote level/deviation meter, not an RF signal-strength report.
+
+For remote audio tuning the firmware ships a **CQBEEP responder**: arm a TNC by transmitting a `[TARPNstat` status frame through it (`ArmCqBeepResponderAsync`; volatile, re-arm after reset), and it answers any received `CQBEEP-N` UI frame with N seconds of 440 Hz tone (bench: N=7 → 6.99 s). `NinoTncCqBeep` builds both frames; `SendCqBeepRequestAsync` triggers a beep. `tools/Packet.Tune` drives the whole loop (verify software control, level survey, interactive TX-deviation tuning).
 
 ## Port discovery
 ```csharp
@@ -101,8 +116,12 @@ The VID/PID is shared with other Microchip-CDC reference projects, so a match is
 - `NinoTncSerialPort` — the driver: `IAx25Transport` + `ITxCompletionTransport` + `ICsmaChannelParams`, with `SetModeAsync` and `SendFrameWithAckAsync`.
 - `NinoTncSetHardware` — builds the `SETHW` payload byte / KISS frame (mode 0–15, `+16` non-persist offset).
 - `NinoTncFrameClassifier` — overlays the generic classifier and upgrades TX-Test / over-air-test frames to typed events.
-- `NinoTncTxTestFrame` / `NinoTncTxTestFrameReceivedEvent` — the decoded front-panel diagnostic.
-- `NinoTncAirTestFrame` / `NinoTncAirTestFrameReceivedEvent` — a partner's over-air test transmission.
+- `NinoTncTxTestFrame` / `NinoTncTxTestFrameReceivedEvent` — the decoded front-panel diagnostic (labelled `=FirmwareVr:` form).
+- `NinoTncStatusFrame` / `NinoTncStatusDelta` / `NinoTncStatusFrameReceivedEvent` — the numeric `=II:` register report + snapshot deltas.
+- `NinoTncCommands` — GETALL/GETVER/STOPTX/SETBCNINT/GETRSSI payloads and wire frames.
+- `NinoTncRssiReading` / `NinoTncRssiReadingReceivedEvent` — the GETRSSI RX-audio level reply.
+- `NinoTncCqBeep` — `[TARPNstat` arming + `CQBEEP-N` beep-request frame factories.
+- `NinoTncAirTestFrame` / `NinoTncAirTestFrameReceivedEvent` — a partner's over-air test transmission (any `CQBEEP-N`).
 - `NinoTncCatalog` / `NinoTncMode` — the DIP-position and firmware-byte mode tables (firmware v3.44).
 - `NinoTncPortDiscovery` — VID/PID-based candidate enumeration.
 

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Packet.Tune</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Radio\Packet.Radio.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Ax25\Packet.Ax25.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Core\Packet.Core.csproj" />
+  </ItemGroup>
+
+</Project>

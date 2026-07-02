@@ -103,6 +103,123 @@ public class NinoTncSerialPortTests
         await act.Should().ThrowAsync<Exception>("a pending ACK must not hang once the port is disposed");
     }
 
+    [Fact]
+    public async Task GetVersionAsync_sends_GETVER_and_returns_the_ascii_reply()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetVersionAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildGetVersionKissFrame());
+
+        // The firmware replies with the bare ASCII version on raw command
+        // byte 0xE0 (= port 14 + command 0 through the generic encoder).
+        io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, "3.41"u8.ToArray()));
+
+        (await task).Should().Be("3.41");
+    }
+
+    [Fact]
+    public async Task GetRssiAsync_sends_GETRSSI_and_parses_the_level()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetRssiAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildGetRssiKissFrame());
+
+        io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, "RSSI:-62.54"u8.ToArray()));
+
+        (await task).Should().BeApproximately(-62.54f, 1e-4f);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_accepts_the_labelled_diagnostic_reply_of_firmware_341()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetAllAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildGetAllKissFrame());
+
+        io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data,
+            "=FirmwareVr:3.41=BrdSwchMod:040F0002=TxPktCount:00000049=PreamblCnt:00000016"u8.ToArray()));
+
+        var status = await task;
+        status.FirmwareVersionRaw.Should().Be("3.41");
+        status.DipSwitches.Should().Be((byte)0x0F);
+        status.TxPackets.Should().Be(0x49);
+        status.PreambleWordCount.Should().Be(0x16);
+        status.PttOnMs.Should().BeNull("the labelled reply has no PTT-on register");
+    }
+
+    [Fact]
+    public async Task GetAllAsync_accepts_the_numeric_status_report()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetAllAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data,
+            "=00:3.41=01:\0\0\0\0\0\0\0\0=02:000003E8=0B:00000016=0D:0000F4F6"u8.ToArray()));
+
+        var status = await task;
+        status.UptimeMs.Should().Be(1000);
+        status.PreambleWordCount.Should().Be(0x16);
+        status.PttOnMs.Should().Be(0xF4F6);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_times_out_when_nothing_answers()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var act = async () => await nino.GetAllAsync(TimeSpan.FromMilliseconds(200));
+
+        await act.Should().ThrowAsync<TimeoutException>();
+    }
+
+    [Fact]
+    public async Task StopTx_and_SetBeaconInterval_put_the_documented_bytes_on_the_wire()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        await nino.StopTxAsync();
+        await nino.SetBeaconIntervalAsync(minutes: 5);
+
+        await WaitUntil(() => io.Writes.Length >= 2);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildStopTxKissFrame());
+        io.Writes[1].Should().Equal(NinoTncCommands.BuildSetBeaconIntervalKissFrame(5));
+    }
+
+    [Fact]
+    public async Task ArmCqBeepResponderAsync_transmits_the_TARPNstat_frame()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var source = new Packet.Core.Callsign("M0LTE", 1);
+        await nino.ArmCqBeepResponderAsync(source);
+
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.Writes[0].Should().Equal(
+            KissEncoder.Encode(0, KissCommand.Data, NinoTncCqBeep.BuildArmingFrame(source).ToBytes()));
+    }
+
     private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
     {
         var sw = Stopwatch.StartNew();
