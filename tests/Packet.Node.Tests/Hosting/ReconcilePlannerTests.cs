@@ -122,6 +122,37 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void Radio_attachment_change_is_a_single_port_restart()
+    {
+        // port.radio is construction-time: the radio control channel is opened and the
+        // RSSI-tagging transport wrap decided at bring-up. Adding, removing, or
+        // re-pointing it must restart the port — never a (no-op) hot apply.
+        static PortConfig Serial(string id, PortRadioConfig? radio) => new()
+        {
+            Id = id,
+            Transport = new SerialKissTransport { Device = "/dev/ttyACM0" },
+            Radio = radio,
+        };
+        var tait = new PortRadioConfig { Kind = "tait-ccdi", Port = "/dev/ttyUSB0", Baud = 28800 };
+
+        var without = Config("M0LTE-1", Serial("a", null));
+        var with = Config("M0LTE-1", Serial("a", tait));
+        var moved = Config("M0LTE-1", Serial("a", tait with { Port = "/dev/ttyUSB1" }));
+
+        // Added, removed, and re-pointed — each is a restart of exactly port a.
+        foreach (var (from, to) in new[] { (without, with), (with, without), (with, moved) })
+        {
+            var plan = ReconcilePlanner.Plan(from, to);
+            plan.ToRestart.Select(p => p.Id).Should().Equal("a");
+            plan.KissParamsChanged.Should().BeEmpty();
+            plan.Ax25ParamsChanged.Should().BeEmpty();
+        }
+
+        // Identical radio blocks (value equality) — a no-op.
+        ReconcilePlanner.Plan(with, Config("M0LTE-1", Serial("a", tait with { }))).IsNoOp.Should().BeTrue();
+    }
+
+    [Fact]
     public void Ackmode_unchanged_with_other_kiss_change_stays_a_live_apply()
     {
         // ackMode steady (here: both on); only TXDELAY moved → still the hot live path.

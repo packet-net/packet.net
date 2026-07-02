@@ -9,10 +9,13 @@ using Packet.Node.Core.Applications;
 using Packet.Node.Core.Beacons;
 using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
+using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Radios;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
+using Packet.Radio;
 
 namespace Packet.Node.Core.Hosting;
 
@@ -43,6 +46,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 {
     private readonly IConfigProvider config;
     private readonly ITransportFactory transportFactory;
+    private readonly IRadioControlFactory radioFactory;
     private readonly TimeProvider timeProvider;
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<PortSupervisor> logger;
@@ -87,10 +91,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         BeaconService? beacons = null,
         SysopContext? sysopContext = null,
         IApplicationHost? applicationHost = null,
-        PeerCapabilityCache? capabilityCache = null)
+        PeerCapabilityCache? capabilityCache = null,
+        IRadioControlFactory? radioFactory = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
+        // Optional radio-control seam: how a port's `radio:` block becomes a live
+        // IRadioControl. Defaults to the production factory (real serial hardware);
+        // component tests substitute a scripted radio.
+        this.radioFactory = radioFactory ?? RadioControlFactory.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.sysopContext = sysopContext;
@@ -657,6 +666,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             return;
         }
 
+        // Captured before any decorator hides it: a NinoTNC modem knows its own
+        // over-air bit rate, which the RSSI-tagging wrapper (below) turns into
+        // per-frame airtime / pre-data-carrier estimates.
+        var ninoTnc = transport as NinoTncSerialPort;
+
         // kiss-tcp ports self-heal across a TNC/softmodem bounce: wrap the connected
         // transport so a dropped link reconnects (backoff + KISS-param replay) instead of
         // the port silently dying. The eager connect above preserves initial fault
@@ -688,6 +702,49 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 loggerFactory.CreateLogger<PacingKissModem>());
         }
 
+        // The modem chain as it stands here (before the optional RSSI-tagging wrap):
+        // the transport ICsmaChannelParams / ITxCompletionTransport feature-detection
+        // must target, because the tagging wrapper deliberately doesn't forward those.
+        var modemTransport = transport;
+
+        // Optional radio-control attachment (port.radio, restart-class): open the
+        // radio's control channel and wrap the transport OUTERMOST so every inbound
+        // frame the listener sees carries per-frame RSSI/SNR metadata
+        // (Ax25InboundFrame.Radio). A radio open failure degrades cleanly — log and
+        // run the port without metadata; an unplugged control cable must never take a
+        // working packet channel down. The wrapper does not own what it wraps, so
+        // RunningPort tracks the pieces and disposes them in order (wrapper → modem
+        // chain → radio).
+        IRadioControl? radio = null;
+        if (port.Radio is { } radioConfig)
+        {
+            try
+            {
+                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, ct).ConfigureAwait(false);
+                transport = new RssiTaggingTransport(
+                    transport,
+                    radio,
+                    new RssiTaggingOptions
+                    {
+                        // A NinoTNC modem reports its live over-air bit rate; consulted
+                        // per frame so a mode change is picked up without a restart.
+                        BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
+                    },
+                    timeProvider);
+                LogRadioAttached(port.Id, radioConfig.Kind, radioConfig.Port);
+            }
+            catch (Exception ex)
+            {
+                LogRadioFaulted(ex, port.Id, radioConfig.Kind, radioConfig.Port);
+                if (radio is not null)
+                {
+                    await radio.DisposeAsync().ConfigureAwait(false);
+                    radio = null;
+                }
+                transport = modemTransport;   // degrade: run the port without radio metadata
+            }
+        }
+
         // TX-complete→T1 (kiss.t1FromTxComplete): construction-time, like the
         // PacingKissModem wrap above — see KissParams.T1FromTxComplete.
         var options = BuildListenerOptions(
@@ -709,13 +766,23 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         try
         {
             await listener.StartAsync(ct).ConfigureAwait(false);
-            await ApplyKissParamsToModemAsync(transport, effectiveKiss, ct).ConfigureAwait(false);
+            // Target the modem chain, not the (possibly radio-tagged) outermost
+            // transport — the tagging wrapper doesn't forward ICsmaChannelParams.
+            await ApplyKissParamsToModemAsync(modemTransport, effectiveKiss, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             LogPortFaultedEx(ex, port.Id, endpointText);
             await listener.DisposeAsync().ConfigureAwait(false);
             await transport.DisposeAsync().ConfigureAwait(false);
+            if (!ReferenceEquals(transport, modemTransport))
+            {
+                await modemTransport.DisposeAsync().ConfigureAwait(false);
+            }
+            if (radio is not null)
+            {
+                await radio.DisposeAsync().ConfigureAwait(false);
+            }
             return;
         }
 
@@ -724,6 +791,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             Id = port.Id,
             Config = port,
             Transport = transport,
+            InnerTransport = ReferenceEquals(transport, modemTransport) ? null : modemTransport,
+            Radio = radio,
             Listener = listener,
             Started = true,
         };
@@ -818,8 +887,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // Resolve the profile here too so a live KISS re-apply uses the same
         // effective values a fresh bring-up would (explicit wins, profile fills).
+        // ModemTransport, not Transport: on a radio-tagged port the CSMA-capable
+        // modem sits beneath the RSSI-tagging wrapper.
         var (_, effectiveKiss) = ChannelProfiles.Resolve(port);
-        await ApplyKissParamsToModemAsync(running.Transport, effectiveKiss, ct).ConfigureAwait(false);
+        await ApplyKissParamsToModemAsync(running.ModemTransport, effectiveKiss, ct).ConfigureAwait(false);
         RebaselineConfig(port);
         LogKissParamsApplied(port.Id);
     }
@@ -914,6 +985,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     Id = running.Id,
                     Config = port,
                     Transport = running.Transport,
+                    InnerTransport = running.InnerTransport,
+                    Radio = running.Radio,
                     Listener = running.Listener,
                     Started = running.Started,
                 };
@@ -1097,6 +1170,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted bringing up {Endpoint}; skipping it (other ports unaffected).")]
     private partial void LogPortFaultedEx(Exception ex, string id, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) — inbound frames carry RSSI/SNR metadata.")]
+    private partial void LogRadioAttached(string id, string kind, string radioPort);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
+    private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);

@@ -118,6 +118,12 @@ public static class NodeConfigTemplate
         #      device: /dev/ttyACM1
         #      baud: 57600
         #      mode: 6             # NinoTNC mode 0..15
+        #    radio:                # optional — attach the radio's own serial CONTROL
+        #      kind: tait-ccdi     # channel (Tait TM8100/TM8200 CCDI; CAT/CI-V later)
+        #      port: /dev/ttyUSB0  # so inbound frames carry per-frame RSSI/SNR
+        #      baud: 28800         # metadata. Serial-modem ports only (serial-kiss /
+        #                          # nino-tnc). If the radio fails to open the port
+        #                          # still runs — just without signal metadata.
         #  - id: axudp
         #    enabled: false
         #    transport:

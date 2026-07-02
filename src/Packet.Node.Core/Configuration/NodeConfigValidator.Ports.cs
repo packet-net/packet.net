@@ -63,6 +63,44 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 
         When(p => p.Compat is not null, () =>
             RuleFor(p => p.Compat!).SetValidator(new PortCompatValidator()));
+
+        // Optional radio-control attachment. Its own fields are validated by
+        // PortRadioValidator; additionally the block only pairs with a serial-modem
+        // transport — the radio's control channel is a second serial cable beside the
+        // modem's, which a kiss-tcp / AXUDP port doesn't physically have.
+        When(p => p.Radio is not null, () =>
+        {
+            RuleFor(p => p.Radio!).SetValidator(new PortRadioValidator());
+            RuleFor(p => p.Transport)
+                .Must(t => t is SerialKissTransport or NinoTncTransport)
+                .WithMessage(p =>
+                    $"Port.radio is only valid on a serial-modem transport ({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — " +
+                    $"a '{p.Transport?.Kind}' port has no locally-cabled radio control channel.");
+        });
+    }
+}
+
+/// <summary>
+/// Validates a per-port radio-control attachment (<see cref="PortRadioConfig"/>):
+/// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up), a
+/// non-empty control-channel serial device, and a positive baud. Kind knowledge
+/// lives in <see cref="RadioKinds"/> (the same authority the radio factory resolves
+/// with), not here.
+/// </summary>
+public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
+{
+    public PortRadioValidator()
+    {
+        RuleFor(r => r.Kind)
+            .Must(RadioKinds.IsKnown)
+            .WithMessage(r =>
+                $"radio.kind '{r.Kind}' is not a known radio-control kind " +
+                $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
+
+        RuleFor(r => r.Port).NotEmpty()
+            .WithMessage("radio requires a port (the radio's control-channel serial device, e.g. /dev/ttyUSB0).");
+
+        RuleFor(r => r.Baud).GreaterThan(0).WithMessage("radio baud must be positive.");
     }
 }
 

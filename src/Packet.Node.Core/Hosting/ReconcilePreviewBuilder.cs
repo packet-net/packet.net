@@ -76,7 +76,8 @@ public static class ReconcilePreviewBuilder
         }
         foreach (var p in plan.ToRestart)
         {
-            portRestart.Add(new ReconcileChange($"ports.{p.Id}", PortRestart, $"Port '{p.Id}' restarted (transport/identity change)."));
+            portRestart.Add(new ReconcileChange($"ports.{p.Id}", PortRestart,
+                $"Port '{p.Id}' restarted (a construction-time setting changed: transport, profile, radio, or KISS ackMode/t1FromTxComplete)."));
         }
         foreach (var p in plan.KissParamsChanged)
         {
