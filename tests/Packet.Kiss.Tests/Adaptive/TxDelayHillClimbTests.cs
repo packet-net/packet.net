@@ -38,9 +38,9 @@ public class TxDelayHillClimbTests
     [Fact]
     public void First_Outcome_After_A_Change_Is_Ignored_As_Settling()
     {
-        // TNCs apply a changed TXDELAY from the SECOND frame after the KISS command (bench-
-        // measured on NinoTNC; general TNC behaviour) — the outcome right after a step was
-        // transmitted with the OLD value, so it must not count toward the next step.
+        // The NinoTNC applies a changed TXDELAY from the SECOND frame after the KISS command
+        // (bench-measured) — the outcome right after a step was transmitted with the OLD
+        // value, so it must not count toward the next step.
         var estimator = new TxDelayHillClimbEstimator(initialTxDelay: 50)
         {
             SuccessesPerStepDown = 2,

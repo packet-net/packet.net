@@ -84,11 +84,11 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
         {
             if (state.SettlingFrames > 0)
             {
-                // TNCs apply a changed TXDELAY from the SECOND frame after the KISS parameter
-                // command, not the first (bench-measured on NinoTNC across every step of a
-                // 20/50/100 sweep; reported as general AX.25 TNC behaviour). The first outcome
-                // after a change was transmitted with the OLD value — attributing it to the new
-                // one corrupts the climb, so skip it.
+                // The NinoTNC applies a changed TXDELAY from the SECOND frame after the KISS
+                // parameter command, not the first (bench-measured across every step of a
+                // 20/50/100 sweep). The first outcome after a change was transmitted with the
+                // OLD value — attributing it to the new one corrupts the climb, so skip it.
+                // Cheap insurance on other TNCs too: it only delays the climb by one frame.
                 state.SettlingFrames--;
                 return;
             }

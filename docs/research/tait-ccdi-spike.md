@@ -110,9 +110,12 @@ enriched the transport seam. Hardware-measured numbers (1200 Bd AFSK link, CCDI 
   of ms; measured **pre-data carrier tracked the TX TNC's configured TXDELAY + 40–75 ms**
   constant overhead across a 200/500/1000 ms sweep — ample for an **excess-TXDELAY detector**
   (`RadioMetadata.PreDataCarrier`).
-- **Settings settle on the SECOND frame** (general AX.25 TNC behaviour, per Tom; bench-confirmed
-  on NinoTNC): every TXDELAY step showed frame 1 at the old value, frames 2+ at the new.
-  `TxDelayHillClimbEstimator` now discards the settling frame's outcome after each step.
+- **Settings settle on the SECOND frame** (NinoTNC-specific behaviour; bench-confirmed): every
+  TXDELAY step showed frame 1 at the old value, frames 2+ at the new.
+  `TxDelayHillClimbEstimator` now discards the settling frame's outcome after each step —
+  harmless insurance on other TNCs (one frame of climb latency). What IS general AX.25 is the
+  multi-frame train: several frames per keying with one preamble, which the burst-aware
+  attribution handles.
 - **Frame trains**: 3 back-to-back frames = one carrier window, ~370 ms delivery spacing, no
   re-preamble. `RssiTaggingTransport` tracks windows and stamps `BurstIndex`; `PreDataCarrier`
   only on burst index 0. Frame delivery trails carrier-fall by ~35–115 ms (decode+serial), so
@@ -121,8 +124,8 @@ enriched the transport seam. Hardware-measured numbers (1200 Bd AFSK link, CCDI 
   **TX-power ACK (the control CCDI FUNCTION 0/7 lacks on this firmware)**, exit = soft reset
   with clean recovery to Command mode in ~6 s. **The NinoTNC's data-line PTT still keys the
   radio inside CCR mode** (observer saw the usual −90 dBm) — so a CCR power-step SNR sweep
-  needs no frequency knowledge (CCR inherits the active channel's parameters). Not run above
-  VeryLow pending the attenuator's power rating.
+  would need no frequency knowledge (CCR inherits the active channel's parameters). **Sweep
+  abandoned: the rig's attenuators are rated 2 W — never key anything above VeryLow here.**
 - **SDM is disabled in these radios' programming** — `a…` answers error 0/06; the API is built
   and unit-tested but needs a programming-app change to exercise over air.
 - **Protocol trap found on hardware**: the radio prompts *before* the ERROR of a rejected
