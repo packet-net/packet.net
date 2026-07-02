@@ -23,7 +23,8 @@ namespace Packet.Kiss.NinoTnc;
 ///   <item>Source = the modem's <em>learned</em> callsign (the first
 ///         callsign it saw transmitted through itself since power-on;
 ///         persists across mode changes)</item>
-///   <item>Destination = <c>CQBEEP-5</c></item>
+///   <item>Destination = <c>CQBEEP-N</c> — the button press uses SSID 5;
+///         host-built frames may use any SSID (see below)</item>
 ///   <item>INFO = <c>"{N "</c> followed by 50 bytes of printable ASCII
 ///         starting at byte <c>0x20 + N</c> and stepping +1 — total INFO
 ///         length always 53 bytes</item>
@@ -31,15 +32,30 @@ namespace Packet.Kiss.NinoTnc;
 ///         wraps; not yet observed past 2 in this codebase)</item>
 /// </list>
 /// <para>
+/// The destination SSID is significant on the receive side: an <em>armed</em>
+/// NinoTNC (one that has transmitted a <c>[TARPNstat</c> status frame — see
+/// <see cref="NinoTncCqBeep"/>) answers a received CQBEEP-N frame with N
+/// seconds of 440 Hz tone. Any SSID is therefore recognised here, and
+/// exposed as <see cref="DestinationSsid"/>.
+/// </para>
+/// <para>
 /// Useful for zero-config link-up probing, per-link RX-quality samples
-/// (deterministic INFO bytes → bit-error counting), and missed-press
-/// detection via the counter.
+/// (deterministic INFO bytes → bit-error counting), missed-press
+/// detection via the counter, and remote audio-level tuning (the tone).
 /// </para>
 /// </remarks>
 public sealed record NinoTncAirTestFrame
 {
     /// <summary>The callsign the transmitting modem has learned (its `src=` on the frame).</summary>
     public required Callsign LearnedCallsign { get; init; }
+
+    /// <summary>
+    /// The destination SSID (the N in <c>CQBEEP-N</c>): the seconds of
+    /// 440 Hz tone an armed receiving TNC will transmit in response
+    /// (bench-verified: N=7 → 6.99 s). The front-panel TX-Test button
+    /// always emits SSID 5.
+    /// </summary>
+    public required byte DestinationSsid { get; init; }
 
     /// <summary>The per-press counter (the digit between `{` and ` `).</summary>
     public required int SequenceCounter { get; init; }
@@ -58,7 +74,7 @@ public sealed record NinoTncAirTestFrame
         {
             return false;
         }
-        if (frame.Destination.Callsign.Base != "CQBEEP" || frame.Destination.Callsign.Ssid != 5)
+        if (frame.Destination.Callsign.Base != NinoTncCqBeep.ResponderCallsignBase)
         {
             return false;
         }
@@ -87,6 +103,7 @@ public sealed record NinoTncAirTestFrame
         recognised = new NinoTncAirTestFrame
         {
             LearnedCallsign = frame.Source.Callsign,
+            DestinationSsid = frame.Destination.Callsign.Ssid,
             SequenceCounter = n,
             Pattern = frame.Info.Slice(3),
         };
@@ -99,5 +116,5 @@ public sealed record NinoTncAirTestFrame
     /// <inheritdoc/>
     public override string ToString() => string.Create(
         CultureInfo.InvariantCulture,
-        $"NinoTncAirTestFrame src={LearnedCallsign} seq={SequenceCounter} pattern[{Pattern.Length}]");
+        $"NinoTncAirTestFrame src={LearnedCallsign} dst=CQBEEP-{DestinationSsid} seq={SequenceCounter} pattern[{Pattern.Length}]");
 }

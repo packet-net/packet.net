@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 using Packet.Ax25.Transport;
+using Packet.Core;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
 
@@ -275,6 +277,186 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// <summary>Send a KISS TXTAIL (0x04) command. Units are 10 ms.</summary>
     public Task SetTxTailAsync(byte tenMsUnits, CancellationToken cancellationToken = default) =>
         modem.SetTxTailAsync(tenMsUnits, cancellationToken);
+
+    /// <summary>Default wait for a firmware query reply. Bench-measured replies land within ~150 ms.</summary>
+    private static readonly TimeSpan DefaultReplyTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// GETALL: request a full diagnostic-register snapshot and await the
+    /// reply as a <see cref="NinoTncStatusFrame"/>.
+    /// </summary>
+    /// <remarks>
+    /// Firmware 3.41 answers GETALL with the labelled <c>=FirmwareVr:</c>
+    /// diagnostic (mapped through <see cref="NinoTncStatusFrame.FromDiagnostic"/>,
+    /// so the registers with no labelled counterpart — PTT-on, DCD-on,
+    /// RX/TX bytes, FEC-corrected bytes — come back <c>null</c>); newer
+    /// firmware documents the numeric <c>=II:</c> report, which is matched
+    /// directly. A periodic status frame arriving during the wait also
+    /// satisfies it — the content is the same snapshot.
+    /// </remarks>
+    /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
+    /// <param name="cancellationToken">Cancels the send and the wait.</param>
+    /// <exception cref="TimeoutException">No reply within the timeout.</exception>
+    public Task<NinoTncStatusFrame> GetAllAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+        SendAwaitingReplyAsync(
+            (KissCommand)NinoTncCommands.GetAllCommand,
+            NinoTncCommands.BuildGetAllPayload(),
+            static frame =>
+            {
+                if (NinoTncStatusFrame.TryParse(frame, out var status))
+                {
+                    return status;
+                }
+                if (NinoTncTxTestFrame.TryParse(frame, out var diagnostic) && diagnostic is not null)
+                {
+                    return NinoTncStatusFrame.FromDiagnostic(diagnostic);
+                }
+                return null;
+            },
+            "GETALL",
+            timeout,
+            cancellationToken);
+
+    /// <summary>
+    /// GETVER: request the firmware version and await the ASCII reply
+    /// (e.g. <c>"3.41"</c>). Parse it further with
+    /// <see cref="Firmware.NinoTncFirmwareVersion.TryParse(string?, out Firmware.NinoTncFirmwareVersion)"/>
+    /// if the two-component form is needed.
+    /// </summary>
+    /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
+    /// <param name="cancellationToken">Cancels the send and the wait.</param>
+    /// <exception cref="TimeoutException">No reply within the timeout.</exception>
+    public Task<string> GetVersionAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+        SendAwaitingReplyAsync(
+            (KissCommand)NinoTncCommands.GetVersionCommand,
+            NinoTncCommands.BuildGetVersionPayload(),
+            static frame => TryReadVersionReply(frame),
+            "GETVER",
+            timeout,
+            cancellationToken);
+
+    /// <summary>
+    /// GETRSSI: request an RX-audio level reading and await the reply.
+    /// The value is the RMS level of the TNC's receive audio in dB, not an
+    /// RF dBm figure — see <see cref="NinoTncRssiReading"/>.
+    /// </summary>
+    /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
+    /// <param name="cancellationToken">Cancels the send and the wait.</param>
+    /// <exception cref="TimeoutException">No reply within the timeout.</exception>
+    public async Task<float> GetRssiAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        var reading = await SendAwaitingReplyAsync(
+            (KissCommand)NinoTncCommands.ExtendedCommand,
+            NinoTncCommands.BuildGetRssiPayload(),
+            static frame => NinoTncRssiReading.TryParse(frame, out var parsed) ? parsed : null,
+            "GETRSSI",
+            timeout,
+            cancellationToken).ConfigureAwait(false);
+        return reading.LevelDb;
+    }
+
+    /// <summary>
+    /// STOPTX: tell the TNC to abort any transmission in progress.
+    /// Fire-and-forget — the firmware sends no acknowledgement.
+    /// </summary>
+    /// <remarks>
+    /// Bench note (firmware 3.41, 2026-07-02): STOPTX sent mid-tone did
+    /// <b>not</b> cut short an in-progress CQBEEP responder tone — the tone
+    /// ran its full N seconds. Treat it as a queue/normal-TX abort;
+    /// whether newer firmware also stops the beep generator is unverified.
+    /// </remarks>
+    public Task StopTxAsync(CancellationToken cancellationToken = default) =>
+        modem.SendKissAsync((KissCommand)NinoTncCommands.ExtendedCommand, NinoTncCommands.BuildStopTxPayload(), cancellationToken);
+
+    /// <summary>
+    /// SETBCNINT: set the interval of the periodic status report
+    /// (<see cref="NinoTncStatusFrame"/>) in minutes. Fire-and-forget —
+    /// the firmware sends no acknowledgement.
+    /// </summary>
+    /// <param name="minutes">Reporting interval in minutes.</param>
+    /// <param name="cancellationToken">Cancels the underlying send.</param>
+    public Task SetBeaconIntervalAsync(byte minutes, CancellationToken cancellationToken = default) =>
+        modem.SendKissAsync((KissCommand)NinoTncCommands.ExtendedCommand, NinoTncCommands.BuildSetBeaconIntervalPayload(minutes), cancellationToken);
+
+    /// <summary>
+    /// Arm this TNC's CQBEEP tone responder by transmitting a
+    /// <c>[TARPNstat</c> status frame through it (see
+    /// <see cref="NinoTncCqBeep.BuildArmingFrame"/>). The frame goes out
+    /// over the air like any UI frame. Arming is volatile — re-arm after
+    /// the TNC resets.
+    /// </summary>
+    /// <param name="source">Source callsign for the arming frame.</param>
+    /// <param name="cancellationToken">Cancels the underlying send.</param>
+    public Task ArmCqBeepResponderAsync(Callsign source, CancellationToken cancellationToken = default) =>
+        SendFrameAsync(NinoTncCqBeep.BuildArmingFrame(source).ToBytes(), cancellationToken);
+
+    /// <summary>
+    /// Transmit a CQBEEP-N beep request through this TNC: any armed NinoTNC
+    /// that hears it transmits <paramref name="seconds"/> seconds of 440 Hz
+    /// tone (see <see cref="NinoTncCqBeep.BuildBeepRequest"/>).
+    /// </summary>
+    /// <param name="source">Source callsign for the request frame.</param>
+    /// <param name="seconds">Seconds of tone to request, 1–15.</param>
+    /// <param name="cancellationToken">Cancels the underlying send.</param>
+    public Task SendCqBeepRequestAsync(Callsign source, int seconds, CancellationToken cancellationToken = default) =>
+        SendFrameAsync(NinoTncCqBeep.BuildBeepRequest(source, seconds).ToBytes(), cancellationToken);
+
+    private static string? TryReadVersionReply(KissFrame frame)
+    {
+        // The GETVER reply is a short bare-ASCII string ("3.41") on the 0xE0
+        // reply command byte. Field-style replies (labelled/numeric dumps)
+        // start '=' and the GETRSSI reply contains ':' — exclude both so a
+        // concurrent query cannot be mistaken for the version.
+        if (!NinoTncCommands.IsReply(frame) || frame.Payload.Length is 0 or > 16)
+        {
+            return null;
+        }
+        foreach (byte b in frame.Payload)
+        {
+            if (b is < 0x20 or > 0x7E || b == (byte)':' || b == (byte)'=')
+            {
+                return null;
+            }
+        }
+        return Encoding.ASCII.GetString(frame.Payload);
+    }
+
+    private async Task<T> SendAwaitingReplyAsync<T>(
+        KissCommand command,
+        byte[] payload,
+        Func<KissFrame, T?> matcher,
+        string commandName,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken) where T : class
+    {
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Handler(object? sender, KissFrame frame)
+        {
+            if (matcher(frame) is { } match)
+            {
+                tcs.TrySetResult(match);
+            }
+        }
+
+        FrameReceived += Handler;
+        try
+        {
+            await modem.SendKissAsync(command, payload, cancellationToken).ConfigureAwait(false);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(timeout ?? DefaultReplyTimeout);
+            await using var registration = cts.Token.Register(() => tcs.TrySetException(
+                cancellationToken.IsCancellationRequested
+                    ? new OperationCanceledException(cancellationToken)
+                    : new TimeoutException($"NinoTNC did not answer {commandName} within {timeout ?? DefaultReplyTimeout}"))).ConfigureAwait(false);
+
+            return await tcs.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            FrameReceived -= Handler;
+        }
+    }
 
     private async Task DispatchFramesAsync(CancellationToken cancellationToken)
     {

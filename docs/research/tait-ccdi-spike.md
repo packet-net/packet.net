@@ -177,6 +177,49 @@ receipts work both ways on the sender**: PROGRESS `1D1` (acked) on success, `1D0
 wait for the wrong-ID send — surfaced as the driver's typed `SdmDeliveryReceipt` event.
 Radio-native messaging with acknowledgements, zero TNC involvement.
 
+## Packet.Tune CLI (2026-07-02, session 3): NinoTNC remote-diagnostics driver + tuning loop
+
+The bench-verified remote-diagnostics primitives are now first-class driver surface
+(`Packet.Kiss.NinoTnc`) and a CLI (`tools/Packet.Tune`), validated live on this rig
+(both TNCs firmware **3.41**, mode 6):
+
+- **Driver**: `NinoTncCommands` (GETALL 0x0B/00, GETVER 0x08/00, STOPTX 0x09/00,
+  SETBCNINT 0x09/F0+mins, GETRSSI 0x09/A7 — replies on raw KISS command byte `0xE0`),
+  `NinoTncStatusFrame` (the numeric `=II:` register report, registers 00–11) +
+  `NinoTncStatusDelta` (two snapshots → per-register deltas), `NinoTncRssiReading`,
+  `NinoTncCqBeep` (`[TARPNstat` arming + `CQBEEP-N` beep-request factories), and awaiting
+  helpers on `NinoTncSerialPort` (`GetAllAsync`/`GetVersionAsync`/`GetRssiAsync`/
+  `StopTxAsync`/`SetBeaconIntervalAsync`/`ArmCqBeepResponderAsync`/`SendCqBeepRequestAsync`).
+  `NinoTncAirTestFrame.TryRecognise` now accepts any `CQBEEP-N` (was hardcoded SSID 5) and
+  exposes the SSID = commanded tone seconds.
+- **`Packet.Tune verify-control <tncPort>`** — GETALL: DIP positions (reg 04; `1111` =
+  software control) + config mode, then a commanded-vs-measured TXDELAY check (settling
+  frame discarded — settings apply on the SECOND frame). Live result: DIPs `1111`, mode 6,
+  echo timing moved **0.303 s for the 0.300 s commanded step** (200 → 500 ms) → software
+  control confirmed.
+- **`Packet.Tune measure <tncPort> [ccdiPort]`** — GETVER + GETRSSI baseline (n=5) +, via
+  CCDI, the radio's averaged/raw RSSI. Live: TNC RX-audio idle −32.6 dB median; TM8110
+  s/n 19925328 noise floor −129.4 dBm median — matching the session-1/2 numbers.
+- **`Packet.Tune deviation <localTnc> <remoteTnc>`** — the TX-deviation tuning loop, local
+  bench flavour: arm the REMOTE TNC (`[TARPNstat` through its own serial), trigger
+  `CQBEEP-8` from the LOCAL TNC, meter the remote's 440 Hz tone with GETRSSI on the local
+  TNC (~250 ms cadence), prompt the operator to adjust the remote's TX-DEV pot, repeat with
+  a trend table. Live: armed B first try; tone window ~7.5 s at **−64.3 dB median vs
+  −32.5 dB idle** — the received tone level is the deviation signal to trend. The
+  internet/SDM-coordinated remote flavour (each end runs half the loop on its own host) is
+  the named follow-up.
+
+Firmware **3.41** findings (all bench-measured; newer firmware may differ):
+
+| Behaviour | 3.41 observation |
+|---|---|
+| GETALL (0x0B/00) reply | the **labelled** `=FirmwareVr:` text on `0xE0` — not the numeric report; `GetAllAsync` maps it so callers see `NinoTncStatusFrame` either way |
+| Numeric `=II:` report | emitted **spontaneously every 60 s** (uptime deltas exactly 60 000 ms; SETBCNINT's interval) as a fake UI frame `TNC>USB` on plain KISS Data; registers 00–04, 06–11 (no 05); reg 00 = plain-ASCII version, reg 01 = eight **raw** bytes (KAUP8R identity, zeros when unset), rest 8 hex digits |
+| GETVER / GETRSSI | as documented: bare `3.41` / `RSSI:-32.86` ASCII on `0xE0`, ~10 ms RTT |
+| Register 0B (preamble words) | **never increments** for host traffic — flat at TXDELAY 200/500/1000 ms, ACKMODE and plain sends, modes 6 and 7, TX and RX side. `verify-control` therefore falls back to ACKMODE TX-completion timing (which tracked the commanded step to 3 ms) |
+| STOPTX vs CQBEEP tone | STOPTX sent mid-tone did **not** cut the tone short (ran the full 8 s) |
+| CQBEEP responder | arming + N-second tone work exactly as advertised on 3.41 |
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate

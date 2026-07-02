@@ -44,5 +44,6 @@
     <Project Path="tools/Packet.Mqtt.Spike/Packet.Mqtt.Spike.csproj" />
     <Project Path="tools/Packet.NinoTnc.Spike/Packet.NinoTnc.Spike.csproj" />
     <Project Path="tools/Packet.Tait.Spike/Packet.Tait.Spike.csproj" />
+    <Project Path="tools/Packet.Tune/Packet.Tune.csproj" />
   </Folder>
 </Solution>
