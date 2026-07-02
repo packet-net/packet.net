@@ -168,7 +168,9 @@ services:
     volumes:
       - ./netsim/network.yaml:/etc/sim/network.yaml:ro
     ports:
-      - "127.0.0.1:8080:8080"   # web UI + /api/status
+      # Host 18080 (not 8080): the shared self-hosted runner also hosts services
+      # (pskmap-api) that own 8080; the container-side port stays 8080.
+      - "127.0.0.1:18080:8080"  # web UI + /api/status
       - "127.0.0.1:8100:8100"   # external KISS attach (afsk1200 town)
       - "127.0.0.1:8101:8101"   # second KISS port (gfsk9600 backbone)
     command: ["-autostart"]

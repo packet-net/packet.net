@@ -28,7 +28,7 @@ on:
 concurrency:
   # Workflow-level singleton. The docker stack at docker/compose.interop.yml
   # uses fixed container names (`pn-linbpq`, `pn-xrouter`, `pn-netsim`,
-  # `pn-rax25`) and binds fixed host ports (8008, 8010, 8023, 8080, 8086,
+  # `pn-rax25`) and binds fixed host ports (8008, 8010, 8023, 18080, 8086,
   # 8093, 8095, 8100, 8101) — two concurrent runs collide on docker
   # resources and either fail to `compose up` ("rax25 is missing dependency
   # netsim") or fail mid-test with connection-refused / banner-missing
