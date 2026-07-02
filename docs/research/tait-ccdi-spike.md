@@ -126,6 +126,10 @@ enriched the transport seam. Hardware-measured numbers (1200 Bd AFSK link, CCDI 
   radio inside CCR mode** (observer saw the usual −90 dBm) — so a CCR power-step SNR sweep
   would need no frequency knowledge (CCR inherits the active channel's parameters). **Sweep
   abandoned: the rig's attenuators are rated 2 W — never key anything above VeryLow here.**
+- **Forward/reverse power telemetry works live during TX** (CCDI stays responsive while the
+  radio transmits): idle 0/0 mV → keyed at VeryLow 388 mV fwd / 172 mV rev → 0 on unkey. Raw
+  detector millivolts, uncalibrated — trend it per-station as a TX-health/antenna proxy rather
+  than reading it as VSWR. (Own-RSSI during TX reads the muted receiver, as expected.)
 - **SDM is disabled in these radios' programming** — `a…` answers error 0/06; the API is built
   and unit-tested but needs a programming-app change to exercise over air.
 - **Protocol trap found on hardware**: the radio prompts *before* the ERROR of a rejected
@@ -139,6 +143,25 @@ enriched the transport seam. Hardware-measured numbers (1200 Bd AFSK link, CCDI 
   probes candidates with a MODEL query — live scan found both radios and told them apart by
   CCDI serial where the identical CP2102 USB IDs cannot. PDN/node-host wiring (config UI,
   "found a TM8110 s/n … on ttyUSB0, attach it to port X?") is the named follow-up.
+
+### NinoTNC mode sweep over the TM8110 RF path (§5.Y item 4, level-fixed)
+
+`Packet.NinoTnc.Spike soak mode-sweep` through the radios (5 round trips per direction, both
+TNCs SETHW'd per mode; full table in `artifacts/nino-tnc-soak/20260702-211619/results.md`):
+
+| Mode | A→B | B→A | Verdict |
+|---|---|---|---|
+| 6 — 1200 AFSK AX.25 | 5/5 | 5/5 | solid |
+| 7 — 1200 AFSK IL2P+CRC | 5/5 | 4/5 | solid |
+| 12 — 300 AFSK AX.25 | 4/5 | 5/5 | works (better over RF than it was on the audio cross-wire) |
+| 0/2/3 — 9600 GFSK/IL2P/4FSK | 0/5 | 0/5 | dead |
+| 1 — 19200 4FSK | 0/5 | 0/5 | dead |
+
+Reading: the mic-socket audio path is a filtered voice channel (~300–3000 Hz, pre/de-emphasis),
+which AFSK sails through and 9600-class direct-FSK cannot survive. If the fast modes matter,
+the radios' auxiliary/options connector with flat (discriminator/direct-mod) audio is the
+hardware route to investigate — a wiring question, not a software one. The SNR here is ~38 dB,
+so these failures are bandwidth/filtering, not level.
 
 ## Follow-ups (rough priority)
 
