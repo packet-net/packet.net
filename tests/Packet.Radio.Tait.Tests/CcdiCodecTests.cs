@@ -101,8 +101,66 @@ public class CcdiCodecTests
     [Fact]
     public void Unknown_Ident_Surfaces_As_Unknown_Message()
     {
-        CcdiFrame.TryParse(new CcdiFrame('z', "Hi").Encode(), out var frame).Should().BeTrue();
+        CcdiFrame.TryParse(new CcdiFrame('y', "Hi").Encode(), out var frame).Should().BeTrue();
         CcdiMessage.Decode(frame).Should().BeOfType<CcdiUnknownMessage>()
-            .Which.UnknownIdent.Should().Be('z');
+            .Which.UnknownIdent.Should().Be('y');
+    }
+
+    [Fact]
+    public void Ccr_Ack_Nak_And_Pulse_Messages_Decode()
+    {
+        CcdiFrame.TryParse("+01R22", out var ack).Should().BeTrue();
+        CcdiMessage.Decode(ack).Should().BeOfType<CcrAckMessage>()
+            .Which.EchoedCommand.Should().Be('R');
+
+        // NAK reason 05 (busy) echoing command T: -0305T + checksum
+        var nakWire = new CcdiFrame('-', "05T").Encode();
+        CcdiFrame.TryParse(nakWire, out var nak).Should().BeTrue();
+        var nakMsg = CcdiMessage.Decode(nak).Should().BeOfType<CcrNakMessage>().Subject;
+        nakMsg.Reason.Should().Be(0x05);
+        nakMsg.EchoedCommand.Should().Be('T');
+        nakMsg.Describe().Should().Be("radio busy");
+
+        CcdiFrame.TryParse("Q01PFE", out var pulse).Should().BeTrue();
+        CcdiMessage.Decode(pulse).Should().BeOfType<CcrPulseResultMessage>()
+            .Which.HasMinimumConfiguration.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Ccr_Unsolicited_Messages_Decode()
+    {
+        // Manual §2.9 examples: M01R00 (CCR initialised), V0612345-18 (Selcall decode).
+        CcdiFrame.TryParse("M01R00", out var init).Should().BeTrue();
+        CcdiMessage.Decode(init).Should().BeOfType<CcrNotificationMessage>()
+            .Which.Kind.Should().Be('R');
+
+        CcdiFrame.TryParse("V0612345-18", out var selcall).Should().BeTrue();
+        CcdiMessage.Decode(selcall).Should().BeOfType<CcrSelcallDecodeMessage>()
+            .Which.Tones.Should().Be("12345-");
+    }
+
+    [Fact]
+    public void Ring_Message_Decodes_Manual_Example()
+    {
+        // §1.10.9 example: r0714000FFA6 — an SDM call.
+        CcdiFrame.TryParse("r0714000FFA6", out var frame).Should().BeTrue();
+        var ring = CcdiMessage.Decode(frame).Should().BeOfType<CcdiRingMessage>().Subject;
+        ring.Category.Should().Be('1');
+        ring.RingType.Should().Be("4000");
+        ring.Status.Should().Be("FF");
+        ring.CallerId.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Sdm_Message_Decodes_Manual_Examples()
+    {
+        // §1.10.3 examples: s002D (no data), s02Hi7A (data "Hi").
+        CcdiFrame.TryParse("s002D", out var empty).Should().BeTrue();
+        CcdiMessage.Decode(empty).Should().BeOfType<CcdiSdmMessage>()
+            .Which.Data.Should().BeEmpty();
+
+        CcdiFrame.TryParse("s02Hi7A", out var hi).Should().BeTrue();
+        CcdiMessage.Decode(hi).Should().BeOfType<CcdiSdmMessage>()
+            .Which.Data.Should().Be("Hi");
     }
 }

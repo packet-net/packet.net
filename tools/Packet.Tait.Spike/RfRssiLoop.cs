@@ -41,7 +41,8 @@ internal static class RfRssiLoop
         await txTnc.SetTxDelayAsync(30); // 300 ms — enough preamble for the link, short enough to time
         await Task.Delay(500);
 
-        await using var tagged = new RssiTaggingTransport(rxTnc, radio);
+        var options = new RssiTaggingOptions { BitRateHzProvider = () => rxTnc.CurrentBitRateHz };
+        await using var tagged = new RssiTaggingTransport(rxTnc, radio, options);
 
         var received = new List<(Ax25Frame Frame, DateTimeOffset At, Packet.Ax25.Transport.RadioMetadata? Radio)>();
         using var rxCts = new CancellationTokenSource();
@@ -58,10 +59,12 @@ internal static class RfRssiLoop
                 {
                     received.Add((parsed, inbound.ReceivedAt, inbound.Radio));
                 }
+                var m = inbound.Radio;
                 Console.WriteLine(
-                    $"  rx #{received.Count} {parsed.Source}>{parsed.Destination} {inbound.Ax25.Length,3}B" +
-                    $"  rssi={Fmt(inbound.Radio?.RssiDbm)} dBm  snr={Fmt(inbound.Radio?.SnrDb)} dB" +
-                    $"  floor={Fmt(tagged.NoiseFloorDbm)} dBm");
+                    $"  rx #{received.Count} {inbound.Ax25.Length,3}B" +
+                    $"  rssi={Fmt(m?.RssiDbm)} (min {Fmt(m?.RssiMinDbm)}/max {Fmt(m?.RssiMaxDbm)}, n={m?.RssiSampleCount})" +
+                    $"  snr={Fmt(m?.SnrDb)}  floor={Fmt(m?.NoiseFloorDbm)}" +
+                    $"  burst#{m?.BurstIndex}  air={FmtMs(m?.EstimatedAirtime)}  preData={FmtMs(m?.PreDataCarrier)}");
             }
         });
 
@@ -79,6 +82,17 @@ internal static class RfRssiLoop
             await txTnc.SendFrameAsync(ui.ToBytes());
             await Task.Delay(2500);
         }
+
+        Console.WriteLine("  tx train: 3 frames back-to-back (one carrier window expected)");
+        for (int i = 0; i < 3; i++)
+        {
+            var ui = Ax25Frame.Ui(
+                destination: new Callsign("TEST", 1),
+                source: new Callsign("M0LTE", 15),
+                info: Encoding.ASCII.GetBytes($"train frame {i}"));
+            await txTnc.SendFrameAsync(ui.ToBytes());
+        }
+        await Task.Delay(5000);
 
         await Task.Delay(2000);
         await rxCts.CancelAsync();
@@ -130,4 +144,7 @@ internal static class RfRssiLoop
 
     private static string Fmt(float? value) =>
         value?.ToString("0.0", CultureInfo.InvariantCulture) ?? "n/a";
+
+    private static string FmtMs(TimeSpan? value) =>
+        value is { } t ? t.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) + "ms" : "n/a";
 }

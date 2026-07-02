@@ -32,6 +32,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     private Task? dispatchLoop;
     private int ackSequenceCursor;
     private int disposed;
+    private int currentMode = -1;
 
     private NinoTncSerialPort(KissSerialModem modem, TimeProvider? timeProvider)
     {
@@ -46,6 +47,31 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>The port name the connection was opened on (e.g. "COM6" or "/dev/ttyACM0").</summary>
     public string PortName => modem.PortName;
+
+    /// <summary>
+    /// The last mode this driver set via <see cref="SetModeAsync"/>, or <c>null</c> if none has
+    /// been set on this connection. KISS has no mode read-back, so this reflects what *we*
+    /// commanded — not a DIP-switch or flash-persisted mode chosen outside this connection.
+    /// </summary>
+    public byte? CurrentMode
+    {
+        get
+        {
+            int mode = Volatile.Read(ref currentMode);
+            return mode >= 0 ? (byte)mode : null;
+        }
+    }
+
+    /// <summary>
+    /// The over-air bit rate of <see cref="CurrentMode"/> per <see cref="NinoTncCatalog"/>, or
+    /// <c>null</c> when no mode has been set (or the mode has no fixed rate, e.g. 15 "Set from
+    /// KISS"). Feed this to <c>RssiTaggingOptions.BitRateHzProvider</c> (Packet.Radio) for
+    /// per-frame airtime / pre-data-carrier estimation.
+    /// </summary>
+    public int? CurrentBitRateHz =>
+        CurrentMode is { } m && NinoTncCatalog.TryGetByMode(m) is { BitRateHz: > 0 } entry
+            ? entry.BitRateHz
+            : null;
 
     /// <summary>
     /// Fired for every inbound KISS frame after framing/unescaping, in
@@ -226,6 +252,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     public Task SetModeAsync(byte mode, bool persistToFlash = false, CancellationToken cancellationToken = default)
     {
         byte payload = NinoTncSetHardware.BuildPayloadByte(mode, persistToFlash);
+        Volatile.Write(ref currentMode, mode);
         return modem.SendKissAsync(KissCommand.SetHardware, new[] { payload }, cancellationToken);
     }
 

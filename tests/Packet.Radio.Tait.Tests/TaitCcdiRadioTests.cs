@@ -63,6 +63,21 @@ public class TaitCcdiRadioTests
     }
 
     [Fact]
+    public async Task Prompt_Then_Trailing_Error_Still_Fails_The_Set_Command()
+    {
+        // Hardware-observed: rejected commands answer prompt-FIRST, then the ERROR
+        // (".e03006A2\r." for an SDM the radio's programming disables).
+        using var io = new FakeSerialIo();
+        io.RespondTo("f0281CF", ".e03006A2\r.");
+        await using var radio = TaitCcdiRadio.OpenForTest(io);
+
+        var act = async () => await radio.SetMonitorAsync(true);
+
+        (await act.Should().ThrowAsync<TaitCcdiException>())
+            .Which.Error.ErrorNumber.Should().Be(0x06);
+    }
+
+    [Fact]
     public async Task SetTransmitter_Completes_On_Prompt()
     {
         using var io = new FakeSerialIo();
