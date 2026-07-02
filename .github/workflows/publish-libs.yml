@@ -17,6 +17,8 @@ name: publish-libs
 #   Packet.Agw
 #   Packet.NetRom
 #   Packet.Rhp2
+#   Packet.Radio
+#   Packet.Radio.Tait
 #
 # Add more by appending to the `projects:` matrix below and giving
 # each csproj the same PackageId / Title / Description / Tags shape
@@ -85,6 +87,8 @@ jobs:
           - Packet.Agw
           - Packet.NetRom
           - Packet.Rhp2
+          - Packet.Radio
+          - Packet.Radio.Tait
     env:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
       VERSION: ${{ needs.resolve-version.outputs.version }}

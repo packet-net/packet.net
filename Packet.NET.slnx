@@ -14,6 +14,8 @@
     <Project Path="src/Packet.Node.Core/Packet.Node.Core.csproj" />
     <Project Path="src/Packet.Node.Extensions/Packet.Node.Extensions.csproj" />
     <Project Path="src/Packet.Node/Packet.Node.csproj" />
+    <Project Path="src/Packet.Radio.Tait/Packet.Radio.Tait.csproj" />
+    <Project Path="src/Packet.Radio/Packet.Radio.csproj" />
     <Project Path="src/Packet.Rhp2.Server/Packet.Rhp2.Server.csproj" />
     <Project Path="src/Packet.Rhp2/Packet.Rhp2.csproj" />
   </Folder>
@@ -31,6 +33,7 @@
     <Project Path="tests/Packet.Mcp.Tests/Packet.Mcp.Tests.csproj" />
     <Project Path="tests/Packet.NetRom.Tests/Packet.NetRom.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
+    <Project Path="tests/Packet.Radio.Tait.Tests/Packet.Radio.Tait.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
@@ -39,5 +42,6 @@
     <Project Path="tools/Packet.LinkBench/Packet.LinkBench.csproj" />
     <Project Path="tools/Packet.Mqtt.Spike/Packet.Mqtt.Spike.csproj" />
     <Project Path="tools/Packet.NinoTnc.Spike/Packet.NinoTnc.Spike.csproj" />
+    <Project Path="tools/Packet.Tait.Spike/Packet.Tait.Spike.csproj" />
   </Folder>
 </Solution>

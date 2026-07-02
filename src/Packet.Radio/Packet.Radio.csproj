@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Radio.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Radio</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Radio — radio-control abstraction for the Packet.NET stack</Title>
+    <Description>Radio-control abstraction (IRadioControl: RSSI, carrier-sense/DCD, PTT) plus the RssiTaggingTransport decorator that stamps per-frame RSSI/SNR metadata onto any IAx25Transport. Radio-specific implementations (e.g. Packet.Radio.Tait) plug in underneath. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>ax25;amateur-radio;packet-radio;radio-control;rssi;dcd</PackageTags>
+  </PropertyGroup>
+
+</Project>

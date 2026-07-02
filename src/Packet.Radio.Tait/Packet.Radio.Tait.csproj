@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Radio.Tait.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Radio.Tait</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Radio.Tait — Tait TM8100/TM8200 CCDI radio control</Title>
+    <Description>Tait TM8100/TM8200 CCDI serial control for the Packet.NET stack — per-frame RSSI in dBm, hardware carrier-sense (DCD) events, transmitter keying, and radio telemetry (PA temperature, forward/reverse power), implementing the Packet.Radio IRadioControl abstraction. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>ax25;amateur-radio;packet-radio;tait;tm8100;ccdi;rssi;dcd</PackageTags>
+  </PropertyGroup>
+
+</Project>
