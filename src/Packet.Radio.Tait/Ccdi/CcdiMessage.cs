@@ -22,6 +22,18 @@ public abstract record CcdiMessage(char Ident)
                 new CcdiProgressMessage((CcdiProgressType)ptype, Para: p[2..]),
             'e' when p.Length >= 3 && byte.TryParse(p[1..3], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte errNum) =>
                 new CcdiErrorMessage(Category: p[0], ErrorNumber: errNum),
+            'r' when p.Length >= 7 => new CcdiRingMessage(
+                Category: p[0], RingType: p[1..5], Status: p[5..7], CallerId: p[7..]),
+            's' => new CcdiSdmMessage(p),
+            'd' when p.Length >= 1 => new CcdiDisplayMessage(Kind: p[0], Payload: p[1..]),
+            'z' => new CcdiTdmaDataMessage(p),
+            // Upper-case idents are the CCR-mode interpreter (CCDI idents are lower-case).
+            '+' when p.Length >= 1 => new CcrAckMessage(EchoedCommand: p[0]),
+            '-' when p.Length >= 2 && byte.TryParse(p[..2], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte reason) =>
+                new CcrNakMessage(Reason: reason, EchoedCommand: p.Length >= 3 ? p[2] : null),
+            'V' => new CcrSelcallDecodeMessage(p),
+            'M' when p.Length >= 1 => new CcrNotificationMessage(Kind: p[0]),
+            'Q' when p.Length >= 1 => new CcrPulseResultMessage(HasMinimumConfiguration: p[0] == 'P'),
             _ => new CcdiUnknownMessage(frame.Ident, p),
         };
     }
@@ -74,6 +86,58 @@ public sealed record CcdiErrorMessage(char Category, byte ErrorNumber) : CcdiMes
         _ => $"error category '{Category}' 0x{ErrorNumber:X2}",
     };
 }
+
+/// <summary>RING (§1.10.9) — an incoming call. <paramref name="RingType"/> is the four-character
+/// [TYPE1..TYPE4] string (TYPE1: 0 voice, 2 status, 3 interrogation, 4 SDM received, 5 data,
+/// 6 remote monitor; TYPE2: 0 normal/1 emergency; TYPE3: 0 individual/1 group/2 super-group).
+/// <paramref name="Status"/> is "FF" when no status value was received.</summary>
+public sealed record CcdiRingMessage(char Category, string RingType, string Status, string CallerId) : CcdiMessage('r');
+
+/// <summary>GET_SDM (§1.10.3) — the buffered short data message, in response to QUERY type 1
+/// (which also clears the radio's one-deep SDM buffer). Empty <paramref name="Data"/> = no SDM
+/// buffered.</summary>
+public sealed record CcdiSdmMessage(string Data) : CcdiMessage('s');
+
+/// <summary>QUERY_DISPLAY_RESPONSE (§1.10.6) — one element of a display-dump burst.
+/// <paramref name="Kind"/>: '0' start, 'F' end (payload = error digit), '1' text object
+/// (payload = 9 hex chars x/y/font + the string), '2' icon object (11 hex chars).</summary>
+public sealed record CcdiDisplayMessage(char Kind, string Payload) : CcdiMessage('d');
+
+/// <summary>TDMA_DATA (§1.10.10, TM8200 only) — a received TDMA packet's raw data.</summary>
+public sealed record CcdiTdmaDataMessage(string Data) : CcdiMessage('z');
+
+/// <summary>CCR positive acknowledgement (§2.6): the command ident was accepted (accepted ≠
+/// executed — e.g. TX frequency latches until the next PTT).</summary>
+public sealed record CcrAckMessage(char EchoedCommand) : CcdiMessage('+');
+
+/// <summary>CCR negative acknowledgement (§2.7). <see cref="EchoedCommand"/> is present only
+/// when the command's checksum was valid.</summary>
+public sealed record CcrNakMessage(byte Reason, char? EchoedCommand) : CcdiMessage('-')
+{
+    /// <summary>Human-readable meaning of the NAK reason code.</summary>
+    public string Describe() => Reason switch
+    {
+        0x01 => "invalid CCR command",
+        0x02 => "checksum error",
+        0x03 => "parameter error",
+        0x05 => "radio busy",
+        0x06 => "command not accepted",
+        _ => $"CCR NAK 0x{Reason:X2}",
+    };
+}
+
+/// <summary>CCR unsolicited Selcall decode (§2.9.3): tones decoded from the channel — digits,
+/// special tones A–F ('E' repeat), '-' for a gap of one tone period.</summary>
+public sealed record CcrSelcallDecodeMessage(string Tones) : CcdiMessage('V');
+
+/// <summary>CCR unsolicited notification (§2.9): 'R' = CCR mode initialised (M01R00),
+/// 'P' = PTT approaching the transmit-timer limit (10 s warning, M01P02).</summary>
+public sealed record CcrNotificationMessage(char Kind) : CcdiMessage('M');
+
+/// <summary>CCR pulse response (§2.8.15): <c>true</c> = the radio has its minimum CCR
+/// configuration (a receive frequency has been set since entering CCR); <c>false</c> = still on
+/// defaults — i.e. the radio has been power-cycled and forgot everything.</summary>
+public sealed record CcrPulseResultMessage(bool HasMinimumConfiguration) : CcdiMessage('Q');
 
 /// <summary>Any message whose ident (or parameter shape) we don't decode yet — kept raw so
 /// nothing the radio says is invisible to a consumer.</summary>

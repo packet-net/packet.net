@@ -20,10 +20,15 @@ Standard KISS gives you demodulated frames and nothing else. A radio with a cont
   only what their radio/firmware actually supports; reserved flags (channel change, frequency
   control, TX power) exist for richer radios before the interface grows those members.
 - `RssiTaggingTransport` — a decorator over any `IAx25Transport`: a background sampler polls
-  RSSI (fast while the channel is busy, slow while idle — idle samples track the noise floor)
-  and every inbound frame is re-yielded with `Ax25InboundFrame.Radio` populated (RSSI dBm +
-  SNR dB). Attribution is timestamp-correlation against the frame's `ReceivedAt`; frames with
-  no qualifying sample get `null` metadata, never a guess.
+  RSSI (fast while the channel is busy, slow while idle — idle samples track the noise floor),
+  carrier-sense edges are tracked as transmission windows, and every inbound frame is
+  re-yielded with `Ax25InboundFrame.Radio` populated: RSSI median/min/max/sample-count, SNR,
+  noise floor, carrier-rise instant, burst index (AX.25 frame trains share one carrier), an
+  airtime estimate, and — for the first frame of a burst — the measured pre-data carrier time,
+  which is the transmitting station's effective TXDELAY (an **excess-TXDELAY detector** input).
+  Frames with no qualifying sample get `null` metadata, never a guess.
+- `CarrierSenseTxGate` — CSMA by hardware DCD: defers `SendAsync` while the radio reports the
+  channel busy (bounded wait, fail-open), composing with the TNC's own persistence CSMA.
 
 ## Usage
 

@@ -32,16 +32,23 @@ git tag -a lib-v<semver> origin/main -m "lib-v<semver> — <one-line summary>"
 git push origin lib-v<semver>
 ```
 
-The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/workflows/publish-libs.yml), which packs and `dotnet nuget push`es the **six** published packages:
+The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/workflows/publish-libs.yml), which packs and `dotnet nuget push`es the published packages:
 
 - `Packet.Core`
-- `Packet.Kiss.Abstractions`
 - `Packet.Kiss`
 - `Packet.Kiss.Serial`
 - `Packet.Kiss.NinoTnc`
 - `Packet.Ax25`
+- `Packet.Ax25.Transport.Abstractions`
+- `Packet.Axudp`
+- `Packet.Aprs`
+- `Packet.Agw`
+- `Packet.NetRom`
+- `Packet.Rhp2`
+- `Packet.Radio`
+- `Packet.Radio.Tait`
 
-(`Packet.Aprs`, `Packet.Agw`, `Packet.Axudp`, `Packet.Node*`, etc. are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes.) The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
+**The `projects:` matrix in the workflow is the authoritative list** — the list above is a 2026-07-02 snapshot (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
 
 Then **wait for nuget.org flat-container indexing (~5–10 min)** before any downstream bump — a consumer `dotnet restore` against an unindexed version 404s.
 

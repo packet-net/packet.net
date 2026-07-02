@@ -82,6 +82,17 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
         var state = peerState.GetOrAdd(sample.Peer, _ => new PeerState(initialTxDelay));
         lock (state.Gate)
         {
+            if (state.SettlingFrames > 0)
+            {
+                // TNCs apply a changed TXDELAY from the SECOND frame after the KISS parameter
+                // command, not the first (bench-measured on NinoTNC across every step of a
+                // 20/50/100 sweep; reported as general AX.25 TNC behaviour). The first outcome
+                // after a change was transmitted with the OLD value — attributing it to the new
+                // one corrupts the climb, so skip it.
+                state.SettlingFrames--;
+                return;
+            }
+
             switch (sample.Outcome)
             {
                 case FrameOutcome.AcknowledgedFirstTry:
@@ -91,6 +102,7 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
                         int next = state.TxDelay - StepUnits;
                         state.TxDelay = (byte)Math.Max(MinTxDelay, next);
                         state.SuccessStreak = 0;
+                        state.SettlingFrames = 1;
                     }
                     break;
                 case FrameOutcome.AcknowledgedAfterRetransmit:
@@ -102,6 +114,7 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
                     state.SuccessStreak = 0;
                     int penalised = state.TxDelay + LossPenaltyUnits;
                     state.TxDelay = (byte)Math.Min(MaxTxDelay, penalised);
+                    state.SettlingFrames = 1;
                     break;
             }
         }
@@ -117,6 +130,7 @@ public sealed class TxDelayHillClimbEstimator : IAdaptiveParameterEstimator
     {
         public byte TxDelay = initial;
         public int SuccessStreak;
+        public int SettlingFrames;
         public readonly Lock Gate = new();
     }
 }

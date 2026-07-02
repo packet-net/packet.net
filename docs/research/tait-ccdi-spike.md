@@ -97,6 +97,46 @@ if spurious `UnknownInboundEvent`s ever bother anyone.
   fascinating minimal-node option), SDM short-data messages. All are documented in the CCDI
   manual (MMA-00038-06) and deliberately out of this spike.
 
+## Session 2 addendum (same day): timing, CCR, watchdog, discovery
+
+The follow-up session measured the timing envelope, modelled both computer-control modes, and
+enriched the transport seam. Hardware-measured numbers (1200 Bd AFSK link, CCDI at 28800):
+
+- **RSSI poll RTT 14.4 ms median (14.3–15.3 ms, p95 15.2)** — sub-ms jitter; poll cadence up to
+  ~50 Hz is available, `RssiTaggingTransport` defaults to 40 ms while carrier is up.
+- **Carrier-edge (DCD) report latency ~27–28 ms, σ<1 ms** measured PTT-report→busy-report across
+  12 keyings — effectively a subtractable rig constant, giving DCD edge timestamps ±2–3 ms.
+- **Frame-edge derivation works**: `ReceivedAt − EstimatedAirtime` puts on-air start within tens
+  of ms; measured **pre-data carrier tracked the TX TNC's configured TXDELAY + 40–75 ms**
+  constant overhead across a 200/500/1000 ms sweep — ample for an **excess-TXDELAY detector**
+  (`RadioMetadata.PreDataCarrier`).
+- **Settings settle on the SECOND frame** (general AX.25 TNC behaviour, per Tom; bench-confirmed
+  on NinoTNC): every TXDELAY step showed frame 1 at the old value, frames 2+ at the new.
+  `TxDelayHillClimbEstimator` now discards the settling frame's outcome after each step.
+- **Frame trains**: 3 back-to-back frames = one carrier window, ~370 ms delivery spacing, no
+  re-preamble. `RssiTaggingTransport` tracks windows and stamps `BurstIndex`; `PreDataCarrier`
+  only on burst index 0. Frame delivery trails carrier-fall by ~35–115 ms (decode+serial), so
+  closed windows stay attributable for a slack (default 500 ms).
+- **CCR mode live-validated** (`TaitCcrSession`): entry banner `M01R00`, pulse, volume ACK,
+  **TX-power ACK (the control CCDI FUNCTION 0/7 lacks on this firmware)**, exit = soft reset
+  with clean recovery to Command mode in ~6 s. **The NinoTNC's data-line PTT still keys the
+  radio inside CCR mode** (observer saw the usual −90 dBm) — so a CCR power-step SNR sweep
+  needs no frequency knowledge (CCR inherits the active channel's parameters). Not run above
+  VeryLow pending the attenuator's power rating.
+- **SDM is disabled in these radios' programming** — `a…` answers error 0/06; the API is built
+  and unit-tested but needs a programming-app change to exercise over air.
+- **Protocol trap found on hardware**: the radio prompts *before* the ERROR of a rejected
+  command (`.e03006A2\r.`), so prompt-completed transactions now wait a 100 ms
+  `PromptErrorGrace` for a trailing rejection.
+- **Watchdog**: `TaitCcdiRadioOptions.KeepAliveInterval` (default 30 s) probes on link silence
+  (RSSI query in Command mode, `Q` pulse in CCR — the manual itself prescribes a 10 s pulse);
+  3 consecutive failures → `ConnectionState.Faulted` + event, self-healing on recovery; a dead
+  read pump faults immediately and fails the in-flight transaction.
+- **Port auto-detection**: `TaitRadioPortDiscovery` (env override → `/dev/ttyUSB*` → all ports)
+  probes candidates with a MODEL query — live scan found both radios and told them apart by
+  CCDI serial where the identical CP2102 USB IDs cannot. PDN/node-host wiring (config UI,
+  "found a TM8110 s/n … on ttyUSB0, attach it to port X?") is the named follow-up.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate

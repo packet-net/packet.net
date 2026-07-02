@@ -32,11 +32,18 @@ radio.CarrierSenseChanged += (_, e) => Console.WriteLine($"DCD {(e.Busy ? "up" :
 The radio must be programmed with its data port in **Command mode** (power-up state) at the
 matching baud rate; this driver does not attempt the Transparent-mode escape sequence.
 
+Beyond telemetry, the driver models the rest of the documented surface: channel report/change,
+CANCEL/DIAL, SDM short-data messages (radio-to-radio, no TNC — requires SDMs enabled in the
+radio's programming), display query, Transparent mode (the radio's own FFSK/THSD modem as a
+byte pipe), a built-in keep-alive **watchdog** (`ConnectionState` + events; probes on link
+silence, self-heals on recovery), **port auto-detection** (`TaitRadioPortDiscovery` — probes
+candidate ports with a MODEL query and identifies radios by CCDI serial number), and the whole
+**CCR mode** (`TaitCcrSession`, TM8100 only): run-time RX/TX frequency in Hz, TX power,
+bandwidth, CTCSS/DCS, Selcall encode/decode events, volume, and the pulse ping.
+
 Verified on hardware: 2× TM8110 (`TMAB12-B100`, CCDI 03.02, firmware 02.18.00.00). On that
-firmware the CCDI TX-power set command (FUNCTION 0/7) answers "unsupported command", so
-`RadioCapabilities.TxPowerControl` is not advertised. Channel reporting works; channel *change*
-(GO_TO_CHANNEL) and CCR mode (direct frequency programming, TM8100 only) are documented in the
-protocol manual but not yet modelled here.
+firmware the CCDI-side TX-power set (FUNCTION 0/7) answers "unsupported command" — but the
+CCR-mode power command works, so power control lives on `TaitCcrSession`.
 
 Status: **experimental**, spike-born (plan §5.10 Phase 10). Protocol reference: Tait
 MMA-00038-06 "TM8100/TM8200 CCDI Protocol Manual".

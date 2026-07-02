@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Ports;
 using System.Text;
 using Packet.Radio.Tait.Ccdi;
@@ -36,26 +37,37 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// programmed rate wins — 1200 to 115200 are all possible (§1.8).</summary>
     public const int DefaultBaudRate = 28800;
 
-    private static readonly TimeSpan DefaultTransactionTimeout = TimeSpan.FromSeconds(2);
-
     private readonly ISerialIo io;
+    private readonly TaitCcdiRadioOptions options;
     private readonly TimeProvider clock;
     private readonly SemaphoreSlim commandGate = new(1, 1);
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Thread pumpThread;
     private readonly object stateGate = new();
+    private readonly Task? watchdogLoop;
 
     private Transaction? active;
     private bool? channelBusy;
     private bool weKeyedTransmitter;
+    private char transparentEscape = '+';
+    private TaitProtocolMode mode = TaitProtocolMode.Command;
+    private TaitConnectionState connectionState = TaitConnectionState.Healthy;
+    private DateTimeOffset lastInboundAt;
+    private int consecutivePingFailures;
     private int disposed;
 
-    private TaitCcdiRadio(ISerialIo io, TimeProvider? timeProvider)
+    private TaitCcdiRadio(ISerialIo io, TaitCcdiRadioOptions? options, TimeProvider? timeProvider)
     {
         this.io = io;
+        this.options = options ?? new TaitCcdiRadioOptions();
         clock = timeProvider ?? TimeProvider.System;
+        lastInboundAt = clock.GetUtcNow();
         pumpThread = new Thread(PumpReads) { IsBackground = true, Name = $"tait-ccdi:{io.PortName}" };
         pumpThread.Start();
+        if (this.options.KeepAliveInterval is { } interval && interval > TimeSpan.Zero)
+        {
+            watchdogLoop = Task.Run(() => WatchdogAsync(interval, pumpCts.Token));
+        }
     }
 
     /// <summary>The serial port this radio is attached to (e.g. <c>/dev/ttyUSB0</c>).</summary>
@@ -94,11 +106,65 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <summary>Every decoded inbound message, solicited or not — a diagnostics tap.</summary>
     public event EventHandler<CcdiMessage>? MessageReceived;
 
+    /// <summary>Unsolicited RING messages — incoming Selcall / status / SDM / data calls.</summary>
+    public event EventHandler<CcdiRingMessage>? RingReceived;
+
+    /// <summary>Health transitions from the built-in watchdog (see
+    /// <see cref="TaitCcdiRadioOptions.KeepAliveInterval"/>) and from the read pump: a dead
+    /// serial link or an unresponsive radio raises <see cref="TaitConnectionState.Faulted"/>;
+    /// a subsequently answered ping raises <see cref="TaitConnectionState.Healthy"/> again.</summary>
+    public event EventHandler<TaitConnectionState>? ConnectionStateChanged;
+
+    /// <summary>Raw bytes from the radio while in Transparent mode (the radio's own FFSK/THSD
+    /// modem as a byte pipe). Fires on the read pump.</summary>
+    public event EventHandler<ReadOnlyMemory<byte>>? TransparentDataReceived;
+
+    /// <summary>Which protocol interpreter the port is currently in: CCDI Command mode,
+    /// Transparent (byte pipe), or CCR.</summary>
+    public TaitProtocolMode Mode
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return mode;
+            }
+        }
+    }
+
+    /// <summary>Current health as judged by the watchdog / read pump.</summary>
+    public TaitConnectionState ConnectionState
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return connectionState;
+            }
+        }
+    }
+
+    /// <summary>When the radio last said anything at all on the serial link.</summary>
+    public DateTimeOffset LastInboundAt
+    {
+        get
+        {
+            lock (stateGate)
+            {
+                return lastInboundAt;
+            }
+        }
+    }
+
     /// <summary>
     /// Open the named serial port (8N1, no flow control) and start the read pump. The radio is
     /// not touched — pair with <see cref="SetProgressMessagesAsync"/> to turn on DCD events.
     /// </summary>
-    public static TaitCcdiRadio Open(string portName, int baudRate = DefaultBaudRate, TimeProvider? timeProvider = null)
+    public static TaitCcdiRadio Open(
+        string portName,
+        int baudRate = DefaultBaudRate,
+        TaitCcdiRadioOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         var serial = new SerialPort(portName, baudRate, Parity.None, 8, StopBits.One)
         {
@@ -109,13 +175,14 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             RtsEnable = true,
         };
         serial.Open();
-        return new TaitCcdiRadio(new SystemSerialIo(serial), timeProvider);
+        return new TaitCcdiRadio(new SystemSerialIo(serial), options, timeProvider);
     }
 
     /// <summary>Test seam (InternalsVisibleTo <c>Packet.Radio.Tait.Tests</c>): drive the
     /// transaction engine and demux over a scripted <see cref="ISerialIo"/>.</summary>
-    internal static TaitCcdiRadio OpenForTest(ISerialIo io, TimeProvider? timeProvider = null) =>
-        new(io, timeProvider);
+    internal static TaitCcdiRadio OpenForTest(
+        ISerialIo io, TaitCcdiRadioOptions? options = null, TimeProvider? timeProvider = null) =>
+        new(io, options, timeProvider);
 
     /// <summary>Query MODEL, RADIO_SERIAL and RADIO_VERSIONS and assemble the radio's identity.</summary>
     public async Task<TaitRadioIdentity> QueryIdentityAsync(CancellationToken cancellationToken = default)
@@ -202,6 +269,217 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             new CcdiFrame('f', mute ? "51" : "50"), matches: null, minCount: 0,
             completeOnPrompt: true, quietTime: null, cancellationToken);
 
+    /// <summary>GO_TO_CHANNEL (§1.9.4): retune to a programmed conventional channel. Denied by
+    /// the radio (not-ready error) while in emergency mode.</summary>
+    /// <param name="channel">Channel number, 1–4 digits.</param>
+    /// <param name="zone">Zone (TM8200 only); TM8100 radios reject a zone-qualified change.</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task GoToChannelAsync(int channel, int? zone = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(channel);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(channel, 9999);
+        string parameters = zone is { } z
+            ? string.Create(CultureInfo.InvariantCulture, $"{z:00}{channel:0000}")
+            : channel.ToString(CultureInfo.InvariantCulture);
+        return TransactAsync(
+            new CcdiFrame('g', parameters), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>FUNCTION 0/5/2: report the current channel (solicited PROGRESS type 21).</summary>
+    public async Task<TaitChannelReport> QueryCurrentChannelAsync(CancellationToken cancellationToken = default)
+    {
+        var results = await TransactAsync(
+            new CcdiFrame('f', "052"),
+            m => m is CcdiProgressMessage { Type: CcdiProgressType.UserInitiatedChannelChange },
+            minCount: 1, completeOnPrompt: false, quietTime: null, cancellationToken).ConfigureAwait(false);
+        var progress = (CcdiProgressMessage)results[0];
+        return TaitChannelReport.Parse(progress.Para);
+    }
+
+    /// <summary>CANCEL (§1.9.1): abort the current action / clear state.</summary>
+    public Task CancelAsync(TaitCancelType type = TaitCancelType.Call, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('c', ((int)type).ToString(CultureInfo.InvariantCulture)), matches: null,
+            minCount: 0, completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>DIAL (§1.9.2): initiate Selcall or DTMF dialing on the current channel. Call
+    /// progress arrives later as PROGRESS messages.</summary>
+    public Task DialAsync(TaitDialType type, string number, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(number);
+        if (number.Length > 32)
+        {
+            throw new ArgumentException("dial strings are limited to 32 digits (§1.9.2)", nameof(number));
+        }
+        return TransactAsync(
+            new CcdiFrame('d', (int)type + number), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// SEND_ADAPTABLE_SDM (§1.9.8): transmit a short data message radio-to-radio over the air —
+    /// no TNC involved; the radio's own FFSK modem carries it. The receiving radio raises
+    /// PROGRESS 'FFSK data received' (and a RING for valid addressed SDMs) and buffers the
+    /// message for <see cref="ReadBufferedSdmAsync"/>.
+    /// </summary>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character (e.g. <c>"12**5678"</c>).</param>
+    /// <param name="message">Up to 32 characters (ASCII text with the default format).</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task SendSdmAsync(
+        string dataMessageId, string message, TimeSpan? leadInDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(dataMessageId);
+        ArgumentNullException.ThrowIfNull(message);
+        if (dataMessageId.Length != 8)
+        {
+            throw new ArgumentException("the data message ID is exactly 8 characters (§1.9.8)", nameof(dataMessageId));
+        }
+        if (message.Length > 32)
+        {
+            throw new ArgumentException("plain SDMs are limited to 32 characters (§1.9.8)", nameof(message));
+        }
+        int leadInUnits = (int)Math.Clamp((leadInDelay ?? TimeSpan.FromMilliseconds(100)).TotalMilliseconds / 20, 1, 255);
+        string parameters = string.Create(
+            CultureInfo.InvariantCulture, $"{leadInUnits:X2}200{dataMessageId}{message}");
+        return TransactAsync(
+            new CcdiFrame('a', parameters), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>QUERY type 1 (§1.9.5): fetch the buffered received SDM. The radio's SDM buffer
+    /// is one-deep and this read clears it. Returns <c>null</c> when nothing is buffered.</summary>
+    public async Task<string?> ReadBufferedSdmAsync(CancellationToken cancellationToken = default)
+    {
+        var results = await TransactAsync(
+            new CcdiFrame('q', "1"), m => m is CcdiSdmMessage, minCount: 1,
+            completeOnPrompt: false, quietTime: null, cancellationToken).ConfigureAwait(false);
+        string data = ((CcdiSdmMessage)results[0]).Data;
+        return data.Length == 0 ? null : data;
+    }
+
+    /// <summary>QUERY type 7 (§1.9.5): dump the control-head display as a burst of
+    /// <see cref="CcdiDisplayMessage"/> elements (start / text / icon / end). Radios without a
+    /// display head answer with a parameter error.</summary>
+    public async Task<IReadOnlyList<CcdiDisplayMessage>> QueryDisplayAsync(CancellationToken cancellationToken = default)
+    {
+        var results = await TransactAsync(
+            new CcdiFrame('q', "70"), m => m is CcdiDisplayMessage, minCount: 1,
+            completeOnPrompt: false, quietTime: TimeSpan.FromMilliseconds(200), cancellationToken)
+            .ConfigureAwait(false);
+        return results.OfType<CcdiDisplayMessage>().ToArray();
+    }
+
+    /// <summary>
+    /// TRANSPARENT (§1.9.9 / §1.7): switch the radio into Transparent mode — the serial port
+    /// becomes a byte pipe through the radio's own FFSK (1200/2400 bit/s) or THSD modem. From
+    /// then on <see cref="TransparentDataReceived"/> fires for inbound data,
+    /// <see cref="SendTransparentAsync"/> transmits, CCDI transactions are unavailable, and the
+    /// radio emits no PROGRESS messages until <see cref="ExitTransparentModeAsync"/>.
+    /// </summary>
+    public async Task EnterTransparentModeAsync(
+        char escapeChar = '+', bool thsd = false, CancellationToken cancellationToken = default)
+    {
+        await TransactAsync(
+            new CcdiFrame('t', $"{escapeChar}{(thsd ? "H" : "0")}"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken).ConfigureAwait(false);
+        lock (stateGate)
+        {
+            mode = TaitProtocolMode.Transparent;
+            transparentEscape = escapeChar;
+        }
+    }
+
+    /// <summary>Send raw bytes over the air while in Transparent mode.</summary>
+    public Task SendTransparentAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        if (Mode != TaitProtocolMode.Transparent)
+        {
+            throw new InvalidOperationException("the radio is not in Transparent mode");
+        }
+        byte[] buffer = data.ToArray();
+        io.Write(buffer, 0, buffer.Length);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Escape from Transparent mode (§1.7.2): 2 s idle, escape char ×3, 2 s idle —
+    /// then Command mode is back. Takes a little over 4 s by protocol design.</summary>
+    public async Task ExitTransparentModeAsync(CancellationToken cancellationToken = default)
+    {
+        char esc;
+        lock (stateGate)
+        {
+            if (mode != TaitProtocolMode.Transparent)
+            {
+                throw new InvalidOperationException("the radio is not in Transparent mode");
+            }
+            esc = transparentEscape;
+        }
+        await Task.Delay(TimeSpan.FromMilliseconds(2100), clock, cancellationToken).ConfigureAwait(false);
+        byte[] escape = [(byte)esc, (byte)esc, (byte)esc];
+        io.Write(escape, 0, escape.Length);
+        await Task.Delay(TimeSpan.FromMilliseconds(2100), clock, cancellationToken).ConfigureAwait(false);
+        lock (stateGate)
+        {
+            mode = TaitProtocolMode.Command;
+        }
+    }
+
+    /// <summary>
+    /// FUNCTION 0/0 (§2.5.1, TM8100 only): switch the radio into CCR (Computer-Controlled
+    /// Radio) mode — the run-time channel-programming interpreter: direct RX/TX frequency in
+    /// Hz, TX power, bandwidth, CTCSS/DCS, Selcall, volume. The returned session owns the port
+    /// until <see cref="TaitCcrSession.ExitAsync"/> (which soft-resets the radio); CCDI
+    /// commands are unavailable meanwhile, and nothing configured in CCR survives the exit.
+    /// </summary>
+    public async Task<TaitCcrSession> EnterCcrModeAsync(CancellationToken cancellationToken = default)
+    {
+        // Entry is acknowledged by the unsolicited CCR banner M01R00 (§2.5.3), not a prompt.
+        var results = await TransactAsync(
+            new CcdiFrame('f', "00"), m => m is CcrNotificationMessage { Kind: 'R' }, minCount: 1,
+            completeOnPrompt: false, quietTime: null, cancellationToken).ConfigureAwait(false);
+        _ = results;
+        lock (stateGate)
+        {
+            mode = TaitProtocolMode.Ccr;
+        }
+        return new TaitCcrSession(this);
+    }
+
+    /// <summary>
+    /// Liveness probe: a lightweight query appropriate to the current mode (RSSI read in
+    /// Command mode, pulse in CCR). Returns <c>false</c> on timeout instead of throwing. The
+    /// built-in watchdog calls this when the link has been quiet for
+    /// <see cref="TaitCcdiRadioOptions.KeepAliveInterval"/>.
+    /// </summary>
+    public async Task<bool> PingAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            switch (Mode)
+            {
+                case TaitProtocolMode.Command:
+                    await ReadRssiDbmAsync(cancellationToken).ConfigureAwait(false);
+                    return true;
+                case TaitProtocolMode.Ccr:
+                    await TransactCcrAsync(
+                        new CcdiFrame('Q', "P"), m => m is CcrPulseResultMessage, cancellationToken)
+                        .ConfigureAwait(false);
+                    return true;
+                default:
+                    return true; // Transparent mode has no in-band probe; the pump watches bytes.
+            }
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Escape hatch for CCDI commands this driver doesn't model: send
     /// <c>[ident][params]</c> and collect responses until <paramref name="quietTime"/> passes
@@ -230,9 +508,36 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         return result.AsInteger();
     }
 
+    /// <summary>CCR-mode transaction: send one CCR command and await its matching response (or
+    /// a NAK, raised as <see cref="TaitCcrNakException"/>). Used by <see cref="TaitCcrSession"/>.</summary>
+    internal async Task<CcdiMessage> TransactCcrAsync(
+        CcdiFrame command, Func<CcdiMessage, bool> matches, CancellationToken cancellationToken)
+    {
+        if (Mode != TaitProtocolMode.Ccr)
+        {
+            throw new InvalidOperationException("the radio is not in CCR mode");
+        }
+        var results = await TransactCoreAsync(
+            command, m => matches(m) || m is CcrNakMessage, minCount: 1,
+            completeOnPrompt: false, quietTime: null, cancellationToken).ConfigureAwait(false);
+        if (results[0] is CcrNakMessage nak)
+        {
+            throw new TaitCcrNakException(command.Encode(), nak);
+        }
+        return results[0];
+    }
+
+    internal void OnCcrExited()
+    {
+        lock (stateGate)
+        {
+            mode = TaitProtocolMode.Command;
+        }
+    }
+
     private async Task<CcdiQueryResultMessage> ExpectCctmAsync(string cctm, CancellationToken cancellationToken)
     {
-        int command = int.Parse(cctm, System.Globalization.CultureInfo.InvariantCulture);
+        int command = int.Parse(cctm, CultureInfo.InvariantCulture);
         var results = await TransactAsync(
             new CcdiFrame('q', "5" + cctm), m => m is CcdiQueryResultMessage r && r.CctmCommand == command,
             minCount: 1, completeOnPrompt: false, quietTime: null, cancellationToken).ConfigureAwait(false);
@@ -248,7 +553,24 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         return (T)results[0];
     }
 
-    private async Task<IReadOnlyList<CcdiMessage>> TransactAsync(
+    private Task<IReadOnlyList<CcdiMessage>> TransactAsync(
+        CcdiFrame command,
+        Func<CcdiMessage, bool>? matches,
+        int minCount,
+        bool completeOnPrompt,
+        TimeSpan? quietTime,
+        CancellationToken cancellationToken)
+    {
+        var current = Mode;
+        if (current != TaitProtocolMode.Command)
+        {
+            throw new InvalidOperationException(
+                $"CCDI commands are unavailable while the radio is in {current} mode");
+        }
+        return TransactCoreAsync(command, matches, minCount, completeOnPrompt, quietTime, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<CcdiMessage>> TransactCoreAsync(
         CcdiFrame command,
         Func<CcdiMessage, bool>? matches,
         int minCount,
@@ -273,8 +595,17 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
                 byte[] wire = command.EncodeToBytes();
                 io.Write(wire, 0, wire.Length);
 
-                await txn.Done.Task.WaitAsync(DefaultTransactionTimeout, clock, cancellationToken)
+                await txn.Done.Task.WaitAsync(options.TransactionTimeout, clock, cancellationToken)
                     .ConfigureAwait(false);
+
+                if (completeOnPrompt && txn.Error is null)
+                {
+                    // Observed on hardware: the radio prompts BEFORE the ERROR of a rejected
+                    // command (a programming-disabled SDM answers ".e03006A2\r." — prompt
+                    // first). Give a trailing rejection a beat to arrive before declaring
+                    // success; at 28800 baud it lands within ~10 ms.
+                    await Task.Delay(options.PromptErrorGrace, clock, cancellationToken).ConfigureAwait(false);
+                }
 
                 if (txn.Error is { } error)
                 {
@@ -299,7 +630,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             catch (TimeoutException)
             {
                 throw new TimeoutException(
-                    $"no CCDI response to '{encoded}' within {DefaultTransactionTimeout.TotalSeconds:0.#}s on {PortName}");
+                    $"no CCDI response to '{encoded}' within {options.TransactionTimeout.TotalSeconds:0.#}s on {PortName}");
             }
             finally
             {
@@ -330,10 +661,30 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             {
                 continue;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Port closed under us (dispose path) or hard IO failure: stop pumping.
+                // Port closed under us (dispose path) or hard IO failure: stop pumping. That is
+                // an interface hang-up, not a quiet channel — surface it.
+                if (Volatile.Read(ref disposed) == 0)
+                {
+                    MarkFaulted(new IOException($"serial read failed on {PortName}", ex));
+                }
                 break;
+            }
+
+            if (read > 0)
+            {
+                lock (stateGate)
+                {
+                    lastInboundAt = clock.GetUtcNow();
+                    consecutivePingFailures = 0;
+                }
+            }
+
+            if (Mode == TaitProtocolMode.Transparent)
+            {
+                TransparentDataReceived?.Invoke(this, buffer.AsMemory(0, read).ToArray());
+                continue;
             }
 
             for (int i = 0; i < read; i++)
@@ -433,8 +784,92 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             case CcdiErrorMessage error:
                 ErrorReceived?.Invoke(this, error);
                 break;
+            case CcdiRingMessage ring:
+                RingReceived?.Invoke(this, ring);
+                break;
             default:
                 break;
+        }
+    }
+
+    private async Task WatchdogAsync(TimeSpan interval, CancellationToken cancellationToken)
+    {
+        var checkEvery = TimeSpan.FromTicks(Math.Max(interval.Ticks / 2, TimeSpan.TicksPerSecond));
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(checkEvery, clock, cancellationToken).ConfigureAwait(false);
+                bool quiet;
+                lock (stateGate)
+                {
+                    quiet = clock.GetUtcNow() - lastInboundAt >= interval;
+                }
+                if (!quiet || Mode == TaitProtocolMode.Transparent)
+                {
+                    continue;
+                }
+
+                bool ok = await PingAsync(cancellationToken).ConfigureAwait(false);
+                if (ok)
+                {
+                    MarkHealthy();
+                    continue;
+                }
+
+                int failures;
+                lock (stateGate)
+                {
+                    failures = ++consecutivePingFailures;
+                }
+                if (failures >= options.FaultAfterConsecutivePingFailures)
+                {
+                    MarkFaulted(new TimeoutException(
+                        $"radio on {PortName} missed {failures} consecutive keep-alive probes"));
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+            // Mode changed under a probe (e.g. CCR entry raced the watchdog) — next tick adapts.
+        }
+    }
+
+    private void MarkFaulted(Exception cause)
+    {
+        bool changed;
+        Transaction? pending;
+        lock (stateGate)
+        {
+            changed = connectionState != TaitConnectionState.Faulted;
+            connectionState = TaitConnectionState.Faulted;
+            pending = active;
+        }
+        pending?.Done.TrySetException(cause);
+        if (changed)
+        {
+            ConnectionStateChanged?.Invoke(this, TaitConnectionState.Faulted);
+        }
+    }
+
+    private void MarkHealthy()
+    {
+        bool changed;
+        lock (stateGate)
+        {
+            changed = connectionState != TaitConnectionState.Healthy;
+            connectionState = TaitConnectionState.Healthy;
+            consecutivePingFailures = 0;
+        }
+        if (changed)
+        {
+            ConnectionStateChanged?.Invoke(this, TaitConnectionState.Healthy);
         }
     }
 
@@ -456,9 +891,24 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         pumpCts.Cancel();
 
         bool mustUnkey;
+        bool mustExitCcr;
         lock (stateGate)
         {
             mustUnkey = weKeyedTransmitter;
+            mustExitCcr = mode == TaitProtocolMode.Ccr;
+        }
+        if (mustExitCcr)
+        {
+            // Leaving the radio parked in CCR mode makes it deaf to CCDI until someone resets
+            // it; the CCR exit (E) is itself a soft reset, so it also restores channel config.
+            try
+            {
+                byte[] exit = new CcdiFrame('E', "").EncodeToBytes();
+                io.Write(exit, 0, exit.Length);
+            }
+            catch
+            {
+            }
         }
         if (mustUnkey)
         {

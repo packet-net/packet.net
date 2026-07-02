@@ -34,6 +34,7 @@
     <Project Path="tests/Packet.NetRom.Tests/Packet.NetRom.Tests.csproj" />
     <Project Path="tests/Packet.Node.Tests/Packet.Node.Tests.csproj" />
     <Project Path="tests/Packet.Radio.Tait.Tests/Packet.Radio.Tait.Tests.csproj" />
+    <Project Path="tests/Packet.Radio.Tests/Packet.Radio.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

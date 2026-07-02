@@ -36,6 +36,38 @@ public class TxDelayHillClimbTests
     }
 
     [Fact]
+    public void First_Outcome_After_A_Change_Is_Ignored_As_Settling()
+    {
+        // TNCs apply a changed TXDELAY from the SECOND frame after the KISS command (bench-
+        // measured on NinoTNC; general TNC behaviour) — the outcome right after a step was
+        // transmitted with the OLD value, so it must not count toward the next step.
+        var estimator = new TxDelayHillClimbEstimator(initialTxDelay: 50)
+        {
+            SuccessesPerStepDown = 2,
+            StepUnits = 2,
+            MinTxDelay = 10,
+            LossPenaltyUnits = 5,
+        };
+
+        estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry));
+        estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry));
+        estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)48, "stepped down after 2 successes");
+
+        // This loss happened on the settling frame (old TXDELAY) — no penalty, no streak count.
+        estimator.Observe(Sample("M0LTE", FrameOutcome.Lost));
+        estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)48, "settling frame outcome is discarded");
+
+        // The next loss is real and penalised, and itself starts a settling frame.
+        estimator.Observe(Sample("M0LTE", FrameOutcome.Lost));
+        estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)53, "post-settling loss applies the penalty");
+
+        estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry)); // settling, ignored
+        estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry));
+        estimator.Observe(Sample("M0LTE", FrameOutcome.AcknowledgedFirstTry));
+        estimator.CurrentTxDelayFor("M0LTE").Should().Be((byte)51, "two counted successes step down again");
+    }
+
+    [Fact]
     public void Loss_Bumps_TxDelay_Up_By_Loss_Penalty()
     {
         var estimator = new TxDelayHillClimbEstimator(initialTxDelay: 40)
