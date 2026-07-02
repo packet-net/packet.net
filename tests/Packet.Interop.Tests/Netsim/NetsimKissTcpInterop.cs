@@ -29,7 +29,7 @@ public class NetsimKissTcpInterop
     private const string Host = "127.0.0.1";
     private const int NodeAKissPort = 8100;
     private const int NodeBKissPort = 8101;
-    private const int NetsimWebPort = 8080;
+    private const int NetsimWebPort = 18080;
 
     [SkippableFact]
     public async Task UI_Frame_Sent_On_Node_A_Is_Received_On_Node_B()

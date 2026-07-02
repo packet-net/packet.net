@@ -34,7 +34,7 @@ public class NetsimUiFrameScenarios
     private const string Host = "127.0.0.1";
     private const int NodeAKissPort = 8100;
     private const int NodeBKissPort = 8101;
-    private const int NetsimWebPort = 8080;
+    private const int NetsimWebPort = 18080;
     // 30s, not 15s, because the AFSK1200 software sim is CPU-heavy and under
     // host contention (four interop containers + test runner sharing a single
     // box) round-trip latency can spike above the original 15s budget. CI's
