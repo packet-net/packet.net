@@ -115,29 +115,39 @@ internal static class DeviationAssist
             cancelOnCtrlC.Cancel();
         };
 
-        if (common.Role == TuningSession.TunedRole)
+        try
         {
-            // Arm this TNC's CQBEEP responder for the session (volatile — a
-            // TNC reset disarms it; re-run the command after one). The meter
-            // can then also trigger tone tests as a refinement.
-            Console.WriteLine("  arming this TNC's CQBEEP responder ([TARPNstat) for the session...");
-            await tnc.ArmCqBeepResponderAsync(source, cancelOnCtrlC.Token);
-            await Task.Delay(1500, cancelOnCtrlC.Token); // let the arming frame finish keying
-
-            var stimulus = new NinoTncBurstStimulus(tnc, source);
-            var prompt = new ConsolePrompt();
-            Console.WriteLine();
-            return await TuningSession.RunTunedAsync(link, stimulus, prompt, options, Console.Out, cancelOnCtrlC.Token);
-        }
-        else
-        {
-            var meter = new NinoTncBurstMeter(tnc, meterRadio);
-            if (common.Verbose)
+            if (common.Role == TuningSession.TunedRole)
             {
-                meter.Log = line => Console.WriteLine("  " + line);
+                // Arm this TNC's CQBEEP responder for the session (volatile —
+                // a TNC reset disarms it; re-run the command after one). The
+                // meter can then also trigger tone tests as a refinement.
+                Console.WriteLine("  arming this TNC's CQBEEP responder ([TARPNstat) for the session...");
+                await tnc.ArmCqBeepResponderAsync(source, cancelOnCtrlC.Token);
+                await Task.Delay(1500, cancelOnCtrlC.Token); // let the arming frame finish keying
+
+                var stimulus = new NinoTncBurstStimulus(tnc, source);
+                var prompt = new ConsolePrompt();
+                Console.WriteLine();
+                return await TuningSession.RunTunedAsync(link, stimulus, prompt, options, Console.Out, cancelOnCtrlC.Token);
             }
-            Console.WriteLine();
-            return await TuningSession.RunMeterAsync(link, meter, options, Console.Out, cancelOnCtrlC.Token);
+            else
+            {
+                var meter = new NinoTncBurstMeter(tnc, meterRadio);
+                if (common.Verbose)
+                {
+                    meter.Log = line => Console.WriteLine("  " + line);
+                }
+                Console.WriteLine();
+                return await TuningSession.RunMeterAsync(link, meter, options, Console.Out, cancelOnCtrlC.Token);
+            }
+        }
+        catch (TuningLinkException ex)
+        {
+            Console.WriteLine($"tuning link failed: {ex.Message}");
+            Console.WriteLine("(SDM flavour: is the peer radio on and its SDM identity right? " +
+                              "internet flavour: is the relay reachable and the PIN correct?)");
+            return 1;
         }
     }
 

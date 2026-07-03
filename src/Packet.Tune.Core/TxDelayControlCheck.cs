@@ -35,7 +35,11 @@ public sealed record TxDelayControlResult(bool UnderSoftwareControl, bool UsedRe
 /// </list>
 /// <para>The NinoTNC applies a changed TXDELAY on the SECOND frame after the
 /// change, so each test point transmits a settling frame first and discards
-/// it. <b>Run this with the TNC in a known-good mode</b>: a fresh firmware
+/// it. The echo-timing path measures three frames per test point and keeps
+/// the MINIMUM elapsed — the TNC's CSMA adds a random per-transmission
+/// deferral that a single sample can't distinguish from a pot offset
+/// (bench-observed: up to ~0.5 s of jitter on a quiet channel).</para>
+/// <para><b>Run this with the TNC in a known-good mode</b>: a fresh firmware
 /// flash boots mode 0 (9600 GFSK — dead on narrow channels), where the
 /// timing measurement produces a false "pot override" verdict; callers
 /// should SETHW a sane mode (6 is the default in the CLI) before invoking.</para>
@@ -44,6 +48,10 @@ public static class TxDelayControlCheck
 {
     /// <summary>Commanded TXDELAY test points, in KISS 10 ms units.</summary>
     private static readonly byte[] TestPointsTenMs = [20, 50];
+
+    /// <summary>Measured frames per test point — the minimum elapsed wins
+    /// (strips the TNC's random CSMA deferral).</summary>
+    private const int SamplesPerPoint = 3;
 
     private sealed record TestPoint(int CommandedMs, double? PreambleS, long? Words, TimeSpan EchoElapsed);
 
@@ -66,6 +74,42 @@ public static class TxDelayControlCheck
         ArgumentNullException.ThrowIfNull(tnc);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(bitRateHz);
 
+        // Pin the CSMA parameters for the measurement: with the default
+        // p-persistence the TNC defers each transmission a random number of
+        // ~100 ms slots, which swamps the 300 ms TXDELAY step under test
+        // (bench-observed as false "pot override" verdicts). p=255 +
+        // slottime 0 keys deterministically on a quiet channel.
+        await tnc.SetPersistenceAsync(255, cancellationToken).ConfigureAwait(false);
+        await tnc.SetSlotTimeAsync(0, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await MeasureAsync(tnc, source, bitRateHz, log, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Restore polite channel-access defaults (KISS has no read-back,
+            // so "restore" means the conventional p=63 / slottime 10).
+            try
+            {
+                await tnc.SetPersistenceAsync(63, CancellationToken.None).ConfigureAwait(false);
+                await tnc.SetSlotTimeAsync(10, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+    }
+
+    private static async Task<TxDelayControlResult> MeasureAsync(
+        NinoTncSerialPort tnc,
+        Callsign source,
+        int bitRateHz,
+        Action<string>? log,
+        CancellationToken cancellationToken)
+    {
         var points = new List<TestPoint>();
         foreach (byte tenMs in TestPointsTenMs)
         {
@@ -81,18 +125,37 @@ public static class TxDelayControlCheck
                 .ConfigureAwait(false);
 
             var before = await tnc.GetAllAsync(null, cancellationToken).ConfigureAwait(false);
-            var completion = await tnc
-                .SendFrameWithAckAsync(ProbeFrame(source, 2), TimeSpan.FromSeconds(20), null, cancellationToken)
-                .ConfigureAwait(false);
+            TimeSpan best = TimeSpan.MaxValue;
+            for (int sample = 0; sample < SamplesPerPoint; sample++)
+            {
+                // Let the transmitter unkey between samples: back-to-back
+                // sends chain into ONE keying train with a single preamble
+                // (bench-observed: chained frames echo in a constant ~430 ms
+                // regardless of TXDELAY), which would measure nothing.
+                await Task.Delay(750, cancellationToken).ConfigureAwait(false);
+
+                var completion = await tnc
+                    .SendFrameWithAckAsync(ProbeFrame(source, 2 + sample), TimeSpan.FromSeconds(20), null, cancellationToken)
+                    .ConfigureAwait(false);
+                if (completion.Elapsed < best)
+                {
+                    best = completion.Elapsed;
+                }
+                log?.Invoke(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"  sample {sample + 1}/{SamplesPerPoint}: ACKMODE echo after {completion.Elapsed.TotalMilliseconds:0} ms"));
+            }
             await Task.Delay(250, cancellationToken).ConfigureAwait(false);
             var after = await tnc.GetAllAsync(null, cancellationToken).ConfigureAwait(false);
 
             var delta = NinoTncStatusDelta.Between(before, after);
-            points.Add(new TestPoint(commandedMs, delta.PreambleSeconds(bitRateHz), delta.PreambleWordCount, completion.Elapsed));
+            long? wordsPerFrame = delta.PreambleWordCount is { } w ? w / SamplesPerPoint : null;
+            double? preambleS = wordsPerFrame is { } wpf ? wpf * 16.0 / bitRateHz : null;
+            points.Add(new TestPoint(commandedMs, preambleS, wordsPerFrame, best));
             log?.Invoke(string.Create(
                 CultureInfo.InvariantCulture,
-                $"  frame 2: reg-0B delta {delta.PreambleWordCount?.ToString(CultureInfo.InvariantCulture) ?? "?"} words " +
-                $"({FmtS(delta.PreambleSeconds(bitRateHz))}), ACKMODE echo after {completion.Elapsed.TotalMilliseconds:0} ms"));
+                $"  reg-0B delta {delta.PreambleWordCount?.ToString(CultureInfo.InvariantCulture) ?? "?"} words over {SamplesPerPoint} frames " +
+                $"({FmtS(preambleS)}/frame), best echo {best.TotalMilliseconds:0} ms"));
         }
 
         return Verdict(points);

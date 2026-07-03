@@ -31,6 +31,15 @@ public sealed record TuningSessionOptions
 {
     /// <summary>Frames per burst (kept short — every burst is airtime). Default 5.</summary>
     public int BurstFrames { get; init; } = 5;
+
+    /// <summary>
+    /// Tuned-side wait between receiving <c>RQ</c> and keying the burst.
+    /// Over the SDM link the same radio that just received the <c>RQ</c>
+    /// still has its auto-acknowledgement to transmit — keying the burst
+    /// immediately pre-empts it and the meter sees a false "not delivered"
+    /// (bench-observed). Default 2.5 s.
+    /// </summary>
+    public TimeSpan PreBurstDelay { get; init; } = TimeSpan.FromSeconds(2.5);
 }
 
 /// <summary>
@@ -103,10 +112,22 @@ public static class TuningSession
                             CultureInfo.InvariantCulture,
                             $"meter: tuned end ready — requesting burst {round} ({opts.BurstFrames} frames)"))
                             .ConfigureAwait(false);
-                        await link.SendAsync(
-                            new TuningTelegram(seq++, TuningVerb.BurstRequest,
-                                opts.BurstFrames.ToString(CultureInfo.InvariantCulture)),
-                            cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            await link.SendAsync(
+                                new TuningTelegram(seq++, TuningVerb.BurstRequest,
+                                    opts.BurstFrames.ToString(CultureInfo.InvariantCulture)),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (TuningLinkException ex)
+                        {
+                            // Soft failure: the request may well have been
+                            // delivered with only its receipt lost (the burst
+                            // itself can pre-empt the ack) — measure anyway.
+                            await output.WriteLineAsync(
+                                $"meter: RQ delivery unconfirmed ({ex.Message}) — opening the measurement window anyway")
+                                .ConfigureAwait(false);
+                        }
 
                         var report = await meter.MeasureBurstAsync(opts.BurstFrames, cancellationToken)
                             .ConfigureAwait(false);
@@ -117,12 +138,21 @@ public static class TuningSession
                             $"meter: burst {round}: {report.ToArgs()} → {DeviationAdvisor.ToWire(advice)}"))
                             .ConfigureAwait(false);
 
-                        await link.SendAsync(
-                            new TuningTelegram(seq++, TuningVerb.Measurement, report.ToArgs()),
-                            cancellationToken).ConfigureAwait(false);
-                        await link.SendAsync(
-                            new TuningTelegram(seq++, TuningVerb.Advice, DeviationAdvisor.ToWire(advice)),
-                            cancellationToken).ConfigureAwait(false);
+                        try
+                        {
+                            await link.SendAsync(
+                                new TuningTelegram(seq++, TuningVerb.Measurement, report.ToArgs()),
+                                cancellationToken).ConfigureAwait(false);
+                            await link.SendAsync(
+                                new TuningTelegram(seq++, TuningVerb.Advice, DeviationAdvisor.ToWire(advice)),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (TuningLinkException ex)
+                        {
+                            await output.WriteLineAsync(
+                                $"meter: could not deliver the round's results ({ex.Message}) — waiting for the tuned end to re-signal ready")
+                                .ConfigureAwait(false);
+                        }
                         break;
 
                     case TuningVerb.Hello:
@@ -174,7 +204,7 @@ public static class TuningSession
         ArgumentNullException.ThrowIfNull(stimulus);
         ArgumentNullException.ThrowIfNull(prompt);
         ArgumentNullException.ThrowIfNull(output);
-        _ = options; // burst size is the meter's choice (RQ argument)
+        var opts = options ?? new TuningSessionOptions(); // burst size itself is the meter's choice (RQ argument)
         int seq = 0;
         var trend = new List<(MeterReport Report, TuningAdvice? Advice)>();
 
@@ -197,6 +227,10 @@ public static class TuningSession
                         int frames = int.TryParse(telegram.Args, NumberStyles.None, CultureInfo.InvariantCulture, out int n)
                             ? n
                             : 5;
+                        // Leave the channel clear for the coordination radio's
+                        // SDM auto-ack before keying the burst (see
+                        // TuningSessionOptions.PreBurstDelay).
+                        await Task.Delay(opts.PreBurstDelay, cancellationToken).ConfigureAwait(false);
                         await output.WriteLineAsync(string.Create(
                             CultureInfo.InvariantCulture, $"tuned: transmitting {frames}-frame burst..."))
                             .ConfigureAwait(false);
@@ -229,13 +263,45 @@ public static class TuningSession
                         bool again = await prompt.ContinueAsync(cancellationToken).ConfigureAwait(false);
                         if (!again)
                         {
-                            await link.SendAsync(new TuningTelegram(seq++, TuningVerb.Bye, string.Empty), cancellationToken)
-                                .ConfigureAwait(false);
-                            await output.WriteLineAsync("tuned: BY sent — session over").ConfigureAwait(false);
+                            try
+                            {
+                                await link.SendAsync(new TuningTelegram(seq++, TuningVerb.Bye, string.Empty), cancellationToken)
+                                    .ConfigureAwait(false);
+                                await output.WriteLineAsync("tuned: BY sent — session over").ConfigureAwait(false);
+                            }
+                            catch (TuningLinkException)
+                            {
+                                await output.WriteLineAsync("tuned: BY undelivered — finishing anyway").ConfigureAwait(false);
+                            }
                             return 0;
                         }
-                        await link.SendAsync(new TuningTelegram(seq++, TuningVerb.Hello, TunedRole), cancellationToken)
-                            .ConfigureAwait(false);
+                        // Ready for the next round. A lost delivery here would
+                        // stall the session, so one failed signal gets one
+                        // retry — of the SAME telegram (same seq), so the
+                        // receiver's dedupe makes a double delivery harmless.
+                        var ready = new TuningTelegram(seq++, TuningVerb.Hello, TunedRole);
+                        for (int attempt = 1; ; attempt++)
+                        {
+                            try
+                            {
+                                await link.SendAsync(ready, cancellationToken).ConfigureAwait(false);
+                                break;
+                            }
+                            catch (TuningLinkException ex) when (attempt == 1)
+                            {
+                                await output.WriteLineAsync(
+                                    $"tuned: ready signal unconfirmed ({ex.Message}) — retrying once")
+                                    .ConfigureAwait(false);
+                                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
+                            }
+                            catch (TuningLinkException ex)
+                            {
+                                await output.WriteLineAsync(
+                                    $"tuned: ready signal still unconfirmed ({ex.Message}) — the meter may act on it anyway; Ctrl+C and restart if the session stalls")
+                                    .ConfigureAwait(false);
+                                break;
+                            }
+                        }
                         break;
 
                     case TuningVerb.Bye:
