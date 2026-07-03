@@ -837,6 +837,61 @@ revert telegram (counting is passive), and the settle-echo wait dropped 15 s →
 echo either arrives within ~1 frame-time + TXDELAY or never). A regression test pins the
 ordering (`count:` before `mode:` in the station-call trace).
 
+## Radio-health trending (2026-07-03, session 9): `TaitRadioHealthMonitor` + `packet-tune radio-health`
+
+Backlog item 3 (periodic radio-health sampling) shipped as a library seam plus a CLI, built on
+the Tait service-doc research (sources below): **`Packet.Radio.Tait.TaitRadioHealthMonitor`**
+samples on an interval — averaged RSSI (CCTM 063, skipped while transmitting: own-RSSI reads
+the muted receiver), PA temperature (CCTM 047), and the raw forward/reverse power detectors
+(CCTM 318/319) — classifying the detector readings by the radio's own PTT reports
+(`TransmitterStateChanged`): idle readings feed rolling **idle-offset medians**, transmit
+readings become **offset-corrected fwd/rev + a reverse/forward ratio**, and a keying edge
+triggers an immediate extra sample (150 ms PA settle) so short keyings are captured between
+ticks. Samples surface as typed events plus a rolling min/median/max window summary
+(`Summarize()`); a mid-sample keying edge discards that tick's detector readings rather than
+corrupt either pool. Library-only for now — node-story wiring is a later, optional element.
+
+**Why the ratio is a TREND, never VSWR** (the service-doc answer to session 2's shrug): CCTM
+318/319 are the raw DC millivolts of the detector diodes on the directional coupler; detector
+voltage goes as √P (the calibration DB stores "Power Level Sqrt" constants); Tait never
+computes VSWR anywhere in its service tooling — the reverse detector exists for mismatch
+*protection* (foldback), and the go/no-go is specced **only at High power** (25 W bodies, B1:
+fwd 1100–2000 mV, rev < 500 mV into a good 50 Ω load; no per-level table exists). At low power
+the reverse reading is dominated by detector-diode knee/offset and coupler directivity floor —
+so the monitor subtracts idle offsets and exposes the corrected ratio strictly as a
+per-station trend; consumers alert on **change**. Sources (all cited in the XML docs):
+[TM8100/TM8200 Service Manual MMA-00005-05](https://www.repeater-builder.com/tait/pdf/tait-tm8100-tm8200-service-manual.pdf)
+(CCTM chapter, High-power go/no-go tables),
+[TM8000 CCDI Protocol Manual MMA-00038-02](https://manuals.repeater-builder.com/2007/TM8000/TM8000%20CCDI%20Protocol%20Manual/TM8000%20CCDI%20Protocol%20Manual%20MMA-00038-02.pdf)
+(QUERY-5 relays exactly CCTM 047/063/064/318/319; mirrored at
+[wiki.oarc.uk](https://wiki.oarc.uk/_media/radios:tm8100-protocol-manual.pdf)),
+[TM8100 Calibration Application User's Manual](https://manuals.repeater-builder.com/2007/TM8000/TM8100%20Calibration_Application_User's_Manual/TM8100_Calibration_Application_User's_Manual.pdf)
+(Coupler Cal Power, √-power constants),
+[TN-1038b](https://manuals.repeater-builder.com/2007/TECHNOTE/TM8000/TN-1038b_SR_TM8100%20Firmware%20v2.09%20and%20Programming%20Applicatio.pdf)
+(318/319/064 wire examples, RSSI range),
+[TN-1011](https://manuals.repeater-builder.com/2007/TECHNOTE/TM8000/TN-1011_Terminal_Application.pdf)
+(fullest public CCTM catalogue).
+
+**CLI**: `packet-tune radio-health <ccdi> [--interval 10] [--duration 60] [--key-once [s]]` —
+live table + summary; `--key-once` keys ONCE via FUNCTION 9 at the channel's programmed power,
+hard-capped at 3 s. Exercised on the rig (TM8110 s/n 19925328, `/dev/ttyUSB2`, radios idle on
+channel 0), one 2 s keyed sample:
+
+```
+  time      tx   rssi dBm   pa °C   pa mV   fwd mV   rev mV   fwd-idle   rev-idle   rev/fwd
+  11:33:48  --     -128.4      27     471        0        0          ·          ·         ·
+  11:33:50  TX          ·      28     469      388      164        388        164     0.423
+  11:33:53  --     -128.0      28     469        0        0          ·          ·         ·
+  11:33:58  --     -127.9      27     471       15        0          ·          ·         ·
+```
+
+Numbers line up with everything previously measured: idle RSSI at the −128 dBm squelched
+floor, PA 27–28 °C / ~470 mV, keyed VeryLow fwd/rev 388/164 mV (session 2 read 388/172), and
+the sporadic 15 mV idle forward blip (session 1's "15/0 mV idle") — the reading the idle-offset
+subtraction exists for. Rig left unkeyed, both radios verified channel 0, TNCs untouched
+(mode 6). Tests: 7 new scripted-`FakeSerialIo` driver tests (offset bookkeeping, keyed-edge
+sample, mid-sample-keying discard, ratio floor, failure resilience, window bounds/summary).
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate

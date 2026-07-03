@@ -13,7 +13,10 @@ What it surfaces that a bare KISS modem cannot:
 - **transmitter keying** (`SetTransmitterAsync`) — CCDI-forced TX ignores the radio's TX timer,
   so the driver unkeys on dispose if you left it keyed through it;
 - **telemetry** — PA temperature (CCTM 047), forward/reverse power detector readings
-  (CCTM 318/319, a VSWR/antenna-health proxy while transmitting);
+  (CCTM 318/319, an antenna-health proxy while transmitting), and a periodic
+  **`TaitRadioHealthMonitor`** that trends them: idle-offset-corrected fwd/rev + ratio on
+  transmit samples (a TREND, never VSWR — the detectors are raw √P-scaled millivolts, per
+  Tait's service docs), typed sample events + rolling min/median/max summaries;
 - **identity** — model/tier, CCDI version, serial number, firmware/hardware version inventory;
 - an **escape hatch** (`TransactRawAsync`) for CCDI commands the driver doesn't model yet —
   framing and checksumming handled, responses returned decoded.
