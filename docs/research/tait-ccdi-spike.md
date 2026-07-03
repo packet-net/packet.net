@@ -353,6 +353,118 @@ there; channel 1 = wide is for the 9600 retest):
   dramatic for tone stimuli. The advice-line wording deliberately reports
   both without treating either as a verdict.
 
+## Wide-channel IL2P+CRC survey (2026-07-03, session 6) — §5.Y item 4 for this rig
+
+The radios' new two-channel programming (**channel 0 = narrow 12.5 kHz, channel 1 = wide
+25 kHz**) got its first scripted workout: the new `packet-tune mode-survey` command (plus the
+`set-mode` / `radio-channel` primitives) swept **every IL2P+CRC catalog mode** (2, 4, 5, 7, 8,
+9, 10, 11, 14 — Tom's directive: name contains `IL2P+CRC` exactly; plain-IL2P mode 13 and the
+legacy AX.25 modes excluded) across both channels, 5 probe frames per direction per cell, on
+the usual rig (both TNCs firmware 3.41, SETHW +16 RAM-only + settle frame per mode change,
+beacons off, link −90 dBm / ~38 dB SNR). Per cell: decode count, mean send→decode latency,
+busy-gated CCDI RSSI at the receiver, and the receiver's GETALL IL2P counter deltas
+(`IL2PRxPkts` / `IL2PRxUnCr` — both present in 3.41's labelled reply). Raw log + JSON in
+`artifacts/hardware-probe/20260703-il2pc-survey/` (untracked); the full table:
+
+| Ch | Mode | Name | Dir | Decoded | Mean latency | RSSI @ RX | IL2P rx Δ | IL2P uncorr Δ | Verdict |
+|---:|-----:|------|-----|--------:|-------------:|----------:|----------:|--------------:|---------|
+| 0 | 2 | 9600 GFSK IL2P+CRC | A→B | 0/5 | n/a | -90.0 dBm | 0 | 0 | dead |
+| 0 | 2 | 9600 GFSK IL2P+CRC | B→A | 0/5 | n/a | -90.0 dBm | 0 | 0 | dead |
+| 0 | 4 | 4800 GFSK IL2P+CRC | A→B | 0/5 | n/a | -90.2 dBm | 0 | 0 | dead |
+| 0 | 4 | 4800 GFSK IL2P+CRC | B→A | 0/5 | n/a | -90.0 dBm | 0 | 0 | dead |
+| 0 | 5 | 3600 QPSK IL2P+CRC | A→B | 5/5 | 833 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 5 | 3600 QPSK IL2P+CRC | B→A | 5/5 | 837 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 7 | 1200 AFSK IL2P+CRC | A→B | 5/5 | 1251 ms | -90.2 dBm | 5 | 0 | solid |
+| 0 | 7 | 1200 AFSK IL2P+CRC | B→A | 5/5 | 1227 ms | -89.8 dBm | 5 | 0 | solid |
+| 0 | 8 | 300 BPSK IL2P+CRC | A→B | 5/5 | 3168 ms | -89.7 dBm | 5 | 0 | solid |
+| 0 | 8 | 300 BPSK IL2P+CRC | B→A | 5/5 | 3202 ms | -89.7 dBm | 5 | 0 | solid |
+| 0 | 9 | 600 QPSK IL2P+CRC | A→B | 4/5 | 1950 ms | -89.6 dBm | 4 | 0 | MARGINAL |
+| 0 | 9 | 600 QPSK IL2P+CRC | B→A | 5/5 | 1925 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 10 | 1200 BPSK IL2P+CRC | A→B | 5/5 | 1223 ms | -89.6 dBm | 5 | 0 | solid |
+| 0 | 10 | 1200 BPSK IL2P+CRC | B→A | 5/5 | 1230 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 11 | 2400 QPSK IL2P+CRC | A→B | 4/5 | 950 ms | -89.6 dBm | 4 | 0 | MARGINAL |
+| 0 | 11 | 2400 QPSK IL2P+CRC | B→A | 5/5 | 917 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 14 | 300 AFSKPLL IL2P+CRC | A→B | 3/5 | 3136 ms | -90.0 dBm | 3 | 0 | MARGINAL |
+| 0 | 14 | 300 AFSKPLL IL2P+CRC | B→A | 5/5 | 3136 ms | -89.8 dBm | 5 | 0 | solid |
+| 1 | 2 | 9600 GFSK IL2P+CRC | A→B | 0/5 | n/a | -89.4 dBm | 0 | 0 | dead |
+| 1 | 2 | 9600 GFSK IL2P+CRC | B→A | 0/5 | n/a | -89.5 dBm | 0 | 0 | dead |
+| 1 | 4 | 4800 GFSK IL2P+CRC | A→B | 0/5 | n/a | -89.5 dBm | 0 | 0 | dead |
+| 1 | 4 | 4800 GFSK IL2P+CRC | B→A | 0/5 | n/a | -89.4 dBm | 0 | 0 | dead |
+| 1 | 5 | 3600 QPSK IL2P+CRC | A→B | 5/5 | 836 ms | -89.3 dBm | 5 | 0 | solid |
+| 1 | 5 | 3600 QPSK IL2P+CRC | B→A | 5/5 | 832 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 7 | 1200 AFSK IL2P+CRC | A→B | 5/5 | 1226 ms | -89.6 dBm | 5 | 0 | solid |
+| 1 | 7 | 1200 AFSK IL2P+CRC | B→A | 5/5 | 1223 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 8 | 300 BPSK IL2P+CRC | A→B | 5/5 | 3231 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 8 | 300 BPSK IL2P+CRC | B→A | 5/5 | 3221 ms | -89.5 dBm | 5 | 0 | solid |
+| 1 | 9 | 600 QPSK IL2P+CRC | A→B | 4/5 | 1942 ms | -89.4 dBm | 4 | 0 | MARGINAL |
+| 1 | 9 | 600 QPSK IL2P+CRC | B→A | 5/5 | 1931 ms | -89.5 dBm | 5 | 0 | solid |
+| 1 | 10 | 1200 BPSK IL2P+CRC | A→B | 5/5 | 1226 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 10 | 1200 BPSK IL2P+CRC | B→A | 5/5 | 1228 ms | -89.5 dBm | 5 | 0 | solid |
+| 1 | 11 | 2400 QPSK IL2P+CRC | A→B | 5/5 | 919 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 11 | 2400 QPSK IL2P+CRC | B→A | 5/5 | 910 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 14 | 300 AFSKPLL IL2P+CRC | A→B | 5/5 | 3252 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 14 | 300 AFSKPLL IL2P+CRC | B→A | 5/5 | 3137 ms | -89.4 dBm | 5 | 0 | solid |
+
+Findings:
+
+1. **The wide channel did NOT bring up the GFSK modes.** 9600 GFSK (mode 2) and 4800 GFSK
+   (mode 4) are dead on **both** widths — with carrier confirmed at the receiver every burst
+   (−89.x dBm busy-gated) and `IL2PRxUnCr` Δ0, i.e. the receiving modem never even achieved
+   IL2P sync (these are not FEC-exhausted near-misses). Same shape as the session-2 CCR
+   bandwidth experiment. With QPSK at 3600 solid on the *narrow* channel, occupied bandwidth
+   alone no longer explains it: the untuned TX-DEV pots (midpoint, uncalibrated) are now the
+   prime suspect for the deviation-critical GFSK direct-FSK path — set levels properly
+   (deviation-tuning session) and re-survey before declaring 9600 dead on this hardware; radio
+   channel-programming details (data deviation scaling on the wide channel) remain the backup
+   suspect.
+2. **The wide channel DID stabilise the marginals.** Mode 11 (2400 QPSK) A→B went 4/5
+   MARGINAL → 5/5 solid; mode 14 (300 AFSKPLL) A→B went 3/5 MARGINAL → 5/5 solid. Mode 9
+   (600 QPSK) A→B stayed 4/5 on both widths.
+3. **Every marginal cell is A→B** (TNC A transmitting); B→A was solid in all 18 cells. A
+   directional deviation/level asymmetry at TNC A's TX pot — exactly the cell the deviation
+   tuning assistant exists for; run it against TNC A next bench session.
+4. **The IL2P GETALL counters are wired and truthful**: `IL2PRxPkts` Δ matched the decoded
+   count in every cell; `IL2PRxUnCr` stayed 0 across all 36 cells (losses were sync misses,
+   not uncorrectable frames).
+5. Mean latencies scale with bit rate exactly as expected (≈0.83 s at 3600 baud → ≈3.2 s at
+   300 baud for the 40-byte-info probe, TXDELAY + CSMA included) — a usable per-mode
+   round-trip budget table for the node's future mode selection.
+
+**GO_TO_CHANNEL live behaviour** (first hardware use, TM8110 / CCDI 03.02): works cleanly.
+The command prompt-completes, the radio then emits an **unsolicited PROGRESS 21**
+(user-initiated channel change, para = kind+channel, e.g. `01` = single-channel 1) on the
+retune itself, and the solicited FUNCTION 0/5/2 verify reports the new channel immediately —
+every switch (0→1, 1→0, and the same-channel no-ops) verified first try; the radios never
+split. The survey command still verifies after every switch and, if the radios ever end up
+split, recovers by commanding both to channel 0 before aborting.
+
+Tooling quirks observed (all tolerated by the command, worth knowing): the **settle frame's
+ACKMODE TX-completion echo is sporadically absent** right after SETHW (mostly TNC B; the
+frame itself still keys — the tool logs and continues); the **very first ACKMODE send after
+port open** may not echo at all; and on 3.41 **mode 14 reports firmware mode byte `0x90`**,
+which the v3.44-locked `NinoTncCatalog.FirmwareByteToMode` doesn't know (3.44 reports
+`0x23`) — the GETALL verify prints "unrecognised firmware byte" while the mode is in fact
+engaged (the 300 AFSKPLL traffic proves it). A 3.41 column for the firmware-byte table is a
+small follow-up if 3.41 stays the campaign firmware.
+
+### SDM delivery on the wide channel (deliverable-3 conditional: not met)
+
+Mode 2 did **not** decode on channel 1, so the planned mode-2 deviation-sdm baseline (the
+first deviation-sensitive-mode trend capture) did not run as specified. Instead, a scripted
+two-round `deviation-sdm` session (meter ACM0/USB1 ← peer PDN00001; tuned ACM1/USB0 ← peer
+PDN00002) ran **on channel 1 with both TNCs in mode 2 anyway**, strictly as (a) the
+SDM-coordination-on-wide confirmation and (b) an honest dead-link capture. Result: **SDM
+delivery works on the wide channel exactly as on narrow** — all 9 telegrams
+(HI / RQ / MS / AD ×2 rounds / BY) delivered on send attempt 1/3 with over-air receipts
+acknowledged, zero retries; MS carried the level field within the SDM budget
+(`V1|1|MS|0/5|c0|r-89.5|l-48.2`). The assistant read the dead 9600 link correctly: 0/5
+decode both bursts, `AD:UP` both rounds, CCDI RSSI −89.5 dBm (carrier present), and — a
+nice contrast with the session-5 AFSK finding — the *undecodable* 9600 GFSK carrier
+**quiets** the meter's RX audio like a tone does (idle −35.8 dB → −48.2 / −44.9 dB during
+bursts = 12.4 / 9.2 dB quieting), so the GETRSSI level field is live and useful in exactly
+the deviation-sensitive regime it was built for. The real mode-2 baseline moves to after a
+TX-level calibration session brings mode 2 up.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate
@@ -366,7 +478,10 @@ there; channel 1 = wide is for the 9600 retest):
    abstraction; then close OQ-011.
 5. **GO_TO_CHANNEL / CCR** modelling for frequency-agile operation (§5.10's QSY workstream) —
    next bench session, since it risks splitting the two radios onto different channels.
-6. **§5.Y items 3–6** (SNR-vs-level calibration, mode-by-SNR survey, 1000-iteration soak,
-   mistune degradation) — the rig and the tooling are now in place to script them.
+6. **§5.Y items 3, 5–6** (SNR-vs-level calibration, 1000-iteration soak, mistune
+   degradation) — the rig and the tooling are now in place to script them. Item 4's
+   mode survey is done for this rig (see §Wide-channel IL2P+CRC survey); the natural
+   follow-on is re-running it after a TX-DEV calibration session (the A→B marginals and
+   the dead GFSK modes are the level-sensitive cells).
 7. Housekeeping: `docs/releasing.md`'s "six published packages" list is stale against the
    `publish-libs.yml` matrix (now 13); reconcile on the next release pass.
