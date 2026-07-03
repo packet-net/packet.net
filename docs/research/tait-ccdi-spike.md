@@ -1089,6 +1089,38 @@ complete over-air radio-reconfiguration primitive (QSY a remote radio whose seri
 own) — exactly why the send path stays `Unsafe`-named + `[Experimental]` until the
 consent/capability story (follow-up 12) exists.
 
+#### Security assessment — what stops anyone driving anyone else's radio (bench-verified 2026-07-03)
+
+The threat-model question "what stops this being used maliciously over the air" resolves to one
+dominant gate plus a total absence of authentication behind it:
+
+- **The target must already be in CCR mode — verified immune otherwise.** A GFI 2/SFI 03 SDM is
+  handed to the CCR interpreter *only* on a radio already in CCR; CCR entry is a local CCDI
+  FUNCTION command with no SDM→FUNCTION path. Tested directly: target `PDN00001` kept in normal
+  Command mode, sent a CCR-over-SDM volume command from `PDN00002`. The SDM arrived over the air
+  (target logged `p0205`/`p0219`/`p0206` — carrier + valid FFSK data received), but was
+  **silently discarded**: no CCR ack, no CCR interpretation, and it was *not even buffered as
+  text* (SDM buffer read back empty `s002D`) — the SFI 03 "for CCR" marker with no CCR module
+  active means the frame is dropped entirely, not stored. Target remained a normal Command-mode
+  radio. **A stock, not-already-CCR radio is immune.** So the exposed surface is only radios
+  deliberately deployed as headless CCR units, and only while they are in CCR.
+- **Within that window there is no authentication of any kind.** The 8-char Unit Data Identity
+  is a routing address, not a credential, and per-character `*` wildcards (`********`) broadcast;
+  the CCR checksum is integrity-only. Anyone able to place a well-formed SDM on the frequency, in
+  RF range, with a compatible radio, can drive a radio that is in CCR with SDM reception enabled.
+- **But it is transient control, not "reprogramming".** CCR never writes flash (manual, explicit);
+  every change is lost on power-cycle or the exit soft-reset, and frequency/power are bounded to
+  the radio's programmed band and hardware limits (out-of-band → NAK). You cannot brick a radio,
+  alter its stored channels, or push it outside its own capabilities — a reboot fully restores it.
+
+Residual: this verifies the *documented* SDM path cannot force CCR entry; it does not exhaustively
+fuzz every SDM/RING/selcall variant for an undocumented backdoor (a deeper adversarial exercise if
+belt-and-braces assurance is ever wanted before shipping). Design consequence for PDN: CCR-over-SDM
+is safe for controlling *your own* deliberately-CCR'd radios and must never be default-on; if ever
+exposed it needs an application-layer auth wrapper (shared-key HMAC over the CCR payload inside the
+SDM), because the transport provides none and the receiver cannot distinguish a legitimate
+controller from an attacker. This is the substance of follow-up 12.
+
 ### Not covered
 
 - **THSD Transparent mode**: untestable on this rig — the radios' channel programming has no
@@ -1137,9 +1169,16 @@ consent/capability story (follow-up 12) exists.
     6/12 on its responder, ~1/4 on the shorter runs; both TNCs, 3.41) — worth a look at
     what differs (timing relative to SETHW? echo swallowed during the mode transition?)
     before trusting the echo for anything more than logging.
-12. **CCR-over-SDM consent/capability story** (session 11): the send path exists but stays
-    `[Experimental]`/`Unsafe`-prefixed — a CCR command over the air is remote radio control
-    with no consent handshake in the protocol. Before anything beyond bench tooling uses it:
-    a capability/authorisation gate (peer allow-list? challenge over the side channel?) and
-    a decision on which CCR commands are ever permitted remotely (never 'P' power, never
-    'R'/'T' frequency without explicit authority).
+12. **CCR-over-SDM consent/capability story** (session 11, security-assessed session 12): the
+    send path exists but stays `[Experimental]`/`Unsafe`-prefixed — a CCR command over the air
+    is remote radio control with no authentication in the protocol. The threat model is now
+    bench-verified (see the security-assessment subsection above): a not-already-CCR radio is
+    immune (SFI 03 SDM silently discarded, not even buffered), so the exposed surface is only
+    deliberately-CCR'd headless units — but within that window there is no authentication and
+    wildcards broadcast, though control is transient (no flash write, reboot restores). Before
+    anything beyond bench tooling uses it: an **application-layer auth wrapper** (shared-key
+    HMAC over the CCR payload inside the SDM — the transport gives none), a capability/peer
+    allow-list gate, and a decision on which CCR commands are ever permitted remotely (never
+    'P' power, never 'R'/'T' frequency without explicit authority). Open harder-assurance item:
+    exhaustively fuzz SDM/RING/selcall variants for any undocumented path that forces CCR entry
+    (the one thing the session-12 test did not rule out).
