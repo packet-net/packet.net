@@ -37,6 +37,22 @@ public class NinoTncCommandsTests
     }
 
     [Fact]
+    public void Bootloader_Entry_Wire_Frame_Is_Cmd_0x0D_Payload_0x37()
+    {
+        // The exact bytes flashtnc.py sends to reboot the TNC into the
+        // dsPIC bootloader — hardware-validated wire form.
+        NinoTncCommands.BuildBootloaderEntryKissFrame().Should().Equal(Fend, 0x0D, 0x37, Fend);
+    }
+
+    [Fact]
+    public void Bare_GetAll_Wire_Frame_Is_Cmd_0x0B_With_No_Payload()
+    {
+        // The payload-less GETALL flashtnc.py uses as its fill-and-flush
+        // probe before entering the bootloader.
+        NinoTncCommands.BuildBareGetAllKissFrame().Should().Equal(Fend, 0x0B, Fend);
+    }
+
+    [Fact]
     public void IsReply_Requires_The_0xE0_Command_Byte()
     {
         // 0xE0 decodes as port 14 + command 0x0 through the generic decoder.

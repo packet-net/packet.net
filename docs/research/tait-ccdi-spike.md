@@ -892,6 +892,84 @@ subtraction exists for. Rig left unkeyed, both radios verified channel 0, TNCs u
 (mode 6). Tests: 7 new scripted-`FakeSerialIo` driver tests (offset bookkeeping, keyed-edge
 sample, mid-sample-keying discard, ratio floor, failure resilience, window bounds/summary).
 
+## flash-tnc (2026-07-03, session 10): the native C# firmware flasher — OQ-010 closed
+
+Backlog item 2 / plan OQ-010: `BootloaderNinoTncFirmwareFlasher` now implements the
+`INinoTncFirmwareFlasher` seam in `Packet.Kiss.NinoTnc.Firmware` — a native C# port of the
+dsPIC bootloader protocol upstream `flashtnc.py` speaks, kept byte-identical with the wire
+sequence this rig had already validated with seven successful upstream flashes (3.41→3.44,
+3.44→3.43→3.42→3.41 version-mapping runs, restores). CLI: **`packet-tune flash-tnc
+<tncPort> <hexFile> [--yes]`**.
+
+### The protocol as implemented (and where it deviates from flashtnc.py, deliberately)
+
+1. Open 57 600 8N1, no flow control, 5 s read timeout (DTR/RTS asserted, pyserial-style).
+2. Classify the hex target chip from the 7 known first-bootloader lines **before touching
+   the modem** (`NinoTncFirmwareHexImage`; EP256 vs EP512). Deviations from upstream, all
+   stricter: the image must be printable ASCII, every line must be `':'` + hex digits, and
+   it must end with the `:00000001FF` EOF record (without it the bootloader never sends
+   `'Z'` and the modem would strand mid-flash — upstream doesn't pre-check this).
+3. Drain RX until a full 5 s silent gap; abort `SerialBufferNeverQuiet` after 15 s of
+   chatter (busy radio channel).
+4. Stranded-bootloader probe: `'R'` → `'K'` means a previous flash was interrupted; skip
+   entry and resume.
+5. Else 3× payload-less GETALL (`C0 0B C0`, 0.5 s apart, output discarded), drain again,
+   then bootloader entry `C0 0D 37 C0` (now `NinoTncCommands.BuildBootloaderEntryKissFrame`)
+   and await `'K'` ≤ 15 s.
+6. `'V'` → one-letter bootloader version; **lowercase = EP256, uppercase = EP512**;
+   mismatch with the hex target → `'R'` + abort (`ChipMismatch`), nothing written.
+7. Image line-by-line as ASCII, `'\n'`-terminated; the FIRST line char-by-char at
+   100 ms/char (page erase). Per line: `'K'` next, `'Z'` done, `'F'` flash fail, `'N'`
+   checksum, `'X'` invalid char. Upstream waits *indefinitely* for line replies; we use a
+   15 s per-line budget → `NoResponse`.
+8. On `'Z'` the TNC reboots into the new firmware (first boot: bootloader self-update ~2 s;
+   RAM mode cleared → boots mode 0 — the session-4 trap, so the CLI reminds and re-verifies).
+
+Design: progress per accepted line (`IProgress<NinoTncFlashProgress>`, lines/percent); rich
+terminal exceptions (`NinoTncFlashException` + `NinoTncFlashFailure`, with lines-written /
+reply byte / bootloader version / both chips); cancellation honoured between steps and lines
+— **cancelling after entry strands the bootloader by design** (documented; recoverable via
+the stranded probe on re-run; the flasher never writes `'R'` once the transfer has begun,
+the old firmware being partially erased). All timings live in one internal record
+(`NinoTncFlashTimings`) pinned to the hardware-validated defaults. 12 scripted-fake unit
+tests cover entry handshake, char-by-char first line, stranded resume, chip-mismatch and
+non-letter-version aborts (both leave `'R'` as the last write), N/F/X/silence terminal
+paths, never-quiet drain abort, invalid-image-never-opens-port, and cancel-mid-transfer →
+re-run-recovers. Catalogue wiring (`GitHubNinoTncFirmwareCatalogue` → `--latest`) left as a
+follow-up; the CLI is file-path based.
+
+### Hardware validation (SAFE variant: reflash the running firmware, zero-change outcome)
+
+TNC B `/dev/ttyACM1` (MCP2221 #0004807594), radios untouched, `/dev/ttyACM0` untouched;
+`lsof` confirmed the port free. Flashed the **same 3.41 image it was already running**
+(`N9600A-v3-41.hex`, 757 472 bytes, 17 535 lines) — full protocol exercise with a
+no-op result:
+
+```
+measure — TNC /dev/ttyACM1
+  GETVER: firmware 3.41                            ← before
+
+flash-tnc — TNC /dev/ttyACM1
+  image: N9600A-v3-41.hex (757472 bytes, 17535 lines)
+  image target chip: dsPIC33EP256GP (firmware 3.xx)
+  running firmware (GETVER): 3.41
+  flashing: 17535/17535 lines (100%)
+  flash successful: 17535/17535 lines in 193 s (bootloader 'd', dsPIC33EP256GP (firmware 3.xx))
+  post-flash GETVER: firmware 3.41                 ← after (zero-change, as intended)
+
+GETVER: 3.41                                       ← rig restore, separate KISS session
+SETHW mode 6 (+16 RAM-only) sent
+SETBCNINT 0 (beacons off) sent
+GETALL running mode: 6 (1200 AFSK AX.25)
+GETVER round trip: 3.41
+```
+
+First try, no retries needed. Bench facts worth keeping: this rig's bootloader version is
+**`'d'`** (EP256 family, newest upstream knows); transfer rate ≈ 91 lines/s ≈ 193 s for a
+full image (upstream quotes 2–4 min); the interactive-confirm path and the refuse-if-held
+`/proc/*/fd` port scan were exercised too (dry-run answered `n` → exit 1, nothing written).
+Rig left as found: both TNCs 3.41, TNC B mode 6 RAM-only, beacons off.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate

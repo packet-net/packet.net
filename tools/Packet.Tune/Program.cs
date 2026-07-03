@@ -45,6 +45,10 @@
 //                                              periodic radio-health sampling (averaged RSSI,
 //                                              PA temperature, fwd/rev power-detector trend)
 //                                              as a live table + min/median/max summary
+//   flash-tnc <tncPort> <hexFile> [--yes]      flash NinoTNC firmware (native C# bootloader
+//                                              protocol): chip-classifies the hex, refuses a
+//                                              held port, GETVERs before/after, confirms
+//                                              interactively unless --yes
 
 using Packet.Tune;
 
@@ -65,6 +69,7 @@ return args switch
     ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
     ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
     ["radio-health", var ccdi, .. var rest] => await RadioHealthCommand.Run(ccdi, rest),
+    ["flash-tnc", var tnc, var hex, .. var rest] => await FlashTncCommand.Run(tnc, hex, rest),
     _ => Usage(),
 };
 
@@ -93,6 +98,9 @@ static int Usage()
     Console.WriteLine("  radio-health <ccdiPort> [--interval s=10] [--duration s=60] [--key-once [s=2]]");
     Console.WriteLine("                               (averaged RSSI / PA temp / fwd-rev detector TREND;");
     Console.WriteLine("                                --key-once keys ONCE ≤3 s at channel power for a TX sample)");
+    Console.WriteLine("  flash-tnc <tncPort> <hexFile> [--yes]");
+    Console.WriteLine("                               (flash NinoTNC firmware — 2-4 min, DO NOT interrupt;");
+    Console.WriteLine("                                an interrupted flash is recoverable by re-running)");
     Console.WriteLine();
     Console.WriteLine("deviation-* tune the TX-DEV pot at the TUNED end: the meter end requests");
     Console.WriteLine("frame bursts, measures decode rate / IL2P FEC deltas / ADC clipping / CCDI");

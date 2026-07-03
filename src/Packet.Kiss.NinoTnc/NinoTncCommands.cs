@@ -44,6 +44,23 @@ public static class NinoTncCommands
     public const byte GetAllCommand = 0x0B;
 
     /// <summary>
+    /// KISS command code for BOOTLOADER — switch the TNC from KISS mode
+    /// into the dsPIC bootloader for a firmware flash. The payload must be
+    /// the single magic byte <see cref="BootloaderEntryMagic"/>; the
+    /// bootloader answers with a raw ASCII <c>'K'</c> (not a KISS frame —
+    /// from this moment the port speaks the bare bootloader protocol, see
+    /// <see cref="Firmware.BootloaderNinoTncFirmwareFlasher"/>).
+    /// </summary>
+    public const byte BootloaderCommand = 0x0D;
+
+    /// <summary>
+    /// The magic payload byte of <see cref="BootloaderCommand"/> — a
+    /// deliberate speed bump so a stray 0x0D command can't reboot the modem
+    /// into the bootloader.
+    /// </summary>
+    public const byte BootloaderEntryMagic = 0x37;
+
+    /// <summary>
     /// The raw KISS command byte the firmware uses for direct query replies
     /// (GETVER / GETALL / GETRSSI). Decodes as port 14 + command 0x0
     /// through a standard multi-drop KISS decoder.
@@ -79,6 +96,9 @@ public static class NinoTncCommands
     /// <summary>GETRSSI request payload.</summary>
     public static byte[] BuildGetRssiPayload() => [GetRssiSubcommand];
 
+    /// <summary>BOOTLOADER entry payload (the single magic byte <see cref="BootloaderEntryMagic"/>).</summary>
+    public static byte[] BuildBootloaderEntryPayload() => [BootloaderEntryMagic];
+
     /// <summary>Fully-encoded GETALL KISS frame, ready for the wire.</summary>
     public static byte[] BuildGetAllKissFrame(byte port = 0) =>
         KissEncoder.Encode(port, (KissCommand)GetAllCommand, BuildGetAllPayload());
@@ -98,6 +118,28 @@ public static class NinoTncCommands
     /// <summary>Fully-encoded GETRSSI KISS frame, ready for the wire.</summary>
     public static byte[] BuildGetRssiKissFrame(byte port = 0) =>
         KissEncoder.Encode(port, (KissCommand)ExtendedCommand, BuildGetRssiPayload());
+
+    /// <summary>
+    /// Fully-encoded BOOTLOADER-entry KISS frame (<c>C0 0D 37 C0</c>), ready
+    /// for the wire. <b>Sending this reboots the modem into the dsPIC
+    /// bootloader</b> — KISS stops answering until a firmware image is
+    /// transferred (or the bootloader is told <c>'R'</c> to return to the
+    /// application). Use <see cref="Firmware.BootloaderNinoTncFirmwareFlasher"/>
+    /// rather than sending it by hand.
+    /// </summary>
+    public static byte[] BuildBootloaderEntryKissFrame(byte port = 0) =>
+        KissEncoder.Encode(port, (KissCommand)BootloaderCommand, BuildBootloaderEntryPayload());
+
+    /// <summary>
+    /// Fully-encoded payload-less GETALL KISS frame (<c>C0 0B C0</c>) — the
+    /// exact bytes upstream <c>flashtnc.py</c> uses to provoke output while
+    /// flushing the serial path before a flash. The firmware accepts GETALL
+    /// with or without the 0x00 payload byte; the flasher sends this form to
+    /// stay byte-identical with the protocol that has been validated on real
+    /// hardware. Normal callers should prefer <see cref="BuildGetAllKissFrame"/>.
+    /// </summary>
+    public static byte[] BuildBareGetAllKissFrame(byte port = 0) =>
+        KissEncoder.Encode(port, (KissCommand)GetAllCommand, ReadOnlySpan<byte>.Empty);
 
     /// <summary>
     /// True when <paramref name="frame"/> is a firmware query reply — i.e.
