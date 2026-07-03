@@ -79,7 +79,7 @@ public class TuningTelegramTests
     public void MS_args_with_unavailable_fields_round_trip_as_null()
     {
         var report = new MeterReport(3, 5, FecCorrectedBytesDelta: null, LostAdcSamplesDelta: null, RssiDbm: null);
-        report.ToArgs().Should().Be("3/5|fec:na|clip:na|rssi:na");
+        report.ToArgs().Should().Be("3/5|fec:na|clip:na|rssi:na|lvl:na");
         MeterReport.TryParse(report.ToArgs(), out var canonical).Should().BeTrue();
         canonical.Should().Be(report);
 
@@ -87,6 +87,68 @@ public class TuningTelegramTests
         report.ToCompactArgs().Should().Be("3/5");
         MeterReport.TryParse(report.ToCompactArgs(), out var compact).Should().BeTrue();
         compact.Should().Be(report);
+    }
+
+    [Fact]
+    public void MS_args_with_audio_level_round_trip_in_both_forms()
+    {
+        // The GETRSSI fast path (meter firmware 3.41-era): the optional
+        // RX-audio level rides the MS telegram.
+        var report = new MeterReport(5, 5, FecCorrectedBytesDelta: null, LostAdcSamplesDelta: 0, RssiDbm: -90.1, AudioLevelDb: -62.5);
+
+        report.ToArgs().Should().Be("5/5|fec:na|clip:0|rssi:-90.1|lvl:-62.5");
+        MeterReport.TryParse(report.ToArgs(), out var canonical).Should().BeTrue();
+        canonical.Should().Be(report);
+
+        report.ToCompactArgs().Should().Be("5/5|c0|r-90.1|l-62.5");
+        MeterReport.TryParse(report.ToCompactArgs(), out var compact).Should().BeTrue();
+        compact.Should().Be(report);
+    }
+
+    [Fact]
+    public void Compact_MS_with_audio_level_fits_the_SDM_budget_on_the_3_41_meter_shape()
+    {
+        // The rig's 3.41 shape: labelled GETALL carries no FEC register, so
+        // fec is absent and the level fits alongside clip + RSSI.
+        var report = new MeterReport(5, 5, FecCorrectedBytesDelta: null, LostAdcSamplesDelta: 0, RssiDbm: -90.1, AudioLevelDb: -62.5);
+        var telegram = new TuningTelegram(12, TuningVerb.Measurement, report.ToArgs());
+
+        string compact = telegram.EncodeCompact();
+        compact.Length.Should().BeLessThanOrEqualTo(TuningTelegram.SdmCharacterBudget);
+
+        TuningTelegram.TryParse(compact, out var parsed).Should().BeTrue();
+        MeterReport.TryParse(parsed!.Args, out var reparsed).Should().BeTrue();
+        reparsed.Should().Be(report);
+    }
+
+    [Fact]
+    public void Compact_encoding_drops_the_level_rather_than_busting_the_SDM_budget()
+    {
+        // All bracketing fields present AND a level: over 32 chars — the
+        // level is the enrichment, so it is the field that gives way.
+        var report = new MeterReport(10, 10, FecCorrectedBytesDelta: 480, LostAdcSamplesDelta: 0, RssiDbm: -90.4, AudioLevelDb: -62.5);
+        var telegram = new TuningTelegram(12, TuningVerb.Measurement, report.ToArgs());
+
+        string compact = telegram.EncodeCompact();
+        compact.Length.Should().BeLessThanOrEqualTo(TuningTelegram.SdmCharacterBudget);
+
+        TuningTelegram.TryParse(compact, out var parsed).Should().BeTrue();
+        MeterReport.TryParse(parsed!.Args, out var reparsed).Should().BeTrue();
+        reparsed.Should().Be(report with { AudioLevelDb = null }, "the bracketing signals keep priority");
+    }
+
+    [Fact]
+    public void MS_args_from_a_peer_that_predates_the_level_field_parse_with_null_level()
+    {
+        // Backward tolerance: telegrams from old meters (no lvl/l field, or
+        // canonical without the lvl key at all) must parse, level = null.
+        MeterReport.TryParse("4/5|fec:12|clip:0|rssi:-90.4", out var canonical).Should().BeTrue();
+        canonical!.AudioLevelDb.Should().BeNull();
+        canonical.RssiDbm.Should().Be(-90.4);
+
+        MeterReport.TryParse("5/5|c0|r-90.1", out var compact).Should().BeTrue();
+        compact!.AudioLevelDb.Should().BeNull();
+        compact.LostAdcSamplesDelta.Should().Be(0);
     }
 
     [Fact]

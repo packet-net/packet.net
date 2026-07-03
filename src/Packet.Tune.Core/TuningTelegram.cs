@@ -34,11 +34,14 @@ public enum TuningVerb
 /// (<see cref="WebSocketTuningLink"/>).
 /// </summary>
 /// <remarks>
-/// A plain Tait SDM carries at most 32 characters, and the canonical
-/// <c>MS</c> args (<c>dec/&lt;n&gt;|fec:&lt;delta&gt;|clip:&lt;delta&gt;|rssi:&lt;dbm&gt;</c>)
+/// A plain Tait SDM carries at most <see cref="SdmCharacterBudget"/>
+/// characters, and the canonical <c>MS</c> args
+/// (<c>dec/&lt;n&gt;|fec:&lt;delta&gt;|clip:&lt;delta&gt;|rssi:&lt;dbm&gt;|lvl:&lt;db&gt;</c>)
 /// can exceed that — so the codec also has a documented <em>compact wire
 /// form</em> (<see cref="EncodeCompact"/>) that shortens the <c>MS</c> arg
-/// keys to <c>f</c>/<c>c</c>/<c>r</c>. <see cref="TryParse"/> accepts both
+/// keys to <c>f</c>/<c>c</c>/<c>r</c>/<c>l</c> and, if the result would
+/// still bust the budget, drops the optional audio-level enrichment (the
+/// bracketing signals keep priority). <see cref="TryParse"/> accepts both
 /// forms, so either encoding round-trips.
 /// </remarks>
 /// <param name="Sequence">Monotonic per-sender sequence number — the receiver
@@ -50,6 +53,10 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
     /// <summary>The protocol version marker every telegram starts with.</summary>
     public const string VersionPrefix = "V1";
 
+    /// <summary>The character budget of a plain Tait SDM — the compact wire
+    /// form must fit inside it.</summary>
+    public const int SdmCharacterBudget = 32;
+
     /// <summary>Encode to the canonical wire form <c>V1|seq|verb|args</c>
     /// (the trailing <c>|args</c> is omitted when <see cref="Args"/> is empty).</summary>
     public string Encode()
@@ -60,16 +67,25 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
     }
 
     /// <summary>
-    /// Encode to the compact wire form used over SDM (32-character budget):
-    /// identical to <see cref="Encode"/> except that <c>MS</c> args are
-    /// re-encoded with single-letter keys via
-    /// <see cref="MeterReport.ToCompactArgs"/> when they parse as a report.
+    /// Encode to the compact wire form used over SDM
+    /// (<see cref="SdmCharacterBudget"/>-character budget): identical to
+    /// <see cref="Encode"/> except that <c>MS</c> args are re-encoded with
+    /// single-letter keys via <see cref="MeterReport.ToCompactArgs"/> when
+    /// they parse as a report. If even the compact form busts the budget and
+    /// the report carries the optional audio level, the level is dropped —
+    /// it is enrichment; the bracketing signals (decode/FEC/clip/RSSI) keep
+    /// priority.
     /// </summary>
     public string EncodeCompact()
     {
         if (Verb == TuningVerb.Measurement && MeterReport.TryParse(Args, out var report) && report is not null)
         {
-            return (this with { Args = report.ToCompactArgs() }).Encode();
+            string wire = (this with { Args = report.ToCompactArgs() }).Encode();
+            if (wire.Length > SdmCharacterBudget && report.AudioLevelDb is not null)
+            {
+                wire = (this with { Args = (report with { AudioLevelDb = null }).ToCompactArgs() }).Encode();
+            }
+            return wire;
         }
         return Encode();
     }

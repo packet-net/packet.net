@@ -145,10 +145,10 @@ public sealed class SdmTuningLink : ITuningLink
         ArgumentNullException.ThrowIfNull(telegram);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         string wire = telegram.EncodeCompact();
-        if (wire.Length > 32)
+        if (wire.Length > TuningTelegram.SdmCharacterBudget)
         {
             throw new TuningLinkException(
-                $"telegram '{wire}' is {wire.Length} chars — over the 32-character SDM budget");
+                $"telegram '{wire}' is {wire.Length} chars — over the {TuningTelegram.SdmCharacterBudget}-character SDM budget");
         }
 
         await sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);

@@ -347,7 +347,9 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// call ends in <see cref="TimeoutException"/>. Callers must catch it
     /// and degrade — e.g. meter deviation by decoded-frame counts, IL2P
     /// FEC-corrected-byte deltas and the lost-ADC counter instead (see
-    /// <see cref="NinoTncStatusDelta"/>).
+    /// <see cref="NinoTncStatusDelta"/>). Where it exists it is a continuous
+    /// post-FM-demod deviation meter — the deviation-tuning assistant probes
+    /// for it once per session and samples it during bursts (the fast path).
     /// </remarks>
     /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
     /// <param name="cancellationToken">Cancels the send and the wait.</param>
