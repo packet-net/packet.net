@@ -220,6 +220,84 @@ Firmware **3.41** findings (all bench-measured; newer firmware may differ):
 | STOPTX vs CQBEEP tone | STOPTX sent mid-tone did **not** cut the tone short (ran the full 8 s) |
 | CQBEEP responder | arming + N-second tone work exactly as advertised on 3.41 |
 
+## Firmware 3.44 flash + remote deviation tuning (2026-07-02/03, session 4)
+
+Both TNCs were flashed 3.41 → **3.44** (upstream flashtnc, exit 0 both), and the
+remote-coordination deviation-tuning feature set (`Packet.Tune.Core` + the
+`deviation-sdm` / `deviation-remote` / `doctor` / `rendezvous` / `radio-reset`
+commands) was built and validated against the flashed rig.
+
+### 3.44 flash findings (vs the 3.41 table above)
+
+| Behaviour | 3.44 observation |
+|---|---|
+| **GETRSSI (0x09 A7)** | **REMOVED** — no reply at all (bench: 2 s probe times out). It was an undocumented 3.41 feature. Driver keeps `GetRssiAsync` with "firmware 3.41 only" docs; `measure`/`deviation` degrade to "n/a on this firmware"; the deviation METER never uses it (signals below) |
+| GETALL (0x0B/00) | still answers the **labelled** `=FirmwareVr:` text on demand (numeric `=II:` report remains the 60 s beacon only) |
+| Register 0B (preamble words) | still never increments for host traffic — the TXDELAY check keeps its ACKMODE echo-timing fallback |
+| CQBEEP-N + `[TARPNstat` arming | unchanged (bench: 4.02 s tone for SSID 4). Arming stays volatile — the tuning assistant re-arms at session start |
+| **Post-flash boot mode** | a fresh flash clears the RAM mode → boots **mode 0** (9600 GFSK — dead on the rig's narrow channels). This produced a false "pot override" verdict from `verify-control` before the fix: **always SETHW a known-good mode before timing checks** — `verify-control`/`doctor` now pin mode 6 (`--mode`/`--keep-mode` override) |
+
+Two more measurement traps found while stabilising the TXDELAY check (fixed in
+`TxDelayControlCheck`): back-to-back ACKMODE sends chain into **one keying
+train** (a single preamble — chained frames echoed a constant ~430 ms
+regardless of TXDELAY), and the default p-persistence CSMA adds a random
+number of ~100 ms slot deferrals per keying, swamping the 300 ms step under
+test. The check now pins persistence 255 / slottime 0 (restoring 63/10 after),
+takes 3 unkey-gapped samples per point and keeps the minimum: measured
+**0.298 / 0.301 / 0.299 s for the 0.300 s commanded step** across three
+consecutive runs (was 0.001–0.793 s scatter).
+
+### Deviation metering without GETRSSI
+
+Per burst the meter now reads: **decoded-frame count vs sent** (counting
+`PTUNE`-marked burst frames), **IL2P FEC-corrected-byte GETALL delta**
+(register 11 — only meaningful in IL2P modes, so prefer **mode 7** for tuning
+sessions; on 3.41/3.44 the labelled GETALL reply lacks the register, so this
+reports n/a until firmware carries it — the labelled `LostADCSmp` is mapped
+instead), **lost-ADC-sample delta** (clipping = gross over-deviation), and
+**Tait CCDI RSSI** (busy-gated median) as the constant RF-path check. Advice
+`UP`/`DN`/`OK` comes from decode-rate + FEC trend + clipping
+(`DeviationAdvisor`).
+
+### The TM8110 SDM auto-ack wedge (the big hardware find)
+
+Keying a TM8110 through its data PTT line — or sending an SDM from it — while
+the radio's **auto-acknowledgement of a just-received SDM is pending/in
+flight** *wedges the radio's auto-ack engine*: from then on it still receives
+SDMs (RING 4000 + buffer fills) but **never acks again**, so every peer send
+reports 1D0 "not delivered". CCDI stays fully responsive — only the ack
+engine is dead — and nothing short of a **soft reset (CCR enter/exit, ~6 s)**
+or a power cycle recovers it. Bench-reproduced three ways (burst racing an
+RQ's ack; CQBEEP-arming PTT racing an unsolicited HI's ack; an instant RQ
+reply racing the ready-beacon's ack) and bench-recovered with the new
+`packet-tune radio-reset <ccdiPort>` command.
+
+`SdmTuningLink`/`TuningSession` now avoid all three triggers by construction:
+a **2 s post-receive guard** before any send (the radio's own ack must clear
+first), a **2.5 s pre-burst delay** on the tuned end, and a protocol shape
+where **the meter never transmits unsolicited** (its first send is the RQ
+answering the tuned end's ready beacon, which always lands on an idle end).
+
+### Validation on the rig (all green after the fixes)
+
+- **`doctor`** both stacks: all probes PASS (fw 3.44, DIPs 1111, mode 6,
+  TXDELAY software control, TM8110 identities, PROGRESS, SDM accepted,
+  TNC↔radio PTT pairing within 2 s); GETRSSI correctly reported as removed
+  with the remedial pointer. `--json` variant works.
+- **SDM link** (`deviation-sdm`, two processes, operator scripted via stdin):
+  full two-round session — HI/RQ/MS/AD/BY over the radios' FFSK, telegrams
+  like `V1|1|MS|5/5|c0|r-90.1` (compact MS form fits the 32-char SDM budget),
+  **zero receipt retries after the guards** (earlier runs demonstrated the
+  retry ×3 / 2 s-backoff path live, incl. honest failure against a wrong peer
+  ID), 5/5 decode both bursts, `AD:OK` steady (pots untouched), RSSI −90.1 dBm
+  matching the rig's known link budget.
+- **Internet flavour**: `rendezvous --listen 8735` + both `deviation-remote`
+  roles over loopback with the real generated-PIN flow (tuned printed
+  "session PIN: 2-5-7-7-7-4", meter joined with it), one full RQ→MS→AD cycle
+  with RF stimulus (5/5 decode, −90.2 dBm), clean BY, relay logged
+  pair/close. PIN single-use + session-dies-with-either-socket are
+  unit-tested over real loopback sockets.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate
