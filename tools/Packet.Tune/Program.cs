@@ -41,6 +41,10 @@
 //                                              with settle frame + GETALL verify
 //   radio-channel <ccdiPort> [channel]         report — or switch and verify — a Tait
 //                                              radio's conventional channel
+//   radio-health <ccdiPort> [--interval 10] [--duration 60] [--key-once [s]]
+//                                              periodic radio-health sampling (averaged RSSI,
+//                                              PA temperature, fwd/rev power-detector trend)
+//                                              as a live table + min/median/max summary
 
 using Packet.Tune;
 
@@ -60,6 +64,7 @@ return args switch
     ["mode-coord", .. var rest] => await ModeCoordCommand.Run(rest),
     ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
     ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
+    ["radio-health", var ccdi, .. var rest] => await RadioHealthCommand.Run(ccdi, rest),
     _ => Usage(),
 };
 
@@ -85,6 +90,9 @@ static int Usage()
     Console.WriteLine("                                channel; any failure reverts both ends to home)");
     Console.WriteLine("  set-mode <tncPort> <mode> [--persist] [--callsign X]");
     Console.WriteLine("  radio-channel <ccdiPort> [channel]");
+    Console.WriteLine("  radio-health <ccdiPort> [--interval s=10] [--duration s=60] [--key-once [s=2]]");
+    Console.WriteLine("                               (averaged RSSI / PA temp / fwd-rev detector TREND;");
+    Console.WriteLine("                                --key-once keys ONCE ≤3 s at channel power for a TX sample)");
     Console.WriteLine();
     Console.WriteLine("deviation-* tune the TX-DEV pot at the TUNED end: the meter end requests");
     Console.WriteLine("frame bursts, measures decode rate / IL2P FEC deltas / ADC clipping / CCDI");
