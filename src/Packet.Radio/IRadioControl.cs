@@ -82,4 +82,12 @@ public enum RadioCapabilities
 
     /// <summary>Reserved: the radio accepts TX power-level changes.</summary>
     TxPowerControl = 1 << 5,
+
+    /// <summary>
+    /// The driver can supply an <see cref="IRadioSideChannel"/> (radio-native small-datagram
+    /// messaging, e.g. Tait SDM). Advertises the <em>machinery</em> only — whether the feature
+    /// is enabled in the radio's programming needs a live probe; see the capability-gating
+    /// remarks on <see cref="IRadioSideChannel"/>.
+    /// </summary>
+    SideChannel = 1 << 6,
 }

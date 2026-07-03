@@ -29,6 +29,13 @@ Standard KISS gives you demodulated frames and nothing else. A radio with a cont
   Frames with no qualifying sample get `null` metadata, never a guess.
 - `CarrierSenseTxGate` — CSMA by hardware DCD: defers `SendAsync` while the radio reports the
   channel busy (bounded wait, fail-open), composing with the TNC's own persistence CSMA.
+- `IRadioSideChannel` — a small-datagram control plane the radio itself provides (e.g. Tait
+  SDM over the radios' internal FFSK modem): send/receive short payloads with over-air
+  delivery confirmation and a `MaxPayloadLength` budget. Because it bypasses the audio-path
+  modem entirely it is mode/deviation/channel-width-agnostic — the coordination channel for
+  renegotiating the very link it sits beside (mode agility, remote tuning). Drivers advertise
+  the machinery via `RadioCapabilities.SideChannel`; consumers must still probe that the
+  feature is enabled in the radio's programming before gating features on it.
 
 ## Usage
 

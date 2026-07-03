@@ -94,6 +94,21 @@ public static class NinoTncCatalog
     }.ToFrozenDictionary();
 
     /// <summary>
+    /// Modes whose published occupied bandwidth needs a wide (25 kHz) channel:
+    /// 0 (9600 GFSK AX.25), 1 (19200 4FSK IL2P+CRC) and 2 (9600 GFSK IL2P+CRC),
+    /// per the OARC wiki mode table (https://wiki.oarc.uk/packet:ninotnc,
+    /// retrieved 2026-07-03). Planning guidance, not a hard decode limit: the
+    /// bench rig decodes mode 2 on its narrow (12.5 kHz) programmed channel at
+    /// 38 dB SNR through an attenuator pad — adjacent-channel behaviour on air
+    /// is what the 25 kHz rating protects.
+    /// </summary>
+    public static readonly FrozenSet<byte> WideChannelModes = new byte[] { 0, 1, 2 }.ToFrozenSet();
+
+    /// <summary>True when <paramref name="mode"/>'s published occupied bandwidth
+    /// needs a wide (25 kHz) channel — see <see cref="WideChannelModes"/>.</summary>
+    public static bool RequiresWideChannel(byte mode) => WideChannelModes.Contains(mode);
+
+    /// <summary>
     /// Look up a mode by its DIP-switch position. Returns <c>null</c> for
     /// out-of-range mode numbers.
     /// </summary>

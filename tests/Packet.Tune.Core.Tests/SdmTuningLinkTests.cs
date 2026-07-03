@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
+using Packet.Radio;
 
 namespace Packet.Tune.Core.Tests;
 
 /// <summary>
-/// Drives <see cref="SdmTuningLink"/> over a fake <see cref="ISdmChannel"/>:
+/// Drives <see cref="SdmTuningLink"/> over a fake <see cref="IRadioSideChannel"/>:
 /// receipt-gated retries with backoff, DCD-busy send deferral, prompt
-/// event-triggered buffer reads, and sequence-number dedupe.
+/// event-triggered buffer reads, sequence-number dedupe, and the side
+/// channel's payload budget.
 /// </summary>
 public class SdmTuningLinkTests
 {
@@ -173,10 +175,24 @@ public class SdmTuningLinkTests
         received.Should().ContainSingle().Which.Verb.Should().Be(TuningVerb.Hello);
     }
 
-    /// <summary>Scripted <see cref="ISdmChannel"/>: records sends, answers
+    [Fact]
+    public async Task A_telegram_over_the_side_channels_payload_budget_is_refused()
+    {
+        var channel = new FakeSdmChannel { PayloadBudget = 16 };
+        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions);
+
+        var act = async () => await link
+            .SendAsync(new TuningTelegram(1, TuningVerb.Hello, "a-role-name-far-too-long-for-a-tiny-budget"))
+            .WaitAsync(Timeout);
+
+        await act.Should().ThrowAsync<TuningLinkException>().WithMessage("*16-character budget*");
+        channel.Sent.Should().BeEmpty();
+    }
+
+    /// <summary>Scripted <see cref="IRadioSideChannel"/>: records sends, answers
     /// receipts from a plan, and delivers inbound messages through the
     /// one-deep buffer + arrival event like the real radio.</summary>
-    private sealed class FakeSdmChannel : ISdmChannel
+    private sealed class FakeSdmChannel : IRadioSideChannel
     {
         private readonly ConcurrentQueue<bool> ackPlan = new();
         private string? buffered;
@@ -195,19 +211,23 @@ public class SdmTuningLinkTests
 
         public bool Busy { get; set; }
 
+        public int PayloadBudget { get; init; } = 32;
+
         public List<(string Destination, string Message)> Sent { get; } = [];
+
+        public int MaxPayloadLength => PayloadBudget;
 
         public bool? ChannelBusy => Busy;
 
-        public event EventHandler? MessageArrived;
+        public event EventHandler? DatagramArrived;
 
         public event EventHandler<bool>? DeliveryReceipt;
 
-        public Task SendAsync(string destinationId, string message, CancellationToken cancellationToken = default)
+        public Task SendAsync(string destinationId, string payload, CancellationToken cancellationToken = default)
         {
             lock (Sent)
             {
-                Sent.Add((destinationId, message));
+                Sent.Add((destinationId, payload));
             }
             if (ackPlan.TryDequeue(out bool ack))
             {
@@ -229,7 +249,7 @@ public class SdmTuningLinkTests
         public void Deliver(string message)
         {
             Interlocked.Exchange(ref buffered, message);
-            MessageArrived?.Invoke(this, EventArgs.Empty);
+            DatagramArrived?.Invoke(this, EventArgs.Empty);
         }
     }
 }

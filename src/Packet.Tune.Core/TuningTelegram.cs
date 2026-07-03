@@ -23,12 +23,17 @@ public enum TuningVerb
 
     /// <summary><c>BY</c> — end of session (no args).</summary>
     Bye,
+
+    /// <summary><c>MODE</c> — a mode-coordination message (propose / confirm /
+    /// reject / commit / sent / report / revert). Args are the
+    /// <see cref="ModeCoordMessage"/> wire form, e.g. <c>propose|2|1</c>.</summary>
+    ModeCoordination,
 }
 
 /// <summary>
 /// One tuning-protocol telegram: a compact ASCII line
 /// <c>V1|&lt;seq&gt;|&lt;verb&gt;|&lt;args&gt;</c> with verbs
-/// <c>HI</c>/<c>RQ</c>/<c>MS</c>/<c>AD</c>/<c>BY</c>. The same telegram
+/// <c>HI</c>/<c>RQ</c>/<c>MS</c>/<c>AD</c>/<c>BY</c>/<c>MODE</c>. The same telegram
 /// travels over any <see cref="ITuningLink"/> — as the text of a Tait SDM
 /// (<see cref="SdmTuningLink"/>) or as a JSON-wrapped WebSocket frame
 /// (<see cref="WebSocketTuningLink"/>).
@@ -129,6 +134,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         TuningVerb.Measurement => "MS",
         TuningVerb.Advice => "AD",
         TuningVerb.Bye => "BY",
+        TuningVerb.ModeCoordination => "MODE",
         _ => throw new ArgumentOutOfRangeException(nameof(verb), verb, "unknown tuning verb"),
     };
 
@@ -139,6 +145,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         "MS" => TuningVerb.Measurement,
         "AD" => TuningVerb.Advice,
         "BY" => TuningVerb.Bye,
+        "MODE" => TuningVerb.ModeCoordination,
         _ => null,
     };
 

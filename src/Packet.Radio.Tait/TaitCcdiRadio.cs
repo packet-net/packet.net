@@ -74,8 +74,12 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     public string PortName => io.PortName;
 
     /// <inheritdoc/>
+    /// <remarks><see cref="RadioCapabilities.SideChannel"/> advertises the driver machinery
+    /// (<see cref="TaitSdmSideChannel"/>); whether SDMs are enabled in the radio's programming
+    /// needs a live probe (error 0/06 = disabled — cf. the tuning doctor's SDM probe).</remarks>
     public RadioCapabilities Capabilities =>
-        RadioCapabilities.RssiRead | RadioCapabilities.CarrierSense | RadioCapabilities.TransmitterControl;
+        RadioCapabilities.RssiRead | RadioCapabilities.CarrierSense | RadioCapabilities.TransmitterControl |
+        RadioCapabilities.SideChannel;
 
     /// <inheritdoc/>
     public bool? ChannelBusy

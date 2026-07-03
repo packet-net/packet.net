@@ -34,7 +34,8 @@ matching baud rate; this driver does not attempt the Transparent-mode escape seq
 
 Beyond telemetry, the driver models the rest of the documented surface: channel report/change,
 CANCEL/DIAL, SDM short-data messages (radio-to-radio, no TNC — requires SDMs enabled in the
-radio's programming), display query, Transparent mode (the radio's own FFSK/THSD modem as a
+radio's programming; `TaitSdmSideChannel` exposes them as `Packet.Radio.IRadioSideChannel`,
+the mode-agnostic coordination plane the tuning/mode-negotiation stack rides), display query, Transparent mode (the radio's own FFSK/THSD modem as a
 byte pipe), a built-in keep-alive **watchdog** (`ConnectionState` + events; probes on link
 silence, self-heals on recovery), **port auto-detection** (`TaitRadioPortDiscovery` — probes
 candidate ports with a MODEL query and identifies radios by CCDI serial number), and the whole
