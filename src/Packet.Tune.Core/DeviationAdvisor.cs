@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Packet.Tune.Core;
 
 /// <summary>Advice for the human at the TX-DEV pot.</summary>
@@ -34,6 +36,14 @@ public enum TuningAdvice
 /// FEC-corrected bytes (register 11) only count in IL2P modes — prefer mode
 /// 7 (1200 AFSK IL2P+CRC) for tuning sessions so the FEC signal exists. In
 /// plain-AX.25 modes the advisor works from decode rate + clipping alone.
+/// <para>
+/// When the meter runs the GETRSSI fast path (NinoTNC <b>firmware 3.41-era
+/// only — REMOVED in 3.44</b>), <see cref="MeterReport.AudioLevelDb"/>
+/// carries a continuous RX-audio level. <see cref="DescribeLevel"/> turns it
+/// into mid-plateau guidance (level, quieting vs idle, burst-on-burst
+/// trend); it never changes the <see cref="Advise"/> verdict — the
+/// decode/clip cliffs remain the authoritative edge detection.
+/// </para>
 /// </remarks>
 public static class DeviationAdvisor
 {
@@ -43,6 +53,10 @@ public static class DeviationAdvisor
     /// <summary>FEC-corrected bytes per decoded frame above which the FEC is
     /// considered to be working hard.</summary>
     public const double BusyFecBytesPerFrame = 8;
+
+    /// <summary>Audio-level movement (dB, either way) within which
+    /// burst-on-burst level is described as "steady".</summary>
+    public const double LevelSteadyToleranceDb = 1.5;
 
     /// <summary>Advise from the current burst (and the previous one, for the FEC trend).</summary>
     public static TuningAdvice Advise(MeterReport current, MeterReport? previous = null)
@@ -73,6 +87,44 @@ public static class DeviationAdvisor
             return TuningAdvice.Down;
         }
         return TuningAdvice.Up;
+    }
+
+    /// <summary>
+    /// Human guidance from the optional RX-audio level (GETRSSI — NinoTNC
+    /// <b>firmware 3.41-era only; REMOVED in 3.44</b>): the level during the
+    /// burst plus, when the meter's idle baseline is known, the quieting
+    /// (idle − level; a carrier quiets the demodulated audio, so bigger =
+    /// stronger signal into the modem), plus the burst-on-burst trend when a
+    /// previous levelled report exists. Returns <c>null</c> when
+    /// <paramref name="current"/> carries no level. Enrichment only: the
+    /// <see cref="Advise"/> verdict ignores the level entirely — decode and
+    /// clipping cliffs decide UP/DN/OK; the level shows where inside the
+    /// plateau the pot sits and which way it is moving.
+    /// </summary>
+    /// <param name="current">The burst's report.</param>
+    /// <param name="previous">The previous burst's report, for the level trend (null = none).</param>
+    /// <param name="idleLevelDb">The meter's idle-channel baseline, when known (null = omit quieting).</param>
+    public static string? DescribeLevel(MeterReport current, MeterReport? previous = null, double? idleLevelDb = null)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        if (current.AudioLevelDb is not { } level)
+        {
+            return null;
+        }
+
+        string text = string.Create(CultureInfo.InvariantCulture, $"level {level:0.0} dB");
+        if (idleLevelDb is { } idle)
+        {
+            text += string.Create(CultureInfo.InvariantCulture, $", {idle - level:0.0} dB quieting");
+        }
+        if (previous?.AudioLevelDb is { } prev)
+        {
+            double delta = level - prev;
+            text += Math.Abs(delta) <= LevelSteadyToleranceDb
+                ? ", level steady"
+                : string.Create(CultureInfo.InvariantCulture, $", level {delta:+0.0;-0.0} dB vs last burst");
+        }
+        return text;
     }
 
     /// <summary>The wire token (<c>UP</c>/<c>DN</c>/<c>OK</c>) for an advice value.</summary>

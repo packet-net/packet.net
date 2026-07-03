@@ -92,13 +92,17 @@ public static class TuningDoctor
         }
 
         // 2. Firmware feature: GETRSSI (3.41-era; removed in 3.44). Probe with
-        //    a short timeout rather than trusting version heuristics.
+        //    a short timeout rather than trusting version heuristics. When
+        //    present, the deviation meter samples it during every burst as a
+        //    continuous RX-audio deviation meter (the fast path).
         try
         {
             float level = await tnc.GetRssiAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
             Add(new DoctorProbe(
                 "getrssi", DoctorOutcome.Pass,
-                string.Create(CultureInfo.InvariantCulture, $"available ({level:0.0} dB) — firmware 3.41-era feature"),
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"available (firmware 3.41-era) — deviation meter fast path active (idle {level:0.0} dB)"),
                 null));
         }
         catch (TimeoutException)

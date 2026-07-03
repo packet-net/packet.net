@@ -138,6 +138,19 @@ internal static class DeviationAssist
                 {
                     meter.Log = line => Console.WriteLine("  " + line);
                 }
+                // GETRSSI fast path (firmware 3.41-era; removed in 3.44):
+                // probe availability once at session start, capturing the
+                // idle RX-audio baseline before the first burst.
+                if (await meter.ProbeAudioLevelMeterAsync(cancelOnCtrlC.Token))
+                {
+                    Console.WriteLine(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"  GETRSSI fast path active (firmware 3.41-era) — idle RX-audio {meter.IdleAudioLevelDb:0.0} dB"));
+                }
+                else
+                {
+                    Console.WriteLine("  GETRSSI unavailable (removed in firmware 3.44) — metering by decode/FEC/clip/CCDI-RSSI only");
+                }
                 Console.WriteLine();
                 return await TuningSession.RunMeterAsync(link, meter, options, Console.Out, cancelOnCtrlC.Token);
             }

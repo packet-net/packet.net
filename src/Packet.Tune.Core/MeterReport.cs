@@ -4,12 +4,15 @@ namespace Packet.Tune.Core;
 
 /// <summary>
 /// The meter end's per-burst measurement — the payload of an <c>MS</c>
-/// telegram. GETRSSI (the 3.41-era TNC audio meter) is gone in firmware
-/// 3.44, so the deviation meter reads these signals instead: decoded-frame
+/// telegram. The bracketing signals are always attempted: decoded-frame
 /// count vs sent, the GETALL delta of IL2P FEC-corrected bytes (register 11
 /// — only meaningful in IL2P modes, so prefer mode 7 for tuning sessions),
 /// the lost-ADC-sample delta (clipping = gross over-deviation), and the
-/// Tait CCDI RSSI as the constant RF-path check.
+/// Tait CCDI RSSI as the constant RF-path check. On firmware 3.41 the
+/// GETRSSI RX-audio level meter also exists (REMOVED in 3.44) and rides
+/// along as the optional <see cref="AudioLevelDb"/> — a continuous
+/// deviation meter that enriches the guidance without replacing the
+/// bracketing verdicts.
 /// </summary>
 /// <param name="DecodedFrames">Burst frames the meter's TNC decoded.</param>
 /// <param name="RequestedFrames">Burst frames the meter asked for (<c>RQ</c> n).</param>
@@ -21,12 +24,19 @@ namespace Packet.Tune.Core;
 /// the RX audio clipped — gross over-deviation.</param>
 /// <param name="RssiDbm">Median Tait CCDI RSSI during the burst in dBm, or
 /// <c>null</c> when no CCDI radio is attached at the meter end.</param>
+/// <param name="AudioLevelDb">RX-audio RMS level at the meter's TNC during the
+/// burst, in dB (GETRSSI — <b>firmware 3.41-era only; REMOVED in 3.44</b>).
+/// A carrier <em>quiets</em> the demodulated audio, so lower (more negative)
+/// = more quieting = signal present. <c>null</c> when the firmware has no
+/// GETRSSI or the fast path was not probed. Old peers that predate this
+/// field simply omit it, which parses as <c>null</c>.</param>
 public sealed record MeterReport(
     int DecodedFrames,
     int RequestedFrames,
     long? FecCorrectedBytesDelta,
     long? LostAdcSamplesDelta,
-    double? RssiDbm)
+    double? RssiDbm,
+    double? AudioLevelDb = null)
 {
     private const string Unavailable = "na";
 
@@ -35,17 +45,17 @@ public sealed record MeterReport(
 
     /// <summary>
     /// Canonical <c>MS</c> args:
-    /// <c>&lt;dec&gt;/&lt;n&gt;|fec:&lt;delta&gt;|clip:&lt;delta&gt;|rssi:&lt;dbm&gt;</c>,
+    /// <c>&lt;dec&gt;/&lt;n&gt;|fec:&lt;delta&gt;|clip:&lt;delta&gt;|rssi:&lt;dbm&gt;|lvl:&lt;db&gt;</c>,
     /// with <c>na</c> for unavailable values.
     /// </summary>
     public string ToArgs() => string.Create(
         CultureInfo.InvariantCulture,
-        $"{DecodedFrames}/{RequestedFrames}|fec:{FmtLong(FecCorrectedBytesDelta)}|clip:{FmtLong(LostAdcSamplesDelta)}|rssi:{FmtRssi(RssiDbm)}");
+        $"{DecodedFrames}/{RequestedFrames}|fec:{FmtLong(FecCorrectedBytesDelta)}|clip:{FmtLong(LostAdcSamplesDelta)}|rssi:{FmtDb(RssiDbm)}|lvl:{FmtDb(AudioLevelDb)}");
 
     /// <summary>
     /// Compact wire form for the 32-character SDM budget: single-letter keys
-    /// (<c>f</c>/<c>c</c>/<c>r</c>), unavailable fields omitted entirely.
-    /// E.g. <c>5/5|f0|c0|r-90.4</c>.
+    /// (<c>f</c>/<c>c</c>/<c>r</c>/<c>l</c>), unavailable fields omitted
+    /// entirely. E.g. <c>5/5|f0|c0|r-90.4|l-62.5</c>.
     /// </summary>
     public string ToCompactArgs()
     {
@@ -62,10 +72,16 @@ public sealed record MeterReport(
         {
             args += string.Create(CultureInfo.InvariantCulture, $"|r{rssi:0.0}");
         }
+        if (AudioLevelDb is { } level)
+        {
+            args += string.Create(CultureInfo.InvariantCulture, $"|l{level:0.0}");
+        }
         return args;
     }
 
-    /// <summary>Parse <c>MS</c> args in either the canonical or the compact form.</summary>
+    /// <summary>Parse <c>MS</c> args in either the canonical or the compact
+    /// form. Fields absent from the wire (e.g. a telegram from a peer that
+    /// predates <see cref="AudioLevelDb"/>) parse as <c>null</c>.</summary>
     public static bool TryParse(string? args, out MeterReport? report)
     {
         report = null;
@@ -84,7 +100,7 @@ public sealed record MeterReport(
         }
 
         long? fec = null, clip = null;
-        double? rssi = null;
+        double? rssi = null, level = null;
         foreach (string part in parts.Skip(1))
         {
             if (TryField(part, "fec:", "f", out string? fecText))
@@ -99,13 +115,17 @@ public sealed record MeterReport(
             {
                 rssi = ParseDouble(rssiText);
             }
+            else if (TryField(part, "lvl:", "l", out string? levelText))
+            {
+                level = ParseDouble(levelText);
+            }
             else
             {
                 return false; // unknown field — not an MS args string
             }
         }
 
-        report = new MeterReport(decoded, requested, fec, clip, rssi);
+        report = new MeterReport(decoded, requested, fec, clip, rssi, level);
         return true;
     }
 
@@ -143,6 +163,6 @@ public sealed record MeterReport(
     private static string FmtLong(long? value) =>
         value?.ToString(CultureInfo.InvariantCulture) ?? Unavailable;
 
-    private static string FmtRssi(double? value) =>
+    private static string FmtDb(double? value) =>
         value?.ToString("0.0", CultureInfo.InvariantCulture) ?? Unavailable;
 }

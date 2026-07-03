@@ -231,7 +231,7 @@ commands) was built and validated against the flashed rig.
 
 | Behaviour | 3.44 observation |
 |---|---|
-| **GETRSSI (0x09 A7)** | **REMOVED** — no reply at all (bench: 2 s probe times out). It was an undocumented 3.41 feature. Driver keeps `GetRssiAsync` with "firmware 3.41 only" docs; `measure`/`deviation` degrade to "n/a on this firmware"; the deviation METER never uses it (signals below) |
+| **GETRSSI (0x09 A7)** | **REMOVED** — no reply at all (bench: 2 s probe times out). It was an undocumented 3.41 feature. Driver keeps `GetRssiAsync` with "firmware 3.41 only" docs; `measure`/`deviation` degrade to "n/a on this firmware"; the deviation METER never uses it (signals below) — *since superseded: on 3.41 the meter now probes it as an optional fast path, see "The 3.41 fast path" below* |
 | GETALL (0x0B/00) | still answers the **labelled** `=FirmwareVr:` text on demand (numeric `=II:` report remains the 60 s beacon only) |
 | Register 0B (preamble words) | still never increments for host traffic — the TXDELAY check keeps its ACKMODE echo-timing fallback |
 | CQBEEP-N + `[TARPNstat` arming | unchanged (bench: 4.02 s tone for SSID 4). Arming stays volatile — the tuning assistant re-arms at session start |
@@ -297,6 +297,61 @@ answering the tuned end's ready beacon, which always lands on an idle end).
   with RF stimulus (5/5 decode, −90.2 dBm), clean BY, relay logged
   pair/close. PIN single-use + session-dies-with-either-socket are
   unit-tested over real loopback sockets.
+
+## The 3.41 fast path: GETRSSI as the deviation meter's optional level source (2026-07-03, session 5)
+
+The bench **deliberately runs firmware 3.41 for the current test campaign** —
+GETRSSI (KISS `0x09 A7` → cmd `0xE0` ASCII `RSSI:-34.37`, an RX-audio RMS dB
+meter) is **3.41-only** per the version mapping (flashed down through 3.43 and
+3.42: both lack it). **3.44 stays the production guidance** (its 3.42–3.44
+fixes matter: CSMA slot timing, preamble-after-beacon, ACKMODE header rip);
+the fast path is strictly opportunistic and everything degrades to the 3.44
+signal set when the probe times out.
+
+What shipped (branch `tune-fastpath`): the meter role probes GETRSSI **once
+at session start** (`NinoTncBurstMeter.ProbeAudioLevelMeterAsync`, 2 s
+timeout) and, when it answers, captures an idle-channel baseline (median of
+5) then samples the level on the RSSI cadence during each burst window
+(DCD-gated median; max-quieting minimum without a radio attached). The `MS`
+telegram gains an optional `lvl:`/`l` field — absent on the wire parses as
+`null`, so old peers interop cleanly; if the compact form would bust the
+32-char SDM budget the level is the field that gets dropped (bracketing
+signals keep priority). `DeviationAdvisor.DescribeLevel` renders level +
+quieting + burst-on-burst trend on the meter's advice line and under the
+tuned end's trend table; the **UP/DN/OK bracketing verdicts stay
+authoritative** — the level never changes them. Doctor's getrssi PASS now
+reads "available (firmware 3.41-era) — deviation meter fast path active".
+
+Validated on the rig (both TNCs 3.41 mode 6, beacons off, both radios
+confirmed on the newly-programmed **channel 0 = narrow** — 1200 AFSK belongs
+there; channel 1 = wide is for the 9600 retest):
+
+- doctor `/dev/ttyACM0 /dev/ttyUSB1`: all 9 probes PASS, getrssi = "available
+  (firmware 3.41-era) — deviation meter fast path active (idle -34.0 dB)".
+- `deviation-sdm` two-round scripted session (meter ACM0/USB1 ← peer
+  PDN00001; tuned ACM1/USB0 ← peer PDN00002): probe reported "GETRSSI fast
+  path active (firmware 3.41-era) — idle RX-audio -33.1 dB (n=5)"; MS
+  telegrams carried the level over the SDM within budget
+  (`V1|1|MS|5/5|c0|r-89.7|l-31.7`, 28 chars); zero receipt retries; tuned-end
+  trend table grew the level column:
+
+  ```
+  burst   decoded   fec Δ    clip Δ   rssi dBm   level dB   advice
+      1     5/5        n/a        0      -89.7      -31.7   OK
+      2     5/5        n/a        0      -89.7      -31.9   OK
+  level -31.9 dB, level steady (RX audio at the meter end)
+  ```
+
+  Meter advice lines: `5/5|fec:na|clip:0|rssi:-89.7|lvl:-31.7 → OK (level
+  -31.7 dB, -1.4 dB quieting)`; burst 2 added `level steady`.
+- **Measurement note**: a 1200 AFSK data burst reads ≈ the open-squelch idle
+  noise level (−31.7 vs −33.1 dB idle → *negative* quieting, −1.4 dB), unlike
+  the 440 Hz CQBEEP tone (−64.3 vs −32.5 dB idle, session 3). Post-demod
+  AFSK audio RMS at these (untuned, midpoint) pot positions is simply
+  noise-like in level — so for data bursts the *level itself* is the
+  deviation signal to trend as the pot moves, and the quieting figure is only
+  dramatic for tone stimuli. The advice-line wording deliberately reports
+  both without treating either as a verdict.
 
 ## Follow-ups (rough priority)
 

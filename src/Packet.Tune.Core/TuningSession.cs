@@ -16,6 +16,15 @@ public interface IBurstMeter
     /// <summary>Measure one burst of <paramref name="requestedFrames"/> frames
     /// (the call spans the whole measurement window).</summary>
     Task<MeterReport> MeasureBurstAsync(int requestedFrames, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The idle-channel RX-audio baseline in dB captured before the first
+    /// burst, or <c>null</c> when the meter has no audio-level source. Only
+    /// the GETRSSI fast path (NinoTNC firmware 3.41-era — REMOVED in 3.44)
+    /// provides it; it turns per-burst <see cref="MeterReport.AudioLevelDb"/>
+    /// readings into a quieting figure for the advice line.
+    /// </summary>
+    double? IdleAudioLevelDb => null;
 }
 
 /// <summary>Tuned-side operator interaction between bursts.</summary>
@@ -139,10 +148,14 @@ public static class TuningSession
                         var report = await meter.MeasureBurstAsync(opts.BurstFrames, cancellationToken)
                             .ConfigureAwait(false);
                         var advice = DeviationAdvisor.Advise(report, previous);
+                        // GETRSSI fast path (firmware 3.41-era): the audio
+                        // level enriches the advice line; the UP/DN/OK
+                        // verdict above stays authoritative.
+                        string? levelNote = DeviationAdvisor.DescribeLevel(report, previous, meter.IdleAudioLevelDb);
                         previous = report;
                         await output.WriteLineAsync(string.Create(
                             CultureInfo.InvariantCulture,
-                            $"meter: burst {round}: {report.ToArgs()} → {DeviationAdvisor.ToWire(advice)}"))
+                            $"meter: burst {round}: {report.ToArgs()} → {DeviationAdvisor.ToWire(advice)}{(levelNote is null ? string.Empty : $" ({levelNote})")}"))
                             .ConfigureAwait(false);
 
                         try
@@ -333,13 +346,24 @@ public static class TuningSession
     private static void WriteTrendTable(TextWriter output, List<(MeterReport Report, TuningAdvice? Advice)> trend)
     {
         output.WriteLine();
-        output.WriteLine("  burst   decoded   fec Δ    clip Δ   rssi dBm   advice");
+        output.WriteLine("  burst   decoded   fec Δ    clip Δ   rssi dBm   level dB   advice");
         for (int i = 0; i < trend.Count; i++)
         {
             var (r, advice) = trend[i];
             output.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"  {i + 1,5}   {r.DecodedFrames,3}/{r.RequestedFrames,-3}   {Fmt(r.FecCorrectedBytesDelta),6}   {Fmt(r.LostAdcSamplesDelta),6}   {FmtRssi(r.RssiDbm),8}   {(advice is { } a ? DeviationAdvisor.ToWire(a) : "—")}"));
+                $"  {i + 1,5}   {r.DecodedFrames,3}/{r.RequestedFrames,-3}   {Fmt(r.FecCorrectedBytesDelta),6}   {Fmt(r.LostAdcSamplesDelta),6}   {FmtRssi(r.RssiDbm),8}   {FmtRssi(r.AudioLevelDb),8}   {(advice is { } a ? DeviationAdvisor.ToWire(a) : "—")}"));
+        }
+        // The audio level (GETRSSI fast path, meter firmware 3.41-era) is
+        // guidance for the mid-plateau: the bracketing UP/DN/OK verdict in
+        // the table stays authoritative. The tuned end has no idle baseline
+        // (it lives at the meter), so this shows the burst-on-burst trend.
+        if (trend.Count > 0 &&
+            DeviationAdvisor.DescribeLevel(
+                trend[^1].Report,
+                trend.Count > 1 ? trend[^2].Report : null) is { } note)
+        {
+            output.WriteLine("  " + note + " (RX audio at the meter end)");
         }
         output.WriteLine();
     }

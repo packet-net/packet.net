@@ -61,6 +61,62 @@ public class TuningSessionTests
     }
 
     [Fact]
+    public async Task Audio_level_reports_enrich_the_advice_line_and_the_trend_table()
+    {
+        // The GETRSSI fast path (meter firmware 3.41-era): reports carry a
+        // level, the meter knows its idle baseline.
+        var (tunedLink, meterLink) = InMemoryTuningLink.CreatePair();
+        var stimulus = new FakeStimulus();
+        var meter = new FakeMeter(
+            new MeterReport(5, 5, null, 0, -90.1, AudioLevelDb: -62.5),
+            new MeterReport(5, 5, null, 0, -90.1, AudioLevelDb: -62.7))
+        {
+            IdleAudioLevelDb = -34.5,
+        };
+        var prompt = new ScriptedPrompt(true, false);
+        var tunedOut = new StringWriter();
+        var meterOut = new StringWriter();
+
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, NoDelay, tunedOut);
+        var meterRun = TuningSession.RunMeterAsync(meterLink, meter, null, meterOut);
+
+        (await tunedRun.WaitAsync(Timeout)).Should().Be(0);
+        (await meterRun.WaitAsync(Timeout)).Should().Be(0);
+
+        // Meter side: level + delta-from-idle on the advice line.
+        string meterText = meterOut.ToString();
+        meterText.Should().Contain("level -62.5 dB, 28.0 dB quieting");
+        meterText.Should().Contain("level steady", "burst 2 moved only 0.2 dB");
+
+        // Tuned side: the trend table shows the level column and the
+        // burst-on-burst level note (no idle baseline at the tuned end).
+        string tunedText = tunedOut.ToString();
+        tunedText.Should().Contain("level dB");
+        tunedText.Should().Contain("-62.5");
+        tunedText.Should().Contain("level -62.7 dB, level steady");
+    }
+
+    [Fact]
+    public async Task Levelless_reports_keep_the_output_free_of_level_notes()
+    {
+        // A 3.44-era meter (no GETRSSI): nothing about levels anywhere.
+        var (tunedLink, meterLink) = InMemoryTuningLink.CreatePair();
+        var meter = new FakeMeter(new MeterReport(5, 5, 0, 0, -90.2));
+        var prompt = new ScriptedPrompt(false);
+        var tunedOut = new StringWriter();
+        var meterOut = new StringWriter();
+
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, new FakeStimulus(), prompt, NoDelay, tunedOut);
+        var meterRun = TuningSession.RunMeterAsync(meterLink, meter, null, meterOut);
+
+        (await tunedRun.WaitAsync(Timeout)).Should().Be(0);
+        (await meterRun.WaitAsync(Timeout)).Should().Be(0);
+
+        meterOut.ToString().Should().NotContain("quieting");
+        tunedOut.ToString().Should().NotContain("level -");
+    }
+
+    [Fact]
     public async Task Custom_burst_size_flows_through_the_rq_telegram()
     {
         var (tunedLink, meterLink) = InMemoryTuningLink.CreatePair();
@@ -96,6 +152,9 @@ public class TuningSessionTests
         private int index;
 
         public int Measured => index;
+
+        /// <summary>Simulates the GETRSSI fast path's idle baseline (null = no fast path).</summary>
+        public double? IdleAudioLevelDb { get; init; }
 
         public Task<MeterReport> MeasureBurstAsync(int requestedFrames, CancellationToken cancellationToken = default)
         {
