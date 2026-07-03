@@ -59,6 +59,16 @@ public sealed record SdmTuningLinkOptions
 /// The radio must have PROGRESS messages enabled
 /// (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>) — that is what
 /// carries DCD, arrivals and delivery receipts.
+/// <para>
+/// <b>Hardware trap (TM8110, bench-found 2026-07-03):</b> keying the radio
+/// through its data PTT line while its SDM auto-acknowledgement is pending
+/// or in flight <em>wedges the radio's auto-ack engine</em> — from then on
+/// it still receives SDMs (RING + buffer) but never acks again, so every
+/// peer send reports "not delivered" until the radio is soft-reset (CCR
+/// enter/exit) or power-cycled. Never transmit on a radio that has just
+/// received a telegram until its ack has had time to go out —
+/// <c>TuningSessionOptions.PreBurstDelay</c> exists precisely for this.
+/// </para>
 /// </remarks>
 public sealed class SdmTuningLink : ITuningLink
 {

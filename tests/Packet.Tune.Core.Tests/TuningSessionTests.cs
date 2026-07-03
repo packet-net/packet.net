@@ -11,6 +11,9 @@ public class TuningSessionTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>No pre-burst guard delay — there is no radio to protect in a fake link.</summary>
+    private static TuningSessionOptions NoDelay => new() { PreBurstDelay = TimeSpan.Zero };
+
     [Fact]
     public async Task A_two_round_session_runs_the_full_protocol_and_finishes_with_bye()
     {
@@ -23,7 +26,7 @@ public class TuningSessionTests
         var tunedOut = new StringWriter();
         var meterOut = new StringWriter();
 
-        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, null, tunedOut);
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, NoDelay, tunedOut);
         var meterRun = TuningSession.RunMeterAsync(meterLink, meter, null, meterOut);
 
         (await tunedRun.WaitAsync(Timeout)).Should().Be(0);
@@ -49,7 +52,7 @@ public class TuningSessionTests
         var prompt = new ScriptedPrompt(false);
         var tunedOut = new StringWriter();
 
-        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, null, tunedOut);
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, NoDelay, tunedOut);
         var meterRun = TuningSession.RunMeterAsync(meterLink, meter, null, new StringWriter());
 
         (await tunedRun.WaitAsync(Timeout)).Should().Be(0);
@@ -65,7 +68,7 @@ public class TuningSessionTests
         var meter = new FakeMeter(new MeterReport(3, 3, 0, 0, null));
         var prompt = new ScriptedPrompt(false);
 
-        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, null, new StringWriter());
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, stimulus, prompt, NoDelay, new StringWriter());
         var meterRun = TuningSession.RunMeterAsync(
             meterLink, meter, new TuningSessionOptions { BurstFrames = 3 }, new StringWriter());
 
