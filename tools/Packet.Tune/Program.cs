@@ -42,6 +42,7 @@ return args switch
     ["deviation-sdm", .. var rest] => await DeviationAssist.RunSdm(rest),
     ["deviation-remote", .. var rest] => await DeviationAssist.RunRemote(rest),
     ["rendezvous", .. var rest] => await RendezvousCommand.Run(rest),
+    ["radio-reset", var ccdi] => await RadioResetCommand.Run(ccdi),
     _ => Usage(),
 };
 
@@ -57,6 +58,7 @@ static int Usage()
     Console.WriteLine("  deviation-remote --role tuned|meter --tnc <port> [--radio <ccdi>] --rendezvous <ws url>");
     Console.WriteLine("                [--pin NNNNNN] [--callsign X] [--burst N=5]");
     Console.WriteLine("  rendezvous --listen <port>");
+    Console.WriteLine("  radio-reset <ccdiPort>       (CCR enter+exit soft reset — un-wedges SDM auto-ack)");
     Console.WriteLine();
     Console.WriteLine("deviation-* tune the TX-DEV pot at the TUNED end: the meter end requests");
     Console.WriteLine("frame bursts, measures decode rate / IL2P FEC deltas / ADC clipping / CCDI");

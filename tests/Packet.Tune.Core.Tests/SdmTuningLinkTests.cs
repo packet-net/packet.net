@@ -19,6 +19,7 @@ public class SdmTuningLinkTests
         ChannelClearTimeout = TimeSpan.FromMilliseconds(500),
         ChannelClearPollInterval = TimeSpan.FromMilliseconds(10),
         ReceivePollInterval = TimeSpan.FromMilliseconds(100),
+        PostReceiveGuard = TimeSpan.FromMilliseconds(50),
     };
 
     [Fact]
@@ -126,6 +127,31 @@ public class SdmTuningLinkTests
         received.Should().Equal(
             new TuningTelegram(7, TuningVerb.BurstRequest, "5"),
             new TuningTelegram(8, TuningVerb.Advice, "OK"));
+    }
+
+    [Fact]
+    public async Task A_send_right_after_an_arrival_waits_out_the_post_receive_guard()
+    {
+        // The radio auto-acks a received SDM over the air; transmitting while
+        // that ack is in flight wedges the TM8110's ack engine — so the link
+        // must hold sends back for the guard interval after every arrival.
+        var channel = new FakeSdmChannel { AckPlan = [true] };
+        var options = FastOptions with { PostReceiveGuard = TimeSpan.FromMilliseconds(400) };
+        await using var link = new SdmTuningLink(channel, "PDN00001", options);
+
+        channel.Deliver("V1|5|RQ|3");
+        await foreach (var _ in link.ReceiveAsync().WithTimeout(Timeout))
+        {
+            break; // arrival processed
+        }
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await link.SendAsync(new TuningTelegram(1, TuningVerb.Hello, "tuned")).WaitAsync(Timeout);
+        stopwatch.Stop();
+
+        stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(200),
+            "the send must wait for the radio's auto-ack of the just-received telegram");
+        channel.Sent.Should().HaveCount(1);
     }
 
     [Fact]
