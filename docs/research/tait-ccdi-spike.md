@@ -641,6 +641,202 @@ clipping at 0/5 *is* directional evidence. Plus the **3.41 mode-14 firmware-byte
 (`0x90` → mode 14)** in `NinoTncCatalog`, closing session 6's "unrecognised firmware
 byte" quirk.
 
+## Mode coordination over SDM (2026-07-03, session 8) — the §5.10 mode-agility seed
+
+The radios' FFSK side channel is mode- and channel-agnostic — proven repeatedly in the
+sessions above (SDM delivery identical with the TNCs in dead 9600 GFSK, on both channel
+widths, at any pot position). This session promoted that observation into the seam Phase 10's
+mode agility needs and validated the first **coordinated TNC-mode/radio-channel renegotiation**
+end-to-end on the rig.
+
+### What shipped
+
+- **`Packet.Radio.IRadioSideChannel`** — the radio-native small-datagram control plane
+  (send/receive + async over-air `DeliveryReceipt` + `MaxPayloadLength` budget), XML-doc'd
+  with the capability-gating intent: drivers advertise the machinery
+  (`RadioCapabilities.SideChannel`, now on `TaitCcdiRadio`), consumers gate features on a
+  live probe (the doctor's SDM check) because programming can still have the feature off.
+  `Packet.Radio` gains no Tait dependency — the implementation is
+  **`Packet.Radio.Tait.TaitSdmSideChannel`** (the former Tune.Core `TaitSdmChannel`, moved
+  down a layer), and `SdmTuningLink` now rides `IRadioSideChannel` (`ITuningLink` unchanged
+  for consumers; the payload-budget check now comes from the channel).
+- **Mode-coordination protocol** (`Packet.Tune.Core`): new `MODE` telegram verb carrying
+  `propose|confirm|reject|commit|sent|report|revert` (`ModeCoordMessage`; every form inside
+  the 32-char SDM budget, reasons capped at 9 chars), driven by
+  **`ModeCoordinator`/`ModeResponder`** over any `ITuningLink` with the hardware behind an
+  `IModeCoordStation` seam (`NinoTncModeCoordStation` = SETHW+16 + settle frame + GETALL
+  verify, GO_TO_CHANNEL + verify + retry, tagged probe frames). Key shapes: nothing switches
+  until the **commit's delivery receipt** proves both ends hold it; the commit telegram's
+  sequence number **tags the probe frames** (`PMODE a<tag> i/n`) so stale probes can't
+  validate the wrong attempt; verification is **N probes each way** with decode counts
+  exchanged over SDM (`sent`/`report` — the latency column is sender-side send→TX-complete,
+  which bench data shows trails the receiver's decode by only ~35–115 ms); any failure past
+  the commit **reverts both ends to the session's home mode/channel** and re-verifies the
+  home link with a short burst; and the responder carries an **idle watchdog** (default
+  150 s) that reverts it home unilaterally when the coordinator goes silent — the recovery
+  for the one failure SDM can't coordinate across, a split channel. All wedge guards carry
+  over (2 s post-receive in the link; 2.5 s pre-key before any settle frame or probe burst
+  that follows an SDM arrival).
+- **CLI**: `packet-tune mode-coord --role coordinator|responder --tnc <port> --radio <ccdi>
+  --peer <8charId> [--sequence m[@ch],… | --sweep] [--strict-bandwidth] [--channel-width
+  narrow|wide] [--home-mode 6] [--home-channel 0] [--probes 5]`. `--sweep` walks every
+  IL2P+CRC catalog mode; **lenient by default** (tries everything and lets the probe verdicts
+  speak — mode 2 decodes on this rig's narrow channel despite being a 25 kHz mode per the
+  wiki); `--strict-bandwidth` skips the wide-only modes (new catalog knowledge:
+  `NinoTncCatalog.WideChannelModes` = {0, 1, 2}, wiki-cited) when the current channel is
+  narrow. The coordinator always finishes with a coordinated return to home, falling back to
+  a local restore when coordination is lost — and the responder ends every exit path
+  (BY/cancel/link-loss/watchdog) at home.
+- Tests: +38 in `Packet.Tune.Core.Tests` (119 total) — codec round-trips/budget/malformed
+  wire, coordinator+responder end-to-end over the in-memory link pair with a fake two-station
+  ether (success, channel moves, dead-probe revert with home verify, rejection, both-sided
+  switch-failure reverts, confirm timeout, watchdog revert, BY-goes-home, stale-tag probes).
+
+### Hardware validation 1: full `--sweep` on channel 0 (narrow)
+
+Both TNCs 3.41, coordinator = TNC A `/dev/ttyACM0` + `/dev/ttyUSB2` (peer `PDN00001`),
+responder = TNC B `/dev/ttyACM1` + `/dev/ttyUSB3` (peer `PDN00002`), 5 probes/direction,
+raw logs in `artifacts/hardware-probe/20260703-mode-coord/` (untracked). The sweep
+coordinated 8 modes cleanly — and then a **live unplanned failure** exercised every backstop
+(next subsection). Final coordinator table, verbatim:
+
+```
+| Ch | Mode | Name | Dir | Decoded | Mean TX latency | Outcome |
+|---:|-----:|------|-----|--------:|----------------:|---------|
+| 0 | 1 | 19200 4FSK IL2P+CRC | C→R | 0/5 | 531 ms | PROBE DEAD — reverted, home link alive |
+| 0 | 1 | 19200 4FSK IL2P+CRC | R→C | 0/5 | 531 ms | PROBE DEAD — reverted, home link alive |
+| 0 | 2 | 9600 GFSK IL2P+CRC | C→R | 5/5 | 602 ms | switched (solid both ways) |
+| 0 | 2 | 9600 GFSK IL2P+CRC | R→C | 5/5 | 603 ms | switched (solid both ways) |
+| 0 | 3 | 9600 4FSK IL2P+CRC | C→R | 0/5 | 612 ms | PROBE DEAD — reverted, home link alive |
+| 0 | 3 | 9600 4FSK IL2P+CRC | R→C | 5/5 | 613 ms | PROBE DEAD — reverted, home link alive |
+| 0 | 4 | 4800 GFSK IL2P+CRC | C→R | 5/5 | 744 ms | switched (solid both ways) |
+| 0 | 4 | 4800 GFSK IL2P+CRC | R→C | 5/5 | 744 ms | switched (solid both ways) |
+| 0 | 5 | 3600 QPSK IL2P+CRC | C→R | 5/5 | 835 ms | switched (solid both ways) |
+| 0 | 5 | 3600 QPSK IL2P+CRC | R→C | 5/5 | 825 ms | switched (solid both ways) |
+| 0 | 7 | 1200 AFSK IL2P+CRC | C→R | 4/5 | 1212 ms | switched (MARGINAL) |
+| 0 | 7 | 1200 AFSK IL2P+CRC | R→C | 5/5 | 1212 ms | switched (MARGINAL) |
+| 0 | 8 | 300 BPSK IL2P+CRC | C→R | 5/5 | 3080 ms | switched (solid both ways) |
+| 0 | 8 | 300 BPSK IL2P+CRC | R→C | 5/5 | 3080 ms | switched (solid both ways) |
+| 0 | 9 | 600 QPSK IL2P+CRC | C→R | 5/5 | 1831 ms | switched (solid both ways) |
+| 0 | 9 | 600 QPSK IL2P+CRC | R→C | 5/5 | 1831 ms | switched (solid both ways) |
+| 0 | 10 | 1200 BPSK IL2P+CRC | — | n/a | n/a | commit undelivered |
+| 0 | 11 | 2400 QPSK IL2P+CRC | — | n/a | n/a | COORDINATION LOST |
+| 0 | 14 | 300 AFSKPLL IL2P+CRC | — | n/a | n/a | COORDINATION LOST |
+| 0 | 6 | 1200 AFSK AX.25 | — | n/a | n/a | COORDINATION LOST |
+```
+
+The probed cells reproduce the post-retap survey exactly: mode 1 dead both ways on narrow
+(25 kHz mode — the protocol reverted and confirmed the home link 2/2 each time), mode 3 dead
+A→B only (TNC A's known tightest-margin cell — one dead direction correctly fails the
+attempt), mode 7 the familiar A→B 4/5 marginal, everything else solid; TX latencies scale
+with bit rate as always. Each mode change is propose→confirm→commit→switch→probe×2→report,
+all receipted over SDM, ~60–90 s per mode at these settings.
+
+### The unplanned live failure — and every backstop firing
+
+Between mode 9's success and mode 10's commit, the coordinator radio's **`ChannelBusy`
+latched true**: `p0205` (busy) had arrived without its matching `p0206` (clear) — after the
+run, a fresh process measured the channel genuinely idle (raw RSSI −128.2 dBm = the squelched
+noise floor), so this was a **missed/lost DCD-clear PROGRESS edge latching the driver's
+edge-derived busy state**, not RF. The consequence chain, exactly as designed, verbatim from
+the two logs:
+
+```
+coord:  coord: responder confirmed — committing
+coord:  coord: commit delivery unconfirmed (channel still busy after 30s — refusing to
+        transmit over it) — staying home, sending revert
+coord:  coord: revert notification undelivered (channel still busy after 30s — refusing to
+        transmit over it) — responder watchdog backstops
+coord:  → commit undelivered
+…
+rsp:    responder: confirming mode 10 (1200 BPSK IL2P+CRC)
+rsp:    responder: WATCHDOG — nothing heard for 150s while away from home; reverting
+rsp:    station: SETHW 6+16 → GETALL running mode 6 (1200 AFSK AX.25)
+rsp:    responder: at home (mode 6, channel 0)
+…
+coord:  home coordination failed — restoring this end locally
+coord:  station: SETHW 6+16 → GETALL running mode 6 (1200 AFSK AX.25)
+coord:  station: GO_TO_CHANNEL 0 → reports kind '0' channel '0'
+```
+
+The link **never transmitted over what it believed was a busy channel**, the ambiguous
+commit was answered with stay-home + best-effort revert, the responder's idle watchdog
+brought its end home unilaterally (it had been left holding mode 9 + an unconfirmed
+mode-10 proposal), and the coordinator's CLI fall-back restored its own end locally — **both
+ends converged on home (mode 6 / channel 0, verified) with no operator and no shared
+channel state.** A deliberately-planned fault injection could not have staged a better
+test. Driver follow-up filed below: an edge-derived DCD state needs a staleness escape.
+
+### Hardware validation 2: coordinated channel switch (narrow → wide → back)
+
+`--sequence 1@1,3@1,6@0` (fresh processes both ends): a **coordinated mode+channel switch**
+onto the wide channel with mode 1 (19k2 — the mode that is *dead* on narrow, so this only
+works if the radios really moved), a second wide mode, and a coordinated return to
+channel 0 / mode 6. Every leg first try, exit 0, responder ended at home on BY. Verbatim
+table:
+
+```
+| Ch | Mode | Name | Dir | Decoded | Mean TX latency | Outcome |
+|---:|-----:|------|-----|--------:|----------------:|---------|
+| 1 | 1 | 19200 4FSK IL2P+CRC | C→R | 5/5 | 531 ms | switched (solid both ways) |
+| 1 | 1 | 19200 4FSK IL2P+CRC | R→C | 5/5 | 530 ms | switched (solid both ways) |
+| 1 | 3 | 9600 4FSK IL2P+CRC | C→R | 5/5 | 606 ms | switched (solid both ways) |
+| 1 | 3 | 9600 4FSK IL2P+CRC | R→C | 5/5 | 606 ms | switched (solid both ways) |
+| 0 | 6 | 1200 AFSK AX.25 | C→R | 5/5 | 984 ms | switched (solid both ways) |
+| 0 | 6 | 1200 AFSK AX.25 | R→C | 5/5 | 986 ms | switched (solid both ways) |
+```
+
+Notable in the logs: the commit-before-move discipline holds across the channel boundary
+(the responder's `GO_TO_CHANNEL 1 → reports … channel '1'` verify lands before the
+coordinator's probes), and the SDM link carried the whole conversation across **both**
+channel widths within one session — including the propose/confirm for the return leg sent
+*on the wide channel* to coordinate the move back to narrow. Mode 3 (9600 4FSK), the
+narrow-channel A→B dead cell, is 5/5 both ways on wide — matching the survey.
+
+### Hardware validation 3: the failure-revert demo (mode 1 on narrow)
+
+`--sequence 1` on channel 0: propose 19200 4FSK on a narrow channel — a switch that
+coordinates perfectly and then cannot carry traffic. Coordinator output, verbatim (take 2;
+take 1 is below):
+
+```
+  ── coordinate: mode 1 (19200 4FSK IL2P+CRC) ──
+  coord: proposing mode 1 (19200 4FSK IL2P+CRC)
+  coord: responder confirmed — committing
+  station: SETHW 1+16 → GETALL running mode 1 (19200 4FSK IL2P+CRC)
+  coord: transmitting 5 probe frames (tag a3)
+  coord: C→R 0/5 decoded at the responder
+  coord: R→C 0/5 decoded here
+  coord: probe verdict DEAD in at least one direction — reverting both ends
+  station: settle frame TX-completion not echoed within 8 s (continuing)
+  station: SETHW 6+16 → GETALL running mode 6 (1200 AFSK AX.25)
+  coord: reverted to home (mode 6, channel 0)
+  coord: home link alive (2/2 decoded at the responder)
+  → PROBE DEAD — reverted, home link alive
+
+| Ch | Mode | Name | Dir | Decoded | Mean TX latency | Outcome |
+|---:|-----:|------|-----|--------:|----------------:|---------|
+| 0 | 1 | 19200 4FSK IL2P+CRC | C→R | 0/5 | 531 ms | PROBE DEAD — reverted, home link alive |
+| 0 | 1 | 19200 4FSK IL2P+CRC | R→C | 0/5 | 531 ms | PROBE DEAD — reverted, home link alive |
+```
+
+and the responder's half: `revert requested (probedead) — returning to home` → `at home
+(mode 6, channel 0)` → `2/2 probe frames decoded — reporting` → clean BY exit. Note the
+probes themselves report the failure honestly — the dead-mode probes even *keyed* fine
+(531 ms TX latency; the 19k2 carrier just doesn't demodulate in 12.5 kHz) — and both SDM
+verdict exchanges rode the same radios that couldn't pass a single AX.25 frame at that
+moment.
+
+**Take 1 of this demo found two real bugs** (the reason this section says "take 2"): the
+run reverted correctly but reported `HOME LINK NOT CONFIRMED` (exit 1 — correctly loud)
+because the responder opened its home-verify probe window only *after* its home apply, and
+that apply had blocked the full 15 s settle-echo timeout (the known sporadic
+missing-TX-completion quirk), so the coordinator's 2 verify probes sailed past a
+not-yet-open counter. Fixed: the responder opens the count window immediately on the
+revert telegram (counting is passive), and the settle-echo wait dropped 15 s → 8 s (the
+echo either arrives within ~1 frame-time + TXDELAY or never). A regression test pins the
+ordering (`count:` before `mode:` in the station-call trace).
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate
@@ -667,3 +863,19 @@ byte" quirk.
    sessions here.
 8. Housekeeping: `docs/releasing.md`'s "six published packages" list is stale against the
    `publish-libs.yml` matrix (now 13); reconcile on the next release pass.
+9. **Stale-DCD escape for the busy gate** (from session 8's live failure): `TaitCcdiRadio`'s
+   `ChannelBusy` is edge-derived, and one lost `p0206` latched it busy for the rest of the
+   process — every SDM send then (correctly) refused to key, and only the watchdogs
+   converged the session. Give the driver (or `SdmTuningLink`'s clear-wait) a staleness
+   check: busy for implausibly long with no edges → re-validate with a solicited query
+   (RSSI vs noise floor is a serviceable proxy) before trusting the latch.
+10. **Session epochs for coordination protocols** (session 8): telegram seq numbers restart
+    with the process and the link dedupe window would swallow a restarted coordinator's
+    first telegrams at a long-lived responder. One-process-per-session is the bench rule;
+    a node-resident responder needs an epoch/session id (V2 wire concern). See
+    [`radio-side-channel-mode-agility.md`](radio-side-channel-mode-agility.md).
+11. The **settle-frame TX-completion echo goes missing far more often under mode-coord than
+    it did under mode-survey** (session-8 counts: 9/12 applies on the sweep coordinator,
+    6/12 on its responder, ~1/4 on the shorter runs; both TNCs, 3.41) — worth a look at
+    what differs (timing relative to SETHW? echo swallowed during the mode transition?)
+    before trusting the echo for anything more than logging.

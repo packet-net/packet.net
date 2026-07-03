@@ -32,6 +32,11 @@
 //   mode-survey <tncA> <tncB> <ccdiA> <ccdiB>  per-channel × per-IL2P+CRC-mode RF survey
 //                                              (decode rate, latency, RX RSSI, IL2P counters);
 //                                              always leaves the rig on channel 0 / mode 6
+//   mode-coord --role coordinator|responder --tnc <port> --radio <ccdi> --peer <8charId>
+//                                              renegotiate TNC mode (and radio channel) over
+//                                              the radios' SDM side channel: propose/confirm/
+//                                              commit, probe-verify both ways, revert-to-home
+//                                              on any failure (--sequence m[@ch],… | --sweep)
 //   set-mode <tncPort> <mode>                  SETHW one TNC's mode (+16 RAM-only default)
 //                                              with settle frame + GETALL verify
 //   radio-channel <ccdiPort> [channel]         report — or switch and verify — a Tait
@@ -52,6 +57,7 @@ return args switch
     ["radio-reset", var ccdi] => await RadioResetCommand.Run(ccdi),
     ["mode-survey", var tncA, var tncB, var ccdiA, var ccdiB, .. var rest] =>
         await ModeSurveyCommand.Run(tncA, tncB, ccdiA, ccdiB, rest),
+    ["mode-coord", .. var rest] => await ModeCoordCommand.Run(rest),
     ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
     ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
     _ => Usage(),
@@ -72,6 +78,11 @@ static int Usage()
     Console.WriteLine("  radio-reset <ccdiPort>       (CCR enter+exit soft reset — un-wedges SDM auto-ack)");
     Console.WriteLine("  mode-survey <tncA> <tncB> <ccdiA> <ccdiB> [--channels 0,1] [--rounds 5] [--json [path]]");
     Console.WriteLine("                               (IL2P+CRC modes only; always ends on channel 0 / mode 6)");
+    Console.WriteLine("  mode-coord --role coordinator|responder --tnc <port> --radio <ccdi> --peer <8charId>");
+    Console.WriteLine("             [--sequence m[@ch],…|--sweep] [--strict-bandwidth] [--channel-width narrow|wide]");
+    Console.WriteLine("             [--home-mode 6] [--home-channel 0] [--probes 5] [--callsign X] [--verbose]");
+    Console.WriteLine("                               (mode/channel renegotiation over the radios' SDM side");
+    Console.WriteLine("                                channel; any failure reverts both ends to home)");
     Console.WriteLine("  set-mode <tncPort> <mode> [--persist] [--callsign X]");
     Console.WriteLine("  radio-channel <ccdiPort> [channel]");
     Console.WriteLine();

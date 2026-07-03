@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Packet.Radio;
 using Packet.Radio.Tait;
 
 namespace Packet.Tune.Core;
@@ -39,15 +40,18 @@ public sealed record SdmTuningLinkOptions
 }
 
 /// <summary>
-/// <see cref="ITuningLink"/> over Tait CCDI short data messages: telegrams
-/// ride the radios' own internal FFSK modem at factory deviation — fully
-/// independent of the NinoTNC pot under tune, so the coordination channel
-/// works at ANY deviation setting. No internet, no TNC involvement.
+/// <see cref="ITuningLink"/> over a radio's own small-datagram side channel
+/// (<see cref="IRadioSideChannel"/> — canonically Tait CCDI short data
+/// messages): telegrams ride the radios' internal signalling modem at factory
+/// deviation — fully independent of the TNC/modem under tune or negotiation,
+/// so the coordination channel works at ANY deviation setting and in ANY
+/// modem mode. No internet, no TNC involvement.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
 ///   <item><b>Reliability:</b> each send waits for the radio's over-air
-///     delivery receipt (PROGRESS 1D — requires SDM auto-acks enabled in both
+///     delivery receipt (<see cref="IRadioSideChannel.DeliveryReceipt"/> —
+///     for Tait, PROGRESS 1D, which requires SDM auto-acks enabled in both
 ///     radios' programming) and retries up to
 ///     <see cref="SdmTuningLinkOptions.MaxAttempts"/> times with
 ///     <see cref="SdmTuningLinkOptions.RetryBackoff"/> between attempts;
@@ -57,16 +61,13 @@ public sealed record SdmTuningLinkOptions
 ///     DCD to show the channel clear before keying (never transmit over a
 ///     burst in flight).</item>
 ///   <item><b>Wire form:</b> telegrams are sent in the compact encoding
-///     (<see cref="TuningTelegram.EncodeCompact"/>) to fit the 32-character
-///     SDM budget.</item>
-///   <item><b>Receive:</b> the radio's SDM buffer is one-deep with
-///     overwrite-on-arrival, so the link reads it promptly on every
-///     RING / FFSK-data PROGRESS, with a slow fallback poll for missed
-///     events.</item>
+///     (<see cref="TuningTelegram.EncodeCompact"/>) to fit the channel's
+///     <see cref="IRadioSideChannel.MaxPayloadLength"/> budget.</item>
+///   <item><b>Receive:</b> hardware receive buffers are typically one-deep
+///     with overwrite-on-arrival, so the link reads promptly on every
+///     <see cref="IRadioSideChannel.DatagramArrived"/>, with a slow fallback
+///     poll for missed events.</item>
 /// </list>
-/// The radio must have PROGRESS messages enabled
-/// (<see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>) — that is what
-/// carries DCD, arrivals and delivery receipts.
 /// <para>
 /// <b>Hardware trap (TM8110, bench-found 2026-07-03):</b> keying the radio
 /// through its data PTT line while its SDM auto-acknowledgement is pending
@@ -80,7 +81,7 @@ public sealed record SdmTuningLinkOptions
 /// </remarks>
 public sealed class SdmTuningLink : ITuningLink
 {
-    private readonly ISdmChannel channel;
+    private readonly IRadioSideChannel channel;
     private readonly string peerId;
     private readonly SdmTuningLinkOptions options;
     private readonly SemaphoreSlim sendGate = new(1, 1);
@@ -90,37 +91,34 @@ public sealed class SdmTuningLink : ITuningLink
     private readonly Task pumpLoop;
     private readonly HashSet<int> seenSequences = [];
     private readonly Queue<int> seenOrder = new();
-    private readonly TaitSdmChannel? ownedAdapter;
+    private readonly TaitSdmSideChannel? ownedAdapter;
     private TaskCompletionSource<bool>? pendingReceipt;
     private long lastArrivalTicks;
     private int disposed;
 
     /// <summary>
-    /// Create over an <see cref="ISdmChannel"/> seam (see
+    /// Create over any <see cref="IRadioSideChannel"/> (see
     /// <see cref="Create(TaitCcdiRadio, string, SdmTuningLinkOptions?)"/> for
-    /// the live-radio form).
+    /// the live-Tait-radio form).
     /// </summary>
-    /// <param name="channel">The SDM transceiver.</param>
-    /// <param name="peerId">The peer radio's 8-character SDM identity.</param>
+    /// <param name="channel">The radio's side channel.</param>
+    /// <param name="peerId">The peer radio's side-channel identity (for Tait
+    /// SDM, the 8-character data identity).</param>
     /// <param name="options">Tunables; null = defaults.</param>
-    public SdmTuningLink(ISdmChannel channel, string peerId, SdmTuningLinkOptions? options = null)
+    public SdmTuningLink(IRadioSideChannel channel, string peerId, SdmTuningLinkOptions? options = null)
         : this(channel, peerId, options, ownedAdapter: null)
     {
     }
 
-    private SdmTuningLink(ISdmChannel channel, string peerId, SdmTuningLinkOptions? options, TaitSdmChannel? ownedAdapter)
+    private SdmTuningLink(IRadioSideChannel channel, string peerId, SdmTuningLinkOptions? options, TaitSdmSideChannel? ownedAdapter)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentException.ThrowIfNullOrEmpty(peerId);
-        if (peerId.Length != 8)
-        {
-            throw new ArgumentException("SDM identities are exactly 8 characters", nameof(peerId));
-        }
         this.channel = channel;
         this.peerId = peerId;
         this.options = options ?? new SdmTuningLinkOptions();
         this.ownedAdapter = ownedAdapter;
-        channel.MessageArrived += OnMessageArrived;
+        channel.DatagramArrived += OnDatagramArrived;
         channel.DeliveryReceipt += OnDeliveryReceipt;
         pumpLoop = Task.Run(() => PumpInboundAsync(pumpCts.Token));
     }
@@ -130,7 +128,13 @@ public sealed class SdmTuningLink : ITuningLink
     /// first — DCD, arrivals and receipts all ride on them.</summary>
     public static SdmTuningLink Create(TaitCcdiRadio radio, string peerId, SdmTuningLinkOptions? options = null)
     {
-        var adapter = new TaitSdmChannel(radio);
+        ArgumentException.ThrowIfNullOrEmpty(peerId);
+        if (peerId.Length != TaitSdmSideChannel.IdentityLength)
+        {
+            throw new ArgumentException(
+                $"Tait SDM identities are exactly {TaitSdmSideChannel.IdentityLength} characters", nameof(peerId));
+        }
+        var adapter = new TaitSdmSideChannel(radio);
         return new SdmTuningLink(adapter, peerId, options, adapter);
     }
 
@@ -145,10 +149,10 @@ public sealed class SdmTuningLink : ITuningLink
         ArgumentNullException.ThrowIfNull(telegram);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         string wire = telegram.EncodeCompact();
-        if (wire.Length > TuningTelegram.SdmCharacterBudget)
+        if (wire.Length > channel.MaxPayloadLength)
         {
             throw new TuningLinkException(
-                $"telegram '{wire}' is {wire.Length} chars — over the {TuningTelegram.SdmCharacterBudget}-character SDM budget");
+                $"telegram '{wire}' is {wire.Length} chars — over the side channel's {channel.MaxPayloadLength}-character budget");
         }
 
         await sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -223,7 +227,7 @@ public sealed class SdmTuningLink : ITuningLink
         {
             return;
         }
-        channel.MessageArrived -= OnMessageArrived;
+        channel.DatagramArrived -= OnDatagramArrived;
         channel.DeliveryReceipt -= OnDeliveryReceipt;
         await pumpCts.CancelAsync().ConfigureAwait(false);
         try
@@ -240,7 +244,7 @@ public sealed class SdmTuningLink : ITuningLink
         arrivalSignal.Dispose();
     }
 
-    private void OnMessageArrived(object? sender, EventArgs e)
+    private void OnDatagramArrived(object? sender, EventArgs e)
     {
         if (arrivalSignal.CurrentCount == 0)
         {

@@ -12,7 +12,7 @@
     <PackageId>Packet.Radio</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Radio — radio-control abstraction for the Packet.NET stack</Title>
-    <Description>Radio-control abstraction (IRadioControl: RSSI, carrier-sense/DCD, PTT) plus the RssiTaggingTransport decorator that stamps per-frame RSSI/SNR metadata onto any IAx25Transport. Radio-specific implementations (e.g. Packet.Radio.Tait) plug in underneath. Source: github.com/packet-net/packet.net.</Description>
+    <Description>Radio-control abstraction (IRadioControl: RSSI, carrier-sense/DCD, PTT; IRadioSideChannel: radio-native small-datagram control plane) plus the RssiTaggingTransport decorator that stamps per-frame RSSI/SNR metadata onto any IAx25Transport. Radio-specific implementations (e.g. Packet.Radio.Tait) plug in underneath. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;radio-control;rssi;dcd</PackageTags>
   </PropertyGroup>
 

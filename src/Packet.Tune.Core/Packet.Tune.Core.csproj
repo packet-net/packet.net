@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+    <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
     <ProjectReference Include="..\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
     <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\Packet.Ax25\Packet.Ax25.csproj" />
@@ -16,7 +17,7 @@
     <PackageId>Packet.Tune.Core</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Tune.Core — remote deviation-tuning assistant primitives</Title>
-    <Description>Coordination primitives for tuning a NinoTNC + radio pair with the two ends apart: the tuning-telegram protocol (ITuningLink), an SDM flavour riding Tait CCDI short data messages (radio-native FFSK — independent of the TNC pot under tune), a WebSocket flavour with a PIN-rendezvous relay, the shared meter/tuned assistant loop, and a capability doctor for the whole TNC↔radio stack. Source: github.com/packet-net/packet.net.</Description>
+    <Description>Coordination primitives for tuning a NinoTNC + radio pair with the two ends apart: the tuning-telegram protocol (ITuningLink), an SDM flavour riding the radio's own side channel (Packet.Radio.IRadioSideChannel; Tait CCDI short data messages — radio-native FFSK, independent of the TNC mode/pot under tune), a WebSocket flavour with a PIN-rendezvous relay, the shared meter/tuned assistant loop, a mode-coordination protocol (propose/confirm/commit a TNC mode + radio channel switch, probe-verify, revert-to-home on failure), and a capability doctor for the whole TNC↔radio stack. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;kiss;tnc;ninotnc;tait;deviation;tuning</PackageTags>
   </PropertyGroup>
 
