@@ -16,6 +16,16 @@ public enum TuningAdvice
     /// <summary><c>OK</c> — decode rate is solid and error correction is
     /// (near-)idle: leave the pot alone.</summary>
     Ok,
+
+    /// <summary><c>SW</c> — no decode at all: nothing decoded and no
+    /// clipping, so the burst carries no directional information (far too
+    /// little deviation and far too much both decode zero frames — as does a
+    /// dead RF path, which no pot position fixes). Sweep the pot across its
+    /// range until frames start decoding, then the directional advice takes
+    /// over. Peers that predate this state parse the token as unknown advice
+    /// (<see cref="DeviationAdvisor.FromWire"/> → <c>null</c>) — never as a
+    /// false directional verdict.</summary>
+    Sweep,
 }
 
 /// <summary>
@@ -25,7 +35,13 @@ public enum TuningAdvice
 /// <remarks>
 /// <list type="bullet">
 ///   <item>Lost-ADC samples during the burst = the RX audio clipped the
-///     meter TNC's ADC — gross over-deviation, always <c>DN</c>.</item>
+///     meter TNC's ADC — gross over-deviation, always <c>DN</c> (clipping is
+///     directional evidence even when nothing decoded).</item>
+///   <item>Zero decodes with no clipping = <c>SW</c>: a fully-dead burst has
+///     no direction in it (too quiet, too loud, and no-path all read 0/n —
+///     bench-observed on the pre-R2-retap rig, where every GFSK cell was 0/5
+///     at any pot position and a directional <c>UP</c> would have been a
+///     lie). Sweep the pot until decodes appear.</item>
 ///   <item>Full-ish decode (≥90%) with little FEC repair work = <c>OK</c>.</item>
 ///   <item>Decode failures / heavy FEC with a healthy RF path (that is what
 ///     the CCDI RSSI check is for) and <em>no</em> clipping most often mean
@@ -66,6 +82,13 @@ public static class DeviationAdvisor
         if (current.LostAdcSamplesDelta is > 0)
         {
             return TuningAdvice.Down;
+        }
+
+        // Nothing decoded and no clipping: no directional information at
+        // all — sweep, don't guess a direction.
+        if (current.DecodedFrames == 0)
+        {
+            return TuningAdvice.Sweep;
         }
 
         double fecPerFrame = current.FecCorrectedBytesDelta is { } fec && current.DecodedFrames > 0
@@ -127,12 +150,28 @@ public static class DeviationAdvisor
         return text;
     }
 
-    /// <summary>The wire token (<c>UP</c>/<c>DN</c>/<c>OK</c>) for an advice value.</summary>
+    /// <summary>The human phrase for an advice value — what the operator at
+    /// the pot should actually do.</summary>
+    public static string Describe(TuningAdvice advice) => advice switch
+    {
+        TuningAdvice.Up => "turn the deviation up",
+        TuningAdvice.Down => "turn the deviation down",
+        TuningAdvice.Ok => "leave the pot alone",
+        TuningAdvice.Sweep => "no decode — sweep the pot",
+        _ => throw new ArgumentOutOfRangeException(nameof(advice), advice, "unknown advice"),
+    };
+
+    /// <summary>The wire token (<c>UP</c>/<c>DN</c>/<c>OK</c>/<c>SW</c>) for
+    /// an advice value. The <c>AD</c> telegram args stay backward-compatible:
+    /// the original tokens are unchanged, and a peer that predates <c>SW</c>
+    /// parses it via <see cref="FromWire"/> as unknown (<c>null</c>) rather
+    /// than misreading a direction.</summary>
     public static string ToWire(TuningAdvice advice) => advice switch
     {
         TuningAdvice.Up => "UP",
         TuningAdvice.Down => "DN",
         TuningAdvice.Ok => "OK",
+        TuningAdvice.Sweep => "SW",
         _ => throw new ArgumentOutOfRangeException(nameof(advice), advice, "unknown advice"),
     };
 
@@ -142,6 +181,7 @@ public static class DeviationAdvisor
         "UP" => TuningAdvice.Up,
         "DN" => TuningAdvice.Down,
         "OK" => TuningAdvice.Ok,
+        "SW" => TuningAdvice.Sweep,
         _ => null,
     };
 }

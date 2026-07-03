@@ -465,6 +465,182 @@ bursts = 12.4 / 9.2 dB quieting), so the GETRSSI level field is live and useful 
 the deviation-sensitive regime it was built for. The real mode-2 baseline moves to after a
 TX-level calibration session brings mode 2 up.
 
+## The R5→R2 retap (2026-07-03, session 7): the direct-FSK modes were never dead — the RX tap was
+
+### The diagnosis story (and the reusable diagnostic it leaves behind)
+
+Two sessions of evidence had piled up against the GFSK modes on this rig, and none of it made
+sense as a deviation or bandwidth problem on its own:
+
+- **Every audio-band mode passed** — AFSK, BPSK, QPSK all solid, *including 3600 QPSK on the
+  narrow channel*, which rules out occupied bandwidth as the killer for 9600-class modes.
+- **The direct-FSK modes (9600/4800 GFSK) were dead in BOTH directions**, on both channel
+  widths, with carrier confirmed at the receiver (−89 dBm busy-gated) and `IL2PRxUnCr` Δ0 —
+  the modem never even achieved IL2P sync. A symmetric, both-directions failure is an
+  awkward fit for a per-TNC pot mis-set (a *directional* fault, like the A→B marginals).
+- The CCR bandwidth switch didn't help (session 2), and neither did a properly *programmed*
+  wide channel (session 6) — so it wasn't channel programming either.
+
+That combination is a signature: **audio-band modes pass + direct-FSK dead both directions ⇒
+the radio's RX audio tap sits after the voice filters.** A 300–3000 Hz voice filter passes
+every audio-band modem cleanly and guts the near-DC energy a G3RUH-style direct-FSK signal
+lives on — symmetrically, in both directions, at any pot position. Worth keeping as a
+**doctor diagnostic** (a candidate `TuningDoctor` probe: one audio-band and one direct-FSK
+loopback burst, classify on the split) — it would have saved two bench sessions of
+pot-suspicion here.
+
+The fix: both TM8110s' global RX tap point reprogrammed **R5 → R2**. R5 is tapped after the
+300–3000 Hz voice filters (the root cause). R2 is pre-filter, post-**PSD-normaliser** — the
+correct *modem pair* with the TX tap T13 already in use. R2 was chosen over R1 (raw
+discriminator) deliberately: the PSD normaliser makes the tapped level **invariant across
+channel-width switching**, which matters on this rig's narrow/wide two-channel programming —
+no TNC RX-pot retouching when a session flips channels. (Bench confirmation: the meter-end
+idle RX-audio level barely moved across the retap — ≈−33/−35 dB before, −34.4 dB after — the
+R2 tap slots straight into the existing level budget.)
+
+Immediately after the retap, at **untouched pot positions**, 9600 GFSK IL2P+CRC (mode 2)
+decoded 5/5 A→B on channel 1 — after two sessions of 0/5 everywhere.
+
+### Port re-enumeration during the reprogramming
+
+Reprogramming the radios re-enumerated the CCDI USB dongles: the old `/dev/ttyUSB0`/`USB1`
+are gone, and the new numbers carry the **opposite** TNC association:
+
+| CCDI port | Radio s/n | SDM identity | Audio-paired TNC |
+|---|---|---|---|
+| `/dev/ttyUSB2` | 19925328 | `PDN00002` | NinoTNC A `/dev/ttyACM0` |
+| `/dev/ttyUSB3` | 19925369 | `PDN00001` | NinoTNC B `/dev/ttyACM1` |
+
+The two CP2102 dongles still share USB serial "0001", so `/dev/serial/by-id` still cannot
+tell them apart — the re-map was recovered with `TaitRadioPortDiscovery`, which
+distinguishes the radios by **CCDI serial number** where the USB descriptors cannot.
+Standing rule: re-run the discovery after *any* cable or radio-programming work; never
+trust remembered `/dev/ttyUSB*` numbers.
+
+### Post-retap IL2P+CRC survey — the GFSK columns come alive
+
+Same `packet-tune mode-survey` procedure as session 6 (both TNCs firmware 3.41, 5 probes
+per direction per cell, link −90 dBm / ~38 dB SNR), with one selection change: the
+catalog's two **4FSK modes now carry their IL2P+CRC protocol in their names** — the
+kissproxy-inherited bare names ("19200 4FSK", "9600 4FSK") were a misclassification; both
+modes are IL2P+CRC per the OARC wiki mode table (Tom's citation — there is no AX.25
+variant of 4FSK), so modes 1 and 3 joined the `IL2P+CRC` name-filtered survey for the
+first time: 11 modes × 2 channels × 2 directions = 44 cells. Raw log + JSON in
+`artifacts/hardware-probe/20260703-postr2-il2pc-survey/` (untracked). Full table:
+
+| Ch | Mode | Name | Dir | Decoded | Mean latency | RSSI @ RX | IL2P rx Δ | IL2P uncorr Δ | Verdict |
+|---:|-----:|------|-----|--------:|-------------:|----------:|----------:|--------------:|---------|
+| 0 | 1 | 19200 4FSK IL2P+CRC | A→B | 0/5 | n/a | -89.6 dBm | 0 | 0 | dead |
+| 0 | 1 | 19200 4FSK IL2P+CRC | B→A | 0/5 | n/a | -89.7 dBm | 0 | 0 | dead |
+| 0 | 2 | 9600 GFSK IL2P+CRC | A→B | 5/5 | 625 ms | -90.9 dBm | 5 | 0 | solid |
+| 0 | 2 | 9600 GFSK IL2P+CRC | B→A | 5/5 | 626 ms | -89.8 dBm | 5 | 0 | solid |
+| 0 | 3 | 9600 4FSK IL2P+CRC | A→B | 0/5 | n/a | -93.1 dBm | 0 | 0 | dead |
+| 0 | 3 | 9600 4FSK IL2P+CRC | B→A | 5/5 | 633 ms | -89.8 dBm | 5 | 0 | solid |
+| 0 | 4 | 4800 GFSK IL2P+CRC | A→B | 5/5 | 751 ms | -91.2 dBm | 5 | 0 | solid |
+| 0 | 4 | 4800 GFSK IL2P+CRC | B→A | 5/5 | 747 ms | -89.6 dBm | 5 | 0 | solid |
+| 0 | 5 | 3600 QPSK IL2P+CRC | A→B | 5/5 | 834 ms | -89.6 dBm | 5 | 0 | solid |
+| 0 | 5 | 3600 QPSK IL2P+CRC | B→A | 5/5 | 832 ms | -89.4 dBm | 5 | 0 | solid |
+| 0 | 7 | 1200 AFSK IL2P+CRC | A→B | 5/5 | 1228 ms | -91.3 dBm | 5 | 0 | solid |
+| 0 | 7 | 1200 AFSK IL2P+CRC | B→A | 5/5 | 1221 ms | -89.5 dBm | 5 | 0 | solid |
+| 0 | 8 | 300 BPSK IL2P+CRC | A→B | 5/5 | 3227 ms | -89.9 dBm | 5 | 0 | solid |
+| 0 | 8 | 300 BPSK IL2P+CRC | B→A | 5/5 | 3237 ms | -89.4 dBm | 5 | 0 | solid |
+| 0 | 9 | 600 QPSK IL2P+CRC | A→B | 4/5 | 1945 ms | -89.7 dBm | 4 | 0 | MARGINAL |
+| 0 | 9 | 600 QPSK IL2P+CRC | B→A | 5/5 | 1928 ms | -89.4 dBm | 5 | 0 | solid |
+| 0 | 10 | 1200 BPSK IL2P+CRC | A→B | 5/5 | 1227 ms | -89.9 dBm | 5 | 0 | solid |
+| 0 | 10 | 1200 BPSK IL2P+CRC | B→A | 5/5 | 1215 ms | -89.4 dBm | 5 | 0 | solid |
+| 0 | 11 | 2400 QPSK IL2P+CRC | A→B | 5/5 | 909 ms | -89.7 dBm | 5 | 0 | solid |
+| 0 | 11 | 2400 QPSK IL2P+CRC | B→A | 4/5 | 900 ms | -89.2 dBm | 4 | 0 | MARGINAL |
+| 0 | 14 | 300 AFSKPLL IL2P+CRC | A→B | 5/5 | 3256 ms | -91.3 dBm | 5 | 0 | solid |
+| 0 | 14 | 300 AFSKPLL IL2P+CRC | B→A | 5/5 | 3222 ms | -89.7 dBm | 5 | 0 | solid |
+| 1 | 1 | 19200 4FSK IL2P+CRC | A→B | 5/5 | 553 ms | -89.9 dBm | 5 | 0 | solid |
+| 1 | 1 | 19200 4FSK IL2P+CRC | B→A | 5/5 | 555 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 2 | 9600 GFSK IL2P+CRC | A→B | 5/5 | 635 ms | -89.7 dBm | 5 | 0 | solid |
+| 1 | 2 | 9600 GFSK IL2P+CRC | B→A | 5/5 | 625 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 3 | 9600 4FSK IL2P+CRC | A→B | 5/5 | 630 ms | -90.0 dBm | 5 | 0 | solid |
+| 1 | 3 | 9600 4FSK IL2P+CRC | B→A | 5/5 | 629 ms | -89.1 dBm | 5 | 0 | solid |
+| 1 | 4 | 4800 GFSK IL2P+CRC | A→B | 5/5 | 784 ms | -89.8 dBm | 5 | 0 | solid |
+| 1 | 4 | 4800 GFSK IL2P+CRC | B→A | 5/5 | 766 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 5 | 3600 QPSK IL2P+CRC | A→B | 5/5 | 833 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 5 | 3600 QPSK IL2P+CRC | B→A | 5/5 | 826 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 7 | 1200 AFSK IL2P+CRC | A→B | 4/5 | 1232 ms | -89.6 dBm | 4 | 0 | MARGINAL |
+| 1 | 7 | 1200 AFSK IL2P+CRC | B→A | 5/5 | 1254 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 8 | 300 BPSK IL2P+CRC | A→B | 5/5 | 3222 ms | -89.3 dBm | 5 | 0 | solid |
+| 1 | 8 | 300 BPSK IL2P+CRC | B→A | 5/5 | 3238 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 9 | 600 QPSK IL2P+CRC | A→B | 4/5 | 1928 ms | -89.2 dBm | 4 | 0 | MARGINAL |
+| 1 | 9 | 600 QPSK IL2P+CRC | B→A | 5/5 | 1916 ms | -89.4 dBm | 5 | 0 | solid |
+| 1 | 10 | 1200 BPSK IL2P+CRC | A→B | 5/5 | 1226 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 10 | 1200 BPSK IL2P+CRC | B→A | 5/5 | 1217 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 11 | 2400 QPSK IL2P+CRC | A→B | 4/5 | 910 ms | -89.2 dBm | 4 | 0 | MARGINAL |
+| 1 | 11 | 2400 QPSK IL2P+CRC | B→A | 5/5 | 916 ms | -89.2 dBm | 5 | 0 | solid |
+| 1 | 14 | 300 AFSKPLL IL2P+CRC | A→B | 5/5 | 3182 ms | -89.7 dBm | 5 | 0 | solid |
+| 1 | 14 | 300 AFSKPLL IL2P+CRC | B→A | 5/5 | 3223 ms | -89.1 dBm | 5 | 0 | solid |
+
+Findings (against the session-6 pre-retap table above):
+
+1. **The retap brought the GFSK direct-FSK modes up — everywhere.** Mode 2 (9600 GFSK)
+   went 0/5-everywhere → **5/5 in all four cells, including the narrow channel**; mode 4
+   (4800 GFSK) likewise. The session-6 readings ("occupied bandwidth", then "untuned
+   pots") are retired: the R5 tap was the killer all along, and 9600 GFSK decodes in a
+   12.5 kHz programmed channel on this bench link (38 dB SNR through a pad —
+   adjacent-channel behaviour on air is a separate question).
+2. **The newly-surveyed 4FSK modes behave exactly per their published bandwidths**:
+   19200 4FSK (a 25 kHz mode) is dead on narrow / solid both ways on wide at ~554 ms mean
+   latency — the fastest working cells this rig has produced; 9600 4FSK (a 12.5 kHz mode)
+   is solid on wide and B→A-solid on narrow.
+3. **The one hard directional cell is 9600 4FSK A→B on narrow** (0/5, receiver-side RSSI
+   −93.1 dBm — the lowest of the whole run), and 4 of the 5 MARGINAL cells are A→B
+   (600 QPSK on both widths, 1200 AFSK IL2Pc and 2400 QPSK on wide; one B→A 4/5 blip on
+   ch-0 2400 QPSK). TNC A's TX side remains the deviation-tuning target — now with its
+   tightest-margin reproducer identified.
+4. **IL2P counters stayed truthful in all 44 cells** (`IL2PRxPkts` Δ = decode count,
+   `IL2PRxUnCr` Δ0 throughout — losses are still sync misses, not FEC exhaustion).
+5. Latency continues to scale with bit rate: ~554 ms at 19200 → ~3.2 s at 300 baud for
+   the same probe.
+
+Tooling notes from the run: the 3.41 mode-14 firmware byte `0x90` now resolves (catalog
+alias shipped this session — the GETALL verify prints "running mode 14 (300 AFSKPLL
+IL2P+CRC)" instead of "unrecognised firmware byte 0x90"); the sporadic settle-frame
+ACKMODE echo absence persists (seen on both TNCs, logged and tolerated); the rig restore
+verified clean (both radios channel 0, both TNCs mode 6).
+
+### The 9600 baseline (deviation-sdm, mode 2 / channel 1) — "before pot tuning"
+
+The deliverable session 6 had to skip — a deviation-sensitive-mode trend baseline — ran
+scripted end-to-end (no human): both TNCs mode 2, both radios channel 1; meter =
+`/dev/ttyACM1` + `/dev/ttyUSB3` (peer `PDN00002`), tuned = `/dev/ttyACM0` +
+`/dev/ttyUSB2` (peer `PDN00001`) — the tuned end is TNC A, the survey's marginal
+transmitter, deliberately. Two rounds, pots untouched. Every telegram delivered on send
+attempt 1/3 with acknowledged receipts (zero retries); the meter's GETRSSI probe reported
+the **new R2-tap idle level: −34.4 dB** (n=5; ≈−34.5 — compare −33.1/−35.8 pre-retap, the
+level budget is unchanged). The tuned end's trend table, the record to compare after any
+future pot adjustment:
+
+```
+  burst   decoded   fec Δ    clip Δ   rssi dBm   level dB   advice
+      1     5/5        n/a        0      -89.7      -39.3   OK
+      2     5/5        n/a        0      -89.9      -39.5   OK
+  level -39.5 dB, level steady (RX audio at the meter end)
+```
+
+Meter advice lines: `5/5|fec:na|clip:0|rssi:-89.7|lvl:-39.3 → OK (level -39.3 dB, 4.9 dB
+quieting)`; burst 2 added `5.1 dB quieting, level steady`. Two notes for the record:
+a *decoding* 9600 GFSK burst at these pot positions reads ≈5 dB of quieting — between the
+session-5 AFSK case (≈0, noise-like) and the session-6 *undecodable* 9600 case (9–12 dB,
+tone-like) — so the level column now spans a usable dynamic range exactly where deviation
+tuning operates; and `AD:OK` at 0 FEC signal (mode 2's fec is n/a on the labelled GETALL)
+is the decode-rate + no-clipping verdict, honest but coarse — mode 7 remains the
+recommendation when the FEC bracket matters.
+
+Shipped alongside this session (same PR): the advisor's **`SW` "no decode — sweep the
+pot" advice state** — session 6's dead-link capture showed `AD:UP` for 0/5 bursts, a
+directional lie when a fully-dead burst carries no direction at all (too quiet, too loud
+and no-path all read 0/n; this rig's GFSK cells were 0/5 at *any* pot position). Zero
+decodes without clipping now advise `SW` (wire token additive; UP/DN/OK unchanged, old
+peers parse `SW` as unknown advice, never a direction) — and clipping still wins, because
+clipping at 0/5 *is* directional evidence. Plus the **3.41 mode-14 firmware-byte alias
+(`0x90` → mode 14)** in `NinoTncCatalog`, closing session 6's "unrecognised firmware
+byte" quirk.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate
@@ -480,8 +656,14 @@ TX-level calibration session brings mode 2 up.
    next bench session, since it risks splitting the two radios onto different channels.
 6. **§5.Y items 3, 5–6** (SNR-vs-level calibration, 1000-iteration soak, mistune
    degradation) — the rig and the tooling are now in place to script them. Item 4's
-   mode survey is done for this rig (see §Wide-channel IL2P+CRC survey); the natural
-   follow-on is re-running it after a TX-DEV calibration session (the A→B marginals and
-   the dead GFSK modes are the level-sensitive cells).
-7. Housekeeping: `docs/releasing.md`'s "six published packages" list is stale against the
+   mode survey is done for this rig and re-run post-retap (see §The R5→R2 retap): the
+   GFSK modes are up; what remains level-sensitive is **TNC A's TX side** (the A→B
+   marginals and the 9600-4FSK-A→B-on-narrow dead cell) — run a deviation-tuning
+   session against TNC A with the mode-2/channel-1 baseline as the before-picture,
+   then re-survey the marginal cells.
+7. **Doctor probe for the tap-point signature** (from §The R5→R2 retap): one audio-band
+   + one direct-FSK loopback burst; audio-band-passes + direct-FSK-dead-both-ways ⇒
+   "check the radio's RX tap point (post-voice-filter tap)" — would have saved two
+   sessions here.
+8. Housekeeping: `docs/releasing.md`'s "six published packages" list is stale against the
    `publish-libs.yml` matrix (now 13); reconcile on the next release pass.

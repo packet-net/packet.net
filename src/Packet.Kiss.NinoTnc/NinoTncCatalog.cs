@@ -11,17 +11,19 @@ namespace Packet.Kiss.NinoTnc;
 /// <remarks>
 /// Ported from packet-net/kissproxy@web-interface, <c>KissFrameBuilder.cs</c> lines
 /// 45–112. The DIP-position → human-name table and the firmware-byte →
-/// human-name table are both kept verbatim because:
+/// human-name table are kept verbatim (one deliberate exception: the 4FSK
+/// mode names, corrected to carry their IL2P+CRC protocol per the OARC wiki
+/// — see the inline remark on modes 1/3) because:
 /// <list type="bullet">
 ///   <item>Firmware-reported mode bytes (in TX-Test frames) are a small,
 ///         fixed set per firmware version and may not equal the DIP position
 ///         (the firmware encodes the underlying modem configuration, not the
 ///         user-facing switch label). We need the reverse lookup to identify
 ///         the operating mode from a TX-Test frame.</item>
-///   <item>The catalog is firmware-version-specific (currently v3.44 — which
-///         the bench rig's TNCs also run since the 2026-07-02 flash, so the
-///         tables match the hardware they were verified against). Newer
-///         firmwares may extend it; bump when needed.</item>
+///   <item>The catalog is firmware-version-specific (base table: v3.44;
+///         bench-verified 3.41 divergences are carried as extra alias rows —
+///         see <see cref="FirmwareByteToMode"/>). Newer firmwares may extend
+///         it; bump when needed.</item>
 /// </list>
 /// </remarks>
 public static class NinoTncCatalog
@@ -32,9 +34,15 @@ public static class NinoTncCatalog
     public static readonly FrozenDictionary<byte, NinoTncMode> ByMode = new[]
     {
         new NinoTncMode(0,  "9600 GFSK AX.25",      9600),
-        new NinoTncMode(1,  "19200 4FSK",          19200),
+        // Modes 1 and 3 are IL2P+CRC (wiki: "IL2Pc"): there is no AX.25
+        // variant of 4FSK. The kissproxy source named them bare "19200 4FSK"
+        // / "9600 4FSK", which wrongly excluded them from IL2P+CRC name
+        // filters (e.g. the mode survey). Corrected per the OARC wiki mode
+        // table (https://wiki.oarc.uk/packet:ninotnc, retrieved 2026-07-03).
+        // The wiki also notes 19k2 "requires v41 firmware in practice".
+        new NinoTncMode(1,  "19200 4FSK IL2P+CRC", 19200),
         new NinoTncMode(2,  "9600 GFSK IL2P+CRC",   9600),
-        new NinoTncMode(3,  "9600 4FSK",            9600),
+        new NinoTncMode(3,  "9600 4FSK IL2P+CRC",   9600),
         new NinoTncMode(4,  "4800 GFSK IL2P+CRC",   4800),
         new NinoTncMode(5,  "3600 QPSK IL2P+CRC",   3600),
         new NinoTncMode(6,  "1200 AFSK AX.25",      1200),
@@ -54,7 +62,11 @@ public static class NinoTncCatalog
     /// in a TX-Test frame) → DIP-switch-position mode. Used to decode the
     /// "actual operating mode" when DIP=15 ("Set from KISS").
     /// </summary>
-    /// <remarks>Firmware-version-specific. Locked to NinoTNC firmware v3.44.</remarks>
+    /// <remarks>Firmware-version-specific. The base table is locked to
+    /// NinoTNC firmware v3.44; where an older firmware is bench-verified to
+    /// report a <em>different</em> byte for a mode, that byte is added as an
+    /// extra row (the reverse lookup tolerates aliases — several bytes may
+    /// resolve to one mode).</remarks>
     public static readonly FrozenDictionary<byte, byte> FirmwareByteToMode = new Dictionary<byte, byte>
     {
         { 0x00, 0  },
@@ -72,6 +84,12 @@ public static class NinoTncCatalog
         { 0x31, 12 },
         { 0x22, 13 },
         { 0x23, 14 },
+        // Firmware 3.41 reports mode 14 (300 AFSKPLL IL2P+CRC) as 0x90 where
+        // 3.44 reports 0x23 — bench evidence: the 2026-07-03 wide-il2pc
+        // mode-survey runs, where the GETALL verify read "unrecognised
+        // firmware byte 0x90" while the 300 AFSKPLL traffic decoding proved
+        // the mode was engaged.
+        { 0x90, 14 },
         { 0xF3, 15 },
     }.ToFrozenDictionary();
 

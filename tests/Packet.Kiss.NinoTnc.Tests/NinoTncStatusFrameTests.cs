@@ -67,6 +67,25 @@ public class NinoTncStatusFrameTests
     }
 
     [Fact]
+    public void Firmware_341_Mode14_Byte_0x90_Resolves_To_A_Running_Mode()
+    {
+        // Firmware 3.41 reports mode 14 (300 AFSKPLL IL2P+CRC) in register
+        // 06 as 0x90 (3.44 uses 0x23) — bench evidence: the 2026-07-03
+        // wide-il2pc mode-survey runs. Status parsing must resolve it, not
+        // report an unrecognised firmware byte.
+        byte[] payload = [
+            .. Encoding.ASCII.GetBytes("=00:3.41"),
+            .. Encoding.ASCII.GetBytes("=06:00000090"),
+        ];
+
+        NinoTncStatusFrame.TryParse(payload, out var parsed).Should().BeTrue();
+        parsed!.FirmwareModeByte.Should().Be((byte)0x90);
+        parsed.RunningMode.Should().NotBeNull();
+        parsed.RunningMode!.Value.Mode.Should().Be((byte)14);
+        parsed.RunningMode.Value.Name.Should().Be("300 AFSKPLL IL2P+CRC");
+    }
+
+    [Fact]
     public void Truncated_Captured_Frame_Degrades_Gracefully()
     {
         NinoTncStatusFrame.TryParse(CapturedTruncatedPayload, out var parsed).Should().BeTrue();
