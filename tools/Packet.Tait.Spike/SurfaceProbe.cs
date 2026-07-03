@@ -249,6 +249,93 @@ internal static class SurfaceProbe
         return ok1 && ok2 ? 0 : 1;
     }
 
+    /// <summary>
+    /// AUTHORIZED live CCR-over-SDM experiment (Tom, 2026-07-03): put the TARGET radio into
+    /// CCR mode via its local CCDI, send it SAFE CCR commands (volume J104, pulse QP - never
+    /// R/T frequency, never S Selcall-encode, never P power) over the air from the sender via
+    /// GFI 2 / SFI 03 SDMs, observe where responses route, then exit CCR (soft reset) and
+    /// verify full recovery (identity, RSSI, normal SDM with receipts both ways).
+    /// </summary>
+    public static async Task<int> RunCcrOverSdm(string fromPort, string targetPort, string destId, string senderId)
+    {
+#pragma warning disable PKTTAIT001 // experimental CCR-over-SDM - this IS the authorized bench validation
+        await using var sender = TaitCcdiRadio.Open(fromPort);
+        await using var target = TaitCcdiRadio.Open(targetPort);
+        var t0 = System.Diagnostics.Stopwatch.StartNew();
+        void Log(string who, string what) =>
+            Console.WriteLine($"  [{t0.Elapsed.TotalSeconds,7:0.000}] {who}: {what}");
+
+        sender.MessageReceived += (_, m) => Log("sender", Render(m));
+        target.MessageReceived += (_, m) => Log("TARGET", Render(m));
+        var receipts = new System.Collections.Concurrent.ConcurrentQueue<bool>();
+        var receiptSeen = new SemaphoreSlim(0);
+        sender.SdmDeliveryReceipt += (_, r) => { receipts.Enqueue(r.Acknowledged); receiptSeen.Release(); };
+        await sender.SetProgressMessagesAsync(true);
+        await target.SetProgressMessagesAsync(true);
+
+        Console.WriteLine("\n[c1] target radio -> CCR mode (local CCDI)");
+        var ccr = await target.EnterCcrModeAsync();
+        Log("TARGET", $"in CCR mode (driver mode = {target.Mode})");
+        bool pulse = await ccr.PulseAsync();
+        Log("TARGET", $"local pulse answered, minimum-config={pulse}");
+        await Task.Delay(2000);
+
+        Console.WriteLine("\n[c2] over-air CCR volume command J104 (wire J03104BE) inside an SDM");
+        await sender.UnsafeSendCcrOverSdmAsync(destId, new CcdiFrame('J', "104"));
+        bool r1 = await receiptSeen.WaitAsync(TimeSpan.FromSeconds(12));
+        Log("sender", r1 && receipts.TryDequeue(out bool a1)
+            ? $"delivery receipt: acknowledged={a1}"
+            : "NO delivery receipt within 12 s");
+        await Task.Delay(3000);
+
+        Console.WriteLine("\n[c3] over-air CCR pulse QP (wire Q01PFE) inside an SDM");
+        await sender.UnsafeSendCcrOverSdmAsync(destId, new CcdiFrame('Q', "P"));
+        bool r2 = await receiptSeen.WaitAsync(TimeSpan.FromSeconds(12));
+        Log("sender", r2 && receipts.TryDequeue(out bool a2)
+            ? $"delivery receipt: acknowledged={a2}"
+            : "NO delivery receipt within 12 s");
+        await Task.Delay(3000);
+
+        Console.WriteLine("\n[c4] exit CCR (soft reset, ~6 s) and verify recovery");
+        await ccr.ExitAsync();
+        await Task.Delay(8000);
+        try
+        {
+            var identity = await target.QueryIdentityAsync();
+            Log("TARGET", $"identity OK: {identity.ProductName} s/n {identity.SerialNumber}");
+            float rssi = await target.ReadRssiDbmAsync();
+            Log("TARGET", $"RSSI OK: {rssi:0.0} dBm");
+        }
+        catch (Exception ex)
+        {
+            Log("TARGET", $"RECOVERY FAILED: {ex.Message}");
+            return 1;
+        }
+
+        Console.WriteLine("\n[c5] normal SDM sanity both ways with receipts");
+        _ = await SafeRead(target);
+        await sender.SendSdmAsync(destId, "POST-CCR A->B");
+        bool r3 = await receiptSeen.WaitAsync(TimeSpan.FromSeconds(12));
+        bool a3 = r3 && receipts.TryDequeue(out bool v3) && v3;
+        string? got = await SafeRead(target);
+        Log("sender", $"A->B: buffered=\"{got}\" receipt-acked={a3}");
+
+        await Task.Delay(3000); // ack-wedge guard before the target transmits
+        var receiptsB = new SemaphoreSlim(0);
+        bool ackB = false;
+        target.SdmDeliveryReceipt += (_, r) => { ackB = r.Acknowledged; receiptsB.Release(); };
+        _ = await SafeRead(sender);
+        await target.SendSdmAsync(senderId, "POST-CCR B->A");
+        bool r4 = await receiptsB.WaitAsync(TimeSpan.FromSeconds(12));
+        string? gotA = await SafeRead(sender);
+        Log("TARGET", $"B->A: buffered-at-A=\"{gotA}\" receipt-acked={r4 && ackB}");
+
+        bool pass = a3 && got == "POST-CCR A->B" && r4 && ackB && gotA == "POST-CCR B->A";
+        Console.WriteLine(pass ? "\nRECOVERY VERIFIED - rig healthy" : "\nCHECK RIG - post-CCR sanity incomplete");
+        return pass ? 0 : 1;
+#pragma warning restore PKTTAIT001
+    }
+
     private static async Task SendRaw(TaitCcdiRadio radio, char ident, string parameters)
     {
         Console.WriteLine($"  tx: {new CcdiFrame(ident, parameters).Encode()}");
