@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Tune.Core\Packet.Tune.Core.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
+  </ItemGroup>
+
+</Project>

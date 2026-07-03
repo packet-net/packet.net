@@ -47,6 +47,14 @@ public sealed record NinoTncStatusDelta
     public long? Il2pFecCorrectedBytes { get; init; }
 
     /// <summary>
+    /// Dropped ADC samples (labelled <c>LostADCSmp</c> field; no numeric
+    /// register — see <see cref="NinoTncStatusFrame.LostAdcSamples"/>).
+    /// A positive delta while receiving = the RX audio clipped the ADC —
+    /// gross over-deviation at the transmitting end.
+    /// </summary>
+    public long? LostAdcSamples { get; init; }
+
+    /// <summary>
     /// Compute the per-register deltas between two snapshots
     /// (<paramref name="after"/> minus <paramref name="before"/>).
     /// </summary>
@@ -68,6 +76,7 @@ public sealed record NinoTncStatusDelta
             RxBytes = Diff(before.RxBytes, after.RxBytes),
             TxBytes = Diff(before.TxBytes, after.TxBytes),
             Il2pFecCorrectedBytes = Diff(before.Il2pFecCorrectedBytes, after.Il2pFecCorrectedBytes),
+            LostAdcSamples = Diff(before.LostAdcSamples, after.LostAdcSamples),
         };
     }
 
