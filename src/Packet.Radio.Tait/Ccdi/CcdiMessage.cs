@@ -88,10 +88,83 @@ public sealed record CcdiErrorMessage(char Category, byte ErrorNumber) : CcdiMes
 }
 
 /// <summary>RING (§1.10.9) — an incoming call. <paramref name="RingType"/> is the four-character
-/// [TYPE1..TYPE4] string (TYPE1: 0 voice, 2 status, 3 interrogation, 4 SDM received, 5 data,
-/// 6 remote monitor; TYPE2: 0 normal/1 emergency; TYPE3: 0 individual/1 group/2 super-group).
+/// [TYPE1..TYPE4] string, decoded by <see cref="CallType"/> / <see cref="IsEmergency"/> /
+/// <see cref="Addressing"/> / <see cref="Type4"/>.
 /// <paramref name="Status"/> is "FF" when no status value was received.</summary>
-public sealed record CcdiRingMessage(char Category, string RingType, string Status, string CallerId) : CcdiMessage('r');
+public sealed record CcdiRingMessage(char Category, string RingType, string Status, string CallerId) : CcdiMessage('r')
+{
+    /// <summary>[TYPE1] — what kind of call arrived.</summary>
+    public TaitRingCallType CallType => RingType.Length > 0
+        ? RingType[0] switch
+        {
+            '0' => TaitRingCallType.Voice,
+            '2' => TaitRingCallType.Status,
+            '3' => TaitRingCallType.Interrogation,
+            '4' => TaitRingCallType.Sdm,
+            '5' => TaitRingCallType.Data,
+            '6' => TaitRingCallType.RemoteMonitor,
+            _ => TaitRingCallType.Unknown,
+        }
+        : TaitRingCallType.Unknown;
+
+    /// <summary>[TYPE2] — <c>true</c> for an emergency-priority call, <c>false</c> for normal
+    /// priority.</summary>
+    public bool IsEmergency => RingType.Length > 1 && RingType[1] == '1';
+
+    /// <summary>[TYPE3] — how the call was addressed.</summary>
+    public TaitRingAddressing Addressing => RingType.Length > 2
+        ? RingType[2] switch
+        {
+            '0' => TaitRingAddressing.Individual,
+            '1' => TaitRingAddressing.Group,
+            '2' => TaitRingAddressing.SuperGroup,
+            _ => TaitRingAddressing.Unknown,
+        }
+        : TaitRingAddressing.Unknown;
+
+    /// <summary>
+    /// [TYPE4], raw and undecoded — the field exists in the §1.10.9 RING format, but the
+    /// manual defines <b>no</b> value table for it: a layout-mode extraction of MMA-00038-06
+    /// pages 53–54 (2026-07-03) recovers the value table fully legibly and it lists TYPE1,
+    /// TYPE2 and TYPE3 only. The manual's own worked example and every bench capture
+    /// (TM8110, CCDI 03.02) carry <c>'0'</c> here. <c>'\0'</c> when the ring-type string was
+    /// shorter than four characters.
+    /// </summary>
+    public char Type4 => RingType.Length > 3 ? RingType[3] : '\0';
+}
+
+/// <summary>RING [TYPE1] call types (§1.10.9).</summary>
+public enum TaitRingCallType
+{
+    /// <summary>A [TYPE1] value the manual doesn't define.</summary>
+    Unknown,
+    /// <summary>Voice call received.</summary>
+    Voice,
+    /// <summary>Status call received.</summary>
+    Status,
+    /// <summary>Interrogation call received.</summary>
+    Interrogation,
+    /// <summary>SDM received.</summary>
+    Sdm,
+    /// <summary>Data call received.</summary>
+    Data,
+    /// <summary>Remote-monitor call received.</summary>
+    RemoteMonitor,
+}
+
+/// <summary>RING [TYPE3] addressing (§1.10.9).</summary>
+public enum TaitRingAddressing
+{
+    /// <summary>A [TYPE3] value outside the manual's table (which itself names '3' "unknown
+    /// call received").</summary>
+    Unknown,
+    /// <summary>Individual call received.</summary>
+    Individual,
+    /// <summary>Group call received.</summary>
+    Group,
+    /// <summary>Super-group call received.</summary>
+    SuperGroup,
+}
 
 /// <summary>GET_SDM (§1.10.3) — the buffered short data message, in response to QUERY type 1
 /// (which also clears the radio's one-deep SDM buffer). Empty <paramref name="Data"/> = no SDM

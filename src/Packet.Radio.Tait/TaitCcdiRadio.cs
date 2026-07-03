@@ -113,6 +113,12 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// <summary>Unsolicited RING messages — incoming Selcall / status / SDM / data calls.</summary>
     public event EventHandler<CcdiRingMessage>? RingReceived;
 
+    /// <summary>Unsolicited GET_SDM messages — received SDMs pushed by the radio without a
+    /// QUERY, which happens when SDM output-on-reception is enabled
+    /// (<see cref="SetSdmOutputOnReceptionAsync"/>). Solicited reads via
+    /// <see cref="ReadBufferedSdmAsync"/> do NOT raise this.</summary>
+    public event EventHandler<CcdiSdmMessage>? SdmReceived;
+
     /// <summary>
     /// Over-air delivery receipt for a sent SDM (PROGRESS type 1D, requires auto-ack enabled in
     /// both radios' programming): <c>Acknowledged</c> true = the addressed radio confirmed
@@ -281,6 +287,104 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             new CcdiFrame('f', mute ? "51" : "50"), matches: null, minCount: 0,
             completeOnPrompt: true, quietTime: null, cancellationToken);
 
+    /// <summary>FUNCTION 0/1: enable (or disable) CCDI volume control — required before
+    /// <see cref="SetVolumeAsync"/> takes effect.</summary>
+    public Task SetVolumeControlAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "011" : "010"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 0/2: set the speaker volume, 0 (off) to 25 (loudest). This is the
+    /// 0–25 scale of TM8100 v2.06+ and all TM8200 firmware (§1.9.3 footnote c); pre-2.06
+    /// TM8100s used 0–9. Enable <see cref="SetVolumeControlAsync"/> first.</summary>
+    public Task SetVolumeAsync(int level, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(level);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(level, 25);
+        return TransactAsync(
+            new CcdiFrame('f', string.Create(CultureInfo.InvariantCulture, $"02{level}")),
+            matches: null, minCount: 0, completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>FUNCTION 0/3: enable (or disable) Selcall output — RING messages for incoming
+    /// Selcall calls, and the destination-ID prefix on <see cref="CcdiRingMessage.CallerId"/>.</summary>
+    public Task SetSelcallRingOutputAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "031" : "030"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 0/4/2–3: enable (or disable, the power-up default) KEYPRESS progress
+    /// messages (PROGRESS type 23 — key number + down/up/short/long). TM8200 v2.05+ only
+    /// (§1.9.3 footnote d); a TM8100 answers with an error.</summary>
+    public Task SetKeypressProgressMessagesAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "042" : "043"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 0/5/0–1: enable (or disable, the power-up default) unsolicited
+    /// channel-change PROGRESS messages (type 21) on every retune. Distinct from the solicited
+    /// one-shot report of <see cref="QueryCurrentChannelAsync"/> (0/5/2).</summary>
+    public Task SetChannelProgressMessagesAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "051" : "050"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 1/0: when enabled, the radio pushes each received SDM to the serial
+    /// port as an unsolicited GET_SDM message (surfaced via <see cref="SdmReceived"/>) — no
+    /// <see cref="ReadBufferedSdmAsync"/> QUERY required.</summary>
+    public Task SetSdmOutputOnReceptionAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "101" : "100"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 1/1: enable (or disable) SDM caller-ID encode — the sender's ID goes
+    /// out as a separate SDM before the SDM itself.</summary>
+    public Task SetSdmCallerIdEncodeAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "111" : "110"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 1/2: enable (or disable) SDM caller-ID decode — a received caller-ID
+    /// SDM is decoded before the incoming SDM it precedes.</summary>
+    public Task SetSdmCallerIdDecodeAsync(bool enable, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', enable ? "121" : "120"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 4: user-controls lockout — selectively disable the radio's front
+    /// panel while under computer control. The power-up default is
+    /// <see cref="TaitUserControls.EnableAll"/>.</summary>
+    public Task SetUserControlsAsync(TaitUserControls mode, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', string.Create(CultureInfo.InvariantCulture, $"4{(int)mode}")),
+            matches: null, minCount: 0, completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>FUNCTION 7: activate (or deactivate) validation of CTCSS/DCS subaudible
+    /// signaling on incoming FFSK data — when active, data is only processed if the subaudible
+    /// signaling matches (only effective on channels programmed for it). The power-up default
+    /// follows the radio's 'Ignore DCS/CTCSS' programming.</summary>
+    public Task SetSubaudibleValidationAsync(bool validate, CancellationToken cancellationToken = default) =>
+        TransactAsync(
+            new CcdiFrame('f', validate ? "71" : "70"), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+
+    /// <summary>
+    /// FUNCTION 3: simulate a key press on the radio's front panel.
+    /// </summary>
+    /// <param name="key">Which key (the PROGRESS type-23 key-number table).</param>
+    /// <param name="durationCode">Press duration code: 0 = constantly off (release),
+    /// 1–8 = that many eighths of a second, 9 = constantly on (hold until a later 0).</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task SimulateKeyPressAsync(TaitKey key, int durationCode, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(durationCode);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(durationCode, 9);
+        return TransactAsync(
+            new CcdiFrame('f', string.Create(
+                CultureInfo.InvariantCulture, $"3{(byte)key:X2}{durationCode}")),
+            matches: null, minCount: 0, completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
     /// <summary>GO_TO_CHANNEL (§1.9.4): retune to a programmed conventional channel. Denied by
     /// the radio (not-ready error) while in emergency mode.</summary>
     /// <param name="channel">Channel number, 1–4 digits.</param>
@@ -345,23 +449,230 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         string dataMessageId, string message, TimeSpan? leadInDelay = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(dataMessageId);
         ArgumentNullException.ThrowIfNull(message);
-        if (dataMessageId.Length != 8)
-        {
-            throw new ArgumentException("the data message ID is exactly 8 characters (§1.9.8)", nameof(dataMessageId));
-        }
-        if (message.Length > 32)
+        if (message.Length > PlainSdmMaxLength)
         {
             throw new ArgumentException("plain SDMs are limited to 32 characters (§1.9.8)", nameof(message));
         }
-        int leadInUnits = (int)Math.Clamp((leadInDelay ?? TimeSpan.FromMilliseconds(100)).TotalMilliseconds / 20, 1, 255);
+        return SendAdaptableSdmAsync(
+            dataMessageId, message, gfi: '2', sfi: "00", leadInDelay, cancellationToken);
+    }
+
+    /// <summary>
+    /// Extended SDM (§1.9.8, GFI 2 / SFI 04): a text short data message of up to 128 characters
+    /// in ONE command — the radio itself splits it into multiple over-air SDMs (continuations
+    /// tagged SFI 05) and the <em>receiving</em> radio reassembles them natively: its one-deep
+    /// buffer presents the complete message in a single RING /
+    /// <see cref="ReadBufferedSdmAsync"/> read.
+    /// </summary>
+    /// <remarks>
+    /// Hardware-verified TM8110↔TM8110 (CCDI 03.02, 2026-07-03): 100- and 128-character
+    /// messages each transmitted as two FFSK bursts (two 'FFSK data received' PROGRESS
+    /// messages at the receiver), then one RING with the fully reassembled message buffered;
+    /// the SDM auto-acknowledge delivery receipt (PROGRESS 1D) covers the whole message.
+    /// Reading the buffer mid-reassembly harmlessly returns "no SDM buffered" and does not
+    /// disturb the reassembly.
+    /// </remarks>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character.</param>
+    /// <param name="message">Up to 128 characters of text.</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task SendExtendedSdmAsync(
+        string dataMessageId, string message, TimeSpan? leadInDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        if (message.Length > ExtendedSdmMaxLength)
+        {
+            throw new ArgumentException("extended SDMs are limited to 128 characters (§1.9.8)", nameof(message));
+        }
+        return SendAdaptableSdmAsync(
+            dataMessageId, message, gfi: '2', sfi: "04", leadInDelay, cancellationToken);
+    }
+
+    /// <summary>
+    /// Binary SDM (§1.9.8, GFI 1): a short data message of raw bytes. Up to 32 bytes go as a
+    /// plain SDM (SFI 00); 33–128 bytes go as an extended SDM (SFI 04 — the radios split and
+    /// reassemble natively, see <see cref="SendExtendedSdmAsync"/>). Hardware-verified
+    /// TM8110↔TM8110: bytes arrive verbatim in the receiver's buffer, both plain and extended.
+    /// </summary>
+    /// <remarks>
+    /// The bytes <c>0x0D</c> (CR — the CCDI frame terminator), <c>0x0A</c>, <c>0x11</c> and
+    /// <c>0x13</c> (XON/XOFF — the link may use software flow control, §1.6.1) are refused:
+    /// they would corrupt CCDI line framing on the serial leg. All other values 0x00–0xFF are
+    /// allowed.
+    /// </remarks>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character.</param>
+    /// <param name="message">1–128 bytes; see remarks for the four refused values.</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task SendBinarySdmAsync(
+        string dataMessageId, ReadOnlyMemory<byte> message, TimeSpan? leadInDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (message.Length > ExtendedSdmMaxLength)
+        {
+            throw new ArgumentException("binary SDMs are limited to 128 bytes (§1.9.8)", nameof(message));
+        }
+        var span = message.Span;
+        var chars = new char[span.Length];
+        for (int i = 0; i < span.Length; i++)
+        {
+            byte b = span[i];
+            if (b is 0x0D or 0x0A or 0x11 or 0x13)
+            {
+                throw new ArgumentException(
+                    $"binary SDM byte 0x{b:X2} at offset {i} would corrupt CCDI line framing " +
+                    "(CR/LF terminate frames; XON/XOFF may be software flow control, §1.6.1)",
+                    nameof(message));
+            }
+            chars[i] = (char)b;
+        }
+        string sfi = message.Length > PlainSdmMaxLength ? "04" : "00";
+        return SendAdaptableSdmAsync(
+            dataMessageId, new string(chars), gfi: '1', sfi, leadInDelay, cancellationToken);
+    }
+
+    /// <summary>
+    /// SEND_SDM (§1.9.7): the legacy fixed-format SDM send — kept by the protocol (and this
+    /// driver) only for backwards compatibility with pre-adaptable-SDM peers;
+    /// <see cref="SendSdmAsync"/> supersedes it. Hardware-verified TM8110↔TM8110: delivered,
+    /// RINGed and auto-acknowledged exactly like a plain adaptable SDM.
+    /// </summary>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character.</param>
+    /// <param name="message">Up to 32 characters of text.</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the radio's acknowledgement.</param>
+    public Task SendLegacySdmAsync(
+        string dataMessageId, string message, TimeSpan? leadInDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateDataMessageId(dataMessageId);
+        ArgumentNullException.ThrowIfNull(message);
+        if (message.Length > PlainSdmMaxLength)
+        {
+            throw new ArgumentException("SEND_SDM messages are limited to 32 characters (§1.9.7)", nameof(message));
+        }
         string parameters = string.Create(
-            CultureInfo.InvariantCulture, $"{leadInUnits:X2}200{dataMessageId}{message}");
+            CultureInfo.InvariantCulture, $"{LeadInUnits(leadInDelay):X2}{dataMessageId}{message}");
+        return TransactAsync(
+            new CcdiFrame('s', parameters), matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Build (without sending) a CCR-over-SDM frame (§1.9.8 "CCR SDM", GFI 2 / SFI 03): an
+    /// adaptable SDM whose message is stripped and executed as a <b>CCR command</b> by a
+    /// receiving radio that supports CCR and is currently in CCR mode. The
+    /// <paramref name="ccrCommand"/> travels in its full CCR wire form (ident + size + params +
+    /// checksum, no CR — the manual's worked example carries <c>M01D0E</c>).
+    /// </summary>
+    /// <remarks>
+    /// <b>⚠ This is remote radio CONTROL, not messaging</b> — see
+    /// <see cref="UnsafeSendCcrOverSdmAsync"/> for the warnings that apply to actually
+    /// transmitting one. Unit-tested against the manual's worked example
+    /// (<c>a130520312345678M01D0E36</c>).
+    /// </remarks>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character.</param>
+    /// <param name="ccrCommand">The CCR command to execute at the receiver (e.g.
+    /// <c>new CcdiFrame('M', "D")</c> = monitor on).</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    [System.Diagnostics.CodeAnalysis.Experimental(CcrOverSdmDiagnosticId)]
+    public static CcdiFrame UnsafeBuildCcrOverSdmFrame(
+        string dataMessageId, CcdiFrame ccrCommand, TimeSpan? leadInDelay = null)
+    {
+        ValidateDataMessageId(dataMessageId);
+        string encodedCcr = ccrCommand.Encode();
+        if (encodedCcr.Length > PlainSdmMaxLength)
+        {
+            throw new ArgumentException(
+                "CCR-over-SDM commands are limited to 32 encoded characters (§1.9.8)", nameof(ccrCommand));
+        }
+        string parameters = string.Create(
+            CultureInfo.InvariantCulture, $"{LeadInUnits(leadInDelay):X2}203{dataMessageId}{encodedCcr}");
+        return new CcdiFrame('a', parameters);
+    }
+
+    /// <summary>
+    /// Transmit a CCR command <b>into another radio</b> over the air (§1.9.8 "CCR SDM",
+    /// GFI 2 / SFI 03): the addressed radio — which must already be in CCR mode — strips the
+    /// SDM's message and executes it as a CCR command.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>⚠ This is remote radio CONTROL, not messaging.</b> A CCR command arriving over the
+    /// air can retune the receiving radio's frequencies, change its TX power, or key its
+    /// transmitter — with no operator at the receiving end and <b>no consent handshake in the
+    /// protocol</b>. Only ever aim it at a radio you have explicit authority over; a
+    /// consent/capability gate for using this in anything beyond bench tooling is a named
+    /// follow-up, and until it exists the method stays
+    /// <see cref="System.Diagnostics.CodeAnalysis.ExperimentalAttribute">[Experimental]</see>
+    /// with the <c>Unsafe</c> name prefix.
+    /// </para>
+    /// <para>
+    /// Note the receipt semantics: SDM auto-acknowledgement (PROGRESS 1D) reports over-air
+    /// <em>delivery</em>; there is no over-air signal that the CCR command was <em>accepted</em>
+    /// (the receiving radio's +/− CCR acknowledgement goes to its own serial port, not back
+    /// over the air).
+    /// </para>
+    /// </remarks>
+    /// <param name="dataMessageId">8-character destination data identity; '*' wildcards per
+    /// character.</param>
+    /// <param name="ccrCommand">The CCR command to execute at the receiver.</param>
+    /// <param name="leadInDelay">Carrier lead-in before data, 20 ms granularity, max 5.1 s.
+    /// Null uses 100 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the local radio's acknowledgement.</param>
+    [System.Diagnostics.CodeAnalysis.Experimental(CcrOverSdmDiagnosticId)]
+    public Task UnsafeSendCcrOverSdmAsync(
+        string dataMessageId, CcdiFrame ccrCommand, TimeSpan? leadInDelay = null,
+        CancellationToken cancellationToken = default)
+    {
+        var frame = UnsafeBuildCcrOverSdmFrame(dataMessageId, ccrCommand, leadInDelay);
+        return TransactAsync(
+            frame, matches: null, minCount: 0,
+            completeOnPrompt: true, quietTime: null, cancellationToken);
+    }
+
+    /// <summary>The diagnostic id suppressing the CCR-over-SDM experimental warnings.</summary>
+    public const string CcrOverSdmDiagnosticId = "PKTTAIT001";
+
+    private Task<IReadOnlyList<CcdiMessage>> SendAdaptableSdmAsync(
+        string dataMessageId, string message, char gfi, string sfi, TimeSpan? leadInDelay,
+        CancellationToken cancellationToken)
+    {
+        ValidateDataMessageId(dataMessageId);
+        string parameters = string.Create(
+            CultureInfo.InvariantCulture, $"{LeadInUnits(leadInDelay):X2}{gfi}{sfi}{dataMessageId}{message}");
         return TransactAsync(
             new CcdiFrame('a', parameters), matches: null, minCount: 0,
             completeOnPrompt: true, quietTime: null, cancellationToken);
     }
+
+    private static void ValidateDataMessageId(string dataMessageId)
+    {
+        ArgumentNullException.ThrowIfNull(dataMessageId);
+        if (dataMessageId.Length != 8)
+        {
+            throw new ArgumentException("the data message ID is exactly 8 characters (§1.9.8)", nameof(dataMessageId));
+        }
+    }
+
+    private static int LeadInUnits(TimeSpan? leadInDelay) =>
+        (int)Math.Clamp((leadInDelay ?? TimeSpan.FromMilliseconds(100)).TotalMilliseconds / 20, 1, 255);
+
+    /// <summary>Characters a plain SDM can carry (§1.9.8).</summary>
+    public const int PlainSdmMaxLength = 32;
+
+    /// <summary>Characters an extended (SFI 04) SDM can carry (§1.9.8).</summary>
+    public const int ExtendedSdmMaxLength = 128;
 
     /// <summary>QUERY type 1 (§1.9.5): fetch the buffered received SDM. The radio's SDM buffer
     /// is one-deep and this read clears it. Returns <c>null</c> when nothing is buffered.</summary>
@@ -803,6 +1114,9 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
                 break;
             case CcdiRingMessage ring:
                 RingReceived?.Invoke(this, ring);
+                break;
+            case CcdiSdmMessage sdm:
+                SdmReceived?.Invoke(this, sdm);
                 break;
             default:
                 break;

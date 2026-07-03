@@ -138,6 +138,53 @@ public class NinoTncSerialPortTests
     }
 
     [Fact]
+    public async Task GetSerialNumberAsync_sends_GETSERNO_and_returns_the_register_as_ascii()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetSerialNumberAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildGetSerialNumberKissFrame());
+
+        io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, "PDN00001"u8.ToArray()));
+
+        (await task).Should().Be("PDN00001");
+    }
+
+    [Fact]
+    public async Task GetSerialNumberAsync_maps_the_all_zero_register_to_null()
+    {
+        // Bench capture 2026-07-03 (firmware 3.41, unset register): 8 zero bytes on 0xE0.
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var task = nino.GetSerialNumberAsync(Timeout);
+        await WaitUntil(() => io.Writes.Length >= 1);
+
+        io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, new byte[8]));
+
+        (await task).Should().BeNull("an all-zero KAUP8R register means unset");
+    }
+
+    [Fact]
+    public async Task SetSerialNumber_and_ClearSerialNumber_put_the_documented_bytes_on_the_wire()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        await nino.SetSerialNumberAsync("PDN00001");
+        await nino.ClearSerialNumberAsync();
+
+        await WaitUntil(() => io.Writes.Length >= 2);
+        io.Writes[0].Should().Equal(NinoTncCommands.BuildSetSerialNumberKissFrame("PDN00001"));
+        io.Writes[1].Should().Equal(NinoTncCommands.BuildClearSerialNumberKissFrame());
+    }
+
+    [Fact]
     public async Task GetAllAsync_accepts_the_labelled_diagnostic_reply_of_firmware_341()
     {
         var io = new FakeSerialPortIo();

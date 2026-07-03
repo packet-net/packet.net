@@ -970,6 +970,107 @@ full image (upstream quotes 2–4 min); the interactive-confirm path and the ref
 `/proc/*/fd` port scan were exercised too (dry-run answered `n` → exit 1, nothing written).
 Rig left as found: both TNCs 3.41, TNC B mode 6 RAM-only, beacons off.
 
+## CCDI surface gaps closed (2026-07-03, session 11) — extended/binary/legacy SDM, FUNCTION extras, RING TYPE4, KAUP8R
+
+Backlog item 5: the documented-but-unmodelled CCDI surface, worked through in manual-priority
+order against the rig (sender = TM8110 s/n 19925328 `PDN00002` on `/dev/ttyUSB2`, receiver =
+s/n 19925369 `PDN00001` on `/dev/ttyUSB3`; TNCs untouched, radios never keyed except by their
+own SDM engine). Probes ran raw (`TransactRawAsync`, `Packet.Tait.Spike sdm-surface`) *before*
+the driver surface was finalised, then the shipped API was re-validated over air
+(`sdm-driver`).
+
+### Extended SDM (SFI 04/05) — the radios do ALL the work
+
+The big unknown was who splits and who reassembles. Answer, hardware-proven both at 100 and at
+exactly 128 characters: **one `a` command with GFI 2 / SFI 04 carries the whole message** —
+the sending radio splits it into multiple over-air FFSK bursts (SFI 05 continuations, observed
+as one `FFSK data received` PROGRESS per burst at the receiver), and the **receiving radio
+reassembles natively**: a single RING 4000 fires when the message completes, and the one-deep
+buffer returns the full 100/128 characters in one `q1` read. Mid-reassembly reads (the spurious
+arrivals the per-burst PROGRESS provokes) harmlessly return "no SDM buffered" and do not
+disturb reassembly. The SDM auto-ack delivery receipt (PROGRESS `1D1`) covers the whole
+message. So the anticipated host-side read-and-clear-between-parts reassembler was **not
+needed** — the driver models extended SDM as `SendExtendedSdmAsync` (one call, ≤128 chars) and
+the existing `ReadBufferedSdmAsync`.
+
+- `TaitSdmSideChannel` gains `TaitSdmSideChannelOptions.EnableExtendedSdm` (default **off**):
+  when set, `MaxPayloadLength` 32 → 128 and >32-char payloads route through the extended form
+  (≤32 stays plain — one burst of airtime). Default off although hardware-proven: extended
+  costs multiple FFSK bursts per datagram (more airtime, more to lose to one collision), and
+  peer-programming acceptance of SFI 04 is a per-fleet question.
+- Validated through the shipped API end-to-end: side-channel send of 100 chars on the
+  extended flag → received intact, `match=True`, receipt acknowledged. The radios'
+  CCDI3+CCDI2-Text programming accepted SFI 04 without complaint.
+
+### Binary SDM (GFI 1) + legacy SEND_SDM ('s')
+
+- **Binary works verbatim**: `a…1 00…` with bytes `01 42 7F FE` delivered exactly
+  (`<01>B<7F><FE>` in the receiver buffer), receipt acked; GFI 1 / SFI 04 extended binary
+  (40 bytes) also delivered intact. Driver: `SendBinarySdmAsync` (auto-selects SFI 00 ≤32
+  bytes / SFI 04 above; refuses `0x0D`/`0x0A`/`0x11`/`0x13` — CR/LF terminate CCDI lines and
+  XON/XOFF may be soft flow control §1.6.1, so those four byte values can't survive the
+  serial legs).
+- **Legacy `s` command works**: `s1205PDN00001LEGACY-SBD` delivered, RINGed, auto-acked —
+  same over-air behaviour as a plain adaptable SDM. Driver: `SendLegacySdmAsync`
+  (back-compat only; `SendSdmAsync` supersedes it, per the manual itself).
+
+### FUNCTION extras (unit-tested one-liners) + the f 0 6 probe
+
+All remaining documented FUNCTION rows are now driver methods on the transaction engine, each
+pinned to the manual's own checksummed example where one exists: volume enable + set
+(`SetVolumeControlAsync`, `SetVolumeAsync` 0–25), Selcall RING output
+(`SetSelcallRingOutputAsync`), keypress progress (`SetKeypressProgressMessagesAsync`, TM8200
+only per footnote d), unsolicited channel-change progress (`SetChannelProgressMessagesAsync`),
+the three SDM runtime controls (`SetSdmOutputOnReceptionAsync` — pushed SDMs now surface via a
+new `SdmReceived` event — `SetSdmCallerIdEncodeAsync`, `SetSdmCallerIdDecodeAsync`),
+user-controls lockout (`SetUserControlsAsync` + `TaitUserControls`), subaudible validation
+(`SetSubaudibleValidationAsync`), and keypress simulation (`SimulateKeyPressAsync` +
+`TaitKey` — the PROGRESS-23 key table — with the 0/1–8/9 duration code).
+
+**Undocumented FUNCTION 0/6 probed once** (TM8110, CCDI 03.02, fw 02.18): `f03061A0`
+(qualifier 1) and `f03060A1` (qualifier 0) both prompt-complete **silently** — no error, no
+solicited response, no unsolicited output within 1.5 s, no observable behaviour change. (For
+contrast, unsupported commands answer error 0/01 and bad parameters 0/03 — 0/6 is *accepted*.)
+The two-digit-qualifier form (`f0406016F`) answers parameter error 0/03. Left disabled
+(qualifier 0 sent last); whatever "diagnostic mode" 0/6 gates, it doesn't show on this
+firmware's CCDI surface.
+
+### RING TYPE4 — the value table does not exist
+
+The task was to recover the TYPE4 value table from the original PDF (MMA-00038-06 pp. 53–54)
+with pypdf layout mode. The extraction is fully legible — and settles it: **the manual names
+[TYPE4] in the RING format line but defines values only for TYPE1–TYPE3**; there is no TYPE4
+table to recover. The manual's own worked example (`r0714000FFA6`) and every bench capture
+carry `'0'`. Driver: `CcdiRingMessage` gains typed `CallType`/`IsEmergency`/`Addressing`
+decodes (TYPE1–3 per the table) and a raw `Type4` char documented as undefined-by-spec.
+
+Found on the way: **a manual checksum erratum** — §1.9.8's example `a0FFF20012345678Hi4A`
+prints the raw modulo-256 sum low byte (`4A`) instead of its two's complement (`B6`); every
+other worked example (incl. both NMEA-request ones, now test vectors) checksums correctly.
+
+### KAUP8R (NinoTNC identity register)
+
+Per upstream tnc-tools: SETSERNO = KISS command `0x0A` + exactly 8 ASCII chars, CLRSERNO =
+`0x0A` + 8 zero bytes, GETSERNO = `0x0E` (reply on `0xE0`). Driver:
+`NinoTncCommands.{Build*SerialNumber*}` + `NinoTncSerialPort.GetSerialNumberAsync` /
+`SetSerialNumberAsync` / `ClearSerialNumberAsync`. **Hardware (read-only, as approved):**
+GETSERNO on TNC A (fw 3.41) answers 8 raw bytes on `0xE0` — all-zero on this TNC (register
+unset, matching the all-zero GETALL register 01); the driver maps all-zero → `null`. The
+write path (SETSERNO/CLRSERNO) is implemented + unit-tested but **deliberately unexercised on
+the rig** — the TNCs' identity registers stay untouched.
+
+### Not covered
+
+- **THSD Transparent mode**: untestable on this rig — the radios' channel programming has no
+  THSD configuration, so the `t…H` entry can't be exercised; the FFSK Transparent path stays
+  the only bench-verified one.
+- **CCR-over-SDM (GFI 2 / SFI 03)**: modelled as `UnsafeBuildCcrOverSdmFrame` +
+  `UnsafeSendCcrOverSdmAsync` (`[Experimental("PKTTAIT001")]`, XML-doc'd as remote radio
+  CONTROL with no consent handshake in the protocol; receipt = delivery only, the CCR +/− ack
+  goes to the *receiver's* serial port, not back over air), unit-tested against the manual's
+  worked example `a130520312345678M01D0E36`. Live validation: see the next session entry.
+  The consent/capability gate for non-bench use remains a named follow-up.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate
@@ -1012,3 +1113,9 @@ Rig left as found: both TNCs 3.41, TNC B mode 6 RAM-only, beacons off.
     6/12 on its responder, ~1/4 on the shorter runs; both TNCs, 3.41) — worth a look at
     what differs (timing relative to SETHW? echo swallowed during the mode transition?)
     before trusting the echo for anything more than logging.
+12. **CCR-over-SDM consent/capability story** (session 11): the send path exists but stays
+    `[Experimental]`/`Unsafe`-prefixed — a CCR command over the air is remote radio control
+    with no consent handshake in the protocol. Before anything beyond bench tooling uses it:
+    a capability/authorisation gate (peer allow-list? challenge over the side channel?) and
+    a decision on which CCR commands are ever permitted remotely (never 'P' power, never
+    'R'/'T' frequency without explicit authority).

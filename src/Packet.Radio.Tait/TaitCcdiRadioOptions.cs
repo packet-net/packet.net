@@ -75,6 +75,78 @@ public enum TaitDialType
     Dtmf = 1,
 }
 
+/// <summary>User-controls lockout states (FUNCTION 4, §1.9.3 note 1).</summary>
+public enum TaitUserControls
+{
+    /// <summary>All user inputs, indicators and the display disabled; the radio shows
+    /// "CCDI BUSY".</summary>
+    DisableAll = 0,
+
+    /// <summary>User input disabled; display and indicators stay live; attempted input sounds
+    /// the invalid-keypress tone.</summary>
+    DisableInputOnly = 1,
+
+    /// <summary>Normal operation except while a CCDI command is being processed — the power-up
+    /// default.</summary>
+    EnableAll = 2,
+}
+
+/// <summary>Front-panel key numbers (§1.10.5, PROGRESS type 23 — also the key codes
+/// <see cref="TaitCcdiRadio.SimulateKeyPressAsync"/> accepts).</summary>
+public enum TaitKey : byte
+{
+    /// <summary>PTT.</summary>
+    Ptt = 0x00,
+    /// <summary>Hookswitch.</summary>
+    Hookswitch = 0x01,
+    /// <summary>On/Off key.</summary>
+    OnOff = 0x02,
+    /// <summary>Up key.</summary>
+    Up = 0x03,
+    /// <summary>Down key.</summary>
+    Down = 0x04,
+    /// <summary>Function key 1.</summary>
+    Function1 = 0x05,
+    /// <summary>Function key 2.</summary>
+    Function2 = 0x06,
+    /// <summary>Function key 3.</summary>
+    Function3 = 0x07,
+    /// <summary>Function key 4.</summary>
+    Function4 = 0x08,
+    /// <summary>Function key 5.</summary>
+    Function5 = 0x09,
+    /// <summary>Function key 6.</summary>
+    Function6 = 0x0A,
+    /// <summary>Zero key.</summary>
+    Zero = 0x0B,
+    /// <summary>One key.</summary>
+    One = 0x0C,
+    /// <summary>Two key.</summary>
+    Two = 0x0D,
+    /// <summary>Three key.</summary>
+    Three = 0x0E,
+    /// <summary>Four key.</summary>
+    Four = 0x0F,
+    /// <summary>Five key.</summary>
+    Five = 0x10,
+    /// <summary>Six key.</summary>
+    Six = 0x11,
+    /// <summary>Seven key.</summary>
+    Seven = 0x12,
+    /// <summary>Eight key.</summary>
+    Eight = 0x13,
+    /// <summary>Nine key.</summary>
+    Nine = 0x14,
+    /// <summary>Star key (*).</summary>
+    Star = 0x15,
+    /// <summary>Hash key (#).</summary>
+    Hash = 0x16,
+    /// <summary>Left softkey.</summary>
+    SoftkeyLeft = 0x1E,
+    /// <summary>Right softkey.</summary>
+    SoftkeyRight = 0x1F,
+}
+
 /// <summary>The current-channel report (PROGRESS type 21, solicited via FUNCTION 0/5/2).</summary>
 /// <param name="Kind">'0' single channel, '1' scan/vote group, '2' captured within a group,
 /// '3' temporary (e.g. GPS), '9' not available / invalid.</param>
