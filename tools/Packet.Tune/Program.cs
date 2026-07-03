@@ -29,6 +29,13 @@
 //                                              remote deviation session coordinated over a
 //                                              WebSocket rendezvous relay (spoken 6-digit PIN)
 //   rendezvous --listen <port>                 run the PIN-rendezvous relay
+//   mode-survey <tncA> <tncB> <ccdiA> <ccdiB>  per-channel × per-IL2P+CRC-mode RF survey
+//                                              (decode rate, latency, RX RSSI, IL2P counters);
+//                                              always leaves the rig on channel 0 / mode 6
+//   set-mode <tncPort> <mode>                  SETHW one TNC's mode (+16 RAM-only default)
+//                                              with settle frame + GETALL verify
+//   radio-channel <ccdiPort> [channel]         report — or switch and verify — a Tait
+//                                              radio's conventional channel
 
 using Packet.Tune;
 
@@ -43,6 +50,10 @@ return args switch
     ["deviation-remote", .. var rest] => await DeviationAssist.RunRemote(rest),
     ["rendezvous", .. var rest] => await RendezvousCommand.Run(rest),
     ["radio-reset", var ccdi] => await RadioResetCommand.Run(ccdi),
+    ["mode-survey", var tncA, var tncB, var ccdiA, var ccdiB, .. var rest] =>
+        await ModeSurveyCommand.Run(tncA, tncB, ccdiA, ccdiB, rest),
+    ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
+    ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
     _ => Usage(),
 };
 
@@ -59,6 +70,10 @@ static int Usage()
     Console.WriteLine("                [--pin NNNNNN] [--callsign X] [--burst N=5]");
     Console.WriteLine("  rendezvous --listen <port>");
     Console.WriteLine("  radio-reset <ccdiPort>       (CCR enter+exit soft reset — un-wedges SDM auto-ack)");
+    Console.WriteLine("  mode-survey <tncA> <tncB> <ccdiA> <ccdiB> [--channels 0,1] [--rounds 5] [--json [path]]");
+    Console.WriteLine("                               (IL2P+CRC modes only; always ends on channel 0 / mode 6)");
+    Console.WriteLine("  set-mode <tncPort> <mode> [--persist] [--callsign X]");
+    Console.WriteLine("  radio-channel <ccdiPort> [channel]");
     Console.WriteLine();
     Console.WriteLine("deviation-* tune the TX-DEV pot at the TUNED end: the meter end requests");
     Console.WriteLine("frame bursts, measures decode rate / IL2P FEC deltas / ADC clipping / CCDI");
