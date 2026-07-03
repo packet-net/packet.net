@@ -13,7 +13,9 @@ namespace Packet.Kiss.NinoTnc;
 /// the TNC's RX audio in dB — open-squelch flat-tap noise reads ≈ −33,
 /// while a carrier quieting the channel with a 440 Hz CQBEEP tone reads
 /// ≈ −62. It tracks what the modem actually hears, which makes it a remote
-/// audio-level meter for deviation/level tuning.
+/// audio-level meter for deviation/level tuning. <b>Firmware 3.41 only:</b>
+/// the GETRSSI query was removed in firmware 3.44 (no reply at all), so no
+/// frame of this shape ever arrives from a 3.44 TNC.
 /// </remarks>
 /// <param name="LevelDb">RX-audio RMS level in dB (see remarks).</param>
 public sealed record NinoTncRssiReading(float LevelDb)

@@ -148,6 +148,17 @@ public sealed record NinoTncStatusFrame
     public long? Il2pFecCorrectedBytes { get; init; }
 
     /// <summary>
+    /// Dropped ADC samples since boot. No numeric register is known to
+    /// carry this (registers 00–11 observed), so it is populated only when
+    /// the snapshot was mapped from the labelled diagnostic's
+    /// <c>LostADCSmp</c> field via <see cref="FromDiagnostic"/> — which is
+    /// what GETALL answers with on firmware 3.41 and 3.44. A rising delta
+    /// while receiving means the RX audio is clipping the TNC's ADC —
+    /// gross over-deviation at the transmitting end.
+    /// </summary>
+    public long? LostAdcSamples { get; init; }
+
+    /// <summary>
     /// Every register the frame carried, raw and unmapped (register index →
     /// verbatim value bytes). Registers this type has no property for
     /// (e.g. additions in newer firmware) are still present here.
@@ -247,9 +258,11 @@ public sealed record NinoTncStatusFrame
     /// <summary>
     /// Map a labelled <c>=FirmwareVr:</c> diagnostic
     /// (<see cref="NinoTncTxTestFrame"/>) into this numeric-report shape.
-    /// Firmware 3.41 answers GETALL with the labelled text, which carries a
-    /// subset of the registers — the fields with no labelled counterpart
-    /// (PTT-on, DCD-on, RX/TX bytes, FEC-corrected bytes) stay <c>null</c>.
+    /// Firmware 3.41 <em>and</em> 3.44 answer GETALL with the labelled text
+    /// (bench-verified 2026-07-02), which carries a subset of the registers —
+    /// the fields with no labelled counterpart (PTT-on, DCD-on, RX/TX bytes,
+    /// FEC-corrected bytes) stay <c>null</c>; <see cref="LostAdcSamples"/>
+    /// conversely exists <em>only</em> via this labelled path.
     /// </summary>
     public static NinoTncStatusFrame FromDiagnostic(NinoTncTxTestFrame diagnostic)
     {
@@ -270,6 +283,7 @@ public sealed record NinoTncStatusFrame
             TxPackets = diagnostic.TxPacketCount,
             PreambleWordCount = diagnostic.PreambleCount,
             LoopCycles = diagnostic.LoopCycles,
+            LostAdcSamples = diagnostic.LostAdcSamples,
         };
     }
 

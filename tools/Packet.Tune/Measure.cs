@@ -6,9 +6,10 @@ namespace Packet.Tune;
 
 /// <summary>
 /// <c>measure</c>: one-shot level survey. From the NinoTNC: GETVER and a
-/// GETRSSI baseline (n=5 — the TNC's RX-audio RMS level in dB). With a
-/// CCDI port: the attached Tait radio's averaged + raw RSSI, which on an
-/// idle channel is the RF noise floor.
+/// GETRSSI baseline (n=5 — the TNC's RX-audio RMS level in dB; firmware
+/// 3.41 only, removed in 3.44 — reported as n/a there). With a CCDI port:
+/// the attached Tait radio's averaged + raw RSSI, which on an idle channel
+/// is the RF noise floor.
 /// </summary>
 internal static class Measure
 {
@@ -24,15 +25,26 @@ internal static class Measure
         Console.WriteLine($"  GETVER: firmware {version}");
 
         var levels = new List<float>();
-        for (int i = 0; i < BaselineSamples; i++)
+        try
         {
-            float level = await tnc.GetRssiAsync();
-            levels.Add(level);
-            Console.WriteLine($"  GETRSSI #{i + 1}: {Fmt(level)} dB");
-            await Task.Delay(200);
+            for (int i = 0; i < BaselineSamples; i++)
+            {
+                float level = await tnc.GetRssiAsync(TimeSpan.FromSeconds(2));
+                levels.Add(level);
+                Console.WriteLine($"  GETRSSI #{i + 1}: {Fmt(level)} dB");
+                await Task.Delay(200);
+            }
         }
-        Console.WriteLine($"  RX-audio baseline (n={BaselineSamples}): median {Fmt(Median(levels))} dB " +
-                          $"(min {Fmt(levels.Min())} / max {Fmt(levels.Max())})");
+        catch (TimeoutException)
+        {
+            // GETRSSI was an undocumented 3.41 feature, removed in 3.44.
+            Console.WriteLine("  GETRSSI: n/a on this firmware (removed in 3.44; 3.41 only)");
+        }
+        if (levels.Count > 0)
+        {
+            Console.WriteLine($"  RX-audio baseline (n={levels.Count}): median {Fmt(Median(levels))} dB " +
+                              $"(min {Fmt(levels.Min())} / max {Fmt(levels.Max())})");
+        }
 
         if (ccdiPort is not null)
         {

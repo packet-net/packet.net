@@ -16,12 +16,15 @@ namespace Packet.Kiss.NinoTnc;
 /// frame on a plain KISS Data frame (see <see cref="NinoTncStatusFrame"/>).
 /// </para>
 /// <para>
-/// Bench-verified against firmware 3.41 (2026-07-02, 2× NinoTNC on the
-/// Tait rig): GETVER answers the bare ASCII version (<c>"3.41"</c>);
-/// GETALL answers the labelled <c>=FirmwareVr:</c> diagnostic text
-/// (<see cref="NinoTncTxTestFrame"/>) on 0xE0 — newer firmware documents
-/// the numeric <c>=II:</c> register report instead; GETRSSI answers
-/// <c>"RSSI:-32.86"</c>-style ASCII (see <see cref="NinoTncRssiReading"/>).
+/// Bench-verified against firmware 3.41 and 3.44 (2026-07-02, 2× NinoTNC
+/// on the Tait rig): GETVER answers the bare ASCII version (<c>"3.41"</c> /
+/// <c>"3.44"</c>); GETALL answers the labelled <c>=FirmwareVr:</c>
+/// diagnostic text (<see cref="NinoTncTxTestFrame"/>) on 0xE0 on <em>both</em>
+/// firmwares — the numeric <c>=II:</c> register report only ever arrives as
+/// the periodic status beacon; GETRSSI answers <c>"RSSI:-32.86"</c>-style
+/// ASCII (see <see cref="NinoTncRssiReading"/>) on 3.41 but was
+/// <b>removed in 3.44</b> (no reply at all — it was an undocumented 3.41
+/// feature).
 /// </para>
 /// </remarks>
 public static class NinoTncCommands
@@ -57,7 +60,8 @@ public static class NinoTncCommands
     /// </summary>
     public const byte SetBeaconIntervalSubcommand = 0xF0;
 
-    /// <summary><see cref="ExtendedCommand"/> payload byte for GETRSSI — request an RX-audio level reading.</summary>
+    /// <summary><see cref="ExtendedCommand"/> payload byte for GETRSSI — request an RX-audio
+    /// level reading. Firmware 3.41 only; removed in 3.44 (the query gets no reply).</summary>
     public const byte GetRssiSubcommand = 0xA7;
 
     /// <summary>GETALL request payload (a single 0x00 byte).</summary>

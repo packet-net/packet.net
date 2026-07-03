@@ -117,6 +117,14 @@ public sealed record NinoTncTxTestFrame
     /// <summary>Count of dropped ADC samples since boot.</summary>
     public long? LostAdcSamples { get; init; }
 
+    /// <summary>
+    /// Every labelled field the frame carried, verbatim (key → value).
+    /// Fields this type has no property for — e.g. additions in newer
+    /// firmware — are still present here, so nothing is lost.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> RawFields { get; init; } =
+        new Dictionary<string, string>();
+
     private const string Marker = "=FirmwareVr:";
 
     /// <summary>
@@ -197,6 +205,7 @@ public sealed record NinoTncTxTestFrame
             PreambleCount = TryHexLong(fields, "PreamblCnt"),
             LoopCycles = TryHexLong(fields, "LoopCycles"),
             LostAdcSamples = TryHexLong(fields, "LostADCSmp"),
+            RawFields = fields,
         };
         return true;
     }

@@ -340,9 +340,18 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// The value is the RMS level of the TNC's receive audio in dB, not an
     /// RF dBm figure — see <see cref="NinoTncRssiReading"/>.
     /// </summary>
+    /// <remarks>
+    /// <b>Firmware 3.41 only — REMOVED in firmware 3.44.</b> GETRSSI was an
+    /// undocumented 3.41 feature; on 3.44 the query gets no reply at all
+    /// (bench-verified 2026-07-02 after flashing both rig TNCs), so this
+    /// call ends in <see cref="TimeoutException"/>. Callers must catch it
+    /// and degrade — e.g. meter deviation by decoded-frame counts, IL2P
+    /// FEC-corrected-byte deltas and the lost-ADC counter instead (see
+    /// <see cref="NinoTncStatusDelta"/>).
+    /// </remarks>
     /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
     /// <param name="cancellationToken">Cancels the send and the wait.</param>
-    /// <exception cref="TimeoutException">No reply within the timeout.</exception>
+    /// <exception cref="TimeoutException">No reply within the timeout — including always on firmware 3.44+, which removed the query.</exception>
     public async Task<float> GetRssiAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var reading = await SendAwaitingReplyAsync(

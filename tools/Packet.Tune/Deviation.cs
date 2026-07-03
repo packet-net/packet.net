@@ -19,10 +19,11 @@ namespace Packet.Tune;
 /// table shows the level moving.
 /// </para>
 /// <para>
-/// The internet/SDM-coordinated REMOTE flavour — where the two ends run on
-/// different hosts and each executes half of this loop (one arms + beeps on
-/// cue, the other triggers + meters) — is the documented follow-up; this
-/// command is the bench-local proof of the loop.
+/// GETRSSI was removed in firmware 3.44, so this loop only runs against
+/// 3.41 TNCs; on newer firmware it reports n/a and points at the remote
+/// flavours — <c>deviation-sdm</c> / <c>deviation-remote</c> — which meter
+/// by decode-rate + FEC/clip deltas + CCDI RSSI instead (see
+/// <c>Packet.Tune.Core</c>'s <c>TuningSession</c>).
 /// </para>
 /// </remarks>
 internal static class Deviation
@@ -55,10 +56,22 @@ internal static class Deviation
         await Task.Delay(2000); // let the arming frame finish keying
 
         var baseline = new List<float>();
-        for (int i = 0; i < BaselineSamples; i++)
+        try
         {
-            baseline.Add(await local.GetRssiAsync());
-            await Task.Delay(200);
+            for (int i = 0; i < BaselineSamples; i++)
+            {
+                baseline.Add(await local.GetRssiAsync(TimeSpan.FromSeconds(2)));
+                await Task.Delay(200);
+            }
+        }
+        catch (TimeoutException)
+        {
+            // GETRSSI was an undocumented 3.41 feature, removed in 3.44 —
+            // this GETRSSI-metered local loop cannot run on 3.44 firmware.
+            Console.WriteLine("  GETRSSI: n/a on this firmware (removed in 3.44; 3.41 only)");
+            Console.WriteLine("  this local tone-metering loop needs GETRSSI — use deviation-sdm or");
+            Console.WriteLine("  deviation-remote instead (they meter by decode-rate/FEC/clip/CCDI-RSSI)");
+            return 1;
         }
         float idle = Median(baseline);
         Console.WriteLine($"  local idle RX-audio baseline: {Fmt(idle)} dB (n={BaselineSamples})");

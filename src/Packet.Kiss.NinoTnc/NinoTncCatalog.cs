@@ -18,7 +18,9 @@ namespace Packet.Kiss.NinoTnc;
 ///         (the firmware encodes the underlying modem configuration, not the
 ///         user-facing switch label). We need the reverse lookup to identify
 ///         the operating mode from a TX-Test frame.</item>
-///   <item>The catalog is firmware-version-specific (currently v3.44). Newer
+///   <item>The catalog is firmware-version-specific (currently v3.44 — which
+///         the bench rig's TNCs also run since the 2026-07-02 flash, so the
+///         tables match the hardware they were verified against). Newer
 ///         firmwares may extend it; bump when needed.</item>
 /// </list>
 /// </remarks>
