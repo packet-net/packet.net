@@ -110,7 +110,10 @@ foreach (var c in NinoTncPortDiscovery.EnumerateCandidates())
 The VID/PID is shared with other Microchip-CDC reference projects, so a match is "might be a NinoTNC", not "definitely is" — the TX-Test frame is the authoritative confirmation. `NinoTncPortDiscovery.PortsEnvVar` (`PACKETNET_NINOTNC_PORTS`, a comma-separated list) is the final override.
 
 ## Firmware catalogue
-`Packet.Kiss.NinoTnc.Firmware` models what's running and whether a newer image exists. `GitHubNinoTncFirmwareCatalogue.CheckForUpdateAsync(version)` reads the upstream `flashtnc` repo and surfaces the current release per chip variant; the firmware major (`3.xx` / `4.xx`) selects the dsPIC variant, and flashing the wrong image bricks the modem until ICSP recovery. **The flash operation itself is not implemented** — `INinoTncFirmwareFlasher` is the seam and the only in-tree implementation throws.
+`Packet.Kiss.NinoTnc.Firmware` models what's running, whether a newer image exists, and performs the flash itself. `GitHubNinoTncFirmwareCatalogue.CheckForUpdateAsync(version)` reads the upstream `flashtnc` repo and surfaces the current release per chip variant; the firmware major (`3.xx` / `4.xx`) selects the dsPIC variant, and flashing the wrong image bricks the modem until ICSP recovery.
+
+## Firmware flashing
+`BootloaderNinoTncFirmwareFlasher` (behind the `INinoTncFirmwareFlasher` seam) is a native C# port of the dsPIC bootloader protocol upstream `flashtnc.py` speaks, byte-compatible with the hardware-validated sequence: drain-to-silence, stranded-bootloader probe (`'R'`→`'K'`), triple GETALL fill-and-flush, bootloader entry (`C0 0D 37 C0`), one-letter version/chip check (lowercase = EP256, uppercase = EP512, mismatch refused), then the Intel-HEX image line-by-line (first line char-by-char at 100 ms — page erase) with per-line `K`/`Z`/`F`/`N`/`X` replies. `NinoTncFirmwareHexImage` validates + chip-classifies the image before the modem is touched; failures throw `NinoTncFlashException` with the terminal state classified (`NinoTncFlashFailure`); progress is reported per accepted line (`NinoTncFlashProgress`). **An interrupted flash strands the modem in the bootloader** (recoverable: re-run the flash — the stranded probe resumes). After success the modem reboots (first boot: ~2 s bootloader self-update) and its RAM mode resets to 0 — re-apply via `SetModeAsync`. `UnsupportedFirmwareFlasher` remains for hosts that must refuse to flash.
 
 ## Key types
 - `NinoTncSerialPort` — the driver: `IAx25Transport` + `ITxCompletionTransport` + `ICsmaChannelParams`, with `SetModeAsync` and `SendFrameWithAckAsync`.
@@ -118,7 +121,8 @@ The VID/PID is shared with other Microchip-CDC reference projects, so a match is
 - `NinoTncFrameClassifier` — overlays the generic classifier and upgrades TX-Test / over-air-test frames to typed events.
 - `NinoTncTxTestFrame` / `NinoTncTxTestFrameReceivedEvent` — the decoded front-panel diagnostic (labelled `=FirmwareVr:` form).
 - `NinoTncStatusFrame` / `NinoTncStatusDelta` / `NinoTncStatusFrameReceivedEvent` — the numeric `=II:` register report + snapshot deltas.
-- `NinoTncCommands` — GETALL/GETVER/STOPTX/SETBCNINT/GETRSSI payloads and wire frames.
+- `NinoTncCommands` — GETALL/GETVER/STOPTX/SETBCNINT/GETRSSI/BOOTLOADER payloads and wire frames.
+- `BootloaderNinoTncFirmwareFlasher` / `NinoTncFirmwareHexImage` / `NinoTncFlashException` — the firmware flasher (see above).
 - `NinoTncRssiReading` / `NinoTncRssiReadingReceivedEvent` — the GETRSSI RX-audio level reply.
 - `NinoTncCqBeep` — `[TARPNstat` arming + `CQBEEP-N` beep-request frame factories.
 - `NinoTncAirTestFrame` / `NinoTncAirTestFrameReceivedEvent` — a partner's over-air test transmission (any `CQBEEP-N`).

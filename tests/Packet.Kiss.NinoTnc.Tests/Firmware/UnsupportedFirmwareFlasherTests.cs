@@ -11,7 +11,7 @@ public class UnsupportedFirmwareFlasherTests
         var act = async () => await flasher.FlashAsync("COM6", new byte[] { 0x01 });
 
         var exception = await act.Should().ThrowAsync<NotSupportedException>();
-        exception.WithMessage("*Firmware flashing is not yet supported*");
+        exception.WithMessage("*Firmware flashing is not supported on this host*");
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class UnsupportedFirmwareFlasherTests
         var flasher = new UnsupportedFirmwareFlasher();
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var progress = new Progress<double>(_ => { });
+        var progress = new Progress<NinoTncFlashProgress>(_ => { });
 
         var act = async () => await flasher.FlashAsync(
             portName: "COM6",
