@@ -49,11 +49,14 @@ public sealed record TuningSessionOptions
 /// <remarks>
 /// <para>Protocol choreography (five verbs, meter drives the measurements):</para>
 /// <list type="number">
-///   <item>Both ends send <c>HI|&lt;role&gt;</c>. The tuned end's <c>HI</c>
-///     doubles as its "ready for a burst" signal — it re-sends it after the
-///     operator confirms each pot adjustment.</item>
+///   <item>The tuned end sends <c>HI|tuned</c> — its "ready for a burst"
+///     beacon, re-sent after the operator confirms each pot adjustment. The
+///     meter sends nothing unsolicited (over SDM, a telegram arriving while
+///     the tuned end's TNC is keyed is the PTT-vs-auto-ack race that wedges
+///     the TM8110 — see <see cref="SdmTuningLink"/>).</item>
 ///   <item>On <c>HI|tuned</c> the meter sends <c>RQ|n</c> and opens its
-///     measurement window; the tuned end fires an n-frame burst.</item>
+///     measurement window; the tuned end fires an n-frame burst (after
+///     <see cref="TuningSessionOptions.PreBurstDelay"/>).</item>
 ///   <item>The meter sends <c>MS|&lt;report&gt;</c> then
 ///     <c>AD|UP/DN/OK</c>; the tuned end shows the trend table and prompts
 ///     the operator (adjust pot → Enter → next round, or finish).</item>
@@ -96,9 +99,13 @@ public static class TuningSession
         int round = 0;
         MeterReport? previous = null;
 
-        await link.SendAsync(new TuningTelegram(seq++, TuningVerb.Hello, MeterRole), cancellationToken)
-            .ConfigureAwait(false);
-        await output.WriteLineAsync("meter: HI sent — waiting for the tuned end...").ConfigureAwait(false);
+        // Deliberately no unsolicited HI from the meter: over the SDM link,
+        // a telegram landing at the tuned radio while that radio's TNC is
+        // keyed (session-start CQBEEP arming, a burst) is exactly the
+        // PTT-vs-auto-ack race that wedges the TM8110's ack engine. The
+        // meter's first transmission is the RQ answering the tuned end's
+        // ready beacon — which the tuned end sends from an idle channel.
+        await output.WriteLineAsync("meter: waiting for the tuned end's ready beacon...").ConfigureAwait(false);
 
         try
         {

@@ -28,6 +28,14 @@ public sealed record SdmTuningLinkOptions
     /// <summary>Fallback receive-buffer poll interval, for arrivals whose RING /
     /// FFSK-progress was missed. Default 1.5 s.</summary>
     public TimeSpan ReceivePollInterval { get; init; } = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>
+    /// Minimum gap between receiving a telegram and transmitting anything:
+    /// our own radio's auto-acknowledgement of that telegram is still going
+    /// out, and an SDM send (or any PTT) racing it wedges the TM8110's ack
+    /// engine (see the class remarks). Default 2 s.
+    /// </summary>
+    public TimeSpan PostReceiveGuard { get; init; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -84,6 +92,7 @@ public sealed class SdmTuningLink : ITuningLink
     private readonly Queue<int> seenOrder = new();
     private readonly TaitSdmChannel? ownedAdapter;
     private TaskCompletionSource<bool>? pendingReceipt;
+    private long lastArrivalTicks;
     private int disposed;
 
     /// <summary>
@@ -147,6 +156,7 @@ public sealed class SdmTuningLink : ITuningLink
         {
             for (int attempt = 1; attempt <= options.MaxAttempts; attempt++)
             {
+                await WaitOutPostReceiveGuardAsync(cancellationToken).ConfigureAwait(false);
                 await WaitForChannelClearAsync(cancellationToken).ConfigureAwait(false);
 
                 var receipt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -247,6 +257,23 @@ public sealed class SdmTuningLink : ITuningLink
     private void OnDeliveryReceipt(object? sender, bool acknowledged) =>
         pendingReceipt?.TrySetResult(acknowledged);
 
+    private async Task WaitOutPostReceiveGuardAsync(CancellationToken cancellationToken)
+    {
+        long arrival = Interlocked.Read(ref lastArrivalTicks);
+        if (arrival == 0)
+        {
+            return;
+        }
+        var since = DateTimeOffset.UtcNow - new DateTimeOffset(arrival, TimeSpan.Zero);
+        var wait = options.PostReceiveGuard - since;
+        if (wait > TimeSpan.Zero)
+        {
+            // The radio is (or may be) transmitting its auto-ack for the
+            // telegram we just received — sending now would pre-empt it.
+            await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private async Task WaitForChannelClearAsync(CancellationToken cancellationToken)
     {
         var start = DateTimeOffset.UtcNow;
@@ -288,6 +315,7 @@ public sealed class SdmTuningLink : ITuningLink
                 {
                     continue;
                 }
+                Interlocked.Exchange(ref lastArrivalTicks, DateTimeOffset.UtcNow.UtcTicks);
                 if (!TuningTelegram.TryParse(message, out var telegram) || telegram is null)
                 {
                     Log?.Invoke($"sdm-link: ignoring non-telegram SDM: '{message}'");
