@@ -61,6 +61,31 @@ public class TuningSessionTests
     }
 
     [Fact]
+    public async Task A_dead_burst_reads_as_sweep_on_both_ends_not_a_directional_up()
+    {
+        // 0/5 decode with no clipping: no direction can be inferred — the
+        // meter must say SW ("no decode — sweep the pot"), never UP.
+        var (tunedLink, meterLink) = InMemoryTuningLink.CreatePair();
+        var meter = new FakeMeter(new MeterReport(0, 5, 0, 0, -89.5));
+        var prompt = new ScriptedPrompt(false);
+        var tunedOut = new StringWriter();
+        var meterOut = new StringWriter();
+
+        var tunedRun = TuningSession.RunTunedAsync(tunedLink, new FakeStimulus(), prompt, NoDelay, tunedOut);
+        var meterRun = TuningSession.RunMeterAsync(meterLink, meter, null, meterOut);
+
+        (await tunedRun.WaitAsync(Timeout)).Should().Be(0);
+        (await meterRun.WaitAsync(Timeout)).Should().Be(0);
+
+        meterOut.ToString().Should().Contain("SW (no decode — sweep the pot)");
+        meterOut.ToString().Should().NotContain("UP");
+        string tunedText = tunedOut.ToString();
+        tunedText.Should().Contain("SW");
+        tunedText.Should().Contain("sweep the TX-DEV pot", "the trend table explains the SW token");
+        tunedText.Should().NotContain("UP");
+    }
+
+    [Fact]
     public async Task Audio_level_reports_enrich_the_advice_line_and_the_trend_table()
     {
         // The GETRSSI fast path (meter firmware 3.41-era): reports carry a

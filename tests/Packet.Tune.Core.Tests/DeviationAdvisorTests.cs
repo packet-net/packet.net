@@ -1,7 +1,8 @@
 namespace Packet.Tune.Core.Tests;
 
-/// <summary>The UP/DN/OK heuristic: clipping always wins, solid decode with
-/// quiet FEC is OK, and the FEC trend disambiguates struggling bursts.</summary>
+/// <summary>The UP/DN/OK/SW heuristic: clipping always wins, zero decodes
+/// without clipping is the direction-free "sweep the pot" state, solid decode
+/// with quiet FEC is OK, and the FEC trend disambiguates struggling bursts.</summary>
 public class DeviationAdvisorTests
 {
     [Fact]
@@ -9,6 +10,42 @@ public class DeviationAdvisorTests
     {
         var report = new MeterReport(5, 5, FecCorrectedBytesDelta: 0, LostAdcSamplesDelta: 12, RssiDbm: -90);
         DeviationAdvisor.Advise(report).Should().Be(TuningAdvice.Down);
+    }
+
+    [Fact]
+    public void Zero_decodes_without_clipping_advise_sweep_not_up()
+    {
+        // A fully-dead burst carries no direction (too quiet, too loud and
+        // no-path all read 0/n) — a directional UP here sent the operator
+        // the wrong way on the pre-R2-retap bench rig.
+        var report = new MeterReport(0, 5, FecCorrectedBytesDelta: 0, LostAdcSamplesDelta: 0, RssiDbm: -90);
+        DeviationAdvisor.Advise(report).Should().Be(TuningAdvice.Sweep);
+    }
+
+    [Fact]
+    public void Zero_decodes_with_clipping_still_advise_down()
+    {
+        // Clipping IS directional evidence even when nothing decoded.
+        var report = new MeterReport(0, 5, FecCorrectedBytesDelta: 0, LostAdcSamplesDelta: 40, RssiDbm: -90);
+        DeviationAdvisor.Advise(report).Should().Be(TuningAdvice.Down);
+    }
+
+    [Fact]
+    public void Sweep_advice_has_the_no_decode_wording_and_the_SW_token()
+    {
+        DeviationAdvisor.ToWire(TuningAdvice.Sweep).Should().Be("SW");
+        DeviationAdvisor.Describe(TuningAdvice.Sweep).Should().Be("no decode — sweep the pot");
+    }
+
+    [Fact]
+    public void Legacy_directional_tokens_are_unchanged_on_the_wire()
+    {
+        // AD-args backward compatibility: UP/DN/OK are what older peers
+        // send and expect; SW is purely additive (an old peer parses it as
+        // unknown advice, never as a direction).
+        DeviationAdvisor.ToWire(TuningAdvice.Up).Should().Be("UP");
+        DeviationAdvisor.ToWire(TuningAdvice.Down).Should().Be("DN");
+        DeviationAdvisor.ToWire(TuningAdvice.Ok).Should().Be("OK");
     }
 
     [Fact]

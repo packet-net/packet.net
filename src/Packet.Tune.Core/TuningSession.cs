@@ -67,8 +67,9 @@ public sealed record TuningSessionOptions
 ///     measurement window; the tuned end fires an n-frame burst (after
 ///     <see cref="TuningSessionOptions.PreBurstDelay"/>).</item>
 ///   <item>The meter sends <c>MS|&lt;report&gt;</c> then
-///     <c>AD|UP/DN/OK</c>; the tuned end shows the trend table and prompts
-///     the operator (adjust pot → Enter → next round, or finish).</item>
+///     <c>AD|UP/DN/OK/SW</c> (<c>SW</c> = no decode — sweep the pot); the
+///     tuned end shows the trend table and prompts the operator (adjust pot
+///     → Enter → next round, or finish).</item>
 ///   <item><c>BY</c> from either end closes the session.</item>
 /// </list>
 /// <para>The stimulus is the tuned end's own UI-frame bursts, which decode
@@ -155,7 +156,7 @@ public static class TuningSession
                         previous = report;
                         await output.WriteLineAsync(string.Create(
                             CultureInfo.InvariantCulture,
-                            $"meter: burst {round}: {report.ToArgs()} → {DeviationAdvisor.ToWire(advice)}{(levelNote is null ? string.Empty : $" ({levelNote})")}"))
+                            $"meter: burst {round}: {report.ToArgs()} → {DeviationAdvisor.ToWire(advice)}{(advice == TuningAdvice.Sweep ? $" ({DeviationAdvisor.Describe(advice)})" : string.Empty)}{(levelNote is null ? string.Empty : $" ({levelNote})")}"))
                             .ConfigureAwait(false);
 
                         try
@@ -353,6 +354,10 @@ public static class TuningSession
             output.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
                 $"  {i + 1,5}   {r.DecodedFrames,3}/{r.RequestedFrames,-3}   {Fmt(r.FecCorrectedBytesDelta),6}   {Fmt(r.LostAdcSamplesDelta),6}   {FmtRssi(r.RssiDbm),8}   {FmtRssi(r.AudioLevelDb),8}   {(advice is { } a ? DeviationAdvisor.ToWire(a) : "—")}"));
+        }
+        if (trend.Count > 0 && trend[^1].Advice == TuningAdvice.Sweep)
+        {
+            output.WriteLine("  SW = no decode — sweep the TX-DEV pot across its range until frames decode");
         }
         // The audio level (GETRSSI fast path, meter firmware 3.41-era) is
         // guidance for the mid-plateau: the bracketing UP/DN/OK verdict in

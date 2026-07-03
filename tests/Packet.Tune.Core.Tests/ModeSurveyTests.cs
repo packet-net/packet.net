@@ -15,8 +15,11 @@ public class ModeSurveyTests
     [Fact]
     public void Selects_exactly_the_il2p_crc_catalog_modes()
     {
+        // Modes 1 and 3 (4FSK) joined the selection when the catalog names
+        // were corrected to carry their IL2P+CRC protocol (OARC wiki,
+        // 2026-07-03) — there is no AX.25 variant of 4FSK.
         var modes = ModeSurvey.SelectIl2pCrcModes();
-        modes.Select(m => m.Mode).Should().Equal(2, 4, 5, 7, 8, 9, 10, 11, 14);
+        modes.Select(m => m.Mode).Should().Equal(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 14);
     }
 
     [Fact]
@@ -31,7 +34,7 @@ public class ModeSurveyTests
     {
         ModeSurvey.SelectIl2pCrcModes()
             .Select(m => m.Mode)
-            .Should().NotContain([(byte)0, (byte)1, (byte)3, (byte)6, (byte)12, (byte)15]);
+            .Should().NotContain([(byte)0, (byte)6, (byte)12, (byte)15]);
     }
 
     [Fact]
