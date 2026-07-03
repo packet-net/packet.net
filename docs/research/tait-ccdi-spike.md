@@ -1059,17 +1059,41 @@ unset, matching the all-zero GETALL register 01); the driver maps all-zero → `
 write path (SETSERNO/CLRSERNO) is implemented + unit-tested but **deliberately unexercised on
 the rig** — the TNCs' identity registers stay untouched.
 
+### CCR-over-SDM (GFI 2 / SFI 03) — live-validated, radio-to-radio
+
+Modelled as `UnsafeBuildCcrOverSdmFrame` + `UnsafeSendCcrOverSdmAsync`
+(`[Experimental("PKTTAIT001")]`, XML-doc'd as remote radio CONTROL with no consent handshake
+in the protocol), unit-tested against the manual's worked example
+(`a130520312345678M01D0E36` — note the carried message is a complete CCR frame including its
+own checksum, sans CR). Then, **with Tom's explicit authorization** ("not on the air, radios
+are cheap"; run last after everything pushed; bounded transmissions; nothing above VeryLow —
+no `P` command at all), validated live (`Packet.Tait.Spike ccr-over-sdm`): target radio
+(`PDN00001`, s/n 19925369) into CCR via its local CCDI, then from `PDN00002` over the air:
+
+- **Volume `J104`** (safe, no RF effect): SDM delivered, receipt `1D1` acknowledged; nothing
+  appears on the target's serial (no `+J` ack for over-air commands) — accepted silently, no
+  NAK anywhere.
+- **Pulse `QP`**: SDM delivered, receipt acknowledged, and **the CCR response (`Q01P…`,
+  minimum-config false) appeared on the TARGET's own serial port** ~200 ms after the ack —
+  proving the receiving radio's CCR module really executes SDM-carried commands, and pinning
+  the response routing: *responses go to the target's DTE; only the over-air delivery receipt
+  comes back to the sender; the `+`/`−` transaction acks are serial-only.*
+- **SDM auto-acknowledgement still runs in CCR mode** (both receipts `1D1`).
+- **Exit + recovery clean, first try**: `+E` ack, `RadioRestarted '0'` ~3 s later, identity +
+  RSSI good at +8 s, then normal SDMs **both ways** with acknowledged receipts and correct
+  buffers ("POST-CCR A->B"/"POST-CCR B->A"). No wedge, no `radio-reset` needed; rig verified
+  back at channel 0 both radios, unkeyed, RSSI at the −128 dBm floor.
+
+Implication worth keeping: combined with CCR's frequency/bandwidth commands this is a
+complete over-air radio-reconfiguration primitive (QSY a remote radio whose serial you don't
+own) — exactly why the send path stays `Unsafe`-named + `[Experimental]` until the
+consent/capability story (follow-up 12) exists.
+
 ### Not covered
 
 - **THSD Transparent mode**: untestable on this rig — the radios' channel programming has no
   THSD configuration, so the `t…H` entry can't be exercised; the FFSK Transparent path stays
   the only bench-verified one.
-- **CCR-over-SDM (GFI 2 / SFI 03)**: modelled as `UnsafeBuildCcrOverSdmFrame` +
-  `UnsafeSendCcrOverSdmAsync` (`[Experimental("PKTTAIT001")]`, XML-doc'd as remote radio
-  CONTROL with no consent handshake in the protocol; receipt = delivery only, the CCR +/− ack
-  goes to the *receiver's* serial port, not back over air), unit-tested against the manual's
-  worked example `a130520312345678M01D0E36`. Live validation: see the next session entry.
-  The consent/capability gate for non-bench use remains a named follow-up.
 
 ## Follow-ups (rough priority)
 
