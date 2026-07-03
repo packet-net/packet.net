@@ -44,6 +44,27 @@ public static class NinoTncCommands
     public const byte GetAllCommand = 0x0B;
 
     /// <summary>
+    /// KISS command code for SETSERNO — write the TNC's 8-byte KAUP8R
+    /// identity register (the value GETALL reports as register 01). The
+    /// payload is exactly 8 ASCII characters; all-zeroes clears the register
+    /// (upstream tnc-tools calls that CLRSERNO, and prescribes clearing
+    /// before setting). Fire-and-forget — the firmware sends no
+    /// acknowledgement; read it back with <see cref="GetSerialNumberCommand"/>.
+    /// </summary>
+    public const byte SetSerialNumberCommand = 0x0A;
+
+    /// <summary>
+    /// KISS command code for GETSERNO — query the TNC's 8-byte KAUP8R
+    /// identity register. The reply is exactly 8 raw bytes on
+    /// <see cref="ReplyCommandByte"/> (all-zero = register unset).
+    /// Bench-verified on firmware 3.41 (2026-07-03).
+    /// </summary>
+    public const byte GetSerialNumberCommand = 0x0E;
+
+    /// <summary>The KAUP8R identity register length, in bytes.</summary>
+    public const int SerialNumberLength = 8;
+
+    /// <summary>
     /// KISS command code for BOOTLOADER — switch the TNC from KISS mode
     /// into the dsPIC bootloader for a firmware flash. The payload must be
     /// the single magic byte <see cref="BootloaderEntryMagic"/>; the
@@ -99,6 +120,38 @@ public static class NinoTncCommands
     /// <summary>BOOTLOADER entry payload (the single magic byte <see cref="BootloaderEntryMagic"/>).</summary>
     public static byte[] BuildBootloaderEntryPayload() => [BootloaderEntryMagic];
 
+    /// <summary>SETSERNO payload: exactly 8 ASCII characters for the KAUP8R register.</summary>
+    /// <exception cref="ArgumentException"><paramref name="serialNumber"/> is not exactly
+    /// 8 characters, or contains non-ASCII characters.</exception>
+    public static byte[] BuildSetSerialNumberPayload(string serialNumber)
+    {
+        ArgumentNullException.ThrowIfNull(serialNumber);
+        if (serialNumber.Length != SerialNumberLength)
+        {
+            throw new ArgumentException(
+                $"the KAUP8R serial number is exactly {SerialNumberLength} characters", nameof(serialNumber));
+        }
+        var payload = new byte[SerialNumberLength];
+        for (int i = 0; i < payload.Length; i++)
+        {
+            char c = serialNumber[i];
+            if (c is < ' ' or > '~')
+            {
+                throw new ArgumentException(
+                    $"the KAUP8R serial number must be printable ASCII (offset {i} is U+{(int)c:X4})",
+                    nameof(serialNumber));
+            }
+            payload[i] = (byte)c;
+        }
+        return payload;
+    }
+
+    /// <summary>CLRSERNO payload: 8 zero bytes — clears the KAUP8R register.</summary>
+    public static byte[] BuildClearSerialNumberPayload() => new byte[SerialNumberLength];
+
+    /// <summary>GETSERNO request payload (a single 0x00 byte).</summary>
+    public static byte[] BuildGetSerialNumberPayload() => [0x00];
+
     /// <summary>Fully-encoded GETALL KISS frame, ready for the wire.</summary>
     public static byte[] BuildGetAllKissFrame(byte port = 0) =>
         KissEncoder.Encode(port, (KissCommand)GetAllCommand, BuildGetAllPayload());
@@ -140,6 +193,20 @@ public static class NinoTncCommands
     /// </summary>
     public static byte[] BuildBareGetAllKissFrame(byte port = 0) =>
         KissEncoder.Encode(port, (KissCommand)GetAllCommand, ReadOnlySpan<byte>.Empty);
+
+    /// <summary>Fully-encoded SETSERNO KISS frame, ready for the wire. <b>Writes the TNC's
+    /// KAUP8R identity register.</b></summary>
+    public static byte[] BuildSetSerialNumberKissFrame(string serialNumber, byte port = 0) =>
+        KissEncoder.Encode(port, (KissCommand)SetSerialNumberCommand, BuildSetSerialNumberPayload(serialNumber));
+
+    /// <summary>Fully-encoded CLRSERNO KISS frame, ready for the wire. <b>Clears the TNC's
+    /// KAUP8R identity register.</b></summary>
+    public static byte[] BuildClearSerialNumberKissFrame(byte port = 0) =>
+        KissEncoder.Encode(port, (KissCommand)SetSerialNumberCommand, BuildClearSerialNumberPayload());
+
+    /// <summary>Fully-encoded GETSERNO KISS frame, ready for the wire.</summary>
+    public static byte[] BuildGetSerialNumberKissFrame(byte port = 0) =>
+        KissEncoder.Encode(port, (KissCommand)GetSerialNumberCommand, BuildGetSerialNumberPayload());
 
     /// <summary>
     /// True when <paramref name="frame"/> is a firmware query reply — i.e.

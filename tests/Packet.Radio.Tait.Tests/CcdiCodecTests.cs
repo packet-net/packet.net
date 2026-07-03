@@ -11,6 +11,23 @@ public class CcdiCodecTests
     [InlineData("f0291", "CE")]    // §1.9.3 example: activate transmitter
     [InlineData("f03041", "A2")]   // §1.9.3 example: enable progress messages
     [InlineData("q045063", "5D")]  // §1.10.1 example: query averaged RSSI
+    // (§1.9.8's "a0FFF20012345678Hi4A" example is a manual erratum: 4A is the raw modulo-256
+    // sum's low byte, not its two's complement — the correct checksum is B6.)
+    [InlineData("a130520312345678M01D0E", "36")] // §1.9.8 example: CCR-over-SDM
+    [InlineData("a120520612345678GPRMC", "22")]  // §1.9.8 example: NMEA-request SDM
+    [InlineData("a1B0520612345678GPGGA,87654321", "55")] // §1.9.8 example: NMEA + return address
+    [InlineData("s0A0512345678", "13")]        // §1.9.7 example: legacy SEND_SDM, no message
+    [InlineData("s0CFF12345678Hi", "39")]      // §1.9.7 example: legacy SEND_SDM "Hi"
+    [InlineData("f03011", "A5")]               // §1.9.3 example: enable volume control
+    [InlineData("f040225", "6D")]              // §1.9.3 example: volume level 25
+    [InlineData("f03025", "A0")]               // §1.9.3 example: volume level 5
+    [InlineData("f03031", "A3")]               // §1.9.3 example: enable Selcall output
+    [InlineData("f03051", "A1")]               // §1.9.3 example: enable channel progress
+    [InlineData("f03101", "A5")]               // §1.9.3 example: enable SDM output on reception
+    [InlineData("f03111", "A4")]               // §1.9.3 example: enable SDM caller-ID encode
+    [InlineData("f03121", "A3")]               // §1.9.3 example: enable SDM caller-ID decode
+    [InlineData("f0241", "D3")]                // §1.9.3 example: disable user input
+    [InlineData("f0271", "D0")]                // §1.9.3 example: validate subaudible signaling
     public void Checksum_Matches_Manual_Examples(string body, string expected)
     {
         CcdiChecksum.Compute(body).Should().Be(expected);
@@ -149,6 +166,37 @@ public class CcdiCodecTests
         ring.RingType.Should().Be("4000");
         ring.Status.Should().Be("FF");
         ring.CallerId.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("4000", TaitRingCallType.Sdm, false, TaitRingAddressing.Individual, '0')]
+    [InlineData("0000", TaitRingCallType.Voice, false, TaitRingAddressing.Individual, '0')]
+    [InlineData("2110", TaitRingCallType.Status, true, TaitRingAddressing.Group, '0')]
+    [InlineData("3020", TaitRingCallType.Interrogation, false, TaitRingAddressing.SuperGroup, '0')]
+    [InlineData("5030", TaitRingCallType.Data, false, TaitRingAddressing.Unknown, '0')]
+    [InlineData("6001", TaitRingCallType.RemoteMonitor, false, TaitRingAddressing.Individual, '1')]
+    [InlineData("9000", TaitRingCallType.Unknown, false, TaitRingAddressing.Individual, '0')]
+    public void Ring_Type_String_Decodes_To_Typed_Fields(
+        string ringType, TaitRingCallType callType, bool emergency, TaitRingAddressing addressing, char type4)
+    {
+        // TYPE1-TYPE3 per §1.10.9's value table. TYPE4 stays a raw char: the field is named
+        // in the RING format, but the manual defines no value table for it (layout-mode
+        // extraction of MMA-00038-06 pp. 53-54; all bench captures carry '0').
+        var ring = new CcdiRingMessage('1', ringType, "FF", "");
+        ring.CallType.Should().Be(callType);
+        ring.IsEmergency.Should().Be(emergency);
+        ring.Addressing.Should().Be(addressing);
+        ring.Type4.Should().Be(type4);
+    }
+
+    [Fact]
+    public void Ring_Typed_Fields_Tolerate_A_Short_Type_String()
+    {
+        var ring = new CcdiRingMessage('1', "", "FF", "");
+        ring.CallType.Should().Be(TaitRingCallType.Unknown);
+        ring.IsEmergency.Should().BeFalse();
+        ring.Addressing.Should().Be(TaitRingAddressing.Unknown);
+        ring.Type4.Should().Be('\0');
     }
 
     [Fact]

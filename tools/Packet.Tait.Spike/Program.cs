@@ -48,6 +48,22 @@ if (args.Length >= 4 && args[0] == "rf-rssi")
     byte mode = args.Length > 5 ? byte.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture) : (byte)6;
     return await Packet.Tait.Spike.RfRssiLoop.Run(args[1], args[2], args[3], frames, mode);
 }
+if (args.Length >= 4 && args[0] == "sdm-surface")
+{
+    return await Packet.Tait.Spike.SurfaceProbe.RunSdm(args[1], args[2], args[3]);
+}
+if (args.Length >= 4 && args[0] == "sdm-driver")
+{
+    return await Packet.Tait.Spike.SurfaceProbe.RunSdmDriver(args[1], args[2], args[3]);
+}
+if (args.Length >= 2 && args[0] == "f06")
+{
+    return await Packet.Tait.Spike.SurfaceProbe.RunF06(args[1]);
+}
+if (args.Length >= 2 && args[0] == "serno")
+{
+    return await Packet.Tait.Spike.SurfaceProbe.RunSerno(args[1]);
+}
 
 Console.WriteLine("usage:");
 Console.WriteLine("  inventory <ccdiPort>...");
@@ -55,4 +71,7 @@ Console.WriteLine("  dcd <ccdiPort>");
 Console.WriteLine("  rf-rssi <txTnc> <rxTnc> <rxRadioCcdi> [frames=8] [mode=6]");
 Console.WriteLine("  ccr <ccdiPort> [observerCcdiPort]");
 Console.WriteLine("  sdm <fromCcdiPort> <toCcdiPort>");
+Console.WriteLine("  sdm-surface <fromCcdiPort> <toCcdiPort> <destId8>   extended/binary/legacy SDM probes");
+Console.WriteLine("  f06 <ccdiPort>                                      undocumented FUNCTION 0/6 probe (reverts)");
+Console.WriteLine("  serno <tncPort>                                     NinoTNC KAUP8R GETSERNO read-only probe");
 return 2;

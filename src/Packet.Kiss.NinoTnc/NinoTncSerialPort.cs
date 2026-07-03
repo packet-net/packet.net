@@ -390,6 +390,67 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
         modem.SendKissAsync((KissCommand)NinoTncCommands.ExtendedCommand, NinoTncCommands.BuildSetBeaconIntervalPayload(minutes), cancellationToken);
 
     /// <summary>
+    /// GETSERNO: read the TNC's 8-byte KAUP8R identity register (the value
+    /// the periodic status report carries as register 01). Returns the
+    /// register as ASCII, or <c>null</c> when it is unset (all zero bytes).
+    /// Bench-verified on firmware 3.41 (2026-07-03): the reply is exactly
+    /// 8 raw bytes on the 0xE0 reply command byte.
+    /// </summary>
+    /// <param name="timeout">Maximum wait for the reply. Defaults to 5 s.</param>
+    /// <param name="cancellationToken">Cancels the send and the wait.</param>
+    /// <exception cref="TimeoutException">No reply within the timeout (older
+    /// firmware without GETSERNO gives no reply at all).</exception>
+    public async Task<string?> GetSerialNumberAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        byte[] register = await SendAwaitingReplyAsync(
+            (KissCommand)NinoTncCommands.GetSerialNumberCommand,
+            NinoTncCommands.BuildGetSerialNumberPayload(),
+            static frame =>
+                NinoTncCommands.IsReply(frame) && frame.Payload.Length == NinoTncCommands.SerialNumberLength
+                    ? frame.Payload
+                    : null,
+            "GETSERNO",
+            timeout,
+            cancellationToken).ConfigureAwait(false);
+        return register.All(static b => b == 0)
+            ? null
+            : Encoding.ASCII.GetString(register).TrimEnd('\0');
+    }
+
+    /// <summary>
+    /// SETSERNO: <b>write</b> the TNC's 8-byte KAUP8R identity register.
+    /// Fire-and-forget — the firmware sends no acknowledgement; confirm with
+    /// <see cref="GetSerialNumberAsync"/>. Upstream tnc-tools prescribes
+    /// clearing (<see cref="ClearSerialNumberAsync"/>) before setting.
+    /// </summary>
+    /// <remarks>
+    /// The wire form follows upstream tnc-tools (KISS command 0x0A + 8 ASCII
+    /// characters). <b>The write path has not been exercised on this bench's
+    /// hardware</b> — only the GETSERNO read has (the rig TNCs' identity
+    /// registers are deliberately left untouched).
+    /// </remarks>
+    /// <param name="serialNumber">Exactly 8 printable-ASCII characters.</param>
+    /// <param name="cancellationToken">Cancels the underlying send.</param>
+    public Task SetSerialNumberAsync(string serialNumber, CancellationToken cancellationToken = default) =>
+        modem.SendKissAsync(
+            (KissCommand)NinoTncCommands.SetSerialNumberCommand,
+            NinoTncCommands.BuildSetSerialNumberPayload(serialNumber),
+            cancellationToken);
+
+    /// <summary>
+    /// CLRSERNO: <b>erase</b> the TNC's KAUP8R identity register (SETSERNO
+    /// with 8 zero bytes). Fire-and-forget; see the
+    /// <see cref="SetSerialNumberAsync"/> remarks — the write path is
+    /// bench-unexercised.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the underlying send.</param>
+    public Task ClearSerialNumberAsync(CancellationToken cancellationToken = default) =>
+        modem.SendKissAsync(
+            (KissCommand)NinoTncCommands.SetSerialNumberCommand,
+            NinoTncCommands.BuildClearSerialNumberPayload(),
+            cancellationToken);
+
+    /// <summary>
     /// Arm this TNC's CQBEEP tone responder by transmitting a
     /// <c>[TARPNstat</c> status frame through it (see
     /// <see cref="NinoTncCqBeep.BuildArmingFrame"/>). The frame goes out
