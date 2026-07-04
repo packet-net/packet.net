@@ -98,7 +98,7 @@ public sealed class SdmTuningLink : ITuningLink
 
     /// <summary>
     /// Create over any <see cref="IRadioSideChannel"/> (see
-    /// <see cref="Create(TaitCcdiRadio, string, SdmTuningLinkOptions?)"/> for
+    /// <see cref="Create(TaitCcdiRadio, string, SdmTuningLinkOptions?, bool)"/> for
     /// the live-Tait-radio form).
     /// </summary>
     /// <param name="channel">The radio's side channel.</param>
@@ -126,7 +126,15 @@ public sealed class SdmTuningLink : ITuningLink
     /// <summary>Create over a live <see cref="TaitCcdiRadio"/>. The radio's
     /// lifetime stays the caller's. Enable PROGRESS messages on the radio
     /// first — DCD, arrivals and receipts all ride on them.</summary>
-    public static SdmTuningLink Create(TaitCcdiRadio radio, string peerId, SdmTuningLinkOptions? options = null)
+    /// <param name="radio">The radio whose SDM side channel carries the telegrams.</param>
+    /// <param name="peerId">The peer radio's 8-character SDM data identity.</param>
+    /// <param name="options">Tunables; null = defaults.</param>
+    /// <param name="extendedSdm">When <c>true</c>, allow telegrams over the 32-character plain-SDM
+    /// budget to ride an extended SDM (up to 128 characters — natively split/reassembled by the
+    /// radios). Needed for the richer <see cref="StationStatus"/> reply; leave <c>false</c> for the
+    /// short mode-coordination / deviation telegrams. Default <c>false</c>.</param>
+    public static SdmTuningLink Create(
+        TaitCcdiRadio radio, string peerId, SdmTuningLinkOptions? options = null, bool extendedSdm = false)
     {
         ArgumentException.ThrowIfNullOrEmpty(peerId);
         if (peerId.Length != TaitSdmSideChannel.IdentityLength)
@@ -134,7 +142,8 @@ public sealed class SdmTuningLink : ITuningLink
             throw new ArgumentException(
                 $"Tait SDM identities are exactly {TaitSdmSideChannel.IdentityLength} characters", nameof(peerId));
         }
-        var adapter = new TaitSdmSideChannel(radio);
+        var adapter = new TaitSdmSideChannel(
+            radio, new TaitSdmSideChannelOptions { EnableExtendedSdm = extendedSdm });
         return new SdmTuningLink(adapter, peerId, options, adapter);
     }
 
@@ -156,6 +165,7 @@ public sealed class SdmTuningLink : ITuningLink
         }
 
         await sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string? lastSendError = null;
         try
         {
             for (int attempt = 1; attempt <= options.MaxAttempts; attempt++)
@@ -168,27 +178,44 @@ public sealed class SdmTuningLink : ITuningLink
                 try
                 {
                     Log?.Invoke($"sdm-link: send attempt {attempt}/{options.MaxAttempts}: {wire}");
-                    await channel.SendAsync(peerId, wire, cancellationToken).ConfigureAwait(false);
-
-                    bool? acked;
+                    bool sent = true;
                     try
                     {
-                        acked = await receipt.Task.WaitAsync(options.ReceiptTimeout, cancellationToken)
-                            .ConfigureAwait(false);
+                        await channel.SendAsync(peerId, wire, cancellationToken).ConfigureAwait(false);
                     }
-                    catch (TimeoutException)
+                    catch (Exception ex) when (ex is TaitCcdiException or IOException or TimeoutException)
                     {
-                        acked = null;
+                        // The radio refused the datagram — busy / not-ready right after a prior
+                        // transmission, or a programming rejection (e.g. SDM disabled, 0/06).
+                        // Treat as a failed attempt and retry; surface the last such error if
+                        // every attempt fails.
+                        sent = false;
+                        lastSendError = ex.Message;
+                        Log?.Invoke($"sdm-link: send rejected by the radio ({ex.Message}) — will retry");
                     }
 
-                    if (acked == true)
+                    if (sent)
                     {
-                        Log?.Invoke("sdm-link: delivery receipt: acknowledged");
-                        return;
+                        bool? acked;
+                        try
+                        {
+                            acked = await receipt.Task.WaitAsync(options.ReceiptTimeout, cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (TimeoutException)
+                        {
+                            acked = null;
+                        }
+
+                        if (acked == true)
+                        {
+                            Log?.Invoke("sdm-link: delivery receipt: acknowledged");
+                            return;
+                        }
+                        Log?.Invoke(acked == false
+                            ? "sdm-link: delivery receipt: NOT acknowledged — will retry"
+                            : $"sdm-link: no delivery receipt within {options.ReceiptTimeout.TotalSeconds:0.#}s — will retry");
                     }
-                    Log?.Invoke(acked == false
-                        ? "sdm-link: delivery receipt: NOT acknowledged — will retry"
-                        : $"sdm-link: no delivery receipt within {options.ReceiptTimeout.TotalSeconds:0.#}s — will retry");
                 }
                 finally
                 {
@@ -207,7 +234,8 @@ public sealed class SdmTuningLink : ITuningLink
         }
 
         throw new TuningLinkException(
-            $"SDM to {peerId} not acknowledged after {options.MaxAttempts} attempts: {wire}");
+            $"SDM to {peerId} not acknowledged after {options.MaxAttempts} attempts: {wire}"
+            + (lastSendError is null ? string.Empty : $" (last radio error: {lastSendError})"));
     }
 
     /// <inheritdoc/>

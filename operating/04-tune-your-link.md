@@ -104,9 +104,11 @@ advice.
 
 ## Coming later
 
-An SDM **station-hail** ("call the far operator to the tuner") flow is planned but
-**not shipped yet** — for now, arrange the two ends out-of-band (phone, chat) before
-you start.
+There **is** now an SDM **station-hail** — but it's a *diagnostic* ("what mode/modem is
+the peer on?"), not a "call the far operator to the tuner" auto-invite. See
+[chapter 7 → Hailing a neighbour](07-advanced-tooling.md#hailing-a-neighbour-hail). An
+auto-invite that pulls the far operator into a tuning session is still planned; for now,
+arrange the two ends out-of-band (phone, chat) before you start.
 
 ## Next
 
