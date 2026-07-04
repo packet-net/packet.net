@@ -28,7 +28,17 @@ In-process, **no Prometheus client dependency**. A hand-rolled `PrometheusTextWr
 
 ## Label cardinality — bounded by design
 
-The **only** label is **`port`** (one value per *configured* port — a closed set the operator controls), plus a 3-value `reason` label on the forward-drops series. **There is deliberately no `peer` / `callsign` label anywhere in `/metrics`.** A per-(port, peer) link is keyed by the *remote* callsign, which is unbounded as random stations are heard on the air — emitting a series per peer would let a busy or hostile channel blow up Prometheus's series count. So per-link counters (bytes, REJ, SREJ, queue depth, retries) are **aggregated up to the port** before export. Per-peer detail stays on the bounded-by-request `GET /api/v1/links` JSON surface, where the client asks for it explicitly.
+The primary label is **`port`** (one value per *configured* port — a closed set the operator controls), plus a 3-value `reason` label on the forward-drops series. A per-(port, peer) link is keyed by the *remote* callsign, so the **byte / REJ / SREJ / queue-depth / retry** counters are **aggregated up to the port** before export — a busy or hostile channel can never blow up those series' count. Per-peer detail for those stays on the bounded-by-request `GET /api/v1/links` JSON surface, where the client asks for it explicitly.
+
+### The one peer-labelled series: `pdn_link_snr_db`
+
+There is exactly **one** series that carries a `peer` (remote-callsign) label: the per-partner SNR gauge `pdn_link_snr_db{port,peer}`. This is a **deliberate, documented exception** to the aggregate-to-port policy above.
+
+The rationale is a judgement call about the real world (Tom's call): **amateur packet radio will never be that popular.** The number of distinct stations a node hears is naturally small and slowly-changing — a per-callsign SNR label is not going to explode Prometheus's series count in practice the way a per-callsign label on a high-churn frame/byte counter could. The operational value of seeing SNR *per link partner* (which neighbour's signal is degrading?) is worth the one closed-eye on cardinality, where the same label on the byte/REJ counters is not (you'd never alert on per-peer byte totals, and they churn with every casual passer-by).
+
+So `pdn_link_snr_db` is emitted for **every** station the node has heard *with a measured SNR* — no bounding to configured neighbours or active links, no top-N cap. A station heard on a port with no radio attached (or heard before any SNR could be attributed) simply has no SNR reading and contributes no series, so the whole bucket is absent on a node with no radio telemetry. The value is the SNR of the newest frame heard from that (port, callsign), read from the same MHeard log (`GET /api/v1/heard`, `lastSnrDb`) — no second source of truth.
+
+If a specific deployment ever did prove this wrong (a node parked on an unusually busy channel hearing thousands of distinct calls), the fix is a Prometheus-side `metric_relabel_configs` drop/keep on the `peer` label, or reintroducing a node-side cap — but that is explicitly not built today.
 
 ## The metric set
 
@@ -77,6 +87,31 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 | `pdn_netrom_forward_drops_total` | counter | `reason` (`ttl_expired` \| `looped` \| `no_route`) | Transit datagrams dropped on the forward path, by reason. |
 
 The forwarding bucket is all-zero on an endpoint-only or NET/ROM-disabled node (nothing is ever forwarded).
+
+### Per-port radio control (radio-attached ports only)
+
+Emitted **only** for a port whose radio the node currently has open and is polling — the same live `RadioStatus` / `RadioHealth` projection `GET /api/v1/radios` and `GET /api/v1/ports/{id}/radio` serve (no second source of truth). A configured-but-not-attached radio (port down, or a failed open that degraded the port) contributes nothing, so **the whole bucket is absent on a node with no radios** — identical output to before it existed. Each `gauge` below omits a port whose radio hasn't produced that reading yet: a null renders as an *absent sample*, never a misleading `0` (0 dBm RSSI, 0 °C, "channel idle" are all wrong-but-plausible).
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `pdn_radio_connection_state` | gauge | `port` | Control-link health: `1` healthy (answering), `0` faulted (serial link dead/unresponsive), `-1` unknown (a radio kind that doesn't track it). Always present for an attached radio. |
+| `pdn_radio_channel_busy` | gauge | `port` | Hardware carrier-sense (DCD): `1` = RF on channel, `0` = idle. Omitted until first reported. |
+| `pdn_radio_rssi_dbm` | gauge | `port` | The radio's own most-recent sliding-average RSSI, in dBm (receive samples only). |
+| `pdn_radio_rssi_averaged_dbm` | gauge | `port` | Median RSSI over the radio health monitor's rolling window, in dBm. |
+| `pdn_radio_pa_temperature_celsius` | gauge | `port` | Power-amplifier temperature, in °C (null on radios that report only an ADC value, e.g. TM8200). |
+| `pdn_radio_forward_trend_millivolts` | gauge | `port` | Offset-corrected forward-power detector reading, in mV. A per-station **trend** on transmit, **not** a power measurement. |
+| `pdn_radio_reverse_trend_millivolts` | gauge | `port` | Offset-corrected reverse-power detector reading, in mV. A **trend**, not a power measurement. |
+| `pdn_radio_reverse_forward_ratio` | gauge | `port` | Offset-corrected reverse/forward detector ratio. A per-station **trend, never VSWR** — the detectors are uncalibrated + √P-scaled; alert on *change*, never the absolute value. |
+
+**Why no per-port `pdn_radio_snr_db` / `pdn_radio_noise_floor_dbm`.** SNR and noise-floor are *per-frame* concepts (the RSSI-tagging transport tracks an idle-channel noise-floor EMA and derives each frame's SNR from it). The radio's own *health* telemetry — what `RadioHealth` carries and what this bucket reads — samples averaged RSSI, PA temperature and the TX power-detector trends, and does **not** carry a port-level SNR or noise floor. Rather than fabricate a port-level number the API doesn't have, SNR is surfaced **per link partner** below, where the per-frame metadata genuinely provides it.
+
+### Per-partner SNR (the one peer-labelled series)
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `pdn_link_snr_db` | gauge | `port`, `peer` | SNR (dB) of the newest frame heard from a link partner, by port + remote callsign. One series per (port, callsign) the node has heard *with a measured SNR*. See [the cardinality note](#the-one-peer-labelled-series-pdn_link_snr_db) — this is the single deliberate peer label. |
+
+Absent entirely on a node with no radio telemetry (no partner has a measured SNR).
 
 ## Example scrape
 

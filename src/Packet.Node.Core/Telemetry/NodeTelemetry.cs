@@ -181,7 +181,7 @@ public sealed partial class NodeTelemetry
             // frames are ours, so they are never a "hearing".
             if (rx)
             {
-                heardLog?.Record(portId, evt.Source, e.Timestamp, radio?.RssiDbm);
+                heardLog?.Record(portId, evt.Source, e.Timestamp, radio?.RssiDbm, radio?.SnrDb);
             }
 
             lock (historyLock)

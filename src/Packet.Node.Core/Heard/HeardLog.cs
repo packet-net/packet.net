@@ -92,8 +92,9 @@ public sealed class HeardLog
     /// it, else <c>null</c>; it becomes the entry's last-heard RSSI whenever this frame advances
     /// last-heard (so the stored figure tracks the newest frame, and a null on a later frame does
     /// not erase a real earlier reading — only a newer real reading replaces it).
+    /// <paramref name="snrDb"/> is the matching per-frame SNR (dB) and tracks last-heard the same way.
     /// </summary>
-    public void Record(string portId, string callsign, DateTimeOffset at, float? rssiDbm = null)
+    public void Record(string portId, string callsign, DateTimeOffset at, float? rssiDbm = null, float? snrDb = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(callsign);
@@ -113,15 +114,19 @@ public sealed class HeardLog
             if (at >= entry.LastHeard)
             {
                 entry.LastHeard = at;
-                // Last-heard RSSI tracks the newest frame; a newer frame with no RSSI leaves the
-                // last real reading in place rather than nulling it.
+                // Last-heard RSSI / SNR track the newest frame; a newer frame with no reading leaves
+                // the last real one in place rather than nulling it.
                 if (rssiDbm is not null)
                 {
                     entry.LastRssiDbm = rssiDbm;
                 }
+                if (snrDb is not null)
+                {
+                    entry.LastSnrDb = snrDb;
+                }
             }
             entry.Count++;
-            snapshot = new HeardEntry(portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count, entry.LastRssiDbm);
+            snapshot = new HeardEntry(portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count, entry.LastRssiDbm, entry.LastSnrDb);
         }
         store?.Upsert(snapshot);
 
@@ -168,12 +173,13 @@ public sealed class HeardLog
                     Count = s.Count + entry.Count,
                     Ports = s.Ports + 1,
                     LastRssiDbm = entryNewer ? entry.LastRssiDbm : s.LastRssiDbm,
+                    LastSnrDb = entryNewer ? entry.LastSnrDb : s.LastSnrDb,
                 };
             }
             else
             {
                 byCall[entry.Callsign] = new HeardStationSummary(
-                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1, entry.LastRssiDbm);
+                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1, entry.LastRssiDbm, entry.LastSnrDb);
             }
         }
         return byCall.Values
@@ -253,7 +259,7 @@ public sealed class HeardLog
     {
         lock (e)
         {
-            return new HeardEntry(e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count, e.LastRssiDbm);
+            return new HeardEntry(e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count, e.LastRssiDbm, e.LastSnrDb);
         }
     }
 
@@ -273,6 +279,7 @@ public sealed class HeardLog
         public DateTimeOffset LastHeard;
         public long Count;
         public float? LastRssiDbm;
+        public float? LastSnrDb;
 
         public Entry(DateTimeOffset at)
         {
@@ -288,6 +295,7 @@ public sealed class HeardLog
             LastHeard = e.LastHeard,
             Count = e.Count,
             LastRssiDbm = e.LastRssiDbm,
+            LastSnrDb = e.LastSnrDb,
         };
     }
 }
@@ -303,10 +311,13 @@ public sealed class HeardLog
 /// <param name="Ports">Number of distinct ports the station was heard on.</param>
 /// <param name="LastRssiDbm">Last-heard RSSI (dBm) from the port that heard this station most
 /// recently, or <c>null</c> when none of those ports had a radio measuring it.</param>
+/// <param name="LastSnrDb">Last-heard SNR (dB) from the port that heard this station most recently,
+/// or <c>null</c> when none of those ports had a radio measuring it.</param>
 public sealed record HeardStationSummary(
     string Callsign,
     DateTimeOffset FirstHeard,
     DateTimeOffset LastHeard,
     long Count,
     int Ports,
-    float? LastRssiDbm = null);
+    float? LastRssiDbm = null,
+    float? LastSnrDb = null);

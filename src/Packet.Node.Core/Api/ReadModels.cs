@@ -77,6 +77,10 @@ public sealed record LogLine(string T, string Lvl, string Msg);
 /// station (on this port, or on whichever port heard it last for the node-wide view), when a radio
 /// control channel measured it — <c>null</c> when the port has no radio attached or the newest frame
 /// carried no attributed RSSI.</param>
+/// <param name="LastSnrDb">Signal-to-noise ratio (dB) of the most recent frame heard from this station
+/// (on this port, or on whichever port heard it last for the node-wide view), when a radio control
+/// channel measured it — <c>null</c> when the port has no radio attached or the newest frame carried
+/// no attributed SNR.</param>
 public sealed record HeardStation(
     string Callsign,
     string? PortId,
@@ -84,7 +88,8 @@ public sealed record HeardStation(
     string LastHeard,
     long Count,
     int Ports,
-    float? LastRssiDbm = null);
+    float? LastRssiDbm = null,
+    float? LastSnrDb = null);
 
 /// <summary>One learned per-peer AX.25 capability record, projected for the operator
 /// surface (the web Capabilities screen + the MCP read tool). Mirrors the live

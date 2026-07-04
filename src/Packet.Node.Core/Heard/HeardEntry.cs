@@ -17,10 +17,17 @@ namespace Packet.Node.Core.Heard;
 /// heard from this station on this port, when a radio control channel measured it — <c>null</c> when
 /// this port has no radio attached, or the newest frame carried no attributed RSSI. Additive
 /// (trailing optional): a heard row without it round-trips exactly as before.</param>
+/// <param name="LastSnrDb">The signal-to-noise ratio (dB) attributed to the most recent frame heard
+/// from this station on this port (RSSI over the tracked channel-idle noise floor), when a radio
+/// control channel measured it — <c>null</c> when this port has no radio attached, or the newest
+/// frame carried no attributed SNR. Additive (trailing optional), mirroring <see cref="LastRssiDbm"/>:
+/// a heard row without it round-trips exactly as before. This is the per-partner SNR the observability
+/// exporter surfaces, bounded to configured neighbours / active links (see docs/observability.md).</param>
 public sealed record HeardEntry(
     string PortId,
     string Callsign,
     DateTimeOffset FirstHeard,
     DateTimeOffset LastHeard,
     long Count,
-    float? LastRssiDbm = null);
+    float? LastRssiDbm = null,
+    float? LastSnrDb = null);
