@@ -66,6 +66,7 @@ return args switch
     ["mode-survey", var tncA, var tncB, var ccdiA, var ccdiB, .. var rest] =>
         await ModeSurveyCommand.Run(tncA, tncB, ccdiA, ccdiB, rest),
     ["mode-coord", .. var rest] => await ModeCoordCommand.Run(rest),
+    ["hail", .. var rest] => await HailCommand.Run(rest),
     ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
     ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
     ["radio-health", var ccdi, .. var rest] => await RadioHealthCommand.Run(ccdi, rest),
@@ -93,6 +94,11 @@ static int Usage()
     Console.WriteLine("             [--home-mode 6] [--home-channel 0] [--probes 5] [--callsign X] [--verbose]");
     Console.WriteLine("                               (mode/channel renegotiation over the radios' SDM side");
     Console.WriteLine("                                channel; any failure reverts both ends to home)");
+    Console.WriteLine("  hail --tnc <port> --radio <ccdi> --peer <8charId> [--callsign X] [--verbose]");
+    Console.WriteLine("       [--respond]");
+    Console.WriteLine("                               (query — or, with --respond, answer — a peer's mode/modem +");
+    Console.WriteLine("                                capabilities over SDM; works ACROSS a mode mismatch that");
+    Console.WriteLine("                                blocks the packet path — the diagnostic use)");
     Console.WriteLine("  set-mode <tncPort> <mode> [--persist] [--callsign X]");
     Console.WriteLine("  radio-channel <ccdiPort> [channel]");
     Console.WriteLine("  radio-health <ccdiPort> [--interval s=10] [--duration s=60] [--key-once [s=2]]");

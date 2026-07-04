@@ -28,6 +28,17 @@ public enum TuningVerb
     /// reject / commit / sent / report / revert). Args are the
     /// <see cref="ModeCoordMessage"/> wire form, e.g. <c>propose|2|1</c>.</summary>
     ModeCoordination,
+
+    /// <summary><c>HAIL</c> — hailer → responder: "tell me your station status".
+    /// Args are the <see cref="StationHail"/> wire form (the requester's callsign,
+    /// or empty). The reply is a <see cref="Status"/> telegram.</summary>
+    Hail,
+
+    /// <summary><c>STAT</c> — responder → hailer: this station's
+    /// <see cref="StationStatus"/> (callsign, current NinoTNC mode + bitrate, radio
+    /// channel, supported modes, capabilities, and the responder's RSSI of the hail).
+    /// The richer status can exceed the plain-SDM budget and rides an extended SDM.</summary>
+    Status,
 }
 
 /// <summary>
@@ -135,6 +146,8 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         TuningVerb.Advice => "AD",
         TuningVerb.Bye => "BY",
         TuningVerb.ModeCoordination => "MODE",
+        TuningVerb.Hail => "HAIL",
+        TuningVerb.Status => "STAT",
         _ => throw new ArgumentOutOfRangeException(nameof(verb), verb, "unknown tuning verb"),
     };
 
@@ -146,6 +159,8 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         "AD" => TuningVerb.Advice,
         "BY" => TuningVerb.Bye,
         "MODE" => TuningVerb.ModeCoordination,
+        "HAIL" => TuningVerb.Hail,
+        "STAT" => TuningVerb.Status,
         _ => null,
     };
 
