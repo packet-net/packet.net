@@ -74,8 +74,13 @@ public class SrejXidViaNetsim
     private static readonly Callsign SrejCall = new("PNXSRJ", 0);
     private static readonly Callsign RejCall = new("PNXREJ", 0);
 
-    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan DataBudget = TimeSpan.FromSeconds(30);
+    // Budgets are generous because these observe REAL LinBPQ behaviour (connect, then the
+    // SREJ/REJ it emits) over a docker net-sim stack on a shared self-hosted runner. Under heavy
+    // runner contention the BPQ round-trip is slow enough that 30 s intermittently missed the
+    // SREJ ("sawSrej == false") — proven a contention flake, not a code regression, by the same
+    // test failing on a docs-only commit. Doubled to absorb that.
+    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DataBudget = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
 
     // ─── Wire predicates (mod-8 S-frame nibble) ───────────────────────────
