@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { PingButton } from "@/components/ping";
 import type {
   PortConfig, PortStatus, TransportConfig, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
-  PortCompatConfig, CompatPreset,
+  PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult,
 } from "@/lib/types";
 import {
   NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, CHANNEL_MODES,
@@ -25,8 +25,14 @@ import { portHealth } from "@/lib/health";
 import { api, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 
+// Transport kinds that can carry a radio-control attachment — the serial-modem kinds, where a physical
+// radio sits beside the modem this node could cable to (server: PortRadioConfig validation). A
+// kiss-tcp / AXUDP port has no such radio, so the editor hides the section AND drops any stale radio
+// block if the transport is switched away from these.
+const RADIO_CAPABLE_KINDS = new Set<TransportConfig["kind"]>(["serial-kiss", "nino-tnc"]);
+
 // ---- the editor draft: a PortConfig plus the operator-facing setup choices ----
-interface PortDraft {
+export interface PortDraft {
   id: string;
   enabled: boolean;
   transport: TransportConfig;
@@ -39,6 +45,8 @@ interface PortDraft {
   // AX.25 compatibility profile. The editor only drives the preset dropdown;
   // YAML-set flag overrides / quirks are carried through untouched.
   compat: PortCompatConfig | null;
+  // Per-port radio-control attachment (RSSI/health). Null = no radio attached.
+  radio: RadioConfig | null;
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality.
   netRomQuality: number | null;
@@ -80,6 +88,31 @@ function setupSummary(id: string): string {
   const ch = CHANNEL_MODES.find((x) => x.id === s.channel);
   const d = LINK_DIFFICULTY.find((x) => x.id === s.difficulty);
   return [r?.name, ch?.name, d?.name].filter(Boolean).join(" · ");
+}
+
+// Reconstruct the wire PortConfig from an editor draft. Field-by-field (the server's structured PUT
+// binds the exact shape), so EVERY round-tripping block must be listed here or it is silently dropped
+// on a Forms save — the bug that dropped the radio: block. Exported so the config round-trip test can
+// prove the reconstruction preserves each block (radio, beacon, compat, per-port NET/ROM knobs).
+export function portDraftToConfig(d: PortDraft): PortConfig {
+  return {
+    id: d.id,
+    enabled: d.enabled,
+    transport: d.transport,
+    profile: d.setup.custom ? null : d.setup.radio,
+    ax25: d.ax25,
+    kiss: KIND_USES_KISS[d.transport.kind] ? d.kiss : null,
+    // Preserve any existing per-port beacon override (edited on the Config → Beacons tab);
+    // a brand-new port inherits the system default.
+    beacon: d.beacon ?? null,
+    compat: d.compat,
+    // The radio-control attachment (RSSI/health). Only the serial-modem kinds can carry one, so a
+    // transport switched to kiss-tcp / AXUDP drops it; otherwise it round-trips intact.
+    radio: RADIO_CAPABLE_KINDS.has(d.transport.kind) ? (d.radio ?? null) : null,
+    netRomQuality: d.netRomQuality,
+    netRomMinQuality: d.netRomMinQuality,
+    nodesPaclen: d.nodesPaclen,
+  };
 }
 
 export function Ports() {
@@ -124,6 +157,7 @@ export function Ports() {
     setup: { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: false },
     beacon: null,
     compat: null,
+    radio: null,
     netRomQuality: null,
     netRomMinQuality: null,
     nodesPaclen: null,
@@ -140,6 +174,7 @@ export function Ports() {
       setup: PORT_SETUP[p.id] ?? { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: true },
       beacon: p.beacon,
       compat: p.compat ?? null,
+      radio: p.radio ?? null,
       netRomQuality: p.netRomQuality ?? null,
       netRomMinQuality: p.netRomMinQuality ?? null,
       nodesPaclen: p.nodesPaclen ?? null,
@@ -151,21 +186,7 @@ export function Ports() {
   // reload so the applied state shows. The _new flag decides add vs edit; an edit keys
   // on the *original* id (renaming the id edits the original entry).
   const saveDraft = async (d: PortDraft) => {
-    const saved: PortConfig = {
-      id: d.id,
-      enabled: d.enabled,
-      transport: d.transport,
-      profile: d.setup.custom ? null : d.setup.radio,
-      ax25: d.ax25,
-      kiss: KIND_USES_KISS[d.transport.kind] ? d.kiss : null,
-      // Preserve any existing per-port beacon override (edited on the Config →
-      // Beacons tab); a brand-new port inherits the system default.
-      beacon: d.beacon ?? null,
-      compat: d.compat,
-      netRomQuality: d.netRomQuality,
-      netRomMinQuality: d.netRomMinQuality,
-      nodesPaclen: d.nodesPaclen,
-    };
+    const saved = portDraftToConfig(d);
     try {
       if (d._new) await api.addPort(saved);
       else await api.editPort(d._origId ?? saved.id, saved);
@@ -439,6 +460,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
         next.allowInfoOnSupervisoryFrames == null && next.allowCommandFrameAsResponse == null && !next.quirks;
       return { ...d, compat: isDefault ? null : next };
     });
+  const setRadio = (radio: RadioConfig | null) => setModel((d) => (d ? { ...d, radio } : d));
 
   const profile = RADIO_PROFILES.find((r) => r.id === setup.radio);
   const baseline: Record<string, number> = profile ? profile.baseline : { ...AX25_DEFAULTS, ...KISS_DEFAULTS };
@@ -610,6 +632,11 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           </Field>
         </div>
 
+        {/* radio-control attachment (RSSI / link-quality / health) — serial-modem kinds only */}
+        {RADIO_CAPABLE_KINDS.has(t.kind) && (
+          <RadioControlSection key={srcKey} radio={model.radio} onChange={setRadio} />
+        )}
+
         {/* advanced parameters */}
         <details className="rounded-lg border border-border" open={setup.custom}>
           <summary
@@ -738,6 +765,128 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
         </div>
       </Modal>
     </Sheet>
+  );
+}
+
+// ---- radio-control attachment editor: attach a radio, scan + bind by CCDI serial (or path) ----
+// A "Radio control" section for the serial-modem transports. Toggle a radio on, pick its control
+// protocol (Tait CCDI), then bind it — by CCDI serial (the stable key; a "Scan for radios" button
+// discovers candidates) or, as an advanced fallback, by device path. Mirrors the backend's
+// exactly-one-of-serial/port validation inline. baud defaults to the Tait CCDI factory 28800.
+const DEFAULT_RADIO_BAUD = 28800;
+function RadioControlSection({ radio, onChange }: {
+  radio: RadioConfig | null;
+  onChange: (r: RadioConfig | null) => void;
+}) {
+  const attached = radio != null;
+  const hasSerial = !!radio?.serial?.trim();
+  const hasPort = !!radio?.port?.trim();
+  const bindingValid = hasSerial !== hasPort; // exactly one of serial / port
+  // Bind-by-path is the advanced fallback; default to serial unless the loaded config binds by path.
+  const [bindByPath, setBindByPath] = useState<boolean>(hasPort && !hasSerial);
+  const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState<RadioScanResult[] | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  // Patch keeps the block a valid RadioConfig (kind is required); clearing a bind field to undefined
+  // drops it from the JSON so exactly one of serial/port is ever persisted.
+  const patch = (p: Partial<RadioConfig>) => onChange({ ...(radio ?? { kind: "tait-ccdi" }), ...p });
+  const enable = () => onChange({ kind: "tait-ccdi", serial: "", baud: DEFAULT_RADIO_BAUD });
+  const disable = () => { onChange(null); setScan(null); setScanError(null); };
+  const pick = (r: RadioScanResult) =>
+    onChange({ kind: "tait-ccdi", serial: r.serial, port: undefined, baud: radio?.baud ?? r.baud ?? DEFAULT_RADIO_BAUD });
+
+  const doScan = async () => {
+    setScanning(true); setScanError(null);
+    try { setScan(await api.scanRadios()); }
+    catch (e) { setScanError(String((e as Error)?.message ?? e)); }
+    finally { setScanning(false); }
+  };
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <Label className="text-foreground">Radio control</Label>
+        <div className="flex items-center gap-2">
+          {attached && (bindingValid ? <Badge variant="success">attached</Badge> : <Badge variant="warning">incomplete</Badge>)}
+          <Switch checked={attached} onChange={(v) => (v ? enable() : disable())} title="Attach the radio's serial control channel for RSSI + health" />
+        </div>
+      </div>
+
+      {!attached ? (
+        <p className="text-xs text-muted-foreground">
+          Attach the radio's serial <strong>control</strong> channel (a separate device from the modem) so pdn can read
+          live RSSI, SNR and PA health — and tag every received frame with its signal strength. Tait TM8100 / TM8200 (CCDI).
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <Field label="Radio type" info="The control protocol the radio speaks over its serial port. Tait TM8100 / TM8200 use CCDI.">
+            <Select value={radio.kind} onChange={(e) => patch({ kind: e.target.value as RadioConfig["kind"] })}>
+              <option value="tait-ccdi">Tait CCDI (TM8100 / TM8200)</option>
+            </Select>
+          </Field>
+
+          {!bindByPath ? (
+            <div className="space-y-2">
+              <Field label="Bind by CCDI serial" info="The CCDI serial number is the stable key — it survives /dev/ttyUSB* renumbering across replug/reboot and the shared-USB-serial ambiguity of CP2102 dongles. Scan to discover it.">
+                <div className="flex items-center gap-2">
+                  <Input value={radio.serial ?? ""} onChange={(e) => patch({ serial: e.target.value, port: undefined })} placeholder="e.g. 19925328" className="font-mono" />
+                  <Button variant="outline" size="sm" onClick={doScan} disabled={scanning}>
+                    <Icon name={scanning ? "restart" : "search"} size={14} className={cn(scanning && "animate-spin")} />
+                    {scanning ? "Scanning…" : "Scan for radios"}
+                  </Button>
+                </div>
+              </Field>
+              {scanError && <p className="text-[11px] text-danger">{scanError}</p>}
+              {scan && scan.length === 0 && <p className="text-[11px] text-muted-foreground">No radios found on any candidate serial port.</p>}
+              {scan && scan.length > 0 && (
+                <div className="space-y-1.5">
+                  {scan.map((r) => {
+                    const selected = radio.serial === r.serial;
+                    return (
+                      <button
+                        key={r.serial}
+                        onClick={() => pick(r)}
+                        className={cn("flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left transition-colors", selected ? "border-primary bg-primary/5" : "border-border hover:bg-accent")}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">{r.model} · <span className="font-mono">s/n {r.serial}</span></span>
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground">{r.byIdPath || r.devicePath} · {r.baud} baud</span>
+                        </span>
+                        {selected && <Icon name="check" size={15} className="shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={() => { setBindByPath(true); patch({ serial: undefined }); }} className="text-[11px] text-muted-foreground hover:text-primary">
+                Bind by device path instead →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Field label="Bind by device path" info="Advanced: pin the radio to a fixed /dev path instead of its CCDI serial. Less robust — the path can renumber across a replug or reboot. Prefer binding by serial.">
+                <Input value={radio.port ?? ""} onChange={(e) => patch({ port: e.target.value, serial: undefined })} placeholder="/dev/ttyUSB0" className="font-mono" />
+              </Field>
+              <button onClick={() => { setBindByPath(false); patch({ port: undefined }); }} className="text-[11px] text-muted-foreground hover:text-primary">
+                ← Bind by CCDI serial (recommended)
+              </button>
+            </div>
+          )}
+
+          <Field label="Control baud" info="Baud rate of the radio's control channel. 28800 is the Tait CCDI factory-programming default." className="max-w-[10rem]">
+            <Input type="number" value={radio.baud ?? DEFAULT_RADIO_BAUD} onChange={(e) => patch({ baud: +e.target.value })} className="font-mono" />
+          </Field>
+
+          {!bindingValid && (
+            <div className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+              <Icon name="alert" size={13} className="mt-px shrink-0" />
+              <span>Set exactly one of a CCDI serial or a device path — {hasSerial && hasPort ? "not both." : "the radio has neither yet (scan, or enter one)."}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

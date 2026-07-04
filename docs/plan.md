@@ -1174,6 +1174,20 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-04 — Web UI: the operator radio surface — attach a radio, then SEE the link quality
+
+The web control panel (`web/packetnet-ui`) now consumes the radio-control HTTP API landed earlier today (the entry below). The UX thesis: an operator attaches a Tait radio to a port and then sees their link quality. Scope kept to **attach + link-quality + health** — the tuning/doctor UI (`link-tuner.tsx`) is left as-is for a separate task.
+
+**(1) Typed API + client.** `src/lib/types.ts` gains `RadioConfig` (kind/serial?/port?/baud?/healthIntervalSeconds?) + `radio?` on `PortConfig`, the read models `RadioStatus`/`RadioIdentity`/`RadioHealth`/`RadioScanResult`/`HeardStation`, and the additive `rssiDbm`/`snrDb`/`noiseFloorDbm` on `MonitorEvent`. `src/lib/api.ts` gains `getRadios()`, `getPortRadio(id)` (404-aware), `scanRadios()` — mock-backed so every surface renders with no node.
+
+**(2) PortEditor "Radio control" section** (`src/screens/ports.tsx`, serial-modem kinds only): toggle a radio on → kind selector (Tait CCDI) → a **"Scan for radios"** button (`scanRadios()`) listing each hit as **"{model} · s/n {serial}"** (subtitle byIdPath||devicePath) → selecting **binds by CCDI serial** (the stable key), with an advanced "bind by device path instead" fallback; baud defaults to 28800; inline exactly-one-of-serial/port validation mirrors the backend. **Bug fixed:** `saveDraft` reconstructed `PortConfig` field-by-field and OMITTED `radio`, silently dropping the block on any Forms edit of a radio-attached port — the reconstruction is now the exported `portDraftToConfig()` (radio included, dropped only when the transport is switched to a non-serial kind).
+
+**(3) Link quality in the monitor** (`src/screens/monitor.tsx`): a new RSSI column (dBm + SNR when present) on the frame table, and RSSI/SNR/noise-floor rows in the FrameDecode panel. Null → em-dash, never a bare 0.
+
+**(4) Radios health panel** (`src/screens/dashboard.tsx`): the payoff view — one glanceable card per radio-attached port with identity (model/CCDI/serial), a connection-state badge (healthy=green/faulted=red/unknown=grey), a live-ish channel-busy pill, a colour-coded RSSI hero (+ averaged, PA temp), and the forward/reverse detector figures under an explicit **"Antenna-health trend (not VSWR)"** label per the driver's uncalibrated-detector caveat.
+
+**(5) Mock + tests.** `src/lib/mock.ts` seeds two attached TM8110s with health (`RADIOS`), a scan set (`RADIO_SCAN`, one shared-serial dongle with null byIdPath), radio blocks on the vhf-1/hf-300 config ports, per-frame RSSI on inbound vhf-1 frames, and heard-station RSSI (`HEARD_STATIONS`). Gate `npm ci && npm run build && npm run test` green — **95 vitest tests pass**, including 4 new `config.roundtrip` cases proving the radio block survives the `portDraftToConfig` reconstruction + wire round-trip (serial-bound, path-bound, dropped on non-serial transport, null when absent). No ax25-ts leg — web-UI-only, nothing on the parity-tracked AX.25 contract changed.
+
 ### 2026-07-04 — Node radio-control surfaced through the HTTP API: per-frame RSSI/SNR telemetry + radio status/health/scan endpoints + serial-binding config
 
 The radio-control arc (`PortRadioConfig` → `RadioControlFactory` → `RssiTaggingTransport`) was wired at the transport but consumed nowhere above it — `Ax25InboundFrame.Radio` was populated then discarded, and `TaitRadioHealthMonitor` / `TaitRadioPortDiscovery` were never referenced by the node. This PR surfaces all of it through `Packet.Node`'s `/api/v1`, for the web UI (next) and operators.

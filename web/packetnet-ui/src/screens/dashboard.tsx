@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { api, useQuery, subscribeFrames } from "@/lib/api";
 import { portHealth } from "@/lib/health";
 import { KIND_LABEL, fmtUptime } from "@/lib/mock";
+import type { RadioStatus } from "@/lib/types";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -153,6 +154,9 @@ export function Dashboard() {
         </Card>
       </div>
 
+      {/* radios — link quality + health for every radio-attached port */}
+      <RadiosPanel />
+
       {/* recent activity — journald-style log tail */}
       <Card className="mt-4">
         <div className="flex items-center justify-between p-4 pb-2">
@@ -202,5 +206,108 @@ function Row({ k, v }: { k: ReactNode; v: ReactNode }) {
       <span className="text-muted-foreground">{k}</span>
       <span>{v}</span>
     </div>
+  );
+}
+
+// ---- radio link-quality + health panel (GET /api/v1/radios) -----------------
+// The operator payoff: attach a radio to a port, then SEE the link quality. One card per
+// radio-attached port — identity, a connection-state badge, a live-ish channel-busy pill, and the
+// health readout (RSSI + averaged, PA temperature, and the forward/reverse detector TREND, which is
+// explicitly labelled "not VSWR" per the backend's uncalibrated-detector caveat). The section is
+// absent on a node with no radios (empty /radios → nothing to show).
+function RadiosPanel() {
+  const { data: radios } = useQuery(api.getRadios, []);
+  if (!radios || radios.length === 0) return null;
+  return (
+    <section className="mt-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon name="radio" size={15} className="text-muted-foreground" />
+        <h2 className="text-sm font-semibold tracking-tight">Radios</h2>
+        <Badge variant="muted">{radios.length}</Badge>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {radios.map((r) => <RadioCard key={r.portId} r={r} />)}
+      </div>
+    </section>
+  );
+}
+
+// dBm → a glance colour: strong reads green, workable amber, weak/near-noise red.
+function signalTone(dbm: number | null | undefined): string {
+  if (dbm == null) return "text-muted-foreground";
+  if (dbm >= -85) return "text-success";
+  if (dbm >= -100) return "text-warning";
+  return "text-danger";
+}
+
+const CONNECTION_BADGE: Record<RadioStatus["connectionState"], { variant: "success" | "danger" | "muted"; label: string }> = {
+  healthy: { variant: "success", label: "healthy" },
+  faulted: { variant: "danger", label: "faulted" },
+  unknown: { variant: "muted", label: "unknown" },
+};
+
+function RadioCard({ r }: { r: RadioStatus }) {
+  const conn = CONNECTION_BADGE[r.connectionState];
+  const h = r.health;
+  const rssi = h?.rssiDbm ?? null;
+  return (
+    <Card className={cn("p-4", r.connectionState === "faulted" && "border-danger/40")}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-semibold">{r.portId}</span>
+            <Badge variant={conn.variant}>{conn.label}</Badge>
+            {!r.attached && <Badge variant="muted">not attached</Badge>}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {r.identity
+              ? <>{r.identity.model} · CCDI {r.identity.ccdiVersion}{r.serial && <> · <span className="font-mono">s/n {r.serial}</span></>}</>
+              : <span className="font-mono">{r.serial ? `s/n ${r.serial}` : r.kind}</span>}
+          </p>
+        </div>
+        {/* channel-busy (DCD) — live-ish carrier sense */}
+        <div className="shrink-0 text-right">
+          {r.channelBusy == null ? (
+            <span className="text-[11px] text-muted-foreground/60">—</span>
+          ) : r.channelBusy ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning live-dot" /> channel busy
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" /> idle
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* RSSI hero — the glance value */}
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">RSSI</p>
+          <p className={cn("tnum text-2xl font-semibold leading-none", signalTone(rssi))}>
+            {rssi == null ? "—" : <>{rssi}<span className="ml-1 text-sm font-normal text-muted-foreground">dBm</span></>}
+          </p>
+        </div>
+        <div className="text-right text-xs text-muted-foreground">
+          <p>avg <span className="tnum font-mono text-foreground/80">{h?.averagedRssiDbm != null ? `${h.averagedRssiDbm} dBm` : "—"}</span></p>
+          <p className="mt-0.5">PA temp <span className="tnum font-mono text-foreground/80">{h?.paTemperatureC != null ? `${h.paTemperatureC} °C` : "—"}</span></p>
+        </div>
+      </div>
+
+      {/* antenna-health trend — explicitly NOT VSWR */}
+      <div className="mt-3 border-t border-border pt-3">
+        <Tooltip text="An uncalibrated, √P-scaled forward/reverse detector reading from the radio — a per-station TREND to watch for change, NOT a calibrated VSWR / power measurement. Alert on a shift over time, never on the absolute value.">
+          <p className="mb-1.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Antenna-health trend (not VSWR) <Icon name="info" size={11} />
+          </p>
+        </Tooltip>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div><p className="text-muted-foreground">Forward</p><p className="tnum mt-0.5 font-mono">{h?.forwardTrendMillivolts != null ? `${h.forwardTrendMillivolts} mV` : "—"}</p></div>
+          <div><p className="text-muted-foreground">Reverse</p><p className="tnum mt-0.5 font-mono">{h?.reverseTrendMillivolts != null ? `${h.reverseTrendMillivolts} mV` : "—"}</p></div>
+          <div><p className="text-muted-foreground">Rev/Fwd</p><p className="tnum mt-0.5 font-mono">{h?.reverseForwardRatio != null ? h.reverseForwardRatio.toFixed(3) : "—"}</p></div>
+        </div>
+      </div>
+    </Card>
   );
 }

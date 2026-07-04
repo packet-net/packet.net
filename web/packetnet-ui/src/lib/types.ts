@@ -60,6 +60,22 @@ export interface PortCompatConfig {
   allowCommandFrameAsResponse?: boolean | null;
   quirks?: "default" | "strictly-faithful" | null;
 }
+// Optional per-port radio-control attachment (server: Packet.Node.Core.Configuration.PortRadioConfig).
+// The serial control channel to the radio behind this port's modem — a SEPARATE serial device from
+// the modem's. When present, every inbound frame carries per-frame RSSI/SNR sampled from the radio's
+// control channel (the signal data KISS can't provide). Pin which radio EITHER by CCDI serial
+// (preferred/stable — survives /dev/ttyUSB* renumbering and shared-USB-serial ambiguity) OR by device
+// path: exactly one of `serial`/`port`. Only valid on the serial-modem transport kinds (serial-kiss,
+// nino-tnc). Null/absent = no radio attached.
+export interface RadioConfig {
+  kind: "tait-ccdi";
+  serial?: string;
+  port?: string;
+  baud?: number;
+  // How often (seconds) the health monitor samples the radio; null/absent = driver default (10 s).
+  // Not surfaced by the editor — carried through untouched so a YAML-set value survives a save.
+  healthIntervalSeconds?: number | null;
+}
 export interface PortConfig {
   id: string;
   enabled: boolean;
@@ -69,6 +85,8 @@ export interface PortConfig {
   kiss: KissParams | null;
   beacon: PortBeacon | null;
   compat?: PortCompatConfig | null;
+  // Per-port radio-control attachment (RSSI/health). Null/absent = no radio.
+  radio?: RadioConfig | null;
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality. See Packet.Node.Core.Configuration.PortConfig.NetRomQuality.
   netRomQuality?: number | null;
@@ -278,6 +296,63 @@ export interface LinkStats {
   retries: number; rejCount: number; srejCount: number;
   framesIn: number; framesOut: number;
 }
+
+// ---- radio-control status + health (server: Packet.Node.Core.Api.RadioStatus) ----
+// GET /api/v1/radios → RadioStatus[]; GET /api/v1/ports/{id}/radio → RadioStatus (404 unknown port).
+// One per port that has a `radio:` block. `attached` distinguishes a radio the node has open and is
+// polling (true) from one configured but not currently attached (false — port down, or the radio
+// failed to open and the port degraded to running without it).
+export type RadioConnectionState = "healthy" | "faulted" | "unknown";
+// A radio's self-reported identity (CCDI MODEL / versions queries).
+export interface RadioIdentity { model: string; ccdiVersion: string }
+// The latest radio-health sample, projected for the operator surface. RSSI is read only while the
+// receiver is un-muted (not transmitting); the forward/reverse figures land only on transmit samples.
+// NOTE the forward/reverse detector figures are an antenna-health TREND, NEVER VSWR — the detectors
+// are uncalibrated and √P-scaled; alert on a station's *change*, not the absolute value.
+export interface RadioHealth {
+  rssiDbm: number | null;
+  averagedRssiDbm: number | null;
+  paTemperatureC: number | null;
+  forwardTrendMillivolts: number | null;
+  reverseTrendMillivolts: number | null;
+  reverseForwardRatio: number | null;
+  sampleAt: string | null;
+}
+export interface RadioStatus {
+  portId: string;
+  attached: boolean;
+  kind: string;
+  controlPort: string | null;
+  serial: string | null;
+  identity: RadioIdentity | null;
+  connectionState: RadioConnectionState;
+  channelBusy: boolean | null;
+  health: RadioHealth | null;
+}
+// GET /api/v1/radios/scan → RadioScanResult[]. One row per radio a bus scan found. `serial` (the CCDI
+// serial number) is the STABLE primary key: device paths renumber across replug/reboot and the CP2102
+// CCDI dongles share a USB serial, so `byIdPath` may be null (ambiguous) — bind a port by `serial`.
+export interface RadioScanResult {
+  serial: string;
+  model: string;
+  ccdiVersion: string;
+  baud: number;
+  devicePath: string;
+  byIdPath: string | null;
+}
+// One heard station for the MHeard surface (server: Packet.Node.Core.Api.HeardStation). For the
+// node-wide view portId is null and ports is the count of distinct ports the station was heard on;
+// for the per-port view portId is the port id and ports is 1. lastRssiDbm is the RSSI (dBm) of the
+// most recent frame heard from this station when a radio control channel measured it, else null.
+export interface HeardStation {
+  callsign: string;
+  portId: string | null;
+  firstHeard: string;
+  lastHeard: string;
+  count: number;
+  ports: number;
+  lastRssiDbm: number | null;
+}
 // ---- per-peer AX.25 capability cache (server: PdnReadApi.PeerCapability) ----
 // One learned (port, peer) record: whether the neighbour speaks v2.2/SABME
 // (supportsExtended) and whether it answers a pre-connect XID with SREJ enabled
@@ -330,6 +405,14 @@ export interface MonitorEvent {
   summary: string;
   raw: number[];
   path: string[];
+  // ---- per-frame radio metadata (additive; null when no radio attributed the frame) ----
+  // Received signal strength (dBm) of this frame, from the port's radio control channel — null on TX
+  // frames, ports with no radio attached, or inbound frames no sample could be attributed to.
+  rssiDbm?: number | null;
+  // rssiDbm minus the tracked channel-idle noise floor (dB), or null when either is unavailable.
+  snrDb?: number | null;
+  // The channel-idle noise floor (dBm) the radio was tracking when this frame arrived, or null.
+  noiseFloorDbm?: number | null;
 }
 
 // ---- operator-facing helper models (UI layer) --------------

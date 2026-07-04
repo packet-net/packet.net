@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
+  RadioStatus, RadioScanResult,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
@@ -300,6 +301,16 @@ export const api = {
   // Forget one learned (port, peer) capability by id (port:peer) so the next dial re-probes
   // it (operate scope). Resolves on 204; a 404 (unknown / malformed) throws Error.
   clearCapability: (id: string) => clearCapability(id),
+  // ---- radio-control status + scan (read-gated) ----
+  // Every port's radio-control attachment + live health (GET /api/v1/radios). The array may be empty
+  // (no port has a radio: block) → the Radios panel renders an empty/absent state.
+  getRadios: () => get<RadioStatus[]>("/radios", () => mock.RADIOS),
+  // One port's radio status (GET /api/v1/ports/{id}/radio). A 404 (unknown port, or a port with no
+  // radio block) surfaces the server's message as an Error.
+  getPortRadio: (id: string) => getPortRadio(id),
+  // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
+  // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
+  scanRadios: () => scanRadios(),
   // Recent frames (oldest→newest) the monitor seeds with so it isn't empty on open.
   recentFrames: (limit = 250) => get<MonitorEvent[]>(`/monitor/recent?limit=${limit}`, () => mock.seedFrames(limit)),
   users: () => get<User[]>("/users", () => mock.USERS),
@@ -548,6 +559,34 @@ async function clearCapability(id: string): Promise<void> {
   const res = await authFetch(`/capabilities/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (res.status === 204) return;
   throw new Error(await errorMessage(res, `Forget failed (${res.status}).`));
+}
+
+// One port's radio-control status (GET /api/v1/ports/{id}/radio). Mock mode resolves from the RADIOS
+// fixture (throwing when the port has no radio, mirroring the live 404); live mode maps a 404
+// (unknown port / no radio block) to an Error the caller can surface.
+async function getPortRadio(id: string): Promise<RadioStatus> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 60));
+    const found = mock.RADIOS.find((x) => x.portId === id);
+    if (!found) throw new Error(`No radio attached to port '${id}'.`);
+    return structuredClone(found);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/radio`, { headers: { accept: "application/json" } });
+  if (res.status === 404) throw new Error(await errorMessage(res, `No radio for port '${id}'.`));
+  if (!res.ok) throw new Error(`/ports/${id}/radio: ${res.status} ${res.statusText}`);
+  return (await res.json()) as RadioStatus;
+}
+
+// Bus discovery scan (GET /api/v1/radios/scan). Mock mode returns the RADIO_SCAN fixture after a short
+// delay so the PortEditor's scan spinner is exercised with no node; live mode fetches the scan rows.
+async function scanRadios(): Promise<RadioScanResult[]> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 350));
+    return structuredClone(mock.RADIO_SCAN);
+  }
+  const res = await authFetch("/radios/scan", { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(await errorMessage(res, `Radio scan failed (${res.status}).`));
+  return (await res.json()) as RadioScanResult[];
 }
 
 // Send one line into a session. Resolves on 202; a 404/other surfaces as Error.
