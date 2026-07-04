@@ -1,0 +1,117 @@
+# 1. Attach a radio
+
+**Goal:** tell the node about the radio behind one of your TNC ports, so it can
+read signal strength and health from the radio while packets flow.
+
+This chapter is about **option 1** from the [overview](index.md#two-ways-a-tait-radio-can-join-a-port):
+a radio *attached to* a TNC port. Your modem stays a TNC; the radio's own serial
+control channel is a **second cable** the node reads alongside.
+
+## Before you start
+
+- A **NinoTNC** or **serial KISS** port already working in PDN. (The radio block is
+  only valid on the serial-modem port kinds — `nino-tnc` and `serial-kiss`. A
+  `kiss-tcp` or AXUDP port has no physical radio beside the node to cable to.)
+- A **Tait TM8100 / TM8200** radio wired to the machine by its **CCDI** serial
+  cable (typically a CP2102 USB-serial dongle showing up as `/dev/ttyUSB0`).
+- The radio programmed so CCDI answers at its serial rate (the Tait factory default
+  is **28800 baud**).
+
+> [!NOTE]
+> The control cable is *separate* from whatever carries audio/PTT to the TNC. You
+> are adding a data path so the node can *ask the radio questions*; you are not
+> changing how packets get modulated.
+
+## The easy way: scan and click (web UI)
+
+1. Open the node's web control panel and go to **Ports**.
+2. Open the port your TNC is on (or add it) and find the **Radio control**
+   section. Flip it **on**.
+3. Leave **Radio type** on *Tait CCDI (TM8100 / TM8200)*.
+4. Click **Scan for radios**. The node probes every candidate serial port and lists
+   what answers — each entry shows the **model and serial number** (and the device
+   path it was found on), e.g.
+
+   > **TM8110 · s/n 19925328** — `/dev/ttyUSB0 · 28800 baud`
+
+5. Click your radio in the list. That pins the port to it **by CCDI serial** — the
+   robust choice (see below). Save the port.
+
+The whole point of scan-to-attach is **"pick your radio by model + serial, not a
+device path"** — you never have to know or guess which `/dev/ttyUSB*` it landed on.
+
+Once saved and the port restarts, an **attached** badge appears, inbound frames
+start carrying RSSI/SNR, and the radio shows up on the dashboard
+([chapter 2](02-see-your-link-quality.md)).
+
+## The config way: the `radio:` block (YAML)
+
+If you edit node config directly, add a `radio:` block under the port. Here is a
+NinoTNC port with a Tait radio attached, bound by serial:
+
+```yaml
+ports:
+  - id: nino
+    enabled: true
+    transport:
+      kind: nino-tnc
+      device: /dev/ttyACM1
+      baud: 57600
+      mode: 6
+    radio:                       # attach the radio's serial CONTROL channel
+      kind: tait-ccdi            # Tait TM8100/TM8200 CCDI (only kind today)
+      serial: "19925328"         # PREFERRED — pin by CCDI serial (stable)
+      baud: 28800                # CCDI control-channel baud (Tait default)
+      healthIntervalSeconds: 10  # optional — how often to sample health (default 10 s)
+```
+
+The fields:
+
+| Field | Meaning | Default |
+|---|---|---|
+| `kind` | Control protocol. Only `tait-ccdi` today. | *(required)* |
+| `serial` | The radio's **CCDI serial number** — the stable binding. | — |
+| `port` | **OR** the control device path, e.g. `/dev/ttyUSB0`. | — |
+| `baud` | Control-channel baud. | `28800` |
+| `healthIntervalSeconds` | Health-sample cadence, seconds. | `10` |
+
+> [!IMPORTANT]
+> Set **exactly one** of `serial` or `port` — not both, not neither. Binding by
+> `serial` is strongly preferred (next section). `port` is the advanced fallback.
+
+## Why bind by serial, not device path
+
+USB serial devices **renumber**. Unplug and replug, or reboot, and the radio that
+was `/dev/ttyUSB0` can come back as `/dev/ttyUSB1`. Worse, the CP2102 dongles many
+Tait CCDI cables use all share the same USB serial identity, so `/dev/serial/by-id`
+can't tell two of them apart.
+
+The **CCDI serial number is baked into the radio** and never changes. When you bind
+by `serial`, the node **scans at bring-up** for whichever port answers with that
+serial and opens that one — so re-enumeration across a replug or reboot just works.
+Bind by `port` (device path) only when you have a reason to.
+
+You can list attachable radios at any time from the API (this is what the **Scan**
+button calls):
+
+```
+GET /api/v1/radios/scan
+```
+
+It returns each radio's `serial`, `model`, `ccdiVersion`, `baud`, `devicePath`, and
+`byIdPath` — everything you need to fill in a `serial:` binding.
+
+## If the radio isn't there
+
+Attaching a radio is **best-effort and non-fatal**. If the control cable is
+unplugged, the radio is off, or a `serial:` bind finds no match, the node **logs the
+fault and runs the port anyway** — just without signal metadata. An unplugged
+control cable must never take a working packet channel down.
+
+Changing the `radio:` block is a **restart-class** edit: the port restarts to pick
+it up (the telemetry wrap is chosen when the port is built, not live-toggled).
+
+## Next
+
+You've attached a radio — now go **see the link**:
+[2. See your link quality →](02-see-your-link-quality.md)
