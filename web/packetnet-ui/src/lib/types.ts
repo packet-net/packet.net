@@ -399,6 +399,46 @@ export interface DoctorReport {
   ranAt: string;
 }
 
+// ---- guided deviation tuning (server: Packet.Node.Core.Api.TuningSessionInfo / TuningEvent) ----
+// A two-ended, operator-initiated, transmitting procedure coordinated over the radios' SDM side
+// channel: this port is one end (tuned — the operator turns the TX-DEV pot here; or meter — measures
+// a remote peer) and a peer radio is the other. POST .../tuning/session arms it (admin, audited);
+// GET .../tuning/events streams rounds + lifecycle (SSE `tuning` events, read scope).
+export type TuningRole = "tuned" | "meter";
+export type TuningState =
+  | "armed" | "peer-connected" | "awaiting-adjustment" | "ended" | "error" | "stopped";
+export type TuningAdvice = "up" | "down" | "ok" | "sweep";
+export type TuningEventKind =
+  | "armed" | "peer-connected" | "round" | "awaiting-adjustment" | "ended" | "error";
+
+export interface TuningStartRequest {
+  role: TuningRole;
+  peerSdmId: string;
+  burstFrames?: number;
+}
+export interface TuningSessionInfo {
+  sessionId: string;
+  portId: string;
+  role: TuningRole;
+  peerSdmId: string;
+  state: TuningState;
+  burstFrames: number;
+  startedAt: string;
+}
+export interface TuningEvent {
+  kind: TuningEventKind;
+  at: string;
+  state: TuningState;
+  burstIndex?: number | null;
+  decoded?: number | null;
+  total?: number | null;
+  levelDb?: number | null;
+  rssiDbm?: number | null;
+  advice?: TuningAdvice | null;
+  note?: string | null;
+  error?: string | null;
+}
+
 // ---- 6.3 monitor event (derived from FrameTraced) ----------
 export type FrameType =
   | "UI" | "SABM" | "SABME" | "I" | "RR" | "RNR" | "REJ" | "SREJ"

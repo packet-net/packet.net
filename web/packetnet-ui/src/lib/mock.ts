@@ -12,6 +12,7 @@ import type {
   TailscaleStatus, SystemInfo, NetRomRouting,
   RadioStatus, RadioScanResult, HeardStation,
   DoctorReport, DoctorProbe,
+  TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -295,6 +296,82 @@ export function doctorReport(portId: string, interrupt: boolean): DoctorReport {
     ];
   }
   return { portId, probes, ranAt: new Date().toISOString() };
+}
+
+// ---- guided deviation tuning (mock backend) ----
+// A scripted, converging tuned-session the /tools/tuner screen renders with no node: armed →
+// peer-connected → a sequence of rounds whose decode-rate climbs and advice walks sweep → up → ok as
+// the (imaginary) operator turns the pot. Each round is gated on the operator's "next" so the "Next
+// round" button behaves like the real one.
+const TUNE_ROUNDS: { decoded: number; total: number; advice: TuningAdvice; levelDb: number }[] = [
+  { decoded: 0, total: 5, advice: "sweep", levelDb: -18.0 },
+  { decoded: 2, total: 5, advice: "up", levelDb: -41.5 },
+  { decoded: 4, total: 5, advice: "up", levelDb: -55.0 },
+  { decoded: 5, total: 5, advice: "ok", levelDb: -62.5 },
+  { decoded: 5, total: 5, advice: "ok", levelDb: -62.7 },
+];
+
+const ADVICE_NOTE: Record<TuningAdvice, string> = {
+  up: "turn the deviation up",
+  down: "turn the deviation down",
+  ok: "leave the pot alone",
+  sweep: "no decode — sweep the pot",
+};
+
+const tuneDrivers = new Map<string, () => void>();
+
+export function tuneSession(portId: string, body: TuningStartRequest): TuningSessionInfo {
+  return {
+    sessionId: "mock-" + portId,
+    portId,
+    role: body.role,
+    peerSdmId: body.peerSdmId,
+    state: "armed",
+    burstFrames: body.burstFrames ?? 5,
+    startedAt: new Date().toISOString(),
+  };
+}
+
+// Called by the mock api.tuneNext — advances the scripted stream to its next round.
+export function tuneAdvance(portId: string): void {
+  tuneDrivers.get(portId)?.();
+}
+
+// Drive a scripted tuning feed for a port. Returns an unsubscribe. onError is unused (the mock
+// session never self-ends — the screen ends it via Stop, which unsubscribes).
+export function driveTuneStream(
+  portId: string,
+  onEvent: (e: TuningEvent) => void,
+  _onError?: () => void,
+): () => void {
+  let stopped = false;
+  let round = 0;
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const now = () => new Date().toISOString();
+  const emit = (e: TuningEvent) => { if (!stopped) onEvent(e); };
+  const after = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (!stopped) fn(); }, ms)); };
+
+  const runRound = () => {
+    const r = TUNE_ROUNDS[Math.min(round, TUNE_ROUNDS.length - 1)];
+    round++;
+    emit({
+      kind: "round", at: now(), state: "peer-connected", burstIndex: round,
+      decoded: r.decoded, total: r.total, levelDb: r.levelDb, rssiDbm: -90.3,
+      advice: r.advice, note: ADVICE_NOTE[r.advice],
+    });
+    after(400, () => emit({ kind: "awaiting-adjustment", at: now(), state: "awaiting-adjustment" }));
+  };
+
+  emit({ kind: "armed", at: now(), state: "armed" });
+  after(500, () => emit({ kind: "peer-connected", at: now(), state: "peer-connected" }));
+  after(1200, runRound);
+  tuneDrivers.set(portId, runRound);
+
+  return () => {
+    stopped = true;
+    tuneDrivers.delete(portId);
+    for (const t of timers) clearTimeout(t);
+  };
 }
 
 // Heard stations (GET /api/v1/mheard) with last-heard RSSI where a radio measured it. Fixture data for

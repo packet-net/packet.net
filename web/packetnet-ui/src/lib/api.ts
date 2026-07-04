@@ -17,6 +17,7 @@ import type {
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
+  TuningStartRequest, TuningSessionInfo, TuningEvent,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -315,6 +316,18 @@ export const api = {
   // read-scoped, non-transmitting check; runDoctor(id, true) = the admin/audited full check that
   // briefly transmits (POST ?interrupt=true). A 404 (unknown/not-running port) surfaces as an Error.
   runDoctor: (id: string, interrupt = false) => runDoctor(id, interrupt),
+  // ---- guided deviation tuning (POST/GET/DELETE /api/v1/ports/{id}/tuning/*) ----
+  // Arm a session (admin scope, audited). It TRANSMITS and pauses the port's normal traffic. 404
+  // unknown/not-running · 400 not a NinoTNC / no Tait radio / bad role or peer / SDM disabled · 409 a
+  // session is already active — each surfaces its { error } as a thrown Error. Subscribe to the live
+  // feed with subscribeTune(id, ...).
+  startTune: (id: string, body: TuningStartRequest) => startTune(id, body),
+  // The tuned operator's "I've adjusted the pot — run the next round" (admin scope, audited). 404 no
+  // session · 409 no round is awaiting input (or a meter-role session).
+  tuneNext: (id: string) => tuneNext(id),
+  // Stop the session and restore the port (admin scope, audited). Resolves true when a session was
+  // stopped, false when none was active.
+  tuneStop: (id: string) => tuneStop(id),
   // Recent frames (oldest→newest) the monitor seeds with so it isn't empty on open.
   recentFrames: (limit = 250) => get<MonitorEvent[]>(`/monitor/recent?limit=${limit}`, () => mock.seedFrames(limit)),
   users: () => get<User[]>("/users", () => mock.USERS),
@@ -609,6 +622,44 @@ async function runDoctor(id: string, interrupt: boolean): Promise<DoctorReport> 
   if (res.status === 404) throw new Error(await errorMessage(res, `Port '${id}' is not running.`));
   if (!res.ok) throw new Error(`${path}: ${res.status} ${res.statusText}`);
   return (await res.json()) as DoctorReport;
+}
+
+// ---- guided deviation tuning -----------------------------------
+// Arm a session on a port. Mock mode returns a believable armed session (the SSE feed is faked in
+// subscribeTune) so the surface renders with no node; live mode POSTs and maps the server's { error }
+// (400/404/409) to a thrown Error the caller surfaces.
+async function startTune(id: string, body: TuningStartRequest): Promise<TuningSessionInfo> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 200));
+    return mock.tuneSession(id, body);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/tuning/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not start tuning on '${id}' (${res.status}).`));
+  return (await res.json()) as TuningSessionInfo;
+}
+
+// The tuned operator's "next round" signal. Resolves on 200; a 404/409 surfaces its { error }.
+async function tuneNext(id: string): Promise<void> {
+  if (MODE === "mock") { mock.tuneAdvance(id); return; }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/tuning/next`, {
+    method: "POST", headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Next round failed (${res.status}).`));
+}
+
+// Stop a session + restore the port. Resolves true when one was stopped, false (404) when none.
+async function tuneStop(id: string): Promise<boolean> {
+  if (MODE === "mock") { await new Promise((r) => setTimeout(r, 100)); return true; }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/tuning/session`, {
+    method: "DELETE", headers: { accept: "application/json" },
+  });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(await errorMessage(res, `Stop failed (${res.status}).`));
+  return true;
 }
 
 // Send one line into a session. Resolves on 202; a 404/other surfaces as Error.
@@ -1360,6 +1411,32 @@ export function subscribeConsoleOutput(
     if (es.readyState === EventSource.CLOSED) onError?.();
   });
   return () => { es.removeEventListener("output", handler as EventListener); es.close(); };
+}
+
+// ---- the live tuning-session stream (SSE `tuning` events) --
+// Subscribes to a port's guided-deviation-tuning feed: each round ({ burstIndex, decoded/total,
+// levelDb?, advice, note }) plus lifecycle transitions ({ kind: armed | peer-connected |
+// awaiting-adjustment | ended | error }). onEvent is called per event; onError fires once when the
+// stream terminally closes (the session ended). Returns an unsubscribe. Mock mode scripts a
+// converging session on a timer, gated by the "next round" signal (mirrors the real gate).
+export function subscribeTune(
+  id: string,
+  onEvent: (e: TuningEvent) => void,
+  onError?: () => void,
+): () => void {
+  if (MODE === "mock") {
+    return mock.driveTuneStream(id, onEvent, onError);
+  }
+  // Token as a query param (see subscribeFrames) — EventSource has no header API.
+  const es = new EventSource(withTokenParam(`${BASE}/ports/${encodeURIComponent(id)}/tuning/events`));
+  const handler = (e: MessageEvent) => {
+    try { onEvent(JSON.parse(e.data) as TuningEvent); } catch { /* ignore malformed */ }
+  };
+  es.addEventListener("tuning", handler as EventListener);
+  es.addEventListener("error", () => {
+    if (es.readyState === EventSource.CLOSED) onError?.();
+  });
+  return () => { es.removeEventListener("tuning", handler as EventListener); es.close(); };
 }
 
 // A small live frames-buffer hook for the monitor (ring buffer, newest first).
