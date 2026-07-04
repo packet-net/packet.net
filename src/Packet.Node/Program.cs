@@ -137,6 +137,10 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
 // serial. No hardware is touched until a scan is requested; the scanner is bounded + single-flight.
 builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.Node.Core.Radios.TaitRadioScanner());
 
+// Capability doctor (GET/POST /api/v1/ports/{id}/doctor): runs the tuning probes against a live
+// port's already-open handles. Node-wide single-flight (holds state) → singleton.
+builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();
+
 // --- Web control-API auth foundation (default-OFF behind management.auth.enabled) ---
 //
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope
@@ -722,6 +726,11 @@ app.MapPdnPortsApi();
 // projecting the live supervisor; the scan opens serial ports transiently but is bounded. Mapped
 // before the catch-all; specific routes win. See PdnRadiosApi.
 app.MapPdnRadiosApi();
+
+// Capability doctor: an operator's "Check radio setup" for one port. GET is safe + read-scoped
+// (non-transmitting probes only); POST ?interrupt=true is admin-scoped + audited and briefly
+// transmits. Mapped before the catch-all; specific routes win. See PdnPortDoctorApi.
+app.MapPdnPortDoctorApi();
 
 // Slice 3 step 4: the direct-supervisor session actions + ping — connect-out
 // (POST /sessions), disconnect (DELETE /sessions/{id}), send-line

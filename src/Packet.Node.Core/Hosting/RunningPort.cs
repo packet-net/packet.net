@@ -1,5 +1,6 @@
 using Packet.Ax25.Session;
 using Packet.Ax25.Transport;
+using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
 using Packet.Radio;
@@ -58,6 +59,16 @@ public sealed class RunningPort : IAsyncDisposable
     /// forward those interfaces, so KISS-param application must target this.
     /// </summary>
     public IAx25Transport ModemTransport => InnerTransport ?? Transport;
+
+    /// <summary>
+    /// The NinoTNC serial port underneath the modem chain, captured before any pacing /
+    /// reconnect decorator hides it — or <c>null</c> when this port's modem is not a NinoTNC
+    /// (a serial-KISS / kiss-tcp / AXUDP modem exposes no NinoTNC diagnostics). The capability
+    /// doctor (<c>GET /api/v1/ports/{id}/doctor</c>) issues GETVER/GETALL/GETRSSI against it —
+    /// and, on an explicit interrupt, the transmitting probes. <b>Not owned here</b>: the modem
+    /// chain (<see cref="ModemTransport"/>) owns and disposes it.
+    /// </summary>
+    public NinoTncSerialPort? NinoTnc { get; init; }
 
     /// <summary>Whether the port reached a started state. A port whose transport
     /// failed to open is recorded as faulted (not started) so the reconcile can
