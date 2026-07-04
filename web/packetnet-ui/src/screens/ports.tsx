@@ -12,6 +12,7 @@ import {
 import { Page, PageHeader } from "@/components/layout/shell";
 import { cn } from "@/lib/utils";
 import { PingButton } from "@/components/ping";
+import { DoctorButton } from "@/components/doctor";
 import type {
   PortConfig, PortStatus, TransportConfig, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
   PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult,
@@ -302,6 +303,7 @@ export function Ports() {
                 <Button variant="ghost" size="sm" title="Tune this link with a partner" onClick={() => navigate("/tools/tuner?port=" + p.id)}>
                   <Icon name="signal" size={14} /> Tune link
                 </Button>
+                <DoctorButton portId={p.id} />
                 {/* Restart drives the supervisor's serialized RestartPortAsync via
                     lifecycle(); only offered while the port is up (a 409 surfaces as a
                     warning banner). */}

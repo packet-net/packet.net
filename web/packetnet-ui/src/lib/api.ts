@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
-  RadioStatus, RadioScanResult,
+  RadioStatus, RadioScanResult, DoctorReport,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
@@ -311,6 +311,10 @@ export const api = {
   // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
   // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
   scanRadios: () => scanRadios(),
+  // Capability doctor (GET/POST /api/v1/ports/{id}/doctor). runDoctor(id, false) = the safe,
+  // read-scoped, non-transmitting check; runDoctor(id, true) = the admin/audited full check that
+  // briefly transmits (POST ?interrupt=true). A 404 (unknown/not-running port) surfaces as an Error.
+  runDoctor: (id: string, interrupt = false) => runDoctor(id, interrupt),
   // Recent frames (oldest→newest) the monitor seeds with so it isn't empty on open.
   recentFrames: (limit = 250) => get<MonitorEvent[]>(`/monitor/recent?limit=${limit}`, () => mock.seedFrames(limit)),
   users: () => get<User[]>("/users", () => mock.USERS),
@@ -587,6 +591,24 @@ async function scanRadios(): Promise<RadioScanResult[]> {
   const res = await authFetch("/radios/scan", { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(await errorMessage(res, `Radio scan failed (${res.status}).`));
   return (await res.json()) as RadioScanResult[];
+}
+
+// Capability doctor. The SAFE form is a read-scoped GET that never transmits; the FULL form is an
+// admin-scoped, audited POST ?interrupt=true that briefly keys the transmitter. Mock mode
+// synthesises a believable report (so the surface renders with no node); live mode hits the endpoint
+// and maps a 404 (unknown / not-running port) to an Error the caller can surface.
+async function runDoctor(id: string, interrupt: boolean): Promise<DoctorReport> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, interrupt ? 400 : 120));
+    return structuredClone(mock.doctorReport(id, interrupt));
+  }
+  const path = `/ports/${encodeURIComponent(id)}/doctor`;
+  const res = interrupt
+    ? await authFetch(`${path}?interrupt=true`, { method: "POST", headers: { accept: "application/json" } })
+    : await authFetch(path, { headers: { accept: "application/json" } });
+  if (res.status === 404) throw new Error(await errorMessage(res, `Port '${id}' is not running.`));
+  if (!res.ok) throw new Error(`${path}: ${res.status} ${res.statusText}`);
+  return (await res.json()) as DoctorReport;
 }
 
 // Send one line into a session. Resolves on 202; a 404/other surfaces as Error.

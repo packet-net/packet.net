@@ -380,6 +380,25 @@ export interface PingResult {
   lossPct: number;
 }
 
+// ---- capability doctor (server: Packet.Node.Core.Api.PortDoctorReport) ----
+// GET /api/v1/ports/{id}/doctor → PortDoctorReport (safe, non-transmitting; read scope).
+// POST /api/v1/ports/{id}/doctor?interrupt=true → the same shape, but also runs the transmitting
+// probes (admin scope, audited; briefly keys the transmitter). One `status` per capability:
+// pass = working, fail = broken (see `remedy`), unknown = not determined — e.g. a transmitting
+// probe skipped on the safe form ("requires a brief transmit"), or "not a NinoTNC".
+export type DoctorStatus = "pass" | "fail" | "unknown";
+export interface DoctorProbe {
+  name: string;
+  status: DoctorStatus;
+  detail: string;
+  remedy: string | null;
+}
+export interface DoctorReport {
+  portId: string;
+  probes: DoctorProbe[];
+  ranAt: string;
+}
+
 // ---- 6.3 monitor event (derived from FrameTraced) ----------
 export type FrameType =
   | "UI" | "SABM" | "SABME" | "I" | "RR" | "RNR" | "REJ" | "SREJ"
