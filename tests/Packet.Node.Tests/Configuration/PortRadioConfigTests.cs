@@ -76,4 +76,46 @@ public sealed class PortRadioConfigTests
             Port = "/dev/ttyUSB0",
             HealthIntervalSeconds = seconds,
         })).IsValid.Should().Be(valid);
+
+    [Fact]
+    public void A_hail_responder_block_round_trips_through_yaml()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: nino
+                enabled: true
+                transport:
+                  kind: nino-tnc
+                  device: /dev/ttyACM0
+                  baud: 57600
+                  mode: 6
+                radio:
+                  kind: tait-ccdi
+                  port: /dev/ttyUSB0
+                  hailResponder: true
+                  hailResponderPeer: PDN00002
+            """;
+
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(NodeConfigYaml.Parse(yaml)));
+
+        var radio = reparsed.Ports[0].Radio!;
+        radio.HailResponder.Should().BeTrue();
+        radio.HailResponderPeer.Should().Be("PDN00002");
+    }
+
+    [Theory]
+    [InlineData(false, "", true)]            // responder off — the peer is irrelevant
+    [InlineData(true, "PDN00002", true)]     // responder on with an 8-char peer — valid
+    [InlineData(true, "", false)]            // responder on, no peer — nothing to answer
+    [InlineData(true, "PDN2", false)]        // responder on, wrong-length peer — invalid
+    public void A_hail_responder_needs_an_eight_char_peer(bool responder, string peer, bool valid)
+        => Validator.Validate(WithRadio(new PortRadioConfig
+        {
+            Kind = "tait-ccdi",
+            Port = "/dev/ttyUSB0",
+            HailResponder = responder,
+            HailResponderPeer = peer,
+        })).IsValid.Should().Be(valid);
 }
