@@ -28,7 +28,21 @@ float rssi = await radio.ReadRssiDbmAsync();                // e.g. -90.3
 radio.CarrierSenseChanged += (_, e) => Console.WriteLine($"DCD {(e.Busy ? "up" : "down")} at {e.At:O}");
 ```
 
-The radio must be programmed with its data port in **Command mode** (the power-up state) at the matching baud rate; this driver does not attempt the Transparent-mode escape sequence.
+The radio must be programmed with its data port in **Command mode** (the power-up state) at the matching baud rate. (For the TNC-less FFSK link, `TaitTransparentTransport` drives the Transparent-mode enter/escape for you — see below.)
+
+## TNC-less AX.25: the FFSK Transparent transport
+
+`TaitTransparentTransport` is an `IAx25Transport` whose modem **is** the radio — no external TNC. It puts the radio into Transparent mode (the radio's own FFSK modem as an 8-bit-clean byte pipe), frames AX.25 with **KISS SLIP framing** over that pipe, and de-frames the inbound byte stream back into whole AX.25 frames (the radio fragments/reassembles ≤46-byte over-air blocks itself). Because the transport *owns* the transmission it times it directly: a `TxTiming` event and `ITxCompletionTransport` give per-frame on-air start/end, and inbound frames carry `ReceivedAt` + `RadioMetadata.EstimatedAirtime`.
+
+```csharp
+await using var link = await TaitTransparentTransport.OpenAsync("/dev/ttyUSB0");
+await link.SendAsync(ax25FrameBody);            // SLIP-framed over the FFSK pipe
+await foreach (var f in link.ReceiveAsync(ct))  // whole AX.25 frames, ReceivedAt + airtime stamped
+    Handle(f.Ax25, f.ReceivedAt, f.Radio?.EstimatedAirtime);
+// DisposeAsync escapes Transparent (+++) and restores Command mode.
+```
+
+The inherent trade-off vs the `RssiTaggingTransport` (NinoTNC modem + CCDI control channel) arrangement: **one device, no audio wiring, but no signal telemetry** — RSSI/SNR/noise-floor/DCD are unavailable while the CCDI channel is a byte pipe (those `RadioMetadata` fields stay null; only airtime is known). ⚠ If the radio is programmed with "Ignore Escape Sequence" **on**, the `+++` exit cannot succeed and recovery is a power cycle — program the escape sequence honoured before running it unattended.
 
 ## Beyond telemetry
 

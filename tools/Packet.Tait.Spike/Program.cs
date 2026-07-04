@@ -68,6 +68,11 @@ if (args.Length >= 2 && args[0] == "serno")
 {
     return await Packet.Tait.Spike.SurfaceProbe.RunSerno(args[1]);
 }
+if (args.Length >= 3 && args[0] == "transparent-loop")
+{
+    int frames = args.Length > 3 ? int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : 4;
+    return await Packet.Tait.Spike.TransparentLoop.Run(args[1], args[2], frames);
+}
 
 Console.WriteLine("usage:");
 Console.WriteLine("  inventory <ccdiPort>...");
@@ -78,4 +83,5 @@ Console.WriteLine("  sdm <fromCcdiPort> <toCcdiPort>");
 Console.WriteLine("  sdm-surface <fromCcdiPort> <toCcdiPort> <destId8>   extended/binary/legacy SDM probes");
 Console.WriteLine("  f06 <ccdiPort>                                      undocumented FUNCTION 0/6 probe (reverts)");
 Console.WriteLine("  serno <tncPort>                                     NinoTNC KAUP8R GETSERNO read-only probe");
+Console.WriteLine("  transparent-loop <radioA> <radioB> [frames=4]       TNC-less AX.25 round-trip over FFSK Transparent");
 return 2;

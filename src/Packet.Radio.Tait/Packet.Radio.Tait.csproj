@@ -2,6 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
+    <!-- The Transparent-mode transport frames AX.25 over the radio's FFSK byte pipe with
+         KISS SLIP framing (FEND-delimited), reusing the battle-tested KISS codec rather than
+         re-implementing SLIP. Packet.Kiss transitively brings Packet.Ax25.Transport.Abstractions
+         (IAx25Transport / Ax25InboundFrame / RadioMetadata), which the transport also uses. -->
+    <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
+    <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

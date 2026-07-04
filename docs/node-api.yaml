@@ -578,6 +578,7 @@ components:
         - { $ref: "#/components/schemas/SerialKissTransport" }
         - { $ref: "#/components/schemas/NinoTncTransport" }
         - { $ref: "#/components/schemas/AxudpTransport" }
+        - { $ref: "#/components/schemas/TaitTransparentTransport" }
       discriminator: { propertyName: kind }
     KissTcpTransport:
       type: object
@@ -595,6 +596,21 @@ components:
       type: object
       required: [kind, host, port, localPort]
       properties: { kind: { const: axudp }, host: { type: string }, port: { type: integer }, localPort: { type: integer } }
+    TaitTransparentTransport:
+      type: object
+      # A Tait TM8100/TM8200 radio in Transparent mode AS the modem (no external TNC): AX.25 over
+      # the radio's FFSK byte pipe with KISS SLIP framing. Bind by exactly one of device / serial
+      # (serial preferred — stable across /dev/ttyUSB* renumbering). No `radio:` block on this kind
+      # (the radio is the modem; there is no separate CCDI control channel, hence no per-frame RSSI).
+      required: [kind]
+      properties:
+        kind: { const: tait-transparent }
+        device: { type: string, description: "radio serial device path (exactly one of device/serial)" }
+        serial: { type: string, description: "radio CCDI serial number (exactly one of device/serial)" }
+        baud: { type: integer, description: "CCDI command-mode baud (default 28800)" }
+        transparentBaud: { type: integer, description: "Transparent-mode terminal baud (default 28800)" }
+        ffskBaud: { type: integer, description: "FFSK over-air baud for airtime estimation (default 2400)" }
+        leadInMs: { type: integer, description: "modelled TX lead-in ms — key-up + FFSK preamble (default 100)" }
 
     Ax25PortParams:
       type: object

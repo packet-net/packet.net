@@ -95,6 +95,29 @@ public class TransportConfigJsonConverterTests
     }
 
     [Fact]
+    public void TaitTransparent_round_trips_to_its_subtype_with_all_fields()
+    {
+        var result = RoundTrip(new TaitTransparentTransportConfig
+        {
+            Serial = "1G000123",
+            Baud = 28800,
+            TransparentBaud = 19200,
+            FfskBaud = 2400,
+            LeadInMs = 120,
+        });
+
+        result.Should().BeOfType<TaitTransparentTransportConfig>()
+            .Which.Should().BeEquivalentTo(new
+            {
+                Serial = "1G000123",
+                Baud = 28800,
+                TransparentBaud = 19200,
+                FfskBaud = 2400,
+                LeadInMs = 120,
+            });
+    }
+
+    [Fact]
     public void A_bare_element_deserialises_on_the_kind_discriminator()
     {
         var transport = JsonSerializer.Deserialize<TransportConfig>(
