@@ -46,6 +46,22 @@ describe("screens render without crashing", () => {
     await waitFor(() => expect(screen.getByText(/Live monitor/i)).toBeInTheDocument());
   });
 
+  it("Monitor frame table has an RSSI column (link quality)", async () => {
+    mount(<Monitor />);
+    // The RSSI column header is the entry point for per-frame link quality (dBm + SNR).
+    await waitFor(() => expect(screen.getByText("RSSI")).toBeInTheDocument());
+  });
+
+  it("Dashboard surfaces the Radios health panel with link quality", async () => {
+    mount(<Dashboard />);
+    // The payoff view: a radio-attached port's identity + the antenna-health caveat label.
+    await waitFor(() => expect(screen.getByText(/^Radios$/)).toBeInTheDocument());
+    expect(screen.getAllByText(/Tait TM8110/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Antenna-health trend \(not VSWR\)/i).length).toBeGreaterThan(0);
+    // A healthy radio shows its dBm at a glance.
+    expect(screen.getAllByText(/dBm/).length).toBeGreaterThan(0);
+  });
+
   it("Sessions renders", async () => {
     const { container } = mount(<Sessions />);
     expect(container.firstChild).toBeTruthy();
@@ -143,6 +159,27 @@ describe("screens render without crashing", () => {
     // The new per-port NET/ROM fields both render.
     expect(screen.getByText(/NET\/ROM min quality/i)).toBeInTheDocument();
     expect(screen.getByText(/NODES PACLEN/i)).toBeInTheDocument();
+  });
+
+  it("Ports editor surfaces the Radio control section + Scan for radios (serial-modem ports)", async () => {
+    // vhf-1 is a nino-tnc (serial-modem) port with a serial-bound radio in the mock. Opening its
+    // editor must show the Radio control section, the "Scan for radios" affordance, and the seeded
+    // CCDI serial round-tripped into the bind field — proving the radio block survives openEdit.
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("vhf-1")).toBeInTheDocument());
+
+    let card: HTMLElement | null = screen.getByText("vhf-1");
+    while (card && !within(card).queryByRole("button", { name: "Edit" })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(screen.getByText(/Edit port — vhf-1/i)).toBeInTheDocument());
+    expect(screen.getByText(/Radio control/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Scan for radios/i })).toBeInTheDocument();
+    // The seeded serial (19925328) round-trips into the bind-by-serial input.
+    expect((screen.getByDisplayValue("19925328") as HTMLInputElement).value).toBe("19925328");
   });
 
   it("Capabilities renders the per-peer capability cache", async () => {

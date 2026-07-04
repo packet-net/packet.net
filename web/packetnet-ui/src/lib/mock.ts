@@ -10,6 +10,7 @@ import type {
   ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
   TailscaleStatus, SystemInfo, NetRomRouting,
+  RadioStatus, RadioScanResult, HeardStation,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -17,11 +18,11 @@ export const NODE_CONFIG: NodeConfig = {
   schemaVersion: 3,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
-    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null } },
+    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 } },
     { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 400, persistence: 63, slotTime: 100, txTail: 80 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
     { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
-    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null },
+    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 } },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
   management: {
@@ -167,12 +168,25 @@ export function makeFrame(now: Date): MonitorEvent {
   const nbytes = Math.min(length, 32);
   for (let i = 0; i < nbytes; i++) raw.push(Math.floor(Math.random() * 256));
 
+  // Per-frame radio metadata: only inbound (RX) frames on a radio-attached port carry RSSI. vhf-1 has
+  // a radio in the mock, so RX frames on it get a plausible RSSI/noise-floor/SNR; everything else is
+  // null (TX frame, or a port with no radio) so the monitor's em-dash rendering is exercised too.
+  let rssiDbm: number | null = null;
+  let noiseFloorDbm: number | null = null;
+  let snrDb: number | null = null;
+  if (dir === "in" && port === "vhf-1") {
+    rssiDbm = -(62 + Math.floor(Math.random() * 44)); // -62..-105 dBm
+    noiseFloorDbm = -(108 + Math.floor(Math.random() * 6)); // ~ -108..-113 dBm
+    snrDb = +(rssiDbm - noiseFloorDbm).toFixed(1);
+  }
+
   return {
     seq: _frameSeq++, timestamp: now, portId: port, direction: dir, source, dest, type,
     classKind: isI ? "I" : isU ? "U" : "S",
     pid: pidKey, pidName: pidKey ? PIDS[pidKey] : null,
     ns, nr, pf, command: dir === "out", length, summary, raw,
     path: Math.random() > 0.7 ? [randItem(["GB7BNS", "GB7CIP", "MB7UWS"])] : [],
+    rssiDbm, snrDb, noiseFloorDbm,
   };
 }
 export function seedFrames(n: number): MonitorEvent[] {
@@ -188,6 +202,49 @@ export const LINK_STATS: LinkStats[] = [
   { portId: "vhf-1", peer: "2E0XYZ", smoothedRttMs: 1880, retries: 3, rejCount: 5, srejCount: 2, framesIn: 88, framesOut: 71 },
   { portId: "uhf-2", peer: "G4APL-1", smoothedRttMs: 740, retries: 1, rejCount: 0, srejCount: 0, framesIn: 9011, framesOut: 8804 },
   { portId: "link-dn", peer: "G8PZT-7", smoothedRttMs: 38, retries: 0, rejCount: 0, srejCount: 0, framesIn: 210442, framesOut: 198330 },
+];
+
+// Radio-control status + health (GET /api/v1/radios). Two attached TM8110s, each with a live health
+// sample, so the dashboard's Radios panel demos with no node. vhf-1 is the hero (strong RSSI, cool PA,
+// channel busy); hf-300 is a second radio whose modem port faulted (its /dev/ttyUSB1 modem is absent)
+// yet whose radio-control channel — a SEPARATE device, /dev/ttyUSB2 — is open and healthy, so its link
+// quality is still visible (the product story). Bind keys differ: vhf-1 by CCDI serial, hf-300 by path.
+export const RADIOS: RadioStatus[] = [
+  {
+    portId: "vhf-1", attached: true, kind: "tait-ccdi", controlPort: "/dev/ttyUSB0", serial: "19925328",
+    identity: { model: "Tait TM8110", ccdiVersion: "1.10.0" }, connectionState: "healthy", channelBusy: true,
+    health: {
+      rssiDbm: -78.5, averagedRssiDbm: -80.2, paTemperatureC: 41,
+      forwardTrendMillivolts: 2140, reverseTrendMillivolts: 190, reverseForwardRatio: 0.089,
+      sampleAt: new Date(Date.now() - 4000).toISOString(),
+    },
+  },
+  {
+    portId: "hf-300", attached: true, kind: "tait-ccdi", controlPort: "/dev/ttyUSB2", serial: "1G000123",
+    identity: { model: "Tait TM8110", ccdiVersion: "1.10.0" }, connectionState: "healthy", channelBusy: false,
+    health: {
+      rssiDbm: -95.0, averagedRssiDbm: -94.3, paTemperatureC: 52,
+      forwardTrendMillivolts: 1980, reverseTrendMillivolts: 410, reverseForwardRatio: 0.207,
+      sampleAt: new Date(Date.now() - 7000).toISOString(),
+    },
+  },
+];
+
+// Bus-scan result set (GET /api/v1/radios/scan) — what "Scan for radios" surfaces in the PortEditor.
+// Two TM8110s: the first canonicalises to a /dev/serial/by-id symlink; the second is a shared-USB-
+// serial CP2102 dongle whose symlink collides, so byIdPath is null — exactly why binding is by serial.
+export const RADIO_SCAN: RadioScanResult[] = [
+  { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
+  { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
+];
+
+// Heard stations (GET /api/v1/mheard) with last-heard RSSI where a radio measured it. Fixture data for
+// a future MHeard view — lastRssiDbm is null for stations heard on a port with no radio attached.
+export const HEARD_STATIONS: HeardStation[] = [
+  { callsign: "M0LTE", portId: "vhf-1", firstHeard: "2:14:08", lastHeard: "0:00:12", count: 412, ports: 1, lastRssiDbm: -79 },
+  { callsign: "2E0XYZ", portId: "vhf-1", firstHeard: "5:41:22", lastHeard: "0:01:47", count: 88, ports: 1, lastRssiDbm: -101 },
+  { callsign: "G4APL-1", portId: "uhf-2", firstHeard: "9:02:51", lastHeard: "0:00:33", count: 1904, ports: 1, lastRssiDbm: null },
+  { callsign: "G8PZT-7", portId: "link-dn", firstHeard: "1d 3:11:00", lastHeard: "0:00:03", count: 20441, ports: 1, lastRssiDbm: null },
 ];
 
 // The learned per-peer AX.25 capability cache (GET /api/v1/capabilities). One row per

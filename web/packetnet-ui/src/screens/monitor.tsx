@@ -173,13 +173,14 @@ export function Monitor() {
                 <Th className="w-16">Type</Th>
                 <Th className="hidden w-20 md:table-cell">PID</Th>
                 <Th className="w-14 text-right">Len</Th>
+                <Th className="w-24 text-right">RSSI</Th>
                 <Th className="hidden lg:table-cell">Summary</Th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <div className="py-10">
                       <EmptyState icon="filter" title="No frames match" body="Adjust the filters, or resume the stream." />
                     </div>
@@ -211,6 +212,16 @@ export function Monitor() {
                   <Td><FrameBadge type={f.type} classKind={f.classKind} /></Td>
                   <Td className="hidden text-muted-foreground md:table-cell">{f.pid || "—"}</Td>
                   <Td className="tnum text-right text-muted-foreground">{f.length}</Td>
+                  <Td className="text-right">
+                    {f.rssiDbm == null ? (
+                      <span className="text-muted-foreground/50">—</span>
+                    ) : (
+                      <span className="tnum inline-flex flex-col items-end leading-tight">
+                        <span className="text-foreground/90">{f.rssiDbm} dBm</span>
+                        {f.snrDb != null && <span className="text-[10px] text-muted-foreground">{f.snrDb} dB SNR</span>}
+                      </span>
+                    )}
+                  </Td>
                   <Td className="hidden text-muted-foreground lg:table-cell">{f.summary}</Td>
                 </tr>
               ))}
@@ -232,6 +243,9 @@ export function Monitor() {
     </Page>
   );
 }
+
+// A muted em-dash for absent radio metadata (never render a bare 0 for a null reading).
+const emdash = <span className="text-muted-foreground/50">—</span>;
 
 function fmtTime(ts: string | Date): string {
   const d = ts instanceof Date ? ts : new Date(ts);
@@ -263,6 +277,10 @@ function FrameDecode({ f }: { f: MonitorEvent }) {
           <DecRow k="Poll/Final" v={f.pf ? "1" : "0"} />
           {f.pid && <DecRow k="PID" v={`${f.pid} — ${f.pidName}`} />}
           <DecRow k="Length" v={`${f.length} bytes`} />
+          {/* radio metadata (null on TX frames / ports with no radio → em-dash) */}
+          <DecRow k="RSSI" v={f.rssiDbm == null ? emdash : `${f.rssiDbm} dBm`} />
+          <DecRow k="SNR" v={f.snrDb == null ? emdash : `${f.snrDb} dB`} />
+          <DecRow k="Noise floor" v={f.noiseFloorDbm == null ? emdash : `${f.noiseFloorDbm} dBm`} />
         </div>
       </div>
 
