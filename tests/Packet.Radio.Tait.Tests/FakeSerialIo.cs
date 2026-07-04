@@ -10,6 +10,8 @@ internal sealed class FakeSerialIo : ISerialIo
     private readonly BlockingCollection<byte[]> incoming = [];
     private readonly ConcurrentDictionary<string, string> responses = new();
     private readonly StringBuilder written = new();
+    private readonly List<byte> writtenBytes = [];
+    private readonly List<int> baudRates = [];
     private readonly Lock gate = new();
 
     public string PortName => "fake";
@@ -25,7 +27,33 @@ internal sealed class FakeSerialIo : ISerialIo
         }
     }
 
+    /// <summary>Every byte written so far, in order (for inspecting binary SLIP framing).</summary>
+    public byte[] WrittenBytes
+    {
+        get
+        {
+            lock (gate)
+            {
+                return [.. writtenBytes];
+            }
+        }
+    }
+
+    /// <summary>Every baud rate the driver re-clocked the port to, in order.</summary>
+    public IReadOnlyList<int> BaudRates
+    {
+        get
+        {
+            lock (gate)
+            {
+                return [.. baudRates];
+            }
+        }
+    }
+
     public void Enqueue(string ascii) => incoming.Add(Encoding.Latin1.GetBytes(ascii));
+
+    public void Enqueue(byte[] bytes) => incoming.Add(bytes);
 
     public void RespondTo(string commandWithoutCr, string responseAscii) =>
         responses[commandWithoutCr] = responseAscii;
@@ -46,10 +74,19 @@ internal sealed class FakeSerialIo : ISerialIo
         lock (gate)
         {
             written.Append(ascii);
+            writtenBytes.AddRange(buffer.AsSpan(offset, count).ToArray());
         }
         if (responses.TryGetValue(ascii.TrimEnd('\r'), out string? reply))
         {
             Enqueue(reply);
+        }
+    }
+
+    public void SetBaudRate(int baudRate)
+    {
+        lock (gate)
+        {
+            baudRates.Add(baudRate);
         }
     }
 

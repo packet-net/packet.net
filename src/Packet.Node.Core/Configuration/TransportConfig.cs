@@ -53,6 +53,10 @@ public static class TransportKinds
     /// <summary>Multipoint AXUDP — one UDP socket, many partners addressed by callsign
     /// (the BPQ <c>BPQAXIP</c> + <c>MAP</c> model).</summary>
     public const string AxudpMultipoint = "axudp-multipoint";
+
+    /// <summary>A Tait TM8100/TM8200 radio in Transparent mode as the modem — no external TNC
+    /// (AX.25 over the radio's own FFSK byte pipe with KISS SLIP framing).</summary>
+    public const string TaitTransparent = "tait-transparent";
 }
 
 /// <summary>A generic serial-port KISS modem (<c>KissSerialModem.Open</c>).</summary>
@@ -212,4 +216,55 @@ public sealed record AxudpPeerConfig
     /// suffix on a <c>MAP</c> line). Default false — a non-broadcast peer only ever receives
     /// frames whose AX.25 destination is its own callsign.</summary>
     public bool Broadcast { get; init; }
+}
+
+/// <summary>
+/// A Tait TM8100/TM8200 radio in Transparent mode as the port's modem — <b>no external TNC</b>.
+/// AX.25 frames ride the radio's internal FFSK modem (an 8-bit-clean byte pipe) with KISS SLIP
+/// framing, driven by <c>Packet.Radio.Tait.TaitTransparentTransport</c>. The radio is bound by
+/// device path (<see cref="Device"/>) OR — preferred — by CCDI serial (<see cref="Serial"/>),
+/// resolved at bring-up so a re-enumerated <c>/dev/ttyUSB*</c> still finds the right radio.
+/// </summary>
+/// <remarks>
+/// Unlike a serial-modem port with an optional <c>radio:</c> control channel, here the radio IS
+/// the modem: there is no separate CCDI control channel while in Transparent mode, so this kind
+/// provides no per-frame RSSI/SNR (only airtime timing). Teardown exits Transparent and restores
+/// Command mode — a port left in Transparent is deaf to CCDI. A <c>radio:</c> block is therefore
+/// invalid on this kind (validation rejects it).
+/// </remarks>
+public sealed record TaitTransparentTransportConfig : TransportConfig
+{
+    /// <inheritdoc/>
+    public override string Kind => TransportKinds.TaitTransparent;
+
+    /// <summary>The radio's serial device path (e.g. <c>/dev/ttyUSB0</c>). Mutually exclusive
+    /// with <see cref="Serial"/>: set exactly one.</summary>
+    public string Device { get; init; } = "";
+
+    /// <summary>The radio's CCDI serial number (e.g. <c>1G000123</c>) — the stable binding that
+    /// survives <c>/dev/ttyUSB*</c> renumbering and the shared-USB-serial CP2102 dongle ambiguity.
+    /// When set, bring-up scans for the radio answering with this serial. Mutually exclusive with
+    /// <see cref="Device"/>: set exactly one.</summary>
+    public string Serial { get; init; } = "";
+
+    /// <summary>CCDI Command-mode serial baud (the rate the Transparent enter/exit commands use).
+    /// Default 28800 — the Tait factory default (<c>TaitCcdiRadio.DefaultBaudRate</c>).</summary>
+    public int Baud { get; init; } = 28800;
+
+    /// <summary>Transparent-mode terminal baud. When it differs from <see cref="Baud"/> the port
+    /// is re-clocked on enter and restored on exit; equal (the common case) needs no switch.
+    /// Default 28800.</summary>
+    public int TransparentBaud { get; init; } = 28800;
+
+    /// <summary>FFSK over-air baud used to estimate frame airtime. Default 2400 (the TM8110 FFSK
+    /// modem raw rate); effective throughput is lower, so airtime is a floor estimate.</summary>
+    public int FfskBaud { get; init; } = 2400;
+
+    /// <summary>Modelled transmit lead-in in milliseconds (radio key-up + FFSK preamble before
+    /// data): on-air start ≈ submit + this. Default 100 ms.</summary>
+    public int LeadInMs { get; init; } = 100;
+
+    /// <inheritdoc/>
+    public override string DescribeEndpoint() =>
+        $"tait-transparent:{(string.IsNullOrWhiteSpace(Device) ? "serial:" + Serial : Device)}";
 }

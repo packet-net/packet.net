@@ -215,6 +215,51 @@ public class NodeConfigValidatorTests
     }
 
     [Theory]
+    [InlineData(true, false, true)]     // device only → valid
+    [InlineData(false, true, true)]     // serial only → valid
+    [InlineData(true, true, false)]     // both set → invalid (must be exactly one)
+    [InlineData(false, false, false)]   // neither set → invalid
+    public void TaitTransparent_binds_by_exactly_one_of_device_or_serial(bool device, bool serial, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "tait",
+            Transport = new TaitTransparentTransportConfig
+            {
+                Device = device ? "/dev/ttyUSB0" : "",
+                Serial = serial ? "1G000123" : "",
+            },
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Theory]
+    [InlineData(0, false)]      // ffskBaud must be > 0
+    [InlineData(2400, true)]
+    public void TaitTransparent_ffsk_baud_must_be_positive(int ffskBaud, bool expectValid)
+    {
+        var config = Valid(new PortConfig
+        {
+            Id = "tait",
+            Transport = new TaitTransparentTransportConfig { Serial = "1G000123", FfskBaud = ffskBaud },
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void Radio_block_is_rejected_on_a_tait_transparent_port()
+    {
+        // The radio IS the modem here — there is no separate CCDI control channel to attach.
+        var config = Valid(new PortConfig
+        {
+            Id = "tait",
+            Transport = new TaitTransparentTransportConfig { Serial = "1G000123" },
+            Radio = new PortRadioConfig { Kind = "tait-ccdi", Serial = "1G000123" },
+        });
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData(-1, false)]
     [InlineData(0, true)]
     [InlineData(15, true)]

@@ -19,6 +19,15 @@ internal interface ISerialIo : IDisposable
 
     /// <summary>Write <paramref name="count"/> bytes.</summary>
     void Write(byte[] buffer, int offset, int count);
+
+    /// <summary>
+    /// Change the line rate on the already-open port. Used by the Transparent-mode transport
+    /// when the radio's Transparent-mode terminal baud differs from its Command-mode CCDI baud
+    /// (§1.8) — the CCDI <c>t</c> command is issued at the command rate, then the port is
+    /// re-clocked to the transparent rate for the byte pipe (and back on exit). A no-op-safe
+    /// seam for the scripted test IO.
+    /// </summary>
+    void SetBaudRate(int baudRate);
 }
 
 /// <summary>The production <see cref="ISerialIo"/>: a thin pass-through to a
@@ -30,6 +39,8 @@ internal sealed class SystemSerialIo(SerialPort serial) : ISerialIo
     public int Read(byte[] buffer, int offset, int count) => serial.Read(buffer, offset, count);
 
     public void Write(byte[] buffer, int offset, int count) => serial.Write(buffer, offset, count);
+
+    public void SetBaudRate(int baudRate) => serial.BaudRate = baudRate;
 
     public void Dispose() => serial.Dispose();
 }

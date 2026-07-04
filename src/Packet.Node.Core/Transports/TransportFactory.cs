@@ -6,6 +6,8 @@ using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
 using Packet.Kiss.Serial;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Radios;
+using Packet.Radio.Tait;
 
 namespace Packet.Node.Core.Transports;
 
@@ -98,10 +100,61 @@ public sealed class TransportFactory : ITransportFactory
                     return new AxudpMultipointFrameTransport(peers, m.LocalPort, timeProvider, logger: null);
                 }
 
+            case TaitTransparentTransportConfig t:
+                {
+                    // The radio IS the modem: open it, enter Transparent mode, and frame AX.25
+                    // over its FFSK byte pipe with KISS SLIP. Bind by serial (scanned) or device
+                    // path — same stable-identity resolution as the radio-attach path.
+                    var device = await ResolveTaitTransparentDeviceAsync(t, cancellationToken).ConfigureAwait(false);
+                    var opts = new TaitTransparentTransportOptions
+                    {
+                        CommandBaud = t.Baud,
+                        TransparentBaud = t.TransparentBaud,
+                        FfskBaud = t.FfskBaud,
+                        LeadIn = TimeSpan.FromMilliseconds(t.LeadInMs),
+                    };
+                    return await TaitTransparentTransport
+                        .OpenAsync(device, opts, timeProvider, cancellationToken).ConfigureAwait(false);
+                }
+
             default:
                 throw new NotSupportedException(
                     $"transport kind '{transport.Kind}' has no IAx25Transport implementation in this build.");
         }
+    }
+
+    /// <summary>
+    /// Resolve a tait-transparent transport's config to the device path to open: a
+    /// <c>device</c>-bound radio resolves to itself; a <c>serial</c>-bound radio is located by
+    /// scanning candidate ports (at the configured command baud) for the CCDI serial number
+    /// (shared with the radio-attach path via <see cref="RadioSerialResolver"/>), so a
+    /// re-enumerated <c>/dev/ttyUSB*</c> still resolves to the right physical radio. A serial with
+    /// no plugged-in match throws — the port supervisor logs it and the port stays down, exactly
+    /// like any other transport open failure.
+    /// </summary>
+    private static async Task<string> ResolveTaitTransparentDeviceAsync(
+        TaitTransparentTransportConfig t, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(t.Serial))
+        {
+            return t.Device;
+        }
+
+        var found = new List<TaitDiscoveredRadio>();
+        await foreach (var candidate in TaitRadioPortDiscovery
+                           .DiscoverAsync([t.Baud], cancellationToken).ConfigureAwait(false))
+        {
+            found.Add(candidate);
+        }
+
+        if (RadioSerialResolver.Match(found, t.Serial) is { } match)
+        {
+            return match.Port;
+        }
+
+        throw new InvalidOperationException(
+            $"no tait-transparent radio with CCDI serial '{t.Serial}' found among {found.Count} " +
+            $"probed port(s) at {t.Baud} baud — is it plugged in and powered?");
     }
 
     // Resolve a host:port to an IPEndPoint. A literal IP short-circuits DNS;

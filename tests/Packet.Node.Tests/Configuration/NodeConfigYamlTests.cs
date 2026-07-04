@@ -361,12 +361,17 @@ public class NodeConfigYamlTests
     [InlineData("kiss-tcp")]
     [InlineData("axudp")]
     [InlineData("axudp-multipoint")]
+    [InlineData("tait-transparent")]
     public void Round_trips_each_transport_kind_through_serialise_then_parse(string kind)
     {
         TransportConfig transport = kind switch
         {
             "serial-kiss" => new SerialKissTransport { Device = "/dev/ttyUSB0", Baud = 115200 },
             "nino-tnc" => new NinoTncTransport { Device = "/dev/ttyACM3", Baud = 57600, Mode = 9 },
+            "tait-transparent" => new TaitTransparentTransportConfig
+            {
+                Serial = "1G000123", Baud = 28800, TransparentBaud = 19200, FfskBaud = 2400, LeadInMs = 120,
+            },
             "axudp" => new AxudpTransport { Host = "peer.local", Port = 10093, LocalPort = 10093 },
             "axudp-multipoint" => new AxudpMultipointTransport
             {

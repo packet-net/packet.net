@@ -70,7 +70,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
         if (!fields.TryGetValue("kind", out var kind) || string.IsNullOrWhiteSpace(kind))
         {
             throw new YamlException(start, start, "a transport must declare a 'kind' (one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}).");
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}).");
         }
 
         return Normalise(kind) switch
@@ -107,9 +107,18 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 LocalPort = Int(fields, "localport", 0, start),
                 Peers = peers ?? [],
             },
+            "taittransparent" => new TaitTransparentTransportConfig
+            {
+                Device = fields.GetValueOrDefault("device") ?? "",
+                Serial = fields.GetValueOrDefault("serial") ?? "",
+                Baud = Int(fields, "baud", 28800, start),
+                TransparentBaud = Int(fields, "transparentbaud", 28800, start),
+                FfskBaud = Int(fields, "ffskbaud", 2400, start),
+                LeadInMs = Int(fields, "leadinms", 100, start),
+            },
             _ => throw new YamlException(start, start,
                 $"unknown transport kind '{kind}' (expected one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint})."),
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent})."),
         };
     }
 
@@ -197,6 +206,21 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                     emitter.Emit(new MappingEnd());
                 }
                 emitter.Emit(new SequenceEnd());
+                break;
+            case TaitTransparentTransportConfig t:
+                EmitField(emitter, "kind", t.Kind);
+                if (!string.IsNullOrWhiteSpace(t.Device))
+                {
+                    EmitField(emitter, "device", t.Device);
+                }
+                if (!string.IsNullOrWhiteSpace(t.Serial))
+                {
+                    EmitField(emitter, "serial", t.Serial);
+                }
+                EmitField(emitter, "baud", t.Baud.ToString(CultureInfo.InvariantCulture));
+                EmitField(emitter, "transparentBaud", t.TransparentBaud.ToString(CultureInfo.InvariantCulture));
+                EmitField(emitter, "ffskBaud", t.FfskBaud.ToString(CultureInfo.InvariantCulture));
+                EmitField(emitter, "leadInMs", t.LeadInMs.ToString(CultureInfo.InvariantCulture));
                 break;
             case null:
                 break;

@@ -33,6 +33,8 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             RuleFor(p => (AxudpTransport)p.Transport).SetValidator(new AxudpValidator()));
         When(p => p.Transport is AxudpMultipointTransport, () =>
             RuleFor(p => (AxudpMultipointTransport)p.Transport).SetValidator(new AxudpMultipointValidator()));
+        When(p => p.Transport is TaitTransparentTransportConfig, () =>
+            RuleFor(p => (TaitTransparentTransportConfig)p.Transport).SetValidator(new TaitTransparentValidator()));
 
         When(p => p.Ax25 is not null, () =>
             RuleFor(p => p.Ax25!).SetValidator(new Ax25ParamsValidator()));
@@ -187,6 +189,30 @@ public sealed class AxudpValidator : AbstractValidator<AxudpTransport>
         // bound port for receiving must be in range.
         RuleFor(t => t.LocalPort).InclusiveBetween(0, 65535).WithMessage("axudp localPort must be in 0..65535 (0 = ephemeral).");
     }
+}
+
+/// <summary>
+/// Validates a <see cref="TaitTransparentTransportConfig"/>: exactly one of device/serial pins
+/// the radio, the two bauds and the FFSK baud are positive, and the lead-in is non-negative.
+/// </summary>
+public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparentTransportConfig>
+{
+    public TaitTransparentValidator()
+    {
+        // Exactly one binding — a device path OR a CCDI serial (XOR), mirroring PortRadioConfig.
+        RuleFor(t => t)
+            .Must(t => HasNonEmptyDevice(t) ^ HasNonEmptySerial(t))
+            .WithMessage("tait-transparent transport requires exactly one of 'device' or 'serial' (set one, not both).");
+
+        RuleFor(t => t.Baud).GreaterThan(0).WithMessage("tait-transparent baud must be positive.");
+        RuleFor(t => t.TransparentBaud).GreaterThan(0).WithMessage("tait-transparent transparentBaud must be positive.");
+        RuleFor(t => t.FfskBaud).GreaterThan(0).WithMessage("tait-transparent ffskBaud must be positive.");
+        RuleFor(t => t.LeadInMs).GreaterThanOrEqualTo(0).WithMessage("tait-transparent leadInMs must be non-negative.");
+    }
+
+    private static bool HasNonEmptyDevice(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.Device);
+
+    private static bool HasNonEmptySerial(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.Serial);
 }
 
 /// <summary>

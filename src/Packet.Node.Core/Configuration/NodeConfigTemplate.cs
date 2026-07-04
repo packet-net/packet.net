@@ -143,6 +143,26 @@ public static class NodeConfigTemplate
         #                          # & JNOS). No FCS option.
         #    # No profile here: a UDP tunnel is fast + reliable, so the spec
         #    # defaults are correct. Don't apply a slow-channel profile to AXUDP.
+        #  - id: tait
+        #    enabled: false
+        #    transport:
+        #      kind: tait-transparent  # a Tait TM8100/TM8200 in Transparent mode AS the modem —
+        #                              # NO external TNC. AX.25 rides the radio's own FFSK byte
+        #                              # pipe with KISS SLIP framing. One device, no audio wiring.
+        #      serial: 1G000123        # PREFERRED — pin by CCDI serial (stable across /dev/ttyUSB*
+        #                              # renumbering + shared-USB-serial CP2102 dongles). Bring-up
+        #                              # scans for it; discover it with GET /api/v1/radios/scan.
+        #      # device: /dev/ttyUSB0  # OR pin by device path (exactly one of serial/device).
+        #      baud: 28800             # CCDI command-mode baud (enter/exit rate).
+        #      transparentBaud: 28800  # Transparent terminal baud (differs → the port re-clocks).
+        #      ffskBaud: 2400          # FFSK over-air baud, for per-frame airtime estimation.
+        #      leadInMs: 100           # modelled TX lead-in (key-up + FFSK preamble).
+        #                              # NOTE no `radio:` block here: the radio IS the modem, so
+        #                              # there is no CCDI control channel and no per-frame RSSI —
+        #                              # only airtime timing. Teardown exits Transparent (restores
+        #                              # Command). WARNING: if the radio is programmed "Ignore
+        #                              # Escape Sequence" ON, the +++ exit fails — recovery is a
+        #                              # power cycle. Program the escape sequence honoured.
 
         # Operator-facing text. {node}/{call} are expanded.
         services:

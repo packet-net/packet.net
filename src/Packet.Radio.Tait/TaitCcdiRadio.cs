@@ -717,6 +717,16 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-clock the open serial port to <paramref name="baudRate"/>. The Transparent-mode
+    /// transport uses this when the radio's Transparent terminal baud differs from its
+    /// Command-mode CCDI baud (§1.8): the <c>t</c> entry command goes out at the command rate,
+    /// then the port is re-clocked to the transparent rate for the byte pipe, and back to the
+    /// command rate after the escape. On a rig where both rates match (the common case) it is
+    /// never called. Not a general runtime knob — CCDI transactions assume the programmed rate.
+    /// </summary>
+    internal void SetSerialBaudRate(int baudRate) => io.SetBaudRate(baudRate);
+
     /// <summary>Send raw bytes over the air while in Transparent mode.</summary>
     public Task SendTransparentAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
