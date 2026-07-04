@@ -13,11 +13,29 @@ namespace Packet.Radio;
 /// 1200 Bd).
 /// </summary>
 /// <remarks>
+/// <para>
 /// The gate is deliberately simple: wait-for-clear with a bounded wait, then hand off to the
 /// inner transport (whose TNC still applies its own persistence/slot-time CSMA on its audio
 /// DCD — the two compose). An unknown busy state (radio faulted, no edge seen yet, no
 /// carrier-sense capability) fails open: traffic must not stop because telemetry did.
+/// </para>
+/// <para>
+/// <b>Superseded (OQ-012).</b> This transport-level decorator was the interim/degenerate form
+/// of carrier-sense CSMA — a blunt wrapper with no connection to the AX.25 stack's medium-access
+/// model. The native seam now lives inside the stack: inject an
+/// <see cref="ICarrierSense"/> into <c>Packet.Ax25.Session.Ax25Listener</c> (the node bridges a
+/// radio-attached port's <see cref="IRadioControl"/> DCD via <see cref="RadioCarrierSense"/>),
+/// and <c>Packet.Ax25.Session.CarrierSenseGate</c> holds the keyup at the link-multiplexer's
+/// transmit path — the same seam the coming Nino KISS DCD extension lands in. Prefer that. This
+/// type is retained only as a fallback for a bare transport with no medium-access layer (a raw
+/// <see cref="IAx25Transport"/> consumer not going through <c>Ax25Listener</c>).
+/// </para>
 /// </remarks>
+[Obsolete(
+    "Superseded by the native carrier-sense seam (OQ-012): inject an ICarrierSense into " +
+    "Ax25Listener (see RadioCarrierSense) so the link-multiplexer's CarrierSenseGate defers " +
+    "keyups. This transport-level decorator remains only as a degenerate fallback for stacks " +
+    "with no medium-access layer.")]
 public sealed class CarrierSenseTxGate : IAx25Transport, IAsyncDisposable
 {
     private readonly IAx25Transport inner;

@@ -1,5 +1,10 @@
 using Microsoft.Extensions.Time.Testing;
 
+// CarrierSenseTxGate is [Obsolete] (superseded by the native CarrierSenseGate seam, OQ-012) but
+// still supported as a degenerate fallback, so its behaviour stays under test. Suppress CS0618
+// for this whole file — the deprecation is a design signpost, not a reason to drop coverage.
+#pragma warning disable CS0618
+
 namespace Packet.Radio.Tests;
 
 public class CarrierSenseTxGateTests

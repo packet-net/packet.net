@@ -777,8 +777,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true);
+        // Native carrier-sense CSMA (OQ-012): when a radio with hardware DCD is attached, feed
+        // its carrier-sense into the listener's medium-access gate so the AX.25 stack itself
+        // defers keyups while the channel is busy — the native seam that supersedes the interim
+        // transport-level CarrierSenseTxGate. A radio without carrier-sense (or no radio at all)
+        // yields a null source, i.e. the always-clear gate — byte-for-byte today's behaviour.
+        // Injected via the ctor, not an Ax25ListenerOptions member, so it stays off the
+        // ax25-ts parity surface. (The coming Nino KISS DCD extension lands in the same gate.)
+        ICarrierSense? carrierSense = radio is not null && radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense)
+            ? new RadioCarrierSense(radio)
+            : null;
         // The transport speaks the neutral IAx25Transport seam the listener consumes directly.
-        var listener = new Ax25Listener(transport, options, timeProvider);
+        var listener = new Ax25Listener(transport, options, timeProvider, carrierSense);
 
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
