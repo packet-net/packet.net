@@ -22,6 +22,13 @@
 //                                              GETRSSI-based — firmware 3.41 only)
 //   doctor <tncPort> [ccdiPort] [--json]       capability probes for the whole stack, each
 //                                              with a one-line remedy
+//   transparent-doctor <ccdiPort> [peerCcdiPort] [--interrupt] [--json]
+//                                              readiness of a TNC-less Tait FFSK Transparent
+//                                              link: Transparent-mode enabled / +++ escape
+//                                              recovers / baud-clean round-trip. Behavioral +
+//                                              field-specific remedies. --interrupt is required
+//                                              for the enter/escape/loopback probes (they enter
+//                                              Transparent mode + transmit)
 //   deviation-sdm --role tuned|meter --tnc <port> --radio <ccdi> --peer <8charId>
 //                                              remote deviation session coordinated over Tait
 //                                              SDMs (radio-native FFSK; no internet)
@@ -59,6 +66,7 @@ return args switch
     ["deviation", var local, var remote, .. var rest] =>
         await Deviation.Run(local, remote, rest.Length > 0 ? rest[0] : "N0CALL"),
     ["doctor", var tnc, .. var rest] => await DoctorCommand.Run(tnc, rest),
+    ["transparent-doctor", var ccdi, .. var rest] => await TransparentDoctorCommand.Run(ccdi, rest),
     ["deviation-sdm", .. var rest] => await DeviationAssist.RunSdm(rest),
     ["deviation-remote", .. var rest] => await DeviationAssist.RunRemote(rest),
     ["rendezvous", .. var rest] => await RendezvousCommand.Run(rest),
@@ -81,6 +89,11 @@ static int Usage()
     Console.WriteLine("  measure <tncPort> [ccdiPort]");
     Console.WriteLine("  deviation <localTnc> <remoteTnc> [callsign=N0CALL]   (GETRSSI-based; firmware 3.41 only)");
     Console.WriteLine("  doctor <tncPort> [ccdiPort] [--json] [--callsign X] [--mode N=6]");
+    Console.WriteLine("  transparent-doctor <ccdiPort> [peerCcdiPort] [--interrupt] [--json] [--callsign X] [--baud N=28800]");
+    Console.WriteLine("                               (readiness of a TNC-less Tait FFSK Transparent link:");
+    Console.WriteLine("                                Transparent-mode enabled / +++ escape recovers / baud-clean.");
+    Console.WriteLine("                                --interrupt ENTERS Transparent + transmits — a radio with");
+    Console.WriteLine("                                'Ignore Escape Sequence' ON may need a POWER CYCLE)");
     Console.WriteLine("  deviation-sdm --role tuned|meter --tnc <port> --radio <ccdi> --peer <8charId>");
     Console.WriteLine("                [--callsign X] [--burst N=5] [--verbose]");
     Console.WriteLine("  deviation-remote --role tuned|meter --tnc <port> [--radio <ccdi>] --rendezvous <ws url>");

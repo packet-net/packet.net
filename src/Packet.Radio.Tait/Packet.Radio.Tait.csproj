@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Packet.Radio.Tait.Tests" />
+    <!-- The Transparent-readiness doctor tests script a TaitCcdiRadio over the internal
+         ISerialIo/OpenForTest seam to exercise the 0/06, wedge and recover paths without hardware. -->
+    <InternalsVisibleTo Include="Packet.Tune.Core.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

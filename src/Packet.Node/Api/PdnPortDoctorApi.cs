@@ -51,7 +51,8 @@ public static class PdnPortDoctorApi
 
             var report = await runner.RunAsync(
                 id, running.NinoTnc, running.Radio, running.Config.Radio?.Kind,
-                includeTransmitting: false, config.Current.Identity.Callsign, ct).ConfigureAwait(false);
+                includeTransmitting: false, config.Current.Identity.Callsign,
+                running.Config.Transport.Kind, ct).ConfigureAwait(false);
             return Results.Ok(report);
         });
 
@@ -79,7 +80,8 @@ public static class PdnPortDoctorApi
 
             var report = await runner.RunAsync(
                 id, running.NinoTnc, running.Radio, running.Config.Radio?.Kind,
-                includeTransmitting: interrupt, config.Current.Identity.Callsign, ct).ConfigureAwait(false);
+                includeTransmitting: interrupt, config.Current.Identity.Callsign,
+                running.Config.Transport.Kind, ct).ConfigureAwait(false);
             return Results.Ok(report);
         });
     }

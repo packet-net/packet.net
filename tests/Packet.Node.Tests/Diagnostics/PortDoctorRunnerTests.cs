@@ -97,6 +97,27 @@ public sealed class PortDoctorRunnerTests
     }
 
     [Fact]
+    public async Task Tait_transparent_port_gets_the_transparent_readiness_checklist_not_the_tnc_probes()
+    {
+        // A running tait-transparent port's radio is a byte pipe (no NinoTNC, no command-mode CCDI),
+        // so the doctor projects the Transparent-readiness checklist and points at the setup-time CLI.
+        using var runner = new PortDoctorRunner();
+
+        var report = await runner.RunAsync(
+            "tp", tnc: null, radio: null, radioKind: null, includeTransmitting: false, "N0CALL",
+            transportKind: "tait-transparent");
+
+        report.Probes.Select(p => p.Name).Should().Contain(
+            [TransparentReadinessDoctor.EnabledProbe, TransparentReadinessDoctor.EscapeProbe, TransparentReadinessDoctor.BaudCleanProbe]);
+        // Transparent is proven enabled by the port running; the escape/baud checks defer to the CLI.
+        report.Probes.Single(p => p.Name == TransparentReadinessDoctor.EnabledProbe).Status.Should().Be("pass");
+        report.Probes.Single(p => p.Name == TransparentReadinessDoctor.EscapeProbe).Status.Should().Be("unknown");
+        report.Probes.Single(p => p.Name == TransparentReadinessDoctor.BaudCleanProbe).Status.Should().Be("unknown");
+        // None of the NinoTNC/CCDI probes or the radio-attached row apply here.
+        report.Probes.Should().NotContain(p => p.Name == "tnc-present" || p.Name == "radio-attached");
+    }
+
+    [Fact]
     public async Task Real_probe_core_degrades_a_serial_kiss_no_radio_port_without_touching_hardware()
     {
         // No seam ⇒ the real TuningDoctor.RunProbesAsync runs; null handles do zero serial I/O.
