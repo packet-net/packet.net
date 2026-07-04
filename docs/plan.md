@@ -1201,7 +1201,7 @@ Tracked here so they don't get lost. Once resolved, move the resolution into the
 | OQ-009 ([#192](https://github.com/packet-net/packet.net/issues/192)) | NinoTNC mode-change handshake — does the firmware support runtime mode switching without a write-to-flash cycle? `SETHW(mode + 16)` is the "don't write to flash" form; is the actual mode change immediate, or does it require power-cycle? Affects feasibility of Phase 10's mode-agility workstream. Probe once hardware is on the bench. | ✅ Answered 2026-07-02 on the bench rig (firmware 3.44): `SETHW(mode+16)` takes effect immediately — no re-init, no power cycle. Both TNCs were sitting in different modes, were SETHW'd to mode 6 live, and passed RF traffic first try (see §17 2026-07-02). Flash-persist variant not exercised (deliberately — spares the flash). | Phase 10 |
 | OQ-010 ([#193](https://github.com/packet-net/packet.net/issues/193)) | NinoTNC bootloader / firmware-update protocol — `flashtnc` is the canonical tool; what's the wire protocol? Best to read [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) source rather than reinvent. Affects feasibility + risk of `packetnet ctl flash-tnc`. | ✅ Answered 2026-07-03 — protocol read from flashtnc.py, validated by 7 upstream flashes on the rig, then reimplemented natively: `BootloaderNinoTncFirmwareFlasher` + `packet-tune flash-tnc`, hardware-validated (zero-change 3.41 reflash of `/dev/ttyACM1`, 17 535 lines/193 s). Wire protocol documented in [`docs/research/tait-ccdi-spike.md`](research/tait-ccdi-spike.md) §flash-tnc; feasibility of `packetnet ctl flash-tnc` = proven (the node-host wiring is the remaining, now low-risk, step). | Phase 10 |
 | OQ-011 ([#194](https://github.com/packet-net/packet.net/issues/194)) | Radio-control abstraction shape — what's the right `IRadioControl` API? Tait CCDI gives us SNR / RSSI / busy / channel / TX-keying. Yaesu CAT and ICOM CI-V have different feature sets. Common subset is probably {frequency-set, frequency-get, RSSI-get, busy-get, PTT-set} — anything radio-specific (Tait's SNR is unusually rich) goes behind a feature-probe. Decide before locking the Tait implementation. 2026-07-02: v0 shipped in `Packet.Radio` exactly as proposed — {RSSI-get, busy-get (property + carrier-sense events), PTT-set} with `RadioCapabilities` feature flags and reserved flags for channel/frequency/TX-power; frequency members deliberately deferred. Still open until a second implementation (Yaesu CAT / ICOM CI-V) pressure-tests the shape. | Open (v0 shipped) | Phase 10 |
-| OQ-012 | Native DCD seam — hardware carrier-sense (radio DCD via `IRadioControl`, and Nino's coming KISS DCD extension) should feed the AX.25 stack's *native* channel-busy machinery (the spec's physical/link-multiplexer layer models a real DCD input driving p-persistence and seize/release), i.e. emulate a TNC that exposes DCD — NOT a parallel transport-level deferral. `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is explicitly the interim/degenerate form; retire or demote it once the real seam exists. Open spec-side question for [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl): are the physical/LM state machines transcribed, or is that a prerequisite? Both DCD sources (radio control channel + KISS extension) must land in the same seam. **2026-07-04: confirmed feasible in-repo** — `Packet.Ax25.Session.LinkMultiplexerSignal` is exactly the native medium-access seam (LM_SEIZE/RELEASE, "the arbiter that owns the radio"); wire radio carrier-sense into the seize path. In progress (Phase 11 foundational item). | In progress | Phase 11 |
+| OQ-012 | Native DCD seam — hardware carrier-sense (radio DCD via `IRadioControl`, and Nino's coming KISS DCD extension) should feed the AX.25 stack's *native* channel-busy machinery (the spec's physical/link-multiplexer layer models a real DCD input driving p-persistence and seize/release), i.e. emulate a TNC that exposes DCD — NOT a parallel transport-level deferral. `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is explicitly the interim/degenerate form; retire or demote it once the real seam exists. Open spec-side question for [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl): are the physical/LM state machines transcribed, or is that a prerequisite? Both DCD sources (radio control channel + KISS extension) must land in the same seam. **2026-07-04: confirmed feasible in-repo** — `Packet.Ax25.Session.LinkMultiplexerSignal` is exactly the native medium-access seam (LM_SEIZE/RELEASE, "the arbiter that owns the radio"). **2026-07-04: landed.** Architectural finding along the way: in this implementation the LM_SEIZE→confirm round-trip drives *only* the §6.7.1.2 delayed-ack RR timing — actual frame emission (I/S/U/UI, SABM) drains directly to the listener's `SendBytes` sink (the code that literally owns the modem and serialises frames), bypassing the LM. So the carrier-sense gate sits at that transmit chokepoint (the multiplexer's radio-serialisation point), not at the seize-confirm (which would defer acks only). New injectable `ICarrierSense` (in `Packet.Ax25.Transport.Abstractions`) is consulted by a new `Packet.Ax25.Session.CarrierSenseGate` (slot-time wait-for-clear, fail-open) at every `Ax25Listener` keyup; default = no source = always-clear = byte-for-byte prior behaviour, so the SDL battery and ax25-ts parity are untouched (injected via the listener ctor, off the parity-tracked `Ax25ListenerOptions`/method surface). The node bridges a radio-attached port's `IRadioControl` DCD via `RadioCarrierSense` in `PortSupervisor` bring-up. `CarrierSenseTxGate` demoted `[Obsolete]` (kept as a degenerate transport-level fallback). **Residual:** Nino's KISS DCD extension lands in the same gate (a KISS transport implementing `ICarrierSense`), and routing *all* emissions through the LM (so seize/release genuinely gates the medium) stays future spec-side work. | ✅ Landed 2026-07-04 (residual: KISS DCD source) | Phase 11 |
 
 ---
 
@@ -1228,6 +1228,43 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-04 — OQ-012 native DCD seam landed: carrier-sense CSMA inside the AX.25 stack (not a transport wrapper)
+
+Hardware carrier-sense (radio DCD) now feeds the AX.25 stack's **native** medium-access layer,
+so the stack itself defers a keyup while the channel is busy — emulating a TNC that exposes DCD —
+retiring the interim transport-level `Packet.Radio.CarrierSenseTxGate`.
+
+**Architectural finding.** The plan expected to gate the `LinkMultiplexerSignal` seize path. In
+this implementation, though, the `LM_SEIZE_request → LmSeizeConfirm` round-trip drives *only* the
+§6.7.1.2 delayed-ack RR coalescing timing (#385) — actual frame emission (I/S/U/UI, SABM) drains
+directly through `Ax25Session.DrainIFrameQueue`/the dispatcher's frame sinks to the listener's
+`SendBytes` chokepoint (the code that literally owns the modem and serialises frames), *bypassing*
+the LM. So gating the seize-confirm would defer acks only. The correct medium-access transmit
+chokepoint — "the arbiter that owns the radio and serialises transmissions" — is `SendBytes`, and
+that is where the gate sits. (Routing *all* emissions through the LM so seize/release genuinely
+gates the medium is a larger SDL-side change, left as future work.)
+
+**What landed.** New dependency-free `ICarrierSense` (`Packet.Ax25.Transport.Abstractions`) — a
+`bool? ChannelBusy` source the multiplexer consults. New `Packet.Ax25.Session.CarrierSenseGate` —
+slot-time wait-for-clear CSMA, fail-open on unknown/timeout; completes synchronously when there is
+no source or the channel is clear, so the common path adds no async hop and no reordering.
+`Ax25Listener` takes an optional `ICarrierSense` via a new **ctor** parameter (default `null` =
+always-clear = byte-for-byte prior behaviour) and consults the gate before every keyup (per-session
+`SendBytes` incl. ACKMODE, and connectionless `SendAndTraceAsync`). The node bridges a radio-attached
+port's `IRadioControl` DCD via new `Packet.Radio.RadioCarrierSense`, injected in `PortSupervisor`
+bring-up when the radio advertises `RadioCapabilities.CarrierSense`. `CarrierSenseTxGate` demoted
+`[Obsolete]` (kept as a degenerate fallback for stacks with no medium-access layer).
+
+**Parity + conformance.** Carrier-sense is injected via the ctor and a new interface, *not* an
+`Ax25ListenerOptions` member or a new public listener method/event, so it is off the ax25-ts
+parity surface — `scripts/parity-check.mjs` passes unchanged (same 4 pre-existing documented
+exceptions, zero new gaps). The gate never touches the data-link SDL, so the full Ax25 conformance
+battery (961 `Packet.Ax25.Tests` + 84 `Packet.Ax25.Properties`) stays green. New tests:
+`CarrierSenseGateTests`, `Ax25ListenerCarrierSenseTests` (gate composes with the SDL harness —
+SABM→UA deferred while busy, keyed up on clear), and `PortRadioCarrierSenseTests` (a radio-attached
+port defers its reply through a live `PortSupervisor`). **Residual:** Nino's coming KISS DCD
+extension lands in the same gate (a KISS transport implementing `ICarrierSense`).
 
 ### 2026-07-04 — Phase 11 direction captured ("close the loop") + OQ-012/observability workstreams kicked off
 

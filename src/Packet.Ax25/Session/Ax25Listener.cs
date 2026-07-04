@@ -57,6 +57,14 @@ public sealed class Ax25Listener : IAsyncDisposable
     // still latches ackmodeUnsupported as the backstop (a wrapping adapter exposes the capability
     // even when the underlying modem turns out not to support it).
     private readonly ITxCompletionTransport? txCompletion;
+
+    // Native carrier-sense CSMA gate (OQ-012): the link-multiplexer consults it before every
+    // keyup and holds the transmission while the channel is busy. Off by default — with no
+    // source injected it always reports clear, so every send is byte-for-byte the prior
+    // fire-and-forget path and the SDL transition behaviour is untouched. A radio-attached
+    // node port injects its IRadioControl DCD (via RadioCarrierSense); the coming Nino KISS
+    // DCD extension lands in the same gate. Supersedes the transport-level CarrierSenseTxGate.
+    private readonly CarrierSenseGate carrierSenseGate;
     private readonly Ax25ListenerOptions options;
     private readonly TimeProvider timeProvider;
 
@@ -233,15 +241,29 @@ public sealed class Ax25Listener : IAsyncDisposable
 
     /// <summary>
     /// Test-injection ctor: supply a custom <see cref="TimeProvider"/>
-    /// so tests can drive T1/T2/T3 with a <c>FakeTimeProvider</c>.
+    /// so tests can drive T1/T2/T3 with a <c>FakeTimeProvider</c>, and optionally an
+    /// <see cref="ICarrierSense"/> source so the link-multiplexer does native carrier-sense
+    /// CSMA — holding every keyup while the channel is busy (see <see cref="CarrierSenseGate"/>).
+    /// A <c>null</c> <c>carrierSense</c> (the default) is the always-clear degenerate gate:
+    /// transmissions are never deferred, so behaviour is byte-for-byte the same as before. The
+    /// node injects a radio-attached port's DCD here (via <c>RadioCarrierSense</c>). Carrier
+    /// sense is an injectable capability, not a parity-tracked listener option, so it stays off
+    /// the <see cref="Ax25ListenerOptions"/> / public-method contract the ax25-ts parity guard
+    /// compares.
     /// </summary>
-    public Ax25Listener(IAx25Transport modem, Ax25ListenerOptions options, TimeProvider timeProvider)
+    public Ax25Listener(
+        IAx25Transport modem,
+        Ax25ListenerOptions options,
+        TimeProvider timeProvider,
+        ICarrierSense? carrierSense = null)
     {
         this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         // Probe the optional confirmed-TX (ACKMODE) capability once; null ⇒ never attempt it.
         txCompletion = modem as ITxCompletionTransport;
+        // The native medium-access gate. No source ⇒ always-clear ⇒ no deferral.
+        carrierSenseGate = new CarrierSenseGate(carrierSense, timeProvider);
         sessionParameters = Ax25SessionParameters.FromOptions(options);
     }
 
@@ -636,6 +658,10 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// </summary>
     private async Task SendAndTraceAsync(Ax25Frame frame, CancellationToken ct = default)
     {
+        // Native carrier-sense CSMA (OQ-012): hold the keyup while the channel is busy.
+        // WaitForClearAsync completes synchronously when there is no source or the channel is
+        // clear/unknown, so this connectionless path is unchanged when no radio DCD is wired.
+        await carrierSenseGate.WaitForClearAsync(ct).ConfigureAwait(false);
         await modem.SendAsync(frame.ToBytes(), ct).ConfigureAwait(false);
         TraceFrame(frame, FrameDirection.Transmitted);
     }
@@ -1276,13 +1302,22 @@ public sealed class Ax25Listener : IAsyncDisposable
             // when the frame actually finished transmitting. If the SDL already
             // stopped T1 (the ack won the race), RearmIfRunning touches nothing.
             // Echo loss / no ACKMODE support degrades to enqueue-time semantics.
+            //
+            // Native carrier-sense CSMA (OQ-012): both send paths first pass through the
+            // link-multiplexer's carrier-sense gate (SendGatedAsync / the wait inside
+            // SendAndRearmT1Async), which holds the keyup while the channel is busy and keys up
+            // when it clears. The gate completes synchronously when there is no carrier-sense
+            // source or the channel is clear, so with no radio DCD wired every send is the same
+            // synchronous fire-and-forget as before — no reordering, no extra hop, and the SDL
+            // transition behaviour is untouched. This is the medium-access seam that supersedes
+            // the transport-level CarrierSenseTxGate: the stack itself owns the deferral.
             if (options.RestartT1OnTxComplete && txCompletion is not null && !ackmodeUnsupported && parsedTx is not null && FrameArmsT1(parsedTx))
             {
                 _ = SendAndRearmT1Async(bytes.ToArray());
             }
             else
             {
-                _ = modem.SendAsync(bytes);
+                _ = SendGatedAsync(bytes);
             }
 
             if (parsedTx is not null)
@@ -1290,10 +1325,20 @@ public sealed class Ax25Listener : IAsyncDisposable
                 TraceFrame(parsedTx, FrameDirection.Transmitted);
             }
 
+            // Carrier-sense-gated fire-and-forget send: await a clear channel, then key up.
+            async Task SendGatedAsync(ReadOnlyMemory<byte> frame)
+            {
+                await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
+                await modem.SendAsync(frame).ConfigureAwait(false);
+            }
+
             async Task SendAndRearmT1Async(byte[] frame)
             {
                 try
                 {
+                    // Hold the ACKMODE keyup on a busy channel too (native CSMA), then send
+                    // awaiting completion.
+                    await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
                     // txCompletion is non-null here (gated by the caller's probe), but the
                     // underlying transport may still NotSupport at runtime (a wrapping adapter
                     // exposes the capability even when the modem turns out not to have it).
@@ -1303,7 +1348,8 @@ public sealed class Ax25Listener : IAsyncDisposable
                 catch (NotSupportedException)
                 {
                     // The transport has no ACKMODE — latch and stop trying (the frame
-                    // was NOT sent by the failed call, so send it plainly now).
+                    // was NOT sent by the failed call, so send it plainly now — the gate was
+                    // already consulted above).
                     ackmodeUnsupported = true;
                     _ = modem.SendAsync(frame);
                 }
