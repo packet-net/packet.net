@@ -1,0 +1,188 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+using Packet.Node.Core.Audit;
+using Packet.Node.Core.Tuning;
+
+namespace Packet.Node.Api;
+
+/// <summary>Request body for <c>POST /api/v1/ports/{id}/tuning/session</c>.</summary>
+/// <param name="Role">This port's role: <c>tuned</c> (transmits bursts; the operator turns the pot
+/// here) or <c>meter</c> (measures a remote peer).</param>
+/// <param name="PeerSdmId">The peer radio's 8-character SDM data identity.</param>
+/// <param name="BurstFrames">Frames per measurement burst (optional; 1..50, default 5).</param>
+public sealed record TuningStartRequest(string? Role, string? PeerSdmId, int? BurstFrames);
+
+/// <summary>
+/// The guided deviation-tuning surface of the pdn node API — an operator-initiated, transmitting,
+/// two-ended procedure coordinated over the radios' SDM side channel. Because a session KEYS THE
+/// RADIO and pauses the port's normal AX.25 traffic, the mutating verbs are <b>admin</b>-scoped and
+/// <b>audited</b> (mirroring the doctor's interrupt POST and the port-lifecycle endpoints); the live
+/// event feed is <b>read</b>-scoped, pure observation.
+/// <list type="bullet">
+///   <item><c>POST   /api/v1/ports/{id}/tuning/session</c> — arm a session (404 unknown/not-running
+///     port · 400 not a NinoTNC / no Tait radio / bad role or peer id / SDM disabled · 409 a session
+///     is already active).</item>
+///   <item><c>GET    /api/v1/ports/{id}/tuning/events</c> — SSE feed of rounds + lifecycle.</item>
+///   <item><c>POST   /api/v1/ports/{id}/tuning/next</c> — the tuned operator's "I've adjusted the pot"
+///     signal (409 when no round is awaiting / meter role).</item>
+///   <item><c>POST   /api/v1/ports/{id}/tuning/stop</c> and <c>DELETE .../tuning/session</c> — stop
+///     the session and restore the port.</item>
+/// </list>
+/// The port is <b>always restored</b> on session end, error, stop, or node shutdown.
+/// </summary>
+public static class PdnPortTuningApi
+{
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
+
+    /// <summary>Map the tuning endpoints under <c>/api/v1</c>. Mapped before the SPA fallback so the
+    /// specific routes win over the <c>/api/{**rest}</c> catch-all.</summary>
+    public static void MapPdnPortTuningApi(this WebApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        // Live event feed: read-scoped, pure observation.
+        var read = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
+        read.MapGet("/ports/{id}/tuning/events", TuningEventsAsync);
+
+        // Mutating verbs: admin-scoped + audited (a session transmits and pauses the port).
+        var admin = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);
+        admin.MapPost("/ports/{id}/tuning/session", StartAsync);
+        admin.MapPost("/ports/{id}/tuning/next", NextAsync);
+        admin.MapPost("/ports/{id}/tuning/stop", StopAsync);
+        admin.MapDelete("/ports/{id}/tuning/session", StopAsync);
+    }
+
+    private static async Task<IResult> StartAsync(
+        string id,
+        TuningStartRequest? body,
+        HttpContext ctx,
+        PortTuningService tuning,
+        IAuditLog audit,
+        TimeProvider clock,
+        CancellationToken ct)
+    {
+        if (body is null || !TuningPreflight.TryParseRole(body.Role, out var role))
+        {
+            return Results.BadRequest(new { error = "role must be 'tuned' or 'meter'" });
+        }
+
+        audit.RecordRest(
+            ctx, clock, "port_tuning", id, "requested",
+            $"role={body.Role} peer={body.PeerSdmId} burst={body.BurstFrames}");
+
+        try
+        {
+            var info = await tuning.StartAsync(id, role, body.PeerSdmId ?? string.Empty, body.BurstFrames ?? 5, ct)
+                .ConfigureAwait(false);
+            return Results.Ok(info);
+        }
+        catch (TuningStartException ex)
+        {
+            return MapStartError(ex);
+        }
+    }
+
+    private static IResult NextAsync(
+        string id, HttpContext ctx, PortTuningService tuning, IAuditLog audit, TimeProvider clock)
+    {
+        audit.RecordRest(ctx, clock, "port_tuning_next", id, "requested");
+        try
+        {
+            tuning.SignalNext(id);
+            return Results.Ok(new { advanced = true });
+        }
+        catch (TuningStartException ex)
+        {
+            return MapStartError(ex);
+        }
+    }
+
+    private static async Task<IResult> StopAsync(
+        string id, HttpContext ctx, PortTuningService tuning, IAuditLog audit, TimeProvider clock, CancellationToken ct)
+    {
+        audit.RecordRest(ctx, clock, "port_tuning_stop", id, "requested");
+        bool stopped = await tuning.StopAsync(id, ct).ConfigureAwait(false);
+        return stopped
+            ? Results.Ok(new { stopped = true })
+            : Results.NotFound(new { error = $"no tuning session on port '{id}'" });
+    }
+
+    private static IResult MapStartError(TuningStartException ex) => ex.Error switch
+    {
+        TuningStartError.NotFound => Results.NotFound(new { error = ex.Message }),
+        TuningStartError.Conflict => Results.Conflict(new { error = ex.Message }),
+        _ => Results.BadRequest(new { error = ex.Message }),
+    };
+
+    private static async Task TuningEventsAsync(string id, HttpContext ctx, PortTuningService tuning, TimeProvider clock)
+    {
+        var session = tuning.Get(id);
+        if (session is null)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var ct = ctx.RequestAborted;
+        ctx.Response.Headers.ContentType = "text/event-stream";
+        ctx.Response.Headers.CacheControl = "no-cache";
+        ctx.Response.Headers["X-Accel-Buffering"] = "no";
+        ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        using var sub = session.Subscribe(out var reader);
+
+        // Flush headers so the client's onopen fires promptly.
+        await WriteAsync(ctx, ": connected\n\n", ct);
+
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var waitRead = reader.WaitToReadAsync(ct).AsTask();
+                var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
+                var done = await Task.WhenAny(waitRead, heartbeat);
+
+                if (done == heartbeat)
+                {
+                    await WriteAsync(ctx, ": ping\n\n", ct);
+                    continue;
+                }
+
+                if (!await waitRead)
+                {
+                    // The session ended: its feed completed. Nothing more will arrive.
+                    break;
+                }
+
+                while (reader.TryRead(out var evt))
+                {
+                    var json = JsonSerializer.Serialize(evt, JsonSerializerOptions.Web);
+                    await WriteAsync(ctx, $"event: tuning\ndata: {json}\n\n", ct);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Client went away (RequestAborted) — normal SSE teardown.
+        }
+    }
+
+    private static async Task WriteAsync(HttpContext ctx, string s, CancellationToken ct)
+    {
+        try
+        {
+            await ctx.Response.WriteAsync(s, ct);
+            await ctx.Response.Body.FlushAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected mid-write — expected.
+        }
+        catch (IOException)
+        {
+            // Broken pipe to a vanished client — expected.
+        }
+    }
+}

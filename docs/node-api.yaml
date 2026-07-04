@@ -21,7 +21,7 @@ servers:
 x-slices:
   read-and-stream: [GET /status, GET /ports, GET /sessions, GET /netrom/routes, GET /config, GET /links, GET /log, GET /monitor/recent, GET /events, GET /traffic]
   auth: [POST /auth/login, WebAuthn register/authenticate, GET /setup/state, POST /setup, /users, TOTP]
-  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ping, /beacons]
+  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ports/{id}/tuning/* (deviation tuning), /ping, /beacons]
 
 tags:
   - { name: status }
@@ -303,6 +303,84 @@ paths:
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortDoctorReport" } } } }
         "404": { description: unknown or not-running port }
+
+  /ports/{id}/tuning/session:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Arm a guided deviation-tuning session on a port
+      description: >
+        Start an operator-initiated, two-ended deviation-tuning session coordinated over the radios'
+        SDM side channel. This port is one end (role `tuned` — the operator turns the TX-DEV pot here
+        and the port transmits bursts on request; or `meter` — measures a remote peer). It KEYS THE
+        RADIO and pauses the port's normal AX.25 traffic for the session, so it is admin-scoped and
+        audited. The port is restored when the session ends. At most one session per port. The peer's
+        SDM enabled state is checked fail-fast (a probe SDM). Subscribe to `.../tuning/events` for the
+        live feed. 404 unknown/not-running port · 400 not a NinoTNC / no Tait radio / bad role or peer
+        id / SDM disabled in the radio programming · 409 a session is already active.
+      security: [{ bearerAuth: [admin] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TuningStartRequest" } } }
+      responses:
+        "200": { description: armed, content: { application/json: { schema: { $ref: "#/components/schemas/TuningSessionInfo" } } } }
+        "400": { description: the port cannot host a session, or the request is malformed }
+        "404": { description: unknown or not-running port }
+        "409": { description: a tuning session is already active on the port }
+    delete:
+      tags: [tools]
+      summary: Stop a tuning session and restore the port
+      description: >
+        End the port's tuning session and restore it to normal service (a full in-place port rebuild).
+        Idempotent-ish — 404 when no session is active. Admin-scoped and audited. Also reachable as
+        `POST .../tuning/stop`.
+      security: [{ bearerAuth: [admin] }]
+      responses:
+        "200": { description: stopped }
+        "404": { description: no session was active on the port }
+
+  /ports/{id}/tuning/events:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [tools]
+      summary: The live tuning-session feed (SSE)
+      description: >
+        A `text/event-stream` of the port's tuning session. Each event is a named `tuning` SSE event
+        whose `data:` line is a camelCase JSON `TuningEvent`: per-round measurements
+        (`kind=round` — burstIndex, decoded/total, levelDb?, advice, note) and lifecycle transitions
+        (`kind` armed · peer-connected · awaiting-adjustment · ended · error). A new subscriber first
+        receives the full history so far (so a late/reconnecting client sees the whole trend), then
+        live events; the stream completes when the session ends. Read-scoped (pure observation);
+        EventSource clients pass the token as `?access_token=`. 404 when no session is active.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: "SSE stream (text/event-stream) of TuningEvent", content: { text/event-stream: { schema: { $ref: "#/components/schemas/TuningEvent" } } } }
+        "404": { description: no session is active on the port }
+
+  /ports/{id}/tuning/next:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Run the next measurement round (the tuned operator adjusted the pot)
+      description: >
+        The tuned operator's "I've adjusted the pot — run the next round" signal. Admin-scoped and
+        audited. 404 when no session is active; 409 when no round is awaiting the operator (the round
+        is still running, or this is a meter-role session where rounds are driven by the remote end).
+      security: [{ bearerAuth: [admin] }]
+      responses:
+        "200": { description: the next round was triggered }
+        "404": { description: no session is active on the port }
+        "409": { description: no round is awaiting the operator (or a meter-role session) }
+
+  /ports/{id}/tuning/stop:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Stop a tuning session and restore the port (alias of DELETE .../tuning/session)
+      security: [{ bearerAuth: [admin] }]
+      responses:
+        "200": { description: stopped }
+        "404": { description: no session was active on the port }
 
   /radios/scan:
     get:
@@ -797,6 +875,45 @@ components:
         status: { type: string, enum: [pass, fail, unknown], description: "pass = working; fail = broken (see remedy); unknown = not determined (e.g. a transmitting probe skipped on the safe form, or not-a-NinoTNC)" }
         detail: { type: string, description: "what was observed, in operator-facing prose" }
         remedy: { type: [string, "null"], description: "one-line remedial action, or null when none applies" }
+
+    TuningStartRequest:
+      type: object
+      description: Request to arm a guided deviation-tuning session on a port.
+      required: [role, peerSdmId]
+      properties:
+        role: { type: string, enum: [tuned, meter], description: "this port's role: tuned (transmits bursts; operator turns the pot here) or meter (measures a remote peer)" }
+        peerSdmId: { type: string, description: "the peer radio's 8-character SDM data identity" }
+        burstFrames: { type: integer, minimum: 1, maximum: 50, default: 5, description: "frames per measurement burst" }
+
+    TuningSessionInfo:
+      type: object
+      description: A guided deviation-tuning session's state.
+      required: [sessionId, portId, role, peerSdmId, state, burstFrames, startedAt]
+      properties:
+        sessionId: { type: string }
+        portId: { type: string }
+        role: { type: string, enum: [tuned, meter] }
+        peerSdmId: { type: string }
+        state: { type: string, enum: [armed, peer-connected, awaiting-adjustment, ended, error, stopped] }
+        burstFrames: { type: integer }
+        startedAt: { type: string, format: date-time }
+
+    TuningEvent:
+      type: object
+      description: One event on a tuning session's live feed — a per-round measurement (kind=round) or a lifecycle transition.
+      required: [kind, at, state]
+      properties:
+        kind: { type: string, enum: [armed, peer-connected, round, awaiting-adjustment, ended, error] }
+        at: { type: string, format: date-time }
+        state: { type: string, enum: [armed, peer-connected, awaiting-adjustment, ended, error, stopped], description: "the session state after this event" }
+        burstIndex: { type: [integer, "null"], description: "1-based round number (round events)" }
+        decoded: { type: [integer, "null"], description: "frames the meter decoded this round (round events)" }
+        total: { type: [integer, "null"], description: "frames requested this round (round events)" }
+        levelDb: { type: [number, "null"], description: "RX-audio level in dB from the meter's GETRSSI fast path, or null (round events)" }
+        rssiDbm: { type: [number, "null"], description: "median CCDI RSSI during the burst in dBm, or null (round events)" }
+        advice: { type: [string, "null"], enum: [up, down, ok, sweep, null], description: "pot advice for the operator (round events)" }
+        note: { type: [string, "null"], description: "one-line operator-facing note (round events)" }
+        error: { type: [string, "null"], description: "failure detail (error events)" }
 
     LogLine:
       type: object

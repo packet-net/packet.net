@@ -141,6 +141,12 @@ builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.
 // port's already-open handles. Node-wide single-flight (holds state) → singleton.
 builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();
 
+// Guided deviation tuning (POST/GET/DELETE /api/v1/ports/{id}/tuning/*): one live session per port,
+// pausing the port + coordinating over the SDM side channel. Holds live sessions → singleton; the
+// container disposes it at shutdown, which stops every session and restores its port. See
+// PdnPortTuningApi.
+builder.Services.AddSingleton<Packet.Node.Core.Tuning.PortTuningService>();
+
 // --- Web control-API auth foundation (default-OFF behind management.auth.enabled) ---
 //
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope
@@ -731,6 +737,11 @@ app.MapPdnRadiosApi();
 // (non-transmitting probes only); POST ?interrupt=true is admin-scoped + audited and briefly
 // transmits. Mapped before the catch-all; specific routes win. See PdnPortDoctorApi.
 app.MapPdnPortDoctorApi();
+
+// Guided deviation tuning: an operator-initiated, transmitting, SDM-coordinated session on a port.
+// Mutating verbs (session/next/stop) are admin-scoped + audited; the SSE event feed is read-scoped.
+// Mapped before the catch-all; specific routes win. See PdnPortTuningApi.
+app.MapPdnPortTuningApi();
 
 // Slice 3 step 4: the direct-supervisor session actions + ping — connect-out
 // (POST /sessions), disconnect (DELETE /sessions/{id}), send-line
