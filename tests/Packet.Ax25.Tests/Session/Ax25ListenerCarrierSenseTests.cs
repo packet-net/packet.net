@@ -34,7 +34,7 @@ public class Ax25ListenerCarrierSenseTests
         var time = new FakeTimeProvider();
         var carrier = new FakeCarrierSense { ChannelBusy = true };   // channel busy at SABM time
         await using var listener = new Ax25Listener(
-            modem, new Ax25ListenerOptions { MyCall = LocalCall }, time, carrier);
+            modem, new Ax25ListenerOptions { MyCall = LocalCall, CarrierSense = carrier }, time);
 
         var accepted = new TaskCompletionSource<Ax25Session>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) => accepted.TrySetResult(e.Session);
@@ -83,7 +83,7 @@ public class Ax25ListenerCarrierSenseTests
         var time = new FakeTimeProvider();
         var carrier = new FakeCarrierSense { ChannelBusy = false };   // source present but clear
         await using var listener = new Ax25Listener(
-            modem, new Ax25ListenerOptions { MyCall = LocalCall }, time, carrier);
+            modem, new Ax25ListenerOptions { MyCall = LocalCall, CarrierSense = carrier }, time);
         await listener.StartAsync();
 
         modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCall));

@@ -10,8 +10,9 @@ namespace Packet.Ax25.Session;
 /// consults this gate, which holds the transmission while <see cref="ICarrierSense"/>
 /// reports the channel busy and releases it once the channel clears (or a bounded wait
 /// expires — fail-open). This is the production form of hardware DCD driving channel
-/// access, and it supersedes the transport-level <c>Packet.Radio.CarrierSenseTxGate</c>
-/// interim decorator: the stack itself now defers the keyup rather than an opaque wrapper.
+/// access: the stack itself defers the keyup rather than an opaque transport wrapper. The
+/// source is supplied on the parity-tracked <see cref="Ax25ListenerOptions.CarrierSense"/>
+/// listener option (OQ-012).
 /// </summary>
 /// <remarks>
 /// <para>

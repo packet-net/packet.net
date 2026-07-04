@@ -772,23 +772,25 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             }
         }
 
+        // Native carrier-sense CSMA (OQ-012): when a radio with hardware DCD is attached, feed
+        // its carrier-sense into the listener's medium-access gate so the AX.25 stack itself
+        // defers keyups while the channel is busy — the native seam, owned by the stack rather
+        // than an opaque transport wrapper. A radio without carrier-sense (or no radio at all)
+        // yields a null source, i.e. the always-clear gate — byte-for-byte today's behaviour.
+        // Passed on the first-class, ax25-ts-parity-tracked Ax25ListenerOptions.CarrierSense
+        // member (mirrors the TS carrierSense option). (The coming Nino KISS DCD extension lands
+        // in the same gate.)
+        ICarrierSense? carrierSense = radio is not null && radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense)
+            ? new RadioCarrierSense(radio)
+            : null;
         // TX-complete→T1 (kiss.t1FromTxComplete): construction-time, like the
         // PacingKissModem wrap above — see KissParams.T1FromTxComplete.
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
-            restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true);
-        // Native carrier-sense CSMA (OQ-012): when a radio with hardware DCD is attached, feed
-        // its carrier-sense into the listener's medium-access gate so the AX.25 stack itself
-        // defers keyups while the channel is busy — the native seam that supersedes the interim
-        // transport-level CarrierSenseTxGate. A radio without carrier-sense (or no radio at all)
-        // yields a null source, i.e. the always-clear gate — byte-for-byte today's behaviour.
-        // Injected via the ctor, not an Ax25ListenerOptions member, so it stays off the
-        // ax25-ts parity surface. (The coming Nino KISS DCD extension lands in the same gate.)
-        ICarrierSense? carrierSense = radio is not null && radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense)
-            ? new RadioCarrierSense(radio)
-            : null;
+            restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true,
+            carrierSense: carrierSense);
         // The transport speaks the neutral IAx25Transport seam the listener consumes directly.
-        var listener = new Ax25Listener(transport, options, timeProvider, carrierSense);
+        var listener = new Ax25Listener(transport, options, timeProvider);
 
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
@@ -1044,7 +1046,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     private static Ax25ListenerOptions BuildListenerOptions(
-        Ax25PortParams? ax25, PortCompatConfig? compat, Callsign myCall, bool restartT1OnTxComplete = false)
+        Ax25PortParams? ax25, PortCompatConfig? compat, Callsign myCall,
+        bool restartT1OnTxComplete = false, ICarrierSense? carrierSense = null)
     {
         var p = MapAx25Params(ax25, compat);
         return new Ax25ListenerOptions
@@ -1059,6 +1062,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             ParseOptions = p.ParseOptions,
             Quirks = p.Quirks,
             RestartT1OnTxComplete = restartT1OnTxComplete,
+            // Native carrier-sense CSMA (OQ-012): the radio-attached port's DCD, or null
+            // (always-clear gate) when no carrier-sense-capable radio is attached.
+            CarrierSense = carrierSense,
         };
     }
 

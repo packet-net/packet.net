@@ -2,7 +2,7 @@
 
 > Tait TM8100/TM8200 mobile-radio control over CCDI — the driver that gives the Packet.NET stack RSSI, hardware carrier-sense, PTT, and a radio-native side channel.
 
-A [`Packet.Radio`](https://www.nuget.org/packages/Packet.Radio) `IRadioControl` implementation for Tait TM8100/TM8200 radios over CCDI (the Computer-Controlled Data Interface — the radio's serial command protocol). Wire it to `RssiTaggingTransport` / `CarrierSenseTxGate` and a bare KISS packet link gains per-frame signal metadata and hardware CSMA. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
+A [`Packet.Radio`](https://www.nuget.org/packages/Packet.Radio) `IRadioControl` implementation for Tait TM8100/TM8200 radios over CCDI (the Computer-Controlled Data Interface — the radio's serial command protocol). Wire it to `RssiTaggingTransport` and `RadioCarrierSense` (the `ICarrierSense` bridge the AX.25 stack's native CSMA gate consults) and a bare KISS packet link gains per-frame signal metadata and hardware carrier-sense CSMA. Part of [Packet.NET](https://github.com/packet-net/packet.net), a .NET amateur-radio / AX.25 packet stack.
 
 ## Install
 ```sh
