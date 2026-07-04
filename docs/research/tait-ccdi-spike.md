@@ -1127,6 +1127,71 @@ controller from an attacker. This is the substance of follow-up 12.
   THSD configuration, so the `t…H` entry can't be exercised; the FFSK Transparent path stays
   the only bench-verified one.
 
+## Transparent-readiness doctor (2026-07-04, session 13) — the FFSK Transparent codeplug checks folded into the doctor
+
+The checks that would have saved an afternoon of debugging Transparent mode are now behavioral
+doctor probes for the TNC-less `tait-transparent` port. The codeplug settings that matter
+(Transparent Mode enabled; "Ignore Escape Sequence"; the two baud fields; FFSK Baud Rate) are
+**not CCDI-readable**, so every probe exercises the behaviour and maps the result to a remedy
+naming the exact Data-form field.
+
+### What shipped
+
+- **`Packet.Tune.Core.TransparentReadinessDoctor`** (reusing the `DoctorProbe`
+  pass/fail/unknown shape): `RunEnableAndEscapeProbesAsync(TaitCcdiRadio)` →
+  **transparent-mode-enabled** (attempt entry; error 0/06 ⇒ FAIL, feature disabled) and
+  **escape-recovers** (from Transparent, verify `+++` recovers Command mode);
+  `RunBaudCleanProbeAsync(local, peer)` → **baud-clean** (loop a known frame — info field
+  spanning FEND/FESC/NUL/high bytes — through two radios in Transparent, byte-for-byte compare).
+- **`TaitCcdiRadio.EscapeAndVerifyTransparentAsync`** — the verified-recovery primitive: run the
+  §1.7.2 escape guard up to N times, confirm each with a MODEL query, return `true` only on a
+  proven Command-mode round-trip. Unlike `ExitTransparentModeAsync` (which trusts the escape and
+  flips to Command unconditionally) this *detects* the "Ignore Escape Sequence" lockout instead
+  of wedging blindly.
+- **CLI `packet-tune transparent-doctor <ccdiPort> [peerCcdiPort] [--interrupt] [--json]`** —
+  the enter/escape/loopback path is gated behind `--interrupt` (the safe form reports the
+  behavioral probes `unknown` and nothing enters Transparent or transmits); the CLI leaves both
+  radios verified back in Command mode.
+- **Node** `GET/POST /api/v1/ports/{id}/doctor` returns the same checklist for a
+  `tait-transparent` port. A running Transparent port's radio is a byte pipe (no CCDI), so the
+  node reports enabled=PASS (proven by the port running) and points to the setup-time CLI for the
+  escape/baud checks — a live byte pipe can't be command-probed without a wedge risk.
+
+### The wedge-risk gate (the escape probe)
+
+Entering Transparent mode is only reversible while the radio honours the `+++` escape, so
+entering *is* the wedge exposure — a radio programmed **Ignore-Escape ON** cannot leave
+Transparent (recovery = power cycle). The whole enter/escape pair therefore runs only under the
+explicit interrupt/opt-in, documented "may require a power cycle if the radio is misconfigured",
+and the escape best-effort retries (2 attempts, 2.1 s guards) before declaring the radio wedged
+and surfacing it loudly (`RadioWedged`). The FAIL/stuck paths (0/06, escape-ignored wedge, baud
+garble) are unit-tested with a scripted `ISerialIo` / in-memory transports — the wedge FAIL path
+is **never staged on real hardware**.
+
+### Hardware validation (the happy path)
+
+Both TM8110s reprogrammed for this task: Transparent enabled, Ignore-Escape **OFF**,
+FFSK-transparent baud 28800, SDM enabled. Ports had re-enumerated again (the standing rule holds:
+bind by CCDI serial, never remembered `/dev/ttyUSB*`) — re-scanned to **ttyUSB0 = s/n 19925328**,
+**ttyUSB1 = s/n 19925369**, both CCDI 03.02. `transparent-doctor /dev/ttyUSB0 /dev/ttyUSB1
+--interrupt`, verbatim:
+
+```
+  [PASS] radio-present: Tait TM8110 s/n 19925328 (CCDI 03.02)
+  [PASS] transparent-mode-enabled: the radio accepted the Transparent-mode entry command (t)
+  [PASS] escape-recovers: the +++ escape returned the radio to Command mode (a MODEL query answered)
+  looping a known frame local → peer over the FFSK byte pipe...
+  [PASS] baud-clean: the 103-byte test frame round-tripped byte-for-byte through both radios' FFSK
+  verified /dev/ttyUSB1 back in Command mode (MODEL: Tait TM8110 s/n 19925369).
+  verified /dev/ttyUSB0 back in Command mode (MODEL: Tait TM8110 s/n 19925328).
+```
+
+Exit 0. An independent MODEL query on both ports afterwards confirmed both radios in Command mode
+— **rig left clean, neither radio left wedged in Transparent.** This is the whole point: on a
+correctly-configured radio the enter/escape/baud checks are cheap and safe, and on a
+misconfigured one the escape probe is exactly the check that turns an afternoon of "why is the
+radio deaf?" into one FAIL line naming the Data-form checkbox to uncheck.
+
 ## Follow-ups (rough priority)
 
 1. **CSMA TX gate**: feed `IRadioControl.ChannelBusy`/`CarrierSenseChanged` into a transmit-gate

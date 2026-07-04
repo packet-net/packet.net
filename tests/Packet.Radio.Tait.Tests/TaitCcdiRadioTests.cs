@@ -1,9 +1,61 @@
 using Packet.Radio;
+using Packet.Radio.Tait.Ccdi;
 
 namespace Packet.Radio.Tait.Tests;
 
 public class TaitCcdiRadioTests
 {
+    // The exact CCDI wire commands, computed by the real codec so the checksum is never guessed.
+    private static string EnterTransparent() => new CcdiFrame('t', "+0").Encode();
+    private static string ModelQuery() => new CcdiFrame('q', "").Encode();
+
+    [Fact]
+    public async Task EscapeAndVerify_Recovers_When_A_Model_Query_Answers()
+    {
+        using var io = new FakeSerialIo();
+        io.RespondTo(EnterTransparent(), ".");                     // enter Transparent OK
+        io.RespondTo(ModelQuery(), ".m0813203.02A2\r.");           // a MODEL query answers → Command mode back
+        await using var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions { KeepAliveInterval = null });
+        await radio.EnterTransparentModeAsync();
+        radio.Mode.Should().Be(TaitProtocolMode.Transparent);
+
+        bool recovered = await radio.EscapeAndVerifyTransparentAsync(
+            attempts: 2, guardTime: TimeSpan.FromMilliseconds(10), verifyTimeout: TimeSpan.FromMilliseconds(500));
+
+        recovered.Should().BeTrue();
+        radio.Mode.Should().Be(TaitProtocolMode.Command);
+        io.WrittenAscii.Should().Contain("+++", "the escape sequence must go out on the byte pipe");
+    }
+
+    [Fact]
+    public async Task EscapeAndVerify_Reports_Wedged_When_No_Model_Reply_Arrives()
+    {
+        using var io = new FakeSerialIo();
+        io.RespondTo(EnterTransparent(), ".");                     // enter Transparent OK
+        // No response to the MODEL query: the radio ignores the escape (Ignore-Escape ON) and stays
+        // a Transparent byte pipe, so the confirming query never answers → wedged.
+        await using var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions { KeepAliveInterval = null });
+        await radio.EnterTransparentModeAsync();
+
+        bool recovered = await radio.EscapeAndVerifyTransparentAsync(
+            attempts: 2, guardTime: TimeSpan.FromMilliseconds(10), verifyTimeout: TimeSpan.FromMilliseconds(150));
+
+        recovered.Should().BeFalse();
+        io.WrittenAscii.Should().Contain("+++", "the escape must be attempted before declaring the radio wedged");
+    }
+
+    [Fact]
+    public async Task EscapeAndVerify_Throws_When_Not_In_Transparent_Mode()
+    {
+        using var io = new FakeSerialIo();
+        await using var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions { KeepAliveInterval = null });
+
+        var act = async () => await radio.EscapeAndVerifyTransparentAsync(
+            guardTime: TimeSpan.FromMilliseconds(10), verifyTimeout: TimeSpan.FromMilliseconds(150));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
     [Fact]
     public async Task ReadRssi_Sends_Query_And_Parses_Result()
     {

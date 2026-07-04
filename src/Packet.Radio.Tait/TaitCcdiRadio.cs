@@ -763,6 +763,93 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     }
 
     /// <summary>
+    /// Best-effort <b>verified</b> recovery from Transparent mode — the primitive the
+    /// Transparent-readiness doctor uses to detect an "Ignore Escape Sequence" lockout without
+    /// wedging blindly. Runs the §1.7.2 escape guard sequence (idle — escape char ×3 — idle) up
+    /// to <paramref name="attempts"/> times, and after each escape <b>confirms with a MODEL
+    /// query</b> that Command mode was actually regained. Returns <c>true</c> as soon as a MODEL
+    /// query answers (the radio is then left in Command mode); returns <c>false</c> if every
+    /// attempt's confirmation times out — the radio is genuinely <b>wedged</b> in Transparent
+    /// (programmed "Ignore Escape Sequence" ON) and only a power cycle recovers it.
+    /// <para>
+    /// Unlike <see cref="ExitTransparentModeAsync"/>, which trusts the escape and flips the driver
+    /// to Command unconditionally, this reports success only on a proven Command-mode round-trip.
+    /// The radio must currently be in Transparent mode.
+    /// </para>
+    /// </summary>
+    /// <param name="attempts">Escape attempts before declaring the radio wedged (≥1; default 2).</param>
+    /// <param name="guardTime">The idle guard either side of the escape burst (§1.7.2 wants ~2 s;
+    /// default 2.1 s). Tests pass a short value to keep fast.</param>
+    /// <param name="verifyTimeout">How long to wait for the confirming MODEL reply per attempt
+    /// (default 3 s).</param>
+    /// <param name="cancellationToken">Cancels the run. Cancelling mid-recovery can leave the
+    /// radio in Transparent mode — the caller owns that risk.</param>
+    /// <returns><c>true</c> when Command mode was proven regained (radio left in Command mode);
+    /// <c>false</c> when the radio remains wedged in Transparent after every attempt.</returns>
+    public async Task<bool> EscapeAndVerifyTransparentAsync(
+        int attempts = 2,
+        TimeSpan? guardTime = null,
+        TimeSpan? verifyTimeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(attempts, 1);
+        var guard = guardTime ?? TimeSpan.FromMilliseconds(2100);
+        var verify = verifyTimeout ?? TimeSpan.FromSeconds(3);
+        byte esc;
+        lock (stateGate)
+        {
+            if (mode != TaitProtocolMode.Transparent)
+            {
+                throw new InvalidOperationException("the radio is not in Transparent mode");
+            }
+            esc = (byte)transparentEscape;
+        }
+
+        byte[] escape = [esc, esc, esc];
+        for (int attempt = 1; attempt <= attempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // §1.7.2 escape dance: idle, escape char ×3, idle. (When the radio honours the escape
+            // these bytes are intercepted locally; when it ignores it they are transmitted — the
+            // very failure we are probing for, and why this is gated behind the doctor's interrupt.)
+            await Task.Delay(guard, clock, cancellationToken).ConfigureAwait(false);
+            io.Write(escape, 0, escape.Length);
+            await Task.Delay(guard, clock, cancellationToken).ConfigureAwait(false);
+
+            // Optimistically treat the radio as back in Command mode so the pump parses CCDI and
+            // the confirming query is permitted, then prove it with a bounded MODEL query.
+            lock (stateGate)
+            {
+                mode = TaitProtocolMode.Command;
+            }
+            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptCts.CancelAfter(verify);
+            try
+            {
+                _ = await ExpectOneAsync<CcdiModelMessage>(new CcdiFrame('q', ""), attemptCts.Token)
+                    .ConfigureAwait(false);
+                return true; // a MODEL query answered → Command mode is proven back
+            }
+            catch (Exception ex)
+                when ((ex is TimeoutException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
+            {
+                // No CCDI reply: the escape did not take. Reflect the physical reality (still a
+                // Transparent byte pipe) so the next attempt's guard is meaningful, and retry.
+                if (attempt < attempts)
+                {
+                    lock (stateGate)
+                    {
+                        mode = TaitProtocolMode.Transparent;
+                    }
+                }
+            }
+        }
+
+        return false; // wedged in Transparent — a power cycle is the only recovery
+    }
+
+    /// <summary>
     /// FUNCTION 0/0 (§2.5.1, TM8100 only): switch the radio into CCR (Computer-Controlled
     /// Radio) mode — the run-time channel-programming interpreter: direct RX/TX frequency in
     /// Hz, TX power, bandwidth, CTCSS/DCS, Selcall, volume. The returned session owns the port

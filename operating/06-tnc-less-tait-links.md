@@ -102,11 +102,43 @@ When the port stops (or the node shuts down), PDN escapes Transparent mode with 
 mode. A radio left stuck in Transparent is **deaf to CCDI** — which is why gotcha #2
 matters so much: if the escape can't fire, teardown can't recover it.
 
-## Coming later
+## Check it: the readiness doctor
 
-A **Transparent-config doctor** (a [chapter 3](03-check-your-setup-doctor.md)-style
-check for these five programming settings) is planned but **not shipped yet** — for
-now, work the checklist above by hand.
+You don't have to work that checklist by eye. The **Transparent-readiness doctor** (a
+[chapter 3](03-check-your-setup-doctor.md)-style check, but for these programming
+settings) runs the gotchas as **behavioral** pass/fail/unknown probes — each with a
+remedy naming the exact Data-form field. Because the codeplug settings above are **not
+CCDI-readable**, the doctor can't just ask the radio; it exercises the behaviour.
+
+Run it against the radio in **Command mode**, before you commit it to a Transparent port:
+
+```
+packet-tune transparent-doctor <ccdiPort> [peerCcdiPort] --interrupt
+```
+
+| Probe | Covers | On failure |
+|---|---|---|
+| `transparent-mode-enabled` | gotcha 1 | error 0/06 → *Transparent Mode not enabled — enable it in the radio's Data form → General tab* |
+| `escape-recovers` | gotcha 2 | escape ignored → the radio is **wedged** (power-cycle to recover); *uncheck 'Ignore Escape Sequence' in the Data form* |
+| `baud-clean` | gotchas 3–5 | garbled/no round-trip → *check Baud Rate (FFSK transparent mode) matches your terminal baud, and FFSK Baud Rate matches on both radios* (a tone-squelch mismatch shows here too, as nothing received) |
+
+> [!WARNING]
+> **The escape probe can wedge a misconfigured radio.** Entering Transparent is only
+> reversible while the escape works, so this probe is the one that can leave a radio
+> stuck (recovery = power cycle). It only runs with **`--interrupt`** (the safe form
+> reports the behavioral probes `unknown` and never enters Transparent or transmits),
+> it retries the escape before declaring the radio wedged, and it surfaces a wedge
+> loudly. Don't run it against a radio you can't power-cycle.
+
+`baud-clean` needs a **peer** — pass a second CCDI port so a known frame can be looped
+through both radios in Transparent mode; without one it's reported `unknown`. The
+doctor leaves both radios verified back in **Command mode** when it finishes.
+
+The node surfaces the same checklist at `GET/POST /api/v1/ports/{id}/doctor` for a
+running `tait-transparent` port — but since a running Transparent port's radio is a
+byte pipe (no CCDI), it reports `transparent-mode-enabled` as proven by the port
+running and points you back to the CLI above for the escape/baud checks (a live byte
+pipe can't be safely command-probed).
 
 ## Next
 

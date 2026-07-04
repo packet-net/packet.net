@@ -1,5 +1,6 @@
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Configuration;
 using Packet.Radio;
 using Packet.Radio.Tait;
 using Packet.Tune.Core;
@@ -63,6 +64,10 @@ public sealed class PortDoctorRunner : IDisposable
     /// <param name="includeTransmitting">When <c>true</c>, run the transmitting probes too
     /// (the interrupt form). When <c>false</c> (the safe default), nothing is transmitted.</param>
     /// <param name="callsign">Source callsign for the transmitting probes.</param>
+    /// <param name="transportKind">The port's transport kind (e.g. <c>tait-transparent</c>) — a
+    /// <c>tait-transparent</c> port gets the Transparent-readiness checklist instead of the
+    /// TNC/CCDI probes (its radio is a byte pipe while running, not a NinoTNC or a command-mode
+    /// CCDI radio). Null / any other kind ⇒ the standard probes.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     public async Task<PortDoctorReport> RunAsync(
         string portId,
@@ -71,9 +76,15 @@ public sealed class PortDoctorRunner : IDisposable
         string? radioKind,
         bool includeTransmitting,
         string callsign,
+        string? transportKind = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(portId);
+
+        if (transportKind == TransportKinds.TaitTransparent)
+        {
+            return new PortDoctorReport(portId, TransparentReadinessChecklist(), clock.GetUtcNow());
+        }
 
         var tait = radio as TaitCcdiRadio;
         var options = new TuningDoctorOptions
@@ -116,6 +127,32 @@ public sealed class PortDoctorRunner : IDisposable
 
         return new PortDoctorReport(portId, mapped, clock.GetUtcNow());
     }
+
+    /// <summary>
+    /// The Transparent-readiness checklist for a running <c>tait-transparent</c> port. A running
+    /// Transparent port's radio is a byte pipe — there is no CCDI control channel to run the
+    /// behavioral enter/escape/baud-clean probes against without tearing the link down and risking
+    /// a wedge, so the node reports what the running state proves and points the operator at the
+    /// setup-time CLI (<c>packet-tune transparent-doctor</c>) for the disruptive behavioral checks.
+    /// </summary>
+    private static List<PortDoctorProbe> TransparentReadinessChecklist() =>
+    [
+        new PortDoctorProbe(
+            TransparentReadinessDoctor.EnabledProbe, "pass",
+            "Transparent mode active — this port is running as a byte pipe, so the radio accepted the Transparent-mode entry command (t) at startup",
+            null),
+        new PortDoctorProbe(
+            TransparentReadinessDoctor.EscapeProbe, "unknown",
+            "the +++ escape is exercised only at port teardown and cannot be safely re-tested on a live byte pipe. "
+                + "Stop the port and run `packet-tune transparent-doctor <ccdiPort> --interrupt` to verify recovery",
+            "if the port ever fails to return to Command mode when stopped, the radio has 'Ignore Escape Sequence' on — "
+                + "uncheck it in the Data form (a wedged radio needs a power cycle)"),
+        new PortDoctorProbe(
+            TransparentReadinessDoctor.BaudCleanProbe, "unknown",
+            "a byte-clean round-trip needs a controlled loopback with a peer radio. "
+                + "Run `packet-tune transparent-doctor <ccdiPort> <peerCcdiPort> --interrupt` at setup",
+            null),
+    ];
 
     private static string StatusToken(DoctorOutcome outcome) => outcome switch
     {

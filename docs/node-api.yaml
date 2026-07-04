@@ -281,7 +281,12 @@ paths:
         the SDM-enabled check, TNC↔radio pairing) are reported `unknown` with detail
         "requires a brief transmit — rerun with interrupt=true". A serial-KISS (non-NinoTNC)
         port reports the TNC-diagnostic probes as "not a NinoTNC"; a port with no radio gets a
-        `radio-attached` "no radio attached" row. An unknown or not-running port id is 404.
+        `radio-attached` "no radio attached" row. A `tait-transparent` (TNC-less) port instead
+        returns the Transparent-readiness checklist (`transparent-mode-enabled` /
+        `escape-recovers` / `baud-clean`): a running Transparent port's radio is a byte pipe with
+        no CCDI control channel, so the enter/escape/baud-clean checks are behavioral only at
+        setup time — run `packet-tune transparent-doctor <ccdiPort> [peerCcdiPort] --interrupt`
+        against the radio in Command mode. An unknown or not-running port id is 404.
       security: [{ bearerAuth: [read] }]
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortDoctorReport" } } } }
