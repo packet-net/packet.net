@@ -4,9 +4,12 @@ using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Heard;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Core.Radios;
 using Packet.Node.Core.Telemetry;
 
 namespace Packet.Node.Api;
@@ -28,12 +31,15 @@ namespace Packet.Node.Api;
 /// / <see cref="PdnReadApi.BuildPorts"/> for node health. There is no second counter store.
 /// </para>
 /// <para>
-/// <b>Bounded cardinality.</b> The only label used is <c>port</c> (one value per <em>configured</em>
-/// port — a closed set the operator controls). Per-link counters (which are keyed by remote
-/// callsign and therefore unbounded as random stations are heard) are <em>aggregated up to the
-/// port</em> before export, so a busy channel can never blow up the series count. There is
-/// deliberately no <c>peer</c> / <c>callsign</c> label anywhere in <c>/metrics</c>; per-peer detail
-/// stays on the bounded-by-request <c>/api/v1/links</c> JSON surface.
+/// <b>Label cardinality.</b> The primary label is <c>port</c> (one value per <em>configured</em>
+/// port — a closed set the operator controls). Per-link byte/REJ/SREJ counters (keyed by remote
+/// callsign) are <em>aggregated up to the port</em> before export, so a busy channel can never blow
+/// up those series. The <b>one</b> series that carries a <c>peer</c> (remote-callsign) label is the
+/// per-partner <c>pdn_link_snr_db{port,peer}</c> gauge — a deliberate, documented exception: an
+/// amateur-packet node hears a naturally small, slowly-changing set of stations, so the per-callsign
+/// series count stays bounded in practice (Tom's call — see docs/observability.md). Radio per-port
+/// health (<c>pdn_radio_*</c>) stays on the bounded <c>port</c> label. Per-peer RSSI/SNR detail is
+/// also on the bounded-by-request <c>/api/v1/heard</c> / <c>/api/v1/links</c> JSON surfaces.
 /// </para>
 /// <para>
 /// <b>Exposure posture.</b> <c>/metrics</c> is mapped on the same Kestrel listener as the REST API
@@ -83,6 +89,8 @@ public static class PdnMetricsApi
 
         WriteNodeHealth(w, host, config, clock, traffic);
         WritePortAndLinkStats(w, host, config);
+        WriteRadioStats(w, RadioReadModels.All(host.Supervisor, config.Current));
+        WriteLinkSnr(w, host.Heard);
         WriteForwarding(w, host);
 
         return w.ToString();
@@ -310,6 +318,136 @@ public static class PdnMetricsApi
         w.Sample(Ns + "netrom_forward_drops_total", f.DroppedTtlExpired, ("reason", "ttl_expired"));
         w.Sample(Ns + "netrom_forward_drops_total", f.DroppedLooped, ("reason", "looped"));
         w.Sample(Ns + "netrom_forward_drops_total", f.DroppedNoRoute, ("reason", "no_route"));
+    }
+
+    // ─── per-port radio-control health bucket (bounded by the port label; attached radios only) ─────
+
+    /// <summary>
+    /// Per-port radio-control metrics, read from the SAME <see cref="RadioReadModels"/> projection the
+    /// <c>/api/v1/radios</c> API serves (no second source of truth). Only ports whose radio the node
+    /// currently has OPEN and is polling contribute — a configured-but-not-attached radio (port down,
+    /// or a failed open that degraded the port) emits nothing, so the whole bucket is <em>absent</em>
+    /// on a node with no radios (identical output to before this bucket existed). SNR / noise-floor are
+    /// deliberately NOT here: they are per-frame concepts the radio's own health telemetry (averaged
+    /// RSSI, PA temperature, TX detector trends) does not carry — SNR is surfaced <em>per partner</em>
+    /// by <see cref="WriteLinkSnr"/> instead. See docs/observability.md. Exposed (internal) so a test
+    /// can format synthetic <see cref="RadioStatus"/> records without standing up a live supervisor.
+    /// </summary>
+    internal static void WriteRadioStats(PrometheusTextWriter w, IReadOnlyList<RadioStatus> radios)
+    {
+        var attached = radios.Where(r => r.Attached).ToList();
+        if (attached.Count == 0)
+        {
+            return;
+        }
+
+        // Control-link health as a small enum-ish gauge (always present for an attached radio):
+        // 1 = healthy (answering), 0 = faulted (serial link dead / unresponsive), -1 = unknown (a
+        // radio kind that doesn't track it, e.g. a non-Tait IRadioControl).
+        w.Help(Ns + "radio_connection_state", "Radio control-link health: 1 healthy, 0 faulted, -1 unknown.");
+        w.Type(Ns + "radio_connection_state", "gauge");
+        foreach (var r in attached)
+        {
+            w.Sample(Ns + "radio_connection_state", ConnectionStateCode(r.ConnectionState), ("port", r.PortId));
+        }
+
+        // Hardware carrier-sense (DCD): 1 = RF on channel, 0 = idle. Omitted for a radio that hasn't
+        // reported it yet (a bare 0 would read as "channel definitely idle", which we don't know).
+        RadioMetric(w, attached, "radio_channel_busy",
+            "Radio hardware carrier-sense (DCD): 1 = channel busy, 0 = idle.", "gauge",
+            r => r.ChannelBusy is { } b ? (b ? 1 : 0) : (double?)null);
+
+        // The health-sample projection (the same RadioHealth /api/v1/radios serves). Each series omits
+        // a port whose radio hasn't produced that reading — a null renders as an absent sample, never
+        // a misleading 0 (0 dBm RSSI or 0 °C would both be wrong-but-plausible).
+        RadioMetric(w, attached, "radio_rssi_dbm",
+            "Radio's own most-recent sliding-average RSSI, in dBm (receive samples only).", "gauge",
+            r => r.Health?.RssiDbm);
+        RadioMetric(w, attached, "radio_rssi_averaged_dbm",
+            "Median RSSI over the radio health monitor's rolling window, in dBm.", "gauge",
+            r => r.Health?.AveragedRssiDbm);
+        RadioMetric(w, attached, "radio_pa_temperature_celsius",
+            "Power-amplifier temperature, in degrees Celsius.", "gauge",
+            r => r.Health?.PaTemperatureC);
+        RadioMetric(w, attached, "radio_forward_trend_millivolts",
+            "Offset-corrected forward-power detector reading, in mV (a per-station TREND on transmit, not a power measurement).", "gauge",
+            r => r.Health?.ForwardTrendMillivolts);
+        RadioMetric(w, attached, "radio_reverse_trend_millivolts",
+            "Offset-corrected reverse-power detector reading, in mV (a TREND, not a power measurement).", "gauge",
+            r => r.Health?.ReverseTrendMillivolts);
+        RadioMetric(w, attached, "radio_reverse_forward_ratio",
+            "Offset-corrected reverse/forward detector ratio (a per-station TREND, never VSWR — alert on change).", "gauge",
+            r => r.Health?.ReverseForwardRatio);
+    }
+
+    // Emit one per-port radio gauge, sampling only the attached radios whose selector is non-null.
+    // When no attached radio has the reading, the whole metric (HELP/TYPE included) is omitted.
+    private static void RadioMetric(
+        PrometheusTextWriter w, IReadOnlyList<RadioStatus> attached, string name, string help, string type,
+        Func<RadioStatus, double?> select)
+    {
+        var rows = attached
+            .Select(r => (r.PortId, Value: select(r)))
+            .Where(x => x.Value is not null)
+            .ToList();
+        if (rows.Count == 0)
+        {
+            return;
+        }
+        w.Help(Ns + name, help);
+        w.Type(Ns + name, type);
+        foreach (var (portId, value) in rows)
+        {
+            w.Sample(Ns + name, value!.Value, ("port", portId));
+        }
+    }
+
+    private static int ConnectionStateCode(string state) => state switch
+    {
+        "healthy" => 1,
+        "faulted" => 0,
+        _ => -1,   // "unknown", or any radio kind that doesn't track the control-link state
+    };
+
+    // ─── per-partner SNR (the deliberate per-callsign label — see the class remarks + docs) ─────────
+
+    /// <summary>
+    /// The per-partner SNR gauge <c>pdn_link_snr_db{port,peer}</c> — one sample per (port, remote
+    /// callsign) the node has heard <em>with a measured SNR</em>, straight from the heard log's
+    /// last-heard SNR (fed by the per-frame radio metadata). This is the <b>one</b> series that carries
+    /// a <c>peer</c> (remote-callsign) label, a deliberate exception to the exporter's aggregate-to-port
+    /// cardinality policy: an amateur-packet node hears a naturally small, slowly-changing set of
+    /// stations, so the per-callsign series count stays bounded in practice (Tom's call — see
+    /// docs/observability.md). A partner with no measured SNR (a radio-less port, or never heard while a
+    /// radio was attributing SNR) contributes nothing, so the whole bucket is absent on a node with no
+    /// radio telemetry. Exposed (internal) so a test can format a seeded heard log directly.
+    /// </summary>
+    internal static void WriteLinkSnr(PrometheusTextWriter w, HeardLog? heard)
+    {
+        if (heard is null)
+        {
+            return;
+        }
+
+        // Per (port, callsign) heard row that carries an SNR reading; most-recently-heard first for a
+        // stable, human-readable ordering. Rows without a measured SNR are simply skipped.
+        var rows = heard.All()
+            .Where(e => e.LastSnrDb is not null)
+            .OrderByDescending(e => e.LastHeard)
+            .ThenBy(e => e.PortId, StringComparer.Ordinal)
+            .ThenBy(e => e.Callsign, StringComparer.Ordinal)
+            .ToList();
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        w.Help(Ns + "link_snr_db", "SNR (dB) of the newest frame heard from a link partner, by port and remote callsign.");
+        w.Type(Ns + "link_snr_db", "gauge");
+        foreach (var e in rows)
+        {
+            w.Sample(Ns + "link_snr_db", e.LastSnrDb!.Value, ("port", e.PortId), ("peer", e.Callsign));
+        }
     }
 
     private static LinkRollup Roll(Dictionary<string, LinkRollup> map, string portId)

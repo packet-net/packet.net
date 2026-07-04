@@ -339,7 +339,8 @@ public static class PdnReadApi
                 LastHeard: RelativeAgo(now, s.LastHeard),
                 Count: s.Count,
                 Ports: s.Ports,
-                LastRssiDbm: s.LastRssiDbm)).ToArray();
+                LastRssiDbm: s.LastRssiDbm,
+                LastSnrDb: s.LastSnrDb)).ToArray();
         }
 
         // Per-port: one row per callsign heard on that port.
@@ -350,7 +351,8 @@ public static class PdnReadApi
             LastHeard: RelativeAgo(now, e.LastHeard),
             Count: e.Count,
             Ports: 1,
-            LastRssiDbm: e.LastRssiDbm)).ToArray();
+            LastRssiDbm: e.LastRssiDbm,
+            LastSnrDb: e.LastSnrDb)).ToArray();
     }
 
     internal static PeerCapability[] BuildCapabilities(NodeHostedService host, TimeProvider clock)

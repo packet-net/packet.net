@@ -236,8 +236,9 @@ paths:
       description: >
         Stations heard (a received frame's source) per port, surviving port teardown +
         node restart. No `port` query → the node-wide view (each callsign merged across
-        the ports it was heard on). `?port=<id>` → that port's stations. `lastRssiDbm` is
-        the newest frame's RSSI when a radio control channel measured it, else null.
+        the ports it was heard on). `?port=<id>` → that port's stations. `lastRssiDbm` /
+        `lastSnrDb` are the newest frame's RSSI/SNR when a radio control channel measured
+        them, else null.
       security: [{ bearerAuth: [read] }]
       parameters:
         - { name: port, in: query, required: false, schema: { type: string } }
@@ -826,6 +827,7 @@ components:
         count: { type: integer }
         ports: { type: integer }
         lastRssiDbm: { type: [number, "null"], description: "RSSI (dBm) of the newest frame heard, when a radio measured it; else null" }
+        lastSnrDb: { type: [number, "null"], description: "SNR (dB) of the newest frame heard, when a radio measured it; else null" }
 
     RadioStatus:
       type: object
