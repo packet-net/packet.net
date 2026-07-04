@@ -37,7 +37,11 @@ public class NetsimKissTcpInterop
         Skip.IfNot(await IsNetsimHealthy(),
             $"net-sim not healthy on {Host}:{NetsimWebPort}. Bring up the interop stack: 'docker compose -f docker/compose.interop.yml up -d --wait netsim'.");
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        // Generous: this covers KISS-connect + net-sim client registration + afsk1200 TX
+        // (~150 ms on the wire) + the receive poll, over docker net-sim on a shared self-hosted
+        // runner. 15 s was too tight under runner load and flaked as OperationCanceled mid-receive
+        // (it even "failed" on a docs-only commit — proof of flakiness, not regression).
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 
         await using var sender = await KissTcpClient.ConnectAsync(Host, NodeAKissPort, cts.Token);
         await using var receiver = await KissTcpClient.ConnectAsync(Host, NodeBKissPort, cts.Token);
