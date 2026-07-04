@@ -1,5 +1,6 @@
 using Packet.Ax25;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 
 namespace Packet.Node.Core.Api;
 
@@ -53,6 +54,22 @@ public sealed record MonitorEvent(
     /// one). Additive, like <see cref="Control"/> — previously only embedded in
     /// <see cref="Summary"/> text.</summary>
     public int InfoLength { get; init; }
+
+    /// <summary>Received signal strength attributed to this frame, in dBm — the median of the RSSI
+    /// samples taken while its carrier was up, from the port's radio control channel. Additive
+    /// (init-only), like <see cref="Control"/>: <c>null</c> on every frame with no radio metadata
+    /// (a TX frame, a port with no radio attached, or an inbound frame no sample could be attributed
+    /// to). Sourced from <c>Ax25InboundFrame.Radio.RssiDbm</c> at the node's consumption point, never
+    /// from the AX.25 listener contract.</summary>
+    public float? RssiDbm { get; init; }
+
+    /// <summary><see cref="RssiDbm"/> minus the tracked channel-idle noise floor, in dB, or
+    /// <c>null</c> when either is unavailable. Additive/init-only.</summary>
+    public float? SnrDb { get; init; }
+
+    /// <summary>The channel-idle noise floor the radio source was tracking when this frame arrived,
+    /// in dBm, or <c>null</c> when unavailable. Additive/init-only.</summary>
+    public float? NoiseFloorDbm { get; init; }
 }
 
 /// <summary>
@@ -62,8 +79,12 @@ public sealed record MonitorEvent(
 /// </summary>
 public static class MonitorEventFactory
 {
-    /// <summary>Project a traced frame into the monitor's wire shape.</summary>
-    public static MonitorEvent From(long seq, string portId, Ax25FrameEventArgs e)
+    /// <summary>Project a traced frame into the monitor's wire shape. <paramref name="radio"/> is the
+    /// inbound frame's per-frame radio metadata when the node captured it at its consumption point
+    /// (RX frames on a radio-attached port), else <c>null</c> — it fills the additive
+    /// <see cref="MonitorEvent.RssiDbm"/>/<see cref="MonitorEvent.SnrDb"/>/<see cref="MonitorEvent.NoiseFloorDbm"/>
+    /// fields, never anything decoded from the frame itself.</summary>
+    public static MonitorEvent From(long seq, string portId, Ax25FrameEventArgs e, RadioMetadata? radio = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(e);
@@ -117,6 +138,9 @@ public static class MonitorEventFactory
         {
             Control = frame.Control,
             InfoLength = infoLen,
+            RssiDbm = radio?.RssiDbm,
+            SnrDb = radio?.SnrDb,
+            NoiseFloorDbm = radio?.NoiseFloorDbm,
         };
     }
 

@@ -30,6 +30,7 @@ tags:
   - { name: routes }
   - { name: config }
   - { name: monitor }
+  - { name: radios }
   - { name: auth }
   - { name: users }
   - { name: tools }
@@ -227,6 +228,57 @@ paths:
           content:
             text/event-stream:
               schema: { type: string, description: "SSE frames; `frame` event data is a MonitorEvent JSON" }
+
+  /heard:
+    get:
+      tags: [monitor]
+      summary: Recently heard stations (the MHeard log) — most-recently-heard first
+      description: >
+        Stations heard (a received frame's source) per port, surviving port teardown +
+        node restart. No `port` query → the node-wide view (each callsign merged across
+        the ports it was heard on). `?port=<id>` → that port's stations. `lastRssiDbm` is
+        the newest frame's RSSI when a radio control channel measured it, else null.
+      security: [{ bearerAuth: [read] }]
+      parameters:
+        - { name: port, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/HeardStation" } } } } }
+
+  /radios:
+    get:
+      tags: [radios]
+      summary: Per-port radio-control attachment status + health
+      description: >
+        One entry per port with a `radio:` block. `attached` distinguishes a radio the
+        node has open and is polling from one configured-but-not-attached (the port is
+        down, or the radio failed to open and the port degraded to running without it).
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/RadioStatus" } } } } }
+
+  /ports/{id}/radio:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [radios]
+      summary: One port's radio-control status + health
+      description: "A configured port with no radio block returns attached=false with an empty kind; an unknown port id is 404."
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RadioStatus" } } } }
+        "404": { description: no such port }
+
+  /radios/scan:
+    get:
+      tags: [radios]
+      summary: Scan the serial bus for attached radios (keyed by CCDI serial)
+      description: >
+        Probes candidate serial ports and returns each radio found, keyed by its CCDI
+        serial number — the stable identity to bind a port by (`radio.serial:`), since
+        device paths renumber and the CP2102 dongles' /dev/serial/by-id links can collide.
+        Read-scope but it opens serial ports transiently; bounded + single-flight.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/RadioScanResult" } } } } }
 
   /config:
     get:
@@ -604,6 +656,9 @@ components:
         path: { type: array, items: { type: string }, description: "digipeater path" }
         control: { type: integer, description: "first control octet (additive; persisted by the traffic log)" }
         infoLength: { type: integer, description: "info-field length in bytes (additive)" }
+        rssiDbm: { type: [number, "null"], description: "per-frame RSSI in dBm (received frames on a radio-attached port); null otherwise" }
+        snrDb: { type: [number, "null"], description: "RSSI over the tracked noise floor, in dB; null when unavailable" }
+        noiseFloorDbm: { type: [number, "null"], description: "tracked channel-idle noise floor, in dBm; null when unavailable" }
 
     TrafficFrame:
       type: object
@@ -624,6 +679,68 @@ components:
         pid: { type: [integer, "null"], description: "protocol id byte (I/UI frames)" }
         infoLength: { type: integer }
         raw: { type: array, items: { type: integer }, description: "raw frame octets, capped at 2048" }
+        rssiDbm: { type: [number, "null"], description: "per-frame RSSI in dBm (received frames on a radio-attached port); null otherwise" }
+        snrDb: { type: [number, "null"], description: "RSSI over the tracked noise floor, in dB" }
+        noiseFloorDbm: { type: [number, "null"], description: "tracked channel-idle noise floor, in dBm" }
+
+    HeardStation:
+      type: object
+      description: One recently-heard station (MHeard). firstHeard/lastHeard are relative-ago strings; ports is the count of distinct ports for the node-wide view (else 1).
+      required: [callsign, firstHeard, lastHeard, count, ports]
+      properties:
+        callsign: { type: string }
+        portId: { type: [string, "null"], description: "the port (per-port view), or null for the node-wide merged view" }
+        firstHeard: { type: string, description: "relative-ago, e.g. 0:01:14" }
+        lastHeard: { type: string }
+        count: { type: integer }
+        ports: { type: integer }
+        lastRssiDbm: { type: [number, "null"], description: "RSSI (dBm) of the newest frame heard, when a radio measured it; else null" }
+
+    RadioStatus:
+      type: object
+      description: A port's radio-control attachment. attached=false = configured but not open (port down, or degraded after a failed open).
+      required: [portId, attached, kind, connectionState]
+      properties:
+        portId: { type: string }
+        attached: { type: boolean }
+        kind: { type: string, description: "radio-control kind, e.g. tait-ccdi (empty for a port with no radio block)" }
+        controlPort: { type: [string, "null"], description: "the serial device the control channel is on (the resolved /dev/ttyUSB* when attached)" }
+        serial: { type: [string, "null"], description: "the radio's CCDI serial number (config or queried identity)" }
+        identity: { oneOf: [{ $ref: "#/components/schemas/RadioIdentity" }, { type: "null" }] }
+        connectionState: { type: string, enum: [healthy, faulted, unknown] }
+        channelBusy: { type: [boolean, "null"], description: "last hardware carrier-sense (DCD): true=RF on channel, false=idle, null=unknown" }
+        health: { oneOf: [{ $ref: "#/components/schemas/RadioHealth" }, { type: "null" }] }
+
+    RadioIdentity:
+      type: object
+      required: [model, ccdiVersion]
+      properties:
+        model: { type: string, description: "friendly product name, e.g. Tait TM8110" }
+        ccdiVersion: { type: string }
+
+    RadioHealth:
+      type: object
+      description: Latest radio-health sample. The forward/reverse/ratio fields are per-station TRENDS from uncalibrated detectors — NOT VSWR; alert on change, never absolute value.
+      properties:
+        rssiDbm: { type: [number, "null"], description: "the radio's own most-recent sliding-average RSSI (dBm); null while transmitting" }
+        averagedRssiDbm: { type: [number, "null"], description: "median RSSI over the health window (dBm)" }
+        paTemperatureC: { type: [integer, "null"], description: "PA temperature in °C (null on radios that report only an ADC value)" }
+        forwardTrendMillivolts: { type: [integer, "null"], description: "offset-corrected forward detector (mV), transmit samples only — a TREND" }
+        reverseTrendMillivolts: { type: [integer, "null"], description: "offset-corrected reverse detector (mV), transmit samples only — a TREND" }
+        reverseForwardRatio: { type: [number, "null"], description: "offset-corrected reverse/forward ratio — a TREND, NEVER VSWR" }
+        sampleAt: { type: [string, "null"], format: date-time }
+
+    RadioScanResult:
+      type: object
+      description: One radio found by a bus scan. serial (CCDI serial) is the primary stable key to bind a port by.
+      required: [serial, model, ccdiVersion, baud, devicePath]
+      properties:
+        serial: { type: string, description: "CCDI serial number — the stable key (radio.serial:)" }
+        model: { type: string }
+        ccdiVersion: { type: string }
+        baud: { type: integer }
+        devicePath: { type: string, description: "current device, e.g. /dev/ttyUSB0 (may renumber between scans)" }
+        byIdPath: { type: [string, "null"], description: "the /dev/serial/by-id/* symlink for this device, or null when absent/ambiguous/off-Linux" }
 
     LogLine:
       type: object

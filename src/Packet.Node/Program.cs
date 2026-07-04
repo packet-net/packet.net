@@ -133,6 +133,10 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
     sp.GetService<Packet.Node.Core.Heard.IHeardStore>(),
     sp.GetService<TimeProvider>() ?? TimeProvider.System));
 
+// Radio bus scanner (GET /api/v1/radios/scan): probes serial ports for attached radios by CCDI
+// serial. No hardware is touched until a scan is requested; the scanner is bounded + single-flight.
+builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.Node.Core.Radios.TaitRadioScanner());
+
 // --- Web control-API auth foundation (default-OFF behind management.auth.enabled) ---
 //
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope
@@ -712,6 +716,12 @@ app.MapPdnConfigApi();
 // /api/{**rest} regardless of order. (Auth is a later step — unauthenticated, node
 // binds 127.0.0.1.)
 app.MapPdnPortsApi();
+
+// Radio-control read surface: per-port radio status/health (GET /api/v1/radios,
+// GET /api/v1/ports/{id}/radio) + a bus discovery scan (GET /api/v1/radios/scan). Read-scoped,
+// projecting the live supervisor; the scan opens serial ports transiently but is bounded. Mapped
+// before the catch-all; specific routes win. See PdnRadiosApi.
+app.MapPdnRadiosApi();
 
 // Slice 3 step 4: the direct-supervisor session actions + ping — connect-out
 // (POST /sessions), disconnect (DELETE /sessions/{id}), send-line

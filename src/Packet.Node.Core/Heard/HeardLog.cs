@@ -88,8 +88,12 @@ public sealed class HeardLog
     /// <paramref name="portId"/> at <paramref name="at"/>. Sets first-heard once, advances
     /// last-heard, bumps the count, and writes through to the store. Never throws — the telemetry
     /// tap that calls this already swallows faults, but this is total anyway.
+    /// <paramref name="rssiDbm"/> is the per-frame RSSI (dBm) when a radio control channel measured
+    /// it, else <c>null</c>; it becomes the entry's last-heard RSSI whenever this frame advances
+    /// last-heard (so the stored figure tracks the newest frame, and a null on a later frame does
+    /// not erase a real earlier reading — only a newer real reading replaces it).
     /// </summary>
-    public void Record(string portId, string callsign, DateTimeOffset at)
+    public void Record(string portId, string callsign, DateTimeOffset at, float? rssiDbm = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(callsign);
@@ -106,12 +110,18 @@ public sealed class HeardLog
             {
                 entry.FirstHeard = at;   // an out-of-order earlier frame still moves first-heard back
             }
-            if (at > entry.LastHeard)
+            if (at >= entry.LastHeard)
             {
                 entry.LastHeard = at;
+                // Last-heard RSSI tracks the newest frame; a newer frame with no RSSI leaves the
+                // last real reading in place rather than nulling it.
+                if (rssiDbm is not null)
+                {
+                    entry.LastRssiDbm = rssiDbm;
+                }
             }
             entry.Count++;
-            snapshot = new HeardEntry(portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count);
+            snapshot = new HeardEntry(portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count, entry.LastRssiDbm);
         }
         store?.Upsert(snapshot);
 
@@ -148,18 +158,22 @@ public sealed class HeardLog
         {
             if (byCall.TryGetValue(entry.Callsign, out var s))
             {
+                // The merged last-heard RSSI follows the merged last-heard: the reading from
+                // whichever port heard this station most recently (keep the incumbent on a tie).
+                bool entryNewer = entry.LastHeard > s.LastHeard;
                 byCall[entry.Callsign] = s with
                 {
                     FirstHeard = entry.FirstHeard < s.FirstHeard ? entry.FirstHeard : s.FirstHeard,
-                    LastHeard = entry.LastHeard > s.LastHeard ? entry.LastHeard : s.LastHeard,
+                    LastHeard = entryNewer ? entry.LastHeard : s.LastHeard,
                     Count = s.Count + entry.Count,
                     Ports = s.Ports + 1,
+                    LastRssiDbm = entryNewer ? entry.LastRssiDbm : s.LastRssiDbm,
                 };
             }
             else
             {
                 byCall[entry.Callsign] = new HeardStationSummary(
-                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1);
+                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1, entry.LastRssiDbm);
             }
         }
         return byCall.Values
@@ -239,7 +253,7 @@ public sealed class HeardLog
     {
         lock (e)
         {
-            return new HeardEntry(e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count);
+            return new HeardEntry(e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count, e.LastRssiDbm);
         }
     }
 
@@ -258,6 +272,7 @@ public sealed class HeardLog
         public DateTimeOffset FirstHeard;
         public DateTimeOffset LastHeard;
         public long Count;
+        public float? LastRssiDbm;
 
         public Entry(DateTimeOffset at)
         {
@@ -272,6 +287,7 @@ public sealed class HeardLog
             FirstHeard = e.FirstHeard,
             LastHeard = e.LastHeard,
             Count = e.Count,
+            LastRssiDbm = e.LastRssiDbm,
         };
     }
 }
@@ -285,9 +301,12 @@ public sealed class HeardLog
 /// <param name="LastHeard">Latest last-heard across all ports.</param>
 /// <param name="Count">Total frames heard across all ports.</param>
 /// <param name="Ports">Number of distinct ports the station was heard on.</param>
+/// <param name="LastRssiDbm">Last-heard RSSI (dBm) from the port that heard this station most
+/// recently, or <c>null</c> when none of those ports had a radio measuring it.</param>
 public sealed record HeardStationSummary(
     string Callsign,
     DateTimeOffset FirstHeard,
     DateTimeOffset LastHeard,
     long Count,
-    int Ports);
+    int Ports,
+    float? LastRssiDbm = null);

@@ -82,10 +82,11 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 
 /// <summary>
 /// Validates a per-port radio-control attachment (<see cref="PortRadioConfig"/>):
-/// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up), a
-/// non-empty control-channel serial device, and a positive baud. Kind knowledge
-/// lives in <see cref="RadioKinds"/> (the same authority the radio factory resolves
-/// with), not here.
+/// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up),
+/// <b>exactly one</b> of <c>port</c> (the control-channel device) or <c>serial</c> (the CCDI serial
+/// — the stable identity that survives device renumbering), a positive baud, and a positive health
+/// interval when set. Kind knowledge lives in <see cref="RadioKinds"/> (the same authority the radio
+/// factory resolves with), not here.
 /// </summary>
 public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
 {
@@ -97,11 +98,25 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 $"radio.kind '{r.Kind}' is not a known radio-control kind " +
                 $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
 
-        RuleFor(r => r.Port).NotEmpty()
-            .WithMessage("radio requires a port (the radio's control-channel serial device, e.g. /dev/ttyUSB0).");
+        // Pin the radio by EITHER the device path OR the CCDI serial — exactly one. Both is
+        // ambiguous (which wins?); neither leaves bring-up nothing to open.
+        RuleFor(r => r)
+            .Must(r => HasNonEmptyPort(r) ^ HasNonEmptySerial(r))
+            .WithMessage(
+                "radio requires exactly one of `port` (the control-channel device, e.g. /dev/ttyUSB0) " +
+                "or `serial` (the radio's CCDI serial number — the stable identity that survives device " +
+                "renumbering); set one, not both, not neither.");
 
         RuleFor(r => r.Baud).GreaterThan(0).WithMessage("radio baud must be positive.");
+
+        RuleFor(r => r.HealthIntervalSeconds!.Value).GreaterThan(0)
+            .When(r => r.HealthIntervalSeconds.HasValue)
+            .WithMessage("radio healthIntervalSeconds must be positive (omit it for the 10 s default).");
     }
+
+    private static bool HasNonEmptyPort(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.Port);
+
+    private static bool HasNonEmptySerial(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.Serial);
 }
 
 /// <summary>

@@ -78,13 +78,17 @@ public sealed partial class NodeTelemetry
 
     // ─── port lifecycle (mirrors NetRomService.AttachPort/DetachPort) ───────
 
-    /// <summary>Begin tapping a port's frame trace. No-op if already attached.</summary>
-    public void AttachPort(string portId, Ax25Listener listener)
+    /// <summary>Begin tapping a port's frame trace. No-op if already attached.
+    /// <paramref name="radioSource"/> is the port's node-owned per-frame radio metadata read (the
+    /// <see cref="InboundRadioTap"/> on a radio-attached port), or <c>null</c> when the port has no
+    /// radio — it stamps RSSI/SNR onto received frames without the AX.25 listener contract carrying
+    /// any of it.</summary>
+    public void AttachPort(string portId, Ax25Listener listener, IInboundRadioSource? radioSource = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(listener);
 
-        void Tap(object? _, Ax25FrameEventArgs e) => Observe(portId, e);
+        void Tap(object? _, Ax25FrameEventArgs e) => Observe(portId, e, radioSource);
         var attachment = new Attachment(listener, Tap);
         if (!attachments.TryAdd(portId, attachment))
         {
@@ -121,14 +125,21 @@ public sealed partial class NodeTelemetry
     /// the decoded <see cref="MonitorEvent"/> to every SSE subscriber. Never throws
     /// — a fault is logged and swallowed so telemetry can't disturb the pump thread.
     /// </summary>
-    public void Observe(string portId, Ax25FrameEventArgs e)
+    public void Observe(string portId, Ax25FrameEventArgs e, IInboundRadioSource? radioSource = null)
     {
         try
         {
-            long s = Interlocked.Increment(ref seq);
-            var evt = MonitorEventFactory.From(s, portId, e);
-
             bool rx = e.Direction == FrameDirection.Received;
+
+            // Per-frame radio metadata is a received-frame concept only, and safe to read here:
+            // Observe runs synchronously on the listener's single inbound-pump thread for an RX
+            // frame, right after the tap yielded it — so LatestInboundRadio is still this frame's
+            // (see InboundRadioTap). A TX frame has no inbound radio, so never read it for one.
+            var radio = rx ? radioSource?.LatestInboundRadio : null;
+
+            long s = Interlocked.Increment(ref seq);
+            var evt = MonitorEventFactory.From(s, portId, e, radio);
+
             int payload = e.Frame.Info.Length;
             long nowTicks = e.Timestamp.UtcTicks;
 
@@ -170,7 +181,7 @@ public sealed partial class NodeTelemetry
             // frames are ours, so they are never a "hearing".
             if (rx)
             {
-                heardLog?.Record(portId, evt.Source, e.Timestamp);
+                heardLog?.Record(portId, evt.Source, e.Timestamp, radio?.RssiDbm);
             }
 
             lock (historyLock)

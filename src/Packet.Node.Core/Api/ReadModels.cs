@@ -73,13 +73,18 @@ public sealed record LogLine(string T, string Lvl, string Msg);
 /// ports the station was heard on; for the per-port view <see cref="PortId"/> is the port id and
 /// <see cref="Ports"/> is 1.
 /// </summary>
+/// <param name="LastRssiDbm">Received signal strength (dBm) of the most recent frame heard from this
+/// station (on this port, or on whichever port heard it last for the node-wide view), when a radio
+/// control channel measured it — <c>null</c> when the port has no radio attached or the newest frame
+/// carried no attributed RSSI.</param>
 public sealed record HeardStation(
     string Callsign,
     string? PortId,
     string FirstHeard,
     string LastHeard,
     long Count,
-    int Ports);
+    int Ports,
+    float? LastRssiDbm = null);
 
 /// <summary>One learned per-peer AX.25 capability record, projected for the operator
 /// surface (the web Capabilities screen + the MCP read tool). Mirrors the live

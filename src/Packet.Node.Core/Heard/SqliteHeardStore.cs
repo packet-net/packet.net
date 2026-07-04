@@ -34,6 +34,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
             first_heard_utc TEXT NOT NULL,
             last_heard_utc  TEXT NOT NULL,
             count           INTEGER NOT NULL,
+            last_rssi_dbm   REAL,
             PRIMARY KEY (port_id, callsign));
         """;
 
@@ -65,6 +66,17 @@ public sealed partial class SqliteHeardStore : IHeardStore
             using var conn = Open();
             conn.Execute("PRAGMA journal_mode=WAL;");
             conn.Execute(SchemaSql);
+
+            // Additive migration for a heard_log created before last-heard RSSI existed: this store
+            // is meta-less (no PRAGMA user_version), so an existing table needs the nullable column
+            // added explicitly — the same pattern as SqliteRefreshTokenStore. New databases get it
+            // from SchemaSql above; the ADD then finds it already present and is skipped.
+            bool hasRssi = conn.Query<string>("SELECT name FROM pragma_table_info('heard_log');")
+                .Any(n => string.Equals(n, "last_rssi_dbm", StringComparison.Ordinal));
+            if (!hasRssi)
+            {
+                conn.Execute("ALTER TABLE heard_log ADD COLUMN last_rssi_dbm REAL;");
+            }
         }
         catch (SqliteException ex)
         {
@@ -80,10 +92,10 @@ public sealed partial class SqliteHeardStore : IHeardStore
         {
             using var conn = Open();
             conn.Execute(
-                "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count) " +
-                "VALUES (@p, @c, @first, @last, @count) " +
+                "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count, last_rssi_dbm) " +
+                "VALUES (@p, @c, @first, @last, @count, @rssi) " +
                 "ON CONFLICT(port_id, callsign) DO UPDATE SET " +
-                "first_heard_utc = @first, last_heard_utc = @last, count = @count;",
+                "first_heard_utc = @first, last_heard_utc = @last, count = @count, last_rssi_dbm = @rssi;",
                 new
                 {
                     p = entry.PortId,
@@ -91,6 +103,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
                     first = Stamp(entry.FirstHeard),
                     last = Stamp(entry.LastHeard),
                     count = entry.Count,
+                    rssi = entry.LastRssiDbm is { } v ? (double?)v : null,
                 });
         }
         catch (SqliteException ex)
@@ -107,7 +120,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
             using var conn = Open();
             var rows = conn.Query<HeardRow>(
                 "SELECT port_id AS PortId, callsign AS Callsign, first_heard_utc AS FirstHeardUtc, " +
-                "last_heard_utc AS LastHeardUtc, count AS Count FROM heard_log;").ToList();
+                "last_heard_utc AS LastHeardUtc, count AS Count, last_rssi_dbm AS LastRssiDbm FROM heard_log;").ToList();
             return rows.Select(ToEntry).ToList();
         }
         catch (Exception ex) when (ex is SqliteException or FormatException)
@@ -200,7 +213,10 @@ public sealed partial class SqliteHeardStore : IHeardStore
         row.Callsign,
         ParseStamp(row.FirstHeardUtc),
         ParseStamp(row.LastHeardUtc),
-        row.Count);
+        row.Count,
+        // Stored as REAL (8-byte double); narrow back to the float the 0.1 dB source used so it
+        // renders cleanly (e.g. -95.3, not -95.30000305).
+        row.LastRssiDbm is { } d ? (float?)d : null);
 
     private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
 
@@ -215,6 +231,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
         public string FirstHeardUtc { get; set; } = string.Empty;
         public string LastHeardUtc { get; set; } = string.Empty;
         public long Count { get; set; }
+        public double? LastRssiDbm { get; set; }
     }
 
     [LoggerMessage(Level = LogLevel.Warning,
