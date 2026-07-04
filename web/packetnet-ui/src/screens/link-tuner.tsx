@@ -1,233 +1,278 @@
 // ============================================================
-// Link tuning workspace (README "Link tuning workspace") — a focused
-// full-page troubleshooting tool opened from a port's "Tune link".
-// Send numbered frame bursts to a partner, watch a delivery grid resolve
-// ack/lost, tune TX delay / persistence / ack-timeout live, compare runs,
-// auto-tune TX delay, and coordinate over a chat panel.
+// Guided deviation tuning workspace (/tools/tuner) — the operator surface for
+// Packet.Node's SDM-coordinated deviation-tuning session. Opened from a port's
+// "Tune link". This port is one end of a two-ended procedure: the operator turns
+// the TX-DEV pot here (role "tuned") while a peer radio measures decode rate +
+// RX-audio level and returns advice, or this port meters a remote peer's pot
+// (role "meter"). The session TRANSMITS and pauses the port's normal traffic, so
+// it is admin-initiated and the port is restored when the session ends.
 //
-// Reads ?port=<id> from the URL. Delivery is simulated from the params +
-// path difficulty; in production this drives real frame bursts.
+// The payoff is "watch the numbers as you turn the pot": start a session, watch
+// the live trend table fill in per round, and hit "Next round" after each pot
+// adjustment. Reads ?port=<id> from the URL.
 // ============================================================
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Page } from "@/components/layout/shell";
-import { Button, Card, Field, Input, Select, Label, Slider, Icon } from "@/components/ui";
+import { Button, Card, Field, Input, Select, Icon } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import {
-  NODE_CONFIG, PORT_SETUP, PARAM_HELP, KIND_LABEL, CALLS,
-  persistPct, pctToPersist,
-} from "@/lib/mock";
+import { api, useQuery, subscribeTune } from "@/lib/api";
+import type { TuningRole, TuningState, TuningEvent, TuningSessionInfo } from "@/lib/types";
 
 function clamp(n: number, a: number, b: number): number { return Math.max(a, Math.min(b, n)); }
 
-interface TuneParams { txDelay: number; persistence: number; ackTimeout: number }
-interface FrameCell { n: number; state: "pending" | "ack" | "lost" }
-interface Run { id: number; params: TuneParams; delivered: number; total: number; pct: number; partner: string }
-interface ChatMsg { who: "me" | "them"; call: string; text: string }
+const STATE_LABEL: Record<TuningState, string> = {
+  "armed": "armed — waiting for the peer",
+  "peer-connected": "peer connected — measuring",
+  "awaiting-adjustment": "adjust the pot, then Next round",
+  "ended": "session ended",
+  "error": "session error",
+  "stopped": "session stopped",
+};
 
-// probability a numbered frame is delivered given the params + path difficulty
-function deliveryProb(p: TuneParams, difficulty: string): number {
-  const floor = ({ easy: 0.86, moderate: 0.7, hard: 0.5 } as Record<string, number>)[difficulty] ?? 0.7;
-  let prob = floor;
-  prob += (1 - Math.abs(p.txDelay - 300) / 320) * 0.18; // txdelay sweet spot ~300ms
-  prob += (1 - p.persistence / 255) * 0.08;             // politer = fewer collisions
-  prob += p.ackTimeout >= 2500 && p.ackTimeout <= 4500 ? 0.05 : -0.03;
-  return clamp(prob, 0.25, 0.985);
-}
+const ADVICE_STYLE: Record<string, { chip: string; icon: "arrowUp" | "arrowDown" | "check" | "search"; label: string }> = {
+  up: { chip: "bg-warning/15 text-warning", icon: "arrowUp", label: "turn UP" },
+  down: { chip: "bg-warning/15 text-warning", icon: "arrowDown", label: "turn DOWN" },
+  ok: { chip: "bg-success/15 text-success", icon: "check", label: "OK — leave it" },
+  sweep: { chip: "bg-danger/15 text-danger", icon: "search", label: "SWEEP" },
+};
 
 export function LinkTuner() {
   const [searchParams] = useSearchParams();
-  const port = useMemo(() => {
-    const id = searchParams.get("port");
-    return NODE_CONFIG.ports.find((p) => p.id === id) ?? NODE_CONFIG.ports[0];
-  }, [searchParams]);
-  const setup = PORT_SETUP[port.id] ?? { radio: null, channel: "shared", difficulty: "moderate", custom: false };
+  const { data: config } = useQuery(api.config, []);
+  const ports = useMemo(() => config?.ports ?? [], [config]);
+  const urlPort = searchParams.get("port");
 
-  const [partner, setPartner] = useState(CALLS[0]);
-  const [count, setCount] = useState(20);
-  const [params, setParams] = useState<TuneParams>({
-    txDelay: port.kiss?.txDelay ?? 300,
-    persistence: port.kiss?.persistence ?? 63,
-    ackTimeout: port.ax25?.t1Ms ?? 3000,
-  });
-  const [frames, setFrames] = useState<FrameCell[]>([]);
-  const [running, setRunning] = useState(false);
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [autoTuning, setAutoTuning] = useState(false);
-  const [chat, setChat] = useState<ChatMsg[]>([
-    { who: "them", call: "G8PZT", text: "ok ready when you are, watching here" },
-    { who: "me", call: "M0LTE", text: "sending a burst of 20 now" },
-  ]);
-  const [draft, setDraft] = useState("");
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [portId, setPortId] = useState<string>("");
+  const [role, setRole] = useState<TuningRole>("tuned");
+  const [peerSdmId, setPeerSdmId] = useState("");
+  const [burstFrames, setBurstFrames] = useState(5);
 
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  const [session, setSession] = useState<TuningSessionInfo | null>(null);
+  const [state, setState] = useState<TuningState | null>(null);
+  const [rounds, setRounds] = useState<TuningEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const unsub = useRef<(() => void) | null>(null);
 
-  const runBurst = (overrideParams?: TuneParams): Promise<Run> => new Promise((resolve) => {
-    const p = overrideParams ?? params;
-    const prob = deliveryProb(p, setup.difficulty);
-    const total = count;
-    setFrames(Array.from({ length: total }, (_, i) => ({ n: i + 1, state: "pending" })));
-    setRunning(true);
-    let i = 0;
-    if (timer.current) clearInterval(timer.current);
-    timer.current = setInterval(() => {
-      setFrames((prev) => prev.map((f, idx) => (idx === i ? { ...f, state: Math.random() < prob ? "ack" : "lost" } : f)));
-      i++;
-      if (i >= total) {
-        if (timer.current) clearInterval(timer.current);
-        setTimeout(() => {
-          setFrames((prev) => {
-            const delivered = prev.filter((f) => f.state === "ack").length;
-            const run: Run = { id: Date.now(), params: { ...p }, delivered, total, pct: Math.round((delivered / total) * 100), partner };
-            setRuns((r) => [run, ...r].slice(0, 6));
-            resolve(run);
-            return prev;
-          });
-          setRunning(false);
-        }, 150);
+  // Default the port from ?port= once the config loads.
+  useEffect(() => {
+    if (portId) return;
+    const first = ports[0]?.id ?? "";
+    setPortId(urlPort && ports.some((p) => p.id === urlPort) ? urlPort : first);
+  }, [ports, urlPort, portId]);
+
+  // Tear the SSE down on unmount (leaves the server session running — the operator
+  // ends it explicitly with Stop, which is when the node restores the port).
+  useEffect(() => () => { unsub.current?.(); }, []);
+
+  const attach = useCallback((port: string) => {
+    unsub.current?.();
+    unsub.current = subscribeTune(
+      port,
+      (e) => {
+        setState(e.state);
+        if (e.kind === "round") setRounds((rs) => [...rs, e]);
+        if (e.kind === "error") setError(e.error ?? "the tuning link failed");
+      },
+      () => setState((s) => (s === "error" ? s : "ended")),
+    );
+  }, []);
+
+  const start = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    setRounds([]);
+    setState(null);
+    try {
+      const info = await api.startTune(portId, { role, peerSdmId, burstFrames });
+      setSession(info);
+      setState(info.state);
+      attach(portId);
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (/already active/i.test(msg)) {
+        // Re-attach to the session already running on this port (e.g. after a reload).
+        setSession({ sessionId: "", portId, role, peerSdmId, state: "peer-connected", burstFrames, startedAt: new Date().toISOString() });
+        setState("peer-connected");
+        attach(portId);
+      } else {
+        setError(msg);
       }
-    }, 90);
-  });
-
-  const autoTune = async () => {
-    setAutoTuning(true);
-    const sweep = [120, 200, 300, 420, 550];
-    let best: { txDelay: number; pct: number } | null = null;
-    for (const txDelay of sweep) {
-      const trial = { ...params, txDelay };
-      setParams(trial);
-      // eslint-disable-next-line no-await-in-loop
-      const run = await runBurst(trial);
-      if (!best || run.pct > best.pct) best = { txDelay, pct: run.pct };
+    } finally {
+      setBusy(false);
     }
-    if (best) {
-      const winner = best;
-      setParams((p) => ({ ...p, txDelay: winner.txDelay }));
-      setChat((c) => [...c, { who: "me", call: "pdn", text: `auto-sweep done — best TX delay ${winner.txDelay}ms (${winner.pct}% delivered)` }]);
+  }, [portId, role, peerSdmId, burstFrames, attach]);
+
+  const next = useCallback(async () => {
+    if (!session) return;
+    try { await api.tuneNext(session.portId); }
+    catch (e) { setError(String((e as Error)?.message ?? e)); }
+  }, [session]);
+
+  const stop = useCallback(async () => {
+    if (!session) return;
+    setBusy(true);
+    try { await api.tuneStop(session.portId); }
+    catch (e) { setError(String((e as Error)?.message ?? e)); }
+    finally {
+      unsub.current?.();
+      unsub.current = null;
+      setSession(null);
+      setState((s) => (s === "error" ? s : "stopped"));
+      setBusy(false);
     }
-    setAutoTuning(false);
-  };
+  }, [session]);
 
-  const delivered = frames.filter((f) => f.state === "ack").length;
-  const done = frames.filter((f) => f.state !== "pending").length;
-  const pct = done ? Math.round((delivered / done) * 100) : 0;
-  const sendChat = () => { if (!draft.trim()) return; setChat((c) => [...c, { who: "me", call: "M0LTE", text: draft }]); setDraft(""); };
-
-  const pctClass = (v: number) => (v >= 90 ? "text-success" : v >= 70 ? "text-warning" : "text-danger");
-  const pctChip = (v: number) => (v >= 90 ? "bg-success/15 text-success" : v >= 70 ? "bg-warning/15 text-warning" : "bg-danger/15 text-danger");
+  const active = session !== null;
+  const awaiting = active && role === "tuned" && state === "awaiting-adjustment";
+  const canStart = portId.length > 0 && peerSdmId.length === 8 && !busy;
 
   return (
     <Page>
-      <div className="grid min-h-0 grid-cols-1 gap-5 lg:grid-cols-[1fr_340px]">
-        {/* workspace */}
-        <div className="min-w-0 space-y-5">
-          {/* header */}
-          <div className="flex items-center gap-3">
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/15 text-primary"><Icon name="signal" size={17} /></span>
-            <div>
-              <h1 className="text-xl font-semibold leading-tight tracking-tight">Link tuning</h1>
-              <p className="text-xs text-muted-foreground">port <span className="font-mono">{port.id}</span> · {KIND_LABEL[port.transport.kind]} · {setup.difficulty} path</p>
-            </div>
+      <div className="mx-auto w-full max-w-3xl space-y-5">
+        {/* header */}
+        <div className="flex items-center gap-3">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary/15 text-primary"><Icon name="gauge" size={17} /></span>
+          <div>
+            <h1 className="text-xl font-semibold leading-tight tracking-tight">Deviation tuning</h1>
+            <p className="text-xs text-muted-foreground">
+              SDM-coordinated · watch the numbers as you turn the TX-DEV pot
+            </p>
           </div>
-
-          {/* partner + burst controls */}
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Partner station" className="w-44">
-              <Select value={partner} onChange={(e) => setPartner(e.target.value)}>
-                {CALLS.map((c) => <option key={c} value={c}>{c}</option>)}
-              </Select>
-            </Field>
-            <Field label="Frames per burst" className="w-32">
-              <Input type="number" value={count} onChange={(e) => setCount(clamp(+e.target.value, 5, 50))} className="font-mono" />
-            </Field>
-            <Button onClick={() => runBurst()} disabled={running || autoTuning}>
-              <Icon name={running ? "pause" : "play"} size={14} />{running ? "Sending…" : "Send burst"}
-            </Button>
-            <Button variant="outline" onClick={autoTune} disabled={running || autoTuning}>
-              <Icon name="restart" size={14} />{autoTuning ? "Auto-tuning…" : "Auto-tune TX delay"}
-            </Button>
-          </div>
-
-          {/* delivery grid */}
-          <Card className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-semibold">Delivery</span>
-              {done > 0 && (
-                <span className="flex items-center gap-3 text-xs">
-                  <span className="text-muted-foreground">delivered <span className={cn("font-mono font-semibold", pctClass(pct))}>{delivered}/{done}</span></span>
-                  <span className={cn("rounded px-1.5 py-0.5 font-mono font-semibold", pctChip(pct))}>{pct}%</span>
-                </span>
-              )}
-            </div>
-            {frames.length === 0 ? (
-              <div className="py-8 text-center text-xs text-muted-foreground">Send a burst to see how many numbered frames reach <span className="font-mono">{partner}</span>.</div>
-            ) : (
-              <div className="grid grid-cols-10 gap-1.5">
-                {frames.map((f) => (
-                  <div key={f.n} title={`#${f.n} ${f.state}`} className={cn("flex aspect-square items-center justify-center rounded font-mono text-[10px] transition-colors",
-                    f.state === "pending" ? "bg-muted text-muted-foreground/50" :
-                      f.state === "ack" ? "bg-success/20 text-success" : "bg-danger/20 text-danger line-through")}>{f.n}</div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* live parameter tweaks */}
-          <Card className="p-4">
-            <p className="mb-3 text-sm font-semibold">Tune while you test <span className="font-normal text-muted-foreground">— applies live to the port</span></p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div>
-                <div className="mb-1.5 flex items-center justify-between"><Label>{PARAM_HELP.txDelay.label}</Label><span className="font-mono text-xs text-muted-foreground">{params.txDelay} ms</span></div>
-                <Slider value={params.txDelay} min={50} max={600} step={10} onChange={(v) => setParams((p) => ({ ...p, txDelay: v }))} />
-              </div>
-              <div>
-                <div className="mb-1.5 flex items-center justify-between"><Label>{PARAM_HELP.persistence.label}</Label><span className="font-mono text-xs text-muted-foreground">{persistPct(params.persistence)}%</span></div>
-                <Slider value={persistPct(params.persistence)} min={0} max={100} onChange={(v) => setParams((p) => ({ ...p, persistence: pctToPersist(v) }))} />
-              </div>
-              <div>
-                <div className="mb-1.5 flex items-center justify-between"><Label>{PARAM_HELP.t1Ms.label}</Label><span className="font-mono text-xs text-muted-foreground">{params.ackTimeout} ms</span></div>
-                <Slider value={params.ackTimeout} min={1000} max={8000} step={250} onChange={(v) => setParams((p) => ({ ...p, ackTimeout: v }))} />
-              </div>
-            </div>
-          </Card>
-
-          {/* run history (the compare loop) */}
-          {runs.length > 0 && (
-            <Card className="p-4">
-              <p className="mb-3 text-sm font-semibold">Runs</p>
-              <div className="space-y-1.5">
-                {runs.map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 rounded-md bg-muted/40 px-3 py-2 text-xs">
-                    <span className={cn("w-12 shrink-0 rounded px-1.5 py-0.5 text-center font-mono font-semibold", pctChip(r.pct))}>{r.pct}%</span>
-                    <span className="font-mono text-muted-foreground">{r.delivered}/{r.total}</span>
-                    <span className="ml-auto truncate font-mono text-muted-foreground">TXd {r.params.txDelay}ms · pers {persistPct(r.params.persistence)}% · T1 {r.params.ackTimeout}ms</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
 
-        {/* coordination chat — stacks under the workspace on narrow screens */}
-        <Card className="flex min-h-[20rem] flex-col overflow-hidden p-0 lg:min-h-0">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-            <Icon name="sessions" size={15} className="text-muted-foreground" />
-            <span className="text-sm font-medium">Coordinate</span>
-            <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-success live-dot" />{partner} op</span>
+        {/* transmitting / paused banner */}
+        {active && (
+          <div className="flex items-start gap-2.5 rounded-md border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-sm text-warning">
+            <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <span className="font-semibold">Port <span className="font-mono">{session!.portId}</span> is paused for tuning and transmitting bursts.</span>{" "}
+              Normal traffic is suspended for the session; it is restored when you Stop.
+            </div>
           </div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-            {chat.map((m, i) => (
-              <div key={i} className={cn("flex flex-col", m.who === "me" ? "items-end" : "items-start")}>
-                <span className="mb-0.5 text-[10px] text-muted-foreground">{m.call}</span>
-                <span className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs", m.who === "me" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>{m.text}</span>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-2.5 rounded-md border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-sm text-danger">
+            <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
+            <div>{error}</div>
+          </div>
+        )}
+
+        {/* setup / controls */}
+        <Card className="p-4">
+          {!active ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="Port" className="w-40">
+                  <Select value={portId} onChange={(e) => setPortId(e.target.value)}>
+                    {ports.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
+                  </Select>
+                </Field>
+                <Field label="This end is" className="w-40">
+                  <Select value={role} onChange={(e) => setRole(e.target.value as TuningRole)}>
+                    <option value="tuned">tuned (I turn the pot)</option>
+                    <option value="meter">meter (I measure)</option>
+                  </Select>
+                </Field>
+                <Field label="Peer SDM id" className="w-40">
+                  <Input
+                    value={peerSdmId}
+                    onChange={(e) => setPeerSdmId(e.target.value.slice(0, 8))}
+                    placeholder="8 chars"
+                    className="font-mono"
+                    maxLength={8}
+                  />
+                </Field>
+                <Field label="Burst frames" className="w-28">
+                  <Input
+                    type="number" value={burstFrames}
+                    onChange={(e) => setBurstFrames(clamp(+e.target.value, 1, 50))}
+                    className="font-mono"
+                  />
+                </Field>
+                <Button onClick={start} disabled={!canStart}>
+                  <Icon name="play" size={14} />{busy ? "Starting…" : "Start tuning"}
+                </Button>
               </div>
-            ))}
+              <p className="text-xs text-muted-foreground">
+                Needs a NinoTNC + a Tait radio with SDM enabled on the port. Starting <b>keys the radio</b> and
+                pauses the port's normal traffic for the session.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={cn("flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium",
+                state === "error" ? "bg-danger/15 text-danger" : state === "awaiting-adjustment" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary")}>
+                <span className={cn("h-1.5 w-1.5 rounded-full", state === "error" ? "bg-danger" : "bg-primary live-dot")} />
+                {state ? STATE_LABEL[state] : "starting…"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                role <span className="font-mono">{session!.role}</span> · peer <span className="font-mono">{session!.peerSdmId}</span>
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button onClick={next} disabled={!awaiting} title={role === "meter" ? "Rounds are driven by the remote tuned end" : "Run the next measurement round"}>
+                  <Icon name="arrowUp" size={14} />Next round — I've adjusted the pot
+                </Button>
+                <Button variant="outline" onClick={stop} disabled={busy}>
+                  <Icon name="power" size={14} />Stop
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* live trend table */}
+        <Card className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold">Trend</span>
+            {rounds.length > 0 && <span className="text-xs text-muted-foreground">{rounds.length} round{rounds.length === 1 ? "" : "s"}</span>}
           </div>
-          <div className="flex items-center gap-2 border-t border-border p-3">
-            <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChat()} placeholder="message the other op…" className="text-xs" />
-            <Button size="iconSm" onClick={sendChat}><Icon name="send" size={14} /></Button>
-          </div>
+          {rounds.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              {active ? "Waiting for the first measurement round…" : "Start a session to watch decode rate, level and advice per round."}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="pb-2 pr-3 font-medium">Round</th>
+                    <th className="pb-2 pr-3 font-medium">Decoded</th>
+                    <th className="pb-2 pr-3 font-medium">Level</th>
+                    <th className="pb-2 pr-3 font-medium">Advice</th>
+                    <th className="pb-2 font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rounds.map((r, i) => {
+                    const total = r.total ?? 0;
+                    const decoded = r.decoded ?? 0;
+                    const good = total > 0 && decoded / total >= 0.9;
+                    const adv = r.advice ? ADVICE_STYLE[r.advice] : undefined;
+                    return (
+                      <tr key={i} className="border-b border-border/50 last:border-0">
+                        <td className="py-1.5 pr-3 font-mono text-muted-foreground">{r.burstIndex}</td>
+                        <td className={cn("py-1.5 pr-3 font-mono", good ? "text-success" : decoded === 0 ? "text-danger" : "text-warning")}>
+                          {decoded}/{total}
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-muted-foreground">{r.levelDb != null ? `${r.levelDb.toFixed(1)} dB` : "—"}</td>
+                        <td className="py-1.5 pr-3">
+                          {adv ? (
+                            <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold", adv.chip)}>
+                              <Icon name={adv.icon} size={12} />{adv.label}
+                            </span>
+                          ) : <span className="text-xs text-muted-foreground">—</span>}
+                        </td>
+                        <td className="py-1.5 text-xs text-muted-foreground">{r.note}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       </div>
     </Page>

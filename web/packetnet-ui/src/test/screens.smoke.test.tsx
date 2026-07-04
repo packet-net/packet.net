@@ -281,6 +281,29 @@ describe("screens render without crashing", () => {
     expect(container.firstChild).toBeTruthy();
   });
 
+  it("LinkTuner starts a deviation session and streams live rounds gated by 'Next round'", async () => {
+    mount(<LinkTuner />, "/tools/tuner?port=vhf-1");
+    await waitFor(() => expect(screen.getByText(/Deviation tuning/i)).toBeInTheDocument());
+
+    // Enter an 8-char peer SDM id and arm the session (once config has loaded the port list, so the
+    // Start button — gated on a selected port + a valid peer id — is enabled).
+    fireEvent.change(screen.getByPlaceholderText(/8 chars/i), { target: { value: "12345678" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Start tuning/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /Start tuning/i }));
+
+    // The paused/transmitting banner appears and the first round lands in the trend table.
+    await waitFor(() => expect(screen.getByText(/paused for tuning/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("0/5")).toBeInTheDocument(), { timeout: 3000 });
+
+    // Once the round is awaiting the operator, "Next round" enables and advances the trend.
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /Next round/i })).not.toBeDisabled(),
+      { timeout: 3000 },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Next round/i }));
+    await waitFor(() => expect(screen.getByText("2/5")).toBeInTheDocument(), { timeout: 3000 });
+  });
+
   it("LinkTroubleshoot renders per-link T1/T3/SRTT/retries", async () => {
     const { container } = mount(<LinkTroubleshoot />, "/links");
     expect(container.firstChild).toBeTruthy();
