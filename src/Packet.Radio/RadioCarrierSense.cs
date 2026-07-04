@@ -8,7 +8,7 @@ namespace Packet.Radio;
 /// gate consults. This is how a radio-attached port feeds real DCD into the stack's
 /// medium-access layer: the node constructs one over the port's open <see cref="IRadioControl"/>
 /// (when it advertises <see cref="RadioCapabilities.CarrierSense"/>) and injects it into the
-/// listener, superseding the interim transport-level <see cref="CarrierSenseTxGate"/>.
+/// listener via the parity-tracked <c>Ax25ListenerOptions.CarrierSense</c> member.
 /// </summary>
 /// <remarks>
 /// A pure read-through — it forwards the radio's live <see cref="IRadioControl.ChannelBusy"/>

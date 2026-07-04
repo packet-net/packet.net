@@ -11,11 +11,11 @@ namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// OQ-012 wiring: a radio-attached port feeds its hardware carrier-sense (DCD) into the AX.25
-/// stack's native medium-access gate, so the node itself defers a keyup while the channel is
-/// busy and releases it when the channel clears — the native seam that supersedes the interim
-/// transport-level <c>CarrierSenseTxGate</c>. Proven end-to-end through a live
-/// <see cref="PortSupervisor"/>: the node's reply to an inbound SABM is held off the air while
-/// the radio reports busy, and keys up once it clears.
+/// stack's native medium-access gate (via the parity-tracked <c>Ax25ListenerOptions.CarrierSense</c>
+/// option), so the node itself defers a keyup while the channel is busy and releases it when the
+/// channel clears — the native seam, owned by the stack rather than an opaque transport wrapper.
+/// Proven end-to-end through a live <see cref="PortSupervisor"/>: the node's reply to an inbound
+/// SABM is held off the air while the radio reports busy, and keys up once it clears.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class PortRadioCarrierSenseTests

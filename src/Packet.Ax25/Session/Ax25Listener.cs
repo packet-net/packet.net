@@ -60,10 +60,10 @@ public sealed class Ax25Listener : IAsyncDisposable
 
     // Native carrier-sense CSMA gate (OQ-012): the link-multiplexer consults it before every
     // keyup and holds the transmission while the channel is busy. Off by default — with no
-    // source injected it always reports clear, so every send is byte-for-byte the prior
-    // fire-and-forget path and the SDL transition behaviour is untouched. A radio-attached
-    // node port injects its IRadioControl DCD (via RadioCarrierSense); the coming Nino KISS
-    // DCD extension lands in the same gate. Supersedes the transport-level CarrierSenseTxGate.
+    // source (Ax25ListenerOptions.CarrierSense == null) it always reports clear, so every send
+    // is byte-for-byte the prior fire-and-forget path and the SDL transition behaviour is
+    // untouched. A radio-attached node port injects its IRadioControl DCD (via RadioCarrierSense)
+    // through that parity-tracked option; the coming Nino KISS DCD extension lands in the same gate.
     private readonly CarrierSenseGate carrierSenseGate;
     private readonly Ax25ListenerOptions options;
     private readonly TimeProvider timeProvider;
@@ -240,30 +240,27 @@ public sealed class Ax25Listener : IAsyncDisposable
     }
 
     /// <summary>
-    /// Test-injection ctor: supply a custom <see cref="TimeProvider"/>
-    /// so tests can drive T1/T2/T3 with a <c>FakeTimeProvider</c>, and optionally an
-    /// <see cref="ICarrierSense"/> source so the link-multiplexer does native carrier-sense
-    /// CSMA — holding every keyup while the channel is busy (see <see cref="CarrierSenseGate"/>).
-    /// A <c>null</c> <c>carrierSense</c> (the default) is the always-clear degenerate gate:
-    /// transmissions are never deferred, so behaviour is byte-for-byte the same as before. The
-    /// node injects a radio-attached port's DCD here (via <c>RadioCarrierSense</c>). Carrier
-    /// sense is an injectable capability, not a parity-tracked listener option, so it stays off
-    /// the <see cref="Ax25ListenerOptions"/> / public-method contract the ax25-ts parity guard
-    /// compares.
+    /// Test-injection ctor: supply a custom <see cref="TimeProvider"/> so tests can drive
+    /// T1/T2/T3 with a <c>FakeTimeProvider</c>. The native carrier-sense CSMA source (if any)
+    /// is taken from <see cref="Ax25ListenerOptions.CarrierSense"/> — the first-class,
+    /// parity-tracked medium-access seam — so the link-multiplexer holds every keyup while the
+    /// channel is busy (see <see cref="CarrierSenseGate"/>). A <c>null</c> source (the default)
+    /// is the always-clear degenerate gate: transmissions are never deferred, so behaviour is
+    /// byte-for-byte the same as before.
     /// </summary>
     public Ax25Listener(
         IAx25Transport modem,
         Ax25ListenerOptions options,
-        TimeProvider timeProvider,
-        ICarrierSense? carrierSense = null)
+        TimeProvider timeProvider)
     {
         this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         // Probe the optional confirmed-TX (ACKMODE) capability once; null ⇒ never attempt it.
         txCompletion = modem as ITxCompletionTransport;
-        // The native medium-access gate. No source ⇒ always-clear ⇒ no deferral.
-        carrierSenseGate = new CarrierSenseGate(carrierSense, timeProvider);
+        // The native medium-access gate, from the parity-tracked listener option.
+        // No source ⇒ always-clear ⇒ no deferral.
+        carrierSenseGate = new CarrierSenseGate(options.CarrierSense, timeProvider);
         sessionParameters = Ax25SessionParameters.FromOptions(options);
     }
 
@@ -1309,8 +1306,8 @@ public sealed class Ax25Listener : IAsyncDisposable
             // when it clears. The gate completes synchronously when there is no carrier-sense
             // source or the channel is clear, so with no radio DCD wired every send is the same
             // synchronous fire-and-forget as before — no reordering, no extra hop, and the SDL
-            // transition behaviour is untouched. This is the medium-access seam that supersedes
-            // the transport-level CarrierSenseTxGate: the stack itself owns the deferral.
+            // transition behaviour is untouched. This is the native medium-access seam: the stack
+            // itself owns the deferral (source supplied via Ax25ListenerOptions.CarrierSense).
             if (options.RestartT1OnTxComplete && txCompletion is not null && !ackmodeUnsupported && parsedTx is not null && FrameArmsT1(parsedTx))
             {
                 _ = SendAndRearmT1Async(bytes.ToArray());
@@ -1756,6 +1753,29 @@ public sealed class Ax25ListenerOptions
     /// session creation.
     /// </summary>
     public Action<Ax25Session>? ConfigureSession { get; init; }
+
+    /// <summary>
+    /// Optional carrier-sense (CSMA) source the listener consults before it keys the radio:
+    /// while it reports the channel busy the transmission is held, and it keys up once the
+    /// channel clears (or a bounded wait expires — fail-open; see <see cref="CarrierSenseGate"/>).
+    /// This is the general medium-access seam — any source that can observe channel occupancy
+    /// (a radio-control channel's hardware DCD via <c>Packet.Radio.RadioCarrierSense</c>, or a
+    /// future KISS DCD extension) supplies one so the AX.25 stack itself defers a keyup while
+    /// another station is transmitting.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> (the default) is the always-clear degenerate gate: transmissions are never
+    /// deferred, so behaviour is byte-for-byte the same as before, and the SDL transition
+    /// behaviour is untouched — only the <em>physical</em> keyup is deferred, and only when a
+    /// source is present and the channel is genuinely busy. Radio-agnostic by construction —
+    /// <see cref="ICarrierSense"/> is a neutral, dependency-free capability
+    /// (<c>Packet.Ax25.Transport.Abstractions</c>), not a radio detail. First-class and
+    /// ax25-ts-parity-tracked (OQ-012): it mirrors the TypeScript
+    /// <c>Ax25ListenerOptions.carrierSense</c>. Construction-time wiring, not a
+    /// <see cref="Ax25SessionParameters"/> live-reseed knob (the gate is built once, like
+    /// <see cref="ConfigureSession"/>).
+    /// </remarks>
+    public ICarrierSense? CarrierSense { get; init; }
 
     /// <summary>
     /// TX-complete→T1: when <c>true</c>, every T1-arming frame (I-frame,
