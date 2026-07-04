@@ -565,6 +565,59 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
 - NinoTNC mode-change demonstrated end-to-end (manual trigger, no auto-negotiation needed for exit).
 - `packetnet ctl flash-tnc` working from CLI; web UI integration optional.
 
+### 5.11 Phase 11 — Close the loop: a self-measuring, self-reconfiguring network ⬜ (post-v1)
+
+Phase 10 gave PDN **eyes** (per-frame RSSI/SNR, hardware DCD, radio health, the doctor) and **hands**
+(mode change, TXDELAY, and — barely used — CCR frequency retune, all coordinatable over the SDM
+side channel, which works precisely *because* it is independent of the packet modulation). Phase 11
+is the **nervous system** connecting them: sense degradation, decide, act. Framing from the
+2026-07-04 review with Tom (a captured direction, not committed scope; ordered by near-term
+tractability).
+
+- **Native DCD into the AX.25 medium-access layer (OQ-012) — foundational, in progress 2026-07-04.**
+  The stack already has a **link-multiplexer** seam (`LinkMultiplexerSignal` — LM_SEIZE/RELEASE, "the
+  medium-access arbiter that owns the radio"). Wire hardware carrier-sense (`IRadioControl` DCD;
+  later Nino's KISS DCD extension) into the seize path so the AX.25 stack **natively** holds the
+  medium while the channel is busy — i.e. emulate a TNC that exposes DCD, retiring the interim
+  transport-level `CarrierSenseTxGate`. The correct home for the 0.5–1 s DCD head start, and the
+  substrate the rest builds on.
+
+- **Noise-floor-aware channel selection & (where legal) frequency agility.** CCR retunes RX in
+  ≤20 ms; that plus an RSSI read is a fast **channel scanner** — pick the lowest-noise-floor /
+  least-occupied channel, and (where band plans allow) QSY a link on congestion/degradation,
+  coordinated over SDM with the same propose/confirm/commit machinery the mode-agility work ships.
+  **Regulatory reality (Tom):** UK fixed packet stations have **only ~3 channels on 2 m** — no free
+  rein — so full frequency-hopping is not a UK-station behaviour; but this is **global software** and
+  applies where band plans are freer. The broadly-useful slice is **lowest-noise-floor channel
+  *selection*** (worthwhile even among 2–3 channels), and it is **especially interesting for HF
+  packet** (crowded, propagation-variable) — HF needs different radios, not these Taits, but the same
+  software. Actuator + coordination exist; the missing piece is the scan-and-choose logic + band-plan
+  guardrails.
+
+- **Distributed spectrum & link-quality map (central stats).** Every PDN node is now an instrumented
+  receiver (per-frame RSSI/SNR landed in Phase 10; the observability exporter carries it — see the
+  metrics workstream). Aggregate across a network into a live **who-hears-whom-at-what-SNR** map +
+  channel-occupancy view. Feeds: *real* NET/ROM routing quality (today a static config number → give
+  it measured, propagation-tracking link quality), propagation monitoring, and network-scale
+  antenna/site fault detection. Tom: "central stats could be good." The most novel dataset — a
+  capability that emerges from the *network* of instrumented nodes, not any one.
+
+- **The adaptive controller ("the brain") — future, density-gated.** Fuse the telemetry (RSSI, SNR,
+  busy%, DCD duty, FEC-corrected-byte rate, RTT, TXDELAY estimate) into a link-quality score and drive
+  the knobs (mode down on SNR loss, TXDELAY optimisation, k/window sizing, QSY on congestion) in real
+  time — Phase 10's original "see your link degrading and recover before it dies." Sensors and
+  actuators all exist; the controller does not. Tom: "could be good but requires a high density of
+  PDN — one for the future." Explicitly density-gated; not near-term.
+
+**Explicitly out of scope:** GPS / position-over-SDM (Tom: not interested), despite the radios
+supporting GPS-SDM.
+
+**The through-line:** channel selection, the central map, and the adaptive brain are three views of
+one idea — *a packet network that measures itself and reconfigures itself*, which does not exist in
+amateur packet today. The Tait CCDI/CCR channel makes it possible on VHF/UHF (calibrated RSSI + fast
+retune + a mode-agnostic coordination bearer on one link); the HF story wants different radios but the
+same software.
+
 ### 5.X Spike backlog 🟡 (issues [#176](https://github.com/packet-net/packet.net/issues/176)–[#184](https://github.com/packet-net/packet.net/issues/184))
 
 Smaller, time-boxed exploration tasks. Not phase-sequenced — each can land
@@ -1148,7 +1201,7 @@ Tracked here so they don't get lost. Once resolved, move the resolution into the
 | OQ-009 ([#192](https://github.com/packet-net/packet.net/issues/192)) | NinoTNC mode-change handshake — does the firmware support runtime mode switching without a write-to-flash cycle? `SETHW(mode + 16)` is the "don't write to flash" form; is the actual mode change immediate, or does it require power-cycle? Affects feasibility of Phase 10's mode-agility workstream. Probe once hardware is on the bench. | ✅ Answered 2026-07-02 on the bench rig (firmware 3.44): `SETHW(mode+16)` takes effect immediately — no re-init, no power cycle. Both TNCs were sitting in different modes, were SETHW'd to mode 6 live, and passed RF traffic first try (see §17 2026-07-02). Flash-persist variant not exercised (deliberately — spares the flash). | Phase 10 |
 | OQ-010 ([#193](https://github.com/packet-net/packet.net/issues/193)) | NinoTNC bootloader / firmware-update protocol — `flashtnc` is the canonical tool; what's the wire protocol? Best to read [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) source rather than reinvent. Affects feasibility + risk of `packetnet ctl flash-tnc`. | ✅ Answered 2026-07-03 — protocol read from flashtnc.py, validated by 7 upstream flashes on the rig, then reimplemented natively: `BootloaderNinoTncFirmwareFlasher` + `packet-tune flash-tnc`, hardware-validated (zero-change 3.41 reflash of `/dev/ttyACM1`, 17 535 lines/193 s). Wire protocol documented in [`docs/research/tait-ccdi-spike.md`](research/tait-ccdi-spike.md) §flash-tnc; feasibility of `packetnet ctl flash-tnc` = proven (the node-host wiring is the remaining, now low-risk, step). | Phase 10 |
 | OQ-011 ([#194](https://github.com/packet-net/packet.net/issues/194)) | Radio-control abstraction shape — what's the right `IRadioControl` API? Tait CCDI gives us SNR / RSSI / busy / channel / TX-keying. Yaesu CAT and ICOM CI-V have different feature sets. Common subset is probably {frequency-set, frequency-get, RSSI-get, busy-get, PTT-set} — anything radio-specific (Tait's SNR is unusually rich) goes behind a feature-probe. Decide before locking the Tait implementation. 2026-07-02: v0 shipped in `Packet.Radio` exactly as proposed — {RSSI-get, busy-get (property + carrier-sense events), PTT-set} with `RadioCapabilities` feature flags and reserved flags for channel/frequency/TX-power; frequency members deliberately deferred. Still open until a second implementation (Yaesu CAT / ICOM CI-V) pressure-tests the shape. | Open (v0 shipped) | Phase 10 |
-| OQ-012 | Native DCD seam — hardware carrier-sense (radio DCD via `IRadioControl`, and Nino's coming KISS DCD extension) should feed the AX.25 stack's *native* channel-busy machinery (the spec's physical/link-multiplexer layer models a real DCD input driving p-persistence and seize/release), i.e. emulate a TNC that exposes DCD — NOT a parallel transport-level deferral. `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is explicitly the interim/degenerate form; retire or demote it once the real seam exists. Open spec-side question for [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl): are the physical/LM state machines transcribed, or is that a prerequisite? Both DCD sources (radio control channel + KISS extension) must land in the same seam. | Open | Phase 10 |
+| OQ-012 | Native DCD seam — hardware carrier-sense (radio DCD via `IRadioControl`, and Nino's coming KISS DCD extension) should feed the AX.25 stack's *native* channel-busy machinery (the spec's physical/link-multiplexer layer models a real DCD input driving p-persistence and seize/release), i.e. emulate a TNC that exposes DCD — NOT a parallel transport-level deferral. `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is explicitly the interim/degenerate form; retire or demote it once the real seam exists. Open spec-side question for [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl): are the physical/LM state machines transcribed, or is that a prerequisite? Both DCD sources (radio control channel + KISS extension) must land in the same seam. **2026-07-04: confirmed feasible in-repo** — `Packet.Ax25.Session.LinkMultiplexerSignal` is exactly the native medium-access seam (LM_SEIZE/RELEASE, "the arbiter that owns the radio"); wire radio carrier-sense into the seize path. In progress (Phase 11 foundational item). | In progress | Phase 11 |
 
 ---
 
@@ -1175,6 +1228,21 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-04 — Phase 11 direction captured ("close the loop") + OQ-012/observability workstreams kicked off
+
+Reflective review with Tom on "what's the next big thing." Captured **§5.11 Phase 11 — a
+self-measuring, self-reconfiguring network**: native DCD into the AX.25 medium-access layer
+(OQ-012), noise-floor-aware channel selection & (band-plan-permitting) frequency agility — with
+Tom's UK reality noted (only ~3 fixed-packet channels on 2 m; the broadly-useful slice is
+lowest-noise-floor channel *selection*, and it's especially interesting for HF packet with
+different radios), a distributed spectrum/link-quality "central stats" map, and the adaptive
+controller ("the brain", density-gated future). GPS/position-over-SDM explicitly out (Tom not
+interested). Two workstreams start now: (1) **OQ-012 native DCD seam** — confirmed feasible
+in-repo via `LinkMultiplexerSignal` (retire the interim `CarrierSenseTxGate`); (2) **radio metrics
+into the observability exporter** (`/metrics`), incl. per-link-partner SNR — bounded against the
+exporter's deliberate no-unbounded-callsign-label cardinality policy (configured neighbours /
+active links, not every station heard).
 
 ### 2026-07-04 — Tait FFSK Transparent transport: a TNC-less AX.25 link over the radio's own modem + `tait-transparent` PDN port kind (hardware-validated)
 
