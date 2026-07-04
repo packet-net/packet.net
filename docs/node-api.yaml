@@ -21,7 +21,7 @@ servers:
 x-slices:
   read-and-stream: [GET /status, GET /ports, GET /sessions, GET /netrom/routes, GET /config, GET /links, GET /log, GET /monitor/recent, GET /events, GET /traffic]
   auth: [POST /auth/login, WebAuthn register/authenticate, GET /setup/state, POST /setup, /users, TOTP]
-  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ports/{id}/tuning/* (deviation tuning), /ping, /beacons]
+  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ports/{id}/tuning/* (deviation tuning), /ports/{id}/hail (SDM station hail), /ping, /beacons]
 
 tags:
   - { name: status }
@@ -382,6 +382,34 @@ paths:
       responses:
         "200": { description: stopped }
         "404": { description: no session was active on the port }
+
+  /ports/{id}/hail:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Hail a peer station over the SDM side channel and return its status
+      description: >
+        Send a HAIL to a peer over this port's radio SDM side channel and return the peer's status —
+        callsign, current NinoTNC mode + bitrate, radio channel, supported modes, capabilities, and
+        the peer's RSSI of the hail. Because the side channel rides the radio's own FFSK modem
+        (independent of the packet modulation), the hail SUCCEEDS — and reveals the peer's mode —
+        even when the two stations cannot reach each other on the packet path because of a MODE
+        MISMATCH. That is its diagnostic value: nothing else in the stack can report a station you
+        cannot decode. The hail TRANSMITS an SDM, so it is admin-scoped and audited. The node sources
+        the reply from the peer; a resident hail responder (port config `radio.hailResponder`) answers
+        the reverse direction. If no resident responder is bound, a fail-fast SDM-enabled preflight
+        runs first. v1 is point-to-point; when a resident responder is armed, its bound peer is the
+        only peer this endpoint can hail.
+      security: [{ bearerAuth: [admin] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/HailRequest" } } }
+      responses:
+        "200": { description: the peer's status, content: { application/json: { schema: { $ref: "#/components/schemas/PortHailStatus" } } } }
+        "400": { description: no Tait radio on the port · bad peer id · SDM disabled in the radio programming · a resident responder is bound to a different peer }
+        "404": { description: unknown or not-running port }
+        "502": { description: the hail could not be delivered over the SDM side channel }
+        "504": { description: the peer did not answer before the timeout }
 
   /radios/scan:
     get:
@@ -893,6 +921,30 @@ components:
         status: { type: string, enum: [pass, fail, unknown], description: "pass = working; fail = broken (see remedy); unknown = not determined (e.g. a transmitting probe skipped on the safe form, or not-a-NinoTNC)" }
         detail: { type: string, description: "what was observed, in operator-facing prose" }
         remedy: { type: [string, "null"], description: "one-line remedial action, or null when none applies" }
+
+    HailRequest:
+      type: object
+      description: Request to hail a peer station over a port's SDM side channel.
+      required: [peerSdmId]
+      properties:
+        peerSdmId: { type: string, description: "the peer radio's 8-character SDM data identity to hail" }
+
+    PortHailStatus:
+      type: object
+      description: >
+        A peer station's status as learned over the SDM side channel — returned even when the peer is
+        unreachable on the packet path because of a mode mismatch (the mismatch is exactly what `mode`
+        then reveals).
+      required: [callsign, supportedModes, capabilities]
+      properties:
+        callsign: { type: string, description: "the peer's callsign" }
+        mode: { type: [integer, "null"], description: "the peer's current NinoTNC mode number, or null when undetermined" }
+        modeName: { type: [string, "null"], description: "human name of the mode, e.g. '1200 AFSK AX.25'" }
+        bitRateHz: { type: [integer, "null"], description: "the peer's current over-air bit rate (bits/s), or null" }
+        channel: { type: [string, "null"], description: "the peer's radio channel as its radio reports it, or null" }
+        supportedModes: { type: array, items: { type: integer }, description: "NinoTNC mode numbers the peer advertises it can run" }
+        capabilities: { type: array, items: { type: string }, description: "capability tokens the peer advertises (e.g. hail, modecoord, tune)" }
+        rssiOfHailDbm: { type: [number, "null"], description: "the peer's receiver RSSI (dBm) sampled at hail receipt — the hail's link quality as heard at the far end — or null" }
 
     TuningStartRequest:
       type: object

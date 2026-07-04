@@ -147,6 +147,13 @@ builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();
 // PdnPortTuningApi.
 builder.Services.AddSingleton<Packet.Node.Core.Tuning.PortTuningService>();
 
+// SDM station hail (POST /api/v1/ports/{id}/hail): query a peer's mode/modem/capabilities over the
+// radios' SDM side channel — works across a mode mismatch that blocks the packet path. Also the
+// opt-in resident hail responder (PortRadioConfig.hailResponder) — a hosted loop reconciles it
+// against the running ports. See PdnPortHailApi.
+builder.Services.AddSingleton<Packet.Node.Core.Hail.PortHailService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.Hail.PortHailService>());
+
 // --- Web control-API auth foundation (default-OFF behind management.auth.enabled) ---
 //
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope
@@ -742,6 +749,10 @@ app.MapPdnPortDoctorApi();
 // Mutating verbs (session/next/stop) are admin-scoped + audited; the SSE event feed is read-scoped.
 // Mapped before the catch-all; specific routes win. See PdnPortTuningApi.
 app.MapPdnPortTuningApi();
+
+// SDM station hail: POST /api/v1/ports/{id}/hail — query a peer's mode/modem/capabilities over the
+// side channel (admin-scoped + audited; it transmits). Mapped before the catch-all. See PdnPortHailApi.
+app.MapPdnPortHailApi();
 
 // Slice 3 step 4: the direct-supervisor session actions + ping — connect-out
 // (POST /sessions), disconnect (DELETE /sessions/{id}), send-line

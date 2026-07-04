@@ -1,5 +1,6 @@
 using FluentValidation;
 using Packet.Core;
+using Packet.Radio.Tait;
 
 namespace Packet.Node.Core.Configuration;
 
@@ -114,6 +115,14 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
         RuleFor(r => r.HealthIntervalSeconds!.Value).GreaterThan(0)
             .When(r => r.HealthIntervalSeconds.HasValue)
             .WithMessage("radio healthIntervalSeconds must be positive (omit it for the 10 s default).");
+
+        // A resident hail responder must know whom to answer (v1 is point-to-point).
+        RuleFor(r => r.HailResponderPeer)
+            .Must(peer => peer.Length == TaitSdmSideChannel.IdentityLength)
+            .When(r => r.HailResponder)
+            .WithMessage(
+                $"radio.hailResponderPeer must be exactly {TaitSdmSideChannel.IdentityLength} characters " +
+                "(the neighbour's SDM data identity) when hailResponder is enabled.");
     }
 
     private static bool HasNonEmptyPort(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.Port);

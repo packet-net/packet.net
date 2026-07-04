@@ -60,6 +60,24 @@ public sealed record PortRadioConfig
     /// temperature, forward/reverse detector trend). Null uses the driver default (10 s). Must be
     /// positive when set. Cheap — a sample is a few ~15 ms CCDI transactions.</summary>
     public int? HealthIntervalSeconds { get; init; }
+
+    /// <summary>
+    /// Opt-in: arm this port as an <b>SDM hail responder</b>. When <c>true</c>, the node listens on
+    /// the radio's SDM side channel for hails from <see cref="HailResponderPeer"/> and auto-replies
+    /// with this station's status (callsign, current NinoTNC mode + bitrate, channel, capabilities).
+    /// Off by default — a station never advertises its state without an explicit enable. Because a
+    /// reply is an SDM transmission, arm it only where transmitting is acceptable. Requires a
+    /// <see cref="HailResponderPeer"/> to reply to.
+    /// </summary>
+    public bool HailResponder { get; init; }
+
+    /// <summary>
+    /// The 8-character SDM data identity of the neighbour this port answers hails from (and replies
+    /// to) when <see cref="HailResponder"/> is on. Required when the responder is armed. (v1 is
+    /// point-to-point, mirroring the mode-coordination link; answering arbitrary hailers by routing
+    /// to the RING caller id is a documented follow-up.)
+    /// </summary>
+    public string HailResponderPeer { get; init; } = "";
 }
 
 /// <summary>
