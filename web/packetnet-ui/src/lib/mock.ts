@@ -11,6 +11,7 @@ import type {
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
   TailscaleStatus, SystemInfo, NetRomRouting,
   RadioStatus, RadioScanResult, HeardStation,
+  DoctorReport, DoctorProbe,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -237,6 +238,64 @@ export const RADIO_SCAN: RadioScanResult[] = [
   { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
   { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
 ];
+
+// Capability-doctor mock (GET/POST /api/v1/ports/{id}/doctor). A believable checklist per port so
+// the "Check radio" surface renders with no node — covering all three states: pass (green), fail
+// (red + remedy), unknown (grey). The transmitting probes (txdelay/sdm/pairing) are gated: `unknown`
+// with a "requires a brief transmit" detail on the safe form, `pass` once the operator runs the full
+// (interrupt) check — exactly the live server's safe-vs-interrupt behaviour.
+const p = (name: string, status: DoctorProbe["status"], detail: string, remedy: string | null = null): DoctorProbe =>
+  ({ name, status, detail, remedy });
+
+const GATED = "requires a brief transmit — rerun with interrupt=true";
+
+export function doctorReport(portId: string, interrupt: boolean): DoctorReport {
+  let probes: DoctorProbe[];
+  if (portId === "vhf-1") {
+    // A NinoTNC + Tait radio, healthy. getrssi is an informational unknown (removed on 3.44 firmware).
+    probes = [
+      p("tnc-present", "pass", "GETVER answered: firmware 3.44"),
+      p("getrssi", "unknown", "no reply in 2 s — removed in firmware 3.44 (was an undocumented 3.41 feature)", "meter deviation by decode-rate / FEC deltas instead"),
+      p("dip-software-control", "pass", "DIPs 1111 — software control"),
+      p("running-mode", "pass", "mode 6 (1200 AFSK AX.25)"),
+      interrupt
+        ? p("txdelay-software-control", "pass", "(mode pinned to 6 first) TXDELAY under software control (pot at minimum)")
+        : p("txdelay-software-control", "unknown", GATED),
+      p("radio-present", "pass", "Tait TM8110 s/n 19925328 (CCDI 1.10.0)"),
+      p("progress-messages", "pass", "enabled for this session (FUNCTION 0/4/1 accepted)"),
+      interrupt
+        ? p("sdm", "pass", "wildcard SDM accepted (one short over-air transmission)")
+        : p("sdm", "unknown", "SDM-enabled check " + GATED),
+      interrupt
+        ? p("tnc-radio-pairing", "pass", "radio reported PTT within 2 s of the TNC keying a frame")
+        : p("tnc-radio-pairing", "unknown", GATED),
+    ];
+  } else if (portId === "uhf-2") {
+    // A NinoTNC with the DIPs left in switch-pinned mode, and no radio attached.
+    probes = [
+      p("tnc-present", "pass", "GETVER answered: firmware 3.41"),
+      p("getrssi", "pass", "available (firmware 3.41-era) — deviation meter fast path active (idle -0.0 dB)"),
+      p("dip-software-control", "fail", "DIPs 0110 — mode pinned by switches", "set all four DIP switches up (1111) so KISS SETHW controls the mode"),
+      p("running-mode", "pass", "mode 6 (1200 AFSK AX.25)"),
+      interrupt
+        ? p("txdelay-software-control", "pass", "(mode pinned to 6 first) TXDELAY under software control (pot at minimum)")
+        : p("txdelay-software-control", "unknown", GATED),
+      p("radio-attached", "unknown", "no radio attached to this port"),
+    ];
+  } else {
+    // A serial-KISS (non-NinoTNC) modem with no radio — the degraded checklist.
+    const notNino = "not a NinoTNC — this modem exposes no NinoTNC diagnostics";
+    probes = [
+      p("tnc-present", "unknown", notNino),
+      p("getrssi", "unknown", notNino),
+      p("dip-software-control", "unknown", notNino),
+      p("running-mode", "unknown", notNino),
+      p("txdelay-software-control", "unknown", notNino),
+      p("radio-attached", "unknown", "no radio attached to this port"),
+    ];
+  }
+  return { portId, probes, ranAt: new Date().toISOString() };
+}
 
 // Heard stations (GET /api/v1/mheard) with last-heard RSSI where a radio measured it. Fixture data for
 // a future MHeard view — lastRssiDbm is null for stations heard on a port with no radio attached.

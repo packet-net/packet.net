@@ -182,6 +182,47 @@ describe("screens render without crashing", () => {
     expect((screen.getByDisplayValue("19925328") as HTMLInputElement).value).toBe("19925328");
   });
 
+  it("Ports 'Check radio' opens the capability-doctor checklist (safe form)", async () => {
+    // vhf-1 is a NinoTNC + radio port. "Check radio" opens the doctor, which auto-runs the SAFE
+    // (non-transmitting) check: the checklist renders, and the transmitting probes are gated as
+    // "unknown" with a rerun hint, alongside the offered full-check (interrupt) action.
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("vhf-1")).toBeInTheDocument());
+
+    let card: HTMLElement | null = screen.getByText("vhf-1");
+    while (card && !within(card).queryByRole("button", { name: /Check radio/i })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: /Check radio/i }));
+
+    // The modal auto-runs the safe check; the rows arrive once the mock-async call resolves.
+    await waitFor(() => expect(screen.getByText("radio-present")).toBeInTheDocument());
+    expect(screen.getByText("tnc-present")).toBeInTheDocument();
+    // A transmitting probe is gated on the safe form → shown "unknown" with the rerun hint.
+    expect(screen.getAllByText(/requires a brief transmit/i).length).toBeGreaterThan(0);
+    // The secondary full-check action (interrupt form) is offered and warns it transmits.
+    expect(screen.getByRole("button", { name: /Run full check \(briefly transmits\)/i })).toBeInTheDocument();
+  });
+
+  it("Ports doctor renders a red fail + remedy and a no-radio row", async () => {
+    // uhf-2 in the mock is a NinoTNC with switch-pinned DIPs and no radio — exercises the fail
+    // (red) + remedy line and the "no radio attached" degradation row.
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("uhf-2")).toBeInTheDocument());
+
+    let card: HTMLElement | null = screen.getByText("uhf-2");
+    while (card && !within(card).queryByRole("button", { name: /Check radio/i })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: /Check radio/i }));
+
+    await waitFor(() => expect(screen.getByText("dip-software-control")).toBeInTheDocument());
+    expect(screen.getByText(/set all four DIP switches up/i)).toBeInTheDocument();
+    expect(screen.getByText(/no radio attached to this port/i)).toBeInTheDocument();
+  });
+
   it("Capabilities renders the per-peer capability cache", async () => {
     const { container } = mount(<Capabilities />);
     expect(container.firstChild).toBeTruthy();
