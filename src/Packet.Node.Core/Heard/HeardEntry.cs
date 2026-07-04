@@ -13,9 +13,14 @@ namespace Packet.Node.Core.Heard;
 /// <param name="FirstHeard">When this station was first heard on this port (set once).</param>
 /// <param name="LastHeard">When this station was most recently heard on this port.</param>
 /// <param name="Count">How many frames have been heard from this station on this port.</param>
+/// <param name="LastRssiDbm">The received signal strength (dBm) attributed to the most recent frame
+/// heard from this station on this port, when a radio control channel measured it — <c>null</c> when
+/// this port has no radio attached, or the newest frame carried no attributed RSSI. Additive
+/// (trailing optional): a heard row without it round-trips exactly as before.</param>
 public sealed record HeardEntry(
     string PortId,
     string Callsign,
     DateTimeOffset FirstHeard,
     DateTimeOffset LastHeard,
-    long Count);
+    long Count,
+    float? LastRssiDbm = null);

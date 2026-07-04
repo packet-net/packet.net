@@ -1,6 +1,7 @@
 using Packet.Ax25.Session;
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Radios;
 using Packet.Radio;
 
 namespace Packet.Node.Core.Hosting;
@@ -40,8 +41,14 @@ public sealed class RunningPort : IAsyncDisposable
     /// <summary>The open radio control channel feeding the RSSI-tagging wrapper, or
     /// null when this port has no radio attached (config absent, or the radio failed
     /// to open and the port degraded to running without metadata). Disposed LAST —
-    /// the wrapper's sampler polls it until the wrapper itself is disposed.</summary>
+    /// the wrapper's sampler and the health monitor poll it until they are disposed.</summary>
     public IRadioControl? Radio { get; init; }
+
+    /// <summary>The per-port radio status/health monitor (identity, connection state, carrier-sense,
+    /// latest health sample) driving <c>GET /api/v1/radios</c> and <c>/ports/{id}/radio</c>, or null
+    /// when no radio is attached. Owns its own sampling (a Tait health monitor); disposed BEFORE the
+    /// radio it polls, AFTER the modem chain.</summary>
+    public IRadioStatusMonitor? RadioStatus { get; init; }
 
     /// <summary>
     /// The transport to feature-detect KISS/CSMA capabilities on
@@ -61,14 +68,19 @@ public sealed class RunningPort : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         // Order matters: listener first (it consumes the outermost transport), then the
-        // outermost transport (when radio-tagged, disposing the wrapper stops its RSSI
-        // sampler), then the modem chain the wrapper didn't own, then the radio the
-        // sampler was polling.
+        // outermost transport (when radio-tagged, disposing the node tap cascades into the
+        // RSSI-tagging wrapper and stops its sampler), then the modem chain the wrapper didn't
+        // own, then the radio-status/health monitor, then the radio itself LAST — both the RSSI
+        // sampler and the health monitor poll the radio, so the radio must outlive them.
         await Listener.DisposeAsync().ConfigureAwait(false);
         await Transport.DisposeAsync().ConfigureAwait(false);
         if (InnerTransport is not null)
         {
             await InnerTransport.DisposeAsync().ConfigureAwait(false);
+        }
+        if (RadioStatus is not null)
+        {
+            await RadioStatus.DisposeAsync().ConfigureAwait(false);
         }
         if (Radio is not null)
         {

@@ -3,6 +3,7 @@ using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.Telemetry;
 using Packet.Node.Tests.Support;
 using Packet.Radio;
 
@@ -54,9 +55,10 @@ public sealed class PortRadioIntegrationTests
             await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("a"), "port a up");
 
             var port = supervisor.GetPort("a")!;
-            port.Transport.Should().BeOfType<RssiTaggingTransport>(
-                "a port with a radio block runs over the tagging wrapper");
+            port.Transport.Should().BeOfType<InboundRadioTap>(
+                "a port with a radio block runs over the node radio tap (outside the tagging wrapper)");
             port.Radio.Should().BeSameAs(radio, "the running port owns the opened radio");
+            port.RadioStatus.Should().NotBeNull("an attached radio gets a status/health monitor");
             port.InnerTransport.Should().NotBeNull("the wrapper doesn't own the modem — the port tracks it");
             port.ModemTransport.Should().BeSameAs(port.InnerTransport,
                 "KISS-param application must target the modem beneath the wrapper");

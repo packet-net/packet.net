@@ -53,15 +53,25 @@ public sealed partial class SqliteTrafficStore
             control   INTEGER NOT NULL,
             pid       INTEGER,
             info_len  INTEGER NOT NULL,
-            raw       BLOB NOT NULL);
+            raw       BLOB NOT NULL,
+            rssi_dbm        REAL,
+            snr_db          REAL,
+            noise_floor_dbm REAL);
         CREATE INDEX IF NOT EXISTS ix_traffic_ts ON traffic (ts_utc);
         CREATE INDEX IF NOT EXISTS ix_traffic_port_ts ON traffic (port, ts_utc);
         """;
 
+    // Additive nullable radio-signal columns, added to a traffic table created before they existed.
+    // The store is meta-less (CREATE TABLE IF NOT EXISTS, no PRAGMA user_version), so an existing db
+    // needs each column added explicitly — the SqliteRefreshTokenStore pattern. A fresh db already
+    // has them from SchemaSql, so the ADD is skipped.
+    private static readonly string[] RadioColumns = ["rssi_dbm", "snr_db", "noise_floor_dbm"];
+
     private const string SelectColumns =
         "id AS Id, ts_utc AS TsUtc, port AS Port, direction AS Direction, source AS Source, " +
         "dest AS Dest, kind AS Kind, ns AS Ns, nr AS Nr, pf AS Pf, control AS Control, " +
-        "pid AS Pid, info_len AS InfoLen, raw AS Raw";
+        "pid AS Pid, info_len AS InfoLen, raw AS Raw, " +
+        "rssi_dbm AS RssiDbm, snr_db AS SnrDb, noise_floor_dbm AS NoiseFloorDbm";
 
     private readonly string connectionString;
     private readonly ILogger<SqliteTrafficStore> logger;
@@ -95,6 +105,16 @@ public sealed partial class SqliteTrafficStore
             conn.Execute("PRAGMA auto_vacuum=INCREMENTAL;");
             conn.Execute("PRAGMA journal_mode=WAL;");
             conn.Execute(SchemaSql);
+
+            var existing = conn.Query<string>("SELECT name FROM pragma_table_info('traffic');")
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var col in RadioColumns)
+            {
+                if (!existing.Contains(col))
+                {
+                    conn.Execute($"ALTER TABLE traffic ADD COLUMN {col} REAL;");
+                }
+            }
         }
         catch (SqliteException ex)
         {
@@ -119,8 +139,8 @@ public sealed partial class SqliteTrafficStore
             foreach (var r in batch)
             {
                 conn.Execute(
-                    "INSERT INTO traffic (ts_utc, port, direction, source, dest, kind, ns, nr, pf, control, pid, info_len, raw) " +
-                    "VALUES (@ts, @port, @dir, @src, @dst, @kind, @ns, @nr, @pf, @ctl, @pid, @len, @raw);",
+                    "INSERT INTO traffic (ts_utc, port, direction, source, dest, kind, ns, nr, pf, control, pid, info_len, raw, rssi_dbm, snr_db, noise_floor_dbm) " +
+                    "VALUES (@ts, @port, @dir, @src, @dst, @kind, @ns, @nr, @pf, @ctl, @pid, @len, @raw, @rssi, @snr, @noise);",
                     new
                     {
                         ts = Stamp(r.TimestampUtc),
@@ -136,6 +156,9 @@ public sealed partial class SqliteTrafficStore
                         pid = r.Pid,
                         len = r.InfoLength,
                         raw = r.Raw,
+                        rssi = r.RssiDbm is { } rs ? (double?)rs : null,
+                        snr = r.SnrDb is { } sn ? (double?)sn : null,
+                        noise = r.NoiseFloorDbm is { } nf ? (double?)nf : null,
                     },
                     transaction: tx);
             }
@@ -306,7 +329,12 @@ public sealed partial class SqliteTrafficStore
             Control: (int)row.Control,
             Pid: (int?)row.Pid,
             InfoLength: (int)row.InfoLen,
-            Raw: raw);
+            Raw: raw,
+            // REAL columns read back as double; narrow to the float the 0.1 dB source used so JSON
+            // renders -95.3, not -95.30000305.
+            RssiDbm: row.RssiDbm is { } rs ? (float?)rs : null,
+            SnrDb: row.SnrDb is { } sn ? (float?)sn : null,
+            NoiseFloorDbm: row.NoiseFloorDbm is { } nf ? (float?)nf : null);
     }
 
     private static string Stamp(DateTimeOffset value)
@@ -332,6 +360,9 @@ public sealed partial class SqliteTrafficStore
         public long? Pid { get; set; }
         public long InfoLen { get; set; }
         public byte[]? Raw { get; set; }
+        public double? RssiDbm { get; set; }
+        public double? SnrDb { get; set; }
+        public double? NoiseFloorDbm { get; set; }
     }
 
     [LoggerMessage(Level = LogLevel.Warning,
@@ -364,7 +395,10 @@ public sealed record TrafficRecord(
     int Control,             // first control octet
     int? Pid,                // protocol id byte, I/UI frames only
     int InfoLength,          // full info-field length (not capped)
-    byte[] Raw)              // raw frame bytes, capped at SqliteTrafficStore.RawCapBytes
+    byte[] Raw,              // raw frame bytes, capped at SqliteTrafficStore.RawCapBytes
+    float? RssiDbm = null,   // per-frame RSSI (dBm) from the radio control channel; RX + radio only
+    float? SnrDb = null,     // RSSI over the tracked noise floor (dB)
+    float? NoiseFloorDbm = null) // tracked channel-idle noise floor (dBm)
 {
     /// <summary>
     /// Project a traced <see cref="MonitorEvent"/> (the single decode the node
@@ -404,7 +438,10 @@ public sealed record TrafficRecord(
             Control: evt.Control,
             Pid: pid,
             InfoLength: evt.InfoLength,
-            Raw: raw);
+            Raw: raw,
+            RssiDbm: evt.RssiDbm,
+            SnrDb: evt.SnrDb,
+            NoiseFloorDbm: evt.NoiseFloorDbm);
     }
 }
 
@@ -428,4 +465,7 @@ public sealed record TrafficFrame(
     int Control,
     int? Pid,
     int InfoLength,
-    IReadOnlyList<int> Raw);
+    IReadOnlyList<int> Raw,
+    float? RssiDbm = null,
+    float? SnrDb = null,
+    float? NoiseFloorDbm = null);

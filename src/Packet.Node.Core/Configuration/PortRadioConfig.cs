@@ -18,6 +18,14 @@ namespace Packet.Node.Core.Configuration;
 /// could cable to. Validation enforces that pairing.
 /// </para>
 /// <para>
+/// Pin which radio this is EITHER by device path (<see cref="Port"/>) OR by CCDI serial
+/// (<see cref="Serial"/>) — exactly one. <see cref="Serial"/> is the robust choice: USB serial
+/// devices renumber across a replug or reboot (<c>/dev/ttyUSB0</c> ↔ <c>/dev/ttyUSB1</c>), and the
+/// CP2102 CCDI dongles in the wild share a USB serial, so <c>/dev/serial/by-id</c> can't tell two
+/// apart — the CCDI serial number can. A <see cref="Serial"/>-bound radio is located by scanning at
+/// bring-up; no match (unplugged / powered off) degrades cleanly, exactly like a failed open.
+/// </para>
+/// <para>
 /// A radio that fails to open at port start degrades cleanly: the fault is logged
 /// and the port runs without radio metadata — an unplugged control cable must never
 /// take a working packet channel down. Changing this block is a restart-class
@@ -33,12 +41,25 @@ public sealed record PortRadioConfig
     public string Kind { get; init; } = "";
 
     /// <summary>The serial device of the radio's <em>control</em> channel (e.g.
-    /// <c>/dev/ttyUSB0</c>) — distinct from the modem's own serial device.</summary>
+    /// <c>/dev/ttyUSB0</c>) — distinct from the modem's own serial device. Mutually exclusive with
+    /// <see cref="Serial"/>: set exactly one. Empty/absent when binding by <see cref="Serial"/>.</summary>
     public string Port { get; init; } = "";
+
+    /// <summary>The radio's CCDI serial number (e.g. <c>1G000123</c>) — the <b>stable</b> way to pin
+    /// which radio this port controls, surviving <c>/dev/ttyUSB*</c> renumbering and the shared-USB-
+    /// serial ambiguity of CP2102 dongles. When set, bring-up scans the machine's candidate ports and
+    /// opens whichever one answers a MODEL/serial query with this CCDI serial. Mutually exclusive with
+    /// <see cref="Port"/>: set exactly one. Empty/absent when binding by <see cref="Port"/>.</summary>
+    public string Serial { get; init; } = "";
 
     /// <summary>Control-channel baud rate. Default 28800 — the Tait CCDI
     /// factory-programming default (<c>TaitCcdiRadio.DefaultBaudRate</c>).</summary>
     public int Baud { get; init; } = 28800;
+
+    /// <summary>How often (seconds) the per-port radio-health monitor samples the radio (RSSI, PA
+    /// temperature, forward/reverse detector trend). Null uses the driver default (10 s). Must be
+    /// positive when set. Cheap — a sample is a few ~15 ms CCDI transactions.</summary>
+    public int? HealthIntervalSeconds { get; init; }
 }
 
 /// <summary>

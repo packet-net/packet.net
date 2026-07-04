@@ -119,11 +119,18 @@ public static class NodeConfigTemplate
         #      baud: 57600
         #      mode: 6             # NinoTNC mode 0..15
         #    radio:                # optional — attach the radio's own serial CONTROL
-        #      kind: tait-ccdi     # channel (Tait TM8100/TM8200 CCDI; CAT/CI-V later)
-        #      port: /dev/ttyUSB0  # so inbound frames carry per-frame RSSI/SNR
-        #      baud: 28800         # metadata. Serial-modem ports only (serial-kiss /
-        #                          # nino-tnc). If the radio fails to open the port
-        #                          # still runs — just without signal metadata.
+        #      kind: tait-ccdi     # channel (Tait TM8100/TM8200 CCDI; CAT/CI-V later).
+        #      serial: 1G000123    # PREFERRED — pin by CCDI serial: stable across
+        #                          # /dev/ttyUSB* renumbering AND the CP2102 shared-USB-serial
+        #                          # dongles that make by-id ambiguous. Bring-up scans for it;
+        #                          # discover it with GET /api/v1/radios/scan.
+        #      # port: /dev/ttyUSB0  # OR pin by device path (exactly one of serial/port).
+        #      baud: 28800         # inbound frames then carry per-frame RSSI/SNR, and the
+        #                          # radio's status/health shows on GET /api/v1/radios.
+        #                          # Serial-modem ports only (serial-kiss / nino-tnc). A radio
+        #                          # that won't open (or a serial not found) degrades cleanly —
+        #                          # the port still runs, just without signal metadata.
+        #      healthIntervalSeconds: 10  # optional — health sample cadence (default 10 s).
         #  - id: axudp
         #    enabled: false
         #    transport:

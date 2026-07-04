@@ -710,18 +710,30 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Optional radio-control attachment (port.radio, restart-class): open the
         // radio's control channel and wrap the transport OUTERMOST so every inbound
         // frame the listener sees carries per-frame RSSI/SNR metadata
-        // (Ax25InboundFrame.Radio). A radio open failure degrades cleanly — log and
-        // run the port without metadata; an unplugged control cable must never take a
-        // working packet channel down. The wrapper does not own what it wraps, so
-        // RunningPort tracks the pieces and disposes them in order (wrapper → modem
-        // chain → radio).
+        // (Ax25InboundFrame.Radio), plus start the radio-health/status monitor. A radio
+        // open failure degrades cleanly — log and run the port without metadata; an
+        // unplugged control cable (or a serial-bound radio that isn't plugged in) must
+        // never take a working packet channel down. RunningPort tracks the pieces and
+        // disposes them in order (node tap → modem chain → status monitor → radio).
         IRadioControl? radio = null;
+        IRadioStatusMonitor? radioStatus = null;
+        IInboundRadioSource? radioSource = null;
         if (port.Radio is { } radioConfig)
         {
+            // Serial-bound radios have an empty Port (the device is resolved by scanning), so
+            // describe the attachment by whichever key is set.
+            var radioEndpoint = !string.IsNullOrWhiteSpace(radioConfig.Port)
+                ? radioConfig.Port
+                : $"serial:{radioConfig.Serial}";
             try
             {
                 radio = await radioFactory.CreateAsync(radioConfig, timeProvider, ct).ConfigureAwait(false);
-                transport = new RssiTaggingTransport(
+
+                // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
+                // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
+                // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
+                // concern kept entirely OFF the parity-tracked AX.25 listener contract.
+                var tagging = new RssiTaggingTransport(
                     transport,
                     radio,
                     new RssiTaggingOptions
@@ -731,17 +743,32 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                         BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
                     },
                     timeProvider);
-                LogRadioAttached(port.Id, radioConfig.Kind, radioConfig.Port);
+                var tap = new InboundRadioTap(tagging);
+                transport = tap;
+                radioSource = tap;
+                radioStatus = RadioStatusMonitors.Create(port.Id, radioConfig, radio, timeProvider);
+                LogRadioAttached(port.Id, radioConfig.Kind, radioEndpoint);
             }
             catch (Exception ex)
             {
-                LogRadioFaulted(ex, port.Id, radioConfig.Kind, radioConfig.Port);
+                LogRadioFaulted(ex, port.Id, radioConfig.Kind, radioEndpoint);
+                // Unwind whatever we built, sampler/health-monitor first, radio last.
+                if (radioStatus is not null)
+                {
+                    await radioStatus.DisposeAsync().ConfigureAwait(false);
+                    radioStatus = null;
+                }
+                if (!ReferenceEquals(transport, modemTransport))
+                {
+                    await transport.DisposeAsync().ConfigureAwait(false);   // node tap → RSSI wrapper (stops sampler)
+                    transport = modemTransport;   // degrade: run the port without radio metadata
+                }
+                radioSource = null;
                 if (radio is not null)
                 {
                     await radio.DisposeAsync().ConfigureAwait(false);
                     radio = null;
                 }
-                transport = modemTransport;   // degrade: run the port without radio metadata
             }
         }
 
@@ -779,6 +806,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 await modemTransport.DisposeAsync().ConfigureAwait(false);
             }
+            if (radioStatus is not null)
+            {
+                await radioStatus.DisposeAsync().ConfigureAwait(false);
+            }
             if (radio is not null)
             {
                 await radio.DisposeAsync().ConfigureAwait(false);
@@ -793,6 +824,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             Transport = transport,
             InnerTransport = ReferenceEquals(transport, modemTransport) ? null : modemTransport,
             Radio = radio,
+            RadioStatus = radioStatus,
             Listener = listener,
             Started = true,
         };
@@ -814,8 +846,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         netRom?.AttachPort(port.Id, myCall, listener, port.NetRomQuality, port.NetRomMinQuality, port.NodesPaclen);
 
         // Live telemetry: tap the same frame trace for the node's frame/byte counters
-        // + the monitor SSE feed. Also observation-only; detached on teardown.
-        telemetry?.AttachPort(port.Id, listener);
+        // + the monitor SSE feed. Also observation-only; detached on teardown. The radio
+        // source (the node tap, when a radio is attached) lets it stamp per-frame RSSI/SNR
+        // onto received frames without widening the AX.25 listener contract.
+        telemetry?.AttachPort(port.Id, listener, radioSource);
 
         // ID beacon: arm the periodic UI-frame beacon on this port (default-off — armed
         // only when the effective beacon is enabled). Sends-only; detached on teardown.
@@ -987,6 +1021,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     Transport = running.Transport,
                     InnerTransport = running.InnerTransport,
                     Radio = running.Radio,
+                    RadioStatus = running.RadioStatus,
                     Listener = running.Listener,
                     Started = running.Started,
                 };
