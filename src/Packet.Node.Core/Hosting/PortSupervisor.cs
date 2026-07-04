@@ -823,6 +823,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             Config = port,
             Transport = transport,
             InnerTransport = ReferenceEquals(transport, modemTransport) ? null : modemTransport,
+            // Captured above before the pacing/tagging decorators hid it, so the capability
+            // doctor can probe the NinoTNC directly on a live port.
+            NinoTnc = ninoTnc,
             Radio = radio,
             RadioStatus = radioStatus,
             Listener = listener,
@@ -1020,6 +1023,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     Config = port,
                     Transport = running.Transport,
                     InnerTransport = running.InnerTransport,
+                    NinoTnc = running.NinoTnc,
                     Radio = running.Radio,
                     RadioStatus = running.RadioStatus,
                     Listener = running.Listener,

@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\src\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
     <ProjectReference Include="..\..\src\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\..\src\Packet.Radio\Packet.Radio.csproj" />
+    <ProjectReference Include="..\..\src\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
   </ItemGroup>
 
 </Project>

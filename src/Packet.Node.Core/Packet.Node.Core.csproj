@@ -18,6 +18,10 @@
     <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
     <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
     <ProjectReference Include="..\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
+    <!-- The capability doctor (GET /api/v1/ports/{id}/doctor) reuses the Packet.Tune.Core
+         probe core against the live RunningPort handles. Tom approved pulling Tune.Core into
+         the node for this; only the doctor probes are used here (not the tuning link machinery). -->
+    <ProjectReference Include="..\Packet.Tune.Core\Packet.Tune.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

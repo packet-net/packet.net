@@ -267,6 +267,43 @@ paths:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RadioStatus" } } } }
         "404": { description: no such port }
 
+  /ports/{id}/doctor:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [tools]
+      summary: Check radio setup — the capability doctor (safe, non-transmitting)
+      description: >
+        Runs the tuning capability probes against the running port's live handles and returns a
+        plain-language pass/fail/unknown checklist with a remedy per failure. Read-scope and
+        SAFE: it only runs the non-transmitting probes (TNC identity/firmware/DIPs/running mode,
+        radio identity, GETRSSI availability). The transmitting probes (TXDELAY software-control,
+        the SDM-enabled check, TNC↔radio pairing) are reported `unknown` with detail
+        "requires a brief transmit — rerun with interrupt=true". A serial-KISS (non-NinoTNC)
+        port reports the TNC-diagnostic probes as "not a NinoTNC"; a port with no radio gets a
+        `radio-attached` "no radio attached" row. An unknown or not-running port id is 404.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortDoctorReport" } } } }
+        "404": { description: unknown or not-running port }
+    post:
+      tags: [tools]
+      summary: Check radio setup — full check that briefly transmits (interrupt)
+      description: >
+        The doctor with `interrupt=true` additionally runs the TRANSMITTING probes, which briefly
+        KEY THE TRANSMITTER and perturb the TXDELAY register. Admin-scope and audited (mirrors the
+        other transmitting endpoints). Without `interrupt=true` it behaves like the safe GET form.
+        An unknown or not-running port id is 404.
+      security: [{ bearerAuth: [admin] }]
+      parameters:
+        - name: interrupt
+          in: query
+          required: false
+          description: "When true, run the transmitting probes too (briefly transmits)."
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortDoctorReport" } } } }
+        "404": { description: unknown or not-running port }
+
   /radios/scan:
     get:
       tags: [radios]
@@ -741,6 +778,25 @@ components:
         baud: { type: integer }
         devicePath: { type: string, description: "current device, e.g. /dev/ttyUSB0 (may renumber between scans)" }
         byIdPath: { type: [string, "null"], description: "the /dev/serial/by-id/* symlink for this device, or null when absent/ambiguous/off-Linux" }
+
+    PortDoctorReport:
+      type: object
+      description: The capability-doctor result for one port — a plain-language checklist an operator reads to answer "is this port's radio setup healthy?".
+      required: [portId, probes, ranAt]
+      properties:
+        portId: { type: string }
+        probes: { type: array, items: { $ref: "#/components/schemas/PortDoctorProbe" } }
+        ranAt: { type: string, format: date-time, description: "when the run completed (UTC)" }
+
+    PortDoctorProbe:
+      type: object
+      description: One capability probe's verdict.
+      required: [name, status, detail]
+      properties:
+        name: { type: string, description: "short probe id, e.g. tnc-present, radio-present, sdm" }
+        status: { type: string, enum: [pass, fail, unknown], description: "pass = working; fail = broken (see remedy); unknown = not determined (e.g. a transmitting probe skipped on the safe form, or not-a-NinoTNC)" }
+        detail: { type: string, description: "what was observed, in operator-facing prose" }
+        remedy: { type: [string, "null"], description: "one-line remedial action, or null when none applies" }
 
     LogLine:
       type: object
