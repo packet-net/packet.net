@@ -18,6 +18,7 @@ import { Apps } from "@/screens/apps";
 import { Routes } from "@/screens/routes";
 import { Capabilities } from "@/screens/capabilities";
 import { Ports } from "@/screens/ports";
+import { HeadEnds } from "@/screens/headends";
 import { Config } from "@/screens/config";
 import { Users } from "@/screens/users";
 import { Login } from "@/screens/login";
@@ -221,6 +222,21 @@ describe("screens render without crashing", () => {
     await waitFor(() => expect(screen.getByText("dip-software-control")).toBeInTheDocument());
     expect(screen.getByText(/set all four DIP switches up/i)).toBeInTheDocument();
     expect(screen.getByText(/no radio attached to this port/i)).toBeInTheDocument();
+  });
+
+  it("Head-ends renders the fleet scan with an auto pairing + a conflict", async () => {
+    mount(<HeadEnds />, "/headends");
+    // The mock HEADEND_SCAN seeds shack-north (auto), garage-pi (ambiguous), an unreachable
+    // instance, and a duplicate-id conflict — the discover→offer→adopt surface end to end.
+    await waitFor(() => expect(screen.getByText("shack-north")).toBeInTheDocument());
+    expect(screen.getByText(/suggested pairing/i)).toBeInTheDocument();
+    expect(screen.getByText(/choose a pairing/i)).toBeInTheDocument();
+    // The conflict + its remediation hint render prominently.
+    expect(screen.getByText(/Duplicate head-end id/i)).toBeInTheDocument();
+    // An unreachable head-end surfaces its error.
+    expect(screen.getByText(/connection refused/i)).toBeInTheDocument();
+    // The adopt affordance is present (mock enters as admin ⊇ operate).
+    expect(screen.getAllByRole("button", { name: /Adopt/i }).length).toBeGreaterThan(0);
   });
 
   it("Capabilities renders the per-peer capability cache", async () => {
