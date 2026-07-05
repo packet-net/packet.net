@@ -65,6 +65,36 @@ onto the Pi.
 
 ### Install it
 
+Two ways — the **`.deb`** (recommended: it enables + starts the service for you,
+just like the node package) or a manual binary copy.
+
+**Option A — the `.deb` (recommended).** The
+[head-end release](https://github.com/packet-net/packet.net/releases?q=headend)
+ships a Debian package per arch (`amd64` / `arm64` / `armhf`). Copy the one for
+your Pi and install it — no build step needed:
+
+```sh
+# arm64 shown; use _armhf.deb for a 32-bit userland, _amd64.deb for a dev box.
+sudo apt install ./packetnet-headend_<version>_arm64.deb
+#   …or, offline:  sudo dpkg -i ./packetnet-headend_<version>_arm64.deb
+```
+
+The `.deb` drops the static binary at `/usr/lib/packetnet/packetnet-headend`,
+installs the systemd unit, and **enables + starts the service on install** — a
+fresh install is plug-and-go on defaults (a hostname-derived `instanceId` and
+every serial device auto-bridged). It ships a config example at
+`/usr/share/packetnet/packetnet-headend.json.example`; the config is optional (see
+[Configure it](#configure-it--pin-a-stable-instance-id) — you should still pin a
+stable `instanceId`). Confirm it came up:
+
+```sh
+systemctl status packetnet-headend
+curl -s http://localhost:7300/inventory
+```
+
+**Option B — manual binary copy.** For a non-`.deb` system, or to run straight
+from a `make` build:
+
 ```sh
 # On the Pi (arm64 shown):
 sudo install -m0755 packetnet-headend-linux-arm64 /usr/local/bin/packetnet-headend
@@ -73,9 +103,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now packetnet-headend
 ```
 
-The unit runs as a locked-down `DynamicUser` in the `dialout` group (least-privilege
-access to `/dev/tty{USB,ACM}*`). If your distro gates serial on a different group
-(e.g. `uucp`), adjust `SupplementaryGroups=` in the unit.
+Either way, the unit runs as a locked-down `DynamicUser` in the `dialout` group
+(least-privilege access to `/dev/tty{USB,ACM}*`). If your distro gates serial on a
+different group (e.g. `uucp`), adjust `SupplementaryGroups=` in the unit.
 
 ### Configure it — pin a stable instance id
 

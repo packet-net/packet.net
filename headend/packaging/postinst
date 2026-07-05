@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+# packetnet-headend needs no system user (the unit runs as a DynamicUser in the
+# 'dialout' group) and no writable state dir (it persists nothing) — so, unlike
+# the node's postinst, there is nothing to set up under 'configure'. It is pure
+# systemd wiring, guarded by /run/systemd/system so it is a no-op in a chroot /
+# container with no booted systemd (mirrors packaging/postinst for the node).
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload || true
+  # Enable + start: a fresh install is plug-and-go on defaults (hostname-derived
+  # instanceId, auto-enumerate every serial device). No config file is required.
+  systemctl enable --now packetnet-headend.service || true
+  # On an upgrade ($2 = old version), enable --now does NOT restart an already
+  # running unit, so the new binary would never load. try-restart bounces it only
+  # if it is active (a stopped unit stays stopped).
+  if [ -n "${2:-}" ]; then
+    systemctl try-restart packetnet-headend.service || true
+  fi
+fi
+
+exit 0
