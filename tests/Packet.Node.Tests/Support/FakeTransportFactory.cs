@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Tests.Support;
@@ -46,6 +47,7 @@ public sealed class FakeTransportFactory : ITransportFactory
     public Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default)
     {
         var key = transport.DescribeEndpoint();

@@ -21,6 +21,7 @@ public class NodeConfigRoundTripProperties
         // by reference under record equality, so compare the pieces explicitly.
         reparsed.Identity.Should().Be(config.Identity, "round-trip should preserve identity\nYAML:\n{0}", yaml);
         reparsed.Ports.Should().Equal(config.Ports, "round-trip should preserve every port (incl. its transport kind)\nYAML:\n{0}", yaml);
+        reparsed.HeadEnds.Should().Equal(config.HeadEnds, "round-trip should preserve the split-station head-end fleet\nYAML:\n{0}", yaml);
         reparsed.Applications.Should().Equal(config.Applications, "round-trip should preserve registered applications (incl. Args/Capabilities)\nYAML:\n{0}", yaml);
         reparsed.Apps.Should().Equal(config.Apps, "round-trip should preserve app-package overrides (incl. Environment)\nYAML:\n{0}", yaml);
         reparsed.Services.Should().Be(config.Services);

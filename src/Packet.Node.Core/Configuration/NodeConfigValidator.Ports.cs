@@ -28,6 +28,8 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             RuleFor(p => (SerialKissTransport)p.Transport).SetValidator(new SerialKissValidator()));
         When(p => p.Transport is NinoTncTransport, () =>
             RuleFor(p => (NinoTncTransport)p.Transport).SetValidator(new NinoTncValidator()));
+        When(p => p.Transport is NinoTncTcpTransport, () =>
+            RuleFor(p => (NinoTncTcpTransport)p.Transport).SetValidator(new NinoTncTcpValidator()));
         When(p => p.Transport is KissTcpTransport, () =>
             RuleFor(p => (KissTcpTransport)p.Transport).SetValidator(new KissTcpValidator()));
         When(p => p.Transport is AxudpTransport, () =>
@@ -67,18 +69,33 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Compat is not null, () =>
             RuleFor(p => p.Compat!).SetValidator(new PortCompatValidator()));
 
-        // Optional radio-control attachment. Its own fields are validated by
-        // PortRadioValidator; additionally the block only pairs with a serial-modem
-        // transport — the radio's control channel is a second serial cable beside the
-        // modem's, which a kiss-tcp / AXUDP port doesn't physically have.
+        // Optional radio-control attachment. Its own fields are validated by PortRadioValidator;
+        // additionally the block must pair with a transport that has a co-located radio:
+        //  - a LOCAL radio (port/serial) needs a local serial-modem transport (serial-kiss /
+        //    nino-tnc) — its control channel is a second serial cable beside the modem's, which a
+        //    kiss-tcp / AXUDP port doesn't physically have.
+        //  - a HEAD-END-bound radio needs the co-located full-control NinoTNC on the same head-end
+        //    (nino-tnc-tcp) — the modem+radio pair is always on one instance. This lifts the
+        //    serial-only rule specifically for head-end ports; a kiss-tcp (LinBPQ) port still can't
+        //    carry a radio.
         When(p => p.Radio is not null, () =>
         {
             RuleFor(p => p.Radio!).SetValidator(new PortRadioValidator());
-            RuleFor(p => p.Transport)
-                .Must(t => t is SerialKissTransport or NinoTncTransport)
-                .WithMessage(p =>
-                    $"Port.radio is only valid on a serial-modem transport ({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — " +
-                    $"a '{p.Transport?.Kind}' port has no locally-cabled radio control channel.");
+
+            When(p => !p.Radio!.IsHeadEndBound, () =>
+                RuleFor(p => p.Transport)
+                    .Must(t => t is SerialKissTransport or NinoTncTransport)
+                    .WithMessage(p =>
+                        $"a local radio (port/serial) is only valid on a serial-modem transport " +
+                        $"({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — a '{p.Transport?.Kind}' port has no " +
+                        "locally-cabled radio control channel."));
+
+            When(p => p.Radio!.IsHeadEndBound, () =>
+                RuleFor(p => p.Transport)
+                    .Must(t => t is NinoTncTcpTransport)
+                    .WithMessage(p =>
+                        $"a head-end-bound radio pairs with a '{TransportKinds.NinoTncTcp}' transport (the co-located " +
+                        $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port."));
         });
     }
 }
@@ -86,10 +103,11 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 /// <summary>
 /// Validates a per-port radio-control attachment (<see cref="PortRadioConfig"/>):
 /// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up),
-/// <b>exactly one</b> of <c>port</c> (the control-channel device) or <c>serial</c> (the CCDI serial
-/// — the stable identity that survives device renumbering), a positive baud, and a positive health
-/// interval when set. Kind knowledge lives in <see cref="RadioKinds"/> (the same authority the radio
-/// factory resolves with), not here.
+/// <b>exactly one</b> binding mode — <c>port</c> (the local control-channel device), <c>serial</c>
+/// (the local CCDI serial — the stable identity that survives device renumbering), or
+/// <c>headEndId</c>+<c>deviceId</c> (a Tait CCDI device on a split-station head-end, both halves
+/// required) — a positive baud, and a positive health interval when set. Kind knowledge lives in
+/// <see cref="RadioKinds"/> (the same authority the radio factory resolves with), not here.
 /// </summary>
 public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
 {
@@ -101,14 +119,24 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 $"radio.kind '{r.Kind}' is not a known radio-control kind " +
                 $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
 
-        // Pin the radio by EITHER the device path OR the CCDI serial — exactly one. Both is
-        // ambiguous (which wins?); neither leaves bring-up nothing to open.
+        // Pin the radio by EXACTLY ONE binding mode: the local device path (`port`), the local CCDI
+        // serial (`serial`), or a split-station head-end device (`headEndId`+`deviceId`). Several is
+        // ambiguous (which wins?); none leaves bring-up nothing to open.
         RuleFor(r => r)
-            .Must(r => HasNonEmptyPort(r) ^ HasNonEmptySerial(r))
+            .Must(ExactlyOneBindingMode)
             .WithMessage(
-                "radio requires exactly one of `port` (the control-channel device, e.g. /dev/ttyUSB0) " +
-                "or `serial` (the radio's CCDI serial number — the stable identity that survives device " +
-                "renumbering); set one, not both, not neither.");
+                "radio requires exactly one binding mode: `port` (the control-channel device, e.g. " +
+                "/dev/ttyUSB0), `serial` (the CCDI serial — the stable identity that survives device " +
+                "renumbering), or `headEndId`+`deviceId` (a Tait CCDI device on a split-station head-end); " +
+                "set one mode, not several, not none.");
+
+        // A head-end binding needs BOTH halves — the instance id AND the device id on it.
+        RuleFor(r => r)
+            .Must(r => HasNonEmptyHeadEndId(r) && HasNonEmptyDeviceId(r))
+            .When(r => HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r))
+            .WithMessage(
+                "a head-end-bound radio requires BOTH `headEndId` (the head-end instance id) and " +
+                "`deviceId` (the device id on it) — set both, not one.");
 
         RuleFor(r => r.Baud).GreaterThan(0).WithMessage("radio baud must be positive.");
 
@@ -128,6 +156,43 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
     private static bool HasNonEmptyPort(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.Port);
 
     private static bool HasNonEmptySerial(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.Serial);
+
+    private static bool HasNonEmptyHeadEndId(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.HeadEndId);
+
+    private static bool HasNonEmptyDeviceId(PortRadioConfig r) => !string.IsNullOrWhiteSpace(r.DeviceId);
+
+    // Exactly one of the three binding modes. A partial head-end binding (only one of
+    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity — the
+    // completeness rule above reports the missing half separately, so a lone headEndId gives one
+    // clear error, not a confusing "no binding mode".
+    private static bool ExactlyOneBindingMode(PortRadioConfig r)
+    {
+        var modes =
+            (HasNonEmptyPort(r) ? 1 : 0) +
+            (HasNonEmptySerial(r) ? 1 : 0) +
+            (HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r) ? 1 : 0);
+        return modes == 1;
+    }
+}
+
+/// <summary>
+/// Validates a <see cref="NinoTncTcpTransport"/> — the full-control NinoTNC over a split-station
+/// head-end: a non-empty head-end id + device id (the <c>(headEndId, deviceId)</c> binding resolved
+/// at bring-up) and the 0..15 mode range (mirroring the local <see cref="NinoTncValidator"/>). That
+/// the referenced head-end id actually exists is a whole-config check in
+/// <see cref="NodeConfigValidator"/> (it needs the head-ends list).
+/// </summary>
+public sealed class NinoTncTcpValidator : AbstractValidator<NinoTncTcpTransport>
+{
+    public NinoTncTcpValidator()
+    {
+        RuleFor(t => t.HeadEndId).NotEmpty()
+            .WithMessage("nino-tnc-tcp transport requires a headEndId (the head-end instance id).");
+        RuleFor(t => t.DeviceId).NotEmpty()
+            .WithMessage("nino-tnc-tcp transport requires a deviceId (the NinoTNC device id on the head-end).");
+        RuleFor(t => t.Mode).InclusiveBetween(0, 15)
+            .WithMessage("nino-tnc-tcp mode must be in 0..15.");
+    }
 }
 
 /// <summary>

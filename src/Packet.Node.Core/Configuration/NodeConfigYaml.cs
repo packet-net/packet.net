@@ -28,6 +28,9 @@ public static class NodeConfigYaml
         // The apps: package-override list (docs/app-packages.md) + its environment map.
         .WithTypeMapping<IReadOnlyList<AppOverrideConfig>, List<AppOverrideConfig>>()
         .WithTypeMapping<IReadOnlyDictionary<string, string>, Dictionary<string, string>>()
+        // The split-station head-end fleet (headEnds:) — a flat list of scalar records; the
+        // interface needs a concrete List to bind.
+        .WithTypeMapping<IReadOnlyList<HeadEndConfig>, List<HeadEndConfig>>()
         // The nested netRom.inp3 block (a Packet.NetRom.Wire.NetRomInp3Options
         // record) needs NO custom converter: it is pure durations / ints / bools, so
         // the camel-case mapping + YamlDotNet's built-in TimeSpan converter bind it

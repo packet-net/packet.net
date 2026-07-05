@@ -48,9 +48,33 @@ public sealed record PortRadioConfig
     /// <summary>The radio's CCDI serial number (e.g. <c>1G000123</c>) — the <b>stable</b> way to pin
     /// which radio this port controls, surviving <c>/dev/ttyUSB*</c> renumbering and the shared-USB-
     /// serial ambiguity of CP2102 dongles. When set, bring-up scans the machine's candidate ports and
-    /// opens whichever one answers a MODEL/serial query with this CCDI serial. Mutually exclusive with
-    /// <see cref="Port"/>: set exactly one. Empty/absent when binding by <see cref="Port"/>.</summary>
+    /// opens whichever one answers a MODEL/serial query with this CCDI serial. One of the three
+    /// mutually-exclusive binding modes (<see cref="Port"/> / <see cref="Serial"/> /
+    /// <see cref="HeadEndId"/>+<see cref="DeviceId"/>): set exactly one.</summary>
     public string Serial { get; init; } = "";
+
+    /// <summary>
+    /// <b>Head-end binding</b> (split-station topology — see
+    /// <c>docs/research/split-station-rf-headend.md</c>): the <see cref="HeadEndConfig.Id"/> of the
+    /// head-end hosting this radio's CCDI control channel, paired with <see cref="DeviceId"/>. When
+    /// set, the radio is opened over TCP (<c>TaitCcdiRadio.OpenTcp</c>) against the head-end's raw
+    /// pipe instead of a local serial port — RSSI/SNR, DCD, tuning and SDM all work remotely. The
+    /// co-located modem must be the same head-end's <c>nino-tnc-tcp</c> transport (the modem+radio
+    /// pair is always on one instance). This is a third binding mode, mutually exclusive with
+    /// <see cref="Port"/> and <see cref="Serial"/>; requires <see cref="DeviceId"/> too.
+    /// </summary>
+    public string HeadEndId { get; init; } = "";
+
+    /// <summary>The stable device id (the inventory <c>id</c>) of the Tait CCDI control port on the
+    /// head-end named by <see cref="HeadEndId"/>. Required with, and only with, <see cref="HeadEndId"/>.</summary>
+    public string DeviceId { get; init; } = "";
+
+    /// <summary>True when this radio is bound to a head-end device (both <see cref="HeadEndId"/> and
+    /// <see cref="DeviceId"/> set) rather than a local serial port. The single authority the validator
+    /// and the radio factory both consult, so a binding the validator accepted always resolves the
+    /// same way at bring-up.</summary>
+    public bool IsHeadEndBound =>
+        !string.IsNullOrWhiteSpace(HeadEndId) && !string.IsNullOrWhiteSpace(DeviceId);
 
     /// <summary>Control-channel baud rate. Default 28800 — the Tait CCDI
     /// factory-programming default (<c>TaitCcdiRadio.DefaultBaudRate</c>).</summary>

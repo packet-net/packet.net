@@ -1,4 +1,5 @@
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 using Packet.Radio;
 
 namespace Packet.Node.Core.Radios;
@@ -21,6 +22,9 @@ public interface IRadioControlFactory
     /// <param name="radio">The validated per-port radio attachment config.</param>
     /// <param name="timeProvider">Clock for driver-internal timers (keep-alive
     /// watchdog, edge timestamps). Null uses the system clock.</param>
+    /// <param name="headEndResolver">Resolves a head-end-bound radio's
+    /// <c>(headEndId, deviceId)</c> to a raw TCP pipe + line-control seam (split-station topology).
+    /// Required for a head-end-bound radio; null (or a local-serial radio) uses the local open path.</param>
     /// <param name="cancellationToken">Cancels the open/handshake.</param>
     /// <exception cref="NotSupportedException">If the radio kind has no
     /// implementation in this build (unreachable for validated config — the
@@ -28,5 +32,6 @@ public interface IRadioControlFactory
     Task<IRadioControl> CreateAsync(
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default);
 }

@@ -70,7 +70,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
         if (!fields.TryGetValue("kind", out var kind) || string.IsNullOrWhiteSpace(kind))
         {
             throw new YamlException(start, start, "a transport must declare a 'kind' (one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}).");
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}).");
         }
 
         return Normalise(kind) switch
@@ -84,6 +84,12 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             {
                 Device = Required(fields, "device", kind, start),
                 Baud = Int(fields, "baud", 57600, start),
+                Mode = Int(fields, "mode", 0, start),
+            },
+            "ninotnctcp" => new NinoTncTcpTransport
+            {
+                HeadEndId = Required(fields, "headendid", kind, start),
+                DeviceId = Required(fields, "deviceid", kind, start),
                 Mode = Int(fields, "mode", 0, start),
             },
             "kisstcp" => new KissTcpTransport
@@ -118,7 +124,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             },
             _ => throw new YamlException(start, start,
                 $"unknown transport kind '{kind}' (expected one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent})."),
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent})."),
         };
     }
 
@@ -179,6 +185,12 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 EmitField(emitter, "device", n.Device);
                 EmitField(emitter, "baud", n.Baud.ToString(CultureInfo.InvariantCulture));
                 EmitField(emitter, "mode", n.Mode.ToString(CultureInfo.InvariantCulture));
+                break;
+            case NinoTncTcpTransport nt:
+                EmitField(emitter, "kind", nt.Kind);
+                EmitField(emitter, "headEndId", nt.HeadEndId);
+                EmitField(emitter, "deviceId", nt.DeviceId);
+                EmitField(emitter, "mode", nt.Mode.ToString(CultureInfo.InvariantCulture));
                 break;
             case KissTcpTransport k:
                 EmitField(emitter, "kind", k.Kind);

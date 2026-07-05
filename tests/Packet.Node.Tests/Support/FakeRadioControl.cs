@@ -1,4 +1,5 @@
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
 using Packet.Radio;
 
@@ -93,6 +94,7 @@ public sealed class FakeRadioControlFactory : IRadioControlFactory
     public Task<IRadioControl> CreateAsync(
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default)
     {
         Requests.Add(radio);

@@ -151,9 +151,19 @@ Handling:
    callback (`Func<int,CancellationToken,Task>?`, default no-op) carries all line-control; internal
    `TcpSerialIo`/`TcpSerialPortIo`; read-idle→fault semantics for half-open supervision.**
 2. **Head-end service** (Go, `packet.net/headend/`) — enumerate → raw bridge → inventory +
-   line-control HTTP → mDNS.
+   line-control HTTP → mDNS. **✅ Done (Stage 2 amendment, `headend/`).**
 3. **PDN remote scanner + config** — networked kinds, lift validation, mDNS+manual discovery,
-   reach-through identify + baud sweep, discover-and-offer flow, socket supervision.
+   reach-through identify + baud sweep, discover-and-offer flow, socket supervision. Split into:
+   - **3a — manual config + factories. ✅ Done** (§17 Stage 3a): `HeadEndClient` +
+     `HeadEndDeviceResolver` (`Packet.Node.Core/HeadEnd/`), `NodeConfig.HeadEnds` +
+     `HeadEndConfig`, the `PortRadioConfig` head-end binding (`headEndId`/`deviceId`), the
+     `nino-tnc-tcp` transport kind, the lifted radio-on-networked-transport validation, the
+     `RadioControlFactory` / `TransportFactory` remote branches, and per-socket
+     `ReconnectingKissModem` supervision for `nino-tnc-tcp`. **Manual head-end addresses only.**
+   - **3b — discovery + pairing (next):** mDNS browse of the `_pdnhead._tcp` fleet resolving
+     `instanceId → address` (the `HeadEndConfig.Address` becomes an optional fallback), the remote
+     `IRadioScanner`, reach-through identify + the CCDI baud **sweep** (via the wired
+     `setBaud → POST /ports/{id}/line` seam), and the discover-and-offer-matched-pairs flow.
 4. **Wire-up + docs + plan** — operator guide ("plug into any port and go"), plan §17.
 
 ## Parity note

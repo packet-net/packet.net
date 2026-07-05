@@ -254,10 +254,23 @@ public static class NodeConfigArbitraries
             Environment = env,
         };
 
+    // A valid split-station head-end: a unique id + either a host:port address (with an explicit
+    // port) or an empty one (the Stage-3b mDNS fallback). No port references it, so config validity
+    // holds while the round-trip exercises the headEnds: list codec.
+    private static Gen<HeadEndConfig> HeadEndGen(int index) =>
+        from hasAddress in Gen.Elements(true, false)
+        select new HeadEndConfig
+        {
+            Id = $"headend{index}",
+            Address = hasAddress ? $"headend{index}.local:7300" : "",
+        };
+
     private static Gen<NodeConfig> NodeConfigGen() =>
         from call in CallsignGen()
         from nPorts in Gen.Choose(0, 4)
         from ports in Gen.CollectToList(Enumerable.Range(0, nPorts).Select(PortGen))
+        from nHeadEnds in Gen.Choose(0, 2)
+        from headEnds in Gen.CollectToList(Enumerable.Range(0, nHeadEnds).Select(HeadEndGen))
         from nApps in Gen.Choose(0, 2)
         from apps in Gen.CollectToList(Enumerable.Range(0, nApps).Select(ApplicationGen))
         from nOverrides in Gen.Choose(0, 2)
@@ -272,6 +285,7 @@ public static class NodeConfigArbitraries
             SchemaVersion = Packet.Node.Core.Configuration.NodeConfig.CurrentSchemaVersion,
             Identity = new Identity { Callsign = call },
             Ports = ports.ToList(),
+            HeadEnds = headEnds.ToList(),
             Applications = apps.ToList(),
             Apps = overrides.ToList(),
             NetRom = netrom,

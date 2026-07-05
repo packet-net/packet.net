@@ -11,6 +11,7 @@ using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Console;
+using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Radios;
 using Packet.Node.Core.Telemetry;
@@ -653,10 +654,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // = spec defaults. Opt-in tuning at the node-host layer (see ChannelProfiles).
         var (effectiveAx25, effectiveKiss) = ChannelProfiles.Resolve(port);
 
+        // Resolves a head-end-bound radio / nino-tnc-tcp transport (split-station topology) to its
+        // raw TCP pipe via the head-end's inventory. Built from the LIVE head-end fleet so a
+        // re-addressed head-end is picked up on the next resolve (a purely-local node has an empty
+        // fleet and never touches this). Ignored by the local / kiss-tcp / AXUDP arms.
+        var headEndResolver = new HeadEndDeviceResolver(config.Current.HeadEnds);
+
         IAx25Transport transport;
         try
         {
-            transport = await transportFactory.CreateAsync(port.Transport, timeProvider, ct).ConfigureAwait(false);
+            transport = await transportFactory.CreateAsync(port.Transport, timeProvider, headEndResolver, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -671,15 +678,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // per-frame airtime / pre-data-carrier estimates.
         var ninoTnc = transport as NinoTncSerialPort;
 
-        // kiss-tcp ports self-heal across a TNC/softmodem bounce: wrap the connected
-        // transport so a dropped link reconnects (backoff + KISS-param replay) instead of
-        // the port silently dying. The eager connect above preserves initial fault
-        // isolation; this only adds reconnect-after-drop. (#50)
-        if (port.Transport is KissTcpTransport)
+        // Networked ports self-heal across a far-end bounce: wrap the connected transport so a
+        // dropped link reconnects (backoff + KISS-param replay) instead of the port silently dying.
+        // The eager connect above preserves initial fault isolation; this only adds
+        // reconnect-after-drop. Covers kiss-tcp (a TNC/softmodem bounce, #50) AND nino-tnc-tcp (a
+        // split-station head-end bounce or re-address — the reconnect re-resolves the inventory from
+        // the LIVE head-end fleet, so a moved head-end's new tcpPort is picked up). The Stage-1 TCP
+        // IO faults on half-open (read-idle), which is what ends the stream and triggers this.
+        if (port.Transport is KissTcpTransport or NinoTncTcpTransport)
         {
             transport = new ReconnectingKissModem(
                 transport,
-                token => transportFactory.CreateAsync(port.Transport, timeProvider, token),
+                token => transportFactory.CreateAsync(
+                    port.Transport, timeProvider, new HeadEndDeviceResolver(config.Current.HeadEnds), token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
                 timeProvider);
@@ -727,7 +738,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 : $"serial:{radioConfig.Serial}";
             try
             {
-                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, ct).ConfigureAwait(false);
+                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, ct).ConfigureAwait(false);
 
                 // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
                 // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
