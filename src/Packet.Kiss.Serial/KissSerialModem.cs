@@ -88,6 +88,28 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
     }
 
     /// <summary>
+    /// Open a KISS modem whose serial port is bridged as a raw binary TCP pipe by a remote
+    /// head-end (the split-station topology — see
+    /// <c>docs/research/split-station-rf-headend.md</c>) and start the read pump. KISS framing
+    /// rides the socket unchanged, so the modem behaves exactly as over a local serial port.
+    /// </summary>
+    /// <param name="host">Head-end host bridging the serial port.</param>
+    /// <param name="port">Head-end TCP port for this modem's raw byte pipe.</param>
+    /// <param name="timeProvider">
+    /// Clock used to stamp inbound frames' <see cref="Ax25InboundFrame.ReceivedAt"/> on the
+    /// <see cref="IAx25Transport"/> seam. Null uses the system clock.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the connect.</param>
+    public static async Task<KissSerialModem> OpenTcp(
+        string host, int port, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
+    {
+        var io = await TcpSerialPortIo.ConnectAsync(
+            host, port, readTimeout: null, readIdleTimeout: null, timeProvider, cancellationToken)
+            .ConfigureAwait(false);
+        return StartPumping(io, timeProvider);
+    }
+
+    /// <summary>
     /// Test seam (InternalsVisibleTo <c>Packet.Kiss.Serial.Tests</c>): build a modem
     /// over a substitute <see cref="ISerialPortIo"/> and start the read pump, without
     /// touching a real serial port. Lets tests drive the read pump, KISS encoding, and
