@@ -24,16 +24,18 @@ type Bridge struct {
 }
 
 // newBridge opens devPath at the given line params, binds a TCP listener on
-// tcpPort, and returns the ready bridge. The caller starts serving with run.
-func newBridge(dev DiscoveredPort, tcpPort int, line LineParams, open SerialOpener) (*Bridge, error) {
+// tcpPort (restricted to bindAddr when non-empty; empty = all interfaces), and
+// returns the ready bridge. The caller starts serving with run.
+func newBridge(dev DiscoveredPort, tcpPort int, bindAddr string, line LineParams, open SerialOpener) (*Bridge, error) {
 	port, err := open(dev.DevPath, line)
 	if err != nil {
 		return nil, fmt.Errorf("open serial %s: %w", dev.DevPath, err)
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", tcpPort))
+	addr := listenAddr(bindAddr, tcpPort)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		_ = port.Close()
-		return nil, fmt.Errorf("listen :%d: %w", tcpPort, err)
+		return nil, fmt.Errorf("listen %s: %w", addr, err)
 	}
 	return &Bridge{dev: dev, tcpPort: tcpPort, ln: ln, port: port, line: line.normalized()}, nil
 }

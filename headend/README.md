@@ -57,6 +57,7 @@ device it finds.
 | Setting | Flag | Env (`PACKETNET_HEADEND_…`) | JSON key | Default |
 | --- | --- | --- | --- | --- |
 | Instance id/name | `--instance` | `INSTANCE` | `instanceId` | **`{hostname}-{machine-id hash}`** |
+| Bind address | `--bind-addr` | `BIND_ADDR` | `bindAddr` | *(empty = all interfaces)* |
 | HTTP API port | `--http-port` | `HTTP_PORT` | `httpPort` | `7300` |
 | Base TCP bridge port | `--base-tcp-port` | `BASE_TCP_PORT` | `baseTcpPort` | `7301` |
 | Default serial baud | `--baud` | `BAUD` | `baud` | `9600` |
@@ -72,6 +73,12 @@ device it finds.
   [Multiple head-ends / instance identity](#multiple-head-ends--instance-identity)),
   so two Pis imaged from one card don't collide on a shared hostname. **For fixed
   installs, pin an explicit stable id** (e.g. `--instance shack-north`).
+- **Bind address**: the local address every listener binds to — the HTTP API
+  **and** every raw-serial bridge. Empty (the default) binds **all interfaces**
+  (`:port`), exactly as before. Set it to a single address (a Tailscale
+  `100.x.y.z`, a `tailscale0` / VPN address, or `127.0.0.1`) to fence the
+  **auth-less-by-design** daemon onto one trusted interface — see
+  [Restricting the listen interface](#restricting-the-listen-interface).
 - **Base TCP port**: bridge ports are allocated **sequentially** from here in
   inventory order (`7301`, `7302`, …).
 - **Baud**: the rate serial ports are *opened* at. NinoTNC CDC-ACM ignores baud;
@@ -86,6 +93,7 @@ Example JSON config (`/etc/packetnet-headend/config.json`):
 ```json
 {
   "instanceId": "pi-shack-north",
+  "bindAddr": "",
   "httpPort": 7300,
   "baseTcpPort": 7301,
   "baud": 9600,
@@ -93,6 +101,9 @@ Example JSON config (`/etc/packetnet-headend/config.json`):
   "deny": []
 }
 ```
+
+(`bindAddr` shown at its default — an empty string binds all interfaces. Omit it
+or leave it empty unless you want to restrict the listen interface, below.)
 
 ## Multiple head-ends / instance identity
 
@@ -122,6 +133,44 @@ uniqueness is an **application-level** guarantee: the derived default provides i
 by construction, and an explicit pin is the operator asserting it. PDN is the
 backstop — a duplicate `instance=` surfaces as a loud conflict there, never a
 silent mis-bind.
+
+## Restricting the listen interface
+
+The head-end is **auth-less and unencrypted by design** — it trusts its network
+(a LAN, or a Tailscale tailnet). If the box also has an untrusted interface (a
+public NIC, a guest VLAN), pin **`bindAddr`** so PDN can reach it but the wider
+world can't.
+
+`bindAddr` restricts **both** the HTTP machine API **and every raw-serial bridge
+port** to one local address. Empty (the default) binds all interfaces — no
+behaviour change. Set it to the head-end's address on the trusted network:
+
+```sh
+# Restrict to this box's Tailscale address (from `tailscale ip -4`):
+packetnet-headend --instance shack-north --bind-addr 100.101.102.103
+
+# …or via env (e.g. in the systemd unit's Environment=):
+PACKETNET_HEADEND_BIND_ADDR=100.101.102.103
+
+# …or in the JSON config:
+#   { "instanceId": "shack-north", "bindAddr": "100.101.102.103" }
+```
+
+Notes:
+
+- **mDNS still multicasts** on all interfaces (it is not gated by `bindAddr`);
+  what's fenced is where the API + bridges *accept connections*. On a
+  Tailscale-only reach you'd typically set an explicit
+  [`headEnds` address](../docs/research/split-station-rf-headend.md) on the PDN
+  side anyway (multicast rarely crosses a tailnet), and this makes the daemon
+  itself only reachable there.
+- Pick an address that is **stable** for the trusted interface. A Tailscale
+  `100.x` address is stable per node; a DHCP LAN address may not be (PDN keys on
+  the `instanceId`, so a moved address doesn't orphan port configs — but a
+  `bindAddr` pinned to a stale IP stops the daemon from listening).
+- Binding to `127.0.0.1` makes the head-end reachable only from the same box —
+  useful with an SSH tunnel or a co-located reverse proxy, but not for the normal
+  "separate PDN box" split.
 
 ## API contract
 

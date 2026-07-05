@@ -1,7 +1,8 @@
 # Split-station RF head-end over TCP + PDN autodiscovery
 
-**Status:** design (arc kickoff 2026-07-05). Anchors the "Pi holds the modems+radios, a
-separate LXC runs PDN" topology.
+**Status:** ✅ **arc complete** (2026-07-05) — all four stages shipped (see the Stage plan
+below and plan.md §17). Anchors the "Pi holds the modems+radios, a separate LXC runs PDN"
+topology.
 
 ## Topology
 
@@ -199,6 +200,18 @@ Handling:
      `PdnPortsApi` validate→preview→apply seam). Per-socket `ReconnectingKissModem` supervision from
      Stage 3a carries the reconnect story.
 4. **Wire-up + docs + plan** — operator guide ("plug into any port and go"), plan §17.
+   **✅ Done.** Split into:
+   - **4a — the discover→offer→adopt web UI** (§17 Stage 4a, PR #562): the **Head-ends**
+     screen (`/headends`) in `web/packetnet-ui` over the Stage-3b backend — instance cards
+     (id, `host:httpPort`, config-vs-mDNS source, reachable/unreachable), device list
+     (free vs in use), one-click **auto adopt** / **ambiguous picker** / loud **duplicate-id
+     conflict** card, operate-scope gated.
+   - **4b — the operator guide + head-end `bindAddr` + this plan entry** (§17 "arc complete"):
+     [`operating/08-split-station-head-end.md`](../../operating/08-split-station-head-end.md)
+     ("plug into any port and go" — topology, deploy the Pi daemon, adopt from the web UI or by
+     YAML config, troubleshooting), an optional `bindAddr` on the head-end daemon (fence the
+     auth-less listeners onto one trusted interface; default empty = bind-all, no behaviour
+     change), and the arc-complete ledger entry.
 
 ## Discovery & adoption flow
 

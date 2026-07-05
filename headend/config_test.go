@@ -251,6 +251,57 @@ func TestLoadConfig_OverrideBeatsDerivedDefault(t *testing.T) {
 	}
 }
 
+func TestListenAddr(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		bindAddr string
+		port     int
+		want     string
+	}{
+		{"empty binds all interfaces", "", 7300, ":7300"},
+		{"empty, a bridge port", "", 7301, ":7301"},
+		{"set to a tailscale address", "100.64.1.2", 7300, "100.64.1.2:7300"},
+		{"set, a bridge port", "100.64.1.2", 7301, "100.64.1.2:7301"},
+		{"set to loopback", "127.0.0.1", 7300, "127.0.0.1:7300"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := listenAddr(tc.bindAddr, tc.port); got != tc.want {
+				t.Errorf("listenAddr(%q, %d) = %q, want %q", tc.bindAddr, tc.port, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_BindAddr(t *testing.T) {
+	// Default: empty → bind all interfaces (no behaviour change).
+	cfg, err := loadConfig(envMap(nil), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.BindAddr != "" {
+		t.Errorf("default BindAddr = %q, want empty (bind all)", cfg.BindAddr)
+	}
+
+	// Env overlay.
+	cfg, err = loadConfig(envMap(map[string]string{EnvPrefix + "BIND_ADDR": "100.64.1.2"}), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.BindAddr != "100.64.1.2" {
+		t.Errorf("env BindAddr = %q, want 100.64.1.2", cfg.BindAddr)
+	}
+
+	// Flag beats env.
+	bind := "10.0.0.5"
+	cfg, err = loadConfig(envMap(map[string]string{EnvPrefix + "BIND_ADDR": "100.64.1.2"}), flagOverrides{BindAddr: &bind})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.BindAddr != "10.0.0.5" {
+		t.Errorf("BindAddr = %q, want 10.0.0.5 (flag beats env)", cfg.BindAddr)
+	}
+}
+
 func TestConfigAllowed(t *testing.T) {
 	for _, tc := range []struct {
 		name             string
