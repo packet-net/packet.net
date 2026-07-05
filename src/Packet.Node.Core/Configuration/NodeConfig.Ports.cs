@@ -133,6 +133,17 @@ public sealed record PortConfig
     /// from <see cref="Ax25PortParams.N1"/> (the connected-mode I-frame / PACLEN limit).
     /// </summary>
     public int? NodesPaclen { get; init; }
+
+    /// <summary>
+    /// Optional label feeding the <c>{instance}</c> segment of this port's kissproxy MQTT topics
+    /// (see <see cref="MqttConfig"/>). Null (the default) ⇒ the port's <see cref="Id"/> is used. Set
+    /// it to the band name (<c>70cm</c> / <c>40m</c> / …) when migrating a port off kissproxy, so the
+    /// emitted topics match the existing collector DB's <c>band</c> key exactly (the collector reads
+    /// the <c>{instance}</c> segment as the band). Free-text; it is a topic segment, not a
+    /// first-class band concept. Purely a labelling knob — it changes only the MQTT topic string,
+    /// never any on-air behaviour.
+    /// </summary>
+    public string? MqttInstance { get; init; }
 }
 
 /// <summary>

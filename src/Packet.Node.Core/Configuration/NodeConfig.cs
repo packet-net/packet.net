@@ -112,6 +112,13 @@ public sealed record NodeConfig
     /// nothing is sent until the operator opts in, and each telemetry category is an independent
     /// toggle. See <see cref="OarcConfig"/> and <c>docs/oarc-reporting-design.md</c>.</summary>
     public OarcConfig Oarc { get; init; } = new();
+
+    /// <summary>kissproxy-compatible MQTT frame emission — the node publishes every AX.25 frame it
+    /// sends/receives to an MQTT broker in kissproxy's native topic/payload format, so pdn can replace
+    /// a kissproxy instance at a site without losing the downstream <c>kiss-collector</c> capture.
+    /// <b>Default-OFF</b> (<see cref="MqttConfig.Enabled"/> = <c>false</c>): a stock node publishes
+    /// nothing. See <see cref="MqttConfig"/> and <c>docs/research/pdn-mqtt-frame-emission.md</c>.</summary>
+    public MqttConfig Mqtt { get; init; } = new();
 }
 
 /// <summary>

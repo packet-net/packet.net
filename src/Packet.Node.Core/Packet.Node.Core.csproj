@@ -27,6 +27,10 @@
   <ItemGroup>
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="YamlDotNet" />
+    <!-- kissproxy-compatible MQTT frame emission (default-off; docs/research/pdn-mqtt-frame-emission.md).
+         ManagedClient gives auto-reconnect + a queued publish path so the radio tap is never blocked. -->
+    <PackageReference Include="MQTTnet" />
+    <PackageReference Include="MQTTnet.Extensions.ManagedClient" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <!-- Routing-table persistence (pdn.db). Raw SQL + Dapper, no EF (plan §3). -->

@@ -53,6 +53,33 @@ public sealed class OarcConfigValidator : AbstractValidator<OarcConfig>
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
 
+/// <summary>
+/// Validates the kissproxy MQTT emission block (<see cref="MqttConfig"/>). The shape constraints
+/// (a valid broker port, a QoS in 0..2) are checked <b>always</b> — even when disabled — so a
+/// disabled-but-edited block can't hold junk that would fail the day it is enabled. The one
+/// enabled-only rule is the broker host: an enabled emitter with no host has nowhere to publish.
+/// (<see cref="MqttConfig.Password"/> is a secret carried here but never validated for content;
+/// it belongs in the git-ignored <c>appsettings.Local.json</c>.)
+/// </summary>
+public sealed class MqttConfigValidator : AbstractValidator<MqttConfig>
+{
+    public MqttConfigValidator()
+    {
+        RuleFor(m => m.BrokerPort)
+            .InclusiveBetween(1, 65535)
+            .WithMessage("mqtt.brokerPort must be in 1..65535.");
+
+        RuleFor(m => m.Qos)
+            .InclusiveBetween(0, 2)
+            .WithMessage("mqtt.qos must be 0 (at-most-once), 1 (at-least-once), or 2 (exactly-once).");
+
+        RuleFor(m => m.BrokerHost)
+            .NotEmpty()
+            .When(m => m.Enabled)
+            .WithMessage("mqtt.brokerHost is required when mqtt is enabled (the broker to publish to).");
+    }
+}
+
 /// <summary>Validates the RHPv2 server block: a sane port always (so a disabled-but-edited
 /// block can't hold junk), a parseable bind when enabled.</summary>
 public sealed class RhpConfigValidator : AbstractValidator<RhpConfig>

@@ -61,6 +61,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         RuleFor(c => c.Oarc).NotNull().SetValidator(new OarcConfigValidator());
 
+        RuleFor(c => c.Mqtt).NotNull().SetValidator(new MqttConfigValidator());
+
         // Empty applications is the default (a node with no apps). Each entry is validated,
         // and ids / match-verbs must be unique across the list (the launch + log keys).
         RuleForEach(c => c.Applications).SetValidator(new ApplicationConfigValidator());
