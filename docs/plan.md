@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-05
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc COMPLETE (Stage 4b)** — the "Pi holds the modems+radios, a separate box runs PDN" topology now ships end to end. **Stage 4b** added the operator guide ([`operating/08-split-station-head-end.md`](../operating/08-split-station-head-end.md) — topology, deploy the Pi daemon incl. pin a stable `instanceId`, adopt from the **Head-ends** web UI or by YAML, troubleshooting) + an optional head-end **`bindAddr`** (flag `--bind-addr` / env `PACKETNET_HEADEND_BIND_ADDR` / JSON `bindAddr`; **default empty = bind-all, no behaviour change**; when set, a shared `listenAddr` fences BOTH the HTTP API and every raw-serial bridge onto one trusted address — a Tailscale `100.x.y.z` — since the head-end is auth-less by design) + this ledger. Closes the arc: Stage 1 TCP serial seam (#556), Stage 2 Go head-end (#557), Stage 3a manual plumbing (#559), instance-identity (#560), Stage 3b discovery+adopt (#561), Stage 4a web UI (#562), 4b here. Go gate green (`go test`/`go vet`/`gofmt` + arm64 static build); no .NET / no ax25-ts parity leg. Design: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) (now *arc complete*)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Node: kissproxy-compatible MQTT frame emitter (default-off)** — PDN can now replace a kissproxy instance at a site: an `MqttFrameEmitter : BackgroundService` (self-gating on the new `NodeConfig.Mqtt`, registered like the OARC reporter) rides the shared `NodeTelemetry` frame stream and publishes every AX.25 frame to an MQTT broker in kissproxy's **byte-exact** topic/payload format, so the downstream `kiss-collector` ingests PDN frames unchanged. Two sub-topics per frame — `kissproxy/{node}/{instance}/{fromModem|toModem}/unframed/port0/DataFrameKissCmd` (unframed AX.25 = `MonitorEvent.Raw`) + `…/framed` (full KISS frame incl. FEND via `KissEncoder`); raw-or-base64 payloads; QoS-2/retain-false ManagedMqttClient (auto-reconnect). New per-port `PortConfig.MqttInstance` feeds `{instance}` (the band) for collector-DB continuity; broker password lives in git-ignored `appsettings.Local.json`. 21 tests (capturing publish-sink seam; framed round-trips back through `KissDecoder`); node-only → no ax25-ts leg. Grounded contract: [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission.md)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc, Stage 4a: the head-end discover→offer→adopt web UI** — the operator-facing "plug into any port and go" surface in the node web SDK (`web/packetnet-ui`) over the Stage-3b backend. A new **Head-ends** screen + nav entry (`/headends`) fetches `GET /api/v1/radios/headends` and renders each instance (id, `host:httpPort`, config-vs-mDNS **Source** badge, reachable/unreachable) with its bridged devices (kind, model/version, baud, **free** vs **in use**). **Adopt UX**: an unambiguous instance offers a one-click **Adopt** of the suggested TNC↔radio pair; a `pairingAmbiguous` one presents modem + radio selects over the free devices with Adopt gated until both are chosen (optional `portId`/`mode` under an Options disclosure) — **operate-scope gated**, POSTing `…/{instanceId}/adopt` and surfacing the created port. **Conflict UX**: a duplicate-instance-id `HeadEndConflict` renders first-and-loud with the pin-distinct-ids / explicit-address remediation. New TS DTOs (`HeadEndScan`/`…InstanceScan`/`…DeviceScan`/`…PairProposal`/`…Conflict`/`…AdoptRequest`), `api.getHeadEnds`/`api.adoptHeadEnd`, a `HEADEND_SCAN` mock, and tests (`headends.panel.test.tsx` 8 cases + a smoke entry). Web-ui gate green (`npm run build` + `npm run test` 110 passed). No .NET / no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **SDM station hail: the cross-mismatch diagnostic (task #14, hardware-validated)** — one PDN station hails another over the Tait SDM side channel to learn its modulation/modem + capabilities; because the side channel rides the radio's own FFSK modem (independent of the packet modulation), the hail SUCCEEDS — and reports the peer's mode — even when a **mode mismatch** makes the packet path impossible, which is exactly the diagnostic nothing else offers. New `HAIL`/`STAT` tuning-telegram verbs + `StationHail`/`StationStatus` codec (rich status rides a 128-char extended SDM), `StationHailer` + opt-in `StationHailResponder` + `NinoTncStationStatusSource` + a `FanOutTuningLink` (shares one radio's one-deep SDM buffer between a resident responder and on-demand hails); `SdmTuningLink` now retries a radio-refused send instead of throwing. CLI `packet-tune hail [--respond]`; node `POST /api/v1/ports/{id}/hail` (admin+audited) + an opt-in per-port resident responder (`radio.hailResponder`). **Hardware-validated**: A on mode 6 (1200 AFSK) hailed B on mode 8 (300 BPSK) — packet path dead — and correctly read back `mode 8 (300 BPSK IL2P+CRC)` over SDM. 29 new tests, 0-error build. Point-to-point v1 + web neighbour-map = follow-ups. Tune.Core + node only → no ax25-ts leg](#17-amendment-log)
@@ -1232,6 +1233,70 @@ Most recent first. Format:
 ### YYYY-MM-DD — short title
 What changed, why, where to look for details.
 ```
+
+
+### 2026-07-05 — Split-station RF head-end arc **COMPLETE** (Stage 4b: operator guide + head-end `bindAddr`)
+
+Landed **Stage 4b** and with it the whole **split-station RF head-end arc is complete** — the
+"Pi holds the modems+radios, a separate box runs PDN" topology now ships end to end, from the
+Go daemon on the Pi to the discover→adopt web surface and the operator guide. Design + the full
+protocol: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md)
+(its Stage plan now marks all four stages done and its status reads *arc complete*).
+
+**The stages that shipped** (each has its own §17 entry below):
+
+- **Stage 1 — the TCP-backed serial seam** (PR #556, library-only): `TaitCcdiRadio.OpenTcp` /
+  `KissSerialModem.OpenTcp` / `NinoTncSerialPort.OpenTcp` + the injectable `setBaud` line-control
+  callback + read-idle→fault half-open supervision. Makes the whole radio-control + NinoTNC stack
+  run over a socket, unchanged.
+- **Stage 2 — the Go head-end daemon** (`headend/`, PR #557): enumerate serial → raw TCP bridge
+  per device → inventory + line-control HTTP → mDNS. A single static `CGO_ENABLED=0` Pi binary,
+  no .NET.
+- **Stage 3a — PDN-side manual plumbing** (PR #559): `HeadEndClient` / `HeadEndDeviceResolver`,
+  `NodeConfig.HeadEnds` + `HeadEndConfig`, the `(headEndId, deviceId)` port binding, the
+  `nino-tnc-tcp` transport kind, the lifted radio-on-networked-transport validation, and per-socket
+  `ReconnectingKissModem` supervision. Manual head-end addresses only.
+- **Instance-identity hardening** (PR #560): a robustly-unique derived default `instanceId`
+  (`{hostname}-{machine-id hash}`) advertised as the DNS-SD label + TXT `instance=`, so image-cloned
+  Pis don't collide.
+- **Stage 3b — discovery + pairing** (PR #561): mDNS browse of the `_pdnhead._tcp` fleet, config↔mDNS
+  address resolution (duplicate-id = a loud conflict, never a guess), reach-through identify (GETVER /
+  MODEL) with the CCDI baud sweep, and the discover-and-offer-matched-pairs flow
+  (`GET /api/v1/radios/headends` + `POST …/{instanceId}/adopt`).
+- **Stage 4a — the discover→offer→adopt web UI** (PR #562): the **Head-ends** screen (`/headends`) in
+  `web/packetnet-ui` — instance cards, device list (free vs in use), one-click auto adopt / ambiguous
+  picker / loud duplicate-id conflict card, operate-scope gated.
+- **Stage 4b — this PR**: the operator guide + the head-end `bindAddr` + this ledger entry (below).
+
+(The gap at #558 is the concurrent **kissproxy-compatible MQTT frame emitter** — a sibling node
+feature that landed in the same window, not a head-end stage.)
+
+**What Stage 4b itself added:**
+
+- **Operator guide — [`operating/08-split-station-head-end.md`](../operating/08-split-station-head-end.md)**
+  (new page 8, linked from `operating/index.md`): the "plug into any port and go" walkthrough in the
+  operator tree's voice — the topology (RF head-end Pi vs separate PDN box, and why you'd split them),
+  deploying the daemon (`cd headend && make arm64` → install binary + `packetnet-headend.service` →
+  **pin a stable, unique `instanceId`**; the default `:7300` HTTP + sequential `:7301+` bridge ports,
+  allow/deny globs, `bindAddr`), adopting **from the web UI** (the four shipped mock states —
+  `shack-north` one-click auto, `garage-pi` ambiguous picker, `spare-pi` duplicate-id conflict,
+  `attic-relay` unreachable) **and from YAML** (`headEnds:` + a port's `nino-tnc-tcp` transport +
+  head-end-bound `tait-ccdi` radio by `headEndId`/`deviceId`), and troubleshooting (mDNS not crossing
+  subnets/VLANs/Tailscale → explicit `address`; duplicate `instanceId`; a device not identifying →
+  the Tait baud sweep + prefer `/dev/serial/by-id`; one-client-per-pipe). Docs cross-link the design.
+- **Head-end `bindAddr`** (Go, `headend/`): a new `bindAddr` config (flag `--bind-addr`, env
+  `PACKETNET_HEADEND_BIND_ADDR`, JSON `bindAddr`). **Default empty = bind all interfaces (`:port`) —
+  byte-for-byte today's behaviour.** When set, a shared `listenAddr(bindAddr, port)` composes
+  `{bindAddr}:port` for **both** the HTTP machine API (`main.go`) and **every** raw-serial bridge
+  listener (`bridge.go`), fencing the **auth-less-by-design** head-end onto one trusted address (a
+  Tailscale `100.x.y.z`, a VPN address). Documented in `headend/README.md` (config table + a new
+  "Restricting the listen interface" section). Tests: `TestListenAddr` (empty→`:port`, set→`addr:port`),
+  `TestLoadConfig_BindAddr` (default/env/flag precedence), and `TestNewBridge_BindsToBindAddr`
+  (a set addr threads through to the real `net.Listen`). `go test ./...` / `go vet` / `gofmt -l .`
+  green; the arm64 static cross-build (`make arm64`) unchanged.
+
+**No .NET, no ax25-ts parity surface** — docs + a Go-only config addition (the radio-side seams were
+never on the parity check, and no parse flag / listener change is involved).
 
 
 ### 2026-07-05 — Split-station RF head-end arc, Stage 4a: the head-end discover→offer→adopt web UI

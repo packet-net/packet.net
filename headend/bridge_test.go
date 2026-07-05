@@ -120,7 +120,7 @@ func newTestBridge(t *testing.T) (*Bridge, *fakeSerial, string) {
 	t.Helper()
 	fake := newFakeSerial(defaultLine(9600))
 	dev := DiscoveredPort{ID: "test0", DevPath: "/dev/fake0"}
-	b, err := newBridge(dev, 0, defaultLine(9600), func(string, LineParams) (SerialPort, error) {
+	b, err := newBridge(dev, 0, "", defaultLine(9600), func(string, LineParams) (SerialPort, error) {
 		return fake, nil
 	})
 	if err != nil {
@@ -199,9 +199,44 @@ func TestBridge_OneClientReconnects(t *testing.T) {
 	}
 }
 
+// TestNewBridge_BindsToBindAddr proves a non-empty bindAddr threads all the way
+// through to net.Listen: the listener binds to that address (loopback here) and a
+// client can still dial it. An empty bindAddr (all interfaces) is exercised by
+// every other bridge test via newTestBridge.
+func TestNewBridge_BindsToBindAddr(t *testing.T) {
+	fake := newFakeSerial(defaultLine(9600))
+	dev := DiscoveredPort{ID: "test0", DevPath: "/dev/fake0"}
+	b, err := newBridge(dev, 0, "127.0.0.1", defaultLine(9600),
+		func(string, LineParams) (SerialPort, error) { return fake, nil })
+	if err != nil {
+		t.Fatalf("newBridge: %v", err)
+	}
+	defer b.close()
+	go b.run()
+
+	addr := b.ln.Addr().(*net.TCPAddr)
+	if !addr.IP.IsLoopback() {
+		t.Errorf("listener bound to %s, want a loopback address (bindAddr=127.0.0.1)", addr)
+	}
+
+	// It is still dial-able on that address.
+	conn, err := net.Dial("tcp", addr.String())
+	if err != nil {
+		t.Fatalf("dial %s: %v", addr, err)
+	}
+	defer conn.Close()
+	want := []byte{0xC0, 0x42, 0xC0}
+	if _, err := conn.Write(want); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := fake.deviceRead(t, len(want), 2*time.Second); string(got) != string(want) {
+		t.Errorf("device received %v, want %v", got, want)
+	}
+}
+
 func TestBridge_SetLineUpdatesCacheAndDevice(t *testing.T) {
 	fake := newFakeSerial(defaultLine(9600))
-	b, err := newBridge(DiscoveredPort{ID: "t", DevPath: "/dev/fake"}, 0, defaultLine(9600),
+	b, err := newBridge(DiscoveredPort{ID: "t", DevPath: "/dev/fake"}, 0, "", defaultLine(9600),
 		func(string, LineParams) (SerialPort, error) { return fake, nil })
 	if err != nil {
 		t.Fatalf("newBridge: %v", err)

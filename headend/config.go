@@ -27,6 +27,13 @@ type Config struct {
 	// Fixed installs SHOULD pin an explicit stable id (--instance) instead.
 	InstanceID string `json:"instanceId"`
 
+	// BindAddr optionally restricts every listener (the HTTP machine API AND every
+	// raw-serial bridge) to a single local interface address, e.g. a Tailscale
+	// "100.x.y.z" or a "tailscale0" address. Empty (the default) binds all
+	// interfaces (":port") — byte-for-byte today's behaviour. Set it to keep the
+	// auth-less-by-design head-end off untrusted networks. See listenAddr.
+	BindAddr string `json:"bindAddr"`
+
 	// HTTPPort is the machine API listener (inventory + line-control + healthz).
 	HTTPPort int `json:"httpPort"`
 
@@ -158,6 +165,7 @@ func nicMACs() ([]string, error) {
 // flag set via flag.Visit.
 type flagOverrides struct {
 	InstanceID  *string
+	BindAddr    *string
 	HTTPPort    *int
 	BaseTCPPort *int
 	Baud        *int
@@ -197,6 +205,11 @@ func loadConfig(env func(string) (string, bool), flags flagOverrides) (Config, e
 	if v, ok := env(EnvPrefix + "INSTANCE"); ok && v != "" {
 		cfg.InstanceID = v
 	}
+	// BIND_ADDR intentionally honours an explicit empty value (bind-all) too, so an
+	// env-level "" can clear a file-set address — hence no `&& v != ""` guard.
+	if v, ok := env(EnvPrefix + "BIND_ADDR"); ok {
+		cfg.BindAddr = v
+	}
 	if err := applyIntEnv(env, EnvPrefix+"HTTP_PORT", &cfg.HTTPPort); err != nil {
 		return Config{}, err
 	}
@@ -216,6 +229,9 @@ func loadConfig(env func(string) (string, bool), flags flagOverrides) (Config, e
 	// Explicit-flag overlay (highest precedence).
 	if flags.InstanceID != nil {
 		cfg.InstanceID = *flags.InstanceID
+	}
+	if flags.BindAddr != nil {
+		cfg.BindAddr = *flags.BindAddr
 	}
 	if flags.HTTPPort != nil {
 		cfg.HTTPPort = *flags.HTTPPort
@@ -252,6 +268,16 @@ func (c Config) validate() error {
 		return fmt.Errorf("baud %d must be positive", c.Baud)
 	}
 	return nil
+}
+
+// listenAddr composes the "host:port" a listener binds to from the optional
+// BindAddr and a port. An empty bindAddr yields ":port" (all interfaces — today's
+// default behaviour); a set bindAddr yields "bindAddr:port", restricting the
+// listener to that one interface/address (e.g. a Tailscale 100.x.y.z). Both the
+// HTTP machine API (main.go) and every raw-serial bridge (bridge.go) go through
+// here, so one BindAddr fences the whole auth-less daemon onto a trusted network.
+func listenAddr(bindAddr string, port int) string {
+	return fmt.Sprintf("%s:%d", bindAddr, port)
 }
 
 // allowed reports whether a device with the given /dev and by-id basenames

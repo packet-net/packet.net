@@ -53,6 +53,7 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 	def := defaultConfig()
 	var (
 		instance = fs.String("instance", def.InstanceID, "stable instance id/name advertised over mDNS + inventory (default: hostname)")
+		bindAddr = fs.String("bind-addr", def.BindAddr, "restrict every listener to this local address (e.g. a Tailscale 100.x.y.z); empty = all interfaces")
 		httpPort = fs.Int("http-port", def.HTTPPort, "HTTP machine-API port (inventory + line-control + healthz)")
 		baseTCP  = fs.Int("base-tcp-port", def.BaseTCPPort, "first raw-serial bridge TCP port; devices allocate sequentially from here")
 		baud     = fs.Int("baud", def.Baud, "default serial baud every port is opened at (PDN re-clocks Tait via the line verb)")
@@ -71,6 +72,8 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 		switch f.Name {
 		case "instance":
 			ov.InstanceID = instance
+		case "bind-addr":
+			ov.BindAddr = bindAddr
 		case "http-port":
 			ov.HTTPPort = httpPort
 		case "base-tcp-port":
@@ -93,8 +96,12 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 // The enumerator and serial opener are injected so the whole daemon is testable
 // without real hardware.
 func run(ctx context.Context, cfg Config, enum Enumerator, open SerialOpener) error {
-	log.Printf("instance %q — http :%d, bridges from :%d, default %d baud",
-		cfg.InstanceID, cfg.HTTPPort, cfg.BaseTCPPort, cfg.Baud)
+	bindScope := "all interfaces"
+	if cfg.BindAddr != "" {
+		bindScope = fmt.Sprintf("bound to %s", cfg.BindAddr)
+	}
+	log.Printf("instance %q — http :%d, bridges from :%d, default %d baud (%s)",
+		cfg.InstanceID, cfg.HTTPPort, cfg.BaseTCPPort, cfg.Baud, bindScope)
 
 	bridges := buildBridges(cfg, enum, open)
 	if len(bridges) == 0 {
@@ -122,7 +129,7 @@ func run(ctx context.Context, cfg Config, enum Enumerator, open SerialOpener) er
 	}
 
 	httpSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.HTTPPort),
+		Addr:              listenAddr(cfg.BindAddr, cfg.HTTPPort),
 		Handler:           reg.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -162,7 +169,7 @@ func buildBridges(cfg Config, enum Enumerator, open SerialOpener) []*Bridge {
 			log.Printf("skip %s (%s): filtered by allow/deny", dev.ID, dev.DevPath)
 			continue
 		}
-		b, err := newBridge(dev, next, line, open)
+		b, err := newBridge(dev, next, cfg.BindAddr, line, open)
 		if err != nil {
 			log.Printf("skip %s (%s): %v", dev.ID, dev.DevPath, err)
 			continue
