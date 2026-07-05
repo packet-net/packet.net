@@ -31,6 +31,9 @@
          ManagedClient gives auto-reconnect + a queued publish path so the radio tap is never blocked. -->
     <PackageReference Include="MQTTnet" />
     <PackageReference Include="MQTTnet.Extensions.ManagedClient" />
+    <!-- mDNS / DNS-SD browse for split-station head-end discovery (Stage 3b). Used only behind the
+         thin IHeadEndDiscovery seam (MdnsHeadEndDiscovery); every test drives a fake. -->
+    <PackageReference Include="Zeroconf" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <!-- Routing-table persistence (pdn.db). Raw SQL + Dapper, no EF (plan §3). -->

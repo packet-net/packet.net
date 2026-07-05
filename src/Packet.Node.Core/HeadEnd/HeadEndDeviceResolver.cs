@@ -11,33 +11,42 @@ namespace Packet.Node.Core.HeadEnd;
 /// its port configs (the address is looked up fresh each resolve).
 /// </summary>
 /// <remarks>
-/// Stage 3a resolves <c>headEndId → address</c> from the manual <see cref="HeadEndConfig.Address"/>.
-/// Stage 3b swaps in mDNS: the same resolver shape, but the address comes from a browse of the
-/// instance id rather than static config. The <see cref="HeadEndClient"/> factory is injectable so
-/// tests point resolution at a stub inventory server.
+/// Stage 3a resolved <c>headEndId → address</c> from the manual <see cref="HeadEndConfig.Address"/>
+/// only. Stage 3b threads an optional <see cref="IHeadEndAddressResolver"/> through the same shape:
+/// when supplied, the address step prefers the config address and falls back to an mDNS browse of
+/// the instance id, so a head-end configured in discover mode (blank address) — or one that changed
+/// address — resolves to its current endpoint at bring-up. The <see cref="HeadEndClient"/> factory
+/// takes the <em>resolved</em> base <see cref="Uri"/> and is injectable so tests point resolution at
+/// a stub inventory server.
 /// </remarks>
 public sealed class HeadEndDeviceResolver
 {
     private readonly IReadOnlyList<HeadEndConfig> headEnds;
-    private readonly Func<HeadEndConfig, HeadEndClient> clientFactory;
+    private readonly Func<Uri, HeadEndClient> clientFactory;
+    private readonly IHeadEndAddressResolver? addressResolver;
 
     /// <summary>Build a resolver over the configured head-end fleet. A null
-    /// <paramref name="clientFactory"/> builds a real <see cref="HeadEndClient"/> from each head-end's
-    /// manual address.</summary>
+    /// <paramref name="clientFactory"/> builds a real <see cref="HeadEndClient"/> for the resolved
+    /// base address. When <paramref name="addressResolver"/> is supplied the <c>headEndId → address</c>
+    /// step consults it (config-then-mDNS); when null, only a manual <see cref="HeadEndConfig.Address"/>
+    /// is used (today's behaviour, for a node with no discovery wired).</summary>
     public HeadEndDeviceResolver(
         IReadOnlyList<HeadEndConfig> headEnds,
-        Func<HeadEndConfig, HeadEndClient>? clientFactory = null)
+        Func<Uri, HeadEndClient>? clientFactory = null,
+        IHeadEndAddressResolver? addressResolver = null)
     {
         this.headEnds = headEnds ?? [];
         this.clientFactory = clientFactory ?? DefaultClient;
+        this.addressResolver = addressResolver;
     }
 
     /// <summary>
     /// Resolve <paramref name="headEndId"/> + <paramref name="deviceId"/> to the raw-pipe host / TCP
     /// port / baud, plus the <see cref="HeadEndClient"/> the caller wires <c>setBaud</c> to. Throws
-    /// <see cref="InvalidOperationException"/> for an unknown head-end id, a head-end with no address
-    /// (Stage 3a needs a manual one), or a device the head-end's inventory doesn't list — the port
-    /// supervisor treats any throw as a clean transport/radio-open failure (log + degrade / retry).
+    /// <see cref="InvalidOperationException"/> for an unknown head-end id, a head-end whose address
+    /// resolves to nothing (no manual address and no unambiguous mDNS hit), or a device the head-end's
+    /// inventory doesn't list — the port supervisor treats any throw as a clean transport/radio-open
+    /// failure (log + degrade / retry).
     /// </summary>
     public async Task<HeadEndDeviceBinding> ResolveAsync(
         string headEndId, string deviceId, CancellationToken cancellationToken = default)
@@ -48,14 +57,9 @@ public sealed class HeadEndDeviceResolver
         var headEnd = headEnds.FirstOrDefault(h => string.Equals(h.Id, headEndId, StringComparison.Ordinal))
             ?? throw new InvalidOperationException($"no head-end with id '{headEndId}' is configured.");
 
-        if (string.IsNullOrWhiteSpace(headEnd.Address))
-        {
-            throw new InvalidOperationException(
-                $"head-end '{headEndId}' has no address — a manual host:port is required in Stage 3a " +
-                "(mDNS resolution of the instance id lands in Stage 3b).");
-        }
+        var baseAddress = await ResolveBaseAddressAsync(headEnd, cancellationToken).ConfigureAwait(false);
 
-        var client = clientFactory(headEnd);
+        var client = clientFactory(baseAddress);
         var inventory = await client.GetInventoryAsync(cancellationToken).ConfigureAwait(false);
         var device = inventory.Ports.FirstOrDefault(p => string.Equals(p.Id, deviceId, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
@@ -65,8 +69,30 @@ public sealed class HeadEndDeviceResolver
         return new HeadEndDeviceBinding(client, client.BaseAddress.Host, device.TcpPort, device.Baud, deviceId);
     }
 
-    private static HeadEndClient DefaultClient(HeadEndConfig headEnd) =>
-        new(HeadEndClient.BaseAddressFor(headEnd.Address));
+    // The headEndId → base address step. With a discovery-backed resolver: config address, else an
+    // mDNS browse of the instance id (a duplicate-id conflict resolves to null → a clear throw).
+    // Without one: a manual address is required (unchanged from Stage 3a).
+    private async Task<Uri> ResolveBaseAddressAsync(HeadEndConfig headEnd, CancellationToken cancellationToken)
+    {
+        if (addressResolver is not null)
+        {
+            return await addressResolver.ResolveBaseAddressAsync(headEnd.Id, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException(
+                    $"head-end '{headEnd.Id}' has no resolvable address — its config address is blank and mDNS " +
+                    "discovery returned no unambiguous match (unknown instance, or a duplicate-id conflict).");
+        }
+
+        if (string.IsNullOrWhiteSpace(headEnd.Address))
+        {
+            throw new InvalidOperationException(
+                $"head-end '{headEnd.Id}' has no address — a manual host:port is required when no mDNS " +
+                "discovery is wired.");
+        }
+
+        return HeadEndClient.BaseAddressFor(headEnd.Address);
+    }
+
+    private static HeadEndClient DefaultClient(Uri baseAddress) => new(baseAddress);
 }
 
 /// <summary>

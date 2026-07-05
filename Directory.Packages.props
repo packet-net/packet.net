@@ -67,6 +67,12 @@
     <PackageVersion Include="MQTTnet" Version="4.3.7.1207" />
     <PackageVersion Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
 
+    <!-- mDNS / DNS-SD browsing (split-station Stage 3b — head-end discovery). Zeroconf is a
+         cross-platform, Linux-working resolver that binds :5353 with address-reuse so it coexists
+         with the avahi-daemon the node's own advertiser (avahi-publish) registers through. Used
+         only behind the thin IHeadEndDiscovery seam (MdnsHeadEndDiscovery); tests use a fake. -->
+    <PackageVersion Include="Zeroconf" Version="3.6.11" />
+
     <!-- CommandLineParser — used by the Packet.Term TUI's CLI. (NB: Packet.Term
          itself moves to packet-net/packet-term-tui in a sibling PR; once that lands
          this can be dropped.) -->

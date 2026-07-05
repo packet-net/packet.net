@@ -1234,6 +1234,57 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — Split-station RF head-end arc, Stage 3b: mDNS discovery + reach-through identify + adopt
+
+Landed **Stage 3b** — the "plug into any port and go" layer — of the split-station arc (design + stage
+plan: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md), which now
+marks Stage 3 done and adds a "Discovery & adoption flow" section). Builds directly on Stage 3a
+(`c5005fa`) — reuses `HeadEndClient` / `HeadEndDeviceResolver` / `HeadEndConfig` / the `nino-tnc-tcp`
+transport / the head-end-bound `tait-ccdi` radio, adds no new transport or radio kind.
+
+- **mDNS discovery behind `IHeadEndDiscovery`** (`Packet.Node.Core/HeadEnd/`): `DiscoverAsync(timeout)`
+  → `[DiscoveredHeadEnd{InstanceId, Host, HttpPort}]`. Concrete `MdnsHeadEndDiscovery` is a **thin**
+  wrapper over the `Zeroconf` package (new CPM pin `Zeroconf 3.6.11`, net6.0 TFM has zero transitive
+  deps) browsing `_pdnhead._tcp`, reading TXT `instance=` (authoritative id) + `httpport=`/SRV port.
+  Total by contract (no multicast / no responder ⇒ empty list, never a throw); coexists with the
+  `avahi-daemon` the node's own `avahi-publish` advertiser registers through. Tests drive a fake.
+- **`IHeadEndAddressResolver` (config-then-mDNS)**: `HeadEndAddressResolver` resolves `instanceId →
+  base URI` — a pinned `HeadEndConfig.Address` **wins** (no browse, no override); else a single mDNS
+  hit; a **duplicate instance id** with no config address is a loud conflict (logged, resolves to
+  `null`, never guessed — the backstop for mDNS not policing its TXT payloads). Wired into
+  `HeadEndDeviceResolver` (new optional `addressResolver` ctor arg; `clientFactory` now takes the
+  resolved `Uri`) and threaded to bring-up via `PortSupervisor`/`NodeHostedService` optional
+  `IHeadEndDiscovery` params — so a discover-mode (blank-address) or re-addressed head-end resolves at
+  bring-up, keyed by instance id (a DHCP-lease change never orphans a port config).
+- **Reach-through identify + Tait baud sweep** (`IHeadEndRadioScanner` / `HeadEndRadioScanner`,
+  `Packet.Node.Core/Radios/`): merges config ∪ discovery, fetches each inventory, opens each **free**
+  device's raw pipe and classifies it — USB VID hint picks the likely probe first (NinoTNC ≈ Microchip
+  `04d8`; Tait CP2102 ≈ SiLabs `10c4`), NinoTNC via `GETVER`, Tait via `MODEL`. A Tait silent at the
+  inventory clock triggers the **baud sweep** (re-clock via `POST /ports/{id}/line` → re-query MODEL
+  across `28800/19200/9600/38400/57600` until a checksummed reply — clock + identify in one step;
+  NinoTNC needs none — CDC-ACM baud is fictional). Devices already bound to a configured port are
+  listed (role from the binding) but **not** probed (single-client-per-pipe). Proposed pairs honour the
+  co-location invariant (a TNC pairs only with a radio on the same instance): exactly one free of each
+  ⇒ an `auto` suggestion; more ⇒ ambiguous, candidate combinations listed for manual choice.
+- **Scan + adopt API on `PdnRadiosApi`**: `GET /api/v1/radios/headends` (read-scope preview →
+  `HeadEndScan{Instances:[…{Devices, ProposedPairs, PairingAmbiguous}], Conflicts}`) and
+  `POST /api/v1/radios/headends/{instanceId}/adopt` (operate-scope). Adopt is operator-confirmed, not
+  silent auto-create: `HeadEndAdoption.BuildCandidate` turns the chosen `(tncDeviceId, radioDeviceId)`
+  into **one** matched port (`nino-tnc-tcp` transport + head-end-bound `tait-ccdi` radio) + a
+  `HeadEndConfig` for the instance if undeclared (discover mode), applied through the **existing**
+  `PdnPortsApi` validate→preview→apply seam (co-location + declared-reference rules enforced by the
+  live `NodeConfigValidator`). DI: `MdnsHeadEndDiscovery` + `HeadEndRadioScanner` singletons in
+  `Program.cs`.
+- **Tests** (Category!=HardwareLoop&Category!=Interop): `HeadEndAddressResolverTests` (config-wins /
+  single-mDNS / duplicate-conflict→null / never-browse-when-pinned), `HeadEndDeviceResolverMdnsTests`
+  (blank-address device resolves via mDNS), `HeadEndRadioScannerTests` (GETVER/MODEL reach-through over
+  extended `LoopbackRawPipe`s, baud sweep gated on a `SetLine`, bound-device-skipped, auto vs ambiguous
+  pairs, duplicate-id conflict, config-wins), `HeadEndAdoptionTests` (candidate passes the real
+  validator), `HeadEndAdoptApiTests` (scan preview + adopt-creates-the-matched-port through the seam).
+  Extended `LoopbackRawPipe` (GETVER + gated CCDI-identity responders) + `StubHeadEndHandler`
+  (`LastBaud`) + new `FakeHeadEndDiscovery`. **Node-side only** — touches none of `Ax25ParseOptions` /
+  `Ax25SessionQuirks` / `XidParseOptions` / `Ax25Listener`, so **no ax25-ts parity leg** (confirmed).
+
 ### 2026-07-05 — Head-end: robustly-unique default instanceId + advertise it as the DNS-SD label
 
 Hardened the Stage-2 Go head-end (`headend/`) so multiple instances on one broadcast domain

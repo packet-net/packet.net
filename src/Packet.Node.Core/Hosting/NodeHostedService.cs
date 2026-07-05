@@ -79,9 +79,11 @@ public sealed partial class NodeHostedService : BackgroundService
         Applications.Packages.IAppPackageCatalog? appPackages = null,
         Applications.Packages.IAppServiceSupervisor? appServices = null,
         PeerCapabilityCache? capabilityCache = null,
-        Heard.HeardLog? heardLog = null)
+        Heard.HeardLog? heardLog = null,
+        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
+        this.headEndDiscovery = headEndDiscovery;
         this.transportFactory = transportFactory ?? TransportFactory.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -110,6 +112,10 @@ public sealed partial class NodeHostedService : BackgroundService
     // register them) means packages simply don't exist, byte-for-byte old behaviour.
     private readonly Applications.Packages.IAppPackageCatalog? appPackages;
     private readonly Applications.Packages.IAppServiceSupervisor? appServices;
+
+    // Optional split-station head-end discovery (DI passes the registered singleton). Handed to the
+    // supervisor so a head-end binding with a blank config address resolves via mDNS at bring-up.
+    private readonly HeadEnd.IHeadEndDiscovery? headEndDiscovery;
 
     /// <summary>The port supervisor — exposed for component tests.</summary>
     public PortSupervisor? Supervisor => supervisor;
@@ -187,7 +193,7 @@ public sealed partial class NodeHostedService : BackgroundService
         var host = new ApplicationHost(config, loggerFactory, appPackages);
         applicationHost = host;
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache);
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache, radioFactory: null, headEndDiscovery: headEndDiscovery);
         // The supervisor IS the live app-callsign registry; wire it back into the host now it exists
         // so a bare command verb reaches a self-deriving app that bound a non-PDN_APP_CALLSIGN SSID
         // (packet.net#476). Built after the host (its per-connection consoles need the host), so this

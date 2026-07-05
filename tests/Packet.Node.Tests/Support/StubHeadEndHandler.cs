@@ -32,6 +32,12 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
     /// <summary>Every line-control POST the handler received, in order.</summary>
     public List<LineCall> LineCalls { get; } = [];
 
+    private int lastBaud = -1;
+
+    /// <summary>The baud of the most recent <c>POST /ports/{id}/line</c>, or -1 if none — the shared
+    /// clock a baud-sweep loopback gates its MODEL answer on. Read cross-thread (the responder task).</summary>
+    public int LastBaud => Volatile.Read(ref lastBaud);
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -63,6 +69,7 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
             }
             // Echo effective params: the requested baud + merged defaults for omitted fields
             // (exactly the head-end's nil-means-unchanged merge).
+            Volatile.Write(ref lastBaud, (int)node["baud"]!);
             var effective = new HeadEndLineParams
             {
                 Baud = (int)node["baud"]!,
