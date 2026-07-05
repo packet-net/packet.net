@@ -196,6 +196,55 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         return new TaitCcdiRadio(new SystemSerialIo(serial), options, timeProvider);
     }
 
+    /// <summary>
+    /// Open a Tait radio whose CCDI serial port is bridged as a raw binary TCP pipe by a remote
+    /// head-end (the split-station topology — see <c>docs/research/split-station-rf-headend.md</c>)
+    /// and start the read pump. The socket carries the CCDI/PROGRESS byte stream unchanged, so
+    /// carrier-sense (DCD) edges, RSSI reads, SDM and every transaction work exactly as over a
+    /// local port. Like <see cref="Open"/>, the radio itself is not touched — pair with
+    /// <see cref="SetProgressMessagesAsync"/> to turn on DCD events.
+    /// </summary>
+    /// <param name="host">Head-end host bridging the serial port.</param>
+    /// <param name="port">Head-end TCP port for this radio's raw byte pipe.</param>
+    /// <param name="baudRate">The CCDI line rate the head-end should clock the physical port at.
+    /// Applied at open only when <paramref name="setBaud"/> is supplied (the head-end owns the
+    /// clock); with the default null callback the head-end's current clock is trusted as-is.</param>
+    /// <param name="setBaud">Async line-control callback the data-plane <c>SetBaudRate</c> routes
+    /// to — the out-of-band head-end verb that re-clocks the physical port (the data socket is a
+    /// pure binary pipe and cannot carry line-rate changes). <c>null</c> (the default) makes baud
+    /// a no-op: a plain raw pipe works today, and the verb lands in a later stage.</param>
+    /// <param name="options">Behavioural knobs; null uses defaults.</param>
+    /// <param name="timeProvider">Clock (test seam); null uses the system clock.</param>
+    /// <param name="cancellationToken">Cancels the connect (and the optional initial re-clock).</param>
+    public static async Task<TaitCcdiRadio> OpenTcp(
+        string host,
+        int port,
+        int baudRate = DefaultBaudRate,
+        Func<int, CancellationToken, Task>? setBaud = null,
+        TaitCcdiRadioOptions? options = null,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
+    {
+        var io = await TcpSerialIo.ConnectAsync(
+            host, port, setBaud, readTimeout: null, readIdleTimeout: null, timeProvider, cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            if (setBaud is not null)
+            {
+                // Clock the remote port to the requested CCDI rate before any transaction (the
+                // head-end owns the physical UART). No callback ⇒ the head-end's clock is trusted.
+                await setBaud(baudRate, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            io.Dispose();
+            throw;
+        }
+        return new TaitCcdiRadio(io, options, timeProvider);
+    }
+
     /// <summary>Test seam (InternalsVisibleTo <c>Packet.Radio.Tait.Tests</c>): drive the
     /// transaction engine and demux over a scripted <see cref="ISerialIo"/>.</summary>
     internal static TaitCcdiRadio OpenForTest(

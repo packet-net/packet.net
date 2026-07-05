@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-04
+**As of:** 2026-07-05
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)** — kicked off the "Pi holds the modems+radios, a separate box runs PDN" arc (design: [`docs/research/split-station-rf-headend.md`](docs/research/split-station-rf-headend.md)). Stage 1 = the foundational seam only: `TcpSerialIo : ISerialIo` (Packet.Radio.Tait) + `TcpSerialPortIo : ISerialPortIo` (Packet.Kiss.Serial) — a raw binary TCP pipe with `KissTcpClient`-style keepalive + read-idle half-open guard, reproducing the `SerialPort.ReadTimeout` contract (finite-window blocking read, `TimeoutException` on idle) over `Socket.ReceiveTimeout` so the CCDI transaction engine + DCD carrier-sense pump run remotely unchanged. New public open paths parallel to `Open` (seams stay internal): `TaitCcdiRadio.OpenTcp`, `KissSerialModem.OpenTcp`, `NinoTncSerialPort.OpenTcp` (the full-control NinoTNC-over-TCP path, distinct from `kiss-tcp`); Tait `SetBaudRate` routes to an injectable `Func<int,CancellationToken,Task>? setBaud` (default null = no-op — the head-end verb lands later). No node config / new port kinds / head-end service (Stages 2–4). 6 new tests (loopback `TcpListener` head-end: RSSI round-trip, DCD edge → `ChannelBusy`, no-response timeout, baud-callback routing, NinoTNC GETVER), 0-error build. Radio-side only → no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **SDM station hail: the cross-mismatch diagnostic (task #14, hardware-validated)** — one PDN station hails another over the Tait SDM side channel to learn its modulation/modem + capabilities; because the side channel rides the radio's own FFSK modem (independent of the packet modulation), the hail SUCCEEDS — and reports the peer's mode — even when a **mode mismatch** makes the packet path impossible, which is exactly the diagnostic nothing else offers. New `HAIL`/`STAT` tuning-telegram verbs + `StationHail`/`StationStatus` codec (rich status rides a 128-char extended SDM), `StationHailer` + opt-in `StationHailResponder` + `NinoTncStationStatusSource` + a `FanOutTuningLink` (shares one radio's one-deep SDM buffer between a resident responder and on-demand hails); `SdmTuningLink` now retries a radio-refused send instead of throwing. CLI `packet-tune hail [--respond]`; node `POST /api/v1/ports/{id}/hail` (admin+audited) + an opt-in per-port resident responder (`radio.hailResponder`). **Hardware-validated**: A on mode 6 (1200 AFSK) hailed B on mode 8 (300 BPSK) — packet path dead — and correctly read back `mode 8 (300 BPSK IL2P+CRC)` over SDM. 29 new tests, 0-error build. Point-to-point v1 + web neighbour-map = follow-ups. Tune.Core + node only → no ax25-ts leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **Operator-facing radio guide (`operating/` docs tree)** — the project's first operator (vs library-developer) doc set: an 8-page `operating/` tree mirroring `guide/` and linked from `README.md`, walking the week's radio arc — attach a radio (`radio:` / `tait-ccdi` / scan-to-attach / stable CCDI-serial bind) → see link quality (per-frame RSSI/SNR, the Radios dashboard, heard `lastRssiDbm`/`lastSnrDb`, native carrier-sense) → the "Check radio" doctor → guided `/tools/tuner` SDM-coordinated deviation tuning (edge-bracketing in operator terms) → the `pdn_radio_*` / `pdn_link_snr_db` `/metrics` surface → TNC-less `tait-transparent` links + the five Tait programming gotchas → the `packet-tune` / `flash-tnc` bench tooling. Docs-only, every config field / endpoint / CLI verb code-verified; corrected two doc-vs-code mismatches (`packet-tune` is `dotnet run --project tools/Packet.Tune`, not a packaged tool; the live tuner API is `/ports/{id}/tuning/*`, not the stale `/ports/{id}/tune` in `node-api.yaml`). No ax25-ts leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **Radio-control metrics + per-partner SNR into the `/metrics` exporter** — Phase 10/11 observability workstream (2): per-port `pdn_radio_*` health (connection-state 1/0/-1, channel-busy, RSSI + averaged RSSI, PA temp, fwd/rev trend + ratio; `port` label, attached radios only, absent otherwise) read from the SAME `RadioReadModels`/`RadioHealth` projection `/api/v1/radios` serves; per-partner `pdn_link_snr_db{port,peer}` — **the bounding was dropped per Tom** ("packet radio will never be that popular", so a per-callsign label stays naturally small): one gauge per (port, callsign) heard with a measured SNR, no cap/omitted-counter, the ONE peer-labelled series. `HeardEntry`/heard log + `heard_log.last_snr_db` gained `LastSnrDb` (mirrors #545's `LastRssiDbm`: newest-frame-wins, additive SQLite ALTER migration, `/api/v1/heard.lastSnrDb`); +12 node tests, 0-error build. Node-layer only → no ax25-ts leg](#17-amendment-log)
@@ -1231,6 +1232,50 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-05 — Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)
+
+Kicked off the **"split-station RF head-end"** arc — the topology where a Raspberry Pi holds every
+NinoTNC + Tait radio over USB and a separate box runs PDN with *no* local serial, the two joined
+over a LAN/Tailscale. Design + stage plan in
+[`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md). **Stage 1
+(this PR) is the foundational seam only**: a TCP-backed byte pipe that lets PDN's existing radio
+drivers operate against a *remote* serial port, so the whole radio-control stack (CCDI
+transactions, DCD carrier-sense edges, RSSI, SDM; the NinoTNC full-control surface —
+GETVER/mode/GETRSSI) runs over a socket **unchanged**. Library-only: **no node config, no new port
+kinds, no head-end service** — those are Stages 2–4.
+
+The pivot is that neither driver depends on `System.IO.Ports`: both drive a narrow internal
+3-method byte seam (`ISerialIo` under `TaitCcdiRadio`, `ISerialPortIo` under `KissSerialModem`), so
+one TCP-backed implementation of each carries everything.
+
+- **`TcpSerialIo : ISerialIo`** (`Packet.Radio.Tait`) and **`TcpSerialPortIo : ISerialPortIo`**
+  (`Packet.Kiss.Serial`): a raw binary TCP pipe with `KissTcpClient`-style robustness — OS TCP
+  keepalive + a read-idle half-open guard (#464). The load-bearing subtlety is the **read-timeout
+  contract**: the driver read pumps depend on `SerialPort.ReadTimeout` semantics (block a short
+  finite window, throw `TimeoutException` on idle — which the pump swallows and loops on; the
+  transaction engine's own deadline detects a no-response). Never a 0-length read (which would
+  hot-spin the pump), never a forever block. This is reproduced over the socket via
+  `Socket.ReceiveTimeout`; a *longer* idle budget escalates a receive timeout to `IOException` so a
+  silently-dropped link faults the pump instead of pacing forever.
+- New **public open paths, parallel to `Open(...)`**, keeping the `ISerialIo`/`ISerialPortIo` seams
+  internal (only the open method is exposed): `TaitCcdiRadio.OpenTcp(host, port, baud, setBaud?, …)`,
+  `KissSerialModem.OpenTcp(host, port, …)`, `NinoTncSerialPort.OpenTcp(host, port, …)` — the last
+  the **full-control** NinoTNC-over-TCP path, distinct from the control-less generic `kiss-tcp`.
+- Tait `SetBaudRate` routes to an injectable async line-control callback
+  `Func<int, CancellationToken, Task>? setBaud` (the out-of-band head-end verb a later stage
+  supplies), **default null = no-op** — the data socket stays a pure binary pipe (deliberately
+  *not* RFC2217, whose `0xFF` escaping collides with binary CCDI/KISS streams). NinoTNC baud is
+  fictional over USB-CDC, so its seam carries no line control.
+- Tests (loopback `TcpListener` head-end, scripted the way `FakeSerialIo` scripts the local seam):
+  a CCDI RSSI transaction round-trips; an unsolicited PROGRESS byte sequence raises
+  `CarrierSenseChanged` and flips `ChannelBusy` remotely (carrier-sense works over the wire); a
+  no-response transaction propagates `TimeoutException`; `SetBaudRate` routes to the callback (null
+  = no-op); the NinoTNC GETVER round-trips over the socket. **6 new tests, 0-error build.**
+
+Radio-side only — no `Ax25ParseOptions`/`Ax25SessionQuirks`/`XidParseOptions`/`Ax25Listener` change
+→ **no ax25-ts parity leg** (the design's parity note confirms it; the carrier-sense seam this
+rides was already made parity-symmetric in OQ-012).
 
 ### 2026-07-05 — RELEASE: lib-v0.18.0 + node-v0.27.0 (the Phase-10 radio arc to the world)
 

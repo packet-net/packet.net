@@ -113,6 +113,28 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     }
 
     /// <summary>
+    /// Open a NinoTNC whose USB-CDC serial port is bridged as a raw binary TCP pipe by a remote
+    /// head-end (the split-station topology — see
+    /// <c>docs/research/split-station-rf-headend.md</c>) and start the read pump. This is the
+    /// <b>full-control</b> NinoTNC-over-TCP path — GETVER, mode agility, GETRSSI and ACKMODE
+    /// TX-completion all work remotely, distinct from the generic control-less <c>kiss-tcp</c>
+    /// transport. NinoTNC baud is fictional over USB-CDC, so there is no baud parameter.
+    /// </summary>
+    /// <param name="host">Head-end host bridging the serial port.</param>
+    /// <param name="port">Head-end TCP port for this TNC's raw byte pipe.</param>
+    /// <param name="timeProvider">
+    /// Clock used to stamp inbound frames' <see cref="Ax25InboundFrame.ReceivedAt"/> on the
+    /// <see cref="IAx25Transport"/> seam. Null uses the system clock.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the connect.</param>
+    public static async Task<NinoTncSerialPort> OpenTcp(
+        string host, int port, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
+    {
+        var inner = await KissSerialModem.OpenTcp(host, port, timeProvider, cancellationToken).ConfigureAwait(false);
+        return StartDispatching(inner, timeProvider);
+    }
+
+    /// <summary>
     /// Test seam (InternalsVisibleTo <c>Packet.Kiss.NinoTnc.Tests</c>): wrap a pre-built
     /// <see cref="KissSerialModem"/> (typically one over a fake <c>ISerialPortIo</c> via
     /// <c>KissSerialModem.OpenForTest</c>) and start the dispatch loop, without opening a real
