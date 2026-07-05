@@ -7,7 +7,6 @@
 **As of:** 2026-07-05
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
 **Latest amendment:** [§17 entry 2026-07-05 — **Node: kissproxy-compatible MQTT frame emitter (default-off)** — PDN can now replace a kissproxy instance at a site: an `MqttFrameEmitter : BackgroundService` (self-gating on the new `NodeConfig.Mqtt`, registered like the OARC reporter) rides the shared `NodeTelemetry` frame stream and publishes every AX.25 frame to an MQTT broker in kissproxy's **byte-exact** topic/payload format, so the downstream `kiss-collector` ingests PDN frames unchanged. Two sub-topics per frame — `kissproxy/{node}/{instance}/{fromModem|toModem}/unframed/port0/DataFrameKissCmd` (unframed AX.25 = `MonitorEvent.Raw`) + `…/framed` (full KISS frame incl. FEND via `KissEncoder`); raw-or-base64 payloads; QoS-2/retain-false ManagedMqttClient (auto-reconnect). New per-port `PortConfig.MqttInstance` feeds `{instance}` (the band) for collector-DB continuity; broker password lives in git-ignored `appsettings.Local.json`. 21 tests (capturing publish-sink seam; framed round-trips back through `KissDecoder`); node-only → no ax25-ts leg. Grounded contract: [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission.md)](#17-amendment-log)
-
 **Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)** — kicked off the "Pi holds the modems+radios, a separate box runs PDN" arc (design: [`docs/research/split-station-rf-headend.md`](docs/research/split-station-rf-headend.md)). Stage 1 = the foundational seam only: `TcpSerialIo : ISerialIo` (Packet.Radio.Tait) + `TcpSerialPortIo : ISerialPortIo` (Packet.Kiss.Serial) — a raw binary TCP pipe with `KissTcpClient`-style keepalive + read-idle half-open guard, reproducing the `SerialPort.ReadTimeout` contract (finite-window blocking read, `TimeoutException` on idle) over `Socket.ReceiveTimeout` so the CCDI transaction engine + DCD carrier-sense pump run remotely unchanged. New public open paths parallel to `Open` (seams stay internal): `TaitCcdiRadio.OpenTcp`, `KissSerialModem.OpenTcp`, `NinoTncSerialPort.OpenTcp` (the full-control NinoTNC-over-TCP path, distinct from `kiss-tcp`); Tait `SetBaudRate` routes to an injectable `Func<int,CancellationToken,Task>? setBaud` (default null = no-op — the head-end verb lands later). No node config / new port kinds / head-end service (Stages 2–4). 6 new tests (loopback `TcpListener` head-end: RSSI round-trip, DCD edge → `ChannelBusy`, no-response timeout, baud-callback routing, NinoTNC GETVER), 0-error build. Radio-side only → no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **SDM station hail: the cross-mismatch diagnostic (task #14, hardware-validated)** — one PDN station hails another over the Tait SDM side channel to learn its modulation/modem + capabilities; because the side channel rides the radio's own FFSK modem (independent of the packet modulation), the hail SUCCEEDS — and reports the peer's mode — even when a **mode mismatch** makes the packet path impossible, which is exactly the diagnostic nothing else offers. New `HAIL`/`STAT` tuning-telegram verbs + `StationHail`/`StationStatus` codec (rich status rides a 128-char extended SDM), `StationHailer` + opt-in `StationHailResponder` + `NinoTncStationStatusSource` + a `FanOutTuningLink` (shares one radio's one-deep SDM buffer between a resident responder and on-demand hails); `SdmTuningLink` now retries a radio-refused send instead of throwing. CLI `packet-tune hail [--respond]`; node `POST /api/v1/ports/{id}/hail` (admin+audited) + an opt-in per-port resident responder (`radio.hailResponder`). **Hardware-validated**: A on mode 6 (1200 AFSK) hailed B on mode 8 (300 BPSK) — packet path dead — and correctly read back `mode 8 (300 BPSK IL2P+CRC)` over SDM. 29 new tests, 0-error build. Point-to-point v1 + web neighbour-map = follow-ups. Tune.Core + node only → no ax25-ts leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **Operator-facing radio guide (`operating/` docs tree)** — the project's first operator (vs library-developer) doc set: an 8-page `operating/` tree mirroring `guide/` and linked from `README.md`, walking the week's radio arc — attach a radio (`radio:` / `tait-ccdi` / scan-to-attach / stable CCDI-serial bind) → see link quality (per-frame RSSI/SNR, the Radios dashboard, heard `lastRssiDbm`/`lastSnrDb`, native carrier-sense) → the "Check radio" doctor → guided `/tools/tuner` SDM-coordinated deviation tuning (edge-bracketing in operator terms) → the `pdn_radio_*` / `pdn_link_snr_db` `/metrics` surface → TNC-less `tait-transparent` links + the five Tait programming gotchas → the `packet-tune` / `flash-tnc` bench tooling. Docs-only, every config field / endpoint / CLI verb code-verified; corrected two doc-vs-code mismatches (`packet-tune` is `dotnet run --project tools/Packet.Tune`, not a packaged tool; the live tuner API is `/ports/{id}/tuning/*`, not the stale `/ports/{id}/tune` in `node-api.yaml`). No ax25-ts leg](#17-amendment-log)
@@ -1281,6 +1280,59 @@ in [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission
   loop. `MqttConfigValidatorTests` (6) cover enabled-requires-host + always-on shape rules + the
   `NodeConfigValidator` composition. Node-side only (no `Ax25ParseOptions`/`Ax25SessionQuirks`/
   `XidParseOptions`/`Ax25Listener` surface touched) → **no ax25-ts parity leg**.
+
+### 2026-07-05 — Split-station RF head-end arc, Stage 2: the Go head-end daemon (`headend/`)
+
+Landed **Stage 2** of the split-station arc (design + stage plan:
+[`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md)): the
+**head-end daemon** that runs on the Pi holding the modems + radios and lets a remote PDN reach
+them. A new, **self-contained Go project** at `headend/` (sibling to `sidecar/`, out of the .NET
+solution — it reuses no packet.net library and touches no .NET code), following the `sidecar/tsnet`
+precedent: a single static `CGO_ENABLED=0` binary per Pi arch (arm/arm64), ~6.4 MB stripped,
+install = copy binary + a systemd unit.
+
+It is a **dumb, transparent multiplexer** — deliberately **no device identification** (no NinoTNC
+`GETVER`, no Tait CCDI `MODEL`) and **no protocol parsing** (KISS and CCDI are both just bytes). PDN
+reaches *through* the raw pipes with its own drivers (the Stage-1 `TcpSerialIo`/`TcpSerialPortIo`
+seam) to identify + baud-lock + run AX.25. No auth/TLS/UI: trusted LAN/Tailscale, PDN monitors
+upstream.
+
+- **Serial enumeration** (`enumerate.go`) — walks `/dev/serial/by-id/` (udev-stable), resolves
+  symlinks to the real `/dev/tty*`, falls back to `/dev/ttyUSB*`/`/dev/ttyACM*`; reads USB `VID:PID`
+  from sysfs. Dedups by resolved device (the shared-serial CP2102 CCDI dongles produce two by-id
+  links → one device). Reimplements the *shape* of PDN's C# `SerialByIdResolver` /
+  `NinoTncPortDiscovery` / `TaitRadioPortDiscovery`, generalised off local `/dev`. The stable by-id
+  string is a device's identity key.
+- **Raw TCP bridge, one listener per device** (`bridge.go`) — opens the serial port, listens on a
+  sequential TCP port, pumps bytes bidirectionally and transparently (no framing/escaping; `0xC0`
+  and `0xFF` pass straight through). One client at a time; clean re-accept on disconnect.
+- **HTTP machine API** (`api.go`, JSON, no UI): `GET /inventory` (instanceId + ports with stable
+  id, devPath, usbVid/Pid, byId, tcpPort, baud/dataBits/parity/stopBits), `POST /ports/{id}/line`
+  (baud sweep + rare re-clock; partial-merge, baud required), `GET /healthz`. Line params ride this
+  out-of-band control plane so the data socket stays a pure binary pipe (**not** RFC2217, whose
+  `0xFF` escaping collides with CCDI/KISS).
+- **mDNS** (`mdns.go`) — advertises `_pdnhead._tcp` (SRV port = the HTTP port) with a TXT record
+  carrying the **stable `instance` id** (+ `httpport`, `v=1`) so PDN discovers the fleet and re-finds
+  an instance across IP changes. Best-effort: logs + continues if multicast can't start (PDN has a
+  manual-address fallback).
+- **Config** (`config.go`) — defaults < JSON file < env (`PACKETNET_HEADEND_*`) < flags. instanceId
+  (default hostname), httpPort (7300), baseTcpPort (7301, sequential), baud (9600), allow/deny globs
+  (default bridge-all). Multiple instances (one per Pi) coexist by instanceId.
+- **Deploy** — `packetnet-headend.service` (DynamicUser + `dialout`, hardened), `Makefile`
+  (`arm64`/`arm`/`amd64` static cross-builds + `check` = fmt+vet+test), `README.md` (the API
+  contract, doubling as the Stage-3 reference). Minimal deps: `go.bug.st/serial` + `grandcat/zeroconf`
+  + stdlib. **No CI wiring** (Stage 4; and this repo is self-hosted-runner-only — no `.yml` touched).
+- **Tests** — `go test ./...` green, `go vet` clean, `gofmt` clean: enumeration against a fake
+  `/dev`+`/sys` tree (by-id preference, dedup, glob fallback, sysfs VID:PID walk); the bridge pump
+  over loopback with a faked serial layer (transparent `0xC0`/`0xFF` both directions, one-client
+  reconnect, live line reconfigure); the inventory JSON shape + line-control contract (partial
+  merge, 404/400 paths) via `httptest`; config precedence + allow/deny.
+
+Go-only, out of the .NET solution → no `dotnet` build/test impact and **no ax25-ts parity leg** (the
+arc's parity note confirms the radio-side seams aren't on the parity surface). **Stage 3** (PDN-side
+remote scanner: mDNS+manual discovery, reach-through identify + baud sweep, discover-and-offer
+pairing, per-socket supervision) consumes this daemon's `/inventory` schema, `/ports/{id}/line`
+contract, and the `_pdnhead._tcp` TXT keys.
 
 ### 2026-07-05 — Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)
 

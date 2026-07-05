@@ -1,0 +1,3 @@
+/dist/
+# Bare `go build .` output (the module-name binary); real builds go to dist/.
+/packetnet-headend
