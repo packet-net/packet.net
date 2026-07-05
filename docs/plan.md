@@ -1237,6 +1237,35 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — Head-end: stable-unique device ids via a by-id → by-path → /dev chain ([#569])
+
+Fixed [#569] — the Go head-end (`headend/`) could emit an **unstable, non-unique** port `id`. It derived
+`id` from the `/dev/serial/by-id` basename, falling back straight to the `/dev` basename (`ttyUSB0`) when
+no by-id link existed. But two devices can **share a USB serial** (both bench CP2102 Tait CCDI dongles
+report `0001`), so udev makes a by-id symlink for only **one** of them; the other fell to its `/dev`
+basename — unstable across reboot/replug, and able to silently rebind to the *wrong* radio if enumeration
+order flipped. Appending the serial can't fix it (the serial itself collides).
+
+- **Derivation chain (`headend/enumerate.go`, `Enumerate`).** `id` now comes from, in order: (1)
+  `/dev/serial/by-id` basename (as before); (2) else **`/dev/serial/by-path`** basename — the physical USB
+  topology, unique even under a shared serial and stable while the device stays in the same port (new
+  `Enumerator.ByPathDir`, walked with the same symlink-resolve as by-id); (3) else — **last resort** — the
+  `/dev` basename, logged as unstable. A **dedupe pass** (`dedupeIDs`) guarantees no two devices share an
+  `id`: a residual (cross-source) clash gets a discriminator appended (by-path segment kept stable, else
+  `/dev` basename / enumeration index → flagged unstable).
+- **Inventory (`headend/api.go` `PortInfo`, `bridge.go` `info`).** Additive JSON: `idSource`
+  (`"by-id"|"by-path"|"dev"`), `idStable` (bool — `false` only for the `dev` fallback), and `byPath`
+  (symlink path, recorded even for a by-id device). PDN tolerates unknown/absent fields; Stage-3-side can
+  later consume `idStable`/`idSource` to warn on an unstable binding. Bridge/enumerate logs now name the
+  id source and tag `UNSTABLE`.
+- **Tests (`headend/enumerate_test.go`, injected fake /dev tree — no hardware).** Shared-serial → both via
+  by-path (neither `/dev`); the real bench mix (one by-id + one by-path) → both stable, no `/dev`
+  fallback; by-id preferred over by-path on a unique serial; `/dev`-basename only when neither link exists
+  (flagged unstable); dedupe never leaves duplicate ids; stable-discriminator preserves stability. `go
+  test`/`vet`/`gofmt` green; `CGO_ENABLED=0` arm64 static cross-build (`make arm64`) green. **No .NET / no
+  ax25-ts parity surface touched.** Ships in the next `headend-v*` (release is the orchestrator's post-rig
+  step — no tag pushed here).
+
 ### 2026-07-05 — Split-station head-end: identify/pair/name v2 (band catalog + keyup pairing + #567)
 
 A follow-on to the (now-shipped) split-station arc that makes PDN's auto-discovery read the **whole

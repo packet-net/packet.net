@@ -10,11 +10,17 @@ import (
 // to reach through and identify, the TCP port carrying the raw byte pipe, and
 // the current serial line params.
 type PortInfo struct {
-	ID       string `json:"id"`
-	DevPath  string `json:"devPath"`
-	USBVid   string `json:"usbVid"`
-	USBPid   string `json:"usbPid"`
-	ByID     string `json:"byId"`
+	ID      string `json:"id"`
+	DevPath string `json:"devPath"`
+	USBVid  string `json:"usbVid"`
+	USBPid  string `json:"usbPid"`
+	ByID    string `json:"byId"`
+	ByPath  string `json:"byPath"`
+	// IDSource is which link the stable id came from: "by-id" | "by-path" |
+	// "dev". IDStable is the convenience bool (false only for the "dev"
+	// last-resort fallback). Both additive — PDN can warn on an unstable binding.
+	IDSource string `json:"idSource"`
+	IDStable bool   `json:"idStable"`
 	TCPPort  int    `json:"tcpPort"`
 	Baud     int    `json:"baud"`
 	DataBits int    `json:"dataBits"`
