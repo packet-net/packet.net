@@ -1,9 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -13,9 +18,13 @@ import (
 // Resolution order is defaults < JSON file < environment < explicit flags — see
 // loadConfig.
 type Config struct {
-	// InstanceID is the stable identity advertised over mDNS and returned in the
-	// inventory. PDN keys device→port bindings by (instanceId, stableSerial), so
-	// this MUST NOT change across reboots/address changes. Defaults to hostname.
+	// InstanceID is the stable identity advertised over mDNS (both the DNS-SD
+	// instance label AND the TXT instance= key) and returned in the inventory. PDN
+	// keys device→port bindings by (instanceId, stableSerial), so this MUST NOT
+	// change across reboots/address changes AND must be unique per box on the LAN.
+	// Zero-config default: "{hostname}-{short machine-id hash}" (see
+	// defaultInstanceID) — distinct across image-cloned Pis that share a hostname.
+	// Fixed installs SHOULD pin an explicit stable id (--instance) instead.
 	InstanceID string `json:"instanceId"`
 
 	// HTTPPort is the machine API listener (inventory + line-control + healthz).
@@ -40,21 +49,108 @@ type Config struct {
 // EnvPrefix namespaces the daemon's environment variables.
 const EnvPrefix = "PACKETNET_HEADEND_"
 
-// defaultConfig is the zero-operator-config baseline: identity = hostname, the
-// documented default ports, 9600 baud, bridge every discovered serial device.
+// defaultConfig is the zero-operator-config baseline: a robustly-unique derived
+// identity (see defaultInstanceID), the documented default ports, 9600 baud,
+// bridge every discovered serial device.
 func defaultConfig() Config {
-	host, _ := os.Hostname()
-	if strings.TrimSpace(host) == "" {
-		host = "pdn-headend"
-	}
 	return Config{
-		InstanceID:  host,
+		InstanceID:  defaultInstanceID(),
 		HTTPPort:    7300,
 		BaseTCPPort: 7301,
 		Baud:        9600,
 		Allow:       []string{"*"},
 		Deny:        nil,
 	}
+}
+
+// machineIDFiles are read (in order) to derive the stable per-machine suffix for
+// the zero-config default instanceId. systemd's /etc/machine-id is a per-install
+// id regenerated on first boot of a fresh image; the D-Bus copy is the fallback
+// on hosts without the systemd one.
+var machineIDFiles = []string{"/etc/machine-id", "/var/lib/dbus/machine-id"}
+
+// fallbackMachineToken is the last-resort suffix when neither a machine-id file
+// nor a NIC MAC is available. It is deliberately NOT unique — reaching it is a
+// signal (logged) that the operator should pin an explicit --instance.
+const fallbackMachineToken = "nomachineid"
+
+// defaultInstanceID derives the zero-config default identity from the real host:
+// "{hostname}-{suffix}", where {suffix} is a stable 8-hex-char per-machine token
+// (see machineSuffix). Deterministic across reboots yet distinct across
+// image-cloned machines — two Pis flashed from one image (both "raspberrypi")
+// carry different machine-ids, so they DON'T collide on the bare hostname. An
+// operator override (--instance / env / config) still wins wholesale; for fixed
+// installs pinning an explicit stable id is the recommended setup (see README).
+func defaultInstanceID() string {
+	host, _ := os.Hostname()
+	suffix := machineSuffix(machineIDFiles, os.ReadFile, nicMACs, func(msg string) { log.Print(msg) })
+	return deriveInstanceID(host, suffix)
+}
+
+// deriveInstanceID joins a hostname with a stable suffix, substituting a fixed
+// placeholder when the OS reports an empty hostname. Pure, for testability.
+func deriveInstanceID(hostname, suffix string) string {
+	host := strings.TrimSpace(hostname)
+	if host == "" {
+		host = "pdn-headend"
+	}
+	return host + "-" + suffix
+}
+
+// machineSuffix returns an 8-hex-char stable per-machine token. It hashes the
+// first readable, non-empty machine-id file; failing that, the first non-loopback
+// NIC MAC; failing that it warns and returns a fixed literal. The value source is
+// domain-tagged before hashing so a machine-id can never collide with a MAC. The
+// file reader and MAC source are injected so tests never read the real host.
+func machineSuffix(paths []string, readFile func(string) ([]byte, error), macs func() ([]string, error), warn func(string)) string {
+	for _, p := range paths {
+		b, err := readFile(p)
+		if err != nil {
+			continue
+		}
+		if id := strings.TrimSpace(string(b)); id != "" {
+			return shortHash("machine-id:" + id)
+		}
+	}
+	if list, err := macs(); err == nil {
+		for _, mac := range list {
+			if m := strings.TrimSpace(mac); m != "" {
+				return shortHash("mac:" + m)
+			}
+		}
+	}
+	warn("could not derive a stable machine id (no machine-id file, no NIC MAC); " +
+		"using a fixed fallback instance suffix — set an explicit --instance " +
+		"(or PACKETNET_HEADEND_INSTANCE) for a unique identity")
+	return fallbackMachineToken
+}
+
+// shortHash returns the first 8 hex chars (the leading 4 bytes) of SHA-256(s).
+func shortHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:4])
+}
+
+// nicMACs returns the hardware addresses of non-loopback interfaces that have
+// one, sorted by interface name so the "first" pick is deterministic across
+// reboots. Used only as a fallback when no machine-id file is readable.
+func nicMACs() ([]string, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(ifaces, func(i, j int) bool { return ifaces[i].Name < ifaces[j].Name })
+	var out []string
+	for _, ifi := range ifaces {
+		if ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if len(ifi.HardwareAddr) == 0 {
+			continue
+		}
+		out = append(out, ifi.HardwareAddr.String())
+	}
+	return out, nil
 }
 
 // flagOverrides carries the flags an operator set explicitly (nil = unset), so

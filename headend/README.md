@@ -56,7 +56,7 @@ device it finds.
 
 | Setting | Flag | Env (`PACKETNET_HEADEND_…`) | JSON key | Default |
 | --- | --- | --- | --- | --- |
-| Instance id/name | `--instance` | `INSTANCE` | `instanceId` | **hostname** |
+| Instance id/name | `--instance` | `INSTANCE` | `instanceId` | **`{hostname}-{machine-id hash}`** |
 | HTTP API port | `--http-port` | `HTTP_PORT` | `httpPort` | `7300` |
 | Base TCP bridge port | `--base-tcp-port` | `BASE_TCP_PORT` | `baseTcpPort` | `7301` |
 | Default serial baud | `--baud` | `BAUD` | `baud` | `9600` |
@@ -64,10 +64,14 @@ device it finds.
 | Deny globs | `--deny` | `DENY` | `deny` | `[]` |
 | Config file path | `--config` | `CONFIG` | — | *(none)* |
 
-- **Instance id** is the *stable* identity advertised over mDNS and returned in
-  the inventory. PDN keys device→port bindings by `(instanceId, port.id)`, so it
-  **must not change** across reboots/address changes. Default = hostname; set it
-  explicitly if the hostname is volatile.
+- **Instance id** is the *stable, unique* identity advertised over mDNS (as both
+  the DNS-SD instance label and the TXT `instance=` key) and returned in the
+  inventory. PDN keys device→port bindings by `(instanceId, port.id)`, so it
+  **must not change** across reboots/address changes **and must be unique per box
+  on the LAN**. Zero-config default = `{hostname}-{short machine-id hash}` (see
+  [Multiple head-ends / instance identity](#multiple-head-ends--instance-identity)),
+  so two Pis imaged from one card don't collide on a shared hostname. **For fixed
+  installs, pin an explicit stable id** (e.g. `--instance shack-north`).
 - **Base TCP port**: bridge ports are allocated **sequentially** from here in
   inventory order (`7301`, `7302`, …).
 - **Baud**: the rate serial ports are *opened* at. NinoTNC CDC-ACM ignores baud;
@@ -90,7 +94,34 @@ Example JSON config (`/etc/packetnet-headend/config.json`):
 }
 ```
 
-Multiple instances (one per Pi) coexist — each just needs its own `instanceId`.
+## Multiple head-ends / instance identity
+
+Several head-ends (one per Pi) coexist on one LAN — PDN discovers the whole fleet
+over mDNS and keeps them apart by `instanceId`. So **every box must advertise a
+distinct `instanceId`**; a duplicate makes PDN unable to tell two boxes apart.
+
+- **Recommended for production (fixed installs): pin an explicit stable id.**
+  Choose something meaningful and stable, independent of hostname —
+  `--instance shack-north`, `PACKETNET_HEADEND_INSTANCE=garage-pi`, or
+  `"instanceId": "shack-north"` in the JSON config. This is the least surprising
+  setup: the identity is what *you* chose, survives re-imaging, and reads clearly
+  in a browse.
+- **Zero-config default (no override): `{hostname}-{short}`.** `{short}` is an
+  8-hex-char stable per-machine token — the first 8 hex of a SHA-256 of
+  `/etc/machine-id` (falling back to `/var/lib/dbus/machine-id`, then to a hash of
+  the first non-loopback NIC MAC, then — last resort — a fixed literal with a
+  logged warning). It is deterministic across reboots yet distinct across
+  image-cloned Pis (systemd re-seeds `/etc/machine-id` on a fresh image's first
+  boot), so two cards flashed from one image and both named `raspberrypi` come up
+  as e.g. `raspberrypi-1a2b3c4d` and `raspberrypi-9f8e7d6c` instead of colliding.
+
+Note that mDNS's own probe-and-rename (RFC 6762 §8.1/§9) only deconflicts the
+DNS-SD label and `.local` hostname — **not** the TXT `instance=` payload PDN keys
+on — and the responder library here doesn't probe anyway. So `instanceId`
+uniqueness is an **application-level** guarantee: the derived default provides it
+by construction, and an explicit pin is the operator asserting it. PDN is the
+backstop — a duplicate `instance=` surfaces as a loud conflict there, never a
+silent mis-bind.
 
 ## API contract
 
@@ -158,8 +189,10 @@ Errors: `404` unknown `id`; `400` missing/invalid `baud`, or invalid
 ## mDNS discovery
 
 Advertises DNS-SD service **`_pdnhead._tcp`** in domain `local.`, with the
-**SRV port = the HTTP API port** (so a browse result hits `/inventory`
-directly). TXT record keys:
+**DNS-SD instance label = the `instanceId`** (so the box is human-identifiable in
+a `dns-sd -B` / Avahi browse, and rides any probing responder's rename) and the
+**SRV port = the HTTP API port** (so a browse result hits `/inventory` directly).
+TXT record keys:
 
 | TXT key | Value | Meaning |
 | --- | --- | --- |

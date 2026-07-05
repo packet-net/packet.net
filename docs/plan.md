@@ -1234,6 +1234,44 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — Head-end: robustly-unique default instanceId + advertise it as the DNS-SD label
+
+Hardened the Stage-2 Go head-end (`headend/`) so multiple instances on one broadcast domain
+**deconflict robustly**. PDN keys device→port bindings by `instanceId` (the mDNS TXT `instance=`
+value), but mDNS's own probe-and-rename (RFC 6762 §8.1/§9) only deconflicts the DNS-SD *label* +
+`.local` hostname — **not** the TXT payload — and `grandcat/zeroconf` skips probing anyway. The old
+default `instanceId = bare hostname` meant two image-cloned Pis both came up as `raspberrypi` → same
+instanceId → PDN couldn't tell them apart. Fixed at the application level; **no HTTP API / bridge /
+config-key changes** — only the default *value* of `instanceId` and how it's advertised.
+
+- **Robustly-unique default (`config.go`)** — `defaultInstanceID()` now derives `{hostname}-{short}`,
+  where `{short}` is an 8-hex-char stable per-machine token: leading 8 hex of `SHA-256(/etc/machine-id)`,
+  falling back to `/var/lib/dbus/machine-id`, then a hash of the first non-loopback NIC MAC (sorted by
+  name for a deterministic pick), then a logged fixed literal (`nomachineid`). Deterministic across
+  reboots, distinct across cloned images. The value source is domain-tagged (`machine-id:` / `mac:`)
+  before hashing so the two can't collide. The operator override (`--instance` / `PACKETNET_HEADEND_INSTANCE`
+  / `instanceId`) still wins wholesale, unchanged.
+- **Advertised as the DNS-SD instance LABEL (`mdns.go`)** — `advertise` already passed `instanceId` as
+  `zeroconf.Register`'s instance-name arg; factored the mapping into a pure `buildRegistration(cfg)`
+  (`mdnsRegistration{Instance,Service,Domain,Port,TXT}`) so it's unit-testable that the browse-visible
+  label **is** the instanceId (rides a probing responder's rename), while TXT still carries
+  `instance=<id>` (PDN's binding key) + `httpport` + `v=1`.
+- **Docs** — `headend/README.md` gains a **"Multiple head-ends / instance identity"** section
+  (operator-pinned stable id = the recommended production setup; machine-id default = zero-config
+  fallback) + updated config-table default + mDNS-label note. Design doc
+  [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) gains a
+  **"### Instance identity & deconfliction"** subsection under *Multiple instances* (the RFC-6762
+  boundary, production pin, derived default, label advertisement, PDN Stage-3b backstop).
+- **Tests (Go, `go test ./...`/`go vet`/`gofmt` all green; `CGO_ENABLED=0` arm64 cross-build verified)** —
+  `TestDeriveInstanceID`, `TestMachineSuffix_DeterministicAndPerMachine`, `TestMachineSuffix_DBusFallbackFile`,
+  `TestMachineSuffix_FallbackToMAC`, `TestMachineSuffix_LastResortLiteralWarns`,
+  `TestDefaultInstanceID_IsHostnameDashSuffix`, `TestLoadConfig_OverrideBeatsDerivedDefault`,
+  `TestBuildRegistration_UsesInstanceIDAsLabel`. The machine-id source, MAC source, and warn sink are
+  injected so tests never read the real `/etc/machine-id`.
+
+Go-only, out of the .NET solution → **no `dotnet` impact and no ax25-ts parity leg** (nothing on the
+`Ax25ParseOptions`/`Ax25SessionQuirks`/`XidParseOptions`/`Ax25Listener` surface).
+
 ### 2026-07-05 — Node: kissproxy-compatible MQTT frame emitter (default-off)
 
 Added a node feature that publishes every AX.25 frame the node sends/receives to an MQTT broker in
