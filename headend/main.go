@@ -174,8 +174,8 @@ func buildBridges(cfg Config, enum Enumerator, open SerialOpener) []*Bridge {
 			log.Printf("skip %s (%s): %v", dev.ID, dev.DevPath, err)
 			continue
 		}
-		log.Printf("bridge %s: %s <-> tcp :%d (vid:pid %s:%s)",
-			dev.ID, dev.DevPath, next, orNone(dev.USBVid), orNone(dev.USBPid))
+		log.Printf("bridge %s [id via %s%s]: %s <-> tcp :%d (vid:pid %s:%s)",
+			dev.ID, dev.IDSource, unstableTag(dev.IDStable), dev.DevPath, next, orNone(dev.USBVid), orNone(dev.USBPid))
 		bridges = append(bridges, b)
 		next++
 	}
