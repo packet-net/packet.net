@@ -46,6 +46,7 @@ Start with the row that matches what you are trying to do.
 | Graph radio health in Grafana | [5. Radio metrics](05-radio-metrics.md) | Prometheus scraping the node |
 | Run a Tait link with **no TNC** | [6. TNC-less Tait-to-Tait links](06-tnc-less-tait-links.md) | Two Tait radios, nothing else |
 | Flash firmware / use the CLI tools | [7. Advanced tooling](07-advanced-tooling.md) | A terminal on the node |
+| Run the modems/radios on a **separate box** from PDN | [8. Split-station RF head-end](08-split-station-head-end.md) | A spare Pi + the head-end daemon |
 
 ## Two ways a Tait radio can join a port
 
