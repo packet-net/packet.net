@@ -1248,12 +1248,18 @@ rendezvous relay); plus `Packet.Ax25` gains the parity-tracked `ICarrierSense` m
 dsPIC firmware flasher. **Node (`node-v0.27.0`):** radio attach-by-serial, per-frame RSSI/SNR +
 radio-health surface, the capability doctor, interactive guided tuning, SDM station-hail, the
 `tait-transparent` TNC-less port kind, native carrier-sense CSMA, and radio metrics in `/metrics`
-(`pdn_radio_*`, `pdn_link_snr_db{port,peer}`). **Downstream cascade (Steps 3–4) still to run:**
-axcall + packet-term-tui `Packet.*` pin bumps (they consume `Packet.Ax25`/`Packet.Kiss`, which
-changed — carrier-sense), and the TS leg — **ax25-ts moved this cycle** (`ax25-ts#71`, the mirrored
-carrier-sense seam, merged) so it needs an npm release + a `packet-term-web` pin bump. The full
-radio-arc detail is in the entries below and `docs/research/tait-ccdi-spike.md`; the AX.25 v2.3
-proposal that came out of it is `packethacking/ax25spec#57`.
+(`pdn_radio_*`, `pdn_link_snr_db{port,peer}`). **Downstream cascade (Steps 3–4) — DONE:** the three
+new packages verified public + listed on nuget.org (`Packet.Radio`, `Packet.Radio.Tait`,
+`Packet.Tune.Core` — first-time pushes, `listed=true`, `.nupkg` retrievable). **Step 3 (.NET
+consumers, each built + tested against the fresh 0.18.0 before merge):** `axcall` **v0.2.16**
+(`Packet.*` 0.16.0→0.18.0; 25 tests + full Docker interop CI green) and `packet-term-tui`
+**v0.2.16** (0.16.0→0.18.0; 14 tests green) — both re-released with 6-platform binaries. **Step 4
+(TS leg — ax25-ts moved this cycle via `ax25-ts#71`, the mirrored carrier-sense seam):**
+`@packet-net/ax25` **0.15.0** released to npm (PR #72, parity drift-guard green), and
+`packet-term-web` bumped its esm.sh pin 0.14.0→0.15.0 (PR #20) — deploy verified live on
+packet-term.m0lte.uk. The full radio-arc detail is in the entries below and
+`docs/research/tait-ccdi-spike.md`; the AX.25 v2.3 proposal that came out of it is
+`packethacking/ax25spec#57`.
 
 ### 2026-07-04 — Transparent-readiness doctor: the FFSK Transparent codeplug checks folded into the doctor framework (radio arc #13, hardware-validated)
 
