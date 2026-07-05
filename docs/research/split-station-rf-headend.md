@@ -28,10 +28,13 @@ carrier-sense/DCD, tuning, SDM, hail) or a NinoTNC's *full* control surface (GET
    leave it and kissproxy alone. Our head-end bridges raw serial for PDN↔PDN and does not speak the
    LinBPQ kiss-tcp protocol. **It need not be .NET** — since identification is reach-through (PDN
    side) and MQTT emission lives in PDN, the head-end reuses no packet.net library, so the priority
-   is a *small, trivially Pi-installable* footprint (language TBD — see "Head-end footprint").
+   is a *small, trivially Pi-installable* footprint. **Language: Go** (Tom, 2026-07-05) — a single
+   static binary per arch (arm/arm64), zero runtime, no pip/venv; install = copy one file + a
+   systemd unit; CI cross-compiles. Repo precedent: `sidecar/tsnet` (Go). It lives in
+   `packet.net/headend/` (sibling to `sidecar/`), out of the .NET solution.
    **It is headless: no human/web UI.** Nothing is configured on the head-end and nothing is
    monitored there — PDN drives and observes everything upstream. The only local surface is a tiny
-   machine API (inventory + line-control) plus mDNS.
+   machine API (inventory + line-control, JSON over HTTP) plus mDNS.
 2. **Identification: PDN reaches through the pipe.** The head-end stays a dumb bridge that lists
    "I'm bridging these ports"; PDN opens each remote port with its existing drivers (NinoTNC
    `GETVER`, Tait CCDI `MODEL`) to identify. No device knowledge — and no packet.net library
@@ -143,9 +146,12 @@ Handling:
 
 1. **Foundational seam** — `TcpSerialIo`/`TcpSerialPortIo` + public `OpenTcp` paths + tests
    (scripted CCDI/GETVER transactions over an in-memory/loopback stream proving RSSI, DCD edges,
-   identity work remotely). Library-only; no node config yet. *(in progress)*
-2. **Head-end service** — new project: enumerate → raw bridge → inventory + line-control HTTP →
-   mDNS.
+   identity work remotely). Library-only; no node config yet. **✅ Done — PR #556 (`22d4efb`):
+   `TaitCcdiRadio.OpenTcp` / `KissSerialModem.OpenTcp` / `NinoTncSerialPort.OpenTcp`; the `setBaud`
+   callback (`Func<int,CancellationToken,Task>?`, default no-op) carries all line-control; internal
+   `TcpSerialIo`/`TcpSerialPortIo`; read-idle→fault semantics for half-open supervision.**
+2. **Head-end service** (Go, `packet.net/headend/`) — enumerate → raw bridge → inventory +
+   line-control HTTP → mDNS.
 3. **PDN remote scanner + config** — networked kinds, lift validation, mDNS+manual discovery,
    reach-through identify + baud sweep, discover-and-offer flow, socket supervision.
 4. **Wire-up + docs + plan** — operator guide ("plug into any port and go"), plan §17.
