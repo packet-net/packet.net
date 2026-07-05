@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  purge)
+    if [ -d /run/systemd/system ]; then
+      systemctl disable packetnet-headend.service || true
+      systemctl daemon-reload || true
+    fi
+    # Nothing else to remove on purge: DynamicUser leaves no system user behind,
+    # the daemon keeps no state dir, and the JSON config is opt-in and operator-
+    # owned (never a dpkg conffile), so it is deliberately left in place.
+    ;;
+  remove)
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload || true
+    fi
+    ;;
+esac
+
+exit 0

@@ -1,0 +1,9 @@
+{
+  "instanceId": "shack-north",
+  "bindAddr": "",
+  "httpPort": 7300,
+  "baseTcpPort": 7301,
+  "baud": 9600,
+  "allow": ["*"],
+  "deny": []
+}

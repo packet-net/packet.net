@@ -78,9 +78,9 @@ git tag -a headend-v<semver> origin/main -m "headend-v<semver> — <one-line sum
 git push origin headend-v<semver>
 ```
 
-The `headend-v*` tag triggers [`.github/workflows/publish-headend.yml`](../.github/workflows/publish-headend.yml): it cross-builds static, `CGO_ENABLED=0` binaries for **arm64 / arm v7 / amd64** from the x64 runner via the `headend/Makefile` targets (`make arm64 arm amd64`, no cross C-toolchain — same as the tsnet sidecar), runs the local gate (`make check` = gofmt + vet + test) first, then `gh release create headend-v<semver>` with the three version-stamped binaries (`packetnet-headend-<semver>-linux-<arch>`) + `SHA256SUMS` attached. Uses the runner's system Go.
+The `headend-v*` tag triggers [`.github/workflows/publish-headend.yml`](../.github/workflows/publish-headend.yml): it cross-builds static, `CGO_ENABLED=0` binaries for **arm64 / arm v7 / amd64** from the x64 runner via the `headend/Makefile` targets (`make arm64 arm amd64`, no cross C-toolchain — same as the tsnet sidecar), runs the local gate (`make check` = gofmt + vet + test) first, then — like the node — packages each arch as a Debian **`.deb`** via [`scripts/build-headend-deb.sh`](../scripts/build-headend-deb.sh) (binary at `/usr/lib/packetnet/packetnet-headend`, systemd unit that enables + starts on install, config example at `/usr/share/packetnet`), **install-smokes the amd64 `.deb`** in throwaway Debian-stable + Ubuntu-LTS containers ([`scripts/headend-deb-install-smoke.sh`](../scripts/headend-deb-install-smoke.sh) — install → assert payload + enable wiring → boot on defaults → `/healthz` → purge), and `gh release create headend-v<semver>` with the three `.deb`s + the three raw version-stamped binaries (`packetnet-headend-<semver>-linux-<arch>`, kept for non-deb systems / the make+scp path) + `SHA256SUMS` attached. Uses the runner's system Go.
 
-Verify the release is **non-draft with 4 assets** (three binaries + `SHA256SUMS`):
+Verify the release is **non-draft with 7 assets** (three `.deb`s + three binaries + `SHA256SUMS`):
 
 ```sh
 gh release view headend-v<semver> --repo packet-net/packet.net
@@ -122,7 +122,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 |---|---|---|
 | `lib-v<semver>` | `publish-libs.yml` | 6 NuGet packages on nuget.org |
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s on a GitHub Release |
-| `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 static Go binaries on a GitHub Release |
+| `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 `.deb`s + static Go binaries on a GitHub Release |
 | `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |

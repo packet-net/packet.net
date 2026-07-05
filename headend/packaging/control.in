@@ -1,0 +1,17 @@
+Package: packetnet-headend
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: Tom Fanning <tom@m0lte.uk>
+Depends: systemd
+Section: hamradio
+Priority: optional
+Homepage: https://github.com/packet-net/packet.net
+Description: packet.net split-station RF head-end daemon
+ A small, static, headless Go daemon for a box (typically a Raspberry Pi) that
+ physically holds the NinoTNC modems and Tait radio-control cables. It exposes
+ every attached serial device as a raw TCP byte pipe, plus a tiny machine API
+ (inventory + line-control) and an mDNS advertisement, so a remote Packet.NET
+ node (pdn) can discover the fleet, dial the pipes, and drive the devices with
+ its own drivers. It does no device identification and no protocol parsing —
+ a dumb, transparent multiplexer. Auth-less by design: runs on a trusted LAN or
+ Tailscale tailnet. Single static binary, no runtime or library dependencies.

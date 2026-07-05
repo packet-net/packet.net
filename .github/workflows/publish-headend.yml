@@ -1,21 +1,26 @@
 name: publish-headend
 
-# Builds the split-station RF head-end daemon (headend/) as static, CGO-free Go
-# binaries for the Pi/dev arches (arm64 / arm v7 / amd64) and attaches them to a
-# GitHub Release. Triggered by `headend-v*` tags — distinct from the `node-v*`
-# (publish-node.yml) and `lib-v*` (publish-libs.yml) tags. The head-end is a
-# standalone Go program (headend/go.mod) with no .NET dependency, so it releases
-# on its own cadence.
+# Builds the split-station RF head-end daemon (headend/) for the Pi/dev arches
+# (arm64 / arm v7 / amd64) and attaches it to a GitHub Release in two shapes:
+#   - Debian `.deb`s (packetnet-headend_<ver>_<arch>.deb) — the apt/dpkg install
+#     path; drops the static binary at /usr/lib/packetnet/packetnet-headend and a
+#     systemd unit that enables + starts on install (plug-and-go on defaults).
+#   - the raw static, CGO-free binaries — for non-deb systems and the make+scp
+#     operator path in operating/08-split-station-head-end.md.
+# Triggered by `headend-v*` tags — distinct from the `node-v*` (publish-node.yml)
+# and `lib-v*` (publish-libs.yml) tags. The head-end is a standalone Go program
+# (headend/go.mod) with no .NET dependency, so it releases on its own cadence.
 #
 # Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). CGO_ENABLED=0
 # cross-compiles all three arches from x64 with no cross C-toolchain (the same
 # way scripts/build-deb.sh cross-builds the tsnet sidecar), so a single job
-# produces every binary. Go is taken from the runner's system toolchain — the
-# same assumption publish-node.yml's build-deb.sh makes for the tsnet sidecar.
+# produces every binary AND every .deb. Go is taken from the runner's system
+# toolchain — the same assumption publish-node.yml's build-deb.sh makes.
 #
-# Single job, no Actions artifacts: the binaries are built, checksummed, and
-# attached to the Release from one job's local working tree (mirrors
-# publish-node.yml — keeps everything off the free-tier artifact-storage quota).
+# Single job, no Actions artifacts: the .debs + binaries are built, install-smoked
+# (amd64 .deb, in throwaway Debian/Ubuntu containers — nothing touches the runner),
+# checksummed, and attached to the Release from one job's local working tree
+# (mirrors publish-node.yml — keeps everything off the free-tier artifact quota).
 
 on:
   push:
@@ -80,6 +85,32 @@ jobs:
           done
           file release/*
 
+      - name: Build .debs (amd64 / arm64 / armhf)
+        # scripts/build-headend-deb.sh re-uses the Makefile targets (idempotent after
+        # the raw-binary step above), stages the binary at /usr/lib/packetnet, the
+        # systemd unit, and the config example, and packages the .deb into artifacts/.
+        # Then collect them alongside the raw binaries in headend/release/ so one
+        # checksum + one release-create step covers everything.
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          for rid in linux-amd64 linux-arm64 linux-arm; do
+            scripts/build-headend-deb.sh "$rid" "$VERSION"
+          done
+          cp artifacts/packetnet-headend_"${VERSION}"_*.deb headend/release/
+          ls -l headend/release/
+
+      - name: Install-smoke the amd64 .deb (Debian-stable + Ubuntu-LTS)
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        # Gate: a .deb that won't install cleanly must never reach the release. It
+        # installs the .deb in throwaway containers, asserts the binary + unit +
+        # config example landed and the unit carries the enable wiring, then proves
+        # the daemon BOOTS on defaults (plug-and-go) and serves /healthz. amd64 only
+        # (native, no QEMU). Container-isolated — nothing touches the runner.
+        run: scripts/headend-deb-install-smoke.sh "artifacts/packetnet-headend_${VERSION}_amd64.deb"
+
       - name: Checksums + create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,15 +118,20 @@ jobs:
         run: |
           set -euo pipefail
           cd headend/release
-          sha256sum packetnet-headend-* > SHA256SUMS
+          # Covers the raw binaries (packetnet-headend-<ver>-linux-<arch>) AND the
+          # .debs (packetnet-headend_<ver>_<arch>.deb) — disjoint globs, no overlap.
+          sha256sum packetnet-headend-*-linux-* packetnet-headend_*.deb > SHA256SUMS
           cat SHA256SUMS
           ls -l
           cd ../..
           gh release create "headend-v${VERSION}" \
+            headend/release/packetnet-headend_"${VERSION}"_amd64.deb \
+            headend/release/packetnet-headend_"${VERSION}"_arm64.deb \
+            headend/release/packetnet-headend_"${VERSION}"_armhf.deb \
             headend/release/packetnet-headend-"${VERSION}"-linux-arm64 \
             headend/release/packetnet-headend-"${VERSION}"-linux-arm \
             headend/release/packetnet-headend-"${VERSION}"-linux-amd64 \
             headend/release/SHA256SUMS \
             --repo "${{ github.repository }}" \
             --title "packetnet-headend ${VERSION}" \
-            --notes "Static, CGO-free \`packetnet-headend\` binaries (split-station RF head-end daemon) for arm64 / arm v7 / amd64. Single binary, no runtime or deps — \`sudo install -m0755 packetnet-headend-${VERSION}-linux-<arch> /usr/local/bin/packetnet-headend\` (see headend/README.md for the systemd unit). \`SHA256SUMS\` covers all three."
+            --notes "Split-station RF head-end daemon (\`packetnet-headend\`) for arm64 / arm v7 / amd64. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet-headend_${VERSION}_<arch>.deb\` — a static binary at /usr/lib/packetnet, a hardened systemd unit that enables + starts on install (plug-and-go on defaults; hostname-derived instanceId, auto-enumerate every serial device), and a config example at /usr/share/packetnet/packetnet-headend.json.example. **Raw binary:** for non-deb systems — \`sudo install -m0755 packetnet-headend-${VERSION}-linux-<arch> /usr/local/bin/packetnet-headend\` (see operating/08-split-station-head-end.md for the unit). \`SHA256SUMS\` covers every asset."
