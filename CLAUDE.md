@@ -110,6 +110,7 @@ tests/Packet.Interop.Tests/      C# interop CI tests against the docker stack
 tools/Packet.*.Spike/            scratch experiments
 tools/Packet.Fuzz/               AFL-style fuzzer for the AX.25 / KISS parsers
 sidecar/tsnet/                   embedded Tailscale node (Go; built by build-deb.sh, staged at /usr/lib/packetnet/packetnet-tsnet)
+headend/                         split-station RF head-end daemon (Go; static Pi binary — raw serial↔TCP bridge + inventory/line HTTP + mDNS; touches no .NET code)
 docker/                          interop compose stack (LinBPQ + XRouter + rax25 + netsim) + fixtures
 docs/                            plan, ADRs, runtime capability docs, strict/pragmatic audit
 .github/workflows/               CI (ci.yml + interop.yml + plan-check.yml + publish-libs.yml)
