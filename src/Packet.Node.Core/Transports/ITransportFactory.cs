@@ -1,5 +1,6 @@
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 
 namespace Packet.Node.Core.Transports;
 
@@ -26,11 +27,15 @@ public interface ITransportFactory
     /// clock; the port supervisor threads its own clock through so component tests
     /// stay deterministic.
     /// </param>
+    /// <param name="headEndResolver">Resolves a <c>nino-tnc-tcp</c> transport's
+    /// <c>(headEndId, deviceId)</c> to the head-end's raw TCP pipe (split-station topology).
+    /// Required for a head-end transport; null (or a local/kiss-tcp/AXUDP transport) ignores it.</param>
     /// <param name="cancellationToken">Cancels the open/connect.</param>
     /// <exception cref="NotSupportedException">If the transport kind has no
     /// implementation in this build.</exception>
     Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default);
 }

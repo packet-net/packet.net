@@ -7,7 +7,7 @@
 **As of:** 2026-07-05
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
 **Latest amendment:** [§17 entry 2026-07-05 — **Node: kissproxy-compatible MQTT frame emitter (default-off)** — PDN can now replace a kissproxy instance at a site: an `MqttFrameEmitter : BackgroundService` (self-gating on the new `NodeConfig.Mqtt`, registered like the OARC reporter) rides the shared `NodeTelemetry` frame stream and publishes every AX.25 frame to an MQTT broker in kissproxy's **byte-exact** topic/payload format, so the downstream `kiss-collector` ingests PDN frames unchanged. Two sub-topics per frame — `kissproxy/{node}/{instance}/{fromModem|toModem}/unframed/port0/DataFrameKissCmd` (unframed AX.25 = `MonitorEvent.Raw`) + `…/framed` (full KISS frame incl. FEND via `KissEncoder`); raw-or-base64 payloads; QoS-2/retain-false ManagedMqttClient (auto-reconnect). New per-port `PortConfig.MqttInstance` feeds `{instance}` (the band) for collector-DB continuity; broker password lives in git-ignored `appsettings.Local.json`. 21 tests (capturing publish-sink seam; framed round-trips back through `KissDecoder`); node-only → no ax25-ts leg. Grounded contract: [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission.md)](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)** — kicked off the "Pi holds the modems+radios, a separate box runs PDN" arc (design: [`docs/research/split-station-rf-headend.md`](docs/research/split-station-rf-headend.md)). Stage 1 = the foundational seam only: `TcpSerialIo : ISerialIo` (Packet.Radio.Tait) + `TcpSerialPortIo : ISerialPortIo` (Packet.Kiss.Serial) — a raw binary TCP pipe with `KissTcpClient`-style keepalive + read-idle half-open guard, reproducing the `SerialPort.ReadTimeout` contract (finite-window blocking read, `TimeoutException` on idle) over `Socket.ReceiveTimeout` so the CCDI transaction engine + DCD carrier-sense pump run remotely unchanged. New public open paths parallel to `Open` (seams stay internal): `TaitCcdiRadio.OpenTcp`, `KissSerialModem.OpenTcp`, `NinoTncSerialPort.OpenTcp` (the full-control NinoTNC-over-TCP path, distinct from `kiss-tcp`); Tait `SetBaudRate` routes to an injectable `Func<int,CancellationToken,Task>? setBaud` (default null = no-op — the head-end verb lands later). No node config / new port kinds / head-end service (Stages 2–4). 6 new tests (loopback `TcpListener` head-end: RSSI round-trip, DCD edge → `ChannelBusy`, no-response timeout, baud-callback routing, NinoTNC GETVER), 0-error build. Radio-side only → no ax25-ts parity leg](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc, Stage 3a: PDN-side plumbing for a manually-configured remote radio/modem** — the PDN side that makes a manually-configured remote radio/modem (hosted by the Stage-2 Go head-end on another box) work end to end: **Tait CCDI radio control** and the **full-control NinoTNC**, both over the head-end's raw TCP pipe. New `Packet.Node.Core/HeadEnd/` — a typed `HeadEndClient` (`GetInventoryAsync`/`SetLineAsync`/`HealthAsync` over the Stage-2 contract) + a `HeadEndDeviceResolver` mapping a port's `(headEndId, deviceId)` → dial-able endpoint (`headEndId → address` from `NodeConfig.HeadEnds` → `GET /inventory` → `deviceId → tcpPort + baud`, address re-looked-up each resolve so a moved head-end keeps its config). Config: `NodeConfig.HeadEnds` (`HeadEndConfig { Id = instanceId, Address = host:port }`), a third `PortRadioConfig` binding mode (`headEndId`+`deviceId`), and a new `nino-tnc-tcp` transport kind (full closed-union discipline). Lifted the radio-on-networked-transport rule (a head-end radio pairs with the co-located `nino-tnc-tcp`; `kiss-tcp` still can't carry a radio) + whole-config reference resolution. `RadioControlFactory`/`TransportFactory` remote branches (`TaitCcdiRadio.OpenTcp` with `setBaud → POST /ports/{id}/line`; `NinoTncSerialPort.OpenTcp` + `SetModeAsync`); `PortSupervisor` wraps `nino-tnc-tcp` in `ReconnectingKissModem` (reconnect re-resolves the live fleet). **Manual config only — mDNS discovery / scanner / offer-pairs is Stage 3b.** ~34 new tests (stub HTTP head-end, factory remote branches over a loopback pipe asserting `setBaud`, config validation, YAML/JSON round-trips); 0-error build, node suite green modulo the `/tmp` caveat. Node config + factories → no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **SDM station hail: the cross-mismatch diagnostic (task #14, hardware-validated)** — one PDN station hails another over the Tait SDM side channel to learn its modulation/modem + capabilities; because the side channel rides the radio's own FFSK modem (independent of the packet modulation), the hail SUCCEEDS — and reports the peer's mode — even when a **mode mismatch** makes the packet path impossible, which is exactly the diagnostic nothing else offers. New `HAIL`/`STAT` tuning-telegram verbs + `StationHail`/`StationStatus` codec (rich status rides a 128-char extended SDM), `StationHailer` + opt-in `StationHailResponder` + `NinoTncStationStatusSource` + a `FanOutTuningLink` (shares one radio's one-deep SDM buffer between a resident responder and on-demand hails); `SdmTuningLink` now retries a radio-refused send instead of throwing. CLI `packet-tune hail [--respond]`; node `POST /api/v1/ports/{id}/hail` (admin+audited) + an opt-in per-port resident responder (`radio.hailResponder`). **Hardware-validated**: A on mode 6 (1200 AFSK) hailed B on mode 8 (300 BPSK) — packet path dead — and correctly read back `mode 8 (300 BPSK IL2P+CRC)` over SDM. 29 new tests, 0-error build. Point-to-point v1 + web neighbour-map = follow-ups. Tune.Core + node only → no ax25-ts leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **Operator-facing radio guide (`operating/` docs tree)** — the project's first operator (vs library-developer) doc set: an 8-page `operating/` tree mirroring `guide/` and linked from `README.md`, walking the week's radio arc — attach a radio (`radio:` / `tait-ccdi` / scan-to-attach / stable CCDI-serial bind) → see link quality (per-frame RSSI/SNR, the Radios dashboard, heard `lastRssiDbm`/`lastSnrDb`, native carrier-sense) → the "Check radio" doctor → guided `/tools/tuner` SDM-coordinated deviation tuning (edge-bracketing in operator terms) → the `pdn_radio_*` / `pdn_link_snr_db` `/metrics` surface → TNC-less `tait-transparent` links + the five Tait programming gotchas → the `packet-tune` / `flash-tnc` bench tooling. Docs-only, every config field / endpoint / CLI verb code-verified; corrected two doc-vs-code mismatches (`packet-tune` is `dotnet run --project tools/Packet.Tune`, not a packaged tool; the live tuner API is `/ports/{id}/tuning/*`, not the stale `/ports/{id}/tune` in `node-api.yaml`). No ax25-ts leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-04 — **Radio-control metrics + per-partner SNR into the `/metrics` exporter** — Phase 10/11 observability workstream (2): per-port `pdn_radio_*` health (connection-state 1/0/-1, channel-busy, RSSI + averaged RSSI, PA temp, fwd/rev trend + ratio; `port` label, attached radios only, absent otherwise) read from the SAME `RadioReadModels`/`RadioHealth` projection `/api/v1/radios` serves; per-partner `pdn_link_snr_db{port,peer}` — **the bounding was dropped per Tom** ("packet radio will never be that popular", so a per-callsign label stays naturally small): one gauge per (port, callsign) heard with a measured SNR, no cap/omitted-counter, the ONE peer-labelled series. `HeardEntry`/heard log + `heard_log.last_snr_db` gained `LastSnrDb` (mirrors #545's `LastRssiDbm`: newest-frame-wins, additive SQLite ALTER migration, `/api/v1/heard.lastSnrDb`); +12 node tests, 0-error build. Node-layer only → no ax25-ts leg](#17-amendment-log)
@@ -1280,6 +1280,71 @@ in [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission
   loop. `MqttConfigValidatorTests` (6) cover enabled-requires-host + always-on shape rules + the
   `NodeConfigValidator` composition. Node-side only (no `Ax25ParseOptions`/`Ax25SessionQuirks`/
   `XidParseOptions`/`Ax25Listener` surface touched) → **no ax25-ts parity leg**.
+
+### 2026-07-05 — Split-station RF head-end arc, Stage 3a: PDN-side plumbing for a manually-configured remote radio/modem
+
+Landed **Stage 3a** of the split-station arc (design + stage plan:
+[`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md)): the PDN-side
+plumbing that makes a **manually-configured** remote radio/modem — hosted by the Stage-2 Go head-end
+on another box — work end to end. Both remote surfaces the arc set out to reach: **Tait CCDI radio
+control** (RSSI/SNR, PTT, carrier-sense/DCD, tuning, SDM) **and the full-control NinoTNC**
+(GETVER / mode / GETRSSI / ACKMODE), both over the head-end's raw TCP pipe. **No discovery / scanner /
+auto-pairing yet — that is Stage 3b**; here the operator names the head-end and the device by hand.
+
+- **Typed head-end HTTP client** (`Packet.Node.Core/HeadEnd/`, new folder). `HeadEndClient`:
+  `GetInventoryAsync()`, `SetLineAsync(deviceId, baud, dataBits?, parity?, stopBits?)`, `HealthAsync()`
+  over the Stage-2 contract (`GET /inventory`, `POST /ports/{id}/line`, `GET /healthz`); DTOs
+  (`HeadEndInventory`/`HeadEndPortInfo`/`HeadEndLineParams`) bind the daemon's camelCase JSON. Base
+  address injectable, `HttpClient` substitutable (a shared process-wide default), request URIs built
+  off the per-client base so one `HttpClient` serves the whole fleet. `SetLineAsync` omits unset
+  params on the wire (head-end reads absent as "unchanged").
+- **Resolution seam** — `HeadEndDeviceResolver` maps a port's `(headEndId, deviceId)` → a dial-able
+  endpoint at bring-up: `headEndId → address` (from `NodeConfig.HeadEnds`) → `GET /inventory` →
+  `deviceId → tcpPort + baud`, returning a `HeadEndDeviceBinding { Client, Host, TcpPort, Baud,
+  DeviceId, SetBaud }` (the `SetBaud` closure routes a re-clock to `POST /ports/{deviceId}/line` — the
+  Stage-1 seam). Keyed by `(instanceId, deviceId)`, address looked up **fresh each resolve**, so a
+  re-addressed head-end keeps its port configs. Client factory injectable (tests point it at a stub).
+- **Config — a first-class head-end entity + device references.** `NodeConfig.HeadEnds`: a list of
+  `HeadEndConfig { Id (= the instanceId), Address (host:port of the HTTP API, manual) }` (validate:
+  unique ids; a well-formed host:port with an explicit port **when set** — empty tolerated for the
+  Stage-3b mDNS fallback). `PortRadioConfig` gains `HeadEndId` + `DeviceId` — a **third** binding mode
+  (`IsHeadEndBound`), mutually exclusive with local `Port` / `Serial` (exactly-one, both head-end
+  halves required together). New transport kind **`nino-tnc-tcp`** → `NinoTncTcpTransport { HeadEndId,
+  DeviceId, Mode }` — the full-control NinoTNC path, distinct from the control-less `kiss-tcp`, added
+  through the full closed-union discipline (subtype + kind constant + validator arm + JSON arm + YAML
+  read/write arm + factory arm).
+- **Lifted validation.** The rule that forbade a `radio:` block on a non-serial transport now admits a
+  head-end pairing: a **head-end-bound** radio pairs with the co-located `nino-tnc-tcp` transport (the
+  modem+radio pair is always one instance); a **local** radio still requires `serial-kiss` / `nino-tnc`;
+  a `kiss-tcp` (LinBPQ) port still cannot carry a radio. Whole-config checks: every head-end id a port
+  references (radio or transport) must be declared in `headEnds`.
+- **Factories — remote branches.** `RadioControlFactory`: a head-end-bound `tait-ccdi` resolves the
+  device then `TaitCcdiRadio.OpenTcp(host, tcpPort, baud, setBaud: binding.SetBaud)` +
+  `SetProgressMessagesAsync(true)` — exactly the local path, over a socket. `TransportFactory`: the
+  `nino-tnc-tcp` arm resolves the same way → `NinoTncSerialPort.OpenTcp(host, tcpPort)` + `SetModeAsync`
+  (NinoTNC baud is fictional over USB-CDC → no line verb). Both take an injectable
+  `HeadEndDeviceResolver`; `PortSupervisor` builds it from the **live** `config.Current.HeadEnds`.
+- **Supervision.** `PortSupervisor` now wraps a `nino-tnc-tcp` port (alongside `kiss-tcp`) in
+  `ReconnectingKissModem`; the reconnect lambda re-resolves the inventory from the live head-end fleet,
+  so a head-end bounce **or re-address** self-heals its own ports (the Stage-1 half-open read-idle fault
+  is what ends the stream and triggers it). The NinoTNC handle is captured **before** the wrap, so the
+  RSSI bit-rate provider and the port doctor keep the full-control handle.
+- **Tests** (`Category!=HardwareLoop&Category!=Interop`, ~34 new cases): `HeadEndClient` against a stub
+  HTTP handler (inventory parse, line POST body/effective, health); the `RadioControlFactory` /
+  `TransportFactory` remote branches resolving via a stub inventory + opening over a loopback TCP pipe,
+  asserting the Tait `setBaud` fires `POST /ports/{id}/line` and the NinoTNC path does not; config
+  validation (exactly-one-binding-mode, both-halves, the lifted pairing rule, unknown/undeclared
+  head-end id, unique ids, address shape); YAML + JSON round-trips for the head-end pair; the config
+  round-trip property now generates + preserves a `headEnds` fleet. 0-error build; node suite green
+  modulo the pre-existing `/tmp/pdn-*-tests` permission caveat.
+
+**No ax25-ts parity leg** — this is node config + factories (a new transport *kind* + head-end config),
+not `Ax25ParseOptions` / `Ax25SessionQuirks` / `XidParseOptions` / the `Ax25Listener` surface the parity
+check tracks. **Stage 3b** (mDNS discovery of the fleet, the remote `IRadioScanner`, reach-through
+identify + the CCDI baud **sweep**, discover-and-offer-matched-pairs) builds on this: it reuses
+`HeadEndClient`, resolves `instanceId → address` via mDNS instead of the manual `HeadEndConfig.Address`
+(same `HeadEndDeviceResolver` shape), keeps the `(instanceId, deviceId)` keying, and drives the sweep
+through the already-wired `setBaud → POST /ports/{id}/line` seam.
 
 ### 2026-07-05 — Split-station RF head-end arc, Stage 2: the Go head-end daemon (`headend/`)
 

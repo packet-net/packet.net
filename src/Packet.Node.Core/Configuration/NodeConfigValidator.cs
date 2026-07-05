@@ -37,6 +37,23 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .Must(HaveUniqueEndpoints)
             .WithMessage("Two ports may not share the same transport device / endpoint.");
 
+        // Split-station head-end fleet (docs/research/split-station-rf-headend.md). Empty is the
+        // default (a purely-local station). Each entry is validated (id + address), ids are unique
+        // (the binding key), and every head-end a port references (radio or nino-tnc-tcp) must be
+        // declared here — a dangling reference is a config error, not a silent bring-up degrade.
+        RuleForEach(c => c.HeadEnds).SetValidator(new HeadEndConfigValidator());
+
+        RuleFor(c => c.HeadEnds)
+            .Must(HaveUniqueHeadEndIds)
+            .WithMessage("Each head-end must have a unique id (the (instanceId, deviceId) binding key).");
+
+        RuleFor(c => c)
+            .Must(c => UnresolvedHeadEndReferences(c).Count == 0)
+            .WithMessage(c =>
+                "A port references head-end id(s) not declared in headEnds: " +
+                $"{string.Join(", ", UnresolvedHeadEndReferences(c).Select(r => $"'{r}'"))}. " +
+                "Add a head-end with that id, or fix the binding.");
+
         RuleFor(c => c.Management).NotNull().SetValidator(new ManagementValidator());
 
         // Security: the MCP OAuth authorization server mints access tokens, but a token
@@ -106,6 +123,38 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         return ports.All(p => p.Id is not null && seen.Add(p.Id));
+    }
+
+    private static bool HaveUniqueHeadEndIds(IReadOnlyList<HeadEndConfig> headEnds)
+    {
+        // Blank ids are reported by HeadEndConfigValidator; don't double-report them here.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return headEnds.All(h => string.IsNullOrWhiteSpace(h.Id) || seen.Add(h.Id));
+    }
+
+    /// <summary>Every head-end id a port references — a head-end-bound <c>radio:</c> or a
+    /// <c>nino-tnc-tcp</c> transport — that is NOT declared in <see cref="NodeConfig.HeadEnds"/>.
+    /// Empty ⇒ every reference resolves. Drives both the pass/fail verdict and the error message.</summary>
+    private static List<string> UnresolvedHeadEndReferences(NodeConfig c)
+    {
+        var declared = new HashSet<string>(
+            c.HeadEnds.Where(h => !string.IsNullOrWhiteSpace(h.Id)).Select(h => h.Id),
+            StringComparer.Ordinal);
+
+        var unresolved = new List<string>();
+        foreach (var port in c.Ports)
+        {
+            if (port.Radio is { IsHeadEndBound: true } radio && !declared.Contains(radio.HeadEndId))
+            {
+                unresolved.Add(radio.HeadEndId);
+            }
+            if (port.Transport is NinoTncTcpTransport { HeadEndId: var id }
+                && !string.IsNullOrWhiteSpace(id) && !declared.Contains(id))
+            {
+                unresolved.Add(id);
+            }
+        }
+        return unresolved;
     }
 
     private static bool HaveUniqueAppIds(IReadOnlyList<ApplicationConfig> apps)

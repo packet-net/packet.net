@@ -119,6 +119,15 @@ public sealed record NodeConfig
     /// <b>Default-OFF</b> (<see cref="MqttConfig.Enabled"/> = <c>false</c>): a stock node publishes
     /// nothing. See <see cref="MqttConfig"/> and <c>docs/research/pdn-mqtt-frame-emission.md</c>.</summary>
     public MqttConfig Mqtt { get; init; } = new();
+
+    /// <summary>The split-station <b>RF head-ends</b> this node talks to — boxes running the Go
+    /// head-end daemon that bridge their serial radios/modems as raw TCP pipes (see
+    /// <c>docs/research/split-station-rf-headend.md</c>). A port's <c>radio:</c> control channel or its
+    /// <c>nino-tnc-tcp</c> transport binds to a device on one of these by <c>(headEndId, deviceId)</c>.
+    /// Default-empty: a node with no head-ends is a purely-local station, exactly as before. Manual
+    /// addresses in Stage 3a (mDNS discovery of the fleet lands in Stage 3b). See
+    /// <see cref="HeadEndConfig"/>.</summary>
+    public IReadOnlyList<HeadEndConfig> HeadEnds { get; init; } = [];
 }
 
 /// <summary>

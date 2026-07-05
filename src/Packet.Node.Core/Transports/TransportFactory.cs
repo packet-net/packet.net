@@ -6,6 +6,7 @@ using Packet.Kiss;
 using Packet.Kiss.NinoTnc;
 using Packet.Kiss.Serial;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.Radios;
 using Packet.Radio.Tait;
 
@@ -40,6 +41,7 @@ public sealed class TransportFactory : ITransportFactory
     public async Task<IAx25Transport> CreateAsync(
         TransportConfig transport,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
@@ -56,6 +58,31 @@ public sealed class TransportFactory : ITransportFactory
                     try
                     {
                         await tnc.SetModeAsync((byte)n.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        await tnc.DisposeAsync().ConfigureAwait(false);
+                        throw;
+                    }
+                    return tnc;
+                }
+
+            case NinoTncTcpTransport nt:
+                {
+                    // Full-control NinoTNC over a split-station head-end's raw TCP pipe: resolve
+                    // (headEndId, deviceId) → host:tcpPort via the inventory, open, then apply the
+                    // configured mode — the whole NinoTNC surface (GETVER / mode / GETRSSI / ACKMODE)
+                    // works remotely, distinct from the control-less kiss-tcp arm. NinoTNC baud is
+                    // fictional over USB-CDC, so there is no line-control (no setBaud).
+                    var resolver = headEndResolver
+                        ?? throw new InvalidOperationException(
+                            $"nino-tnc-tcp transport for head-end '{nt.HeadEndId}' device '{nt.DeviceId}' needs a " +
+                            "head-end resolver, but none was supplied.");
+                    var binding = await resolver.ResolveAsync(nt.HeadEndId, nt.DeviceId, cancellationToken).ConfigureAwait(false);
+                    var tnc = await NinoTncSerialPort.OpenTcp(binding.Host, binding.TcpPort, timeProvider, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await tnc.SetModeAsync((byte)nt.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
                     }
                     catch
                     {

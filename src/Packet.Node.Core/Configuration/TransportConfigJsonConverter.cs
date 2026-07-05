@@ -35,6 +35,7 @@ public sealed class TransportConfigJsonConverter : JsonConverter<TransportConfig
         {
             TransportKinds.SerialKiss => root.Deserialize<SerialKissTransport>(options)!,
             TransportKinds.NinoTnc => root.Deserialize<NinoTncTransport>(options)!,
+            TransportKinds.NinoTncTcp => root.Deserialize<NinoTncTcpTransport>(options)!,
             TransportKinds.KissTcp => root.Deserialize<KissTcpTransport>(options)!,
             TransportKinds.Axudp => root.Deserialize<AxudpTransport>(options)!,
             TransportKinds.AxudpMultipoint => root.Deserialize<AxudpMultipointTransport>(options)!,

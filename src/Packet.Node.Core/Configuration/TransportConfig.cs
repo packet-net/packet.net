@@ -44,6 +44,10 @@ public static class TransportKinds
     /// <summary>NinoTNC over serial (KISS + a mode catalogue).</summary>
     public const string NinoTnc = "nino-tnc";
 
+    /// <summary>Full-control NinoTNC over a split-station head-end's raw TCP pipe (GETVER / mode /
+    /// GETRSSI / ACKMODE) — distinct from the control-less generic <see cref="KissTcp"/>.</summary>
+    public const string NinoTncTcp = "nino-tnc-tcp";
+
     /// <summary>KISS over TCP (a softmodem / net-sim endpoint).</summary>
     public const string KissTcp = "kiss-tcp";
 
@@ -92,6 +96,39 @@ public sealed record NinoTncTransport : TransportConfig
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"nino-tnc:{Device}";
+}
+
+/// <summary>
+/// A <b>full-control</b> NinoTNC hosted on a split-station head-end and reached over its raw TCP
+/// pipe (<c>NinoTncSerialPort.OpenTcp</c> — see <c>docs/research/split-station-rf-headend.md</c>).
+/// Unlike the generic control-less <see cref="KissTcpTransport"/>, this is the NinoTNC's whole
+/// surface remotely: GETVER, mode agility (<see cref="Mode"/>), GETRSSI, ACKMODE TX-completion. The
+/// TNC is bound by <c>(headEndId, deviceId)</c>, resolved to the head-end's <c>tcpPort</c> at
+/// bring-up (a re-addressed head-end keeps this config — the id is the key, not host:port).
+/// </summary>
+/// <remarks>
+/// NinoTNC baud is fictional over USB-CDC, so there is no baud field (nothing for the head-end's
+/// line verb to set). A head-end-hosted Tait <c>radio:</c> control channel — the co-located pair —
+/// is legitimate on this kind (validation lifts the serial-only radio restriction specifically for
+/// head-end-bound ports).
+/// </remarks>
+public sealed record NinoTncTcpTransport : TransportConfig
+{
+    /// <inheritdoc/>
+    public override string Kind => TransportKinds.NinoTncTcp;
+
+    /// <summary>The <see cref="HeadEndConfig.Id"/> of the head-end hosting this NinoTNC.</summary>
+    public required string HeadEndId { get; init; }
+
+    /// <summary>The stable device id (inventory <c>id</c>) of the NinoTNC on that head-end.</summary>
+    public required string DeviceId { get; init; }
+
+    /// <summary>NinoTNC mode 0..15 (the modem mode catalogue index), applied via KISS SETHW after
+    /// the remote port opens — exactly as the local <see cref="NinoTncTransport.Mode"/> path does.</summary>
+    public int Mode { get; init; }
+
+    /// <inheritdoc/>
+    public override string DescribeEndpoint() => $"nino-tnc-tcp:{HeadEndId}/{DeviceId}";
 }
 
 /// <summary>KISS over TCP (<c>KissTcpClient.ConnectAsync</c>) — a softmodem or net-sim.</summary>

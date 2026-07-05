@@ -1,4 +1,5 @@
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.HeadEnd;
 using Packet.Radio;
 using Packet.Radio.Tait;
 
@@ -25,23 +26,22 @@ public sealed class RadioControlFactory : IRadioControlFactory
     public async Task<IRadioControl> CreateAsync(
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
+        HeadEndDeviceResolver? headEndResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(radio);
 
         if (RadioKinds.Is(radio.Kind, RadioKinds.TaitCcdi))
         {
-            // Resolve which device path to open: an explicit `port`, or — for a `serial`-bound
-            // radio — scan and find whichever /dev/tty* the radio with that CCDI serial is on right
-            // now (survives device-path renumbering + shared-USB-serial dongles). No plugged-in
-            // match throws; PortSupervisor treats that as the same clean radio-open degrade.
-            var (devicePath, baud) = await ResolveTaitEndpointAsync(radio, cancellationToken).ConfigureAwait(false);
-            var tait = TaitCcdiRadio.Open(devicePath, baud, options: null, timeProvider);
+            var tait = radio.IsHeadEndBound
+                ? await OpenHeadEndTaitAsync(radio, headEndResolver, timeProvider, cancellationToken).ConfigureAwait(false)
+                : await OpenLocalTaitAsync(radio, timeProvider, cancellationToken).ConfigureAwait(false);
             try
             {
                 // DCD (carrier-sense) events only flow while unsolicited PROGRESS
                 // output is on — without it the tagging transport degrades to
-                // threshold-over-noise-floor attribution.
+                // threshold-over-noise-floor attribution. Identical for the local and
+                // head-end paths: the CCDI/PROGRESS stream rides the socket unchanged.
                 await tait.SetProgressMessagesAsync(true, cancellationToken).ConfigureAwait(false);
             }
             catch
@@ -55,6 +55,39 @@ public sealed class RadioControlFactory : IRadioControlFactory
         throw new NotSupportedException(
             $"radio kind '{radio.Kind}' has no IRadioControl implementation in this build " +
             $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
+    }
+
+    /// <summary>Open a locally-cabled Tait radio: resolve its <c>(device path, baud)</c> (an explicit
+    /// <c>port</c>, or a scan for the <c>serial</c>-bound radio's CCDI serial) and open the serial
+    /// port — exactly today's behaviour.</summary>
+    private static async Task<TaitCcdiRadio> OpenLocalTaitAsync(
+        PortRadioConfig radio, TimeProvider? timeProvider, CancellationToken cancellationToken)
+    {
+        var (devicePath, baud) = await ResolveTaitEndpointAsync(radio, cancellationToken).ConfigureAwait(false);
+        return TaitCcdiRadio.Open(devicePath, baud, options: null, timeProvider);
+    }
+
+    /// <summary>
+    /// Open a head-end-hosted Tait radio (split-station topology): resolve <c>(headEndId, deviceId)</c>
+    /// to the head-end's raw TCP pipe + baud via the inventory, then <c>TaitCcdiRadio.OpenTcp</c> with
+    /// <c>setBaud</c> wired to the head-end's line-control verb — so the whole CCDI control stack
+    /// (RSSI/SNR, DCD, tuning, SDM) runs over the socket exactly as it does locally. A null resolver
+    /// for a head-end-bound radio is a wiring bug, surfaced as a clear failure (the supervisor
+    /// degrades the radio as it would any open failure).
+    /// </summary>
+    private static async Task<TaitCcdiRadio> OpenHeadEndTaitAsync(
+        PortRadioConfig radio, HeadEndDeviceResolver? headEndResolver,
+        TimeProvider? timeProvider, CancellationToken cancellationToken)
+    {
+        var resolver = headEndResolver
+            ?? throw new InvalidOperationException(
+                $"radio for head-end '{radio.HeadEndId}' device '{radio.DeviceId}' needs a head-end resolver, " +
+                "but none was supplied.");
+
+        var binding = await resolver.ResolveAsync(radio.HeadEndId, radio.DeviceId, cancellationToken).ConfigureAwait(false);
+        return await TaitCcdiRadio.OpenTcp(
+            binding.Host, binding.TcpPort, binding.Baud,
+            setBaud: binding.SetBaud, options: null, timeProvider, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
