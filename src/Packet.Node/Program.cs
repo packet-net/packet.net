@@ -10,6 +10,7 @@ using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.Mqtt;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Oarc;
 using Packet.Node.Core.Traffic;
@@ -546,6 +547,19 @@ builder.Services.AddSingleton(sp => new OarcReporter(
     NodeCommandService.Version,
     sp.GetRequiredService<ILoggerFactory>().CreateLogger<OarcReporter>()));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OarcReporter>());
+
+// kissproxy-compatible MQTT frame emission (default-off behind mqtt.enabled): a background emitter
+// that publishes every AX.25 frame the node sends/receives to an MQTT broker in kissproxy's native
+// topic/payload format, so pdn can replace a kissproxy instance at a site without losing the
+// downstream kiss-collector capture. Registered UNCONDITIONALLY — it self-gates on mqtt.enabled and
+// rides the same NodeTelemetry frame stream the SSE monitor + traffic log + OARC reporter consume
+// (no second decode path), through a bounded drop-oldest subscription so a slow broker can never
+// back-pressure the radio path. Outbound only. See docs/research/pdn-mqtt-frame-emission.md.
+builder.Services.AddSingleton(sp => new MqttFrameEmitter(
+    sp.GetRequiredService<NodeHostedService>().Telemetry,
+    sp.GetRequiredService<IConfigProvider>(),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<MqttFrameEmitter>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttFrameEmitter>());
 
 // RHPv2 server (the app platform's network plane, default-off behind rhp.enabled): the
 // JSON-over-TCP host API bridged onto the running supervisor. See docs/rhp2-server.md.

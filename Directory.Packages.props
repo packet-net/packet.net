@@ -62,8 +62,10 @@
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
 
-    <!-- MQTT (SP-001 spike — LinBPQ feed ingestion) -->
+    <!-- MQTT (SP-001 spike — LinBPQ feed ingestion; the node's kissproxy-compatible
+         frame emitter uses the ManagedClient extension for auto-reconnect). -->
     <PackageVersion Include="MQTTnet" Version="4.3.7.1207" />
+    <PackageVersion Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
 
     <!-- CommandLineParser — used by the Packet.Term TUI's CLI. (NB: Packet.Term
          itself moves to packet-net/packet-term-tui in a sibling PR; once that lands

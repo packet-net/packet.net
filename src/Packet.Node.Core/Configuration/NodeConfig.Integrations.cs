@@ -73,6 +73,80 @@ public sealed record OarcConfig
 }
 
 /// <summary>
+/// kissproxy-compatible MQTT frame emission (<c>docs/research/pdn-mqtt-frame-emission.md</c>). When
+/// enabled, the node publishes every AX.25 frame it sends/receives to an MQTT broker in
+/// <a href="https://github.com/M0LTE/kissproxy">kissproxy</a>'s native wire format, so pdn can replace
+/// a kissproxy instance at a site without losing the downstream <c>kiss-collector</c> capture pipeline.
+/// <b>Outbound only</b> and <b>default-OFF</b>: a stock node publishes nothing.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The topic contract the collector ingests is <c>[{prefix}/]kissproxy/{node}/{instance}/{dir}/{sub}</c>
+/// where <c>{node}</c> is <see cref="NodeName"/> (resolving to the machine name when null),
+/// <c>{instance}</c> is the port's <see cref="PortConfig.MqttInstance"/> (the band, operationally),
+/// <c>{dir}</c> is <c>fromModem</c> (RX) / <c>toModem</c> (TX), and two <c>{sub}</c>s are emitted per
+/// frame: <c>unframed/port0/DataFrameKissCmd</c> (the SLIP-decoded AX.25 bytes the collector reads) and
+/// <c>framed</c> (the full KISS frame incl. FEND). See <c>MqttFrameEmitter</c>.
+/// </para>
+/// <para>
+/// <b>This block carries a broker credential.</b> <see cref="Password"/> (and <see cref="Username"/>)
+/// belong in the git-ignored <c>appsettings.Local.json</c>, never in a committed <c>config.yaml</c>.
+/// The validator checks host/credential coherence <em>always</em> (even when disabled) so a
+/// disabled-but-edited block can't hold junk that detonates on enable, and requires
+/// <see cref="BrokerHost"/> when <see cref="Enabled"/>.
+/// </para>
+/// </remarks>
+public sealed record MqttConfig
+{
+    /// <summary>The master switch. Default <c>false</c> — the node publishes to MQTT only when the
+    /// operator opts in; with it off the emitter is dormant and sends nothing.</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>The MQTT broker hostname / IP. Required when <see cref="Enabled"/>. Default empty.</summary>
+    public string BrokerHost { get; init; } = "";
+
+    /// <summary>The broker's TCP port. Default 1883 (plain MQTT); 8883 is the TLS convention.</summary>
+    public int BrokerPort { get; init; } = 1883;
+
+    /// <summary>Whether to connect over TLS. Default <c>false</c> (plain TCP, matching kissproxy,
+    /// which has no TLS). When <c>true</c> the client negotiates TLS to <see cref="BrokerPort"/>.</summary>
+    public bool UseTls { get; init; }
+
+    /// <summary>Broker username, or null for an anonymous connection. Default null. Put this (and
+    /// especially <see cref="Password"/>) in the git-ignored <c>appsettings.Local.json</c>.</summary>
+    public string? Username { get; init; }
+
+    /// <summary>Broker password, or null. Default null. <b>Never commit a real value</b> — it belongs
+    /// in the git-ignored <c>appsettings.Local.json</c> (see the type remarks).</summary>
+    public string? Password { get; init; }
+
+    /// <summary>An optional topic prefix prepended as <c>{prefix}/kissproxy/…</c>. Default empty (no
+    /// prefix — the bare <c>kissproxy/…</c> tree the existing collector subscribes to).</summary>
+    public string TopicPrefix { get; init; } = "";
+
+    /// <summary>The <c>{node}</c> topic segment + the client-id stem. Null (the default) resolves to
+    /// <see cref="Environment.MachineName"/> at runtime — set it explicitly to match an existing
+    /// collector's host key (e.g. <c>gb7rdg-node</c>) when migrating a site off kissproxy.</summary>
+    public string? NodeName { get; init; }
+
+    /// <summary>Whether payloads are base64-encoded (kissproxy's per-modem base64 flag). Default
+    /// <c>false</c> — raw binary bytes. When <c>true</c>, payloads are
+    /// <see cref="Convert.ToBase64String(byte[], Base64FormattingOptions)"/> with
+    /// <see cref="Base64FormattingOptions.InsertLineBreaks"/> (byte-for-byte kissproxy).</summary>
+    public bool Base64 { get; init; }
+
+    /// <summary>MQTT publish QoS (0 at-most-once, 1 at-least-once, 2 exactly-once). Default 2
+    /// (ExactlyOnce), matching kissproxy. Validated to 0..2.</summary>
+    public int Qos { get; init; } = 2;
+
+    /// <summary>When <c>true</c>, publish only over-air (RF) frames and skip internal/loopback
+    /// traffic. Default <c>false</c>. Mirrors <see cref="OarcConfig.TracesRfOnly"/> — every current
+    /// pdn transport is RF, so the filter is effectively pass-through until a non-RF transport
+    /// exists, but it is honoured so it's correct the day one is added.</summary>
+    public bool RfOnly { get; init; }
+}
+
+/// <summary>
 /// The persistent traffic-log configuration. The log rides the node's existing
 /// frame-trace telemetry (the same tap the web monitor's SSE feed consumes — no
 /// second decode path) and persists one row per traced frame to its own SQLite
