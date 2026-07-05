@@ -69,6 +69,23 @@ gh release view node-v<semver> --repo packet-net/packet.net
 
 Both tags can be pushed together; the two workflows run independently.
 
+## Step 2b — tag the head-end → static binaries GitHub Release (`publish-headend.yml`)
+
+The split-station RF head-end (`headend/`) is a standalone, `.NET`-free Go daemon (`headend/go.mod`), so it releases on its **own cadence** with its own tag — only when the head-end changed this cycle. It is **not** in lockstep with `lib-v*`/`node-v*`; skip this step when `headend/` didn't move.
+
+```sh
+git tag -a headend-v<semver> origin/main -m "headend-v<semver> — <one-line summary>"
+git push origin headend-v<semver>
+```
+
+The `headend-v*` tag triggers [`.github/workflows/publish-headend.yml`](../.github/workflows/publish-headend.yml): it cross-builds static, `CGO_ENABLED=0` binaries for **arm64 / arm v7 / amd64** from the x64 runner via the `headend/Makefile` targets (`make arm64 arm amd64`, no cross C-toolchain — same as the tsnet sidecar), runs the local gate (`make check` = gofmt + vet + test) first, then `gh release create headend-v<semver>` with the three version-stamped binaries (`packetnet-headend-<semver>-linux-<arch>`) + `SHA256SUMS` attached. Uses the runner's system Go.
+
+Verify the release is **non-draft with 4 assets** (three binaries + `SHA256SUMS`):
+
+```sh
+gh release view headend-v<semver> --repo packet-net/packet.net
+```
+
 ### Optional — move the lab to the release `.deb`
 
 The lab (`root@pdn-lab`, M9YYY) is usually running a dev `.deb` from [`scripts/deploy-node.sh`](../scripts/deploy-node.sh) (version `0.1.0+dev<stamp>`). It already has the released *code* (deploy-node ships the same build), so a redeploy is optional; do it only to align versions or pick up the release artifact shape. `deploy-node.sh` keeps the box's edited `/etc/packetnet/packetnet.yaml`.
@@ -105,6 +122,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 |---|---|---|
 | `lib-v<semver>` | `publish-libs.yml` | 6 NuGet packages on nuget.org |
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s on a GitHub Release |
+| `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 static Go binaries on a GitHub Release |
 | `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/ax25-ts` `v*` | its `publish.yml` | npm package |

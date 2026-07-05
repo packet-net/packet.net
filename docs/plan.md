@@ -1235,6 +1235,17 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — Split-station RF head-end arc: release workflow for the Go head-end binary (`publish-headend.yml`)
+
+Gave the split-station head-end daemon (`headend/`, landed Stage 2) its own **release cascade leg** so it can ship on its own cadence, independent of the `lib-v*` (NuGet) and `node-v*` (`.deb`) tags — the head-end is a standalone `.NET`-free Go program (`headend/go.mod`).
+
+- **New workflow [`.github/workflows/publish-headend.yml`](../.github/workflows/publish-headend.yml)**, modelled on `publish-node.yml`. Trigger: `push` on `headend-v*` tags (plus a `workflow_dispatch` with a `version` input). `runs-on: [self-hosted, Linux, X64]` (no GitHub-hosted runners — CLAUDE.md). Version derives from the tag via `${GITHUB_REF#refs/tags/headend-v}` (e.g. `headend-v0.1.0` → `0.1.0`), matching the node workflow's pattern.
+- **Build**: single job, no Actions artifacts. Runs the local gate (`make check` = gofmt + vet + test) as a release gate, then cross-builds static `CGO_ENABLED=0` binaries for **arm64 / arm v7 / amd64** via the `headend/Makefile` targets (`make arm64 arm amd64`) — no cross C-toolchain, the same way `scripts/build-deb.sh` cross-builds the tsnet sidecar. Go is the runner's system toolchain (fail-loud if absent), matching existing sidecar practice; no `actions/setup-go`. The Makefile has no ldflags version var, so nothing version-embeds into the binary (not invented).
+- **Release**: stages version-stamped copies `packetnet-headend-<version>-linux-<arch>`, writes `SHA256SUMS` over the three, and `gh release create headend-v<version>` (non-draft) attaching the three binaries + `SHA256SUMS`.
+- **Docs**: [`docs/releasing.md`](releasing.md) gains a **Step 2b** (tag the head-end → binaries) and a Quick-reference row (`headend-v<semver>` → `publish-headend.yml` → arm64/arm v7/amd64 static binaries on a GitHub Release).
+- **Verified locally** (can't run the workflow without pushing a tag): `make arm64 arm amd64` produces three statically-linked binaries (`file`: x86-64 / ARM EABI5 / ARM aarch64, all "statically linked", stripped); `make check` green (gofmt + vet + `go test ./...` ok); the asset-staging + `SHA256SUMS` steps simulated clean; workflow YAML parses. **No .NET / no ax25-ts parity surface** touched (CI/interop parity check unaffected). No `headend-v*` tag pushed — that's the orchestrator's release step.
+
+
 ### 2026-07-05 — Split-station RF head-end arc **COMPLETE** (Stage 4b: operator guide + head-end `bindAddr`)
 
 Landed **Stage 4b** and with it the whole **split-station RF head-end arc is complete** — the

@@ -1,0 +1,101 @@
+name: publish-headend
+
+# Builds the split-station RF head-end daemon (headend/) as static, CGO-free Go
+# binaries for the Pi/dev arches (arm64 / arm v7 / amd64) and attaches them to a
+# GitHub Release. Triggered by `headend-v*` tags — distinct from the `node-v*`
+# (publish-node.yml) and `lib-v*` (publish-libs.yml) tags. The head-end is a
+# standalone Go program (headend/go.mod) with no .NET dependency, so it releases
+# on its own cadence.
+#
+# Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). CGO_ENABLED=0
+# cross-compiles all three arches from x64 with no cross C-toolchain (the same
+# way scripts/build-deb.sh cross-builds the tsnet sidecar), so a single job
+# produces every binary. Go is taken from the runner's system toolchain — the
+# same assumption publish-node.yml's build-deb.sh makes for the tsnet sidecar.
+#
+# Single job, no Actions artifacts: the binaries are built, checksummed, and
+# attached to the Release from one job's local working tree (mirrors
+# publish-node.yml — keeps everything off the free-tier artifact-storage quota).
+
+on:
+  push:
+    tags:
+      - 'headend-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without the headend-v prefix, e.g. 0.1.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: v
+        name: Resolve version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/headend-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Go toolchain
+        # System Go on the self-hosted runner — same as scripts/build-deb.sh uses
+        # for the tsnet sidecar. Fail loud (not a silent toolchain download) if
+        # it's missing so the release doesn't quietly build against a surprise Go.
+        run: |
+          command -v go >/dev/null 2>&1 || { echo "go not found on runner (need Go to cross-build the head-end)" >&2; exit 2; }
+          go version
+
+      - name: Local gate (gofmt + go vet + go test)
+        # A binary that fails its own gate must never reach the Release — the
+        # head-end analogue of publish-node.yml's amd64 .deb install-smoke.
+        working-directory: headend
+        run: make check
+
+      - name: Build static binaries (arm64 / arm v7 / amd64)
+        # CGO_ENABLED=0 static builds via the Makefile's cross targets; each writes
+        # dist/packetnet-headend-linux-<arch>. Then stage version-stamped copies as
+        # the release asset names (packetnet-headend-<version>-linux-<arch>).
+        working-directory: headend
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          make clean
+          make arm64 arm amd64
+          mkdir -p release
+          for arch in arm64 arm amd64; do
+            src="dist/packetnet-headend-linux-${arch}"
+            [ -f "$src" ] || { echo "expected build output missing: $src" >&2; exit 1; }
+            cp "$src" "release/packetnet-headend-${VERSION}-linux-${arch}"
+          done
+          file release/*
+
+      - name: Checksums + create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd headend/release
+          sha256sum packetnet-headend-* > SHA256SUMS
+          cat SHA256SUMS
+          ls -l
+          cd ../..
+          gh release create "headend-v${VERSION}" \
+            headend/release/packetnet-headend-"${VERSION}"-linux-arm64 \
+            headend/release/packetnet-headend-"${VERSION}"-linux-arm \
+            headend/release/packetnet-headend-"${VERSION}"-linux-amd64 \
+            headend/release/SHA256SUMS \
+            --repo "${{ github.repository }}" \
+            --title "packetnet-headend ${VERSION}" \
+            --notes "Static, CGO-free \`packetnet-headend\` binaries (split-station RF head-end daemon) for arm64 / arm v7 / amd64. Single binary, no runtime or deps — \`sudo install -m0755 packetnet-headend-${VERSION}-linux-<arch> /usr/local/bin/packetnet-headend\` (see headend/README.md for the systemd unit). \`SHA256SUMS\` covers all three."
