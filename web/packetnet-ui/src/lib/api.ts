@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
-  RadioStatus, RadioScanResult, DoctorReport,
+  RadioStatus, RadioScanResult, DoctorReport, HeadEndScan, HeadEndAdoptRequest,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
@@ -312,6 +312,16 @@ export const api = {
   // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
   // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
   scanRadios: () => scanRadios(),
+  // ---- split-station head-end fleet scan + adopt (read + operate) ----
+  // Discover every head-end instance (config ∪ mDNS), reach through each free device to identify it,
+  // and preview the matched TNC↔radio pairs + any duplicate-instance-id conflicts (GET
+  // /api/v1/radios/headends, read-gated). The Head-ends screen renders this as the adopt surface.
+  getHeadEnds: () => get<HeadEndScan>("/radios/headends", () => mock.HEADEND_SCAN),
+  // Adopt a chosen pairing on an instance (POST /api/v1/radios/headends/{instanceId}/adopt,
+  // operate-scoped): create ONE matched port through the same validate→preview→apply seam a hand-edit
+  // uses. Returns the ReconcileResult; a 422 throws ConfigRejected (declared-reference / co-location
+  // rule), a 400 (missing device ids) surfaces its { error } as an Error.
+  adoptHeadEnd: (instanceId: string, body: HeadEndAdoptRequest) => adoptHeadEnd(instanceId, body),
   // Capability doctor (GET/POST /api/v1/ports/{id}/doctor). runDoctor(id, false) = the safe,
   // read-scoped, non-transmitting check; runDoctor(id, true) = the admin/audited full check that
   // briefly transmits (POST ?interrupt=true). A 404 (unknown/not-running port) surfaces as an Error.
@@ -604,6 +614,33 @@ async function scanRadios(): Promise<RadioScanResult[]> {
   const res = await authFetch("/radios/scan", { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(await errorMessage(res, `Radio scan failed (${res.status}).`));
   return (await res.json()) as RadioScanResult[];
+}
+
+// Adopt a head-end pairing → create one matched port through the config-write seam. Mock mode returns
+// a synthetic reconcile so the surface demos with no node; live mode POSTs the chosen device ids and
+// maps a 422 (validation — declared-reference / co-location pairing rule) to ConfigRejected and any
+// other failure (400 missing ids, etc.) to a thrown Error carrying the server's { error }. Mirrors
+// writePort — the adopt endpoint reuses the identical validate→preview→apply seam.
+async function adoptHeadEnd(instanceId: string, body: HeadEndAdoptRequest): Promise<ReconcileResult> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 120));
+    const portId = (body.portId?.trim() || instanceId);
+    return {
+      valid: true,
+      live: [{ path: `ports.${portId}`, impact: "port-restart", summary: `Head-end port ${portId} created (${body.tncDeviceId} + ${body.radioDeviceId}).` }],
+      portRestart: [], nodeReset: [], applied: true,
+    };
+  }
+  const res = await authFetch(`/radios/headends/${encodeURIComponent(instanceId)}/adopt`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 422) {
+    throw new ConfigRejected((await res.json()) as ValidationProblem);
+  }
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not adopt on '${instanceId}' (${res.status}).`));
+  return (await res.json()) as ReconcileResult;
 }
 
 // Capability doctor. The SAFE form is a read-scoped GET that never transmits; the FULL form is an

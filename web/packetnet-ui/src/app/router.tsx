@@ -14,6 +14,7 @@ import { AppFrame } from "@/screens/app-frame";
 import { Routes } from "@/screens/routes";
 import { Capabilities } from "@/screens/capabilities";
 import { Ports } from "@/screens/ports";
+import { HeadEnds } from "@/screens/headends";
 import { Config } from "@/screens/config";
 import { Users } from "@/screens/users";
 import { LinkTuner } from "@/screens/link-tuner";
@@ -116,6 +117,7 @@ export const router = createBrowserRouter([
       { path: "routes", element: <Routes /> },
       { path: "capabilities", element: <Capabilities /> },
       { path: "ports", element: <Ports /> },
+      { path: "headends", element: <HeadEnds /> },
       { path: "config", element: <Config /> },
       { path: "users", element: <Users /> },
       { path: "links", element: <LinkTroubleshoot /> },

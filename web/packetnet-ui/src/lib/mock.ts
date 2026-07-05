@@ -10,7 +10,7 @@ import type {
   ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
   TailscaleStatus, SystemInfo, NetRomRouting,
-  RadioStatus, RadioScanResult, HeardStation,
+  RadioStatus, RadioScanResult, HeardStation, HeadEndScan,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
 } from "./types";
@@ -239,6 +239,69 @@ export const RADIO_SCAN: RadioScanResult[] = [
   { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
   { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
 ];
+
+// Split-station head-end fleet scan (GET /api/v1/radios/headends) — the "plug into any port and go"
+// preview the Head-ends screen renders. Covers every state the operator surface must handle:
+//   shack-north — mDNS-discovered, reachable, exactly one free TNC + one free radio → an AUTO pairing
+//                 (one-click adopt), plus a device already bound to a running port (free:false).
+//   garage-pi   — config-pinned, reachable, TWO free TNCs + TWO free radios → pairingAmbiguous: the
+//                 operator picks a TNC + a radio before adopting (proposedPairs lists the combos).
+//   attic-relay — mDNS-discovered but UNREACHABLE → its Error shows and no devices/pairs render.
+// Plus a duplicate-instance-id CONFLICT (two boxes advertising "spare-pi" with no config address).
+export const HEADEND_SCAN: HeadEndScan = {
+  instances: [
+    {
+      instanceId: "shack-north",
+      host: "192.168.1.44",
+      httpPort: 8080,
+      source: "mdns",
+      reachable: true,
+      error: null,
+      devices: [
+        { deviceId: "usb-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
+        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "19925328", baud: 28800, free: true },
+        { deviceId: "usb-2", kind: "tait-ccdi", model: "Tait TM8115", version: "1.10.0", serial: "1G000999", baud: 28800, free: false },
+      ],
+      proposedPairs: [{ tncDeviceId: "usb-0", radioDeviceId: "usb-1", auto: true }],
+      pairingAmbiguous: false,
+    },
+    {
+      instanceId: "garage-pi",
+      host: "192.168.1.51",
+      httpPort: 8080,
+      source: "config",
+      reachable: true,
+      error: null,
+      devices: [
+        { deviceId: "acm-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
+        { deviceId: "acm-1", kind: "nino-tnc", model: "NinoTNC N9600A3", version: "3.41", serial: null, baud: 57600, free: true },
+        { deviceId: "usb-0", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "2G001111", baud: 28800, free: true },
+        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8200", version: "2.03.0", serial: "2G002222", baud: 19200, free: true },
+      ],
+      proposedPairs: [
+        { tncDeviceId: "acm-0", radioDeviceId: "usb-0", auto: false },
+        { tncDeviceId: "acm-0", radioDeviceId: "usb-1", auto: false },
+        { tncDeviceId: "acm-1", radioDeviceId: "usb-0", auto: false },
+        { tncDeviceId: "acm-1", radioDeviceId: "usb-1", auto: false },
+      ],
+      pairingAmbiguous: true,
+    },
+    {
+      instanceId: "attic-relay",
+      host: "192.168.1.77",
+      httpPort: 8080,
+      source: "mdns",
+      reachable: false,
+      error: "connection refused — the head-end daemon is not answering on 192.168.1.77:8080",
+      devices: [],
+      proposedPairs: [],
+      pairingAmbiguous: false,
+    },
+  ],
+  conflicts: [
+    { instanceId: "spare-pi", addresses: ["192.168.1.90:8080", "192.168.1.91:8080"] },
+  ],
+};
 
 // Capability-doctor mock (GET/POST /api/v1/ports/{id}/doctor). A believable checklist per port so
 // the "Check radio" surface renders with no node — covering all three states: pass (green), fail

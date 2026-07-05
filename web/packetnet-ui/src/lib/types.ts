@@ -340,6 +340,69 @@ export interface RadioScanResult {
   devicePath: string;
   byIdPath: string | null;
 }
+
+// ---- split-station RF head-end fleet scan + adopt (server: Packet.Node.Core.Api.HeadEndScan) ----
+// GET /api/v1/radios/headends → HeadEndScan: every head-end instance PDN found (config-pinned ∪
+// mDNS-discovered), the devices each bridges (reach-through identified), the auto-suggested TNC↔radio
+// pairs, and any duplicate-instance-id conflicts. This is the "plug into any port and go" preview the
+// operator confirms before an adopt. System.Text.Json web defaults camel-case every member on the wire.
+// See docs/research/split-station-rf-headend.md § Discovery & adoption flow.
+
+// How a head-end's address was resolved: a pinned config address, or an mDNS browse hit.
+export type HeadEndSource = "config" | "mdns";
+// The reach-through device classification (server: HeadEndDeviceKind). "unknown" = neither probe
+// (NinoTNC GETVER / Tait MODEL) classified it, or it was unreachable.
+export type HeadEndDeviceKind = "nino-tnc" | "tait-ccdi" | "unknown";
+// One device on a head-end as the scan saw it. A bound device (already referenced by a configured
+// port) is NOT probed (single-client-per-pipe) — its `kind` then comes from the binding and `free`
+// is false. `serial`/`model` are Tait-only; `version` is the NinoTNC GETVER firmware or the Tait CCDI
+// version; `baud` is the rate the device answered at (the sweep-locked rate for a Tait).
+export interface HeadEndDeviceScan {
+  deviceId: string;
+  kind: HeadEndDeviceKind;
+  model: string | null;
+  version: string | null;
+  serial: string | null;
+  baud: number;
+  free: boolean;
+}
+// A suggested pairing within one instance (the co-location invariant — a TNC pairs only with a radio
+// on the SAME instance). `auto` is true only when the instance has exactly one free TNC and one free
+// radio (an unambiguous one-click suggestion); otherwise it is one of several candidate combinations.
+export interface HeadEndPairProposal { tncDeviceId: string; radioDeviceId: string; auto: boolean }
+// One head-end instance: its stable id + resolved address, how the address was found, whether its
+// inventory could be fetched (`reachable`; `error` set when false), the devices it bridges, and the
+// proposed pairings. `pairingAmbiguous` = more than one free TNC or radio, so the operator chooses.
+export interface HeadEndInstanceScan {
+  instanceId: string;
+  host: string;
+  httpPort: number;
+  source: HeadEndSource;
+  reachable: boolean;
+  error: string | null;
+  devices: HeadEndDeviceScan[];
+  proposedPairs: HeadEndPairProposal[];
+  pairingAmbiguous: boolean;
+}
+// An instance id advertised at more than one address with no config address to disambiguate — mDNS
+// does not police its TXT payloads, so PDN surfaces the clash loudly rather than binding one blindly.
+export interface HeadEndConflict { instanceId: string; addresses: string[] }
+export interface HeadEndScan {
+  instances: HeadEndInstanceScan[];
+  conflicts: HeadEndConflict[];
+}
+// POST /api/v1/radios/headends/{instanceId}/adopt body (server: HeadEndAdoptRequest). The operator's
+// chosen pairing → one matched port (a nino-tnc-tcp transport + a head-end-bound tait-ccdi radio).
+// `portId` defaults to the instance id; `mode` to 0; `enabled` to true; `address` (optional manual
+// host:port) is stored on the head-end config only when the instance isn't already declared.
+export interface HeadEndAdoptRequest {
+  tncDeviceId: string;
+  radioDeviceId: string;
+  portId?: string | null;
+  mode?: number | null;
+  enabled?: boolean | null;
+  address?: string | null;
+}
 // One heard station for the MHeard surface (server: Packet.Node.Core.Api.HeardStation). For the
 // node-wide view portId is null and ports is the count of distinct ports the station was heard on;
 // for the per-port view portId is the port id and ports is 1. lastRssiDbm is the RSSI (dBm) of the
