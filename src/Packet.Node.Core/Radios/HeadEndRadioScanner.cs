@@ -28,6 +28,11 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
     /// default first). Capped deliberately — a handful of rates clock-and-identify in one pass.</summary>
     public static readonly IReadOnlyList<int> SweepBaudRates = [28800, 19200, 9600, 38400, 57600];
 
+    /// <summary>A NinoTNC's KISS serial rate is a fixed <b>57600</b> — it never changes and there is
+    /// nothing to sweep (#567). The head-end line is clocked to this before the GETVER reach-through
+    /// so the raw pipe always speaks at the rate the NinoTNC expects.</summary>
+    public const int NinoTncKissBaud = 57600;
+
     private const string MicrochipVid = "04d8"; // NinoTNC (PIC USB-CDC)
     private const string SiLabsVid = "10c4";    // Tait CP2102 CCDI dongle
 
@@ -201,22 +206,25 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
         if (taitFirst)
         {
             return await ProbeTaitAsync(host, port, setBaud, cancellationToken).ConfigureAwait(false)
-                ?? await ProbeNinoAsync(host, port, cancellationToken).ConfigureAwait(false)
+                ?? await ProbeNinoAsync(host, port, setBaud, cancellationToken).ConfigureAwait(false)
                 ?? Unidentified(port);
         }
 
-        return await ProbeNinoAsync(host, port, cancellationToken).ConfigureAwait(false)
+        return await ProbeNinoAsync(host, port, setBaud, cancellationToken).ConfigureAwait(false)
             ?? await ProbeTaitAsync(host, port, setBaud, cancellationToken).ConfigureAwait(false)
             ?? Unidentified(port);
     }
 
     private async Task<HeadEndDeviceScan?> ProbeNinoAsync(
-        string host, HeadEndPortInfo port, CancellationToken cancellationToken)
+        string host, HeadEndPortInfo port, Func<int, CancellationToken, Task> setBaud, CancellationToken cancellationToken)
     {
         try
         {
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connectCts.CancelAfter(connectTimeout);
+            // #567: a NinoTNC's KISS baud is a fixed 57600 (never swept). Clock the head-end line to it
+            // via the line verb before GETVER so the raw pipe speaks at the rate the NinoTNC expects.
+            await setBaud(NinoTncKissBaud, connectCts.Token).ConfigureAwait(false);
             await using var nino = await NinoTncSerialPort
                 .OpenTcp(host, port.TcpPort, timeProvider, connectCts.Token).ConfigureAwait(false);
 
@@ -305,7 +313,10 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
 
     private static HeadEndDeviceScan TaitResult(HeadEndPortInfo port, TaitRadioIdentity identity, int baud) =>
         new(port.Id, HeadEndDeviceKind.TaitCcdi, Model: identity.ProductName,
-            Version: identity.CcdiVersion, Serial: identity.SerialNumber, Baud: baud, Free: true);
+            Version: identity.CcdiVersion, Serial: identity.SerialNumber, Baud: baud, Free: true,
+            // The band split (hence the amateur band) is CCDI-readable off the product code even though
+            // the tuned frequency is not — adopt uses it to label the port by band.
+            BandCode: identity.Band?.Code, AmateurBand: identity.Band?.AmateurBand);
 
     private static HeadEndDeviceScan Unidentified(HeadEndPortInfo port) =>
         new(port.Id, HeadEndDeviceKind.Unknown, Model: null, Version: null, Serial: null, Baud: port.Baud, Free: true);

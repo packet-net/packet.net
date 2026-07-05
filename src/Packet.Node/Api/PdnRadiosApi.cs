@@ -29,6 +29,9 @@ public static class PdnRadiosApi
 
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
         var operate = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Operate);
+        // Admin gates the RF-emitting action (keyup pairing keys transmitters on-air) — matching every
+        // other transmitting endpoint in the node (hail / tuning / doctor are all admin-scoped).
+        var admin = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);
 
         // Every configured radio attachment (one row per port with a radio: block), attached or not.
         v1.MapGet("/radios", (NodeHostedService host, IConfigProvider config)
@@ -85,6 +88,29 @@ public static class PdnRadiosApi
 
             var candidate = HeadEndAdoption.BuildCandidate(cfg.Current, instanceId, body);
             return PdnPortsApi.ApplyCandidate(cfg, candidate);
+        });
+
+        // Keyup pairing: discover the PHYSICAL modem↔radio map on a head-end by briefly KEYING each
+        // free NinoTNC (RF is emitted) and watching which co-located Tait reports its PTT — ground
+        // truth that replaces the passive scan's co-location guess. Admin-scope (it transmits — the same
+        // bar as hail/tuning/doctor) + an RF caveat on the response; never folded into the passive GET
+        // scan. Absent pairer (stripped embedder) ⇒ an honest not-available result.
+        admin.MapPost("/radios/headends/{instanceId}/pair-by-keyup",
+            async (string instanceId, [FromServices] IHeadEndKeyupPairer? pairer, HttpContext ctx,
+                IConfigProvider config, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
+        {
+            if (pairer is null)
+            {
+                return Results.Ok(new HeadEndKeyupResult(
+                    instanceId, Reachable: false, Error: "keyup pairing is not available in this build",
+                    Pairs: [], UnpairedTncs: [], UnpairedRadios: [], Ambiguous: [], HeadEndKeyupCaveat.Text));
+            }
+
+            audit.RecordRest(ctx, clock, "pair_by_keyup", instanceId, "requested",
+                "RF: briefly keys each free NinoTNC to map its physical radio");
+
+            var result = await pairer.PairByKeyupAsync(config.Current, instanceId, ct).ConfigureAwait(false);
+            return Results.Ok(result);
         });
     }
 }

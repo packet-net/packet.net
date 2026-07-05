@@ -244,6 +244,33 @@ The "plug into any port and go" layer (Stage 3b), end to end:
    flows through the same `PdnPortsApi` validate→preview→apply seam a hand-edit uses, so the co-location
    pairing rule and the declared-reference rule are enforced by the existing validator.
 
+## Identify / pair / name v2 (2026-07-05)
+
+A follow-on enhancement makes auto-discovery read the whole modem↔radio map off the hardware — all
+lib+node, riding the existing raw bridge (no head-end/Go change):
+
+- **Band naming — the band split *is* runtime-readable.** Earlier notes assumed the band could not be
+  read off the wire. **Correction:** while the *tuned frequency* is not CCDI-readable, the *band split*
+  is. The Tait `q3 RADIO_VERSIONS` record `[00]` is the product code (e.g. `TMAB12-B100_0201`); the
+  `[A-Z][0-9]` designator immediately after the first `-` (`B1` here) names the band split. A new
+  `TaitBandCatalog` (`Packet.Radio.Tait`) maps that designator to `{ Code, MinHz, MaxHz, AmateurBand }`
+  (`A4`=4m, `B1`=2m, `H5`/`H6`/`H7`=70cm; the OARC-wiki "no amateur band" on `A4` is corrected to the
+  UK 70&nbsp;MHz / 4&nbsp;m allocation). `TaitRadioIdentity.Band` surfaces it. The scan
+  (`HeadEndDeviceScan.BandCode` / `.AmateurBand`) carries it for a Tait, and **adopt** defaults the new
+  port's MQTT `{instance}` label (`PortConfig.MqttInstance`) — and, absent an explicit id, the port id —
+  to the amateur band (`2m`), so a band-named port drops in with no operator input.
+- **Keyup pairing — physical ground truth.** `POST /api/v1/radios/headends/{instanceId}/pair-by-keyup`
+  (**admin-scope** — it transmits, the same bar as hail/tuning/doctor — RF caveat on the response)
+  resolves the *physical* modem↔radio map: for each free
+  NinoTNC it opens the pipe and **briefly keys it** (a CQBEEP request frame keys the NinoTNC's cabled
+  radio) while watching every free Tait's CCDI PROGRESS stream for a PTT-activated edge
+  (`TaitCcdiRadio.TransmitterStateChanged`) — the Tait whose PTT the NinoTNC asserted is its physical
+  pair. This replaces the co-location *guess* for the ambiguous case and verifies the unambiguous one.
+  It transmits, so it is **explicitly operator-initiated** and never folded into the passive scan.
+- **#567 — NinoTNC KISS baud is a fixed 57600.** A NinoTNC's KISS rate never changes; there is nothing
+  to sweep. Both the reach-through identify and the `nino-tnc-tcp` bring-up now clock the head-end line
+  to `57600` (`POST /ports/{id}/line`) before GETVER / open.
+
 ## Parity note
 
 The radio-side seams (`ISerialIo`, `TaitCcdiRadio`, radio kinds) are **not** on the ax25-ts parity

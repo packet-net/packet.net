@@ -15,13 +15,18 @@ namespace Packet.Node.Core.Api;
 /// <param name="Address">Optional manual <c>host:port</c> for the head-end's control plane, stored on
 /// the head-end config when the instance isn't already declared. Null/blank leaves the address empty
 /// (discover mode — the instance id re-resolves via mDNS at bring-up, surviving a re-address).</param>
+/// <param name="AmateurBand">The radio's amateur band (e.g. <c>2m</c>) from the scan, when known.
+/// Defaults the new port's MQTT <c>{instance}</c> label (<see cref="Configuration.PortConfig.MqttInstance"/>)
+/// and — when <see cref="PortId"/> is unset — the port id, so a band-named port drops in without
+/// operator input. Null/blank leaves both to their instance-id defaults.</param>
 public sealed record HeadEndAdoptRequest(
     string TncDeviceId,
     string RadioDeviceId,
     string? PortId = null,
     int? Mode = null,
     bool? Enabled = null,
-    string? Address = null);
+    string? Address = null,
+    string? AmateurBand = null);
 
 /// <summary>
 /// Builds the candidate <see cref="NodeConfig"/> for adopting a matched head-end pair — the pure
@@ -59,12 +64,18 @@ public static class HeadEndAdoption
             ];
         }
 
-        var portId = string.IsNullOrWhiteSpace(request.PortId) ? instanceId : request.PortId!.Trim();
+        // The radio's amateur band, when the scan read one, names both the MQTT {instance} label and —
+        // absent an explicit port id — the port id itself, so a band-named port ("2m") drops in with no
+        // operator input. Falls back to the instance id when the band is unknown.
+        var band = string.IsNullOrWhiteSpace(request.AmateurBand) ? null : request.AmateurBand!.Trim();
+        var portId = !string.IsNullOrWhiteSpace(request.PortId) ? request.PortId!.Trim()
+            : band ?? instanceId;
 
         var port = new PortConfig
         {
             Id = portId,
             Enabled = request.Enabled ?? true,
+            MqttInstance = band,
             Transport = new NinoTncTcpTransport
             {
                 HeadEndId = instanceId,

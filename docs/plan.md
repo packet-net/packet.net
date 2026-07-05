@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-05
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-05 — **Split-station head-end identify/pair/name v2** — auto-discovery now reads the whole modem↔radio map off the hardware (all lib+node, rides the existing raw bridge; no head-end/Go change). **(1)** New `TaitBandCatalog` (`Packet.Radio.Tait`) parses the band split off the `q3 RADIO_VERSIONS` record `[00]` product code (the `[A-Z][0-9]` designator after the first `-`) → `{ Code, MinHz, MaxHz, AmateurBand }` + `TaitRadioIdentity.Band` (`A4`=4m, `B1`=2m, `H5`/`H6`/`H7`=70cm); corrects the "band not runtime-readable" assumption (frequency isn't, the split is). **(2)** `#567` — a NinoTNC's KISS baud is a fixed 57600; identify + `nino-tnc-tcp` bring-up now clock the head-end line to 57600 before GETVER/open (no sweep). **(3)** Keyup pairing — `POST /api/v1/radios/headends/{instanceId}/pair-by-keyup` (admin-scope — it transmits, same bar as hail/tuning/doctor — RF caveat on the response) briefly keys each free NinoTNC and watches which co-located Tait's PTT fires (`TransmitterStateChanged`) → the *physical* pair, ground truth over the co-location guess; operator-initiated, never in the passive scan. **(4)** The scan (`HeadEndDeviceScan.BandCode`/`.AmateurBand`) surfaces the band and **adopt** defaults the port's MQTT `{instance}` + id to the amateur band. Additive radio-side lib + node surface → **no ax25-ts parity leg**. Design: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) (§ "Identify / pair / name v2")](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **RELEASE: lib-v0.19.0 + node-v0.28.0 + headend-v0.1.0** — the split-station RF head-end arc shipped to the world off green `main` (`994edd1`). `lib-v0.19.0` (NuGet): the additive `OpenTcp` remote-serial seam on `Packet.Radio.Tait`/`Packet.Kiss.Serial`/`Packet.Kiss.NinoTnc`. `node-v0.28.0` (`.deb`): head-end discover→adopt + the kissproxy-compatible MQTT emitter. `headend-v0.1.0`: the first Go head-end binary release (amd64/arm/arm64 static) via the new `publish-headend.yml`. Downstream: `axcall` + `packet-term-tui` **v0.2.17** (`Packet.*` 0.18.0→0.19.0). No TS leg (ax25-ts unchanged). Interop's one red was the tracked `SrejXidViaNetsim` flake (#565; sibling `UI_Frame` flake filed as #566); green on re-run. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Split-station RF head-end arc COMPLETE (Stage 4b)** — the "Pi holds the modems+radios, a separate box runs PDN" topology now ships end to end. **Stage 4b** added the operator guide ([`operating/08-split-station-head-end.md`](../operating/08-split-station-head-end.md) — topology, deploy the Pi daemon incl. pin a stable `instanceId`, adopt from the **Head-ends** web UI or by YAML, troubleshooting) + an optional head-end **`bindAddr`** (flag `--bind-addr` / env `PACKETNET_HEADEND_BIND_ADDR` / JSON `bindAddr`; **default empty = bind-all, no behaviour change**; when set, a shared `listenAddr` fences BOTH the HTTP API and every raw-serial bridge onto one trusted address — a Tailscale `100.x.y.z` — since the head-end is auth-less by design) + this ledger. Closes the arc: Stage 1 TCP serial seam (#556), Stage 2 Go head-end (#557), Stage 3a manual plumbing (#559), instance-identity (#560), Stage 3b discovery+adopt (#561), Stage 4a web UI (#562), 4b here. Go gate green (`go test`/`go vet`/`gofmt` + arm64 static build); no .NET / no ax25-ts parity leg. Design: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) (now *arc complete*)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Node: kissproxy-compatible MQTT frame emitter (default-off)** — PDN can now replace a kissproxy instance at a site: an `MqttFrameEmitter : BackgroundService` (self-gating on the new `NodeConfig.Mqtt`, registered like the OARC reporter) rides the shared `NodeTelemetry` frame stream and publishes every AX.25 frame to an MQTT broker in kissproxy's **byte-exact** topic/payload format, so the downstream `kiss-collector` ingests PDN frames unchanged. Two sub-topics per frame — `kissproxy/{node}/{instance}/{fromModem|toModem}/unframed/port0/DataFrameKissCmd` (unframed AX.25 = `MonitorEvent.Raw`) + `…/framed` (full KISS frame incl. FEND via `KissEncoder`); raw-or-base64 payloads; QoS-2/retain-false ManagedMqttClient (auto-reconnect). New per-port `PortConfig.MqttInstance` feeds `{instance}` (the band) for collector-DB continuity; broker password lives in git-ignored `appsettings.Local.json`. 21 tests (capturing publish-sink seam; framed round-trips back through `KissDecoder`); node-only → no ax25-ts leg. Grounded contract: [`docs/research/pdn-mqtt-frame-emission.md`](research/pdn-mqtt-frame-emission.md)](#17-amendment-log)
@@ -1235,6 +1236,50 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-05 — Split-station head-end: identify/pair/name v2 (band catalog + keyup pairing + #567)
+
+A follow-on to the (now-shipped) split-station arc that makes PDN's auto-discovery read the **whole
+modem↔radio map off the hardware**. Three parts, all **lib + node**, all riding the existing raw bridge
+— **no head-end/Go change**. Grounded in [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md)
+(§ "Identify / pair / name v2") and issue [#567].
+
+- **Part 1 — Tait band catalog + parser (`Packet.Radio.Tait`, published lib).** New `TaitBand`
+  (`{ Code, MinHz, MaxHz, AmateurBand }`) + `TaitBandCatalog.TryParse(TaitRadioIdentity)` /
+  `.TryParseProductCode(string)`: finds the `[A-Z][0-9]` designator immediately after the **first** `-`
+  in the `q3 RADIO_VERSIONS` record `[00]` product code (e.g. `TMAB12-**B1**00_0201`) and matches the
+  known splits (`A4`/`B1`/`C0`/`D1`/`G2`/`H5`/`H6`/`H7`/`K5`). `TaitRadioIdentity.Band` surfaces it.
+  **Corrects the earlier "band isn't runtime-readable" note** — the *frequency* isn't CCDI-readable but
+  the *band split* is. UK amateur mapping: `A4`=4m (the OARC-wiki "none" is wrong for the UK 70&nbsp;MHz
+  allocation — bench-confirmed), `B1`=2m, `H5`/`H6`/`H7`=70cm; the rest null. Additive public API; no
+  ax25-ts parity impact (radio-side).
+- **Part 2 — #567 NinoTNC 57600 (no sweep).** A NinoTNC's KISS baud is a fixed **57600** (never
+  changes). `HeadEndRadioScanner.NinoTncKissBaud = 57600`; the reach-through identify sets the head-end
+  line to 57600 (`POST /ports/{id}/line`) **before GETVER**, and the `nino-tnc-tcp` bring-up in
+  `TransportFactory` sets 57600 **before `OpenTcp`**. Fixes [#567].
+- **Part 3a — Keyup pairing (physical map; operator-initiated RF).** New `HeadEndKeyupPairer` +
+  `IHeadEndKeyupPairer` and `POST /api/v1/radios/headends/{instanceId}/pair-by-keyup` (**admin-scope** —
+  it transmits, the same authorization bar as the node's other RF-emitting endpoints hail/tuning/doctor):
+  for each free NinoTNC it opens the pipe and **briefly keys it** (a CQBEEP request frame keys the
+  cabled radio) while watching every free Tait's `TaitCcdiRadio.TransmitterStateChanged` (PTT-activated)
+  edge — the Tait that fires is that NinoTNC's physical pair. Returns resolved pairs + unpaired +
+  ambiguous. **Ground truth** that replaces the co-location guess (ambiguous case) and verifies the
+  unambiguous one. It transmits, so it is **explicitly operator-initiated with an RF caveat on the
+  response** and is *never* part of the passive `GET /radios/headends` scan. The RF-keying loop is
+  behind an injectable open seam (`OpenKeyupModem`/`OpenKeyupWatch`) → unit-tested **entirely with
+  in-memory fakes** (no serial port, no live socket, nothing transmits in tests).
+- **Part 3b — Band naming into scan + adopt.** `HeadEndDeviceScan` gains `BandCode` + `AmateurBand`
+  (populated from Part 1 for a Tait). **Adopt** (`HeadEndAdoption.BuildCandidate`, new
+  `HeadEndAdoptRequest.AmateurBand`) defaults the created port's MQTT `{instance}` label
+  (`PortConfig.MqttInstance`) — and, absent an explicit id, the port id — to the amateur band (`2m`),
+  so a band-named port drops in with no operator input.
+
+**Tests (all fakes/loopback — no hardware):** `TaitBandCatalogTests` (21, incl. the 4m/A4, 2m/B1,
+70cm/H5-6-7 fixtures + unknown/malformed), `HeadEndKeyupPairerTests` (8: correct/unpaired/ambiguous/
+open-failure + the full `PairByKeyupAsync` path + unknown-instance), plus band/#567/adopt assertions
+folded into `HeadEndRadioScannerTests`, `HeadEndFactoryTests`, `HeadEndAdoptionTests`,
+`HeadEndAdoptApiTests`. **No `Ax25ParseOptions`/`Ax25SessionQuirks`/`XidParseOptions`/`Ax25Listener`
+touched → no ax25-ts parity leg** (radio-side lib + node only).
 
 ### 2026-07-05 — RELEASE: lib-v0.19.0 + node-v0.28.0 + headend-v0.1.0 (split-station arc to the world)
 

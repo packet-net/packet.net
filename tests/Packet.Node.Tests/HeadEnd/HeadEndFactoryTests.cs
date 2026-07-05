@@ -81,8 +81,11 @@ public sealed class HeadEndFactoryTests
             _ = await pipe.Accepted.WaitAsync(Timeout);
         }
 
-        // NinoTNC baud is fictional over USB-CDC → the transport never touches the line verb.
-        handler.LineCalls.Should().BeEmpty();
+        // #567: a NinoTNC's KISS baud is a fixed 57600 — bring-up clocks the head-end line to it before
+        // opening the pipe (the raw socket cannot carry line rate).
+        handler.LineCalls.Should().ContainSingle();
+        handler.LineCalls[0].DeviceId.Should().Be("nino0");
+        handler.LineCalls[0].RawBody.Should().Contain("\"baud\":57600");
     }
 
     [Fact]

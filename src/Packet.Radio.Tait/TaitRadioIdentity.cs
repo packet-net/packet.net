@@ -23,6 +23,15 @@ public sealed record TaitRadioIdentity(
         ('1', _, _) => "Tait conventional radio",
         _ => "Tait radio",
     };
+
+    /// <summary>
+    /// The radio's band split (frequency range + UK amateur band) parsed from the
+    /// <see cref="Versions"/> record <c>[00]</c> product code via <see cref="TaitBandCatalog"/>, or
+    /// <c>null</c> when the radio reported no product-code record or its code is malformed / names no
+    /// known split. The tuned <em>frequency</em> is not CCDI-readable, but the band <em>split</em> is —
+    /// enough to label a port by amateur band (see <see cref="TaitBand.AmateurBand"/>).
+    /// </summary>
+    public TaitBand? Band => TaitBandCatalog.TryParse(this, out var band) ? band : null;
 }
 
 /// <summary>PA temperature reading (CCTM 047). TM8100-series radios report both a temperature

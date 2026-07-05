@@ -58,6 +58,12 @@ public sealed record HeadEndInstanceScan(
 /// inventory baud for a NinoTNC — CDC-ACM baud is fictional).</param>
 /// <param name="Free">True when the device is unbound and was identified; false when already bound
 /// to a configured port (then <see cref="Kind"/> comes from the binding, not a probe).</param>
+/// <param name="BandCode">The Tait band designator (e.g. <c>B1</c>) read from the radio's product
+/// code, or null for a NinoTNC / an unknown-band Tait. The tuned frequency is not CCDI-readable, but
+/// the band split is.</param>
+/// <param name="AmateurBand">The UK amateur band the Tait's split covers (<c>2m</c> / <c>70cm</c> /
+/// <c>4m</c>), or null for a NinoTNC / a Tait whose split has no amateur allocation. Adopt defaults a
+/// port's MQTT <c>{instance}</c> label and id to this when known.</param>
 public sealed record HeadEndDeviceScan(
     string DeviceId,
     string Kind,
@@ -65,7 +71,9 @@ public sealed record HeadEndDeviceScan(
     string? Version,
     string? Serial,
     int Baud,
-    bool Free);
+    bool Free,
+    string? BandCode = null,
+    string? AmateurBand = null);
 
 /// <summary>A suggested pairing within one instance: a TNC device + a radio device to configure as
 /// one matched port (a <c>nino-tnc-tcp</c> transport + a head-end-bound <c>tait-ccdi</c> radio).

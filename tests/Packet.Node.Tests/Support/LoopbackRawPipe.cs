@@ -104,11 +104,14 @@ public sealed class LoopbackRawPipe : IDisposable
     /// <param name="ccdiVersion">The CCDI version the MODEL reply reports (e.g. <c>03.02</c>).</param>
     /// <param name="serial">The CCDI serial number the RADIO_SERIAL reply reports.</param>
     /// <param name="modelTriple">The RUTYPE/RUMODEL/RUTIER triple (default <c>132</c> ⇒ "Tait TM8110").</param>
+    /// <param name="productCode">The RADIO_VERSIONS record <c>[00]</c> product code (default the live
+    /// 2m rig's <c>TMAB12-B100_0201</c> ⇒ band B1 / 2m).</param>
     /// <param name="shouldAnswer">Gate: answer only when this returns true (null ⇒ always).</param>
     public Task RespondTaitIdentityAsync(
         string ccdiVersion = "03.02",
         string serial = "1G000123",
         string modelTriple = "132",
+        string productCode = "TMAB12-B100_0201",
         Func<bool>? shouldAnswer = null) => Task.Run(async () =>
     {
         var gate = shouldAnswer ?? (static () => true);
@@ -137,7 +140,7 @@ public sealed class LoopbackRawPipe : IDisposable
                 {
                     var raw = line.ToString();
                     line.Clear();
-                    if (!await ReplyToCcdiQueryAsync(socket, raw, ccdiVersion, serial, modelTriple, gate).ConfigureAwait(false))
+                    if (!await ReplyToCcdiQueryAsync(socket, raw, ccdiVersion, serial, modelTriple, productCode, gate).ConfigureAwait(false))
                     {
                         return;
                     }
@@ -153,7 +156,7 @@ public sealed class LoopbackRawPipe : IDisposable
     // Reply to one CCDI query line per QueryIdentityAsync's three transactions. Returns false only on
     // a send failure (socket gone). A wrong-clock gate stays silent (the query times out upstream).
     private static async Task<bool> ReplyToCcdiQueryAsync(
-        Socket socket, string raw, string ccdiVersion, string serial, string modelTriple, Func<bool> gate)
+        Socket socket, string raw, string ccdiVersion, string serial, string modelTriple, string productCode, Func<bool> gate)
     {
         if (!CcdiFrame.TryParse(raw, out var frame) || frame.Ident != 'q' || !gate())
         {
@@ -164,7 +167,7 @@ public sealed class LoopbackRawPipe : IDisposable
         {
             "" => new CcdiFrame('m', modelTriple + ccdiVersion), // MODEL (§1.10.4)
             "4" => new CcdiFrame('n', serial),                   // RADIO_SERIAL (§1.10.7)
-            "3" => new CcdiFrame('v', "00" + "TM8110"),          // RADIO_VERSIONS (§1.10.8), one record
+            "3" => new CcdiFrame('v', "00" + productCode),       // RADIO_VERSIONS (§1.10.8), record [00] = product code
             _ => null,
         };
         if (reply is not { } r)
