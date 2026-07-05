@@ -64,6 +64,35 @@ public sealed class HeadEndAdoptApiTests : IDisposable
             Conflicts: []));
     }
 
+    // A canned keyup result: nino0 physically pairs with tait0.
+    private sealed class FakeKeyupPairer : IHeadEndKeyupPairer
+    {
+        public Task<HeadEndKeyupResult> PairByKeyupAsync(NodeConfig config, string instanceId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new HeadEndKeyupResult(
+                instanceId, Reachable: true, Error: null,
+                Pairs: [new HeadEndKeyupPair("nino0", "tait0")],
+                UnpairedTncs: [], UnpairedRadios: [], Ambiguous: [], HeadEndKeyupCaveat.Text));
+    }
+
+    [Fact]
+    public async Task Pair_by_keyup_returns_the_physical_pairs_and_the_rf_caveat()
+    {
+        await using var factory = new NodeAppFactory().WithWebHostBuilder(b =>
+            b.ConfigureTestServices(s => s.AddSingleton<IHeadEndKeyupPairer>(new FakeKeyupPairer())));
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsync("/api/v1/radios/headends/pi-shack/pair-by-keyup", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("reachable").GetBoolean().Should().BeTrue();
+        var pair = doc.RootElement.GetProperty("pairs")[0];
+        pair.GetProperty("tncDeviceId").GetString().Should().Be("nino0");
+        pair.GetProperty("radioDeviceId").GetString().Should().Be("tait0");
+        // The RF caveat is always surfaced on the response.
+        doc.RootElement.GetProperty("caveat").GetString().Should().Contain("RF");
+    }
+
     [Fact]
     public async Task Headends_scan_returns_instances_devices_and_the_proposed_pair()
     {

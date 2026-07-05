@@ -151,6 +151,16 @@ builder.Services.AddSingleton<Packet.Node.Core.Radios.IHeadEndRadioScanner>(sp =
         timeProvider: sp.GetService<TimeProvider>(),
         loggerFactory: sp.GetService<ILoggerFactory>()));
 
+// Keyup pairing (POST /api/v1/radios/headends/{instanceId}/pair-by-keyup, operate-scope): the
+// operator-initiated RF action that discovers the PHYSICAL modem↔radio map by briefly keying each free
+// NinoTNC and watching which co-located Tait reports its PTT — ground truth for the co-location pair.
+builder.Services.AddSingleton<Packet.Node.Core.Radios.IHeadEndKeyupPairer>(sp =>
+    new Packet.Node.Core.Radios.HeadEndKeyupPairer(
+        sp.GetRequiredService<Packet.Node.Core.Radios.IHeadEndRadioScanner>(),
+        clientFactory: null,
+        timeProvider: sp.GetService<TimeProvider>(),
+        loggerFactory: sp.GetService<ILoggerFactory>()));
+
 // Capability doctor (GET/POST /api/v1/ports/{id}/doctor): runs the tuning probes against a live
 // port's already-open handles. Node-wide single-flight (holds state) → singleton.
 builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();

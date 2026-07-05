@@ -72,13 +72,15 @@ public sealed class TransportFactory : ITransportFactory
                     // Full-control NinoTNC over a split-station head-end's raw TCP pipe: resolve
                     // (headEndId, deviceId) → host:tcpPort via the inventory, open, then apply the
                     // configured mode — the whole NinoTNC surface (GETVER / mode / GETRSSI / ACKMODE)
-                    // works remotely, distinct from the control-less kiss-tcp arm. NinoTNC baud is
-                    // fictional over USB-CDC, so there is no line-control (no setBaud).
+                    // works remotely, distinct from the control-less kiss-tcp arm. A NinoTNC's KISS
+                    // baud is a fixed 57600 (never changes), so clock the head-end line to it via the
+                    // line verb before opening the pipe (#567) — the raw socket cannot carry line rate.
                     var resolver = headEndResolver
                         ?? throw new InvalidOperationException(
                             $"nino-tnc-tcp transport for head-end '{nt.HeadEndId}' device '{nt.DeviceId}' needs a " +
                             "head-end resolver, but none was supplied.");
                     var binding = await resolver.ResolveAsync(nt.HeadEndId, nt.DeviceId, cancellationToken).ConfigureAwait(false);
+                    await binding.SetBaud(HeadEndRadioScanner.NinoTncKissBaud, cancellationToken).ConfigureAwait(false);
                     var tnc = await NinoTncSerialPort.OpenTcp(binding.Host, binding.TcpPort, timeProvider, cancellationToken).ConfigureAwait(false);
                     try
                     {

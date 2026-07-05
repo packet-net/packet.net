@@ -60,8 +60,9 @@ public sealed class HeadEndRadioScannerTests
         device.Kind.Should().Be(HeadEndDeviceKind.NinoTnc);
         device.Version.Should().Be("3.41");
         device.Free.Should().BeTrue();
-        // NinoTNC CDC-ACM baud is fictional — the line verb is never touched.
-        handler.LineCalls.Should().BeEmpty();
+        // #567: a NinoTNC's KISS baud is a fixed 57600 — the identify clocks the head-end line to it
+        // (once, no sweep) before GETVER.
+        handler.LineCalls.Select(BaudOf).Should().Equal(57600);
         await responder.WaitAsync(Timeout);
     }
 
@@ -85,8 +86,33 @@ public sealed class HeadEndRadioScannerTests
         device.Serial.Should().Be("1G000123");
         device.Version.Should().Be("03.02");
         device.Baud.Should().Be(28800);
+        // The band split is read off the product code (record [00]) — 2m for the default rig.
+        device.BandCode.Should().Be("B1");
+        device.AmateurBand.Should().Be("2m");
         // It answered at the inventory clock — the only line call is the open-time clock, no sweep.
         handler.LineCalls.Select(BaudOf).Should().Equal(28800);
+        await responder.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task A_tait_devices_amateur_band_is_read_from_its_product_code()
+    {
+        using var pipe = new LoopbackRawPipe();
+        // A 70cm radio's product code (H5 designator after the first '-').
+        var responder = pipe.RespondTaitIdentityAsync(productCode: "TMAB12-H500_0201");
+        var handler = new StubHeadEndHandler(new HeadEndInventory
+        {
+            InstanceId = "pi-shack",
+            Ports = [new HeadEndPortInfo { Id = "tait0", TcpPort = pipe.Port, Baud = 28800, UsbVid = "10c4" }],
+        });
+        var discovery = new FakeHeadEndDiscovery(new DiscoveredHeadEnd("pi-shack", "127.0.0.1", 7300));
+
+        var scan = await ScannerOver(handler, discovery).ScanAsync(ConfigWith()).WaitAsync(Timeout);
+
+        var device = scan.Instances.Single().Devices.Single();
+        device.Kind.Should().Be(HeadEndDeviceKind.TaitCcdi);
+        device.BandCode.Should().Be("H5");
+        device.AmateurBand.Should().Be("70cm");
         await responder.WaitAsync(Timeout);
     }
 
