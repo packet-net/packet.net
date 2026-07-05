@@ -1,0 +1,34 @@
+[Unit]
+Description=packet.net split-station RF head-end daemon
+Documentation=https://github.com/packet-net/packet.net/blob/main/headend/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Install = copy the binary here + this unit into /etc/systemd/system.
+ExecStart=/usr/local/bin/packetnet-headend
+# Optional config file; safe to leave absent (flags/env/defaults still apply).
+Environment=PACKETNET_HEADEND_CONFIG=/etc/packetnet-headend/config.json
+Restart=on-failure
+RestartSec=2
+
+# The daemon needs read/write on the serial devices. Adding it to the 'dialout'
+# group is the least-privilege way to reach /dev/tty{USB,ACM}* without root.
+DynamicUser=yes
+SupplementaryGroups=dialout
+
+# Hardening — it is a network daemon that only needs serial + TCP.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+# mDNS (mcast) + the HTTP API + the raw-serial bridge TCP ports.
+# Adjust if you move HTTPPort / BaseTCPPort off the defaults.
+
+[Install]
+WantedBy=multi-user.target

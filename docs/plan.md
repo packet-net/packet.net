@@ -1233,6 +1233,59 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — Split-station RF head-end arc, Stage 2: the Go head-end daemon (`headend/`)
+
+Landed **Stage 2** of the split-station arc (design + stage plan:
+[`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md)): the
+**head-end daemon** that runs on the Pi holding the modems + radios and lets a remote PDN reach
+them. A new, **self-contained Go project** at `headend/` (sibling to `sidecar/`, out of the .NET
+solution — it reuses no packet.net library and touches no .NET code), following the `sidecar/tsnet`
+precedent: a single static `CGO_ENABLED=0` binary per Pi arch (arm/arm64), ~6.4 MB stripped,
+install = copy binary + a systemd unit.
+
+It is a **dumb, transparent multiplexer** — deliberately **no device identification** (no NinoTNC
+`GETVER`, no Tait CCDI `MODEL`) and **no protocol parsing** (KISS and CCDI are both just bytes). PDN
+reaches *through* the raw pipes with its own drivers (the Stage-1 `TcpSerialIo`/`TcpSerialPortIo`
+seam) to identify + baud-lock + run AX.25. No auth/TLS/UI: trusted LAN/Tailscale, PDN monitors
+upstream.
+
+- **Serial enumeration** (`enumerate.go`) — walks `/dev/serial/by-id/` (udev-stable), resolves
+  symlinks to the real `/dev/tty*`, falls back to `/dev/ttyUSB*`/`/dev/ttyACM*`; reads USB `VID:PID`
+  from sysfs. Dedups by resolved device (the shared-serial CP2102 CCDI dongles produce two by-id
+  links → one device). Reimplements the *shape* of PDN's C# `SerialByIdResolver` /
+  `NinoTncPortDiscovery` / `TaitRadioPortDiscovery`, generalised off local `/dev`. The stable by-id
+  string is a device's identity key.
+- **Raw TCP bridge, one listener per device** (`bridge.go`) — opens the serial port, listens on a
+  sequential TCP port, pumps bytes bidirectionally and transparently (no framing/escaping; `0xC0`
+  and `0xFF` pass straight through). One client at a time; clean re-accept on disconnect.
+- **HTTP machine API** (`api.go`, JSON, no UI): `GET /inventory` (instanceId + ports with stable
+  id, devPath, usbVid/Pid, byId, tcpPort, baud/dataBits/parity/stopBits), `POST /ports/{id}/line`
+  (baud sweep + rare re-clock; partial-merge, baud required), `GET /healthz`. Line params ride this
+  out-of-band control plane so the data socket stays a pure binary pipe (**not** RFC2217, whose
+  `0xFF` escaping collides with CCDI/KISS).
+- **mDNS** (`mdns.go`) — advertises `_pdnhead._tcp` (SRV port = the HTTP port) with a TXT record
+  carrying the **stable `instance` id** (+ `httpport`, `v=1`) so PDN discovers the fleet and re-finds
+  an instance across IP changes. Best-effort: logs + continues if multicast can't start (PDN has a
+  manual-address fallback).
+- **Config** (`config.go`) — defaults < JSON file < env (`PACKETNET_HEADEND_*`) < flags. instanceId
+  (default hostname), httpPort (7300), baseTcpPort (7301, sequential), baud (9600), allow/deny globs
+  (default bridge-all). Multiple instances (one per Pi) coexist by instanceId.
+- **Deploy** — `packetnet-headend.service` (DynamicUser + `dialout`, hardened), `Makefile`
+  (`arm64`/`arm`/`amd64` static cross-builds + `check` = fmt+vet+test), `README.md` (the API
+  contract, doubling as the Stage-3 reference). Minimal deps: `go.bug.st/serial` + `grandcat/zeroconf`
+  + stdlib. **No CI wiring** (Stage 4; and this repo is self-hosted-runner-only — no `.yml` touched).
+- **Tests** — `go test ./...` green, `go vet` clean, `gofmt` clean: enumeration against a fake
+  `/dev`+`/sys` tree (by-id preference, dedup, glob fallback, sysfs VID:PID walk); the bridge pump
+  over loopback with a faked serial layer (transparent `0xC0`/`0xFF` both directions, one-client
+  reconnect, live line reconfigure); the inventory JSON shape + line-control contract (partial
+  merge, 404/400 paths) via `httptest`; config precedence + allow/deny.
+
+Go-only, out of the .NET solution → no `dotnet` build/test impact and **no ax25-ts parity leg** (the
+arc's parity note confirms the radio-side seams aren't on the parity surface). **Stage 3** (PDN-side
+remote scanner: mDNS+manual discovery, reach-through identify + baud sweep, discover-and-offer
+pairing, per-socket supervision) consumes this daemon's `/inventory` schema, `/ports/{id}/line`
+contract, and the `_pdnhead._tcp` TXT keys.
+
 ### 2026-07-05 — Split-station RF head-end arc, Stage 1: the TCP-backed serial seam (library-only)
 
 Kicked off the **"split-station RF head-end"** arc — the topology where a Raspberry Pi holds every
