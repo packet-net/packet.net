@@ -1232,6 +1232,29 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-05 — RELEASE: lib-v0.18.0 + node-v0.27.0 (the Phase-10 radio arc to the world)
+
+Shipped the entire radio arc as a lockstep **`lib-v0.18.0`** (NuGet) + **`node-v0.27.0`** (`.deb`
+GitHub Release), tagged on `ebc588a` after the green-CI gate was met (`ci` + `interop` both
+success on that main commit, plus the 06:15 scheduled interop green — the two interop
+contention-flakes, `NetsimKissTcpInterop.UI_Frame` and `SrejXidViaNetsim`, were both hardened
+first: each had been *proven* a runner-contention flake by failing on docs-only commits, which
+cannot regress code). **Library surface (`lib-v0.18.0`):** the new `Packet.Radio` (`IRadioControl`,
+`RssiTaggingTransport`, `ICarrierSense` seam), `Packet.Radio.Tait` (CCDI/CCR driver, SDM
+side-channel incl. extended SDM, Transparent transport, health monitor, port discovery),
+`Packet.Tune.Core` (deviation tuning, mode coordination, station hail, capability doctor,
+rendezvous relay); plus `Packet.Ax25` gains the parity-tracked `ICarrierSense` medium-access seam
+(OQ-012), `Packet.Kiss.NinoTnc` gains the GETALL/GETVER/GETRSSI/CQBEEP diagnostics + the native
+dsPIC firmware flasher. **Node (`node-v0.27.0`):** radio attach-by-serial, per-frame RSSI/SNR +
+radio-health surface, the capability doctor, interactive guided tuning, SDM station-hail, the
+`tait-transparent` TNC-less port kind, native carrier-sense CSMA, and radio metrics in `/metrics`
+(`pdn_radio_*`, `pdn_link_snr_db{port,peer}`). **Downstream cascade (Steps 3–4) still to run:**
+axcall + packet-term-tui `Packet.*` pin bumps (they consume `Packet.Ax25`/`Packet.Kiss`, which
+changed — carrier-sense), and the TS leg — **ax25-ts moved this cycle** (`ax25-ts#71`, the mirrored
+carrier-sense seam, merged) so it needs an npm release + a `packet-term-web` pin bump. The full
+radio-arc detail is in the entries below and `docs/research/tait-ccdi-spike.md`; the AX.25 v2.3
+proposal that came out of it is `packethacking/ax25spec#57`.
+
 ### 2026-07-04 — Transparent-readiness doctor: the FFSK Transparent codeplug checks folded into the doctor framework (radio arc #13, hardware-validated)
 
 The "esoteric radio configuration" checks that cost an afternoon of debugging Transparent mode are now first-class doctor probes for the TNC-less `tait-transparent` port. Because the codeplug settings that matter are **not CCDI-readable**, every check is **behavioral**, each mapping to a remedy naming the exact Data-form field.
