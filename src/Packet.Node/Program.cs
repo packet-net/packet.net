@@ -138,6 +138,19 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
 // serial. No hardware is touched until a scan is requested; the scanner is bounded + single-flight.
 builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.Node.Core.Radios.TaitRadioScanner());
 
+// Split-station head-end discovery + fleet scanner (Stage 3b). mDNS discovery (_pdnhead._tcp) is a
+// thin Zeroconf wrapper; NodeHostedService picks the discovery singleton up via its optional ctor
+// param, so a head-end binding with a blank config address resolves via mDNS at bring-up. The fleet
+// scanner (GET /api/v1/radios/headends) reaches through each free device to identify + baud-lock it.
+builder.Services.AddSingleton<Packet.Node.Core.HeadEnd.IHeadEndDiscovery>(sp =>
+    new Packet.Node.Core.HeadEnd.MdnsHeadEndDiscovery(sp.GetService<ILoggerFactory>()));
+builder.Services.AddSingleton<Packet.Node.Core.Radios.IHeadEndRadioScanner>(sp =>
+    new Packet.Node.Core.Radios.HeadEndRadioScanner(
+        sp.GetRequiredService<Packet.Node.Core.HeadEnd.IHeadEndDiscovery>(),
+        clientFactory: null,
+        timeProvider: sp.GetService<TimeProvider>(),
+        loggerFactory: sp.GetService<ILoggerFactory>()));
+
 // Capability doctor (GET/POST /api/v1/ports/{id}/doctor): runs the tuning probes against a live
 // port's already-open handles. Node-wide single-flight (holds state) → singleton.
 builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();

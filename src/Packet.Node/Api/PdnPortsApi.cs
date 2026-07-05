@@ -184,7 +184,7 @@ public static class PdnPortsApi
     /// build the from→to <see cref="ReconcilePreview"/>, persist via <c>TryApply</c>, and
     /// return the <see cref="ReconcileResult"/>. Same three steps as <see cref="PdnConfigApi"/>.
     /// </summary>
-    private static IResult ApplyCandidate(IWritableConfigProvider cfg, NodeConfig candidate)
+    internal static IResult ApplyCandidate(IWritableConfigProvider cfg, NodeConfig candidate)
     {
         var before = cfg.Current;
 

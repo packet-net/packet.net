@@ -65,6 +65,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // probe and records the outcome. Null = today's behaviour (each connector dials via the
     // listener defaults + records nothing). Interlinks consult the cache in NetRomService.
     private readonly PeerCapabilityCache? capabilityCache;
+    private readonly HeadEnd.IHeadEndDiscovery? headEndDiscovery;
     // App callsigns the node answers for on behalf of an external program (the RHPv2 server's
     // `bind`): callsign → registration. Applied to running listeners as local aliases, re-applied
     // when a port (re)starts, and routed in OnSessionAccepted (an inbound session whose Local is
@@ -93,10 +94,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         SysopContext? sysopContext = null,
         IApplicationHost? applicationHost = null,
         PeerCapabilityCache? capabilityCache = null,
-        IRadioControlFactory? radioFactory = null)
+        IRadioControlFactory? radioFactory = null,
+        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
+        // Optional split-station discovery: when present, a head-end binding whose config address is
+        // blank resolves its current host:port via mDNS at bring-up (keyed by instance id, so a
+        // re-addressed Pi keeps its port configs). Null = config-address-only (a purely-local node).
+        this.headEndDiscovery = headEndDiscovery;
         // Optional radio-control seam: how a port's `radio:` block becomes a live
         // IRadioControl. Defaults to the production factory (real serial hardware);
         // component tests substitute a scripted radio.
@@ -210,6 +216,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             return ports.TryGetValue(id, out var p) ? p : null;
         }
+    }
+
+    // Build a head-end device resolver over the LIVE fleet. With discovery wired (split-station),
+    // the headEndId → address step prefers a pinned config address and falls back to an mDNS browse
+    // of the instance id — so a head-end configured in discover mode (blank address) or one that
+    // re-addressed resolves at bring-up. Without discovery it is config-address-only (unchanged).
+    private HeadEndDeviceResolver BuildHeadEndResolver()
+    {
+        var headEnds = config.Current.HeadEnds;
+        HeadEnd.IHeadEndAddressResolver? addressResolver = headEndDiscovery is null
+            ? null
+            : new HeadEnd.HeadEndAddressResolver(headEnds, headEndDiscovery, loggerFactory);
+        return new HeadEndDeviceResolver(headEnds, addressResolver: addressResolver);
     }
 
     // Reverse-resolve a listener to the id of the running port that owns it (for logging).
@@ -658,7 +677,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // raw TCP pipe via the head-end's inventory. Built from the LIVE head-end fleet so a
         // re-addressed head-end is picked up on the next resolve (a purely-local node has an empty
         // fleet and never touches this). Ignored by the local / kiss-tcp / AXUDP arms.
-        var headEndResolver = new HeadEndDeviceResolver(config.Current.HeadEnds);
+        var headEndResolver = BuildHeadEndResolver();
 
         IAx25Transport transport;
         try
@@ -690,7 +709,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             transport = new ReconnectingKissModem(
                 transport,
                 token => transportFactory.CreateAsync(
-                    port.Transport, timeProvider, new HeadEndDeviceResolver(config.Current.HeadEnds), token),
+                    port.Transport, timeProvider, BuildHeadEndResolver(), token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
                 timeProvider);

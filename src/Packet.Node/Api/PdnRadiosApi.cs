@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Radios;
@@ -10,12 +11,13 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// The radio-control read surface of the pdn node API: the per-port radio attachment status/health
-/// (<c>GET /api/v1/radios</c>, <c>GET /api/v1/ports/{id}/radio</c>) and a bus discovery scan
-/// (<c>GET /api/v1/radios/scan</c>). All read-scoped; the gate is a no-op when
-/// <c>management.auth.enabled</c> is off. The status endpoints project the live
+/// (<c>GET /api/v1/radios</c>, <c>GET /api/v1/ports/{id}/radio</c>), a bus discovery scan
+/// (<c>GET /api/v1/radios/scan</c>), and the split-station head-end fleet scan + adopt
+/// (<c>GET /api/v1/radios/headends</c>, <c>POST /api/v1/radios/headends/{instanceId}/adopt</c>). The
+/// status + scan endpoints are read-scoped; adopt is operate-scoped (it writes config). Auth gates
+/// are no-ops when <c>management.auth.enabled</c> is off. The status endpoints project the live
 /// <see cref="PortSupervisor"/> via <see cref="RadioReadModels"/> (no serial I/O on the request
-/// path); the scan endpoint drives an injected <see cref="IRadioScanner"/>, which transiently opens
-/// candidate serial ports but is bounded + single-flight.
+/// path); the scan endpoints drive injected scanners, bounded + total.
 /// </summary>
 public static class PdnRadiosApi
 {
@@ -26,6 +28,7 @@ public static class PdnRadiosApi
         ArgumentNullException.ThrowIfNull(app);
 
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
+        var operate = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Operate);
 
         // Every configured radio attachment (one row per port with a radio: block), attached or not.
         v1.MapGet("/radios", (NodeHostedService host, IConfigProvider config)
@@ -48,6 +51,40 @@ public static class PdnRadiosApi
                 ? Array.Empty<RadioScanResult>()
                 : await scanner.ScanAsync(cancellationToken: ct).ConfigureAwait(false);
             return Results.Ok(results);
+        });
+
+        // Split-station head-end fleet scan/preview: enumerate every head-end instance (config ∪
+        // mDNS), reach through each free device to identify + baud-lock it, and propose the matched
+        // TNC↔radio pairs — plus any duplicate-instance-id conflicts. Read-scope: it opens remote
+        // pipes transiently but mutates nothing. Absent scanner (stripped embedder) ⇒ empty scan.
+        v1.MapGet("/radios/headends",
+            async ([FromServices] IHeadEndRadioScanner? scanner, IConfigProvider config, CancellationToken ct) =>
+        {
+            if (scanner is null)
+            {
+                return Results.Ok(new HeadEndScan([], []));
+            }
+            var scan = await scanner.ScanAsync(config.Current, ct).ConfigureAwait(false);
+            return Results.Ok(scan);
+        });
+
+        // Adopt a chosen head-end pairing: create ONE matched port (a nino-tnc-tcp transport + a
+        // head-end-bound tait-ccdi radio on the same instance) through the SAME validate→preview→apply
+        // seam the ports API uses — operator-confirmed, not silent auto-create. The head-end is
+        // declared in config if not already present (discover mode unless an address is supplied).
+        operate.MapPost("/radios/headends/{instanceId}/adopt",
+            (string instanceId, HeadEndAdoptRequest body, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
+        {
+            if (body is null || string.IsNullOrWhiteSpace(body.TncDeviceId) || string.IsNullOrWhiteSpace(body.RadioDeviceId))
+            {
+                return Results.BadRequest(new { error = "adopt requires both tncDeviceId and radioDeviceId." });
+            }
+
+            audit.RecordRest(ctx, clock, "adopt_headend", instanceId, "requested",
+                $"tnc={body.TncDeviceId} radio={body.RadioDeviceId}");
+
+            var candidate = HeadEndAdoption.BuildCandidate(cfg.Current, instanceId, body);
+            return PdnPortsApi.ApplyCandidate(cfg, candidate);
         });
     }
 }

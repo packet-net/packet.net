@@ -153,18 +153,58 @@ Handling:
 2. **Head-end service** (Go, `packet.net/headend/`) — enumerate → raw bridge → inventory +
    line-control HTTP → mDNS. **✅ Done (Stage 2 amendment, `headend/`).**
 3. **PDN remote scanner + config** — networked kinds, lift validation, mDNS+manual discovery,
-   reach-through identify + baud sweep, discover-and-offer flow, socket supervision. Split into:
+   reach-through identify + baud sweep, discover-and-offer flow, socket supervision. **✅ Done**
+   (both sub-stages below). Split into:
    - **3a — manual config + factories. ✅ Done** (§17 Stage 3a): `HeadEndClient` +
      `HeadEndDeviceResolver` (`Packet.Node.Core/HeadEnd/`), `NodeConfig.HeadEnds` +
      `HeadEndConfig`, the `PortRadioConfig` head-end binding (`headEndId`/`deviceId`), the
      `nino-tnc-tcp` transport kind, the lifted radio-on-networked-transport validation, the
      `RadioControlFactory` / `TransportFactory` remote branches, and per-socket
      `ReconnectingKissModem` supervision for `nino-tnc-tcp`. **Manual head-end addresses only.**
-   - **3b — discovery + pairing (next):** mDNS browse of the `_pdnhead._tcp` fleet resolving
-     `instanceId → address` (the `HeadEndConfig.Address` becomes an optional fallback), the remote
-     `IRadioScanner`, reach-through identify + the CCDI baud **sweep** (via the wired
-     `setBaud → POST /ports/{id}/line` seam), and the discover-and-offer-matched-pairs flow.
+   - **3b — discovery + pairing. ✅ Done** (§17 Stage 3b): mDNS browse of the `_pdnhead._tcp` fleet
+     behind `IHeadEndDiscovery` (thin `Zeroconf` wrapper — coexists with the node's own
+     `avahi-publish` advertiser); `IHeadEndAddressResolver` resolving `instanceId → address` (config
+     address wins, else a single mDNS hit — a duplicate-id discovery is a **conflict**, never a
+     guess), wired into `HeadEndDeviceResolver` at bring-up so a blank-address (discover-mode) or
+     re-addressed head-end still resolves; the remote `IHeadEndRadioScanner` (reach-through identify
+     over the raw pipe — GETVER for NinoTNC, MODEL for Tait — with the CCDI baud **sweep** via the
+     wired `setBaud → POST /ports/{id}/line` seam, skipping already-bound devices); and the
+     discover-and-offer-matched-pairs flow on `PdnRadiosApi` (`GET /api/v1/radios/headends` scan/preview
+     + `POST /api/v1/radios/headends/{instanceId}/adopt` creating the matched port through the
+     `PdnPortsApi` validate→preview→apply seam). Per-socket `ReconnectingKissModem` supervision from
+     Stage 3a carries the reconnect story.
 4. **Wire-up + docs + plan** — operator guide ("plug into any port and go"), plan §17.
+
+## Discovery & adoption flow
+
+The "plug into any port and go" layer (Stage 3b), end to end:
+
+1. **Discover.** `MdnsHeadEndDiscovery` (behind `IHeadEndDiscovery`) browses `_pdnhead._tcp` once and
+   reads each responder's TXT `instance=` (authoritative id, regardless of the DNS-SD label) + address
+   (SRV port, or TXT `httpport=`). It is thin and total — no multicast / no responder yields an empty
+   list, never a throw. The manual `HeadEndConfig.Address` always works without any mDNS hit.
+2. **Resolve address (config-then-mDNS).** `IHeadEndAddressResolver` maps `instanceId → base http URI`:
+   a pinned config address wins (no browse, no override); otherwise a single mDNS hit. Two advertisers
+   sharing one id with **no** config address to disambiguate is a loud conflict — logged, resolved to
+   `null`, never guessed (mDNS doesn't police TXT payloads). `HeadEndDeviceResolver` consults this at
+   bring-up, so a discover-mode (blank-address) or re-addressed head-end still resolves — keyed by
+   instance id, so a DHCP-lease change never orphans a port config.
+3. **Scan / identify (`GET /api/v1/radios/headends`).** `HeadEndRadioScanner` merges config ∪ discovery,
+   fetches each instance's inventory, and reaches through each **free** device's raw pipe to classify
+   it: the USB VID hint picks the likely probe first (NinoTNC ≈ Microchip `04d8`; Tait CP2102 ≈ SiLabs
+   `10c4`), then the other confirms — NinoTNC via `GETVER`, Tait via `MODEL`. A Tait that doesn't answer
+   at the inventory clock triggers the **baud sweep**: re-clock via `POST /ports/{id}/line` and re-query
+   MODEL across the standard CCDI rates until a checksummed reply — clocking and identifying in one step.
+   Devices already bound to a configured port are listed (role from the binding) but **not** probed
+   (single-client-per-pipe). Within each instance a TNC pairs only with a radio (co-location invariant):
+   exactly one free of each is an **auto** suggestion; more than one is flagged ambiguous with the
+   candidate combinations listed for manual choice.
+4. **Adopt (`POST /api/v1/radios/headends/{instanceId}/adopt`).** Operator-confirmed, not silent
+   auto-create: the chosen `(tncDeviceId, radioDeviceId)` becomes **one** matched port — a
+   `nino-tnc-tcp` transport + a head-end-bound `tait-ccdi` radio referencing the same instance — plus a
+   `HeadEndConfig` for the instance if it wasn't already declared (discover mode: blank address). It
+   flows through the same `PdnPortsApi` validate→preview→apply seam a hand-edit uses, so the co-location
+   pairing rule and the declared-reference rule are enforced by the existing validator.
 
 ## Parity note
 
