@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -111,6 +113,141 @@ func TestLoadConfig_ValidatesRange(t *testing.T) {
 	bad := -1
 	if _, err := loadConfig(envMap(nil), flagOverrides{HTTPPort: &bad}); err == nil {
 		t.Fatal("want error for out-of-range httpPort, got nil")
+	}
+}
+
+// errNoFile is returned by an injected readFile for any path, standing in for a
+// host with no machine-id file at all.
+func errNoFile(string) ([]byte, error) { return nil, errors.New("no such file") }
+
+// fileMap returns a readFile that serves bytes for the given paths and errors
+// for anything else — so a test picks exactly which machine-id source "exists".
+func fileMap(m map[string]string) func(string) ([]byte, error) {
+	return func(p string) ([]byte, error) {
+		if v, ok := m[p]; ok {
+			return []byte(v), nil
+		}
+		return nil, errors.New("no such file")
+	}
+}
+
+var eightHex = regexp.MustCompile(`^[0-9a-f]{8}$`)
+
+func TestDeriveInstanceID(t *testing.T) {
+	if got := deriveInstanceID("raspberrypi", "1a2b3c4d"); got != "raspberrypi-1a2b3c4d" {
+		t.Errorf("deriveInstanceID = %q, want raspberrypi-1a2b3c4d", got)
+	}
+	// Whitespace hostname collapses to the fixed placeholder.
+	if got := deriveInstanceID("  ", "1a2b3c4d"); got != "pdn-headend-1a2b3c4d" {
+		t.Errorf("deriveInstanceID(empty) = %q, want pdn-headend-1a2b3c4d", got)
+	}
+}
+
+func TestMachineSuffix_DeterministicAndPerMachine(t *testing.T) {
+	noMAC := func() ([]string, error) { return nil, nil }
+	warn := func(string) { t.Fatalf("warn should not fire when a machine-id is present") }
+
+	readA := fileMap(map[string]string{"/etc/machine-id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"})
+	readB := fileMap(map[string]string{"/etc/machine-id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"})
+
+	a1 := machineSuffix(machineIDFiles, readA, noMAC, warn)
+	a2 := machineSuffix(machineIDFiles, readA, noMAC, warn)
+	b1 := machineSuffix(machineIDFiles, readB, noMAC, warn)
+
+	if !eightHex.MatchString(a1) {
+		t.Errorf("suffix %q is not 8 lowercase hex chars", a1)
+	}
+	if a1 != a2 {
+		t.Errorf("suffix not deterministic: %q vs %q for the same machine-id", a1, a2)
+	}
+	if a1 == b1 {
+		t.Errorf("suffix collided across different machine-ids: both %q", a1)
+	}
+}
+
+func TestMachineSuffix_DBusFallbackFile(t *testing.T) {
+	warn := func(string) { t.Fatalf("warn should not fire when the D-Bus machine-id is present") }
+	// systemd file absent, D-Bus copy present → still derives (not the literal).
+	read := fileMap(map[string]string{"/var/lib/dbus/machine-id": "cccccccccccccccccccccccccccccccc"})
+	got := machineSuffix(machineIDFiles, read, func() ([]string, error) { return nil, nil }, warn)
+	if !eightHex.MatchString(got) {
+		t.Errorf("D-Bus fallback suffix %q is not 8 hex chars", got)
+	}
+	if got == fallbackMachineToken {
+		t.Errorf("D-Bus machine-id present but got the literal fallback")
+	}
+}
+
+func TestMachineSuffix_FallbackToMAC(t *testing.T) {
+	warn := func(string) { t.Fatalf("warn should not fire when a MAC is available") }
+	macs := func() ([]string, error) { return []string{"", "de:ad:be:ef:00:01"}, nil }
+
+	m1 := machineSuffix(machineIDFiles, errNoFile, macs, warn)
+	m2 := machineSuffix(machineIDFiles, errNoFile, macs, warn)
+	if !eightHex.MatchString(m1) {
+		t.Errorf("MAC-derived suffix %q is not 8 hex chars", m1)
+	}
+	if m1 != m2 {
+		t.Errorf("MAC-derived suffix not deterministic: %q vs %q", m1, m2)
+	}
+	if m1 == fallbackMachineToken {
+		t.Errorf("MAC available but got the literal fallback")
+	}
+	// A different MAC yields a different suffix, and a machine-id domain-tag means
+	// a machine-id equal to the MAC string can't collide with the MAC hash.
+	other := machineSuffix(machineIDFiles, errNoFile,
+		func() ([]string, error) { return []string{"de:ad:be:ef:00:02"}, nil }, warn)
+	if other == m1 {
+		t.Errorf("different MACs produced the same suffix %q", m1)
+	}
+	if collide := shortHash("machine-id:" + "de:ad:be:ef:00:01"); collide == m1 {
+		t.Errorf("machine-id and MAC domains collided for the same string")
+	}
+}
+
+func TestMachineSuffix_LastResortLiteralWarns(t *testing.T) {
+	warned := false
+	macs := func() ([]string, error) { return nil, errors.New("no interfaces") }
+	got := machineSuffix(machineIDFiles, errNoFile, macs, func(string) { warned = true })
+	if got != fallbackMachineToken {
+		t.Errorf("last-resort suffix = %q, want %q", got, fallbackMachineToken)
+	}
+	if !warned {
+		t.Errorf("last-resort fallback did not emit a warning")
+	}
+}
+
+func TestDefaultInstanceID_IsHostnameDashSuffix(t *testing.T) {
+	// The real derivation (reads this host's machine-id) must produce a non-empty
+	// "{something}-{8hex-or-literal}" — never a bare hostname.
+	got := defaultInstanceID()
+	if got == "" {
+		t.Fatal("defaultInstanceID returned empty")
+	}
+	re := regexp.MustCompile(`^.+-([0-9a-f]{8}|` + regexp.QuoteMeta(fallbackMachineToken) + `)$`)
+	if !re.MatchString(got) {
+		t.Errorf("defaultInstanceID = %q, want {hostname}-{8hex|%s}", got, fallbackMachineToken)
+	}
+}
+
+func TestLoadConfig_OverrideBeatsDerivedDefault(t *testing.T) {
+	// The operator override must win wholesale over the derived default — env leg.
+	env := envMap(map[string]string{EnvPrefix + "INSTANCE": "shack-north"})
+	cfg, err := loadConfig(env, flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.InstanceID != "shack-north" {
+		t.Errorf("InstanceID = %q, want shack-north (override beats derived default)", cfg.InstanceID)
+	}
+	// …and the flag leg.
+	pin := "garage-pi"
+	cfg, err = loadConfig(envMap(nil), flagOverrides{InstanceID: &pin})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.InstanceID != "garage-pi" {
+		t.Errorf("InstanceID = %q, want garage-pi (flag override beats derived default)", cfg.InstanceID)
 	}
 }
 

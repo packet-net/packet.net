@@ -61,6 +61,31 @@ carrier-sense/DCD, tuning, SDM, hail) or a NinoTNC's *full* control surface (GET
 - **Discovery yields a set.** mDNS browse returns every advertiser; the manual fallback is a
   *list* of head-end addresses. The node UI/config lists the fleet and which devices live where.
 
+### Instance identity & deconfliction
+
+DNS-SD carries a fleet natively — a browse returns *every* instance, so multiple head-ends on one
+broadcast domain is the normal case, not a clash. But uniqueness of the identity PDN keys on is **not**
+something mDNS gives us for free: the probe-and-rename that a responder runs (RFC 6762 §8.1/§9)
+deconflicts the DNS-SD **label** and the `.local` **hostname**, but **not** the TXT `instance=`
+payload — and the head-end's responder (`grandcat/zeroconf`) skips probing altogether. So
+**`instanceId` uniqueness is an application-level concern**, enforced at three layers:
+
+- **Production (recommended).** Operators pin a stable, unique `instanceId` independent of hostname
+  (`shack-north`, `garage-pi`) via `--instance` / env / config. The identity is deliberate, survives
+  re-imaging, and is human-readable in a browse.
+- **Zero-config default.** When unset, the head-end derives `{hostname}-{short}`, where `{short}` is an
+  8-hex-char stable per-machine token: the leading 8 hex of `SHA-256(/etc/machine-id)` (falling back to
+  `/var/lib/dbus/machine-id`, then to a hash of the first non-loopback NIC MAC, then a logged fixed
+  literal). Deterministic across reboots yet distinct across image-cloned Pis (systemd re-seeds
+  `machine-id` on a fresh image's first boot) — so two cards flashed from one image, both `raspberrypi`,
+  no longer collide on the bare hostname.
+- **Advertised as the DNS-SD instance label + TXT.** `instanceId` is the browse-visible instance label
+  *and* the TXT `instance=` key — so it's human-identifiable in a `dns-sd -B` / Avahi browse and would
+  ride any probing responder's §8.1/§9 rename, while remaining the exact key PDN binds on.
+- **PDN is the backstop (Stage 3b).** If two boxes still advertise the same `instance=` (e.g. an
+  operator pins a duplicate by hand), PDN raises a **loud conflict** rather than silently binding one
+  box's ports onto the other — the last line of defence behind the derived-default and the operator pin.
+
 ## The pivot: one seam carries everything
 
 `TaitCcdiRadio` does **not** depend on `System.IO.Ports`. It drives an internal 3-method byte pipe
