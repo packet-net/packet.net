@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-05
+**As of:** 2026-07-06
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-06 — **Head-end: hot-plug support (poll-based re-enumerate + diff, #572)** — the Go head-end (`headend/`) now adds/removes device bridges at runtime without a restart. A dep-free poll (no udev/netlink) re-enumerates every `RescanInterval` (flag `--rescan-interval` / env `PACKETNET_HEADEND_RESCAN_INTERVAL` / JSON `rescanInterval`; **default 3s**, **`0` disables** → startup-only, no regression) and diffs against the live bridge set keyed by device id **and** resolved kernel path: new device → `newBridge` on the lowest free TCP port ≥ base + registry add + `bridge added` (transient open failure warned once, retried); gone device → `Bridge.Close` (listener + client + serial) + port freed + `bridge removed`; existing device + its connected client left **untouched** (diff acts only on the delta). Registry is now mutex-guarded (`/inventory` reflects the live set); `Bridge.close()`→idempotent `Close()` over a done-channel. Go fakes-only tests (scripted enumerator + fake opener) cover appear/disappear/untouched/failed-open-retry-warn-once/`0`-disabled; `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Ships in `headend-v0.1.3` (release is the orchestrator's post-rig step). Closes #572. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **RELEASE: lib-v0.20.0 + node-v0.29.0 + headend-v0.1.1** — the "read the radio map off the hardware" follow-up shipped off green `main` (`fe7f4a1`). `lib-v0.20.0` (NuGet): the `Packet.Radio.Tait` band catalog (reads the band split off the CCDI `q3[00]` product code — A4=4m, B1=2m, H5/6/7=70cm). `node-v0.29.0` (`.deb`): identify/pair/name v2 — #567 NinoTNC-57600, keyup pairing (physical modem↔radio map via `PttActivated`), band-naming into adopt. `headend-v0.1.1`: #569 stable-unique device ids (by-id → by-path → dev). Hardware-validated end-to-end through the head-end (remote parity); downstream N/A; no TS leg; closes #567/#569. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Split-station head-end identify/pair/name v2** — auto-discovery now reads the whole modem↔radio map off the hardware (all lib+node, rides the existing raw bridge; no head-end/Go change). **(1)** New `TaitBandCatalog` (`Packet.Radio.Tait`) parses the band split off the `q3 RADIO_VERSIONS` record `[00]` product code (the `[A-Z][0-9]` designator after the first `-`) → `{ Code, MinHz, MaxHz, AmateurBand }` + `TaitRadioIdentity.Band` (`A4`=4m, `B1`=2m, `H5`/`H6`/`H7`=70cm); corrects the "band not runtime-readable" assumption (frequency isn't, the split is). **(2)** `#567` — a NinoTNC's KISS baud is a fixed 57600; identify + `nino-tnc-tcp` bring-up now clock the head-end line to 57600 before GETVER/open (no sweep). **(3)** Keyup pairing — `POST /api/v1/radios/headends/{instanceId}/pair-by-keyup` (admin-scope — it transmits, same bar as hail/tuning/doctor — RF caveat on the response) briefly keys each free NinoTNC and watches which co-located Tait's PTT fires (`TransmitterStateChanged`) → the *physical* pair, ground truth over the co-location guess; operator-initiated, never in the passive scan. **(4)** The scan (`HeadEndDeviceScan.BandCode`/`.AmateurBand`) surfaces the band and **adopt** defaults the port's MQTT `{instance}` + id to the amateur band. Additive radio-side lib + node surface → **no ax25-ts parity leg**. Design: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) (§ "Identify / pair / name v2")](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **RELEASE: lib-v0.19.0 + node-v0.28.0 + headend-v0.1.0** — the split-station RF head-end arc shipped to the world off green `main` (`994edd1`). `lib-v0.19.0` (NuGet): the additive `OpenTcp` remote-serial seam on `Packet.Radio.Tait`/`Packet.Kiss.Serial`/`Packet.Kiss.NinoTnc`. `node-v0.28.0` (`.deb`): head-end discover→adopt + the kissproxy-compatible MQTT emitter. `headend-v0.1.0`: the first Go head-end binary release (amd64/arm/arm64 static) via the new `publish-headend.yml`. Downstream: `axcall` + `packet-term-tui` **v0.2.17** (`Packet.*` 0.18.0→0.19.0). No TS leg (ax25-ts unchanged). Interop's one red was the tracked `SrejXidViaNetsim` flake (#565; sibling `UI_Frame` flake filed as #566); green on re-run. See §17](#17-amendment-log)
@@ -1237,6 +1238,51 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-06 — Head-end: hot-plug support (poll-based re-enumerate + diff) ([#572])
+
+Fixed [#572] — the Go head-end (`headend/`) enumerated + opened every serial device **once at startup**
+(`buildBridges` → `newBridge`) with no re-scan, so a device plugged in after startup wasn't bridged until a
+restart (which dropped **all** bridges, disrupting adopted/active ports), and an unplugged device left a
+stale bridge. It now hot-plugs devices in/out at runtime via a **dependency-free poll** (option 1, agreed in
+the issue — no udev/netlink/inotify, matching the daemon's minimal-footprint design).
+
+- **Config (`headend/config.go`).** New `RescanInterval` (flag `--rescan-interval`, env
+  `PACKETNET_HEADEND_RESCAN_INTERVAL`, JSON `rescanInterval`) — a duration, **default 3s**, validated **≥ 0**;
+  **`0` disables** the poll → startup-only enumeration, byte-for-byte today's behaviour (no regression). A
+  small `Duration` wrapper marshals the JSON key as an operator-friendly string (`"3s"`) and also accepts a
+  bare number of seconds.
+- **Rescan loop (`headend/rescan.go`).** After the initial `buildBridges`, a ticker loop (respecting the
+  daemon's `ctx`/SIGTERM) re-enumerates every interval (`Enumerate()` + the existing allow/deny filter) and
+  **diffs** against the live bridge set keyed by **device id AND resolved kernel path** (so a device reachable
+  via multiple symlinks — or one whose id shifts on a late udev `by-path → by-id` upgrade — stays one bridge,
+  never churned): **new** device → `newBridge` on the **lowest free TCP port ≥ `baseTcpPort`**, start, add to
+  the registry, log `bridge added` (a transient open failure is logged **once** via a warned-set and retried
+  next tick, not spammed); **gone** device → **`Bridge.Close`** (stop accept, close listener, disconnect any
+  client, drop the serial handle), free its port, remove, log `bridge removed`; **existing** device → left
+  **completely untouched** (bridge + connected client undisturbed — the diff only acts on the delta).
+- **Bridge lifecycle (`headend/bridge.go`).** `close()` → idempotent **`Close()`** over a `done` channel +
+  `sync.Once`, tracking the active client conn so Close disconnects an in-flight client; the startup bridges
+  and the hot-plugged ones share the identical lifecycle.
+- **Thread-safe registry (`headend/api.go`).** `Registry` now owns the live set under a `sync.Mutex`, keyed
+  `byID` + `byDev`, with `snapshot`/`lookup`/`add`/`remove`/`nextFreePort`/`closeAll`. `/inventory` reflects
+  the **live** set under concurrent rescan mutation; a rescan add racing shutdown is closed, not leaked
+  (`closed` guard). A re-plugged device may land on a **different** port — fine, PDN re-resolves `tcpPort`
+  from `/inventory`.
+- **Tests (Go, fakes only — no hardware/real device sockets).** A scripted `deviceEnumerator` (different sets
+  across polls) + a fake `SerialOpener` + a loopback-listener seam drive: device-appears → new bridge +
+  `/inventory` entry; device-disappears → bridge Closed + entry gone + **port freed/reused**; existing bridge
+  **and a simulated connected client** untouched across a poll; failed open → skipped, retried, **warned
+  once**; `rescanInterval: 0` → **no rescan goroutine**; plus a pure `diffDevices` table (incl. the by-path→by-id
+  no-churn case) and config coverage (default/env/flag/JSON string+number/zero/negative/bad). `go test`
+  (incl. `-race`) / `go vet` / `gofmt` green; `make arm64` static cross-build + the `.deb` build
+  (`scripts/build-headend-deb.sh`) intact.
+- **Docs.** `headend/README.md` gained a **Hot-plug** section (interval, add/remove/untouched behaviour,
+  `0` disables, re-plugged-may-get-a-new-port note, udev-netlink as a possible future "instant" optimisation)
+  + config table/JSON-example rows; the stale "unplug needs a restart" simplification corrected.
+- **Scope.** Head-end Go only — **no .NET, no ax25-ts parity leg.** Ships in the next `headend-v*`
+  (`headend-v0.1.3` — the release is the orchestrator's step after on-rig validation: hot-plug a dongle while
+  running → appears in `/inventory` within the interval; unplug → removed). Closes [#572].
 
 ### 2026-07-05 — Head-end: Debian `.deb` packaging (mirrors the node)
 

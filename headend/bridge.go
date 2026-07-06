@@ -8,47 +8,77 @@ import (
 	"sync"
 )
 
+// netListen is the seam bridge client listeners bind through — net.Listen in
+// production. Tests override it to bind hermetic, deterministic loopback
+// listeners (so no test ever contends for a real fixed TCP port); the bridge's
+// LOGICAL port stays Bridge.tcpPort regardless of the OS-assigned socket.
+var netListen = net.Listen
+
 // Bridge is one device's raw TCP↔serial pipe. The serial handle is opened once
-// and held for the daemon's life (so the line-control verb works with or without
+// and held for the bridge's life (so the line-control verb works with or without
 // a client, and PDN's baud sweep can re-clock a connected pipe); the TCP side
 // serves one client at a time, re-accepting on disconnect. Bytes are pumped
 // transparently — no framing, no parsing (CCDI and KISS are both just bytes).
+//
+// A bridge is torn down by Close (SIGTERM shutdown, or a hot-unplug removing the
+// device): it stops the accept loop, drops any connected client, and releases the
+// listener + serial handle. The lifecycle is identical for the startup-enumerated
+// bridges and the ones the hot-plug rescan adds later.
 type Bridge struct {
 	dev     DiscoveredPort
 	tcpPort int
 	ln      net.Listener
 	port    SerialPort
 
-	mu   sync.Mutex // guards line (the cached params reported in inventory)
-	line LineParams
+	done      chan struct{} // closed by Close → the accept loop unwinds
+	closeOnce sync.Once
+
+	mu         sync.Mutex // guards line (cached inventory params) + activeConn
+	line       LineParams
+	activeConn net.Conn // the currently-served client, so Close can disconnect it
 }
 
 // newBridge opens devPath at the given line params, binds a TCP listener on
 // tcpPort (restricted to bindAddr when non-empty; empty = all interfaces), and
-// returns the ready bridge. The caller starts serving with run.
+// returns the ready bridge. The caller starts serving with run and tears it down
+// with Close.
 func newBridge(dev DiscoveredPort, tcpPort int, bindAddr string, line LineParams, open SerialOpener) (*Bridge, error) {
 	port, err := open(dev.DevPath, line)
 	if err != nil {
 		return nil, fmt.Errorf("open serial %s: %w", dev.DevPath, err)
 	}
 	addr := listenAddr(bindAddr, tcpPort)
-	ln, err := net.Listen("tcp", addr)
+	ln, err := netListen("tcp", addr)
 	if err != nil {
 		_ = port.Close()
 		return nil, fmt.Errorf("listen %s: %w", addr, err)
 	}
-	return &Bridge{dev: dev, tcpPort: tcpPort, ln: ln, port: port, line: line.normalized()}, nil
+	return &Bridge{
+		dev:     dev,
+		tcpPort: tcpPort,
+		ln:      ln,
+		port:    port,
+		done:    make(chan struct{}),
+		line:    line.normalized(),
+	}, nil
 }
 
-// run accepts clients one at a time until the listener is closed (shutdown),
-// serving each until it disconnects. A second client waits in the accept backlog
-// until the first goes away.
+// run accepts clients one at a time until the bridge is Closed (shutdown or
+// hot-unplug), serving each until it disconnects. A second client waits in the
+// accept backlog until the first goes away.
 func (b *Bridge) run() {
 	for {
 		conn, err := b.ln.Accept()
 		if err != nil {
+			// A closed listener (Close) surfaces as ErrClosed → a clean stop.
 			if errors.Is(err, net.ErrClosed) {
-				return // listener closed → shutdown.
+				return
+			}
+			// Any other accept error after Close is still just shutdown.
+			select {
+			case <-b.done:
+				return
+			default:
 			}
 			log.Printf("bridge %s (:%d): accept: %v", b.dev.ID, b.tcpPort, err)
 			return
@@ -56,14 +86,33 @@ func (b *Bridge) run() {
 		log.Printf("bridge %s (:%d): client %s connected", b.dev.ID, b.tcpPort, conn.RemoteAddr())
 		b.serve(conn)
 		log.Printf("bridge %s (:%d): client disconnected", b.dev.ID, b.tcpPort)
+		// Stop re-accepting once Closed (Close may have raced in after a client
+		// disconnected on its own).
+		select {
+		case <-b.done:
+			return
+		default:
+		}
 	}
 }
 
 // serve runs the bidirectional pump for one client: client→serial in a
-// goroutine, serial→client in the caller. It returns once either side ends,
-// having closed conn so both pumps unwind.
+// goroutine, serial→client in the caller. It returns once either side ends —
+// the client disconnecting, a serial fault, or Close disconnecting the client —
+// having closed conn so both pumps unwind. The conn is registered so Close can
+// disconnect an in-flight client on hot-unplug/shutdown.
 func (b *Bridge) serve(conn net.Conn) {
 	defer conn.Close()
+
+	b.mu.Lock()
+	b.activeConn = conn
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		b.activeConn = nil
+		b.mu.Unlock()
+	}()
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -157,8 +206,21 @@ func (b *Bridge) info() PortInfo {
 	}
 }
 
-// close tears the bridge down: stop accepting, drop the serial handle.
-func (b *Bridge) close() {
-	_ = b.ln.Close()
-	_ = b.port.Close()
+// Close tears the bridge down and is idempotent: it stops the accept loop
+// (closing the listener → Accept returns ErrClosed), disconnects any connected
+// client, and drops the serial handle. Used for both SIGTERM shutdown and a
+// hot-unplug removing the device. Closing the serial makes the serve pumps
+// unwind even if the client is quiet.
+func (b *Bridge) Close() {
+	b.closeOnce.Do(func() {
+		close(b.done)
+		_ = b.ln.Close()
+		b.mu.Lock()
+		conn := b.activeConn
+		b.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
+		_ = b.port.Close()
+	})
 }

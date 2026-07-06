@@ -132,7 +132,7 @@ func newTestBridge(t *testing.T) (*Bridge, *fakeSerial, string) {
 
 func TestBridge_ClientToSerial(t *testing.T) {
 	b, fake, addr := newTestBridge(t)
-	defer b.close()
+	defer b.Close()
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestBridge_ClientToSerial(t *testing.T) {
 
 func TestBridge_SerialToClient(t *testing.T) {
 	b, fake, addr := newTestBridge(t)
-	defer b.close()
+	defer b.Close()
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -178,7 +178,7 @@ func TestBridge_SerialToClient(t *testing.T) {
 // time and cleanly re-accepts after a disconnect.
 func TestBridge_OneClientReconnects(t *testing.T) {
 	b, fake, addr := newTestBridge(t)
-	defer b.close()
+	defer b.Close()
 
 	for i := 0; i < 3; i++ {
 		conn, err := net.Dial("tcp", addr)
@@ -211,7 +211,7 @@ func TestNewBridge_BindsToBindAddr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newBridge: %v", err)
 	}
-	defer b.close()
+	defer b.Close()
 	go b.run()
 
 	addr := b.ln.Addr().(*net.TCPAddr)
@@ -241,7 +241,7 @@ func TestBridge_SetLineUpdatesCacheAndDevice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newBridge: %v", err)
 	}
-	defer b.close()
+	defer b.Close()
 
 	got, err := b.SetLine(LineParams{Baud: 28800})
 	if err != nil {

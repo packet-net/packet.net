@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
+	"sync"
 )
 
 // PortInfo is one row of the inventory: the stable identity + USB hints PDN uses
@@ -46,19 +48,141 @@ type lineRequest struct {
 	StopBits *int    `json:"stopBits"`
 }
 
-// Registry is the set of live bridges the API serves over, plus the instance id.
+// Registry is the LIVE set of bridges the API serves over, plus the instance id.
+// The hot-plug rescan loop mutates the set (add on plug-in, remove on unplug)
+// while the HTTP handlers read it, so every access goes through the mutex. It is
+// keyed two ways — by stable device id AND by resolved kernel path — so a device
+// reachable via several symlinks stays one bridge, and the diff can match a
+// device whose id shifts (e.g. a by-path→by-id upgrade after udev catches up)
+// without churning its bridge.
 type Registry struct {
+	// InstanceID is set once at construction and never mutated, so it is read
+	// without the lock.
 	InstanceID string
-	Bridges    []*Bridge // discovery order == inventory order == TCP-port order
-	byID       map[string]*Bridge
+
+	mu     sync.Mutex
+	byID   map[string]*Bridge // stable device id → bridge
+	byDev  map[string]*Bridge // resolved kernel DevPath → bridge
+	closed bool               // set by closeAll; blocks a late rescan add from leaking
 }
 
 func newRegistry(instanceID string, bridges []*Bridge) *Registry {
-	byID := make(map[string]*Bridge, len(bridges))
-	for _, b := range bridges {
-		byID[b.dev.ID] = b
+	reg := &Registry{
+		InstanceID: instanceID,
+		byID:       make(map[string]*Bridge, len(bridges)),
+		byDev:      make(map[string]*Bridge, len(bridges)),
 	}
-	return &Registry{InstanceID: instanceID, Bridges: bridges, byID: byID}
+	for _, b := range bridges {
+		reg.byID[b.dev.ID] = b
+		if b.dev.DevPath != "" {
+			reg.byDev[b.dev.DevPath] = b
+		}
+	}
+	return reg
+}
+
+// snapshot returns the live bridges ordered by TCP port (== inventory order).
+func (reg *Registry) snapshot() []*Bridge {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	out := make([]*Bridge, 0, len(reg.byID))
+	for _, b := range reg.byID {
+		out = append(out, b)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].tcpPort < out[j].tcpPort })
+	return out
+}
+
+// lookup finds a bridge by stable device id (for POST /ports/{id}/line).
+func (reg *Registry) lookup(id string) (*Bridge, bool) {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	b, ok := reg.byID[id]
+	return b, ok
+}
+
+// has reports whether a device (by stable id OR resolved kernel path) is already
+// bridged — the second key means a symlink/id shift on the same physical device
+// doesn't read as a new device.
+func (reg *Registry) has(id, devPath string) bool {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	if _, ok := reg.byID[id]; ok {
+		return true
+	}
+	if devPath != "" {
+		if _, ok := reg.byDev[devPath]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// add registers a started bridge. If the registry is already closed (shutdown
+// racing a rescan tick), it Closes the bridge instead of adding it so no
+// listener/serial handle leaks. Reports whether the bridge was added.
+func (reg *Registry) add(b *Bridge) bool {
+	reg.mu.Lock()
+	if reg.closed {
+		reg.mu.Unlock()
+		b.Close()
+		return false
+	}
+	reg.byID[b.dev.ID] = b
+	if b.dev.DevPath != "" {
+		reg.byDev[b.dev.DevPath] = b
+	}
+	reg.mu.Unlock()
+	return true
+}
+
+// remove detaches the bridge with the given id and returns it (nil if absent).
+// The caller Closes it OUTSIDE the lock (Close does network + serial teardown).
+func (reg *Registry) remove(id string) *Bridge {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	b, ok := reg.byID[id]
+	if !ok {
+		return nil
+	}
+	delete(reg.byID, id)
+	if b.dev.DevPath != "" && reg.byDev[b.dev.DevPath] == b {
+		delete(reg.byDev, b.dev.DevPath)
+	}
+	return b
+}
+
+// nextFreePort returns the lowest TCP port ≥ base not currently in use by a live
+// bridge, so a re-plugged device reuses a freed port before climbing.
+func (reg *Registry) nextFreePort(base int) int {
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	used := make(map[int]bool, len(reg.byID))
+	for _, b := range reg.byID {
+		used[b.tcpPort] = true
+	}
+	p := base
+	for used[p] {
+		p++
+	}
+	return p
+}
+
+// closeAll marks the registry closed and Closes every live bridge (SIGTERM
+// shutdown). After this, add is a no-op that Closes its argument.
+func (reg *Registry) closeAll() {
+	reg.mu.Lock()
+	reg.closed = true
+	bridges := make([]*Bridge, 0, len(reg.byID))
+	for _, b := range reg.byID {
+		bridges = append(bridges, b)
+	}
+	reg.byID = map[string]*Bridge{}
+	reg.byDev = map[string]*Bridge{}
+	reg.mu.Unlock()
+	for _, b := range bridges {
+		b.Close()
+	}
 }
 
 // handler wires the machine API. Routing uses net/http method+wildcard patterns
@@ -75,8 +199,11 @@ func (reg *Registry) handler() http.Handler {
 }
 
 func (reg *Registry) handleInventory(w http.ResponseWriter, _ *http.Request) {
-	resp := InventoryResponse{InstanceID: reg.InstanceID, Ports: make([]PortInfo, 0, len(reg.Bridges))}
-	for _, b := range reg.Bridges {
+	// Snapshot the live set under the lock, then render outside it — reflects the
+	// current bridge set even as the rescan loop adds/removes concurrently.
+	bridges := reg.snapshot()
+	resp := InventoryResponse{InstanceID: reg.InstanceID, Ports: make([]PortInfo, 0, len(bridges))}
+	for _, b := range bridges {
 		resp.Ports = append(resp.Ports, b.info())
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -84,7 +211,7 @@ func (reg *Registry) handleInventory(w http.ResponseWriter, _ *http.Request) {
 
 func (reg *Registry) handleLine(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	b, ok := reg.byID[id]
+	b, ok := reg.lookup(id)
 	if !ok {
 		writeErr(w, http.StatusNotFound, "no such port: "+id)
 		return

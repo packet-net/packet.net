@@ -32,6 +32,10 @@ Design + rationale: [`docs/research/split-station-rf-headend.md`](../docs/resear
    health.
 4. **Advertises** over mDNS so PDN can discover the fleet and re-find an instance
    across IP changes.
+5. **Hot-plugs**: a periodic re-enumerate + diff adds a bridge for a device
+   plugged in after startup and tears one down for a device unplugged — without a
+   restart, leaving untouched devices (and their clients) alone. See
+   [Hot-plug](#hot-plug).
 
 ## Install
 
@@ -64,6 +68,7 @@ device it finds.
 | Default serial baud | `--baud` | `BAUD` | `baud` | `9600` |
 | Allow globs | `--allow` | `ALLOW` | `allow` | `["*"]` |
 | Deny globs | `--deny` | `DENY` | `deny` | `[]` |
+| Hot-plug rescan interval | `--rescan-interval` | `RESCAN_INTERVAL` | `rescanInterval` | `3s` |
 | Config file path | `--config` | `CONFIG` | — | *(none)* |
 
 - **Instance id** is the *stable, unique* identity advertised over mDNS (as both
@@ -88,6 +93,11 @@ device it finds.
 - **Allow/Deny** are shell globs (`path.Match`) matched against a device's
   `/dev` basename **and** its by-id basename. A device is bridged when it matches
   some Allow glob and no Deny glob.
+- **Hot-plug rescan interval**: how often the daemon re-enumerates to pick up a
+  device plugged in (or drop one unplugged) *after* startup — see
+  [Hot-plug](#hot-plug). A Go duration (`3s`, `500ms`); JSON also accepts a bare
+  number of seconds. **`0` disables** the rescan → startup-only enumeration
+  (today's original behaviour, no re-scan).
 
 Example JSON config (`/etc/packetnet-headend/config.json`):
 
@@ -99,7 +109,8 @@ Example JSON config (`/etc/packetnet-headend/config.json`):
   "baseTcpPort": 7301,
   "baud": 9600,
   "allow": ["*"],
-  "deny": []
+  "deny": [],
+  "rescanInterval": "3s"
 }
 ```
 
@@ -182,6 +193,48 @@ basename.
 > out of the box. If a minimal image lacks it, install/enable the standard
 > `60-serial.rules` (udev/systemd) so the head-end has the by-path link to reach
 > for — otherwise a shared-serial device drops to the unstable `/dev` fallback.
+
+## Hot-plug
+
+The head-end picks up devices plugged in — and drops devices unplugged — **at
+runtime, without a restart**. Every `rescanInterval` (default **3s**) it
+re-enumerates (the same `/dev/serial/by-id → by-path → /dev` chain and the same
+allow/deny filter as startup) and **diffs** the result against the live bridge
+set, keyed by each device's stable `id` **and** its resolved kernel path:
+
+- **New device** (enumerated, not currently bridged) → the daemon opens its
+  serial at the default line params, binds the **lowest free TCP port ≥
+  `baseTcpPort`**, starts the bridge, and adds it to the inventory. It logs
+  `bridge added …`. A transient open failure (busy / permission) is logged
+  **once** and retried on the next tick (not re-logged every interval).
+- **Gone device** (bridged, no longer enumerated) → the daemon **closes** its
+  bridge (stops accepting, disconnects any connected client, drops the serial
+  handle), **frees its TCP port**, and removes it from the inventory. It logs
+  `bridge removed …`.
+- **Unchanged device** (still enumerated, already bridged) → left **completely
+  untouched**. Its bridge and any **connected client keep running undisturbed** —
+  the rescan only ever acts on the delta. (A device whose `id` shifts but whose
+  kernel path is unchanged — e.g. a late udev `by-path → by-id` upgrade — counts
+  as unchanged, so it never churns.)
+
+`GET /inventory` always reflects the **live** set (the rescan and the HTTP API
+share a mutex-guarded registry), so PDN sees adds/removes on its next poll.
+
+**A re-plugged device may come back on a different TCP port** (its old port may
+have been reused by another device in the meantime). That is fine: PDN
+re-resolves `tcpPort` from `/inventory` at bring-up, so its reconnecting transport
+self-heals — bindings are keyed by `(instanceId, id)`, not by port.
+
+**Disabling it.** Set `rescanInterval` to **`0`** (`--rescan-interval 0` /
+`PACKETNET_HEADEND_RESCAN_INTERVAL=0` / `"rescanInterval": 0`) to turn the poll
+off entirely — the daemon then enumerates **once at startup** and never re-scans,
+exactly the original behaviour.
+
+> **Why poll, not udev-netlink?** It keeps the daemon dependency-free and tiny
+> (its design goal); a few-seconds latency is irrelevant for hot-plug, and
+> polling sidesteps the udev by-id/by-path symlink-creation lag a netlink watcher
+> would race. A udev-netlink watcher could be added later as an "instant"
+> optimisation on top of (or in place of) the poll.
 
 ## Restricting the listen interface
 
@@ -342,10 +395,12 @@ everything else is the standard library.
 
 ## Known simplifications (Stage 2 scope)
 
-- Serial handles are opened **eagerly** at startup and held for the daemon's
+- Serial handles are opened **eagerly** when a device is bridged (at startup, or
+  when the [hot-plug](#hot-plug) rescan first sees it) and held for the bridge's
   life. A device that fails to open (busy/permission) is logged and skipped; the
-  rest still come up. A device unplugged at runtime is not hot-re-enumerated —
-  restart the daemon (or `systemctl restart`) to re-scan. Hot-plug re-scan can be
-  added later if needed.
+  rest still come up, and the rescan retries it on later ticks. A device
+  unplugged at runtime **is** hot-re-enumerated now (its bridge is torn down); the
+  poll is a few-seconds-latency re-scan, not an instant udev-netlink watch (see
+  [Hot-plug](#hot-plug)).
 - One client at a time per device pipe; a second connection waits in the accept
   backlog until the first disconnects.
