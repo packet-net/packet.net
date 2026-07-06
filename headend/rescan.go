@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 )
@@ -27,45 +28,93 @@ func filterAllowed(cfg Config, devs []DiscoveredPort) []DiscoveredPort {
 }
 
 // diffDevices computes the delta between a fresh (already allow/deny-filtered)
-// enumeration and the currently-bridged set. A device is matched to a bridge by
-// EITHER its stable id OR its resolved kernel path, so:
-//   - added   = enumerated devices matched by neither key on any live bridge;
-//   - removed = live bridges matched by neither key in the enumeration.
+// enumeration and the currently-bridged set. A device and a bridge are the SAME
+// physical device when their resolved kernel path matches, OR when their id
+// matches and neither pins a *different* kernel path (so a device with no
+// resolvable path, or one whose id shifted on a late udev by-path upgrade, still
+// reads as the same device). But an id match where BOTH sides pin a DIFFERENT
+// kernel path is a cross-pass id COLLISION, NOT a match — the returned device is a
+// genuinely new device and must be added (reconcile disambiguates its id), never
+// swallowed as "already bridged" (the #574 shared-serial by-id flip). So:
+//   - added   = enumerated devices that are not the same device as any live bridge;
+//   - removed = live bridges that are not the same device as any enumeration entry.
 //
-// Everything else — a device still present under the same id/path — is left out
-// of both lists, so its bridge and any connected client are untouched. Pure, for
-// unit testing.
+// Everything else is left out of both lists, so its bridge and any connected
+// client are untouched. Pure, for unit testing.
 func diffDevices(enumerated []DiscoveredPort, current []*Bridge) (added []DiscoveredPort, removed []*Bridge) {
-	curByID := make(map[string]bool, len(current))
-	curByDev := make(map[string]bool, len(current))
+	curDev := make(map[string]bool, len(current))      // resolved kernel path → bridged
+	curIDPath := make(map[string]string, len(current)) // stable id → that bridge's kernel path
 	for _, b := range current {
-		curByID[b.dev.ID] = true
 		if b.dev.DevPath != "" {
-			curByDev[b.dev.DevPath] = true
+			curDev[b.dev.DevPath] = true
 		}
+		curIDPath[b.dev.ID] = b.dev.DevPath
 	}
-	enumByID := make(map[string]bool, len(enumerated))
-	enumByDev := make(map[string]bool, len(enumerated))
+	enumDev := make(map[string]bool, len(enumerated))
+	enumIDPath := make(map[string]string, len(enumerated))
 	for _, dev := range enumerated {
-		enumByID[dev.ID] = true
 		if dev.DevPath != "" {
-			enumByDev[dev.DevPath] = true
+			enumDev[dev.DevPath] = true
 		}
+		enumIDPath[dev.ID] = dev.DevPath
 	}
 
+	// samePath reports whether an id match is a genuine same-device match rather
+	// than a cross-pass id collision: it is unless BOTH sides pin a different,
+	// non-empty kernel path.
+	samePath := func(a, b string) bool { return a == "" || b == "" || a == b }
+
 	for _, dev := range enumerated {
-		if curByID[dev.ID] || (dev.DevPath != "" && curByDev[dev.DevPath]) {
-			continue // already bridged → untouched
+		if dev.DevPath != "" && curDev[dev.DevPath] {
+			continue // same physical device (kernel path) → untouched
+		}
+		if bridgePath, ok := curIDPath[dev.ID]; ok && samePath(dev.DevPath, bridgePath) {
+			continue // same device by id, no conflicting path → untouched
 		}
 		added = append(added, dev)
 	}
 	for _, b := range current {
-		if enumByID[b.dev.ID] || (b.dev.DevPath != "" && enumByDev[b.dev.DevPath]) {
-			continue // still present → untouched
+		if b.dev.DevPath != "" && enumDev[b.dev.DevPath] {
+			continue // same kernel path present → still bridged
+		}
+		if enumPath, ok := enumIDPath[b.dev.ID]; ok && samePath(b.dev.DevPath, enumPath) {
+			continue // same device by id, no conflicting path → still bridged
 		}
 		removed = append(removed, b)
 	}
 	return added, removed
+}
+
+// disambiguateAgainst returns dev with an id guaranteed absent from used. If
+// dev.ID is already free it is returned unchanged; otherwise a discriminator
+// (by-path basename → /dev basename → an incrementing index) is appended,
+// mirroring enumerate's within-pass dedupeIDs, downgrading IDStable when the
+// chosen discriminator is itself unstable. Cross-pass belt-and-suspenders for an
+// id collision the by-path id chain should already make impossible (#574).
+func disambiguateAgainst(dev DiscoveredPort, used map[string]bool) DiscoveredPort {
+	if !used[dev.ID] {
+		return dev
+	}
+	base := dev.ID
+	for _, d := range discriminators(dev, 0) {
+		cand := base + "_" + d.token
+		if !used[cand] {
+			dev.ID = cand
+			if !d.stable {
+				dev.IDStable = false
+			}
+			return dev
+		}
+	}
+	// Guaranteed-terminating fallback if every named discriminator was taken.
+	for i := 0; ; i++ {
+		cand := fmt.Sprintf("%s_i%d", base, i)
+		if !used[cand] {
+			dev.ID = cand
+			dev.IDStable = false
+			return dev
+		}
+	}
 }
 
 // reconcile runs one hot-plug pass: re-enumerate, filter, diff against the live
@@ -87,10 +136,25 @@ func (reg *Registry) reconcile(cfg Config, enum deviceEnumerator, open SerialOpe
 		}
 	}
 
+	// Cross-pass id-collision guard: a newly-added device's id must never equal a
+	// live bridge's id (nor another device added earlier in this pass). The by-path
+	// id chain makes a collision impossible by construction, so this is
+	// belt-and-suspenders — but if some residual /dev-fallback clash ever slips
+	// through, disambiguate the new device (append a by-path/dev discriminator, like
+	// the within-pass dedupeIDs) rather than dropping it or mis-binding it onto the
+	// sibling's bridge (the #574 failure mode). Seeded AFTER removals so a just-freed
+	// id can be reused, and grown as we add within this pass.
+	used := make(map[string]bool)
+	for _, b := range reg.snapshot() {
+		used[b.dev.ID] = true
+	}
+
 	for _, dev := range added {
+		dev = disambiguateAgainst(dev, used)
 		// A concurrent path can't add here (single rescan goroutine), but guard
 		// against a within-pass duplicate id/path just in case an enumeration ever
-		// yields one.
+		// yields one. After disambiguation dev.ID can't false-match a live bridge,
+		// so this only catches a genuine duplicate kernel path.
 		if reg.has(dev.ID, dev.DevPath) {
 			continue
 		}
@@ -108,6 +172,7 @@ func (reg *Registry) reconcile(cfg Config, enum deviceEnumerator, open SerialOpe
 			return
 		}
 		go b.run()
+		used[dev.ID] = true
 		delete(warned, dev.ID)
 		log.Printf("bridge added %s [id via %s%s]: %s <-> tcp :%d (vid:pid %s:%s)",
 			dev.ID, dev.IDSource, unstableTag(dev.IDStable), dev.DevPath, port, orNone(dev.USBVid), orNone(dev.USBPid))

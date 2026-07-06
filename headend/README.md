@@ -18,9 +18,9 @@ Design + rationale: [`docs/research/split-station-rf-headend.md`](../docs/resear
 
 ## What it does
 
-1. **Enumerates** serial devices with **stable, unique IDs** via a fallback chain
-   (`/dev/serial/by-id` → `/dev/serial/by-path` → `/dev` basename), so two devices
-   that share a USB serial still get distinct stable ids — see
+1. **Enumerates** serial devices with **stable, unique IDs** from the physical USB
+   topology (`/dev/serial/by-path` → `/dev` basename), so two devices that share a
+   USB serial still get distinct stable ids that can never collide — see
    [Device identity & stability](#device-identity--stability). Captures USB
    `VID:PID` (from sysfs) + the by-id/by-path strings as hints for PDN's identify
    step.
@@ -149,56 +149,69 @@ silent mis-bind.
 ## Device identity & stability
 
 PDN binds each remote radio/modem by `(instanceId, port.id)`, so a port's `id`
-must be both **stable** (same across reboots/replug) *and* **unique** (never two
-devices with the same `id` in one inventory). The head-end derives `id` from a
-**fallback chain**, each link more stable than the next, and de-duplicates the
-result so both guarantees always hold:
+must be both **stable** (same across reboots/same-port replug) *and* **unique**
+(never two devices with the same `id` in one inventory). The head-end derives `id`
+from the **physical USB topology**, with a `/dev` last resort, and de-duplicates
+the result so both guarantees always hold:
 
-1. **`/dev/serial/by-id` basename** — udev's per-**serial** stable name. Preferred
-   whenever it exists. `idSource: "by-id"`, `idStable: true`.
-2. **`/dev/serial/by-path` basename** — udev's per-**physical-port** name (the USB
-   topology). Used when there's no by-id link. It is **unique even when two
-   devices share a USB serial**, and stable while the device stays in the same
-   port. `idSource: "by-path"`, `idStable: true`.
-3. **`/dev` basename** (`ttyUSB0`, …) — **last resort only**, when a device has
-   neither a by-id nor a by-path link. The kernel name **reorders across
-   reboot/replug**, so this is logged as unstable and surfaced as
+1. **`/dev/serial/by-path` basename** — udev's per-**physical-socket** name (the USB
+   topology). The **primary id for every device**. It is **unique by construction**
+   (two devices can't share a socket, so it can never collide) and **stable across
+   reboot + same-port replug**. `idSource: "by-path"`, `idStable: true`.
+2. **`/dev` basename** (`ttyUSB0`, …) — **last resort only**, when a device has no
+   by-path link (a minimal udev config lacking `60-serial.rules`). The kernel name
+   **reorders across reboot/replug**, so this is logged as unstable and surfaced as
    `idSource: "dev"`, `idStable: false`. PDN should warn on it.
 
-After deriving, a **dedupe pass** guarantees no two devices share an `id`: on the
-(rare, cross-source) chance two derive the same key, a unique discriminator is
-appended — a by-path segment (kept stable) where available, else the `/dev`
-basename or an enumeration index (which downgrades that `id` to `idStable:
-false`).
+The **`/dev/serial/by-id` string is retained** in each port's `byId` field as an
+informational hint (the device serial/model, and the basename the allow/deny
+filter matches on) — but it is **no longer used to derive the `id`**. See
+[Why by-path, not by-id: shared USB serials](#why-by-path-not-by-id-shared-usb-serials).
 
-### Why the chain matters: shared USB serials
+After deriving, a **dedupe pass** guarantees no two devices share an `id`: on the
+(rare, cross-source) chance two derive the same key (a by-path basename equal to
+another device's `/dev` basename), a unique discriminator is appended — a by-path
+segment (kept stable) where available, else the `/dev` basename or an enumeration
+index (which downgrades that `id` to `idStable: false`).
+
+> **Moving a device to a different USB port changes its `id`** (the by-path names
+> the socket, not the device). That is correct: a physical re-cabling is a
+> reconfiguration, so PDN re-adopts the port. A **same-port replug and a reboot
+> keep the `id`.**
+
+### Why by-path, not by-id: shared USB serials
 
 Some USB-serial chips report a **fixed, non-unique serial** — e.g. the CP2102 in
 the Tait CCDI cables all report serial `0001`. udev can only create **one**
-`by-id` symlink for a colliding serial, so with two such dongles plugged in:
+`by-id` symlink for a colliding serial, so with two such dongles plugged in only
+one gets a `by-id` link at all. Worse, on a **hot-replug** udev can **flip** that
+single shared `by-id` symlink onto the *returned* dongle — stealing it from the
+still-present sibling, so the returned device enumerates with the **same id** as
+its sibling's live bridge. The rescan diff then sees that id already bridged and
+**fails to re-add** the returned device, and the id→device mapping is ambiguous
+(this is [#574], found on the bench).
 
-- one dongle gets the `by-id` link → stable `by-id` id;
-- the other has **no** `by-id` link.
-
-The old behaviour fell that second dongle back to its `/dev` basename
-(`ttyUSB0`) — **unstable**, and on the next boot the single `by-id` link could
-even attach to the *other* dongle if enumeration order flipped, silently
-re-pointing the `(instance, id)` binding at the wrong radio. **Appending the
-serial can't fix this** — the serial itself collides. The chain fixes it: the
-un-by-id'd dongle falls to its **by-path** id (physical topology, unique per
-port), so **both** dongles get distinct, stable ids and neither uses the `/dev`
-basename.
+**by-id is only stable-unique when the serial is unique**, so it can't be the id.
+**by-path names the physical socket**, which is unique by construction and can't
+flip: both CP2102 `0001` dongles get their **distinct by-path ids** (e.g.
+`…-usb-0:1:1.0-port0` vs `…-usb-0:2:1.0-port0`), stable, no flip, no collision —
+regardless of which one currently holds the shared `by-id` symlink. (A belt-and-
+suspenders guard in the rescan additionally refuses to bind a new device onto an
+existing bridge's id, disambiguating instead of dropping it.) This supersedes the
+earlier by-id-first chain (#569).
 
 > udev normally populates `/dev/serial/by-path` for every USB-serial device
 > out of the box. If a minimal image lacks it, install/enable the standard
 > `60-serial.rules` (udev/systemd) so the head-end has the by-path link to reach
-> for — otherwise a shared-serial device drops to the unstable `/dev` fallback.
+> for — otherwise a device drops to the unstable `/dev` fallback.
+
+[#574]: https://github.com/packet-net/packet.net/issues/574
 
 ## Hot-plug
 
 The head-end picks up devices plugged in — and drops devices unplugged — **at
 runtime, without a restart**. Every `rescanInterval` (default **3s**) it
-re-enumerates (the same `/dev/serial/by-id → by-path → /dev` chain and the same
+re-enumerates (the same `/dev/serial/by-path → /dev` id derivation and the same
 allow/deny filter as startup) and **diffs** the result against the live bridge
 set, keyed by each device's stable `id` **and** its resolved kernel path:
 
@@ -214,8 +227,10 @@ set, keyed by each device's stable `id` **and** its resolved kernel path:
 - **Unchanged device** (still enumerated, already bridged) → left **completely
   untouched**. Its bridge and any **connected client keep running undisturbed** —
   the rescan only ever acts on the delta. (A device whose `id` shifts but whose
-  kernel path is unchanged — e.g. a late udev `by-path → by-id` upgrade — counts
-  as unchanged, so it never churns.)
+  kernel path is unchanged — e.g. a late udev by-path link appearing — counts as
+  unchanged, so it never churns. And a *new* device that would collide on an
+  existing bridge's `id` is disambiguated and added, never dropped or mis-bound —
+  the [#574] cross-pass guard.)
 
 `GET /inventory` always reflects the **live** set (the rescan and the HTTP API
 share a mutex-guarded registry), so PDN sees adds/removes on its next poll.
@@ -285,13 +300,13 @@ Machine API on the HTTP port (default `7300`). JSON, no UI, no auth.
   "instanceId": "pi-shack-north",
   "ports": [
     {
-      "id": "usb-NinoTNC_TARPN-if00",
+      "id": "pci-0000:00:14.0-usb-0:3:1.0",
       "devPath": "/dev/ttyACM0",
       "usbVid": "04d8",
       "usbPid": "000a",
       "byId": "/dev/serial/by-id/usb-NinoTNC_TARPN-if00",
       "byPath": "/dev/serial/by-path/pci-0000:00:14.0-usb-0:3:1.0",
-      "idSource": "by-id",
+      "idSource": "by-path",
       "idStable": true,
       "tcpPort": 7301,
       "baud": 9600,
@@ -304,19 +319,22 @@ Machine API on the HTTP port (default `7300`). JSON, no UI, no auth.
 ```
 
 - `id` — the **stable, unique identity key**. PDN binds `(instanceId, id)`.
-  Derived by the [fallback chain](#device-identity--stability) (by-id → by-path →
+  Derived from the [physical USB topology](#device-identity--stability) (by-path →
   `/dev` basename) and de-duplicated so no two ports ever share an `id`.
-- `idSource` — which chain link the `id` came from: `"by-id"` | `"by-path"` |
-  `"dev"`. `"dev"` is the last-resort, unstable fallback.
+- `idSource` — which link the `id` came from: `"by-path"` | `"dev"`. `"dev"` is
+  the last-resort, unstable fallback. (`"by-id"` is **not** an id source — see
+  `byId` below.)
 - `idStable` — `false` **only** for the `"dev"` fallback (the kernel name can
-  reorder across reboot/replug); `true` for `by-id`/`by-path`. PDN can warn on an
-  unstable binding.
+  reorder across reboot/replug); `true` for `by-path`. PDN can warn on an unstable
+  binding.
 - `devPath` — resolved kernel device; informational.
 - `usbVid` / `usbPid` — lowercase 4-hex USB IDs, or `""` if unavailable. Hints
   for PDN's identify step (e.g. NinoTNC `04d8`, CP2102 `10c4`, FTDI `0403`).
-- `byId` — full by-id symlink path, or `""`.
-- `byPath` — full by-path symlink path, or `""` (recorded even for a by-id
-  device; it's the physical-topology link).
+- `byId` — full by-id symlink path, or `""`. **Informational only** (device
+  serial/model hint, and the allow/deny match key) — **not** the id, because a
+  shared USB serial makes it collide/flip ([#574](#why-by-path-not-by-id-shared-usb-serials)).
+- `byPath` — full by-path symlink path, or `""`. This is the physical-topology
+  link the `id` is derived from.
 - `tcpPort` — the raw byte-pipe port. **Dial this** and speak KISS/CCDI directly.
 - `baud`/`dataBits`/`parity`/`stopBits` — current serial line params.
   `parity` ∈ `none|even|odd`; `stopBits` ∈ `1|2`.

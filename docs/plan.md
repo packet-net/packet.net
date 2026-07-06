@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-06
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-06 — **Head-end: by-path is the primary device id (shared-serial by-id flip fix, #574)** — the Go head-end (`headend/`) now derives every device's stable id from `/dev/serial/by-path` (the physical USB socket → unique by construction, can't collide), with the `/dev` basename as the sole unstable last resort; `/dev/serial/by-id` is dropped as an id source and kept only as the informational `byId` field (device serial/model + allow/deny match key). Fixes #574: two CP2102 Tait CCDI dongles share USB serial `0001`, so udev makes a single shared by-id symlink and can **flip** it to a hot-replugged sibling — under the old by-id-first chain (#569) the returned device then enumerated with the same id as the still-running sibling's bridge, so the rescan diff treated it as already-bridged and dropped it. Now both dongles get distinct, stable by-path ids regardless of which holds the shared by-id, so the flip is irrelevant. `idSource` values become `by-path` | `dev` (never `by-id`). Consequence: moving a device to a **different** USB port changes its id (a physical reconfiguration → re-adopt); same-port replug + reboot keep it. Plus a rescan **cross-pass id-collision guard** (belt-and-suspenders): a newly-enumerated device whose id equals a live bridge's is disambiguated (append a by-path/dev discriminator, like the within-pass `dedupeIDs`) and added, never dropped or mis-bound. Go fakes-only tests (fake /dev+/sys tree; the shared-serial both-by-path case + the by-id **flip** across two enumerations + by-path-absent → unstable `/dev` + the cross-pass guard); `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Supersedes #569's by-id-first chain; closes #574. Ships in `headend-v0.1.3` (with #572; release is the orchestrator's post-rig step). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: hot-plug support (poll-based re-enumerate + diff, #572)** — the Go head-end (`headend/`) now adds/removes device bridges at runtime without a restart. A dep-free poll (no udev/netlink) re-enumerates every `RescanInterval` (flag `--rescan-interval` / env `PACKETNET_HEADEND_RESCAN_INTERVAL` / JSON `rescanInterval`; **default 3s**, **`0` disables** → startup-only, no regression) and diffs against the live bridge set keyed by device id **and** resolved kernel path: new device → `newBridge` on the lowest free TCP port ≥ base + registry add + `bridge added` (transient open failure warned once, retried); gone device → `Bridge.Close` (listener + client + serial) + port freed + `bridge removed`; existing device + its connected client left **untouched** (diff acts only on the delta). Registry is now mutex-guarded (`/inventory` reflects the live set); `Bridge.close()`→idempotent `Close()` over a done-channel. Go fakes-only tests (scripted enumerator + fake opener) cover appear/disappear/untouched/failed-open-retry-warn-once/`0`-disabled; `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Ships in `headend-v0.1.3` (release is the orchestrator's post-rig step). Closes #572. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **RELEASE: lib-v0.20.0 + node-v0.29.0 + headend-v0.1.1** — the "read the radio map off the hardware" follow-up shipped off green `main` (`fe7f4a1`). `lib-v0.20.0` (NuGet): the `Packet.Radio.Tait` band catalog (reads the band split off the CCDI `q3[00]` product code — A4=4m, B1=2m, H5/6/7=70cm). `node-v0.29.0` (`.deb`): identify/pair/name v2 — #567 NinoTNC-57600, keyup pairing (physical modem↔radio map via `PttActivated`), band-naming into adopt. `headend-v0.1.1`: #569 stable-unique device ids (by-id → by-path → dev). Hardware-validated end-to-end through the head-end (remote parity); downstream N/A; no TS leg; closes #567/#569. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **Split-station head-end identify/pair/name v2** — auto-discovery now reads the whole modem↔radio map off the hardware (all lib+node, rides the existing raw bridge; no head-end/Go change). **(1)** New `TaitBandCatalog` (`Packet.Radio.Tait`) parses the band split off the `q3 RADIO_VERSIONS` record `[00]` product code (the `[A-Z][0-9]` designator after the first `-`) → `{ Code, MinHz, MaxHz, AmateurBand }` + `TaitRadioIdentity.Band` (`A4`=4m, `B1`=2m, `H5`/`H6`/`H7`=70cm); corrects the "band not runtime-readable" assumption (frequency isn't, the split is). **(2)** `#567` — a NinoTNC's KISS baud is a fixed 57600; identify + `nino-tnc-tcp` bring-up now clock the head-end line to 57600 before GETVER/open (no sweep). **(3)** Keyup pairing — `POST /api/v1/radios/headends/{instanceId}/pair-by-keyup` (admin-scope — it transmits, same bar as hail/tuning/doctor — RF caveat on the response) briefly keys each free NinoTNC and watches which co-located Tait's PTT fires (`TransmitterStateChanged`) → the *physical* pair, ground truth over the co-location guess; operator-initiated, never in the passive scan. **(4)** The scan (`HeadEndDeviceScan.BandCode`/`.AmateurBand`) surfaces the band and **adopt** defaults the port's MQTT `{instance}` + id to the amateur band. Additive radio-side lib + node surface → **no ax25-ts parity leg**. Design: [`docs/research/split-station-rf-headend.md`](research/split-station-rf-headend.md) (§ "Identify / pair / name v2")](#17-amendment-log)
@@ -1238,6 +1239,50 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-06 — Head-end: by-path is the primary device id (shared-serial by-id flip fix) ([#574])
+
+Fixed [#574] — found validating hot-plug ([#572]) on the bench, where the two CP2102 Tait CCDI dongles
+**share USB serial `0001`**. udev creates the shared `by-id` symlink (`usb-…CP2102…0001-if00-port0`) for only
+ONE of them, and on a **hot-replug** can **flip** it onto the *returned* device, stealing it from the still-present
+sibling. Under [#569]'s **by-id-first** id chain the returned device then enumerated with the **same id** as the
+still-running sibling's bridge, so the rescan diff (keyed by id + path) saw that id already bridged and **did not
+re-add** it (`/inventory` stuck at 3), and the id→device mapping was ambiguous. Root cause: **by-id is only
+stable-unique when the USB serial is unique** — a shared serial makes it collide and flip.
+
+- **Fix — `headend/enumerate.go`.** The id chain is now **`/dev/serial/by-path` → `/dev` basename**, dropping
+  by-id as an id source:
+  - **`by-path` basename** is the **primary id for every device** — it names the physical USB socket, so it is
+    **unique by construction** (two devices can't share a socket, so it can never collide the way a shared serial's
+    by-id does) and **stable across reboot + same-port replug**. `idSource:"by-path"`, `idStable:true`.
+  - **`/dev` basename** is the sole **last resort** (no by-path link — a minimal udev config lacking
+    `60-serial.rules`), logged as unstable, `idSource:"dev"`, `idStable:false`.
+  - The **`/dev/serial/by-id` string is retained** in the inventory's `byId` field as an informational hint (device
+    serial/model + the basename the allow/deny filter matches) but is **never** the id. `idSource` values become
+    `by-path` | `dev` (never `by-id`). Net effect on the bench: both `0001` dongles get their distinct by-path ids
+    (`…-usb-0:1:1.0-port0` vs `…-usb-0:2:1.0-port0`), stable, **no flip, no collision** — regardless of which one
+    currently holds the shared by-id symlink. The `dedupeIDs` cross-source-clash pass is unchanged.
+  - **Consequence (documented):** moving a device to a **different** USB port changes its id (the by-path names the
+    socket, not the device) — correct for a physical reconfiguration → PDN re-adopts; a **same-port replug and a
+    reboot keep the id**.
+- **Guard — `headend/rescan.go`.** A **cross-pass id-collision guard** (belt-and-suspenders — the by-path chain
+  makes a collision impossible by construction): `diffDevices` now matches a device to a bridge by resolved kernel
+  path first, treating an id match on a *different* path as a collision (a new device), not a "still bridged"; and
+  `reconcile` disambiguates any newly-added device whose id equals a live bridge's (append a by-path/dev
+  discriminator, like the within-pass `dedupeIDs`) rather than dropping or mis-binding it onto the sibling's bridge.
+- **Tests (Go, fakes only — no hardware).** Fake `/dev` + `/sys` tree: two devices sharing a USB serial → BOTH
+  resolve to distinct by-path ids (the holder keeps by-id only as a hint); the **flip** scenario — the shared by-id
+  symlink on device A in one enumeration and device B in the next → both stay by-path, ids never change, no
+  collision; a by-path-absent device → unstable `/dev` fallback with the by-id hint retained; by-path preferred over
+  a present by-id (regression); and the rescan **cross-pass guard** (a new device colliding on a live bridge's id is
+  disambiguated + added, never two bridges with the same id). `go test`(+`-race`) / `go vet` / `gofmt` green;
+  `make arm64` static cross-build + the `.deb` build (`scripts/build-headend-deb.sh linux-amd64`) intact.
+- **Docs.** `headend/README.md` (the *Device identity & stability* + *Why by-path, not by-id* sections rewritten:
+  by-path primary, by-id informational-only, the same-port-vs-different-port id consequence) + the API-contract
+  `idSource`/`byId` rows + the hot-plug no-churn note. This ledger entry.
+- **Scope.** Head-end Go only — **no .NET, no ax25-ts parity leg.** **Supersedes [#569]'s by-id-first chain.**
+  Ships in `headend-v0.1.3` (bundled with the [#572] hot-plug work; the release is the orchestrator's step after
+  on-rig validation: hot-replug a shared-serial dongle → it re-adds cleanly with no id collision). Closes [#574].
 
 ### 2026-07-06 — Head-end: hot-plug support (poll-based re-enumerate + diff) ([#572])
 
