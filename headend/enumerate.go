@@ -13,9 +13,24 @@ import (
 // ID source classes, in decreasing stability order. Surfaced in the inventory
 // (IDSource) so PDN can warn on an unstable binding.
 const (
-	idSourceByID   = "by-id"   // /dev/serial/by-id basename — udev-stable, unique per serial.
-	idSourceByPath = "by-path" // /dev/serial/by-path basename — physical USB topology; unique even when serials collide, stable while the device stays in the same port.
-	idSourceDev    = "dev"     // kernel /dev basename — LAST RESORT, NOT stable across reboot/replug.
+	// idSourceByPath — /dev/serial/by-path basename. The PRIMARY id for every
+	// device: it names the physical USB socket, so it is unique by construction
+	// (two devices can't share a socket, so it can never collide the way a shared,
+	// non-unique USB serial makes by-id collide — #574) and stable across reboot +
+	// same-port replug. Moving a device to a DIFFERENT port changes this id (a
+	// physical reconfiguration → an intentional re-adopt on PDN).
+	idSourceByPath = "by-path"
+	// idSourceDev — kernel /dev basename. LAST RESORT, only when a device has no
+	// by-path link; NOT stable across reboot/replug.
+	idSourceDev = "dev"
+	// idSourceByID — /dev/serial/by-id basename. NO LONGER an id source: a fixed,
+	// non-unique USB serial (e.g. the CP2102 CCDI dongles all report 0001) makes it
+	// collide, and udev can flip the single by-id symlink to a replugged sibling
+	// (#574, superseding the by-id-first chain from #569). The by-id string is still
+	// captured in the inventory's ByID field as an informational device serial/model
+	// hint; this constant is retained for that reference and for tests. Enumerate
+	// never sets IDSource to this value.
+	idSourceByID = "by-id"
 )
 
 // DiscoveredPort is one serial device the head-end can bridge, with a STABLE
@@ -24,26 +39,31 @@ const (
 // head-end does NO device identification (no GETVER, no CCDI MODEL); PDN reaches
 // through the raw pipe with its own drivers to identify.
 type DiscoveredPort struct {
-	// ID is the device's stable-unique identity key, derived by a fallback
-	// chain (see Enumerate): the /dev/serial/by-id basename when one exists;
-	// else the /dev/serial/by-path basename (physical USB topology — unique even
-	// when two devices share a USB serial, which udev can only by-id ONE of);
-	// else — last resort — the kernel /dev basename, which is NOT stable across
-	// reboot/replug. Guaranteed unique within one enumeration (see dedupeIDs).
+	// ID is the device's stable-unique identity key, derived by a fallback chain
+	// (see Enumerate): the /dev/serial/by-path basename — the physical USB socket,
+	// unique by construction and stable across reboot/same-port replug — when one
+	// exists; else — LAST RESORT — the kernel /dev basename, which is NOT stable
+	// across reboot/replug. Guaranteed unique within one enumeration (see
+	// dedupeIDs). The /dev/serial/by-id link is NOT used to derive the id — a
+	// shared, non-unique USB serial makes it collide and flip between siblings
+	// (#574) — but it is captured in ByID as an informational hint.
 	ID string
 	// DevPath is the resolved kernel device (/dev/ttyUSB0, /dev/ttyACM0).
 	DevPath string
 	// ByID is the full /dev/serial/by-id/... symlink, or "" when none.
+	// INFORMATIONAL only (device serial/model hint for PDN's identify step, and the
+	// by-id basename the allow/deny filter matches on) — it is NOT the id source,
+	// see idSourceByID / #574.
 	ByID string
 	// ByPath is the full /dev/serial/by-path/... symlink, or "" when none.
 	ByPath string
-	// IDSource records which link in the derivation chain the ID came from:
-	// idSourceByID / idSourceByPath / idSourceDev. PDN reads it to warn on an
+	// IDSource records which link the ID came from: idSourceByPath (normal) or
+	// idSourceDev (no by-path link). Never idSourceByID. PDN reads it to warn on an
 	// unstable binding.
 	IDSource string
 	// IDStable is a convenience flag derived from IDSource (and downgraded if a
 	// device had to be disambiguated onto its unstable /dev name): true for
-	// by-id/by-path, false for a /dev-basename fallback.
+	// by-path, false for a /dev-basename fallback.
 	IDStable bool
 	// USBVid / USBPid are the 4-hex USB IDs read from sysfs (hints for PDN's
 	// identify step), or "" when unavailable.
@@ -73,56 +93,53 @@ func defaultEnumerator() Enumerator {
 // Enumerate returns every candidate serial device with a STABLE + UNIQUE
 // identity key, keyed by resolved kernel path so a device reachable via multiple
 // symlinks (the shared-serial CP2102 CCDI dongles do this) is bridged exactly
-// once. The ID is derived by a fallback chain, each link more stable than the
-// next:
+// once. The id is the physical USB topology, with a /dev last resort:
 //
-//  1. /dev/serial/by-id basename — udev-stable, unique per serial (as today);
-//  2. else /dev/serial/by-path basename — the physical USB topology, unique even
-//     when two devices share a USB serial (udev can only create a by-id link for
-//     ONE of a colliding pair, so the other MUST fall to by-path, not to the
-//     unstable /dev name), and stable while the device stays in the same port;
-//  3. else — LAST RESORT — the raw /dev/ttyUSB* / /dev/ttyACM* basename, which is
+//  1. /dev/serial/by-path basename — the id for every device that has one. It
+//     names the physical USB socket, so it is unique by construction (two devices
+//     can't share a socket, so — unlike a shared USB serial's by-id link, #574 —
+//     it can never collide or flip between siblings) and stable across reboot +
+//     same-port replug. Moving a device to a DIFFERENT port changes its id (a
+//     physical reconfiguration → an intentional re-adopt on PDN).
+//  2. else — LAST RESORT — the raw /dev/ttyUSB* / /dev/ttyACM* basename, which is
 //     NOT stable across reboot/replug (logged as unstable).
+//
+// The /dev/serial/by-id link is captured in ByID as an informational hint (device
+// serial/model) but is NOT used to derive the id: a fixed, non-unique USB serial
+// (the CP2102 CCDI dongles all report 0001) makes by-id collide, and udev can flip
+// the single by-id symlink to a replugged sibling — the #574 failure this chain
+// closes by design (superseding #569's by-id-first chain).
 //
 // A final dedupe pass guarantees no two devices ever share an ID. Results are
 // ordered by ID for a stable inventory + deterministic TCP-port allocation.
 func (e Enumerator) Enumerate() []DiscoveredPort {
 	byDev := make(map[string]DiscoveredPort)
 
-	// 1. Preferred: /dev/serial/by-id symlinks → real device.
+	// Collect the by-id link per device up front. by-id is NO LONGER an id source
+	// (#574 — a fixed, non-unique USB serial makes it collide + flip between sibling
+	// devices on replug, superseding #569's by-id-first chain); it is retained ONLY
+	// as the informational ByID hint (device serial/model + the allow/deny match
+	// key). First by-id link wins for a device (listLinks is sorted).
+	byIDForDev := make(map[string]string)
 	for _, link := range listLinks(e.ByIDDir) {
-		dev, ok := resolveSymlink(link)
-		if !ok {
-			continue
-		}
-		// First by-id link wins for a device (listLinks is sorted), so the ID is
-		// deterministic even under the shared-serial ambiguity.
-		if _, seen := byDev[dev]; seen {
-			continue
-		}
-		byDev[dev] = DiscoveredPort{
-			ID:       filepath.Base(link),
-			DevPath:  dev,
-			ByID:     link,
-			IDSource: idSourceByID,
-			IDStable: true,
+		if dev, ok := resolveSymlink(link); ok {
+			if _, seen := byIDForDev[dev]; !seen {
+				byIDForDev[dev] = link
+			}
 		}
 	}
 
-	// 2. /dev/serial/by-path symlinks → real device. For a device already keyed
-	//    by by-id we only record the by-path link (informational); for one not
-	//    yet covered — the shared-serial device udev couldn't by-id — the by-path
-	//    basename becomes its stable, unique ID.
+	// 1. Primary id: /dev/serial/by-path basename. by-path names the physical USB
+	//    socket → unique by construction (two devices can't share a socket, so it
+	//    can never collide) and stable across reboot + same-port replug. First
+	//    by-path link wins for a device (sorted) so the id is deterministic when
+	//    udev makes several by-path variants (e.g. usb- vs usbv2-).
 	for _, link := range listLinks(e.ByPathDir) {
 		dev, ok := resolveSymlink(link)
 		if !ok {
 			continue
 		}
-		if p, seen := byDev[dev]; seen {
-			if p.ByPath == "" {
-				p.ByPath = link
-				byDev[dev] = p
-			}
+		if _, seen := byDev[dev]; seen {
 			continue
 		}
 		byDev[dev] = DiscoveredPort{
@@ -134,14 +151,14 @@ func (e Enumerator) Enumerate() []DiscoveredPort {
 		}
 	}
 
-	// 3. Last resort: raw USB/ACM ttys not covered by any by-id/by-path link. The
-	//    kernel /dev name reorders across reboot/replug, so this ID is UNSTABLE —
-	//    log it so the operator (and PDN) can see the binding risk.
-	for _, dev := range listDevTtys(e.DevDir) {
+	// devFallback records a device on its UNSTABLE kernel /dev basename — the last
+	// resort when it has no by-path link (a minimal udev config lacking the standard
+	// 60-serial.rules). Logged so the operator (and PDN) see the binding risk.
+	devFallback := func(dev string) {
 		if _, seen := byDev[dev]; seen {
-			continue
+			return
 		}
-		log.Printf("device %s has no /dev/serial/by-id or by-path link; using unstable /dev basename %q as its id — this binding may not survive a reboot/replug (fix udev, or pin the port physically)",
+		log.Printf("device %s has no /dev/serial/by-path link; using unstable /dev basename %q as its id — this binding may not survive a reboot/replug (install the standard 60-serial.rules udev rules, or pin the port physically)",
 			dev, filepath.Base(dev))
 		byDev[dev] = DiscoveredPort{
 			ID:       filepath.Base(dev),
@@ -151,8 +168,23 @@ func (e Enumerator) Enumerate() []DiscoveredPort {
 		}
 	}
 
+	// 2. Raw USB/ACM ttys with no by-path link → /dev fallback.
+	for _, dev := range listDevTtys(e.DevDir) {
+		devFallback(dev)
+	}
+	// 3. A device reachable ONLY via a by-id link (no by-path, and a /dev name
+	//    outside the ttyUSB*/ttyACM* glob) still gets enumerated — on its unstable
+	//    /dev basename — so the by-path chain never drops a device the old
+	//    by-id-first chain would have seen. (Realistically empty: udev's
+	//    60-serial.rules makes a by-path link for every USB-serial tty, all of which
+	//    the glob above already covers.)
+	for dev := range byIDForDev {
+		devFallback(dev)
+	}
+
 	out := make([]DiscoveredPort, 0, len(byDev))
 	for _, p := range byDev {
+		p.ByID = byIDForDev[p.DevPath] // informational hint; never the id source
 		p.USBVid, p.USBPid = readUsbIds(e.SysClassTty, filepath.Base(p.DevPath))
 		out = append(out, p)
 	}
@@ -168,9 +200,9 @@ func (e Enumerator) Enumerate() []DiscoveredPort {
 	return out
 }
 
-// dedupeIDs guarantees no two ports in one enumeration share an ID. by-id and
-// by-path names are each unique per device, so a residual collision can only be
-// a cross-source basename clash (e.g. a device's by-path basename equal to
+// dedupeIDs guarantees no two ports in one enumeration share an ID. A by-path
+// basename is unique per physical socket, so a residual collision can only be a
+// cross-source basename clash (e.g. a device's by-path basename equal to
 // another's /dev basename). Every member of a colliding group gets a unique
 // discriminator appended, tried in decreasing stability order (see
 // discriminators); a device forced onto its unstable /dev name to disambiguate

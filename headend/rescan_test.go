@@ -18,9 +18,10 @@ import (
 
 // --- fakes / helpers -------------------------------------------------------
 
-// mkDev builds a DiscoveredPort with a stable by-id-style identity.
+// mkDev builds a DiscoveredPort with a stable by-path-style identity (the primary
+// id source since #574).
 func mkDev(id, devPath string) DiscoveredPort {
-	return DiscoveredPort{ID: id, DevPath: devPath, IDSource: idSourceByID, IDStable: true}
+	return DiscoveredPort{ID: id, DevPath: devPath, IDSource: idSourceByPath, IDStable: true}
 }
 
 // scriptedEnumerator returns a DIFFERENT device set on each successive
@@ -155,6 +156,23 @@ func TestDiffDevices(t *testing.T) {
 		added, removed := diffDevices(nil, current)
 		if len(added) != 0 || len(removed) != 1 {
 			t.Errorf("added=%v removed=%v, want [] and [a]", added, ids(removed))
+		}
+	})
+
+	t.Run("id collision on a different devPath is added, not swallowed", func(t *testing.T) {
+		// Belt-and-suspenders (#574): a live bridge holds id X on /dev/ttyUSB1; a
+		// DIFFERENT physical device (/dev/ttyUSB0) enumerates under the same id X.
+		// The same-path sibling is untouched; the collider is a new device and must
+		// be added (reconcile then disambiguates its id), never dropped as "already
+		// bridged".
+		current := []*Bridge{bridgeFor("X", "/dev/ttyUSB1")}
+		enum := []DiscoveredPort{mkDev("X", "/dev/ttyUSB1"), mkDev("X", "/dev/ttyUSB0")}
+		added, removed := diffDevices(enum, current)
+		if len(added) != 1 || added[0].DevPath != "/dev/ttyUSB0" {
+			t.Errorf("added = %v, want the /dev/ttyUSB0 collider only", added)
+		}
+		if len(removed) != 0 {
+			t.Errorf("removed = %v, want none (the /dev/ttyUSB1 sibling is still present)", ids(removed))
 		}
 	})
 }
@@ -328,6 +346,69 @@ func TestReconcile_OpenFails_SkippedRetriedWarnedOnce(t *testing.T) {
 
 	if n := strings.Count(buf.String(), "bridge deferred dev1"); n != 1 {
 		t.Errorf("deferred-open warning logged %d times, want exactly 1\nlog:\n%s", n, buf.String())
+	}
+}
+
+// --- reconcile: a cross-pass id collision is disambiguated, never dropped -------
+
+func TestReconcile_CrossPassIdCollisionDisambiguated(t *testing.T) {
+	useLoopbackListeners(t)
+	cfg := hotplugConfig()
+	// A live bridge holds id "X" on /dev/ttyUSB1. Then a DIFFERENT physical device
+	// (/dev/ttyUSB0) enumerates under the SAME id "X" (the #574 shared-serial by-id
+	// flip the by-path chain should prevent — this is the belt-and-suspenders
+	// guard). The returned device must still be bridged, on a DISAMBIGUATED id, with
+	// no two bridges sharing an id.
+	sibling := mkDev("X", "/dev/ttyUSB1")
+	collider := DiscoveredPort{
+		ID: "X", DevPath: "/dev/ttyUSB0",
+		ByPath:   "/dev/serial/by-path/pci-0000:00:14.0-usb-0:1:1.0-port0",
+		IDSource: idSourceByPath, IDStable: true,
+	}
+	enum := &scriptedEnumerator{steps: [][]DiscoveredPort{
+		{sibling},           // poll 1: only the sibling present
+		{sibling, collider}, // poll 2: a new device arrives under the sibling's id
+	}}
+	reg := newRegistry("pi", nil)
+	warned := map[string]bool{}
+	open := countingOpener(nil)
+	line := defaultLine(9600)
+
+	reg.reconcile(cfg, enum, open, line, warned) // bridges the sibling as "X"
+	assertInventoryIDs(t, reg, "X")
+
+	reg.reconcile(cfg, enum, open, line, warned) // collider arrives → must be added, disambiguated
+
+	// Both devices are bridged, on DISTINCT ids.
+	bridges := reg.snapshot()
+	if len(bridges) != 2 {
+		t.Fatalf("got %d bridges, want 2 (sibling + disambiguated collider): %+v", len(bridges), bridges)
+	}
+	ids := map[string]bool{}
+	var colliderBridge *Bridge
+	for _, b := range bridges {
+		if ids[b.dev.ID] {
+			t.Fatalf("two bridges share id %q — cross-pass guard failed", b.dev.ID)
+		}
+		ids[b.dev.ID] = true
+		if b.dev.DevPath == "/dev/ttyUSB0" {
+			colliderBridge = b
+		}
+	}
+	// The original sibling keeps id "X" on its own path.
+	if b, ok := reg.lookup("X"); !ok || b.dev.DevPath != "/dev/ttyUSB1" {
+		t.Errorf("sibling bridge X missing or moved: %+v", b)
+	}
+	// The collider is bridged on /dev/ttyUSB0 with a NEW (non-X) id, kept stable via
+	// its by-path discriminator.
+	if colliderBridge == nil {
+		t.Fatal("collider (/dev/ttyUSB0) was dropped, not re-added")
+	}
+	if colliderBridge.dev.ID == "X" {
+		t.Errorf("collider id = %q, want a disambiguated id (not the sibling's X)", colliderBridge.dev.ID)
+	}
+	if !colliderBridge.dev.IDStable {
+		t.Errorf("collider id %q should stay stable (disambiguated via its by-path)", colliderBridge.dev.ID)
 	}
 }
 
