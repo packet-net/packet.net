@@ -1240,6 +1240,15 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-06 — RELEASE: headend-v0.1.3 (hot-plug + by-path device ids)
+
+Cut `headend-v0.1.3` carrying two head-end improvements, both **hardware-validated on the 2×NinoTNC + 2×Tait bench**:
+
+- **Hot-plug** ([#572]) — a poll-based re-enumerate + diff (`--rescan-interval`, default 3s, `0` disables) dynamically adds/removes device bridges without a restart, leaving existing bridges + connected clients untouched. **Validated on-rig** by reversibly de-/re-authorizing a device via sysfs: a NinoTNC removed in ~3s (`bridge removed … tcp freed`) and re-added in ~2s (`bridge added …`, same id, port reused); a connected client on another device undisturbed.
+- **by-path device ids** ([#569]/[#574]) — the device id is now the **physical USB socket** (`/dev/serial/by-path` basename), collision-proof by construction and stable across reboot + same-port replug; `/dev` basename only as an unstable last resort; the by-id string retained as an informational `byId` hint. This **supersedes the by-id-first chain** and closes the shared-serial by-id-flip edge ([#574]) by design rather than patching it (Tom: "by-path is the specific socket, it can't collide"). **Validated on-rig**: the two CP2102 dongles that share USB serial `0001` now both enumerate `idSource:"by-path"` with distinct socket ids, and a CP2102 hot-replug re-adds cleanly (the case that snagged under the by-id chain). One documented consequence: moving a device to a *different* USB port changes its id (re-adopt) — correct for a physical reconfiguration.
+
+Go-only (no lib/node) → `publish-headend.yml` builds the arm64/arm/amd64 `.deb`s + raw binaries + `SHA256SUMS`. Closes [#572] + [#574]. The shared-serial-replug finding was itself surfaced by the hot-plug hardware test.
+
 ### 2026-07-06 — Head-end: by-path is the primary device id (shared-serial by-id flip fix) ([#574])
 
 Fixed [#574] — found validating hot-plug ([#572]) on the bench, where the two CP2102 Tait CCDI dongles
