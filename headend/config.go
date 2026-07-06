@@ -11,7 +11,48 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// Duration is a time.Duration that (un)marshals JSON as an operator-friendly
+// duration STRING ("3s", "500ms") — so the rescanInterval reads clearly in the
+// JSON config — while also accepting a bare JSON number as a count of SECONDS
+// (so "rescanInterval": 3 means 3s, the least-surprising reading for a hand-edited
+// config, NOT 3ns as encoding/json's default int64 handling would give).
+type Duration time.Duration
+
+// Duration returns the wrapped time.Duration.
+func (d Duration) Duration() time.Duration { return time.Duration(d) }
+
+// String renders the Go duration form ("3s"), for logs.
+func (d Duration) String() string { return time.Duration(d).String() }
+
+// MarshalJSON emits the duration as a Go duration string.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
+// UnmarshalJSON accepts either a duration string ("3s") or a bare number of
+// seconds (3 → 3s).
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	switch x := v.(type) {
+	case string:
+		parsed, err := time.ParseDuration(x)
+		if err != nil {
+			return fmt.Errorf("rescanInterval %q: %w", x, err)
+		}
+		*d = Duration(parsed)
+	case float64:
+		*d = Duration(time.Duration(x * float64(time.Second)))
+	default:
+		return fmt.Errorf("rescanInterval: want a duration string or a number of seconds, got %T", v)
+	}
+	return nil
+}
 
 // Config is the head-end daemon's full runtime configuration. Every field has a
 // sane default (see defaultConfig); an operator overrides only what they need.
@@ -51,6 +92,15 @@ type Config struct {
 	// some Allow glob and no Deny glob. Default Allow=["*"], Deny=[] → bridge all.
 	Allow []string `json:"allow"`
 	Deny  []string `json:"deny"`
+
+	// RescanInterval is the hot-plug re-enumeration poll period. Every interval the
+	// daemon re-enumerates serial devices (same allow/deny filter) and diffs against
+	// the live bridge set: a newly-plugged device gets a bridge on the lowest free
+	// TCP port; an unplugged device's bridge is torn down and its port freed; an
+	// unchanged device — and any client connected to it — is left completely
+	// untouched. ZERO DISABLES the poll → startup-only enumeration, byte-for-byte
+	// today's behaviour (no regression). Default 3s. Must be ≥ 0.
+	RescanInterval Duration `json:"rescanInterval"`
 }
 
 // EnvPrefix namespaces the daemon's environment variables.
@@ -61,12 +111,13 @@ const EnvPrefix = "PACKETNET_HEADEND_"
 // bridge every discovered serial device.
 func defaultConfig() Config {
 	return Config{
-		InstanceID:  defaultInstanceID(),
-		HTTPPort:    7300,
-		BaseTCPPort: 7301,
-		Baud:        9600,
-		Allow:       []string{"*"},
-		Deny:        nil,
+		InstanceID:     defaultInstanceID(),
+		HTTPPort:       7300,
+		BaseTCPPort:    7301,
+		Baud:           9600,
+		Allow:          []string{"*"},
+		Deny:           nil,
+		RescanInterval: Duration(3 * time.Second),
 	}
 }
 
@@ -164,14 +215,15 @@ func nicMACs() ([]string, error) {
 // flags win over env/file only when actually passed. main builds this from the
 // flag set via flag.Visit.
 type flagOverrides struct {
-	InstanceID  *string
-	BindAddr    *string
-	HTTPPort    *int
-	BaseTCPPort *int
-	Baud        *int
-	Allow       *string // comma-separated
-	Deny        *string // comma-separated
-	ConfigPath  *string
+	InstanceID     *string
+	BindAddr       *string
+	HTTPPort       *int
+	BaseTCPPort    *int
+	Baud           *int
+	Allow          *string // comma-separated
+	Deny           *string // comma-separated
+	RescanInterval *time.Duration
+	ConfigPath     *string
 }
 
 // loadConfig resolves the effective config from all sources in precedence order:
@@ -225,6 +277,9 @@ func loadConfig(env func(string) (string, bool), flags flagOverrides) (Config, e
 	if v, ok := env(EnvPrefix + "DENY"); ok {
 		cfg.Deny = splitList(v)
 	}
+	if err := applyDurationEnv(env, EnvPrefix+"RESCAN_INTERVAL", &cfg.RescanInterval); err != nil {
+		return Config{}, err
+	}
 
 	// Explicit-flag overlay (highest precedence).
 	if flags.InstanceID != nil {
@@ -248,6 +303,9 @@ func loadConfig(env func(string) (string, bool), flags flagOverrides) (Config, e
 	if flags.Deny != nil {
 		cfg.Deny = splitList(*flags.Deny)
 	}
+	if flags.RescanInterval != nil {
+		cfg.RescanInterval = Duration(*flags.RescanInterval)
+	}
 
 	return cfg, cfg.validate()
 }
@@ -266,6 +324,9 @@ func (c Config) validate() error {
 	}
 	if c.Baud <= 0 {
 		return fmt.Errorf("baud %d must be positive", c.Baud)
+	}
+	if c.RescanInterval < 0 {
+		return fmt.Errorf("rescanInterval %s must not be negative (0 disables hot-plug rescan)", c.RescanInterval)
 	}
 	return nil
 }
@@ -304,6 +365,21 @@ func applyIntEnv(env func(string) (string, bool), key string, dst *int) error {
 		return fmt.Errorf("%s=%q: not an integer", key, v)
 	}
 	*dst = n
+	return nil
+}
+
+// applyDurationEnv overlays a Go duration string ("3s", "500ms", "0") from the
+// environment onto dst. Empty/unset leaves dst untouched.
+func applyDurationEnv(env func(string) (string, bool), key string, dst *Duration) error {
+	v, ok := env(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parsed, err := time.ParseDuration(strings.TrimSpace(v))
+	if err != nil {
+		return fmt.Errorf("%s=%q: not a duration (want e.g. 3s, 500ms, 0)", key, v)
+	}
+	*dst = Duration(parsed)
 	return nil
 }
 

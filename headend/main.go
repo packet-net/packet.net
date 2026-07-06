@@ -59,6 +59,7 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 		baud     = fs.Int("baud", def.Baud, "default serial baud every port is opened at (PDN re-clocks Tait via the line verb)")
 		allow    = fs.String("allow", "", "comma-separated globs of /dev or by-id basenames to bridge (default: all)")
 		deny     = fs.String("deny", "", "comma-separated globs of /dev or by-id basenames to skip")
+		rescan   = fs.Duration("rescan-interval", def.RescanInterval.Duration(), "hot-plug re-enumeration poll period (e.g. 3s); 0 disables → startup-only enumeration")
 		confPath = fs.String("config", "", "optional path to a JSON config file")
 	)
 	if err := fs.Parse(args); err != nil {
@@ -84,6 +85,8 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 			ov.Allow = allow
 		case "deny":
 			ov.Deny = deny
+		case "rescan-interval":
+			ov.RescanInterval = rescan
 		case "config":
 			ov.ConfigPath = confPath
 		}
@@ -95,7 +98,7 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 // blocks until ctx is cancelled (SIGTERM), then shuts everything down cleanly.
 // The enumerator and serial opener are injected so the whole daemon is testable
 // without real hardware.
-func run(ctx context.Context, cfg Config, enum Enumerator, open SerialOpener) error {
+func run(ctx context.Context, cfg Config, enum deviceEnumerator, open SerialOpener) error {
 	bindScope := "all interfaces"
 	if cfg.BindAddr != "" {
 		bindScope = fmt.Sprintf("bound to %s", cfg.BindAddr)
@@ -107,16 +110,22 @@ func run(ctx context.Context, cfg Config, enum Enumerator, open SerialOpener) er
 	if len(bridges) == 0 {
 		log.Printf("no serial devices bridged (none discovered / all filtered) — serving an empty inventory")
 	}
-	defer func() {
-		for _, b := range bridges {
-			b.close()
-		}
-	}()
+
+	reg := newRegistry(cfg.InstanceID, bridges)
+	// The registry now owns the live bridge set (startup + hot-plugged − unplugged);
+	// closeAll on shutdown tears down whatever is live, not just the startup set.
+	defer reg.closeAll()
 	for _, b := range bridges {
 		go b.run()
 	}
 
-	reg := newRegistry(cfg.InstanceID, bridges)
+	// Hot-plug: poll-based re-enumerate + diff (dep-free, no udev/netlink). Disabled
+	// when the interval is 0 → exactly the original startup-only enumeration.
+	if startRescan(ctx, reg, cfg, enum, open, defaultLine(cfg.Baud)) {
+		log.Printf("hot-plug rescan every %s (0 disables)", cfg.RescanInterval)
+	} else {
+		log.Printf("hot-plug rescan disabled (rescan-interval 0) — startup enumeration only")
+	}
 
 	// mDNS is best-effort: on a routed/Tailscale LAN where multicast can't cross,
 	// PDN falls back to a manual address list — so a registration failure logs
@@ -160,7 +169,7 @@ func run(ctx context.Context, cfg Config, enum Enumerator, open SerialOpener) er
 // opens a bridge per surviving device with a sequential TCP port. A device that
 // fails to open (busy / permission) is logged and skipped rather than aborting
 // the daemon; the rest still come up.
-func buildBridges(cfg Config, enum Enumerator, open SerialOpener) []*Bridge {
+func buildBridges(cfg Config, enum deviceEnumerator, open SerialOpener) []*Bridge {
 	line := defaultLine(cfg.Baud)
 	var bridges []*Bridge
 	next := cfg.BaseTCPPort

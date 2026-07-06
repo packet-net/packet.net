@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 )
 
 // envMap returns an env lookup backed by a map, for pure loadConfig tests.
@@ -299,6 +300,90 @@ func TestLoadConfig_BindAddr(t *testing.T) {
 	}
 	if cfg.BindAddr != "10.0.0.5" {
 		t.Errorf("BindAddr = %q, want 10.0.0.5 (flag beats env)", cfg.BindAddr)
+	}
+}
+
+func TestLoadConfig_RescanInterval_Default(t *testing.T) {
+	cfg, err := loadConfig(envMap(nil), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.RescanInterval.Duration() != 3*time.Second {
+		t.Errorf("default RescanInterval = %s, want 3s", cfg.RescanInterval)
+	}
+}
+
+func TestLoadConfig_RescanInterval_EnvThenFlag(t *testing.T) {
+	// Env overlay parses a Go duration string.
+	cfg, err := loadConfig(envMap(map[string]string{EnvPrefix + "RESCAN_INTERVAL": "10s"}), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.RescanInterval.Duration() != 10*time.Second {
+		t.Errorf("env RescanInterval = %s, want 10s", cfg.RescanInterval)
+	}
+	// Flag beats env.
+	d := 250 * time.Millisecond
+	cfg, err = loadConfig(envMap(map[string]string{EnvPrefix + "RESCAN_INTERVAL": "10s"}), flagOverrides{RescanInterval: &d})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.RescanInterval.Duration() != 250*time.Millisecond {
+		t.Errorf("RescanInterval = %s, want 250ms (flag beats env)", cfg.RescanInterval)
+	}
+}
+
+func TestLoadConfig_RescanInterval_ZeroDisables(t *testing.T) {
+	// A "0" env is a valid value that DISABLES the rescan (startup-only) — it must
+	// override the 3s default, not be treated as unset.
+	cfg, err := loadConfig(envMap(map[string]string{EnvPrefix + "RESCAN_INTERVAL": "0s"}), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.RescanInterval != 0 {
+		t.Errorf("RescanInterval = %s, want 0 (rescan disabled)", cfg.RescanInterval)
+	}
+}
+
+func TestLoadConfig_RescanInterval_JSONStringAndNumber(t *testing.T) {
+	dir := t.TempDir()
+	// Duration STRING form.
+	strPath := filepath.Join(dir, "str.json")
+	if err := os.WriteFile(strPath, []byte(`{"rescanInterval":"5s"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig(envMap(map[string]string{EnvPrefix + "CONFIG": strPath}), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig(string): %v", err)
+	}
+	if cfg.RescanInterval.Duration() != 5*time.Second {
+		t.Errorf("JSON string rescanInterval = %s, want 5s", cfg.RescanInterval)
+	}
+	// Bare NUMBER is interpreted as seconds (2 → 2s), not nanoseconds.
+	numPath := filepath.Join(dir, "num.json")
+	if err := os.WriteFile(numPath, []byte(`{"rescanInterval":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = loadConfig(envMap(map[string]string{EnvPrefix + "CONFIG": numPath}), flagOverrides{})
+	if err != nil {
+		t.Fatalf("loadConfig(number): %v", err)
+	}
+	if cfg.RescanInterval.Duration() != 2*time.Second {
+		t.Errorf("JSON number rescanInterval = %s, want 2s", cfg.RescanInterval)
+	}
+}
+
+func TestLoadConfig_RescanInterval_NegativeRejected(t *testing.T) {
+	neg := -1 * time.Second
+	if _, err := loadConfig(envMap(nil), flagOverrides{RescanInterval: &neg}); err == nil {
+		t.Fatal("want error for a negative rescanInterval, got nil")
+	}
+}
+
+func TestLoadConfig_RescanInterval_BadEnv(t *testing.T) {
+	env := envMap(map[string]string{EnvPrefix + "RESCAN_INTERVAL": "notaduration"})
+	if _, err := loadConfig(env, flagOverrides{}); err == nil {
+		t.Fatal("want error for a non-duration RESCAN_INTERVAL, got nil")
 	}
 }
 
