@@ -67,9 +67,10 @@ public static class PdnMetricsApi
         _ = StartTimestamp;   // touch at startup so the start instant is module-load, not first-scrape
 
         app.MapGet("/metrics", (NodeHostedService host, IConfigProvider config, TimeProvider clock,
-                [FromServices] Packet.Node.Core.Traffic.TrafficLogService? traffic) =>
+                [FromServices] Packet.Node.Core.Traffic.TrafficLogService? traffic,
+                [FromServices] Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt) =>
             {
-                var body = Render(host, config, clock, traffic);
+                var body = Render(host, config, clock, traffic, mqtt);
                 // text/plain; version=0.0.4 is the Prometheus exposition content type a scraper expects.
                 return Results.Text(body, "text/plain; version=0.0.4; charset=utf-8");
             })
@@ -83,7 +84,8 @@ public static class PdnMetricsApi
     /// </summary>
     internal static string Render(
         NodeHostedService host, IConfigProvider config, TimeProvider clock,
-        Packet.Node.Core.Traffic.TrafficLogService? traffic)
+        Packet.Node.Core.Traffic.TrafficLogService? traffic,
+        Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt = null)
     {
         var w = new PrometheusTextWriter();
 
@@ -92,6 +94,7 @@ public static class PdnMetricsApi
         WriteRadioStats(w, RadioReadModels.All(host.Supervisor, config.Current));
         WriteLinkSnr(w, host.Heard);
         WriteForwarding(w, host);
+        WriteMqttStats(w, mqtt);
 
         return w.ToString();
     }
@@ -408,6 +411,36 @@ public static class PdnMetricsApi
         "faulted" => 0,
         _ => -1,   // "unknown", or any radio kind that doesn't track the control-link state
     };
+
+    // ─── MQTT frame-emission bucket (#582 — the kissproxy-compatible emitter's health) ─────────────
+
+    /// <summary>
+    /// The MQTT frame emitter's publish counters + pending-queue gauge, read straight off the live
+    /// <see cref="Packet.Node.Core.Mqtt.MqttFrameEmitter"/> (no second counter store). Counters are
+    /// emitted whenever the emitter service is registered — from zero, so <c>rate()</c> works from
+    /// the first scrape — even while the integration is disabled (everything just stays 0). Absent
+    /// only in a stripped embedder that never registered the emitter. Exposed (internal) so a test
+    /// can format an emitter it drove through a fake sink.
+    /// </summary>
+    internal static void WriteMqttStats(PrometheusTextWriter w, Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt)
+    {
+        if (mqtt is null)
+        {
+            return;
+        }
+
+        w.Help(Ns + "mqtt_published_total", "MQTT messages handed to the broker client by the frame emitter (two per frame: unframed + framed).");
+        w.Type(Ns + "mqtt_published_total", "counter");
+        w.Sample(Ns + "mqtt_published_total", mqtt.PublishedTotal);
+
+        w.Help(Ns + "mqtt_publish_failures_total", "MQTT publish attempts that faulted (frames dropped from the MQTT feed only; the radio path is unaffected).");
+        w.Type(Ns + "mqtt_publish_failures_total", "counter");
+        w.Sample(Ns + "mqtt_publish_failures_total", mqtt.PublishFailuresTotal);
+
+        w.Help(Ns + "mqtt_pending_messages", "Messages queued in the managed MQTT client awaiting the broker (bounded, drop-oldest).");
+        w.Type(Ns + "mqtt_pending_messages", "gauge");
+        w.Sample(Ns + "mqtt_pending_messages", mqtt.PendingMessages);
+    }
 
     // ─── per-partner SNR (the deliberate per-callsign label — see the class remarks + docs) ─────────
 

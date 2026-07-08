@@ -1240,6 +1240,55 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-08 — Node: MQTT emitter hardening ([#582]) + adopt/validation polish ([#586] .NET items)
+
+Two batched arc-review issues, one PR, all .NET-side (fakes-only tests; **no ax25-ts parity surface** — no
+named parse flags or listener changes):
+
+- **[#582] MqttFrameEmitter hardening** (`src/Packet.Node.Core/Mqtt/`):
+  - **Salted client id.** The managed-client id was `{NodeName|MachineName}_pdn` — two image-cloned Pis
+    (both `raspberrypi`, default NodeName) collided, and MQTT brokers disconnect the older session on a
+    client-id collision, so the two nodes kicked each other off every ~5 s and BOTH feeds gapped. Now
+    `{node}_pdn_{suffix}` where `{suffix}` is a stable 8-hex per-machine token (`MachineSuffix`, a 1:1 port
+    of the head-end's `machineSuffix`: SHA-256 over `/etc/machine-id` → D-Bus copy → first non-loopback NIC
+    MAC, domain-tagged, `nomachineid` literal + warn as last resort). The salt is appended **even to an
+    explicit NodeName** — it guards duplicate configured names the same way, and the client id is broker
+    identity only (topics untouched, so kissproxy-migration compat is unaffected). Injectable for tests;
+    parity with Go pinned by literal hash vectors.
+  - **Bounded pending queue.** `ManagedMqttClientOptionsBuilder` set no `MaxPendingMessages` (MQTTnet
+    default `int.MaxValue`), so with the emitter on and the broker down every traced frame grew RAM by two
+    messages, forever. Now `WithMaxPendingMessages(10_000)` + `DropOldestQueuedMessage` overflow (fresh
+    traffic beats stale backlog, matching the telemetry-subscription policy), asserted via the extracted
+    `ManagedMqttPublishSink.BuildOptions`.
+  - **Counters.** `pdn_mqtt_published_total` / `pdn_mqtt_publish_failures_total` (+ a
+    `pdn_mqtt_pending_messages` gauge off the managed client's queue) on `/metrics`, read live off the
+    emitter (no second counter store), zero-emitting from first scrape so `rate()` works.
+- **[#586] adopt/validation polish (.NET items; the head-end bridge-drain item 3 stays open)**:
+  - **Adopt default-id uniquify** (`HeadEndAdoption.BuildCandidate`): a defaulted port id ("2m" / the
+    instance id) that collides with an existing port walks `-2`, `-3`, … instead of 400ing the second
+    same-band adopt. An explicit PortId is honoured verbatim (a collision there stays a validation error).
+  - **Duplicate-MqttInstance warning** — shipped as a **validation-passing logged warning at config
+    load/apply** via the providers' existing `WarnOnConfigQuirks` channel (`NodeConfigWarnings`), NOT a
+    validator error (merging streams may be intentional) and NOT a PortSupervisor touch. Warns on the
+    *effective* label (explicit `MqttInstance`, else the port id) so an explicit label colliding with
+    another port's default is caught too.
+  - **Same-head-end rule** (`PortConfigValidator`): the co-located-pairing rule only checked transport
+    TYPE — a transport on head-end A beside a radio on head-end B validated. Now the two `HeadEndId`s must
+    be equal when both present.
+  - **Unique-device rule** (`NodeConfigValidator`): two bindings of the same `(headEndId, deviceId)` —
+    across ports and across roles (transport/radio) — are rejected; the bridge is single-client and the
+    second dial silently queued.
+  - **Local scan band parity** (`TaitRadioScanner`): the local bus scan dropped
+    `TaitRadioIdentity.Band`; `RadioScanResult` now carries `BandCode`/`AmateurBand` (additive, defaulted)
+    like the remote head-end scan's device rows, so local-attach ports can be band-named too.
+- **Tests** (all fakes, `Category!=HardwareLoop&Category!=Interop`): `MachineSuffixTests` (mirrors
+  `headend/config_test.go` + Go-parity vectors), salted-client-id + counter + pending-gauge additions to
+  `MqttFrameEmitterTests`, `ManagedMqttPublishSinkTests` (queue bound), `MqttMetricsExporterTests`,
+  adopt-uniquify additions to `HeadEndAdoptionTests`, same-head-end + unique-device additions to
+  `HeadEndConfigTests`, `NodeConfigWarningsTests`, `TaitRadioScannerTests` (band mapping).
+
+[#582]: https://github.com/packet-net/packet.net/issues/582
+
 ### 2026-07-08 — Docs catch-up for the split-station arc ([#584])
 
 Closed the confirmed doc drift the 2026-07-08 arc review found ([#584]) — the fast-moving head-end releases

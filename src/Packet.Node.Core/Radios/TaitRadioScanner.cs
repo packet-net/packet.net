@@ -46,13 +46,7 @@ public sealed class TaitRadioScanner : IRadioScanner, IDisposable
                 await foreach (var found in TaitRadioPortDiscovery
                                    .DiscoverAsync(baudRates, cts.Token).ConfigureAwait(false))
                 {
-                    results.Add(new RadioScanResult(
-                        Serial: found.Identity.SerialNumber,
-                        Model: found.Identity.ProductName,
-                        CcdiVersion: found.Identity.CcdiVersion,
-                        Baud: found.BaudRate,
-                        DevicePath: found.Port,
-                        ByIdPath: byId.Resolve(found.Port)));
+                    results.Add(ToResult(found, byId.Resolve(found.Port)));
                 }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -66,6 +60,21 @@ public sealed class TaitRadioScanner : IRadioScanner, IDisposable
             single.Release();
         }
     }
+
+    /// <summary>Map one discovered radio to its scan row, carrying the band split
+    /// (<see cref="TaitRadioIdentity.Band"/>) the remote head-end scan already surfaces — parity so a
+    /// local-attach port can be band-named too (#586). Internal so the mapping is testable with a
+    /// synthetic identity (the discovery itself needs real serial hardware).</summary>
+    internal static RadioScanResult ToResult(TaitDiscoveredRadio found, string? byIdPath)
+        => new(
+            Serial: found.Identity.SerialNumber,
+            Model: found.Identity.ProductName,
+            CcdiVersion: found.Identity.CcdiVersion,
+            Baud: found.BaudRate,
+            DevicePath: found.Port,
+            ByIdPath: byIdPath,
+            BandCode: found.Identity.Band?.Code,
+            AmateurBand: found.Identity.Band?.AmateurBand);
 
     /// <inheritdoc/>
     public void Dispose() => single.Dispose();

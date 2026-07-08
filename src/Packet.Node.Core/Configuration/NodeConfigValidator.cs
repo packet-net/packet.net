@@ -54,6 +54,18 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
                 $"{string.Join(", ", UnresolvedHeadEndReferences(c).Select(r => $"'{r}'"))}. " +
                 "Add a head-end with that id, or fix the binding.");
 
+        // A head-end device is SINGLE-CLIENT: the bridge admits one connection per pipe, so a second
+        // binding of the same (headEndId, deviceId) — whether by another port's transport, another
+        // port's radio, or a port's own transport+radio naming one device — would silently queue
+        // behind the first at bring-up. Reject the collision at config time instead (#586).
+        RuleFor(c => c)
+            .Must(c => DuplicateHeadEndDeviceBindings(c).Count == 0)
+            .WithMessage(c =>
+                "The same head-end device is bound more than once: " +
+                $"{string.Join(", ", DuplicateHeadEndDeviceBindings(c).Select(d => $"'{d}'"))}. " +
+                "A head-end device is single-client — each (headEndId, deviceId) may back only one " +
+                "transport or radio across all ports.");
+
         RuleFor(c => c.Management).NotNull().SetValidator(new ManagementValidator());
 
         // Security: the MCP OAuth authorization server mints access tokens, but a token
@@ -155,6 +167,41 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             }
         }
         return unresolved;
+    }
+
+    /// <summary>Every <c>(headEndId, deviceId)</c> bound more than once across all ports' transports
+    /// and head-end-bound radios, as <c>headEndId/deviceId</c> keys. Empty ⇒ every device has one
+    /// client. Case-insensitive, matching the transport-endpoint uniqueness rule; incomplete bindings
+    /// (a blank half) are skipped — their own validators report those.</summary>
+    private static List<string> DuplicateHeadEndDeviceBindings(NodeConfig c)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var duplicates = new List<string>();
+        foreach (var port in c.Ports)
+        {
+            if (port.Transport is NinoTncTcpTransport t)
+            {
+                Check(t.HeadEndId, t.DeviceId);
+            }
+            if (port.Radio is { IsHeadEndBound: true } radio)
+            {
+                Check(radio.HeadEndId, radio.DeviceId);
+            }
+        }
+        return duplicates;
+
+        void Check(string? headEndId, string? deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(headEndId) || string.IsNullOrWhiteSpace(deviceId))
+            {
+                return;
+            }
+            var key = $"{headEndId}/{deviceId}";
+            if (!seen.Add(key))
+            {
+                duplicates.Add(key);
+            }
+        }
     }
 
     private static bool HaveUniqueAppIds(IReadOnlyList<ApplicationConfig> apps)

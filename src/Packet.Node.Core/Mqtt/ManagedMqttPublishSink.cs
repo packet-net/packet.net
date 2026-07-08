@@ -15,6 +15,13 @@ namespace Packet.Node.Core.Mqtt;
 /// </summary>
 internal sealed class ManagedMqttPublishSink : IMqttPublishSink
 {
+    /// <summary>The bound on the managed client's pending-publish queue. MQTTnet's default is
+    /// <see cref="int.MaxValue"/>, which with the broker down grows RAM without limit (two messages
+    /// per traced frame, forever — #582); 10k messages is hours of typical channel traffic while
+    /// keeping worst-case memory in the tens of MB. Overflow drops the OLDEST queued message —
+    /// matching the emitter's telemetry-subscription policy (fresh traffic beats stale backlog).</summary>
+    internal const int MaxPendingMessages = 10_000;
+
     private readonly IManagedMqttClient client;
 
     private ManagedMqttPublishSink(IManagedMqttClient client) => this.client = client;
@@ -26,7 +33,14 @@ internal sealed class ManagedMqttPublishSink : IMqttPublishSink
     {
         var factory = new MqttFactory();
         var client = factory.CreateManagedMqttClient();
+        await client.StartAsync(BuildOptions(cfg, clientId)).ConfigureAwait(false);
+        return new ManagedMqttPublishSink(client);
+    }
 
+    /// <summary>The managed-client options, split out (internal) so the queue bound + overflow
+    /// strategy can be asserted without starting a client.</summary>
+    internal static ManagedMqttClientOptions BuildOptions(MqttConfig cfg, string clientId)
+    {
         var clientOptions = new MqttClientOptionsBuilder()
             .WithClientId(clientId)
             .WithTcpServer(cfg.BrokerHost, cfg.BrokerPort);
@@ -40,14 +54,16 @@ internal sealed class ManagedMqttPublishSink : IMqttPublishSink
             clientOptions = clientOptions.WithCredentials(cfg.Username, cfg.Password ?? "");
         }
 
-        var managedOptions = new ManagedMqttClientOptionsBuilder()
+        return new ManagedMqttClientOptionsBuilder()
             .WithAutoReconnectDelay(TimeSpan.FromSeconds(5))
+            .WithMaxPendingMessages(MaxPendingMessages)
+            .WithPendingMessagesOverflowStrategy(MQTTnet.Server.MqttPendingMessagesOverflowStrategy.DropOldestQueuedMessage)
             .WithClientOptions(clientOptions.Build())
             .Build();
-
-        await client.StartAsync(managedOptions).ConfigureAwait(false);
-        return new ManagedMqttPublishSink(client);
     }
+
+    /// <inheritdoc/>
+    public long PendingMessageCount => client.PendingApplicationMessagesCount;
 
     public async ValueTask PublishAsync(string topic, byte[] payload, int qos, bool retain, CancellationToken ct)
     {

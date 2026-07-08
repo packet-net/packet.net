@@ -9,7 +9,8 @@ namespace Packet.Node.Core.Api;
 /// </summary>
 /// <param name="TncDeviceId">The NinoTNC device id on the head-end (its <c>nino-tnc-tcp</c> transport).</param>
 /// <param name="RadioDeviceId">The Tait CCDI device id on the head-end (its head-end-bound <c>radio:</c>).</param>
-/// <param name="PortId">The id for the new port. Null defaults to the instance id.</param>
+/// <param name="PortId">The id for the new port. Null defaults to the amateur band (when known) or
+/// the instance id, uniquified against the existing ports (<c>2m</c> taken ⇒ <c>2m-2</c>).</param>
 /// <param name="Mode">NinoTNC modem mode 0..15. Null defaults to 0.</param>
 /// <param name="Enabled">Whether the port comes up immediately. Null defaults to true.</param>
 /// <param name="Address">Optional manual <c>host:port</c> for the head-end's control plane, stored on
@@ -66,10 +67,13 @@ public static class HeadEndAdoption
 
         // The radio's amateur band, when the scan read one, names both the MQTT {instance} label and —
         // absent an explicit port id — the port id itself, so a band-named port ("2m") drops in with no
-        // operator input. Falls back to the instance id when the band is unknown.
+        // operator input. Falls back to the instance id when the band is unknown. A DEFAULT id that
+        // collides with an existing port is uniquified ("2m" taken ⇒ "2m-2", "2m-3", …) so adopting a
+        // second same-band pair doesn't 400 on the duplicate-id rule (#586); an EXPLICIT id is
+        // honoured verbatim — colliding there is an operator mistake the validator should report.
         var band = string.IsNullOrWhiteSpace(request.AmateurBand) ? null : request.AmateurBand!.Trim();
         var portId = !string.IsNullOrWhiteSpace(request.PortId) ? request.PortId!.Trim()
-            : band ?? instanceId;
+            : UniquePortId(current.Ports, band ?? instanceId);
 
         var port = new PortConfig
         {
@@ -95,5 +99,24 @@ public static class HeadEndAdoption
             HeadEnds = headEnds,
             Ports = [.. current.Ports, port],
         };
+    }
+
+    /// <summary>First free id in <c>baseId</c>, <c>baseId-2</c>, <c>baseId-3</c>, … against the
+    /// existing port ids (ordinal, matching the validator's uniqueness rule).</summary>
+    private static string UniquePortId(IReadOnlyList<PortConfig> ports, string baseId)
+    {
+        var taken = new HashSet<string>(ports.Select(p => p.Id), StringComparer.Ordinal);
+        if (!taken.Contains(baseId))
+        {
+            return baseId;
+        }
+        for (int n = 2; ; n++)
+        {
+            var candidate = $"{baseId}-{n}";
+            if (!taken.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 }

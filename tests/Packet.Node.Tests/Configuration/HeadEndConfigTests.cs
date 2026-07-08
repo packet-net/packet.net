@@ -125,6 +125,87 @@ public sealed class HeadEndConfigTests
         Validator.Validate(Config(HeadEndNinoPort("pi", "nino0", radio), Pi)).IsValid.Should().BeFalse();
     }
 
+    // ---- the same-head-end equality rule (#586) --------------------------------------------------
+
+    [Fact]
+    public void A_radio_on_a_different_head_end_from_its_transport_is_invalid()
+    {
+        // Both head-ends declared, both halves complete — but the pair is split across instances,
+        // which can never be co-located hardware. The transport-TYPE rule alone admitted this.
+        var other = new HeadEndConfig { Id = "pi-2", Address = "192.168.1.11:7300" };
+        var radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi-2", DeviceId = "tait0" };
+
+        var result = Validator.Validate(Config(HeadEndNinoPort("pi", "nino0", radio), Pi, other));
+
+        result.IsValid.Should().BeFalse("a modem on head-end A cannot pair with a radio on head-end B");
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("SAME head-end"));
+    }
+
+    [Fact]
+    public void A_radio_on_the_same_head_end_as_its_transport_stays_valid()
+    {
+        var radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi", DeviceId = "tait0" };
+        Validator.Validate(Config(HeadEndNinoPort("pi", "nino0", radio), Pi)).IsValid.Should().BeTrue();
+    }
+
+    // ---- the unique-device rule (#586: a head-end device is single-client) ----------------------
+
+    private static NodeConfig TwoPorts(PortConfig a, PortConfig b, params HeadEndConfig[] headEnds) => new()
+    {
+        Identity = new Identity { Callsign = "M0LTE-1" },
+        Ports = [a, b],
+        HeadEnds = headEnds,
+    };
+
+    private static PortConfig Pair(string id, string tnc, string radio) => new()
+    {
+        Id = id,
+        Transport = new NinoTncTcpTransport { HeadEndId = "pi", DeviceId = tnc, Mode = 6 },
+        Radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi", DeviceId = radio },
+    };
+
+    [Fact]
+    public void Two_ports_binding_the_same_radio_device_are_invalid()
+    {
+        var result = Validator.Validate(TwoPorts(Pair("a", "nino0", "tait0"), Pair("b", "nino1", "tait0"), Pi));
+
+        result.IsValid.Should().BeFalse("the single-client bridge would silently queue the second dial");
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("'pi/tait0'"));
+    }
+
+    [Fact]
+    public void A_transport_and_another_ports_radio_binding_the_same_device_are_invalid()
+    {
+        // The collision is cross-ROLE too: port b's radio names the device port a's transport owns.
+        var result = Validator.Validate(TwoPorts(Pair("a", "dev0", "tait0"), Pair("b", "nino1", "dev0"), Pi));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("'pi/dev0'"));
+    }
+
+    [Fact]
+    public void Distinct_devices_across_ports_stay_valid()
+    {
+        Validator.Validate(TwoPorts(Pair("a", "nino0", "tait0"), Pair("b", "nino1", "tait1"), Pi))
+            .IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_same_device_id_on_different_head_ends_stays_valid()
+    {
+        // Device ids are per-instance (by-path strings recur across identical Pis) — only the
+        // (headEndId, deviceId) PAIR must be unique.
+        var other = new HeadEndConfig { Id = "pi-2", Address = "192.168.1.11:7300" };
+        var b = new PortConfig
+        {
+            Id = "b",
+            Transport = new NinoTncTcpTransport { HeadEndId = "pi-2", DeviceId = "nino0", Mode = 6 },
+            Radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi-2", DeviceId = "tait0" },
+        };
+
+        Validator.Validate(TwoPorts(Pair("a", "nino0", "tait0"), b, Pi, other)).IsValid.Should().BeTrue();
+    }
+
     // ---- head-end fleet validity ---------------------------------------------------------------
 
     [Fact]
