@@ -1,8 +1,12 @@
 # PDN MQTT frame emission (kissproxy-compatible)
 
-**Status:** design (2026-07-05). Goal: PDN emits every KISS/AX.25 frame it sends/receives to an
-MQTT broker in **kissproxy's native wire format**, so PDN can replace kissproxy at a site (e.g.
-`gb7rdg-node`) without losing the downstream `kiss-collector` capture pipeline.
+**Status:** ✅ **shipped** (PR #558 — `MqttFrameEmitter`, default-off; released in **node-v0.28.0**,
+2026-07-05). Emitter hardening (client-id collision between same-hostname nodes, unbounded
+managed-client pending queue while the broker is down) is tracked in
+[#582](https://github.com/packet-net/packet.net/issues/582); the fidelity caveats below are
+**accepted limitations** of the shipped v1, noted inline. Goal: PDN emits every KISS/AX.25 frame it
+sends/receives to an MQTT broker in **kissproxy's native wire format**, so PDN can replace kissproxy
+at a site (e.g. `gb7rdg-node`) without losing the downstream `kiss-collector` capture pipeline.
 
 ## Grounded contract
 
@@ -52,20 +56,24 @@ direct match for the `unframed` payload the collector reads.
 - **MQTTnet** already pinned (`4.3.7.1207`, `Directory.Packages.props`) — a consumer spike used it;
   the publisher is new. Consider a bump to MQTTnet 5 for a product dependency.
 
-## Fidelity caveats (documented, not blocking)
+## Fidelity caveats (accepted limitations of the shipped v1)
+
+These shipped as-is with #558 and are the accepted contract; robustness (as opposed to fidelity)
+gaps in the emitter are tracked separately in
+[#582](https://github.com/packet-net/packet.net/issues/582).
 
 1. `MonitorEvent.Raw` is a **re-encode of the parsed frame**, and `FrameTraced` fires only for
    frames that parsed — so **parse-rejects are invisible** and malformed frames aren't byte-exact.
-   Fine for the collector's parseable-traffic purpose; if byte-exact / unparseable capture is later
-   wanted, add a thin `IAx25Transport` decorator tap (sees exact wire bytes) and hand it the same
-   publisher. (Template: `InboundRadioTap`.)
+   *Accepted*: fine for the collector's parseable-traffic purpose; if byte-exact / unparseable
+   capture is later wanted, add a thin `IAx25Transport` decorator tap (sees exact wire bytes) and
+   hand it the same publisher. (Template: `InboundRadioTap`.)
 2. **AckMode vs DataFrame**: kissproxy keys the `{Cmd}` segment on the KISS command; PDN's
-   AX.25-level tap may not distinguish the G8BPQ ACKMODE wrapper. v1 emits `DataFrame` for data
-   traffic (the bulk of the 137 k); AckMode fidelity would need the KISS-level tap or the existing
-   ACKMODE/`ack_timing` path.
+   AX.25-level tap does not distinguish the G8BPQ ACKMODE wrapper. *Accepted*: v1 emits `DataFrame`
+   for data traffic (the bulk of the 137 k); AckMode fidelity would need the KISS-level tap or the
+   existing ACKMODE/`ack_timing` path.
 3. PDN can attach **RSSI/SNR** per RX frame (richer than kissproxy) — but **not inside the
-   kissproxy topics** (would break the collector's parser). If wanted, emit it on a separate
-   additive topic / JSON envelope, leaving the kissproxy topics byte-identical.
+   kissproxy topics** (would break the collector's parser). *Not implemented*: if wanted, emit it
+   on a separate additive topic / JSON envelope, leaving the kissproxy topics byte-identical.
 
 ## Decisions (Tom, 2026-07-05)
 

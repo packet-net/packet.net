@@ -1240,6 +1240,40 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-08 — Docs catch-up for the split-station arc ([#584])
+
+Closed the confirmed doc drift the 2026-07-08 arc review found ([#584]) — the fast-moving head-end releases
+(0.1.1→0.1.3) had outrun the operator/release/design docs. Docs-only (plus two doc-comments):
+
+- **`operating/08-split-station-head-end.md`** — the big one: the troubleshooting identity guidance was
+  **inverted** post-[#574]/[#575] (it still said "prefer by-id as the identity key"; corrected to **by-path IS
+  the device id** — the physical USB socket — by-id informational, different-socket move ⇒ new id ⇒ re-adopt);
+  added a **Hot-plug** section + the `rescan-interval` config row (default 3s, add/remove without restart,
+  a re-plugged device may come back on a different TCP port — PDN re-resolves from the inventory); first
+  operator coverage of **keyup pairing** (the admin `pair-by-keyup` action — briefly keys each free NinoTNC and
+  watches the Taits' PTT for the physical map; RF caveat; API-only) and **band naming** (band split read off the
+  Tait product code; adopt defaults port id + MQTT `{instance}` label to the band); the **".deb upgrade restarts
+  the daemon and drops all bridges"** caveat (postinst `try-restart`; adopted ports reconnect automatically —
+  data + radio channels self-heal); example `deviceId`s fixed to the by-path shape; and the security note now
+  frames pinning `address` in `headEnds:` as an **integrity** measure (mDNS trusts an advertised `instanceId`;
+  a spoofer resolves cleanly while the real Pi is quiet) — fixed installs pin **address + instanceId**.
+- **`docs/releasing.md`** — Step 2 asset count 4→**8** (3 `.deb` + 3 self-contained `.tar.gz` + `SHA256SUMS` +
+  `latest.json`); quick-ref NuGet count 6→**14** (verified against the `publish-libs.yml` matrix; snapshot list
+  gained `Packet.Tune.Core`); the previously-undocumented **Docker leg** added as Step 2a (`publish-docker.yml`
+  on the same `node-v*` tag → multi-arch GHCR image, decoupled from the `.deb` release); the stale
+  "packet.net is **private**" line corrected to **public** ([#413]).
+- **`docs/research/pdn-mqtt-frame-emission.md`** — status design→**shipped** (PR [#558], node-v0.28.0); the
+  fidelity caveats re-labelled **accepted limitations** with the emitter-hardening tracker ([#582]) linked.
+- **`docs/research/split-station-rf-headend.md`** — the "Multiple instances" keying corrected from
+  `(instance-id, stable-serial)` to **`(instance-id, device-id)`** with device-id = the by-path socket id
+  (post-[#575]); a **Post-arc follow-ons** subsection appended to the stage plan (0.1.2 `.deb` packaging,
+  0.1.3 hot-plug + by-path ids, 0.1.4-pending [#576]/[#577] resilience in flight).
+- **`src/Packet.Node.Core/HeadEnd/HeadEndInventory.cs`** — the two doc-comments still describing by-id-first
+  ids corrected to by-path-primary (comment-only; build green).
+
+Closes [#584]. The stale-open tracker items the issue also lists (#193/#192/#363) are decisions for Tom, not
+doc drift — left open.
+
 ### 2026-07-06 — RELEASE: headend-v0.1.3 (hot-plug + by-path device ids)
 
 Cut `headend-v0.1.3` carrying two head-end improvements, both **hardware-validated on the 2×NinoTNC + 2×Tait bench**:

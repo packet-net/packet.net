@@ -24,7 +24,11 @@ public sealed record HeadEndInventory
 /// </summary>
 public sealed record HeadEndPortInfo
 {
-    /// <summary>Stable device id (the by-id basename) — the <c>deviceId</c> a port config binds to.</summary>
+    /// <summary>Stable device id — the <c>deviceId</c> a port config binds to. Since headend-v0.1.3
+    /// (#575) this is the <c>/dev/serial/by-path</c> basename (the physical USB socket — unique by
+    /// construction, stable across reboot/same-socket replug; a device moved to a different socket
+    /// gets a new id), with the kernel <c>/dev</c> basename as an unstable last resort. It is
+    /// never derived from by-id (see <see cref="ById"/>).</summary>
     public string Id { get; init; } = "";
 
     /// <summary>The device's <c>/dev</c> path on the head-end (diagnostic only; PDN never opens it).</summary>
@@ -36,7 +40,10 @@ public sealed record HeadEndPortInfo
     /// <summary>USB product id hint, for Stage-3b identification heuristics.</summary>
     public string UsbPid { get; init; } = "";
 
-    /// <summary>The <c>/dev/serial/by-id</c> path, if any (the stable-id source).</summary>
+    /// <summary>The <c>/dev/serial/by-id</c> path, if any. Informational only (a device
+    /// serial/model hint for identification) — NOT the id source: a shared, non-unique USB serial
+    /// makes by-id collide and flip between sibling devices on replug (#574), which is why
+    /// <see cref="Id"/> is by-path-derived instead.</summary>
     public string ById { get; init; } = "";
 
     /// <summary>The TCP port on the head-end host carrying this device's raw transparent byte pipe.</summary>

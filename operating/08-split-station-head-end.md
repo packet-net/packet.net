@@ -92,6 +92,17 @@ systemctl status packetnet-headend
 curl -s http://localhost:7300/inventory
 ```
 
+> [!WARNING]
+> **Upgrading the `.deb` restarts the daemon and drops every bridge.** The
+> package's postinst runs `systemctl try-restart` on upgrade (a running unit
+> must be bounced or the new binary never loads), which disconnects every raw
+> pipe — so every adopted port on the PDN side loses its modem *and* radio
+> sockets at once. Adopted ports **reconnect automatically**: PDN's per-socket
+> supervision self-heals both the data channel (`nino-tnc-tcp`) and the
+> radio-control channel (`tait-ccdi`) once the daemon is back, re-resolving the
+> current TCP ports from the inventory. Expect a brief outage on every port the
+> head-end hosts; time upgrades accordingly.
+
 **Option B — manual binary copy.** For a non-`.deb` system, or to run straight
 from a `make` build:
 
@@ -136,6 +147,7 @@ The other settings you may touch (all in the config table in
 | Instance id | `--instance` | `{hostname}-{hash}` | **Pin it** (above). |
 | HTTP API port | `--http-port` | `7300` | Where PDN reads the inventory. |
 | Base bridge port | `--base-tcp-port` | `7301` | Bridge ports are allocated **sequentially** from here (`7301`, `7302`, …) in inventory order. |
+| Hot-plug rescan interval | `--rescan-interval` | `3s` | How often the daemon re-enumerates to pick up plugged/unplugged devices at runtime (see [Hot-plug](#hot-plug)). `0` disables → startup-only enumeration. |
 | Allow / Deny globs | `--allow` / `--deny` | `["*"]` / `[]` | Shell globs over each device's `/dev` **and** by-id basename — bridge only some devices (e.g. `--allow 'usb-Nino*'`). |
 | Bind address | `--bind-addr` | *(empty = all interfaces)* | Restrict every listener to one trusted address (a Tailscale `100.x.y.z`). |
 
@@ -145,6 +157,16 @@ The other settings you may touch (all in the config table in
 > **`--bind-addr`** to its address on the trusted interface: that fences both the
 > HTTP API and every raw bridge port onto that one address. See
 > [`headend/README.md` § Restricting the listen interface](../headend/README.md#restricting-the-listen-interface).
+>
+> The trust runs the other way too: **mDNS discovery trusts whatever `instanceId`
+> is advertised.** Anything on the broadcast domain can advertise
+> `_pdnhead._tcp` claiming a real instance's id — and if the genuine Pi is quiet
+> at that moment (powered off, rebooting), the impostor resolves cleanly and PDN
+> would dial *its* pipes. Pinning an explicit `address` on the PDN side
+> (`headEnds:` — see [the config way](#attach-from-pdn--the-config-way)) bypasses
+> mDNS resolution entirely, so it is an **integrity measure**, not just a
+> reachability fallback for routed networks. **For a fixed install, pin both**:
+> the `instanceId` on the head-end and the `address` in PDN's `headEnds:` list.
 
 ## Attach from PDN — the web way
 
@@ -193,6 +215,42 @@ Adopting is **operate-scope** gated — a read-only login sees the pairing but t
 Once you adopt, the new port comes up just like a local one — go
 [see the link](02-see-your-link-quality.md).
 
+## Band naming and keyup pairing
+
+Two things the scan/adopt flow reads off the hardware itself, so you don't have
+to type them:
+
+**Band naming.** A Tait's *tuned frequency* isn't readable over CCDI, but its
+**band split is**: the scan reads the product code (the `RADIO_VERSIONS` record
+`[00]`, e.g. `TMAB12-B100_0201`) and maps the designator after the first `-`
+(`B1` here) to the band — `A4` = 4 m, `B1` = 2 m, `H5`/`H6`/`H7` = 70 cm. When
+you adopt, the amateur band (when known) **defaults the new port's id** (unless
+you chose one in Options) **and its MQTT `{instance}` label** — so a band-named
+port (`2m`) drops straight into an existing kissproxy/`kiss-collector` pipeline
+with no operator input.
+
+**Keyup pairing.** The passive scan can only *guess* which modem is cabled to
+which radio (the guess is safe only when a head-end has exactly one free modem
+and one free radio — the auto-adopt case). For the ambiguous case there is an
+**admin** action that discovers the physical map as ground truth:
+
+```
+POST /api/v1/radios/headends/{instanceId}/pair-by-keyup
+```
+
+It **briefly keys each free NinoTNC in turn** — transmitting a short frame
+through the raw pipe, which asserts the cabled radio's PTT — while watching
+every free Tait's CCDI PROGRESS stream for the PTT edge. The Tait that reports
+transmit is that modem's physical pair. A keyup that fires no radio is reported
+unpaired; one that fires more than one is flagged ambiguous, never guessed.
+
+> [!WARNING]
+> **Keyup pairing transmits on-air.** It keys every free modem's radio,
+> briefly, one at a time. That's why it is admin-scope, explicitly
+> operator-initiated, and never folded into the passive scan — run it only on
+> frequencies you are licensed and clear to key. The response carries the same
+> RF caveat. (It's API-only today — there is no web-UI button.)
+
 ## Attach from PDN — the config way
 
 If you drive PDN by YAML/API rather than the UI, you declare the fleet and the
@@ -221,17 +279,30 @@ ports:
     transport:
       kind: nino-tnc-tcp          # a NinoTNC bridged by the head-end (not local serial)
       headEndId: shack-north      # which head-end
-      deviceId: usb-0             # the NinoTNC's inventory id on that head-end
+      deviceId: platform-xhci-hcd.1-usb-0:1:1.0         # the NinoTNC's inventory id on that head-end
       mode: 6                     # NinoTNC modem mode
     radio:
       kind: tait-ccdi             # the co-located radio's CCDI control channel
       headEndId: shack-north      # SAME instance — a modem+radio pair is always co-located
-      deviceId: usb-1             # the Tait's inventory id on that head-end
+      deviceId: platform-xhci-hcd.1-usb-0:2:1.0-port0   # the Tait's inventory id on that head-end
       baud: 28800                 # CCDI control-channel baud (Tait default)
 ```
 
 The `deviceId`s are the stable inventory ids the head-end reports (its
-`GET /inventory` — the same ids the web screen shows). Validation enforces the
+`GET /inventory` — the same ids the web screen shows). Since `headend-v0.1.3`
+the id is the **`/dev/serial/by-path` basename** — it names the **physical USB
+socket** the device is plugged into, so it is unique by construction and stable
+across reboots and same-socket replugs. Two consequences worth knowing:
+
+- **Moving a device to a different USB socket changes its id** (the id names
+  the socket, not the device) — a physical reconfiguration, so PDN treats it as
+  a new device: **re-adopt it** (or update the `deviceId` in config).
+- The `/dev/serial/by-id` string is **informational only** (a serial/model hint
+  in the inventory's `byId` field) — it is *not* the identity key, because
+  shared USB serials make it collide (see
+  [`headend/README.md` § Device identity](../headend/README.md#device-identity--stability)).
+
+Validation enforces the
 rules the UI enforces for you: every `headEndId` a port references must be declared
 in `headEnds:`, and a head-end-bound radio must pair with the co-located
 `nino-tnc-tcp` transport on the **same** instance.
@@ -240,6 +311,31 @@ in `headEnds:`, and a head-end-bound radio must pair with the co-located
 > Because PDN binds by `(headEndId, deviceId)` and resolves the id to a current
 > address at bring-up, a head-end that reboots onto a new DHCP address **doesn't
 > orphan** these port configs — as long as its `instanceId` stayed the same.
+
+## Hot-plug
+
+You don't have to restart the daemon to change the hardware. Every
+`rescan-interval` (default **3s**) the head-end re-enumerates its serial
+devices and diffs the result against the live bridge set:
+
+- **Plug a device in** → it's bridged, gets a TCP port, and appears in the
+  inventory within a few seconds (`bridge added …` in the journal). Rescan the
+  Head-ends screen (or re-poll `/inventory`) and it's there to adopt.
+- **Unplug a device** → its bridge closes, its TCP port is freed, and it drops
+  from the inventory (`bridge removed …`).
+- **Everything else is untouched** — an unchanged device's bridge and any
+  connected client keep running undisturbed; the rescan only acts on the delta.
+
+**A re-plugged device may come back on a different TCP port** (its old port may
+have been reused in the meantime). That's fine: PDN binds by
+`(instanceId, deviceId)` — never by TCP port — and re-resolves the current port
+from the inventory at bring-up, so a reconnecting adopted port self-heals. A
+**same-socket** replug keeps the device id; moving it to a **different** USB
+socket gives it a new id (see [the config way](#attach-from-pdn--the-config-way))
+— re-adopt it.
+
+Set `--rescan-interval 0` to disable the poll entirely (startup-only
+enumeration). Details: [`headend/README.md` § Hot-plug](../headend/README.md#hot-plug).
 
 ## Troubleshooting
 
@@ -259,8 +355,15 @@ in `headEnds:`, and a head-end-bound radio must pair with the co-located
   doesn't answer at the inventory baud triggers a **baud sweep** — PDN re-clocks and
   re-queries `MODEL` across the standard CCDI rates until it gets a checksummed
   reply. If a device still won't identify, confirm it's actually a NinoTNC or a Tait
-  in CCDI mode, and prefer stable **`/dev/serial/by-id`** devices on the Pi so the
-  by-id string is a reliable identity key.
+  in CCDI mode.
+- **A port stopped binding after you re-cabled the Pi.** The device id **is the
+  physical USB socket** (the `/dev/serial/by-path` basename) — moving a device to
+  a different socket gives it a **new id**, so the old binding no longer matches:
+  re-adopt it (or update the port's `deviceId`). A same-socket replug and a reboot
+  keep the id. The `/dev/serial/by-id` string is informational only — it is *not*
+  the identity key (shared USB serials make it collide and flip between siblings).
+  If the head-end logs an **unstable id** warning (no by-path link at all), install
+  the standard `60-serial.rules` udev rules on the Pi.
 - **A device is stuck as "in use" and won't re-probe.** The head-end is
   **one-client-per-pipe**: a device already bound to a configured PDN port holds the
   socket, so it isn't re-probed or offered for adoption. Remove/disable the port
