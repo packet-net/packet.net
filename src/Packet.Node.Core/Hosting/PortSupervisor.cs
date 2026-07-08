@@ -760,15 +760,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // split-station head-end bounce or re-address — the reconnect re-resolves the inventory from
         // the LIVE head-end fleet, so a moved head-end's new tcpPort is picked up). The Stage-1 TCP
         // IO faults on half-open (read-idle), which is what ends the stream and triggers this.
+        ITransportLinkState? linkState = null;
         if (port.Transport is KissTcpTransport or NinoTncTcpTransport)
         {
-            transport = new ReconnectingKissModem(
+            var reconnectingModem = new ReconnectingKissModem(
                 transport,
                 token => transportFactory.CreateAsync(
                     port.Transport, timeProvider, BuildHeadEndResolver(), token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
                 timeProvider);
+            transport = reconnectingModem;
+            // Captured before the pacing/tagging decorators hide it (like ninoTnc above): the
+            // metrics exporter reads IsReconnecting off the RunningPort (#583).
+            linkState = reconnectingModem;
         }
 
         // ACKMODE pacing (opt-in, default-off): when this port's kiss.ackMode is set,
@@ -948,6 +953,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             NinoTnc = ninoTnc,
             Radio = radio,
             RadioStatus = radioStatus,
+            LinkState = linkState,
             Listener = listener,
             Started = true,
         };
@@ -1250,6 +1256,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     NinoTnc = running.NinoTnc,
                     Radio = running.Radio,
                     RadioStatus = running.RadioStatus,
+                    LinkState = running.LinkState,
                     Listener = running.Listener,
                     Started = running.Started,
                 };

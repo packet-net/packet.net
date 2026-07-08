@@ -60,15 +60,17 @@ public static class PdnRadiosApi
         // mDNS), reach through each free device to identify + baud-lock it, and propose the matched
         // TNC↔radio pairs — plus any duplicate-instance-id conflicts. Read-scope: it opens remote
         // pipes transiently but mutates nothing. Absent scanner (stripped embedder) ⇒ empty scan.
+        // Each instance is enriched with the background health poller's live view (#583 —
+        // reachableNow/lastSeen, an in-memory join, never a probe); absent monitor ⇒ fields null.
         v1.MapGet("/radios/headends",
-            async ([FromServices] IHeadEndRadioScanner? scanner, IConfigProvider config, CancellationToken ct) =>
+            async ([FromServices] IHeadEndRadioScanner? scanner,
+                [FromServices] Packet.Node.Core.HeadEnd.HeadEndHealthMonitor? health,
+                IConfigProvider config, CancellationToken ct) =>
         {
-            if (scanner is null)
-            {
-                return Results.Ok(new HeadEndScan([], []));
-            }
-            var scan = await scanner.ScanAsync(config.Current, ct).ConfigureAwait(false);
-            return Results.Ok(scan);
+            var scan = scanner is null
+                ? new HeadEndScan([], [])
+                : await scanner.ScanAsync(config.Current, ct).ConfigureAwait(false);
+            return Results.Ok(HeadEndScanEnrichment.WithLiveHealth(scan, health?.Snapshot()));
         });
 
         // Adopt a chosen head-end pairing: create ONE matched port (a nino-tnc-tcp transport + a

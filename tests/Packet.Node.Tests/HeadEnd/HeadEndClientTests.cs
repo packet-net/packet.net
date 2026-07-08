@@ -84,4 +84,43 @@ public sealed class HeadEndClientTests
         (await ClientOver(new StubHeadEndHandler(new HeadEndInventory(), healthy: false)).HealthAsync())
             .Should().BeFalse();
     }
+
+    [Fact]
+    public async Task GetStatusAsync_parses_the_instance_id_bridge_count_and_per_bridge_state()
+    {
+        var handler = new StubHeadEndHandler(new HeadEndInventory())
+        {
+            Status = () => new HeadEndStatus
+            {
+                InstanceId = "pi-shack",
+                BridgeCount = 2,
+                Bridges =
+                [
+                    new HeadEndBridgeStatus { Id = "nino0", TcpPort = 8001, ClientConnected = true },
+                    new HeadEndBridgeStatus { Id = "tait0", TcpPort = 8002, ClientConnected = false },
+                ],
+            },
+        };
+
+        var status = await ClientOver(handler).GetStatusAsync();
+
+        status.InstanceId.Should().Be("pi-shack");
+        status.BridgeCount.Should().Be(2);
+        status.Bridges.Should().HaveCount(2);
+        status.Bridges[0].Id.Should().Be("nino0");
+        status.Bridges[0].ClientConnected.Should().BeTrue();
+        status.Bridges[1].TcpPort.Should().Be(8002);
+        status.Bridges[1].ClientConnected.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_surfaces_a_404_from_a_pre_statusz_daemon_as_NotFound()
+    {
+        // Status left null → the stub 404s /statusz like a ≤0.1.3 daemon. The health poller keys
+        // its healthz fallback off exactly this StatusCode.
+        var act = () => ClientOver(new StubHeadEndHandler(new HeadEndInventory())).GetStatusAsync();
+
+        (await act.Should().ThrowAsync<HttpRequestException>())
+            .Which.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
+    }
 }

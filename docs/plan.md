@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-08
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-08 — **Head-end fleet observability, .NET half (#583)** — the node now watches its head-end fleet instead of inferring it: a background `HeadEndHealthMonitor` (`BackgroundService`, ~30 s) polls every configured/referenced head-end's `GET /statusz` (#587's Go half; `GET /healthz` fallback for pre-0.1.4 daemons) — config-else-mDNS address resolution, transition-only logging (one WARNING per outage, events 5301/5302), self-gating on a head-end-less node. Feeds a new `pdn_headend_*` metrics bucket (`reachable`/`devices`/`poll_failures_total`, `instance`-labelled) + a `pdn_port_transport_reconnecting{port}` gauge off a new `ITransportLinkState` seam on `ReconnectingKissModem` (the honest counterpart to `pdn_port_up`, which reads 1 through a far-end bounce), and `GET /api/v1/radios/headends` instances gain `reachableNow`/`lastSeen` from the in-memory snapshot (never probed on the request path). Closes #583 (both halves done). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-end radio-integration resilience cluster (#576/#578/#580/#581)** — the 2026-07-08 arc review's critical findings fixed in one PR: reconnect supervision for the head-end-bound Tait CCDI control channel (a stable `ReconnectingRadioControl` facade — a head-end restart no longer permanently degrades radio control), `MarkFaulted` clears the latched carrier-sense + a stale-busy re-validation probe, the open-time re-clock uses the CONFIGURED baud, bounded head-end bring-up retry, a legacy by-id → by-path device-id fallback, a NinoTNC GETVER keep-alive that stops the nino-tnc-tcp 5-min idle churn, and scan↔keyup-pairing single-flight. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: by-path is the primary device id (shared-serial by-id flip fix, #574)** — the Go head-end (`headend/`) now derives every device's stable id from `/dev/serial/by-path` (the physical USB socket → unique by construction, can't collide), with the `/dev` basename as the sole unstable last resort; `/dev/serial/by-id` is dropped as an id source and kept only as the informational `byId` field (device serial/model + allow/deny match key). Fixes #574: two CP2102 Tait CCDI dongles share USB serial `0001`, so udev makes a single shared by-id symlink and can **flip** it to a hot-replugged sibling — under the old by-id-first chain (#569) the returned device then enumerated with the same id as the still-running sibling's bridge, so the rescan diff treated it as already-bridged and dropped it. Now both dongles get distinct, stable by-path ids regardless of which holds the shared by-id, so the flip is irrelevant. `idSource` values become `by-path` | `dev` (never `by-id`). Consequence: moving a device to a **different** USB port changes its id (a physical reconfiguration → re-adopt); same-port replug + reboot keep it. Plus a rescan **cross-pass id-collision guard** (belt-and-suspenders): a newly-enumerated device whose id equals a live bridge's is disambiguated (append a by-path/dev discriminator, like the within-pass `dedupeIDs`) and added, never dropped or mis-bound. Go fakes-only tests (fake /dev+/sys tree; the shared-serial both-by-path case + the by-id **flip** across two enumerations + by-path-absent → unstable `/dev` + the cross-pass guard); `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Supersedes #569's by-id-first chain; closes #574. Ships in `headend-v0.1.3` (with #572; release is the orchestrator's post-rig step). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: hot-plug support (poll-based re-enumerate + diff, #572)** — the Go head-end (`headend/`) now adds/removes device bridges at runtime without a restart. A dep-free poll (no udev/netlink) re-enumerates every `RescanInterval` (flag `--rescan-interval` / env `PACKETNET_HEADEND_RESCAN_INTERVAL` / JSON `rescanInterval`; **default 3s**, **`0` disables** → startup-only, no regression) and diffs against the live bridge set keyed by device id **and** resolved kernel path: new device → `newBridge` on the lowest free TCP port ≥ base + registry add + `bridge added` (transient open failure warned once, retried); gone device → `Bridge.Close` (listener + client + serial) + port freed + `bridge removed`; existing device + its connected client left **untouched** (diff acts only on the delta). Registry is now mutex-guarded (`/inventory` reflects the live set); `Bridge.close()`→idempotent `Close()` over a done-channel. Go fakes-only tests (scripted enumerator + fake opener) cover appear/disappear/untouched/failed-open-retry-warn-once/`0`-disabled; `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Ships in `headend-v0.1.3` (release is the orchestrator's post-rig step). Closes #572. See §17](#17-amendment-log)
@@ -1240,6 +1241,48 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-08 — Head-end fleet observability, .NET half ([#583])
+
+The node half of [#583] (the Go half — `GET /statusz` + systemd `WatchdogSec` — shipped in #587). Before this,
+PDN had no runtime visibility of its head-end fleet: `HeadEndClient.HealthAsync` had zero callers, no
+`pdn_headend_*` metric family existed, and `pdn_port_up` read "up" while `ReconnectingKissModem` was quietly
+re-dialling a dead head-end.
+
+- **Background fleet health poller** — new `HeadEndHealthMonitor : BackgroundService`
+  (`src/Packet.Node.Core/HeadEnd/`), registered unconditionally in `Program.cs` but **self-gating**: each ~30 s
+  cycle re-reads the live config and polls the union of declared head-ends (`NodeConfig.HeadEnds`) and head-ends
+  referenced by a port binding — a node with no head-ends never browses or dials anything, and a runtime adopt
+  starts coverage on the next cycle. Address resolution is the standard config-else-mDNS rule (one bounded browse
+  per cycle, only when some instance lacks a pinned address; a duplicate-id clash resolves to "unreachable",
+  never a guess). The probe is `GET /statusz` (new `HeadEndClient.GetStatusAsync` + `HeadEndStatus` DTOs) with a
+  `GET /healthz` fallback on 404 (pre-0.1.4 daemon — reachable, bridge shape unknown). Per instance it tracks:
+  reachable, bridge count + per-bridge `clientConnected` (last-known-good across an outage), last-seen,
+  consecutive failures, cumulative failure count. **Transition-only logging** (events 5301 WARNING / 5302 Info —
+  the 5101/5102 convention): one warning per outage, never one per poll.
+- **Metrics** (`PdnMetricsApi`, same bucket pattern as #582's MQTT stats): `pdn_headend_reachable{instance}`,
+  `pdn_headend_devices{instance}` (omitted while unreachable / on a pre-statusz daemon — absent sample, never a
+  stale count), `pdn_headend_poll_failures_total{instance}` (always emitted from 0 so `rate()` works). Plus
+  `pdn_port_transport_reconnecting{port}`: `ReconnectingKissModem` now exposes its link state through a new
+  public `ITransportLinkState` seam (a volatile flag flipped exactly at the 5101/5102 transitions), captured
+  pre-decorator on `RunningPort.LinkState` (the `NinoTnc` capture pattern) — emitted for reconnect-supervised
+  (kiss-tcp / nino-tnc-tcp) ports only. Documented in `docs/observability.md` (including the
+  `instance`-vs-scrape-label caveat).
+- **API surfacing (light)** — `GET /api/v1/radios/headends` instances gain nullable `reachableNow` / `lastSeen`
+  (`HeadEndInstanceScan`, instance-level fields only), folded in from the monitor's in-memory snapshot by
+  `HeadEndScanEnrichment.WithLiveHealth` — **no probing on the request path**; null = "no live data" (monitor
+  absent or first cycle pending). The UI's Head-ends reachable badge can now reflect live state (UI itself is a
+  sibling's; API only here).
+- **Tests (fakes only):** 19 new across `Packet.Node.Tests` — the poller driven through its `PollOnceAsync` seam
+  over the stub head-end control plane (statusz shape, healthz fallback, failure/recovery counters, transition-
+  only logging, self-gate no-polls/no-browses, pinned-never-browses vs mDNS-resolve, unresolvable-counts-as-down,
+  port-referenced union, config-prune), the two exporter buckets over synthetic snapshots (absent-when-empty,
+  devices-gauge omission rules, counter-from-zero), the GET enrichment join, `GetStatusAsync` parse + 404, and
+  `IsReconnecting` observed true mid-re-dial. No parser/listener/parity surface — **no ax25-ts leg**.
+
+Closes [#583] — both halves (Go #587 + this) done.
+
+[#583]: https://github.com/packet-net/packet.net/issues/583
 
 ### 2026-07-08 — Head-end radio-integration resilience cluster ([#576], [#578], [#580], [#581])
 

@@ -70,6 +70,15 @@ public sealed class RunningPort : IAsyncDisposable
     /// </summary>
     public NinoTncSerialPort? NinoTnc { get; init; }
 
+    /// <summary>
+    /// The reconnect decorator's live link state (<c>IsReconnecting</c>) when this port's transport
+    /// chain contains one (kiss-tcp / nino-tnc-tcp ports), captured before later decorators hide it
+    /// — like <see cref="NinoTnc"/>. Null for a transport with no reconnect supervision (local
+    /// serial, AXUDP). Feeds <c>pdn_port_transport_reconnecting{port}</c> (#583); <b>not owned
+    /// here</b> — it IS (part of) the modem chain, which owns its own disposal.
+    /// </summary>
+    public Transports.ITransportLinkState? LinkState { get; init; }
+
     /// <summary>Whether the port reached a started state. A port whose transport
     /// failed to open is recorded as faulted (not started) so the reconcile can
     /// retry it on the next config change without disrupting healthy ports.</summary>

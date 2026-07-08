@@ -151,6 +151,19 @@ builder.Services.AddSingleton<Packet.Node.Core.Radios.IHeadEndRadioScanner>(sp =
         timeProvider: sp.GetService<TimeProvider>(),
         loggerFactory: sp.GetService<ILoggerFactory>()));
 
+// Head-end fleet health poller (#583): a ~30 s background GET /statusz (healthz fallback) against
+// every configured/referenced head-end, feeding the pdn_headend_* metrics bucket and the
+// reachableNow/lastSeen enrichment on GET /api/v1/radios/headends. Registered unconditionally but
+// self-gating: each cycle re-reads the live config, so a node with no head-ends never browses or
+// dials anything, and a runtime adopt starts coverage on the next cycle without a restart.
+builder.Services.AddSingleton(sp => new Packet.Node.Core.HeadEnd.HeadEndHealthMonitor(
+    sp.GetRequiredService<IConfigProvider>(),
+    sp.GetRequiredService<Packet.Node.Core.HeadEnd.IHeadEndDiscovery>(),
+    clientFactory: null,
+    timeProvider: sp.GetService<TimeProvider>(),
+    loggerFactory: sp.GetService<ILoggerFactory>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.HeadEnd.HeadEndHealthMonitor>());
+
 // Keyup pairing (POST /api/v1/radios/headends/{instanceId}/pair-by-keyup, operate-scope): the
 // operator-initiated RF action that discovers the PHYSICAL modem↔radio map by briefly keying each free
 // NinoTNC and watching which co-located Tait reports its PTT — ground truth for the co-location pair.
