@@ -75,7 +75,8 @@ type Config struct {
 	// auth-less-by-design head-end off untrusted networks. See listenAddr.
 	BindAddr string `json:"bindAddr"`
 
-	// HTTPPort is the machine API listener (inventory + line-control + healthz).
+	// HTTPPort is the machine API listener (inventory + line-control + healthz
+	// + statusz).
 	HTTPPort int `json:"httpPort"`
 
 	// BaseTCPPort is the first raw-serial bridge port; devices are allocated

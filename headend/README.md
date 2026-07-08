@@ -27,9 +27,13 @@ Design + rationale: [`docs/research/split-station-rf-headend.md`](../docs/resear
 2. **Bridges** each device: opens the serial port and listens on its own TCP
    port, pumping bytes bidirectionally and transparently (no framing, no
    escaping — `0xC0`/`0xFF` pass straight through). One client at a time per
-   device; clean re-accept on disconnect.
+   device; clean re-accept on disconnect. On each new client connection the
+   bridge **flushes stale serial input** — bytes the device emitted while no
+   client was attached — so a fresh KISS/CCDI session never starts mid-garbage
+   (the flush is instantaneous, `tcflush`-style: bytes arriving after the
+   connect are untouched).
 3. Serves an **HTTP machine API** (JSON, no UI) — inventory, line-control,
-   health.
+   health, status.
 4. **Advertises** over mDNS so PDN can discover the fleet and re-find an instance
    across IP changes.
 5. **Hot-plugs**: a periodic re-enumerate + diff adds a bridge for a device
@@ -52,6 +56,17 @@ sudo systemctl enable --now packetnet-headend
 The unit runs as a `DynamicUser` in the `dialout` group (least-privilege access
 to `/dev/tty{USB,ACM}*`). If your distro gates serial access on a different group
 (e.g. `uucp`), adjust `SupplementaryGroups=`.
+
+The unit is `Type=notify` with `WatchdogSec=30`: the daemon signals `READY=1`
+once its listeners are up and heartbeats `WATCHDOG=1` every 15 s (a tiny
+hand-rolled `sd_notify(3)` writer, no dependency), so systemd restarts a hung
+daemon. Both are no-ops outside systemd (`NOTIFY_SOCKET` unset). The sandbox's
+`RestrictAddressFamilies` must keep **`AF_NETLINK`** (mDNS registration
+enumerates interfaces via a netlink socket — dropping it silently breaks
+zero-config discovery, [#577]) and **`AF_UNIX`** (the sd_notify datagrams —
+dropping it hangs a `Type=notify` start).
+
+[#577]: https://github.com/packet-net/packet.net/issues/577
 
 ## Configuration
 
@@ -364,7 +379,33 @@ Errors: `404` unknown `id`; `400` missing/invalid `baud`, or invalid
 
 ### `GET /healthz`
 
-`200` with body `ok`.
+`200` with body `ok`. A pure **liveness** probe — the body is pinned to `ok`
+for backward compatibility (PDN's health check, the install smoke). For state,
+use `/statusz`.
+
+### `GET /statusz`
+
+Self-observability for external monitoring (watch the Pi directly, instead of
+inferring its state through PDN): the instance identity, the live bridge count,
+and each bridge's client-connection state.
+
+```json
+{
+  "instanceId": "pi-shack-north",
+  "bridgeCount": 2,
+  "bridges": [
+    { "id": "pci-0000:00:14.0-usb-0:3:1.0", "tcpPort": 7301, "clientConnected": true },
+    { "id": "pci-0000:00:14.0-usb-0:4:1.0", "tcpPort": 7302, "clientConnected": false }
+  ]
+}
+```
+
+- `bridgeCount` — number of live bridges (== `bridges.length`; also equals the
+  `/inventory` port count).
+- `bridges[]` — one row per live bridge, TCP-port ordered (same order as
+  `/inventory`): the stable `id`, the pipe's `tcpPort`, and `clientConnected` —
+  whether a client (normally PDN) is currently attached to the pipe. An empty
+  head-end reports `"bridgeCount": 0, "bridges": []`.
 
 ## mDNS discovery
 

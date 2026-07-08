@@ -104,6 +104,17 @@ func (b *Bridge) run() {
 func (b *Bridge) serve(conn net.Conn) {
 	defer conn.Close()
 
+	// Discard whatever the device emitted while NO client was attached (#586):
+	// without this, stale buffered bytes burst into the fresh client and a new
+	// CCDI/KISS session starts mid-garbage (both protocols resync, but it can
+	// cost a first-transaction timeout). DrainInput flushes only what is
+	// buffered at THIS instant — no pump is running yet (the previous client's
+	// pumps fully unwind before re-accept), and bytes arriving after the flush
+	// are picked up by the pump below, so nothing post-connect is lost.
+	if err := b.port.DrainInput(); err != nil {
+		log.Printf("bridge %s (:%d): drain stale serial input: %v", b.dev.ID, b.tcpPort, err)
+	}
+
 	b.mu.Lock()
 	b.activeConn = conn
 	b.mu.Unlock()
@@ -177,6 +188,14 @@ func (b *Bridge) SetLine(l LineParams) (LineParams, error) {
 	b.line = l
 	b.mu.Unlock()
 	return l, nil
+}
+
+// clientConnected reports whether a client is currently attached to the pipe
+// (the /statusz observability surface, #583).
+func (b *Bridge) clientConnected() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.activeConn != nil
 }
 
 // currentLine returns the cached line params (thread-safe read).

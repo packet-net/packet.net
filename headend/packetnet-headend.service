@@ -5,13 +5,20 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# Type=notify: the daemon sends READY=1 once its listeners are up and feeds
+# WatchdogSec below with WATCHDOG=1 heartbeats (a tiny hand-rolled sd_notify
+# writer — both no-ops when NOTIFY_SOCKET is unset, so direct runs are
+# unaffected).
+Type=notify
 # Install = copy the binary here + this unit into /etc/systemd/system.
 ExecStart=/usr/local/bin/packetnet-headend
 # Optional config file; safe to leave absent (flags/env/defaults still apply).
 Environment=PACKETNET_HEADEND_CONFIG=/etc/packetnet-headend/config.json
 Restart=on-failure
 RestartSec=2
+# Restart the daemon if it stops heartbeating for 30s (hung, not merely quiet:
+# the heartbeat runs at 15s regardless of traffic).
+WatchdogSec=30
 
 # The daemon needs read/write on the serial devices. Adding it to the 'dialout'
 # group is the least-privilege way to reach /dev/tty{USB,ACM}* without root.
@@ -26,9 +33,18 @@ PrivateTmp=yes
 ProtectControlGroups=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
-RestrictAddressFamilies=AF_INET AF_INET6
-# mDNS (mcast) + the HTTP API + the raw-serial bridge TCP ports.
-# Adjust if you move HTTPPort / BaseTCPPort off the defaults.
+# AF_INET/AF_INET6: the HTTP machine API, the raw-serial bridge TCP ports, and
+# the mDNS multicast socket. AF_NETLINK is REQUIRED for the mDNS advertisement:
+# zeroconf enumerates the host's addresses via Go's net.Interfaces(), which
+# opens a netlink route socket — without it registration fails ("Could not
+# determine host IP addresses") and every install silently loses zero-config
+# discovery (#577). The node's unit (packaging/packetnet.service) allows
+# AF_NETLINK for its tsnet sidecar for the same reason. AF_UNIX carries the
+# sd_notify datagrams (READY=1 / WATCHDOG=1) to $NOTIFY_SOCKET for Type=notify
+# + WatchdogSec above. No SocketBind* allow-list on top: the HTTP/bridge ports
+# are operator-configurable and bridges bind sequentially from baseTcpPort as
+# devices hot-plug, so any static port list would break the moment either moves.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target
