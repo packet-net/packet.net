@@ -81,20 +81,29 @@ public sealed class HeadEndProbeSingleFlightTests
             openWatch: (_, _) => Task.FromResult<IKeyupWatch>(probe),
             new HeadEndKeyupOptions { ObservationWindow = TimeSpan.FromMilliseconds(1), SettleBetween = TimeSpan.Zero },
             CancellationToken.None);
-        await probe.Entered.Task.WaitAsync(Timeout);
-
-        // A concurrent scan must queue behind the pairing — its discovery step (inside the gate)
-        // must not have started while the keyup is mid-flight.
+        Task<HeadEndScan> scanTask;
         var discovery = new BlockingDiscovery();
-        discovery.Release.TrySetResult();   // the scan itself is free-running once it enters
-        var scanTask = ScannerOver(discovery).ScanAsync(EmptyConfig());
+        try
+        {
+            await probe.Entered.Task.WaitAsync(Timeout);
 
-        await Task.Delay(250);
-        scanTask.IsCompleted.Should().BeFalse("the scan must wait for the in-flight pairing, not interleave with it");
-        discovery.Entered.Task.IsCompleted.Should().BeFalse("the scan must not even begin probing under a live pairing");
+            // A concurrent scan must queue behind the pairing — its discovery step (inside the
+            // gate) must not have started while the keyup is mid-flight.
+            discovery.Release.TrySetResult();   // the scan itself is free-running once it enters
+            scanTask = ScannerOver(discovery).ScanAsync(EmptyConfig());
+
+            await Task.Delay(250);
+            scanTask.IsCompleted.Should().BeFalse("the scan must wait for the in-flight pairing, not interleave with it");
+            discovery.Entered.Task.IsCompleted.Should().BeFalse("the scan must not even begin probing under a live pairing");
+        }
+        finally
+        {
+            // Always unblock the pairing — a mid-test assertion failure must not leave the
+            // process-wide probe gate held (it would cascade into unrelated 60 s timeouts).
+            probe.Release.TrySetResult();
+        }
 
         // Let the pairing finish: the queued scan then runs to completion.
-        probe.Release.TrySetResult();
         var pairResult = await pairTask.WaitAsync(Timeout);
         pairResult.Pairs.Should().ContainSingle();
         var scan = await scanTask.WaitAsync(Timeout);
@@ -107,25 +116,35 @@ public sealed class HeadEndProbeSingleFlightTests
     {
         var discovery = new BlockingDiscovery();
         var scanTask = ScannerOver(discovery).ScanAsync(EmptyConfig());
-        await discovery.Entered.Task.WaitAsync(Timeout);   // the scan holds the gate
 
         var probe = new GateProbe();
         probe.Release.TrySetResult();   // the pairing is free-running once it enters
         var pairer = new HeadEndKeyupPairer(new StubScanner());
-        var pairTask = pairer.RunKeyupAsync(
-            "pi-shack",
-            [new KeyupTarget("127.0.0.1", 0, 0, "ninoX")],
-            [new KeyupTarget("127.0.0.1", 0, 0, "taitA")],
-            openModem: (_, _) => Task.FromResult<IKeyupModem>(probe),
-            openWatch: (_, _) => Task.FromResult<IKeyupWatch>(probe),
-            new HeadEndKeyupOptions { ObservationWindow = TimeSpan.FromMilliseconds(1), SettleBetween = TimeSpan.Zero },
-            CancellationToken.None);
+        Task<HeadEndKeyupResult> pairTask;
+        try
+        {
+            await discovery.Entered.Task.WaitAsync(Timeout);   // the scan holds the gate
 
-        await Task.Delay(250);
-        pairTask.IsCompleted.Should().BeFalse("the pairing must wait for the in-flight scan");
-        probe.Entered.Task.IsCompleted.Should().BeFalse("no keyup may fire while a scan is re-clocking lines");
+            pairTask = pairer.RunKeyupAsync(
+                "pi-shack",
+                [new KeyupTarget("127.0.0.1", 0, 0, "ninoX")],
+                [new KeyupTarget("127.0.0.1", 0, 0, "taitA")],
+                openModem: (_, _) => Task.FromResult<IKeyupModem>(probe),
+                openWatch: (_, _) => Task.FromResult<IKeyupWatch>(probe),
+                new HeadEndKeyupOptions { ObservationWindow = TimeSpan.FromMilliseconds(1), SettleBetween = TimeSpan.Zero },
+                CancellationToken.None);
 
-        discovery.Release.TrySetResult();
+            await Task.Delay(250);
+            pairTask.IsCompleted.Should().BeFalse("the pairing must wait for the in-flight scan");
+            probe.Entered.Task.IsCompleted.Should().BeFalse("no keyup may fire while a scan is re-clocking lines");
+        }
+        finally
+        {
+            // Always unblock the scan — a mid-test assertion failure must not leave the
+            // process-wide probe gate held (it would cascade into unrelated 60 s timeouts).
+            discovery.Release.TrySetResult();
+        }
+
         (await scanTask.WaitAsync(Timeout)).Instances.Should().BeEmpty();
         (await pairTask.WaitAsync(Timeout)).Pairs.Should().ContainSingle();
     }

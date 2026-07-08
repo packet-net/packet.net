@@ -1287,11 +1287,11 @@ into deferring EVERY keyup its full 10 s MaxWait).
   `HeadEndKeyupPairer.RunKeyupAsync` serialise on a shared process-wide `HeadEndProbeGate` (waiters wait, bounded
   60 s), mirroring the local bus scanner's semaphore — a scan's Tait baud sweep can no longer re-clock lines under
   a live pairing's PTT watchers (wrongly-unpaired radios) or queue probes into its open pipes.
-- **Tests (fakes/loopback only — no hardware, no RF):** 13 new + 1 updated across
+- **Tests (fakes/loopback only — no hardware, no RF):** 17 new + 1 updated across
   `Packet.Radio.Tait.Tests` (fault clears busy + raises carrier-clear; stale-busy reset on unresponsive; kept on
   responsive), `Packet.Node.Tests` (head-end bounce → reopen with fresh resolve + configured re-clock + progress
   re-enable + consumers survive the swap; facade dispose; legacy by-id resolve/warn/scan-bound ×4; configured-baud
-  at open; single-flight both directions; bring-up retry ×2), and `Packet.Kiss.NinoTnc.Tests` (keep-alive fires
+  at open; single-flight both directions; bring-up retry ×2; ambiguous shared-serial legacy id refused), and `Packet.Kiss.NinoTnc.Tests` (keep-alive fires
   when quiet; local serial has none; fake-clock TCP march past the idle budget alive + dead link still faults).
   No parser/listener/parity surface touched — driver- and node-side only, no ax25-ts leg.
 

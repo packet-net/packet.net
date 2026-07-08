@@ -701,6 +701,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             return;
         }
 
+        // Never double-bring-up: the head-end retry loop can win the race between a reconcile
+        // plan being computed (port down) and applied (port up via the retry) — a second stack
+        // would fight the first for the same head-end pipe and the ports-indexer overwrite would
+        // leak the first stack alive. Every teardown-then-up path (restart, node-wide reset)
+        // clears the entry first, so an existing entry always means "already correctly up".
+        if (TryGetRunning(port.Id) is not null)
+        {
+            return;
+        }
+
         // Hoisted once (CA1873): cheap, and keeps method-invocation args out of
         // the log call sites below.
         var endpointText = port.Transport.DescribeEndpoint();
@@ -1041,8 +1051,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // attempt, including the loop's own). State transitions log once; per-attempt noise is Debug.
     private void ScheduleHeadEndBringUpRetry(PortConfig port, CancellationToken ct)
     {
-        if (!IsHeadEndBound(port) || ct.IsCancellationRequested
-            || Volatile.Read(ref disposed) != 0 || lifecycle.IsCancellationRequested)
+        // Deliberately NOT gated on ct: a cancelled bring-up (an aborted restart request, a
+        // reconcile cut short) still leaves an enabled head-end port down — exactly what the
+        // retry exists for. Supervisor shutdown is what stops retries (lifecycle/disposed).
+        _ = ct;
+        if (!IsHeadEndBound(port) || Volatile.Read(ref disposed) != 0 || lifecycle.IsCancellationRequested)
         {
             return;
         }
@@ -1089,7 +1102,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                         return;   // a reconcile/restart brought it up meanwhile — nothing to log
                     }
 
-                    await BringUpAsync(port, current.Identity, ct, quiet: true).ConfigureAwait(false);
+                    // Bound the attempt: the gate is shared with reconciles/API actions, and an
+                    // unbounded dial against a blackholing host (DROP firewall, dead Pi) would
+                    // otherwise hold it for minutes per attempt, stalling the whole port surface.
+                    using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    attempt.CancelAfter(HeadEndBringUpRetryInterval);
+                    await BringUpAsync(port, current.Identity, attempt.Token, quiet: true).ConfigureAwait(false);
                     if (TryGetRunning(portId) is not null)
                     {
                         LogHeadEndRetrySucceeded(portId);

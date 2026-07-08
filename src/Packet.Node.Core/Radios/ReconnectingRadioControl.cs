@@ -78,6 +78,13 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
         this.minBackoff = minBackoff ?? TimeSpan.FromSeconds(1);
         this.maxBackoff = maxBackoff ?? TimeSpan.FromSeconds(30);
         Attach(initial);
+        // A fault that landed BETWEEN the factory open and this subscription fired its
+        // ConnectionStateChanged with no listener (the driver only raises on a transition) —
+        // re-check now so a driver that died mid-bring-up is reopened, not adopted dead.
+        if (initial is TaitCcdiRadio { ConnectionState: TaitConnectionState.Faulted })
+        {
+            KickReconnect();
+        }
     }
 
     /// <summary>The live inner driver. Swapped on reconnect — do not cache across operations
@@ -188,12 +195,15 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
                     InnerChanged?.Invoke(this, fresh);
                     return;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     return;
                 }
                 catch (Exception ex)
                 {
+                    // Includes HttpClient's TaskCanceledException timeout (an OCE with OUR token
+                    // not cancelled — the black-holed-head-end case): it must take the backoff
+                    // path, not be mistaken for shutdown.
                     LogRadioReopenFailed(portId, (int)Math.Ceiling(backoff.TotalSeconds), ex.Message);
                 }
 

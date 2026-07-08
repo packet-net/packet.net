@@ -83,6 +83,27 @@ public sealed class HeadEndLegacyByIdFallbackTests
     }
 
     [Fact]
+    public async Task An_ambiguous_legacy_by_id_match_throws_instead_of_guessing_the_radio()
+    {
+        // The #574 bench reality: two CP2102 dongles share USB serial 0001, so both carry the
+        // SAME by-id hint. Guessing between them would drive the wrong physical radio (PTT,
+        // re-clocks, SDMs to the sibling channel) — staying down with a clear error is safer.
+        var handler = new StubHeadEndHandler(new HeadEndInventory
+        {
+            InstanceId = "pi-shack",
+            Ports =
+            [
+                new HeadEndPortInfo { Id = "platform-usb-0:1:1.0-port0", ById = ByIdPath, TcpPort = 7401, Baud = 28800 },
+                new HeadEndPortInfo { Id = "platform-usb-0:2:1.0-port0", ById = ByIdPath, TcpPort = 7402, Baud = 28800 },
+            ],
+        });
+
+        var act = () => ResolverOver(handler).ResolveAsync("pi-shack", LegacyById);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*re-adopt*");
+    }
+
+    [Fact]
     public async Task An_id_matching_neither_the_inventory_nor_any_byId_hint_still_throws()
     {
         var handler = new StubHeadEndHandler(new HeadEndInventory

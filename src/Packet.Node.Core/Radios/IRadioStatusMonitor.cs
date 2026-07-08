@@ -68,8 +68,11 @@ internal sealed class SwappingRadioStatusMonitor : IRadioStatusMonitor
     private readonly PortRadioConfig config;
     private readonly ReconnectingRadioControl facade;
     private readonly TimeProvider? timeProvider;
+    // Guards the swap/dispose handoff: a facade reconnect racing DisposeAsync must never
+    // publish a fresh monitor after disposal (it would leak a live health-sampling loop).
+    private readonly object swapGate = new();
     private volatile IRadioStatusMonitor current;
-    private int disposed;
+    private bool disposed;
 
     public SwappingRadioStatusMonitor(
         string portId, PortRadioConfig config, ReconnectingRadioControl facade, TimeProvider? timeProvider)
@@ -84,12 +87,16 @@ internal sealed class SwappingRadioStatusMonitor : IRadioStatusMonitor
 
     private void OnInnerChanged(object? sender, IRadioControl fresh)
     {
-        if (Volatile.Read(ref disposed) != 0)
+        IRadioStatusMonitor old;
+        lock (swapGate)
         {
-            return;
+            if (disposed)
+            {
+                return;
+            }
+            old = current;
+            current = RadioStatusMonitors.CreateForDriver(portId, config, fresh, timeProvider);
         }
-        var old = current;
-        current = RadioStatusMonitors.CreateForDriver(portId, config, fresh, timeProvider);
         _ = DisposeQuietlyAsync(old);
     }
 
@@ -111,11 +118,17 @@ internal sealed class SwappingRadioStatusMonitor : IRadioStatusMonitor
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        IRadioStatusMonitor last;
+        lock (swapGate)
         {
-            return;
+            if (disposed)
+            {
+                return;
+            }
+            disposed = true;
+            last = current;
         }
         facade.InnerChanged -= OnInnerChanged;
-        await current.DisposeAsync().ConfigureAwait(false);
+        await last.DisposeAsync().ConfigureAwait(false);
     }
 }

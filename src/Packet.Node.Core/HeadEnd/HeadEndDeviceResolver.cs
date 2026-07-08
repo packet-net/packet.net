@@ -72,8 +72,20 @@ public sealed partial class HeadEndDeviceResolver
             // Legacy-binding fallback (#578): head-end ≤0.1.2 used by-id basenames as device ids;
             // 0.1.3 switched to by-path (#575), keeping the by-id string as the informational
             // `byId` hint. A NodeConfig adopted against the old head-end would otherwise fault at
-            // bring-up after the upgrade and stay down until re-adopted.
-            device = inventory.Ports.FirstOrDefault(p => MatchesLegacyById(p, deviceId));
+            // bring-up after the upgrade and stay down until re-adopted. AMBIGUITY IS FATAL: the
+            // very reason by-id was abandoned is that two dongles can share a USB serial (#574),
+            // giving them the same by-id hint — guessing between them would drive the wrong
+            // physical radio, which is worse than staying down.
+            var legacyMatches = inventory.Ports.Where(p => MatchesLegacyById(p, deviceId)).ToList();
+            if (legacyMatches.Count > 1)
+            {
+                throw new InvalidOperationException(
+                    $"head-end '{headEndId}': legacy by-id device id '{deviceId}' matches " +
+                    $"{legacyMatches.Count} inventory devices ({string.Join(", ", legacyMatches.Select(p => p.Id))}) — " +
+                    "a shared-USB-serial by-id hint cannot identify the physical radio; re-adopt the pairing " +
+                    "to bind the stable by-path id.");
+            }
+            device = legacyMatches.SingleOrDefault();
             if (device is not null)
             {
                 LogLegacyByIdBinding(deviceId, device.Id, headEndId);
@@ -100,12 +112,7 @@ public sealed partial class HeadEndDeviceResolver
         && string.Equals(ByIdBasename(port.ById), deviceId, StringComparison.Ordinal);
 
     /// <summary>The basename of a <c>/dev/serial/by-id</c> path (already-bare values pass through).</summary>
-    internal static string ByIdBasename(string byIdPath)
-    {
-        var trimmed = byIdPath.TrimEnd('/');
-        int slash = trimmed.LastIndexOf('/');
-        return slash >= 0 ? trimmed[(slash + 1)..] : trimmed;
-    }
+    internal static string ByIdBasename(string byIdPath) => Path.GetFileName(byIdPath.TrimEnd('/'));
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{HeadEndId}': binding uses a legacy by-id device id '{LegacyId}' (matched inventory device '{CurrentId}' via its byId hint) — re-adopt the pairing to migrate the config to the stable by-path id.")]
     private partial void LogLegacyByIdBinding(string legacyId, string currentId, string headEndId);
