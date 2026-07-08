@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -54,7 +55,7 @@ func parseConfig(args []string, lookupEnv func(string) (string, bool)) (Config, 
 	var (
 		instance = fs.String("instance", def.InstanceID, "stable instance id/name advertised over mDNS + inventory (default: hostname)")
 		bindAddr = fs.String("bind-addr", def.BindAddr, "restrict every listener to this local address (e.g. a Tailscale 100.x.y.z); empty = all interfaces")
-		httpPort = fs.Int("http-port", def.HTTPPort, "HTTP machine-API port (inventory + line-control + healthz)")
+		httpPort = fs.Int("http-port", def.HTTPPort, "HTTP machine-API port (inventory + line-control + healthz + statusz)")
 		baseTCP  = fs.Int("base-tcp-port", def.BaseTCPPort, "first raw-serial bridge TCP port; devices allocate sequentially from here")
 		baud     = fs.Int("baud", def.Baud, "default serial baud every port is opened at (PDN re-clocks Tait via the line verb)")
 		allow    = fs.String("allow", "", "comma-separated globs of /dev or by-id basenames to bridge (default: all)")
@@ -142,20 +143,37 @@ func run(ctx context.Context, cfg Config, enum deviceEnumerator, open SerialOpen
 		Handler:           reg.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	// Bind explicitly (rather than ListenAndServe) so the READY=1 below is only
+	// sent once the API is genuinely accepting connections.
+	httpLn, err := net.Listen("tcp", httpSrv.Addr)
+	if err != nil {
+		return fmt.Errorf("http listen %s: %w", httpSrv.Addr, err)
+	}
 	serveErr := make(chan error, 1)
 	go func() {
-		err := httpSrv.ListenAndServe()
+		err := httpSrv.Serve(httpLn)
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- fmt.Errorf("http serve: %w", err)
 			return
 		}
 		serveErr <- nil
 	}()
-	log.Printf("HTTP machine API on :%d (GET /inventory, POST /ports/{id}/line, GET /healthz)", cfg.HTTPPort)
+	log.Printf("HTTP machine API on :%d (GET /inventory, POST /ports/{id}/line, GET /healthz, GET /statusz)", cfg.HTTPPort)
+
+	// systemd integration (#583) — a no-op unless the manager set NOTIFY_SOCKET
+	// (Type=notify), so direct runs are unaffected: signal readiness now the
+	// listeners are up, then feed WatchdogSec at half its interval.
+	if sdNotify("READY=1") {
+		log.Printf("systemd: READY=1 notified")
+	}
+	if wd := watchdogInterval(os.Getpid(), os.LookupEnv); startWatchdog(ctx, wd, sdNotify) {
+		log.Printf("systemd: watchdog armed (%s) — WATCHDOG=1 heartbeat every %s", wd, wd/2)
+	}
 
 	select {
 	case <-ctx.Done():
 		log.Printf("shutting down")
+		sdNotify("STOPPING=1")
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpSrv.Shutdown(shutCtx)

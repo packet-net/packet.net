@@ -1267,12 +1267,27 @@ Closed the confirmed doc drift the 2026-07-08 arc review found ([#584]) — the 
 - **`docs/research/split-station-rf-headend.md`** — the "Multiple instances" keying corrected from
   `(instance-id, stable-serial)` to **`(instance-id, device-id)`** with device-id = the by-path socket id
   (post-[#575]); a **Post-arc follow-ons** subsection appended to the stage plan (0.1.2 `.deb` packaging,
-  0.1.3 hot-plug + by-path ids, 0.1.4-pending [#576]/[#577] resilience in flight).
+  0.1.3 hot-plug + by-path ids, 0.1.4 [#577] landed on main / release pending, [#576] node-side in flight).
 - **`src/Packet.Node.Core/HeadEnd/HeadEndInventory.cs`** — the two doc-comments still describing by-id-first
   ids corrected to by-path-primary (comment-only; build green).
 
 Closes [#584]. The stale-open tracker items the issue also lists (#193/#192/#363) are decisions for Tom, not
-doc drift — left open.
+doc drift — left open. (Written alongside the [#577]/[#583]/[#586] head-end PR below — where the two overlap,
+that entry is the authority on what shipped; this one records the doc catch-up.)
+
+### 2026-07-08 — Head-end: mDNS-under-systemd fix + notify/watchdog + /statusz + stale-input drain ([#577] [#583] [#586])
+
+The Go head-end cluster from the 2026-07-08 arc review, in one PR (head-end Go + packaging/scripts only — no .NET):
+
+- **[#577] (critical, confirmed empirically): mDNS was broken under the shipped systemd unit.** `RestrictAddressFamilies=AF_INET AF_INET6` blocked the `AF_NETLINK` socket Go's `net.Interfaces()` needs, so `zeroconf.Register` failed with *"Could not determine host IP addresses"* on **every `.deb` install** — zero-config discovery silently dead, masked by PDN's manual-address fallback. Fix: `headend/packetnet-headend.service` now sets `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK` with a comment mirroring the node unit's (which allows AF_NETLINK for tsnet for the same reason); the dangling hardening comment is resolved by documenting **why no `SocketBind*` allow-list exists** (ports are operator-configurable + bridges bind sequentially on hot-plug — any static list would rot). **Verified empirically via transient units on the bench box**: the broken set reproduces the failure signature; the fixed set logs `mDNS advertising _pdnhead._tcp …`. The install smoke (`scripts/headend-deb-install-smoke.sh`) now asserts the unit's AF list AND greps the boot log for `mDNS advertising` / fails on the #577 signature (registration succeeds on a default docker bridge, so the positive assert holds in-container).
+- **[#583] (Go half): head-end self-observability.** New `GET /statusz` → `{instanceId, bridgeCount, bridges:[{id, tcpPort, clientConnected}]}` so external monitoring can watch the Pi directly; `/healthz` stays a pinned bare `ok` (backward compat — PDN's health check + the smoke). And the unit is now `Type=notify` + `WatchdogSec=30`: a hand-rolled, dep-free `sd_notify` writer (`headend/notify.go`, ~40 lines) sends `READY=1` once the listeners are up (the HTTP listener is now pre-bound so READY is accurate), `WATCHDOG=1` at half the armed `WATCHDOG_USEC` (with the `WATCHDOG_PID` guard), `STOPPING=1` on shutdown — all no-ops when `NOTIFY_SOCKET` is unset (direct runs unchanged). **Verified empirically**: a transient `Type=notify` + `WatchdogSec=5` unit went `active`, survived 3+ watchdog periods with `NRestarts=0`, served `/healthz` + `/statusz`, stopped clean. (The .NET half — `pdn_headend_*` metrics + background poll — remains open on [#583].)
+- **[#586] item 3: stale serial-buffer drain.** A new client no longer receives bytes the device emitted while no client was attached: the bridge flushes the serial input buffer on client connect via a new `SerialPort.DrainInput()` (real hardware: `ResetInputBuffer` = `tcflush(TCIFLUSH)` — instantaneous and non-blocking, so unlike a read-with-deadline drain it cannot swallow bytes arriving *after* the connect; no pump is running yet, so nothing races). Items 1/2/4/5 of [#586] are .NET-side and remain open.
+- **Tests.** `TestBridge_DrainsStaleInputOnConnect` (pre-buffered stale bytes flushed, post-connect bytes intact, incl. the between-clients case), `TestStatuszShape`/`TestStatusz_EmptyRegistry` (contract pin), `notify_test.go` (datagram against a fake `NOTIFY_SOCKET` unixgram, env guard, `watchdogInterval` parsing, heartbeat + cancel). `go test ./...`(+`-race`) / `go vet` / `gofmt` green; `make arm64` static build intact; `scripts/build-headend-deb.sh linux-amd64 0.1.4` builds with the new unit staged and the install smoke passes on debian:stable-slim + ubuntu:24.04.
+- **Docs.** `headend/README.md`: `/statusz` API contract, `/healthz` pinned-liveness note, connect-time flush under *What it does*, Install section's notify/watchdog + AF_NETLINK/AF_UNIX hardening note. Ship as `headend-v0.1.4` (release cascade separate, per `docs/releasing.md`).
+
+[#577]: https://github.com/packet-net/packet.net/issues/577
+[#583]: https://github.com/packet-net/packet.net/issues/583
+[#586]: https://github.com/packet-net/packet.net/issues/586
 
 ### 2026-07-06 — RELEASE: headend-v0.1.3 (hot-plug + by-path device ids)
 

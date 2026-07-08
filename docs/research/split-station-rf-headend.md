@@ -2,8 +2,8 @@
 
 **Status:** ✅ **arc complete** (2026-07-05) — all four stages shipped (see the Stage plan
 below and plan.md §17), with post-arc follow-on releases tracked under the Stage plan
-(`.deb` packaging, hot-plug + by-path ids; #576/#577 resilience in flight). Anchors the
-"Pi holds the modems+radios, a separate LXC runs PDN" topology.
+(`.deb` packaging, hot-plug + by-path ids, the #577/#583/#586 head-end fixes; #576 node-side
+resilience in flight). Anchors the "Pi holds the modems+radios, a separate LXC runs PDN" topology.
 
 ## Topology
 
@@ -235,11 +235,13 @@ Handling:
   USB socket, collision-proof by construction — with `/dev` basename as the unstable last resort
   and by-id demoted to an informational hint (#574 fix, PR #575). See the keying note under
   "Multiple instances".
-- **headend-v0.1.4 — resilience follow-ons, in flight (2026-07-08 arc review).**
+- **headend-v0.1.4 — resilience follow-ons (2026-07-08 arc review).**
   [#577](https://github.com/packet-net/packet.net/issues/577): the shipped systemd unit's
-  `RestrictAddressFamilies` blocks `AF_NETLINK`, so every `.deb`-installed head-end silently loses
-  mDNS advertisement (confirmed empirically) — fix allows `AF_NETLINK` + adds an mDNS assert to the
-  install-smoke, shipping as `headend-v0.1.4`. Alongside it (node-side, not a head-end release):
+  `RestrictAddressFamilies` blocked `AF_NETLINK`, so every `.deb`-installed head-end silently lost
+  mDNS advertisement (confirmed empirically) — the fix (allow `AF_NETLINK`, mDNS assert in the
+  install-smoke, plus [#583]'s notify/watchdog + `/statusz` and [#586]'s stale-input drain)
+  **landed on main in PR #587**, shipping as `headend-v0.1.4`. Alongside it (node-side, not a
+  head-end release):
   [#576](https://github.com/packet-net/packet.net/issues/576) — head-end-bound **radio-control
   supervision**, so the CCDI control socket reconnects like the data path does (data + radio
   channels both self-heal across a head-end bounce), reopens at the *configured* CCDI baud rather

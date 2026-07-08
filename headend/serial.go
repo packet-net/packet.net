@@ -80,6 +80,14 @@ type SerialPort interface {
 	// SetLine reconfigures the live line params (PDN's baud sweep + rare
 	// re-clock) without dropping the open handle.
 	SetLine(l LineParams) error
+	// DrainInput discards whatever inbound bytes are buffered in the handle AT
+	// THE MOMENT OF THE CALL, without blocking — bytes arriving afterwards are
+	// untouched. The bridge calls it when a new client connects, so a fresh
+	// CCDI/KISS session never starts with bytes the device emitted while no
+	// client was attached (#586). Real hardware maps this to tcflush(TCIFLUSH)
+	// (go.bug.st ResetInputBuffer) — instantaneous, so unlike a read-with-
+	// deadline drain it cannot swallow bytes that arrive after the connect.
+	DrainInput() error
 	Close() error
 }
 
@@ -123,6 +131,10 @@ func (r *realSerial) SetLine(l LineParams) error {
 	defer r.mu.Unlock()
 	return r.port.SetMode(mode)
 }
+
+// DrainInput flushes the OS input buffer (tcflush TCIFLUSH on Linux): a
+// non-blocking, instantaneous discard of exactly the bytes buffered right now.
+func (r *realSerial) DrainInput() error { return r.port.ResetInputBuffer() }
 
 func (r *realSerial) Close() error { return r.port.Close() }
 
