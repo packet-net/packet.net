@@ -499,9 +499,19 @@ public sealed record TxDelayMinOptions
     /// <c>sent</c>. Default 90 s.</summary>
     public TimeSpan ReportTimeout { get; init; } = TimeSpan.FromSeconds(90);
 
+    /// <summary>Coordinator: how many times to (re)run a request→reply exchange before giving
+    /// up. The SDM over-air delivery receipt is unreliable for this close bidirectional traffic
+    /// (the TM8110 auto-ack refractory — see <see cref="SdmTuningLink"/> and
+    /// docs/research/tm8110-sdm-autoack-refractory.md), so reliability is <b>reply-driven</b>: a
+    /// lost <c>propose</c> or <c>report</c> is recovered by re-running the exchange with a fresh
+    /// sequence (a fresh <c>step</c> opens a fresh tagged probe counter on the meter, so re-running
+    /// a whole probe-pass is safe). Default 3.</summary>
+    public int LinkRetryAttempts { get; init; } = 3;
+
     /// <summary>Minimum gap between a side-channel telegram exchange and keying the
-    /// TNC: the coordination radio's SDM auto-ack must clear first (the TM8110
-    /// auto-ack wedge — see <see cref="SdmTuningLink"/>). Default 2.5 s.</summary>
+    /// TNC: the coordination radio may still be sending its SDM auto-ack, and a brief gap
+    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> —
+    /// the auto-ack refractory itself is handled by not depending on the receipt). Default 2.5 s.</summary>
     public TimeSpan PreKeyDelay { get; init; } = TimeSpan.FromSeconds(2.5);
 
     /// <summary>Meter: after a <c>sent</c> announcement arrives, how long to keep the

@@ -5,9 +5,9 @@ namespace Packet.Tune.Core.Tests;
 
 /// <summary>
 /// Drives <see cref="SdmTuningLink"/> over a fake <see cref="IRadioSideChannel"/>:
-/// receipt-gated retries with backoff, DCD-busy send deferral, prompt
-/// event-triggered buffer reads, sequence-number dedupe, and the side
-/// channel's payload budget.
+/// the default receipt-tolerant send (completes on radio-accept) and the strict
+/// opt-in receipt-gated retries, DCD-busy send deferral, prompt event-triggered
+/// buffer reads, sequence-number dedupe, and the side channel's payload budget.
 /// </summary>
 public class SdmTuningLinkTests
 {
@@ -38,11 +38,27 @@ public class SdmTuningLinkTests
     }
 
     [Fact]
-    public async Task A_failed_receipt_retries_then_succeeds()
+    public async Task Default_mode_completes_on_radio_accept_ignoring_negative_receipts()
+    {
+        // Default (WaitForDeliveryReceipt = false): the over-air receipt is advisory. Even a run
+        // of negative receipts must NOT retry or throw — the payload is delivered and reliability
+        // is the caller's application-level reply. The TM8110 auto-ack refractory makes the
+        // receipt unreliable for close bidirectional SDM (docs/research/tm8110-sdm-autoack-refractory.md).
+        var channel = new FakeSdmChannel { AckPlan = [false, false, false] };
+        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions);
+
+        await link.SendAsync(new TuningTelegram(3, TuningVerb.Hello, "tuned")).WaitAsync(Timeout);
+
+        channel.Sent.Should().HaveCount(1, "the send completes as soon as the radio accepts the datagram");
+    }
+
+    [Fact]
+    public async Task Strict_mode_a_failed_receipt_retries_then_succeeds()
     {
         var channel = new FakeSdmChannel { AckPlan = [false, true] };
         var log = new List<string>();
-        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions) { Log = log.Add };
+        var strict = FastOptions with { WaitForDeliveryReceipt = true };
+        await using var link = new SdmTuningLink(channel, "PDN00001", strict) { Log = log.Add };
 
         await link.SendAsync(new TuningTelegram(2, TuningVerb.BurstRequest, "5")).WaitAsync(Timeout);
 
@@ -51,10 +67,11 @@ public class SdmTuningLinkTests
     }
 
     [Fact]
-    public async Task Retries_exhausted_throws_TuningLinkException()
+    public async Task Strict_mode_retries_exhausted_throws_TuningLinkException()
     {
         var channel = new FakeSdmChannel { AckPlan = [false, false, false] };
-        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions);
+        var strict = FastOptions with { WaitForDeliveryReceipt = true };
+        await using var link = new SdmTuningLink(channel, "PDN00001", strict);
 
         var act = async () => await link.SendAsync(new TuningTelegram(3, TuningVerb.Hello, "tuned")).WaitAsync(Timeout);
 
@@ -134,9 +151,9 @@ public class SdmTuningLinkTests
     [Fact]
     public async Task A_send_right_after_an_arrival_waits_out_the_post_receive_guard()
     {
-        // The radio auto-acks a received SDM over the air; transmitting while
-        // that ack is in flight wedges the TM8110's ack engine — so the link
-        // must hold sends back for the guard interval after every arrival.
+        // The radio may still be transmitting its auto-ack of a just-received SDM;
+        // half-duplex etiquette holds sends back for the guard interval after every
+        // arrival, not keying over the ack in flight (politeness, not the refractory).
         var channel = new FakeSdmChannel { AckPlan = [true] };
         var options = FastOptions with { PostReceiveGuard = TimeSpan.FromMilliseconds(400) };
         await using var link = new SdmTuningLink(channel, "PDN00001", options);

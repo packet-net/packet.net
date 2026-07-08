@@ -48,7 +48,10 @@ internal static class TxDelayMinCommand
         Console.WriteLine($"  TNC firmware {await tnc.GetVersionAsync()}");
         await tnc.SetBeaconIntervalAsync(0); // a 60 s status beacon keying mid-probe pollutes everything
 
-        var station = new NinoTncTxDelayMinStation(tnc, source, radio)
+        var station = new NinoTncTxDelayMinStation(tnc, source, radio,
+            options: p.UnkeyGapMs is { } gapMs
+                ? new NinoTncTxDelayMinStationOptions { UnkeyGap = TimeSpan.FromMilliseconds(gapMs) }
+                : null)
         {
             Log = line => Console.WriteLine("  " + line),
         };
@@ -138,7 +141,7 @@ internal static class TxDelayMinCommand
 
     private sealed record Args(
         string Role, string Tnc, string Radio, string Peer, string CallsignText,
-        bool Verbose, bool Apply, int? ApplyAtMs, TxDelayMinOptions Options);
+        bool Verbose, bool Apply, int? ApplyAtMs, TxDelayMinOptions Options, int? UnkeyGapMs);
 
     private static Args? Parse(string[] args)
     {
@@ -190,7 +193,8 @@ internal static class TxDelayMinCommand
             ProbesPerStep = probes,
         };
         return new Args(role, tnc, radioPort, peer,
-            flags.GetValueOrDefault("--callsign") ?? "N0CALL", verbose, apply, applyAt, options);
+            flags.GetValueOrDefault("--callsign") ?? "N0CALL", verbose, apply, applyAt, options,
+            ParseInt(flags.GetValueOrDefault("--gap")));
     }
 
     private static int? ParseInt(string? text) =>

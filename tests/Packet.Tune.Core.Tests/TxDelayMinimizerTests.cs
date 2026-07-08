@@ -268,6 +268,35 @@ public class TxDelayMinimizerTests
 
     // ─── the fake rig ────────────────────────────────────────────────────────
 
+    [Fact]
+    public async Task A_dropped_propose_is_recovered_by_reply_driven_retry()
+    {
+        var rig = FakeRig.Create();
+        rig.Ether.DecodedAt = _ => 5; // solid at every step
+        var options = FastOptions(start: 100, step: 40, min: 20) with
+        {
+            ConfirmTimeout = TimeSpan.FromMilliseconds(300), // retry promptly, don't wait the default
+            LinkRetryAttempts = 3,
+        };
+
+        var meterRun = RunMeter(rig, options, out var meterCts);
+        // Drop the coordinator's FIRST send (the propose): with the receipt-tolerant transport the
+        // send still "completes", but the meter never sees it — so no confirm comes, and the
+        // reply-driven retry must re-propose (fresh sequence) and carry the sweep to completion.
+        var droppyLink = new DropFirstSendsLink(rig.CoordinatorLink, 1);
+        await using var minimizer = new TxDelayMinimizer(droppyLink, rig.Coordinator, options);
+
+        var result = await minimizer.RunSweepAsync().WaitAsync(Timeout);
+
+        result.Outcome.Should().Be(TxDelaySweepOutcome.Complete,
+            "the dropped propose is recovered by re-proposing until the meter confirms");
+        result.Steps.Should().NotBeEmpty();
+
+        await minimizer.EndAsync(result.RecommendedMs).WaitAsync(Timeout);
+        (await meterRun.WaitAsync(Timeout)).Should().Be(0);
+        meterCts.Dispose();
+    }
+
     private static Task<int> RunMeter(FakeRig rig, TxDelayMinOptions options, out CancellationTokenSource cts)
     {
         var responder = new TxDelayMinResponder(rig.MeterLink, rig.Meter, options);
@@ -461,6 +490,31 @@ public class TxDelayMinimizerTests
             }
             return inner.SendAsync(telegram, cancellationToken);
         }
+
+        public IAsyncEnumerable<TuningTelegram> ReceiveAsync(CancellationToken cancellationToken = default) =>
+            inner.ReceiveAsync(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+
+    /// <summary>Delegates to the inner link but silently DROPS the first <c>dropCount</c> sends —
+    /// the receipt-tolerant transport reports success, but the peer never sees the telegram, so
+    /// the reply-driven retry is what recovers the exchange.</summary>
+    private sealed class DropFirstSendsLink : ITuningLink
+    {
+        private readonly ITuningLink inner;
+        private int dropRemaining;
+
+        public DropFirstSendsLink(ITuningLink inner, int dropCount)
+        {
+            this.inner = inner;
+            dropRemaining = dropCount;
+        }
+
+        public Task SendAsync(TuningTelegram telegram, CancellationToken cancellationToken = default) =>
+            Interlocked.Decrement(ref dropRemaining) >= 0
+                ? Task.CompletedTask
+                : inner.SendAsync(telegram, cancellationToken);
 
         public IAsyncEnumerable<TuningTelegram> ReceiveAsync(CancellationToken cancellationToken = default) =>
             inner.ReceiveAsync(cancellationToken);

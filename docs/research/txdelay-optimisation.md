@@ -176,3 +176,41 @@ times its loop out.
   AX.25 contract changed.
 - The advisory is per-heard-peer; it does not (and cannot) tell a peer's *operator* — it's
   a diagnostic for the listening node, and a prompt to run layer 2 against that peer.
+
+## Bench tuning campaign (2026-07-08)
+
+First live end-to-end sweeps on the 2× TM8110 + 2× NinoTNC rig, after the SDM receipt-tolerance
+fix (see [tm8110-sdm-autoack-refractory.md](tm8110-sdm-autoack-refractory.md) — the SDM coordination
+was previously aborting on the auto-ack refractory; now the whole sweep runs clean).
+
+**Mode 6 (1200 AFSK, ch 0):** full stepping sweep 400→100 ms, all 5/5 decoded, floor still solid
+(knee ≤ 100 ms), recommend 220 ms. Validated the tool + the fix end-to-end.
+
+**Mode 2 (9600 GFSK IL2P+CRC, ch 1 wide):** 200→0 ms all 5/5; knee ≤ 0 ms. A 4-second inter-probe
+gap (receiver fully cold between probes, via the new `--gap`) made no difference — still 5/5 at
+0 ms — so the low knee is **not** a warm-lock/AGC artifact.
+
+**TXDELAY provably takes effect on the wire (the self-evidencing cross-check, live).** Mean on-air
+TX burst per probe tracked TXDELAY ~1:1: 203/184/163/143/123/113 ms at 100/80/60/40/20/0 ms
+TXDELAY — every 20 ms removed shortened the burst ~20 ms. So the setting is genuinely applied and
+measured, not ignored.
+
+**NinoTNC residual preamble floor ≈ 10 ms.** The last step (20 → 0 ms) shortened the burst only
+**10 ms**, not 20. So "0 ms" on the wire is really ~10 ms of preamble — the TNC cannot emit less.
+That residual is exactly why this pristine link still decodes at a commanded 0: there is still
+~10 ms of real preamble, and the link needs no more.
+
+**Mode 1 (19200 4FSK IL2P+CRC):** 0/5 even at 200 ms — the link is not solid in this direction
+(a deviation / TNC-A-pot fault the earlier survey already flagged), so no TXDELAY knee could be
+measured. Needs deviation tuning before it can be swept.
+
+**Parked discrepancy (revisit on-air).** This ≤~10 ms bench floor is far below the "a few tens of
+ms" these radios want in real operation. The cabled 100 dB-pad link has none of the impairments
+that *form* the knee — squelch opening on a real signal, AGC settling on a fading path, multipath,
+weaker SNR — and the NinoTNC taps discriminator/flat audio (no squelch gate in the data path). So
+the bench is a **lower bound**; realistic TXDELAY tuning must run over a real RF path. The tool is
+ready to find that knee on-air. **Feature left as-is** — no default or behaviour change on the
+strength of a bench that can't reproduce the real knee.
+
+**Tool change:** `txdelay-min` gained `--gap <ms>` (inter-probe unkey gap; default 750 ms) for
+cold- vs warm-receiver testing.
