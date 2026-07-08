@@ -202,7 +202,8 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
                 // Already bound to a running/configured port — don't probe (single-client-per-pipe).
                 // Its role is known from the binding, so still surface it (marked not-free).
                 devices.Add(new HeadEndDeviceScan(port.Id, boundKind, Model: null, Version: null,
-                    Serial: null, Baud: port.Baud, Free: false));
+                    Serial: null, Baud: port.Baud, Free: false,
+                    IdSource: port.IdSource, IdStable: port.IdStable));
                 continue;
             }
 
@@ -256,7 +257,8 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             var version = await nino.GetVersionAsync(identifyTimeout, cancellationToken).ConfigureAwait(false);
             // NinoTNC baud is fictional over USB-CDC — report the inventory baud, no sweep.
             return new HeadEndDeviceScan(port.Id, HeadEndDeviceKind.NinoTnc, Model: null,
-                Version: version, Serial: null, Baud: port.Baud, Free: true);
+                Version: version, Serial: null, Baud: port.Baud, Free: true,
+                IdSource: port.IdSource, IdStable: port.IdStable);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -341,10 +343,12 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             Version: identity.CcdiVersion, Serial: identity.SerialNumber, Baud: baud, Free: true,
             // The band split (hence the amateur band) is CCDI-readable off the product code even though
             // the tuned frequency is not — adopt uses it to label the port by band.
-            BandCode: identity.Band?.Code, AmateurBand: identity.Band?.AmateurBand);
+            BandCode: identity.Band?.Code, AmateurBand: identity.Band?.AmateurBand,
+            IdSource: port.IdSource, IdStable: port.IdStable);
 
     private static HeadEndDeviceScan Unidentified(HeadEndPortInfo port) =>
-        new(port.Id, HeadEndDeviceKind.Unknown, Model: null, Version: null, Serial: null, Baud: port.Baud, Free: true);
+        new(port.Id, HeadEndDeviceKind.Unknown, Model: null, Version: null, Serial: null, Baud: port.Baud, Free: true,
+            IdSource: port.IdSource, IdStable: port.IdStable);
 
     // Within one instance, pair the free TNC(s) with the free radio(s). Exactly one of each is an
     // unambiguous auto-suggestion; more than one of either is a manual choice (every combination is
@@ -368,8 +372,9 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
         return (combos, true);
     }
 
-    // Every (instanceId, deviceId) a configured port already binds — a nino-tnc-tcp transport (TNC)
-    // or a head-end-bound radio (radio) — with the role the binding implies.
+    // Every (instanceId, deviceId) a configured port already binds — a nino-tnc-tcp transport (TNC),
+    // a head-end-bound tait-transparent transport (#585 — the radio IS the modem, its pipe is a
+    // Tait CCDI serial port), or a head-end-bound radio — with the role the binding implies.
     private static Dictionary<(string, string), string> BoundDevices(NodeConfig config)
     {
         var bound = new Dictionary<(string, string), string>();
@@ -379,6 +384,10 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
                 && !string.IsNullOrWhiteSpace(t.DeviceId))
             {
                 bound[(t.HeadEndId, t.DeviceId)] = HeadEndDeviceKind.NinoTnc;
+            }
+            if (port.Transport is TaitTransparentTransportConfig { IsHeadEndBound: true } tt)
+            {
+                bound[(tt.HeadEndId, tt.DeviceId)] = HeadEndDeviceKind.TaitCcdi;
             }
             if (port.Radio is { IsHeadEndBound: true } radio)
             {

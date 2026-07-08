@@ -6,6 +6,8 @@
 
 **As of:** 2026-07-08
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-08 — **Head-ends web UI + API caught up to identify/pair/name v2 + id-stability (#579)** — the Head-ends screen (PR #562) shipped before the v2 backend and was never caught up; this closes the four confirmed gaps in one UI+API PR. **UI:** a "Resolve physically (keys each modem briefly)" button on instances with a free TNC+radio — **admin-scope gated** (it transmits — the same bar as hail/tuning/doctor; disabled+titled otherwise) behind an RF-warning confirm dialog that quotes the API caveat, renders the returned pairs/unpaired/ambiguous, refreshes the scan, and pre-selects the adopt pickers with the resolved pair; a per-device **band badge** (`amateurBand`, falling back to `bandCode`); an **"unstable id" warning badge** on `idStable === false` devices (tooltip: no by-path/by-id link, binding may not survive replug); and an **"MQTT instance label"** field in the adopt Options. UI adopts now pass `amateurBand` (from the selected radio's scan row) so they get band-named ports like API adopts. **API (additive):** `HeadEndPortInfo` gains `IdSource` (string) + `IdStable` (**nullable** bool — absent from an old head-end reads as *unknown*, never assumed stable), the scan (`HeadEndDeviceScan`) carries them, the scanner populates them; `HeadEndAdoptRequest` gains `MqttInstance` (string?) honoured by `BuildCandidate` over the band default. Stale "operate-scope" doc-comment on the keyup endpoint corrected to admin. **Tests:** 6 C# (id-stability parse present/absent, scan flow-through, MqttInstance override ×3) + 8 vitest (keyup admin-gating/confirm/post/render/pre-select + band badge + unstable badge + amateurBand/mqttInstance in adopt body); UI `npm run build && npm run test` green (118), `dotnet build` + head-end Node.Tests green (the /tmp-sandbox 61-failure baseline is unrelated). No ax25-ts parity surface. Closes #579. See §17](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-07-08 — **Head-end fleet observability, .NET half (#583)** — the node now watches its head-end fleet instead of inferring it: a background `HeadEndHealthMonitor` (`BackgroundService`, ~30 s) polls every configured/referenced head-end's `GET /statusz` (#587's Go half; `GET /healthz` fallback for pre-0.1.4 daemons) — config-else-mDNS address resolution, transition-only logging (one WARNING per outage, events 5301/5302), self-gating on a head-end-less node. Feeds a new `pdn_headend_*` metrics bucket (`reachable`/`devices`/`poll_failures_total`, `instance`-labelled) + a `pdn_port_transport_reconnecting{port}` gauge off a new `ITransportLinkState` seam on `ReconnectingKissModem` (the honest counterpart to `pdn_port_up`, which reads 1 through a far-end bounce), and `GET /api/v1/radios/headends` instances gain `reachableNow`/`lastSeen` from the in-memory snapshot (never probed on the request path). Closes #583 (both halves done). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-end radio-integration resilience cluster (#576/#578/#580/#581)** — the 2026-07-08 arc review's critical findings fixed in one PR: reconnect supervision for the head-end-bound Tait CCDI control channel (a stable `ReconnectingRadioControl` facade — a head-end restart no longer permanently degrades radio control), `MarkFaulted` clears the latched carrier-sense + a stale-busy re-validation probe, the open-time re-clock uses the CONFIGURED baud, bounded head-end bring-up retry, a legacy by-id → by-path device-id fallback, a NinoTNC GETVER keep-alive that stops the nino-tnc-tcp 5-min idle churn, and scan↔keyup-pairing single-flight. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: by-path is the primary device id (shared-serial by-id flip fix, #574)** — the Go head-end (`headend/`) now derives every device's stable id from `/dev/serial/by-path` (the physical USB socket → unique by construction, can't collide), with the `/dev` basename as the sole unstable last resort; `/dev/serial/by-id` is dropped as an id source and kept only as the informational `byId` field (device serial/model + allow/deny match key). Fixes #574: two CP2102 Tait CCDI dongles share USB serial `0001`, so udev makes a single shared by-id symlink and can **flip** it to a hot-replugged sibling — under the old by-id-first chain (#569) the returned device then enumerated with the same id as the still-running sibling's bridge, so the rescan diff treated it as already-bridged and dropped it. Now both dongles get distinct, stable by-path ids regardless of which holds the shared by-id, so the flip is irrelevant. `idSource` values become `by-path` | `dev` (never `by-id`). Consequence: moving a device to a **different** USB port changes its id (a physical reconfiguration → re-adopt); same-port replug + reboot keep it. Plus a rescan **cross-pass id-collision guard** (belt-and-suspenders): a newly-enumerated device whose id equals a live bridge's is disambiguated (append a by-path/dev discriminator, like the within-pass `dedupeIDs`) and added, never dropped or mis-bound. Go fakes-only tests (fake /dev+/sys tree; the shared-serial both-by-path case + the by-id **flip** across two enumerations + by-path-absent → unstable `/dev` + the cross-pass guard); `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Supersedes #569's by-id-first chain; closes #574. Ships in `headend-v0.1.3` (with #572; release is the orchestrator's post-rig step). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: hot-plug support (poll-based re-enumerate + diff, #572)** — the Go head-end (`headend/`) now adds/removes device bridges at runtime without a restart. A dep-free poll (no udev/netlink) re-enumerates every `RescanInterval` (flag `--rescan-interval` / env `PACKETNET_HEADEND_RESCAN_INTERVAL` / JSON `rescanInterval`; **default 3s**, **`0` disables** → startup-only, no regression) and diffs against the live bridge set keyed by device id **and** resolved kernel path: new device → `newBridge` on the lowest free TCP port ≥ base + registry add + `bridge added` (transient open failure warned once, retried); gone device → `Bridge.Close` (listener + client + serial) + port freed + `bridge removed`; existing device + its connected client left **untouched** (diff acts only on the delta). Registry is now mutex-guarded (`/inventory` reflects the live set); `Bridge.close()`→idempotent `Close()` over a done-channel. Go fakes-only tests (scripted enumerator + fake opener) cover appear/disappear/untouched/failed-open-retry-warn-once/`0`-disabled; `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Ships in `headend-v0.1.3` (release is the orchestrator's post-rig step). Closes #572. See §17](#17-amendment-log)
@@ -1291,6 +1293,153 @@ migration; `TxDelayMinPortSessionTests` — sweep→ended-with-recommendation, a
 `RadioMetricsExporterTests` — the new gauge). Affected suites green locally (the sandbox's `/tmp`-write denial fails only
 the unrelated ~61 Tailscale/app-package Node.Tests — environmental, check against CI). **No ax25-ts leg** — radio/tuning
 is a C#-only surface; nothing on the parity-tracked AX.25 contract changed.
+
+### 2026-07-08 — Head-ends web UI + API surfacing caught up to identify/pair/name v2 + id-stability ([#579])
+
+The Head-ends screen (PR [#562]) shipped **before** identify/pair/name v2 ([#568]) and the id-stability
+fields ([#570]/[#575]) and was never caught up. Confirmed by the 2026-07-08 arc review: no keyup-pairing UI,
+band invisible + dropped on UI adopt, `idSource`/`idStable` dying at the C# boundary, and `MqttInstance`
+uneditable. One contained UI+API PR closes all four (`web/packetnet-ui/` + `Packet.Node.Core`; no head-end
+Go change — the daemon already emits the fields).
+
+- **C# plumb-through** — `HeadEndPortInfo` (`HeadEnd/HeadEndInventory.cs`) gains `IdSource` (`string?`:
+  `by-path` | `dev`) + `IdStable` (**`bool?`**) deserialized from the inventory (additive camelCase JSON the
+  daemon already emits since headend-v0.1.3). **`IdStable` is deliberately nullable:** an old head-end (<
+  v0.1.3) reports neither field, and absent must read as *unknown* — **not** assumed stable/true (so it
+  neither warns nor reassures). `HeadEndDeviceScan` (`Api/HeadEndScanModels.cs`) carries both (nullable,
+  defaulted null); `HeadEndRadioScanner` populates them on every device row (free-probed, bound, and
+  unidentified). Two by-id-first doc-comment lines in `HeadEndInventory.cs` were already corrected in [#575];
+  the stale "operate-scope" doc-comment on `HeadEndKeyupPairer` (`Radios/HeadEndKeyupPairer.cs:23`) is
+  corrected to **admin-scope** (the endpoint is admin-gated — it transmits).
+- **`HeadEndAdoptRequest.MqttInstance`** (`Api/HeadEndAdoption.cs`) — a new `string?` (additive). When set it
+  wins over the `AmateurBand` MQTT `{instance}` default in `BuildCandidate` (the band still names the port id
+  when no explicit id is given); blank/whitespace keeps the band default. Lets the UI expose the
+  kissproxy-migration band label that was YAML-only.
+- **UI — keyup pairing** (`screens/headends.tsx`, `lib/api.ts`) — `api.pairHeadEndByKeyup(instanceId)` client
+  method + a **"Resolve physically (keys each modem briefly)"** button on any instance with a free TNC + free
+  radio, **admin-scope gated** (`has("admin")`, disabled + titled otherwise — mirrors console/config admin
+  gating and the endpoint's admin scope). Behind an **RF-warning confirm dialog** that quotes the server's
+  caveat (nothing keys until confirmed); the result phase renders the returned pairs / unpaired / ambiguous
+  lists + the caveat verbatim, refreshes the scan, and **pre-selects the adopt pickers** with the first
+  resolved pair (ground truth replaces the ambiguous guess).
+- **UI — band badge, unstable-id badge, band-named adopt, MQTT label** — a per-device band badge
+  (`amateurBand`, falling back to `bandCode`); an **"unstable id"** warning badge on `idStable === false`
+  (tooltip: no by-path/by-id link, the binding may not survive a replug — `null`/unknown does **not** warn);
+  UI adopts pass `amateurBand` from the selected radio's scan row (so UI-adopted ports get band-named/MQTT-
+  labelled ports like API adopts, closing the [#562]-vs-`HeadEndAdoption` asymmetry); and a **"MQTT instance
+  label"** field in the adopt Options disclosure (posts `mqttInstance`).
+- **Wire types + mock** (`lib/types.ts`, `lib/mock.ts`) — `HeadEndDeviceScan` gains
+  `bandCode`/`amateurBand`/`idSource`/`idStable`; `HeadEndAdoptRequest` gains `amateurBand`/`mqttInstance`;
+  new `HeadEndKeyupResult`/`HeadEndKeyupPair`/`HeadEndKeyupAmbiguity`. `HEADEND_SCAN` refreshed to the v2 shape
+  (band badges, a `dev`-fallback unstable-id device) + a `headEndKeyup()` result mock so the demo shows band +
+  the keyup flow with no node (and no RF).
+- **Tests** — **6 new C#** (`HeadEndClientTests`: id-stability parse present + absent-reads-as-null;
+  `HeadEndRadioScannerTests`: dev-fallback unstable + old-head-end unknown flow through distinctly + by-path
+  on the nino row; `HeadEndAdoptionTests`: explicit MqttInstance over band ×3). **8 new/updated vitest**
+  (`headends.keyup.test.tsx`: admin-gating, RF-confirm-before-post, post + render + rescan + picker
+  pre-select, honest reachable:false, no-button-without-a-pair; `headends.panel.test.tsx`: band badge,
+  unstable badge, `amateurBand` + `mqttInstance` in the adopt body). Gates: `npm run build` + `npm run test`
+  green (12 files / 118 tests); `dotnet build` clean; head-end Node.Tests green (the /tmp-sandbox 61-failure
+  baseline is pre-existing + unrelated — all AppInstaller/AppServiceSupervisor process/fs-sandbox tests).
+  **No ax25-ts parity surface** (no named parse flag, no listener change) — no TS leg. Closes [#579].
+
+[#562]: https://github.com/packet-net/packet.net/pull/562
+[#568]: https://github.com/packet-net/packet.net/issues/568
+[#570]: https://github.com/packet-net/packet.net/issues/570
+[#579]: https://github.com/packet-net/packet.net/issues/579
+
+### 2026-07-08 — Head-end fleet observability, .NET half ([#583])
+
+The node half of [#583] (the Go half — `GET /statusz` + systemd `WatchdogSec` — shipped in #587). Before this,
+PDN had no runtime visibility of its head-end fleet: `HeadEndClient.HealthAsync` had zero callers, no
+`pdn_headend_*` metric family existed, and `pdn_port_up` read "up" while `ReconnectingKissModem` was quietly
+re-dialling a dead head-end.
+
+- **Background fleet health poller** — new `HeadEndHealthMonitor : BackgroundService`
+  (`src/Packet.Node.Core/HeadEnd/`), registered unconditionally in `Program.cs` but **self-gating**: each ~30 s
+  cycle re-reads the live config and polls the union of declared head-ends (`NodeConfig.HeadEnds`) and head-ends
+  referenced by a port binding — a node with no head-ends never browses or dials anything, and a runtime adopt
+  starts coverage on the next cycle. Address resolution is the standard config-else-mDNS rule (one bounded browse
+  per cycle, only when some instance lacks a pinned address; a duplicate-id clash resolves to "unreachable",
+  never a guess). The probe is `GET /statusz` (new `HeadEndClient.GetStatusAsync` + `HeadEndStatus` DTOs) with a
+  `GET /healthz` fallback on 404 (pre-0.1.4 daemon — reachable, bridge shape unknown). Per instance it tracks:
+  reachable, bridge count + per-bridge `clientConnected` (last-known-good across an outage), last-seen,
+  consecutive failures, cumulative failure count. **Transition-only logging** (events 5301 WARNING / 5302 Info —
+  the 5101/5102 convention): one warning per outage, never one per poll.
+- **Metrics** (`PdnMetricsApi`, same bucket pattern as #582's MQTT stats): `pdn_headend_reachable{instance}`,
+  `pdn_headend_devices{instance}` (omitted while unreachable / on a pre-statusz daemon — absent sample, never a
+  stale count), `pdn_headend_poll_failures_total{instance}` (always emitted from 0 so `rate()` works). Plus
+  `pdn_port_transport_reconnecting{port}`: `ReconnectingKissModem` now exposes its link state through a new
+  public `ITransportLinkState` seam (a volatile flag flipped exactly at the 5101/5102 transitions), captured
+  pre-decorator on `RunningPort.LinkState` (the `NinoTnc` capture pattern) — emitted for reconnect-supervised
+  (kiss-tcp / nino-tnc-tcp) ports only. Documented in `docs/observability.md` (including the
+  `instance`-vs-scrape-label caveat).
+- **API surfacing (light)** — `GET /api/v1/radios/headends` instances gain nullable `reachableNow` / `lastSeen`
+  (`HeadEndInstanceScan`, instance-level fields only), folded in from the monitor's in-memory snapshot by
+  `HeadEndScanEnrichment.WithLiveHealth` — **no probing on the request path**; null = "no live data" (monitor
+  absent or first cycle pending). The UI's Head-ends reachable badge can now reflect live state (UI itself is a
+  sibling's; API only here).
+- **Tests (fakes only):** 19 new across `Packet.Node.Tests` — the poller driven through its `PollOnceAsync` seam
+  over the stub head-end control plane (statusz shape, healthz fallback, failure/recovery counters, transition-
+  only logging, self-gate no-polls/no-browses, pinned-never-browses vs mDNS-resolve, unresolvable-counts-as-down,
+  port-referenced union, config-prune), the two exporter buckets over synthetic snapshots (absent-when-empty,
+  devices-gauge omission rules, counter-from-zero), the GET enrichment join, `GetStatusAsync` parse + 404, and
+  `IsReconnecting` observed true mid-re-dial. No parser/listener/parity surface — **no ax25-ts leg**.
+
+Closes [#583] — both halves (Go #587 + this) done.
+
+[#583]: https://github.com/packet-net/packet.net/issues/583
+### 2026-07-08 — Remote parity: `tait-transparent` over a head-end + flash-tnc documented local-only ([#585])
+
+Closes the two remote-parity gaps from the 2026-07-08 arc review ([#585]): the TNC-less `tait-transparent`
+port kind was silently local-serial-only (no head-end binding, no factory branch, and its Command↔Transparent
+runtime re-clock — **the only runtime `SetBaudRate` caller** — went to the local port instead of the head-end
+line verb that exists precisely for runtime re-clocking), and `packet-tune flash-tnc`'s local-only nature was
+documented nowhere.
+
+- **Head-end binding on the config** — `TaitTransparentTransportConfig` gains `headEndId`+`deviceId` as a
+  third, mutually-exclusive binding mode beside `device`/`serial` (exactly-one, both-halves-required —
+  mirroring `PortRadioConfig`'s discipline), with `IsHeadEndBound` as the single authority and a
+  `tait-transparent:{headEndId}/{deviceId}` endpoint key. YAML/JSON arms extended; the whole-config
+  declared-head-end rule and the [#586]/#589-era **single-client unique-device rule** now cover this kind's
+  `(headEndId, deviceId)` too, and the head-end scanner counts it as a bound (in-use) Tait device.
+- **Factory remote branch + the line-verb re-clock** — `TransportFactory` resolves the binding via
+  `HeadEndDeviceResolver` and opens `TaitTransparentTransport.OpenTcpAsync` (new, the remote twin of
+  `OpenAsync`): `TaitCcdiRadio.OpenTcp` with `setBaud` wired to `POST /ports/{id}/line`, clocking the
+  CONFIGURED CCDI command baud at open ([#576]'s configured-baud convention), then entering Transparent —
+  the enter/exit `SetSerialBaudRate` calls route through `TcpSerialIo.SetBaudRate` → the same line verb, so
+  the runtime re-clock works remotely with **zero changes to the re-clock call sites**. The remote pipe
+  disables the in-band read-idle budget (new `TaitCcdiRadioOptions.ReadIdleTimeout`): a Transparent pipe
+  cannot be probed in-band without transmitting (the [#580] problem, but with no GETVER analogue), so drop
+  detection is OS TCP keepalive + FIN.
+- **Supervision** — the transparent transport is the port's `IAx25Transport`, so it takes the SAME
+  `ReconnectingKissModem` wrap as kiss-tcp/nino-tnc-tcp (not the [#576] radio-facade pattern, which exists
+  for the *attachment* seam): the transport now completes its inbound stream on the driver's
+  `ConnectionStateChanged→Faulted` (end-of-stream is the wrapper's drop signal), and head-end-bound
+  transparent ports join the wrap condition + the [#576] bring-up retry class. Reconnect re-resolves the
+  inventory, re-clocks via the line verb, and re-enters Transparent — with a new **stale-Transparent
+  recovery** in the enter path (a pipe that died before teardown leaves the radio a deaf byte pipe; on entry
+  timeout: re-clock to the transparent baud, blind §1.7.2 escape via the new internal
+  `TaitCcdiRadio.EscapeTransparentBlindAsync`, re-clock back, retry once). Local transparent ports keep
+  today's behaviour (a USB unplug is a physical event) but gain the same stale recovery at bring-up.
+  `TcpSerialIo.SetBaudRate` normalises callback failures to `IOException` so teardown against a dead
+  head-end degrades like any dead serial handle.
+- **flash-tnc documented local-only** — `operating/07` (SSH to the head-end box, free the device from its
+  bridge, flash against local serial — the exclusivity pre-flight reads the local `/proc`) and a new
+  `operating/08` **"What works remotely (and what stays local)"** parity table naming flash-tnc as the one
+  deliberate exception; `operating/06` gains "Run it over a head-end" (config, the line-verb re-clock story,
+  and the sharpened Ignore-Escape warning: the remote RECOVERY path depends on the escape, so run the
+  Transparent-readiness doctor before the radio goes up the mast).
+- **Tests (fakes/loopback only — no hardware, no RF): 20 new** across `Packet.Radio.Tait.Tests` (stale-
+  Transparent recovery escape + re-clock dance; no escape when entry answers; fault ends the inbound
+  stream), and `Packet.Node.Tests` (config: YAML/JSON round-trips, exactly-one/both-halves binding ×5,
+  undeclared head-end, unique-device incl. cross-kind vs nino-tnc-tcp and vs another port's radio; factory:
+  resolve→dial→enter with the full open/enter/exit line-verb re-clock sequence asserted against the stub
+  head-end, no-resolver failure; supervision: a killed pipe reconnects through a FRESH inventory resolve to
+  the device's new TCP port and resumes the same stream). No parser/listener/parity surface touched —
+  driver- and node-side only, no ax25-ts leg.
+
+[#585]: https://github.com/packet-net/packet.net/issues/585
 
 ### 2026-07-08 — Head-end radio-integration resilience cluster ([#576], [#578], [#580], [#581])
 

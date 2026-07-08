@@ -283,17 +283,35 @@ public sealed class AxudpValidator : AbstractValidator<AxudpTransport>
 }
 
 /// <summary>
-/// Validates a <see cref="TaitTransparentTransportConfig"/>: exactly one of device/serial pins
-/// the radio, the two bauds and the FFSK baud are positive, and the lead-in is non-negative.
+/// Validates a <see cref="TaitTransparentTransportConfig"/>: exactly one binding mode —
+/// <c>device</c> (local path), <c>serial</c> (local CCDI serial), or <c>headEndId</c>+<c>deviceId</c>
+/// (a split-station head-end device, both halves required, #585) — the two bauds and the FFSK
+/// baud are positive, and the lead-in is non-negative. Mirrors <see cref="PortRadioValidator"/>'s
+/// binding-mode discipline. That a referenced head-end id is actually declared is a whole-config
+/// check in <see cref="NodeConfigValidator"/> (it needs the head-ends list).
 /// </summary>
 public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparentTransportConfig>
 {
     public TaitTransparentValidator()
     {
-        // Exactly one binding — a device path OR a CCDI serial (XOR), mirroring PortRadioConfig.
+        // Pin the radio by EXACTLY ONE binding mode: the local device path (`device`), the local
+        // CCDI serial (`serial`), or a split-station head-end device (`headEndId`+`deviceId`).
+        // Several is ambiguous (which wins?); none leaves bring-up nothing to open.
         RuleFor(t => t)
-            .Must(t => HasNonEmptyDevice(t) ^ HasNonEmptySerial(t))
-            .WithMessage("tait-transparent transport requires exactly one of 'device' or 'serial' (set one, not both).");
+            .Must(ExactlyOneBindingMode)
+            .WithMessage(
+                "tait-transparent transport requires exactly one binding mode: `device` (the radio's " +
+                "serial device path), `serial` (the CCDI serial — the stable identity that survives " +
+                "device renumbering), or `headEndId`+`deviceId` (the radio's serial port on a " +
+                "split-station head-end); set one mode, not several, not none.");
+
+        // A head-end binding needs BOTH halves — the instance id AND the device id on it.
+        RuleFor(t => t)
+            .Must(t => HasNonEmptyHeadEndId(t) && HasNonEmptyDeviceId(t))
+            .When(t => HasNonEmptyHeadEndId(t) || HasNonEmptyDeviceId(t))
+            .WithMessage(
+                "a head-end-bound tait-transparent transport requires BOTH `headEndId` (the head-end " +
+                "instance id) and `deviceId` (the device id on it) — set both, not one.");
 
         RuleFor(t => t.Baud).GreaterThan(0).WithMessage("tait-transparent baud must be positive.");
         RuleFor(t => t.TransparentBaud).GreaterThan(0).WithMessage("tait-transparent transparentBaud must be positive.");
@@ -304,6 +322,23 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
     private static bool HasNonEmptyDevice(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.Device);
 
     private static bool HasNonEmptySerial(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.Serial);
+
+    private static bool HasNonEmptyHeadEndId(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.HeadEndId);
+
+    private static bool HasNonEmptyDeviceId(TaitTransparentTransportConfig t) => !string.IsNullOrWhiteSpace(t.DeviceId);
+
+    // Exactly one of the three binding modes. A partial head-end binding (only one of
+    // headEndId/deviceId) still counts as "attempting head-end mode" for exclusivity — the
+    // completeness rule above reports the missing half separately, so a lone headEndId gives one
+    // clear error, not a confusing "no binding mode". Mirrors PortRadioValidator.
+    private static bool ExactlyOneBindingMode(TaitTransparentTransportConfig t)
+    {
+        var modes =
+            (HasNonEmptyDevice(t) ? 1 : 0) +
+            (HasNonEmptySerial(t) ? 1 : 0) +
+            (HasNonEmptyHeadEndId(t) || HasNonEmptyDeviceId(t) ? 1 : 0);
+        return modes == 1;
+    }
 }
 
 /// <summary>

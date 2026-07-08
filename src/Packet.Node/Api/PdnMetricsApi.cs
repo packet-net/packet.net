@@ -68,9 +68,10 @@ public static class PdnMetricsApi
 
         app.MapGet("/metrics", (NodeHostedService host, IConfigProvider config, TimeProvider clock,
                 [FromServices] Packet.Node.Core.Traffic.TrafficLogService? traffic,
-                [FromServices] Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt) =>
+                [FromServices] Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt,
+                [FromServices] Packet.Node.Core.HeadEnd.HeadEndHealthMonitor? headEnds) =>
             {
-                var body = Render(host, config, clock, traffic, mqtt);
+                var body = Render(host, config, clock, traffic, mqtt, headEnds);
                 // text/plain; version=0.0.4 is the Prometheus exposition content type a scraper expects.
                 return Results.Text(body, "text/plain; version=0.0.4; charset=utf-8");
             })
@@ -85,17 +86,20 @@ public static class PdnMetricsApi
     internal static string Render(
         NodeHostedService host, IConfigProvider config, TimeProvider clock,
         Packet.Node.Core.Traffic.TrafficLogService? traffic,
-        Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt = null)
+        Packet.Node.Core.Mqtt.MqttFrameEmitter? mqtt = null,
+        Packet.Node.Core.HeadEnd.HeadEndHealthMonitor? headEnds = null)
     {
         var w = new PrometheusTextWriter();
 
         WriteNodeHealth(w, host, config, clock, traffic);
         WritePortAndLinkStats(w, host, config);
+        WriteTransportReconnecting(w, CollectTransportLinkStates(host.Supervisor));
         WriteRadioStats(w, RadioReadModels.All(host.Supervisor, config.Current));
         WriteLinkSnr(w, host.Heard);
         WriteLinkPreDataCarrier(w, host.Heard);
         WriteForwarding(w, host);
         WriteMqttStats(w, mqtt);
+        WriteHeadEndStats(w, headEnds?.Snapshot());
 
         return w.ToString();
     }
@@ -301,6 +305,51 @@ public static class PdnMetricsApi
         }
     }
 
+    // ─── per-port transport link-state bucket (reconnect-supervised transports only) ─────
+
+    // One (port, IsReconnecting) row per running port whose transport chain carries a reconnect
+    // decorator (kiss-tcp / nino-tnc-tcp), read off the pre-decorator capture on RunningPort.
+    private static List<(string PortId, bool Reconnecting)> CollectTransportLinkStates(PortSupervisor? supervisor)
+    {
+        var rows = new List<(string, bool)>();
+        if (supervisor is null)
+        {
+            return rows;
+        }
+        foreach (var portId in supervisor.RunningPortIds.OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (supervisor.GetPort(portId)?.LinkState is { } linkState)
+            {
+                rows.Add((portId, linkState.IsReconnecting));
+            }
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// The per-port transport-reconnecting gauge (#583): 1 while the port's self-healing transport
+    /// (the reconnect decorator on a kiss-tcp / nino-tnc-tcp port) has lost its link and is
+    /// re-dialling, else 0 — the honest counterpart to <c>pdn_port_up</c>, which stays 1 through a
+    /// far-end bounce because the port (listener) itself never goes down. Ports with no reconnect
+    /// supervision (local serial, AXUDP) emit nothing; the whole bucket is absent on a node with no
+    /// networked ports. Exposed (internal) so a test can format synthetic rows directly.
+    /// </summary>
+    internal static void WriteTransportReconnecting(
+        PrometheusTextWriter w, IReadOnlyList<(string PortId, bool Reconnecting)> rows)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        w.Help(Ns + "port_transport_reconnecting", "Transport link down and re-dialling (1) / link established (0). Reconnect-supervised (networked) ports only.");
+        w.Type(Ns + "port_transport_reconnecting", "gauge");
+        foreach (var (portId, reconnecting) in rows)
+        {
+            w.Sample(Ns + "port_transport_reconnecting", reconnecting ? 1 : 0, ("port", portId));
+        }
+    }
+
     // ─── forwarding throughput bucket ──────────────────────────────────────────
 
     private static void WriteForwarding(PrometheusTextWriter w, NodeHostedService host)
@@ -441,6 +490,56 @@ public static class PdnMetricsApi
         w.Help(Ns + "mqtt_pending_messages", "Messages queued in the managed MQTT client awaiting the broker (bounded, drop-oldest).");
         w.Type(Ns + "mqtt_pending_messages", "gauge");
         w.Sample(Ns + "mqtt_pending_messages", mqtt.PendingMessages);
+    }
+
+    // ─── head-end fleet bucket (#583 — the background health poller's snapshot) ─────────────────────
+
+    /// <summary>
+    /// The split-station head-end fleet's health (#583), read straight off the
+    /// <see cref="Packet.Node.Core.HeadEnd.HeadEndHealthMonitor"/>'s rolling snapshot (the same data
+    /// the <c>GET /api/v1/radios/headends</c> enrichment serves — no probing on the scrape path). The
+    /// <c>instance</c> label is the head-end's stable instance id — a closed, operator-controlled set,
+    /// so cardinality is bounded. The whole bucket is absent on a node with no head-ends (or before
+    /// the monitor's first cycle); the devices gauge is additionally omitted while an instance is
+    /// unreachable or only answers the bare pre-<c>/statusz</c> <c>/healthz</c> (an absent sample,
+    /// never a misleading stale count). The failures counter is always emitted for every monitored
+    /// instance — from zero, so <c>rate()</c> works from the first scrape. Exposed (internal) so a
+    /// test can format synthetic snapshots directly.
+    /// </summary>
+    internal static void WriteHeadEndStats(
+        PrometheusTextWriter w, IReadOnlyList<Packet.Node.Core.HeadEnd.HeadEndHealth>? instances)
+    {
+        if (instances is null || instances.Count == 0)
+        {
+            return;
+        }
+
+        w.Help(Ns + "headend_reachable", "Head-end control plane answered the most recent health poll (1) or not (0).");
+        w.Type(Ns + "headend_reachable", "gauge");
+        foreach (var h in instances)
+        {
+            w.Sample(Ns + "headend_reachable", h.Reachable ? 1 : 0, ("instance", h.InstanceId));
+        }
+
+        // Only instances that are reachable AND statusz-capable report a live device count; an
+        // absent sample is "unknown", never a stale number.
+        var withDevices = instances.Where(h => h.Reachable && h.BridgeCount is not null).ToList();
+        if (withDevices.Count > 0)
+        {
+            w.Help(Ns + "headend_devices", "Devices (serial bridges) the head-end currently exposes. Absent while unreachable or on a pre-/statusz daemon.");
+            w.Type(Ns + "headend_devices", "gauge");
+            foreach (var h in withDevices)
+            {
+                w.Sample(Ns + "headend_devices", h.BridgeCount!.Value, ("instance", h.InstanceId));
+            }
+        }
+
+        w.Help(Ns + "headend_poll_failures_total", "Failed head-end health polls since the node started tracking the instance.");
+        w.Type(Ns + "headend_poll_failures_total", "counter");
+        foreach (var h in instances)
+        {
+            w.Sample(Ns + "headend_poll_failures_total", h.PollFailuresTotal, ("instance", h.InstanceId));
+        }
     }
 
     // ─── per-partner SNR (the deliberate per-callsign label — see the class remarks + docs) ─────────

@@ -20,6 +20,7 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
     private readonly Func<HeadEndInventory> inventory;
     private readonly bool healthy;
     private int inventoryFetches;
+    private int statusFetches;
 
     public StubHeadEndHandler(HeadEndInventory inventory, bool healthy = true)
         : this(() => inventory, healthy)
@@ -35,9 +36,18 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
         this.healthy = healthy;
     }
 
+    /// <summary>The <c>GET /statusz</c> body (#583/#587), consulted per fetch so a test can evolve
+    /// it between polls. Null (the default) answers 404 — a pre-0.1.4 daemon with no statusz, which
+    /// is what drives the health poller's healthz fallback.</summary>
+    public Func<HeadEndStatus?>? Status { get; set; }
+
     /// <summary>How many <c>GET /inventory</c> requests have been served — lets a reconnect test
     /// assert the head-end was genuinely re-resolved, not re-dialled from a cached binding.</summary>
     public int InventoryFetches => Volatile.Read(ref inventoryFetches);
+
+    /// <summary>How many <c>GET /statusz</c> requests have been served — lets a health-poll test
+    /// assert the poller genuinely hit the wire (or, gated off, didn't).</summary>
+    public int StatusFetches => Volatile.Read(ref statusFetches);
 
     /// <summary>One recorded <c>POST /ports/{id}/line</c>: the device id and the raw JSON body.</summary>
     public sealed record LineCall(string DeviceId, string RawBody);
@@ -65,6 +75,14 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
         if (request.Method == HttpMethod.Get && path == "/healthz")
         {
             return new HttpResponseMessage(healthy ? HttpStatusCode.OK : HttpStatusCode.ServiceUnavailable);
+        }
+
+        if (request.Method == HttpMethod.Get && path == "/statusz")
+        {
+            Interlocked.Increment(ref statusFetches);
+            return Status?.Invoke() is { } status
+                ? Json200(status)
+                : new HttpResponseMessage(HttpStatusCode.NotFound);   // pre-0.1.4 daemon
         }
 
         if (request.Method == HttpMethod.Post && path.StartsWith("/ports/", StringComparison.Ordinal)

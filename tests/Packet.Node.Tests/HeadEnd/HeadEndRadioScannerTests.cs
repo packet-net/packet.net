@@ -46,7 +46,7 @@ public sealed class HeadEndRadioScannerTests
         var handler = new StubHeadEndHandler(new HeadEndInventory
         {
             InstanceId = "pi-shack",
-            Ports = [new HeadEndPortInfo { Id = "nino0", TcpPort = pipe.Port, Baud = 57600, UsbVid = "04d8" }],
+            Ports = [new HeadEndPortInfo { Id = "nino0", TcpPort = pipe.Port, Baud = 57600, UsbVid = "04d8", IdSource = "by-path", IdStable = true }],
         });
         var discovery = new FakeHeadEndDiscovery(new DiscoveredHeadEnd("pi-shack", "127.0.0.1", 7300));
 
@@ -60,6 +60,9 @@ public sealed class HeadEndRadioScannerTests
         device.Kind.Should().Be(HeadEndDeviceKind.NinoTnc);
         device.Version.Should().Be("3.41");
         device.Free.Should().BeTrue();
+        // The inventory's id-stability fields flow through to the scan row (#579).
+        device.IdSource.Should().Be("by-path");
+        device.IdStable.Should().BeTrue();
         // #567: a NinoTNC's KISS baud is a fixed 57600 — the identify clocks the head-end line to it
         // (once, no sweep) before GETVER.
         handler.LineCalls.Select(BaudOf).Should().Equal(57600);
@@ -138,6 +141,46 @@ public sealed class HeadEndRadioScannerTests
         device.Baud.Should().Be(19200, "the sweep clocked and identified in one step");
         // Open clocked 28800; the sweep then set 19200 (the first swept rate after the start baud).
         handler.LineCalls.Select(BaudOf).Should().ContainInOrder(28800, 19200);
+        await responder.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task An_unstable_dev_fallback_id_and_an_unreported_one_flow_through_distinctly()
+    {
+        using var pipe = new LoopbackRawPipe();
+        var responder = pipe.RespondGetVerAsync("3.44");
+        var handler = new StubHeadEndHandler(new HeadEndInventory
+        {
+            InstanceId = "pi-shack",
+            Ports =
+            [
+                // A dev-fallback id (no by-path/by-id link) — the head-end flags it unstable.
+                new HeadEndPortInfo { Id = "ttyUSB9", TcpPort = pipe.Port, Baud = 57600, UsbVid = "04d8", IdSource = "dev", IdStable = false },
+                // A bound device from an OLD head-end (< v0.1.3) that reports neither field —
+                // its scan row must carry NULLS (unknown), never an assumed "stable".
+                new HeadEndPortInfo { Id = "nino-bound", TcpPort = 9, Baud = 57600, UsbVid = "04d8" },
+            ],
+        });
+        var discovery = new FakeHeadEndDiscovery(new DiscoveredHeadEnd("pi-shack", "127.0.0.1", 7300));
+        var config = ConfigWith(ports:
+        [
+            new PortConfig
+            {
+                Id = "p1",
+                Transport = new NinoTncTcpTransport { HeadEndId = "pi-shack", DeviceId = "nino-bound" },
+            },
+        ]);
+
+        var scan = await ScannerOver(handler, discovery).ScanAsync(config).WaitAsync(Timeout);
+
+        var devices = scan.Instances.Single().Devices;
+        var unstable = devices.Single(d => d.DeviceId == "ttyUSB9");
+        unstable.IdSource.Should().Be("dev");
+        unstable.IdStable.Should().BeFalse("a kernel-name fallback id may not survive a replug — the UI warns on it");
+
+        var unreported = devices.Single(d => d.DeviceId == "nino-bound");
+        unreported.IdSource.Should().BeNull();
+        unreported.IdStable.Should().BeNull("an old head-end reports nothing — unknown, not assumed stable");
         await responder.WaitAsync(Timeout);
     }
 

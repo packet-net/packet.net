@@ -28,7 +28,8 @@ const OK_RECONCILE: ReconcileResult = {
   portRestart: [], nodeReset: [], applied: true,
 };
 
-// A reachable instance with one free TNC + one free radio → an auto suggestion.
+// A reachable instance with one free TNC + one free radio → an auto suggestion. The free radio
+// carries its band (identify/pair/name v2) so adopt must send amateurBand; ids are stable by-path.
 const AUTO_INSTANCE: HeadEndInstanceScan = {
   instanceId: "shack-north",
   host: "192.168.1.44",
@@ -37,15 +38,17 @@ const AUTO_INSTANCE: HeadEndInstanceScan = {
   reachable: true,
   error: null,
   devices: [
-    { deviceId: "usb-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
-    { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "19925328", baud: 28800, free: true },
-    { deviceId: "usb-2", kind: "tait-ccdi", model: "Tait TM8115", version: "1.10.0", serial: "1G000999", baud: 28800, free: false },
+    { deviceId: "usb-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "by-path", idStable: true },
+    { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "19925328", baud: 28800, free: true, bandCode: "B1", amateurBand: "2m", idSource: "by-path", idStable: true },
+    // From an OLD head-end that reports no id-stability fields: unknown — must NOT warn.
+    { deviceId: "usb-2", kind: "tait-ccdi", model: "Tait TM8115", version: "1.10.0", serial: "1G000999", baud: 28800, free: false, bandCode: null, amateurBand: null, idSource: null, idStable: null },
   ],
   proposedPairs: [{ tncDeviceId: "usb-0", radioDeviceId: "usb-1", auto: true }],
   pairingAmbiguous: false,
 };
 
-// A reachable instance with two free TNCs + two free radios → ambiguous, operator picks.
+// A reachable instance with two free TNCs + two free radios → ambiguous, operator picks. acm-1 has
+// an UNSTABLE dev-fallback id (the warning badge); usb-1 is a 70cm radio (band rides its adopt).
 const AMBIGUOUS_INSTANCE: HeadEndInstanceScan = {
   instanceId: "garage-pi",
   host: "192.168.1.51",
@@ -54,10 +57,10 @@ const AMBIGUOUS_INSTANCE: HeadEndInstanceScan = {
   reachable: true,
   error: null,
   devices: [
-    { deviceId: "acm-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
-    { deviceId: "acm-1", kind: "nino-tnc", model: "NinoTNC N9600A3", version: "3.41", serial: null, baud: 57600, free: true },
-    { deviceId: "usb-0", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "2G001111", baud: 28800, free: true },
-    { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8200", version: "2.03.0", serial: "2G002222", baud: 19200, free: true },
+    { deviceId: "acm-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "by-path", idStable: true },
+    { deviceId: "acm-1", kind: "nino-tnc", model: "NinoTNC N9600A3", version: "3.41", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "dev", idStable: false },
+    { deviceId: "usb-0", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "2G001111", baud: 28800, free: true, bandCode: "B1", amateurBand: "2m", idSource: "by-path", idStable: true },
+    { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8200", version: "2.03.0", serial: "2G002222", baud: 19200, free: true, bandCode: "H5", amateurBand: "70cm", idSource: "by-path", idStable: true },
   ],
   proposedPairs: [],
   pairingAmbiguous: true,
@@ -119,9 +122,10 @@ describe("Head-ends — discover → offer → adopt", () => {
     expect(btn).not.toBeDisabled();
     fireEvent.click(btn);
 
-    // Posts to the right instance with the auto pair's device ids.
+    // Posts to the right instance with the auto pair's device ids — and the radio's amateur band
+    // from its scan row, so a UI adopt gets the same band-named port an API adopt does (#579).
     await waitFor(() => expect(adopt).toHaveBeenCalledTimes(1));
-    expect(adopt).toHaveBeenCalledWith("shack-north", { tncDeviceId: "usb-0", radioDeviceId: "usb-1" });
+    expect(adopt).toHaveBeenCalledWith("shack-north", { tncDeviceId: "usb-0", radioDeviceId: "usb-1", amateurBand: "2m" });
   });
 
   it("renders a device's free vs in-use state", async () => {
@@ -153,7 +157,7 @@ describe("Head-ends — discover → offer → adopt", () => {
     fireEvent.click(btn);
 
     await waitFor(() => expect(adopt).toHaveBeenCalledTimes(1));
-    expect(adopt).toHaveBeenCalledWith("garage-pi", { tncDeviceId: "acm-1", radioDeviceId: "usb-0" });
+    expect(adopt).toHaveBeenCalledWith("garage-pi", { tncDeviceId: "acm-1", radioDeviceId: "usb-0", amateurBand: "2m" });
   });
 
   it("an adopt with an optional port id + modem mode posts them in the body", async () => {
@@ -169,8 +173,41 @@ describe("Head-ends — discover → offer → adopt", () => {
     fireEvent.click(within(panel).getByRole("button", { name: /Adopt/i }));
     await waitFor(() => expect(adopt).toHaveBeenCalledTimes(1));
     expect(adopt).toHaveBeenCalledWith("shack-north", {
-      tncDeviceId: "usb-0", radioDeviceId: "usb-1", portId: "vhf-north", mode: 4,
+      tncDeviceId: "usb-0", radioDeviceId: "usb-1", portId: "vhf-north", mode: 4, amateurBand: "2m",
     });
+  });
+
+  it("an explicit MQTT instance label in Options posts mqttInstance", async () => {
+    const adopt = vi.spyOn(api, "adoptHeadEnd").mockResolvedValue(OK_RECONCILE);
+    await mountHeadEnds(scanWith([AUTO_INSTANCE]));
+
+    const panel = await waitFor(() => instancePanel("shack-north"));
+    fireEvent.click(within(panel).getByRole("button", { name: /Options/i }));
+    fireEvent.change(within(panel).getByLabelText("MQTT instance label"), { target: { value: "vhf-main" } });
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Adopt/i }));
+    await waitFor(() => expect(adopt).toHaveBeenCalledTimes(1));
+    expect(adopt).toHaveBeenCalledWith("shack-north", {
+      tncDeviceId: "usb-0", radioDeviceId: "usb-1", amateurBand: "2m", mqttInstance: "vhf-main",
+    });
+  });
+
+  it("renders a band badge from the radio's scan row", async () => {
+    await mountHeadEnds(scanWith([AMBIGUOUS_INSTANCE]));
+    const panel = await waitFor(() => instancePanel("garage-pi"));
+    // usb-0 is a 2m radio, usb-1 a 70cm one — both bands badge on their device rows.
+    expect(within(panel).getAllByText("2m").length).toBeGreaterThanOrEqual(1);
+    expect(within(panel).getAllByText("70cm").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("warns on an unstable device id (idStable false) and not on stable/unknown ones", async () => {
+    // Across both instances: acm-1 (idStable false) must badge; the by-path devices (true) and
+    // shack-north's usb-2 (null — an old head-end that reported nothing) must not.
+    await mountHeadEnds(scanWith([AUTO_INSTANCE, AMBIGUOUS_INSTANCE]));
+    await waitFor(() => instancePanel("garage-pi"));
+    expect(screen.getAllByText(/unstable id/i)).toHaveLength(1);
+    const panel = instancePanel("garage-pi");
+    expect(within(panel).getByText(/unstable id/i)).toBeInTheDocument();
   });
 
   it("renders a duplicate-instance-id conflict with the remediation hint", async () => {

@@ -50,7 +50,7 @@ Field notes:
 
 | Field | Meaning | Default |
 |---|---|---|
-| `serial` / `device` | Bind by CCDI serial (preferred) **or** device path — exactly one. | — |
+| `serial` / `device` / `headEndId`+`deviceId` | Bind by CCDI serial (preferred), device path, **or** a [head-end](08-split-station-head-end.md) device — exactly one mode. | — |
 | `baud` | The **command-mode** serial rate (used to enter/exit Transparent). | `28800` |
 | `transparentBaud` | The **Transparent-mode terminal** serial rate. If it differs from `baud`, the port re-clocks on entry. | `28800` |
 | `ffskBaud` | FFSK over-air baud, used only to estimate airtime. | `2400` |
@@ -62,6 +62,72 @@ Field notes:
 > Binding by CCDI serial is still preferred, for the same re-enumeration reasons as
 > [chapter 1](01-attach-a-radio.md#why-bind-by-serial-not-device-path). You can find
 > the serial with the same **Scan** button / `GET /api/v1/radios/scan`.
+
+## Run it over a head-end
+
+The radio doesn't have to be on the PDN box: a `tait-transparent` port can bind a
+radio hosted on a [split-station head-end](08-split-station-head-end.md) instead of
+a local serial port. Swap the `serial`/`device` binding for the head-end pair:
+
+```yaml
+headEnds:
+  - id: shack-north
+    address: 192.168.1.44:7300      # optional; omit to resolve over mDNS
+
+ports:
+  - id: tait
+    enabled: true
+    transport:
+      kind: tait-transparent
+      headEndId: shack-north        # which head-end hosts the radio
+      deviceId: platform-xhci-hcd.1-usb-0:2:1.0-port0   # its inventory id there
+      baud: 28800
+      transparentBaud: 28800
+      ffskBaud: 2400
+```
+
+Exactly one binding mode — `device`, `serial`, or `headEndId`+`deviceId` (both
+halves) — and the `headEndId` must be declared in `headEnds:`, same rules as any
+other head-end-bound port. The `deviceId` is the radio's serial port's inventory id
+on that head-end (what the Head-ends screen / `GET /inventory` shows).
+
+How it works: the port dials the head-end's raw TCP pipe for the radio's serial
+port, and every **line-rate change rides the head-end's line verb**
+(`POST /ports/{id}/line`) — the raw socket is a pure byte pipe and can't carry
+baud. That matters more here than for any other port kind, because Transparent
+mode *re-clocks at runtime*: bring-up sets the command baud, entering Transparent
+switches to `transparentBaud`, and teardown switches back — each transition is an
+out-of-band line-verb call. A `baud`/`transparentBaud` pair that matches (the
+common case) needs no mid-flight re-clock.
+
+The port self-heals across a head-end bounce (daemon restart, `.deb` upgrade,
+network blip) like any other head-end-bound port: the dropped pipe ends the
+stream, and the supervisor re-resolves the inventory, re-dials, and **re-enters
+Transparent mode** — if the radio was left as a stale Transparent byte pipe by the
+dropped session (the pipe died before teardown could escape), the re-open escapes
+it first (`+++`, then retries the entry). In-flight AX.25 sessions don't survive
+the bounce (normal T1/N2 recovery applies); the port comes back listening.
+
+> [!WARNING]
+> **The "Ignore Escape Sequence = OFF" gotcha is even more load-bearing remotely.**
+> A remote Transparent port's *recovery* path depends on the `+++` escape working:
+> after a pipe drop the radio is still in Transparent, and the reconnect can only
+> re-enter after escaping it. On a radio programmed to ignore the escape, every
+> reconnect attempt fails (and transmits its few probe bytes over the air as data)
+> until someone power-cycles the radio — and it's up a mast on a Pi now. Run the
+> [Transparent-readiness doctor](#check-it-the-readiness-doctor) against the radio
+> **before** deploying it to a head-end.
+
+Two limitations to know:
+
+- **No head-end scan/adopt affordance for this kind (yet).** The Head-ends screen
+  adopts NinoTNC+Tait *pairs* (a `nino-tnc-tcp` port). A remote `tait-transparent`
+  port is configured by YAML/API as above; the scan still shows the Tait and its
+  inventory id, and marks it in-use once your port binds it.
+- **The readiness doctor's escape/baud probes are CLI-only** and need a local
+  serial port, so run them at the bench before the radio goes remote (the running
+  port's `GET /api/v1/ports/{id}/doctor` reports what it can, exactly as for a
+  local Transparent port).
 
 ## The setup gotchas (program the radio right)
 

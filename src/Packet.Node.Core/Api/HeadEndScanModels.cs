@@ -31,6 +31,14 @@ public sealed record HeadEndScan(
 /// <param name="ProposedPairs">Suggested TNC↔radio pairs among the FREE devices.</param>
 /// <param name="PairingAmbiguous">True when more than one free TNC or radio makes the pairing a
 /// manual choice — the <see cref="ProposedPairs"/> are then candidate combinations, not auto-suggestions.</param>
+/// <param name="ReachableNow">The background health poller's live view (#583): whether the
+/// instance answered its most recent ~30 s health poll. Null when the
+/// <see cref="HeadEnd.HeadEndHealthMonitor"/> has no data yet (not registered, first cycle pending,
+/// or the instance isn't configured/referenced) — distinct from <see cref="Reachable"/>, which says
+/// whether THIS scan fetched the inventory. Folded in from the in-memory snapshot, never probed on
+/// the request path.</param>
+/// <param name="LastSeen">When the instance last answered a background health poll, or null when
+/// the poller has no data / it never has answered.</param>
 public sealed record HeadEndInstanceScan(
     string InstanceId,
     string Host,
@@ -40,7 +48,9 @@ public sealed record HeadEndInstanceScan(
     string? Error,
     IReadOnlyList<HeadEndDeviceScan> Devices,
     IReadOnlyList<HeadEndPairProposal> ProposedPairs,
-    bool PairingAmbiguous);
+    bool PairingAmbiguous,
+    bool? ReachableNow = null,
+    DateTimeOffset? LastSeen = null);
 
 /// <summary>
 /// One device on a head-end, as seen by the scan: its stable id, its reach-through classification,
@@ -64,6 +74,12 @@ public sealed record HeadEndInstanceScan(
 /// <param name="AmateurBand">The UK amateur band the Tait's split covers (<c>2m</c> / <c>70cm</c> /
 /// <c>4m</c>), or null for a NinoTNC / a Tait whose split has no amateur allocation. Adopt defaults a
 /// port's MQTT <c>{instance}</c> label and id to this when known.</param>
+/// <param name="IdSource">Which link the head-end derived <see cref="DeviceId"/> from —
+/// <c>by-path</c> (stable) or <c>dev</c> (unstable last resort). Null when the head-end predates the
+/// id-stability fields (&lt; headend-v0.1.3): unknown (see <see cref="HeadEnd.HeadEndPortInfo.IdSource"/>).</param>
+/// <param name="IdStable">Whether <see cref="DeviceId"/> survives reboot / same-socket replug —
+/// <c>false</c> means a binding to it may not survive a replug (the UI warns). Null = the head-end
+/// didn't report it (unknown, deliberately not assumed stable).</param>
 public sealed record HeadEndDeviceScan(
     string DeviceId,
     string Kind,
@@ -73,7 +89,9 @@ public sealed record HeadEndDeviceScan(
     int Baud,
     bool Free,
     string? BandCode = null,
-    string? AmateurBand = null);
+    string? AmateurBand = null,
+    string? IdSource = null,
+    bool? IdStable = null);
 
 /// <summary>A suggested pairing within one instance: a TNC device + a radio device to configure as
 /// one matched port (a <c>nino-tnc-tcp</c> transport + a head-end-bound <c>tait-ccdi</c> radio).

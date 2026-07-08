@@ -144,8 +144,9 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         return headEnds.All(h => string.IsNullOrWhiteSpace(h.Id) || seen.Add(h.Id));
     }
 
-    /// <summary>Every head-end id a port references — a head-end-bound <c>radio:</c> or a
-    /// <c>nino-tnc-tcp</c> transport — that is NOT declared in <see cref="NodeConfig.HeadEnds"/>.
+    /// <summary>Every head-end id a port references — a head-end-bound <c>radio:</c>, a
+    /// <c>nino-tnc-tcp</c> transport, or a head-end-bound <c>tait-transparent</c> transport
+    /// (#585) — that is NOT declared in <see cref="NodeConfig.HeadEnds"/>.
     /// Empty ⇒ every reference resolves. Drives both the pass/fail verdict and the error message.</summary>
     private static List<string> UnresolvedHeadEndReferences(NodeConfig c)
     {
@@ -160,10 +161,15 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             {
                 unresolved.Add(radio.HeadEndId);
             }
-            if (port.Transport is NinoTncTcpTransport { HeadEndId: var id }
-                && !string.IsNullOrWhiteSpace(id) && !declared.Contains(id))
+            var transportHeadEndId = port.Transport switch
             {
-                unresolved.Add(id);
+                NinoTncTcpTransport { HeadEndId: var id } => id,
+                TaitTransparentTransportConfig { HeadEndId: var id } => id,
+                _ => null,
+            };
+            if (!string.IsNullOrWhiteSpace(transportHeadEndId) && !declared.Contains(transportHeadEndId))
+            {
+                unresolved.Add(transportHeadEndId);
             }
         }
         return unresolved;
@@ -179,9 +185,14 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         var duplicates = new List<string>();
         foreach (var port in c.Ports)
         {
-            if (port.Transport is NinoTncTcpTransport t)
+            switch (port.Transport)
             {
-                Check(t.HeadEndId, t.DeviceId);
+                case NinoTncTcpTransport t:
+                    Check(t.HeadEndId, t.DeviceId);
+                    break;
+                case TaitTransparentTransportConfig { IsHeadEndBound: true } tt:
+                    Check(tt.HeadEndId, tt.DeviceId);   // #585 — same single-client pipe rule
+                    break;
             }
             if (port.Radio is { IsHeadEndBound: true } radio)
             {

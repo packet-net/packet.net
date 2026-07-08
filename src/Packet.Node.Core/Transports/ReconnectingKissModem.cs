@@ -59,7 +59,8 @@ namespace Packet.Node.Core.Transports;
 /// mid-flight reconnect simply faults the in-flight completion (the caller retries).
 /// </para>
 /// </remarks>
-internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, ICsmaChannelParams, IAsyncDisposable
+internal sealed partial class ReconnectingKissModem
+    : ITxCompletionTransport, ICsmaChannelParams, ITransportLinkState, IAsyncDisposable
 {
     private readonly Func<CancellationToken, Task<IAx25Transport>> reconnect;
     private readonly string endpoint;
@@ -72,6 +73,10 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
     // The live inner transport. Swapped on reconnect; read by sends/param-sets. Volatile
     // because the read pump (which swaps it) and a sending caller run concurrently.
     private volatile IAx25Transport inner;
+
+    // Flipped by the read pump exactly where the 5101 drop / 5102 reconnected transitions are
+    // logged; read by the metrics scrape (ITransportLinkState). Volatile: writer and readers race.
+    private volatile bool reconnecting;
 
     private readonly object paramGate = new();
     private byte? txDelay, persistence, slotTime, txTail;
@@ -146,6 +151,7 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
             }
 
             // End of stream with no cancellation = the far end dropped.
+            reconnecting = true;
             LogDisconnected(endpoint);
             await DisposeQuietlyAsync(live).ConfigureAwait(false);
 
@@ -156,6 +162,7 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
             }
 
             inner = next;
+            reconnecting = false;
             LogReconnected(endpoint);
             await ReplayParamsAsync(next, ct).ConfigureAwait(false);
         }
@@ -193,6 +200,11 @@ internal sealed partial class ReconnectingKissModem : ITxCompletionTransport, IC
         }
         return null;
     }
+
+    /// <inheritdoc/>
+    /// <remarks>The <c>pdn_port_transport_reconnecting</c> source (#583): true from the moment a
+    /// drop is detected (event 5101) until a fresh inner is live (event 5102).</remarks>
+    public bool IsReconnecting => reconnecting;
 
     /// <inheritdoc/>
     public async Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Tests.Support;
 
@@ -12,6 +13,8 @@ namespace Packet.Node.Tests.HeadEnd;
 [Trait("Category", "Node")]
 public sealed class HeadEndClientTests
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
     private static HeadEndClient ClientOver(StubHeadEndHandler handler) =>
         new(new Uri("http://headend.test:7300/"), new HttpClient(handler));
 
@@ -36,6 +39,44 @@ public sealed class HeadEndClientTests
         result.Ports[0].TcpPort.Should().Be(8001);
         result.Ports[1].Id.Should().Be("tait0");
         result.Ports[1].Baud.Should().Be(28800);
+    }
+
+    [Fact]
+    public async Task GetInventoryAsync_parses_the_id_stability_fields_when_reported()
+    {
+        var inventory = new HeadEndInventory
+        {
+            InstanceId = "pi-shack",
+            Ports =
+            [
+                new HeadEndPortInfo { Id = "platform-xhci-usb-0", IdSource = "by-path", IdStable = true, TcpPort = 8001, Baud = 57600 },
+                new HeadEndPortInfo { Id = "ttyUSB1", IdSource = "dev", IdStable = false, TcpPort = 8002, Baud = 28800 },
+            ],
+        };
+
+        var result = await ClientOver(new StubHeadEndHandler(inventory)).GetInventoryAsync();
+
+        result.Ports[0].IdSource.Should().Be("by-path");
+        result.Ports[0].IdStable.Should().BeTrue();
+        result.Ports[1].IdSource.Should().Be("dev");
+        result.Ports[1].IdStable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_inventory_without_the_id_stability_fields_reads_as_unknown_not_stable()
+    {
+        // A head-end < v0.1.3 doesn't emit idSource/idStable. Absent must deserialize to NULL
+        // (unknown) — deliberately NOT assumed stable, so old head-ends neither warn nor reassure.
+        const string json = """
+            {"instanceId":"old-pi","ports":[{"id":"usb-0","devPath":"/dev/ttyUSB0","tcpPort":8001,"baud":57600,"dataBits":8,"parity":"none","stopBits":1}]}
+            """;
+
+        var inventory = JsonSerializer.Deserialize<HeadEndInventory>(json, WebJson)!;
+
+        var port = inventory.Ports.Should().ContainSingle().Subject;
+        port.Id.Should().Be("usb-0");
+        port.IdSource.Should().BeNull("an old head-end didn't report it — unknown, not defaulted");
+        port.IdStable.Should().BeNull("absent is unknown, never assumed stable");
     }
 
     [Fact]
@@ -83,5 +124,44 @@ public sealed class HeadEndClientTests
             .Should().BeTrue();
         (await ClientOver(new StubHeadEndHandler(new HeadEndInventory(), healthy: false)).HealthAsync())
             .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_parses_the_instance_id_bridge_count_and_per_bridge_state()
+    {
+        var handler = new StubHeadEndHandler(new HeadEndInventory())
+        {
+            Status = () => new HeadEndStatus
+            {
+                InstanceId = "pi-shack",
+                BridgeCount = 2,
+                Bridges =
+                [
+                    new HeadEndBridgeStatus { Id = "nino0", TcpPort = 8001, ClientConnected = true },
+                    new HeadEndBridgeStatus { Id = "tait0", TcpPort = 8002, ClientConnected = false },
+                ],
+            },
+        };
+
+        var status = await ClientOver(handler).GetStatusAsync();
+
+        status.InstanceId.Should().Be("pi-shack");
+        status.BridgeCount.Should().Be(2);
+        status.Bridges.Should().HaveCount(2);
+        status.Bridges[0].Id.Should().Be("nino0");
+        status.Bridges[0].ClientConnected.Should().BeTrue();
+        status.Bridges[1].TcpPort.Should().Be(8002);
+        status.Bridges[1].ClientConnected.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_surfaces_a_404_from_a_pre_statusz_daemon_as_NotFound()
+    {
+        // Status left null → the stub 404s /statusz like a ≤0.1.3 daemon. The health poller keys
+        // its healthz fallback off exactly this StatusCode.
+        var act = () => ClientOver(new StubHeadEndHandler(new HeadEndInventory())).GetStatusAsync();
+
+        (await act.Should().ThrowAsync<HttpRequestException>())
+            .Which.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
     }
 }

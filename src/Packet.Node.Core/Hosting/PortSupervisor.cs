@@ -756,19 +756,30 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Networked ports self-heal across a far-end bounce: wrap the connected transport so a
         // dropped link reconnects (backoff + KISS-param replay) instead of the port silently dying.
         // The eager connect above preserves initial fault isolation; this only adds
-        // reconnect-after-drop. Covers kiss-tcp (a TNC/softmodem bounce, #50) AND nino-tnc-tcp (a
+        // reconnect-after-drop. Covers kiss-tcp (a TNC/softmodem bounce, #50), nino-tnc-tcp (a
         // split-station head-end bounce or re-address — the reconnect re-resolves the inventory from
-        // the LIVE head-end fleet, so a moved head-end's new tcpPort is picked up). The Stage-1 TCP
-        // IO faults on half-open (read-idle), which is what ends the stream and triggers this.
-        if (port.Transport is KissTcpTransport or NinoTncTcpTransport)
+        // the LIVE head-end fleet, so a moved head-end's new tcpPort is picked up), AND a
+        // head-end-bound tait-transparent port (#585 — the transport IS an IAx25Transport whose
+        // inbound stream ENDS when the pipe dies, so the same wrapper supervises it; the reconnect
+        // re-resolves, re-clocks via the line verb, and re-enters Transparent, recovering a radio
+        // left as a stale byte pipe by escaping it first). The Stage-1 TCP IO faults on half-open
+        // (read-idle / OS keepalive), which is what ends the stream and triggers this. A LOCAL
+        // tait-transparent port keeps today's behaviour: a USB unplug is a physical event.
+        ITransportLinkState? linkState = null;
+        if (port.Transport is KissTcpTransport or NinoTncTcpTransport
+            or TaitTransparentTransportConfig { IsHeadEndBound: true })
         {
-            transport = new ReconnectingKissModem(
+            var reconnectingModem = new ReconnectingKissModem(
                 transport,
                 token => transportFactory.CreateAsync(
                     port.Transport, timeProvider, BuildHeadEndResolver(), token),
                 endpointText,
                 loggerFactory.CreateLogger<ReconnectingKissModem>(),
                 timeProvider);
+            transport = reconnectingModem;
+            // Captured before the pacing/tagging decorators hide it (like ninoTnc above): the
+            // metrics exporter reads IsReconnecting off the RunningPort (#583).
+            linkState = reconnectingModem;
         }
 
         // ACKMODE pacing (opt-in, default-off): when this port's kiss.ackMode is set,
@@ -948,6 +959,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             NinoTnc = ninoTnc,
             Radio = radio,
             RadioStatus = radioStatus,
+            LinkState = linkState,
             Listener = listener,
             Started = true,
         };
@@ -1044,7 +1056,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // timer (the head-end being briefly unreachable is an expected, recoverable state; a missing
     // local serial device is a physical event).
     private static bool IsHeadEndBound(PortConfig port) =>
-        port.Transport is NinoTncTcpTransport || port.Radio is { IsHeadEndBound: true };
+        port.Transport is NinoTncTcpTransport or TaitTransparentTransportConfig { IsHeadEndBound: true }
+        || port.Radio is { IsHeadEndBound: true };
 
     // Arm the background retry loop for a head-end-bound port whose bring-up just failed. One
     // loop per port (re-arming while armed is a no-op — BringUpAsync calls this on every failed
@@ -1250,6 +1263,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     NinoTnc = running.NinoTnc,
                     Radio = running.Radio,
                     RadioStatus = running.RadioStatus,
+                    LinkState = running.LinkState,
                     Listener = running.Listener,
                     Started = running.Started,
                 };
