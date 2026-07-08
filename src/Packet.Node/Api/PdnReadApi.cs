@@ -93,8 +93,9 @@ public static class PdnReadApi
         // console verb. No `port` query ⇒ the node-wide view (each callsign merged across ports);
         // `?port=<id>` ⇒ that port's stations. Most-recently-heard first. Empty when the heard log
         // is absent (default-off host) or nothing has been heard yet — never a throw.
-        v1.MapGet("/heard", (NodeHostedService host, TimeProvider clock, string? port)
-            => Results.Ok(BuildHeard(host, clock, port)));
+        // `?txdelayThresholdMs=` overrides the excess-TXDELAY advisory threshold (default 250 ms).
+        v1.MapGet("/heard", (NodeHostedService host, TimeProvider clock, string? port, double? txdelayThresholdMs)
+            => Results.Ok(BuildHeard(host, clock, port, txdelayThresholdMs)));
 
         // The learned per-peer AX.25 capability cache (which neighbours speak v2.2 /
         // answer a pre-connect XID). Projects host.Capabilities.All() with the two instants
@@ -318,7 +319,8 @@ public static class PdnReadApi
         return (rtt, ctx.RC);
     }
 
-    internal static HeardStation[] BuildHeard(NodeHostedService host, TimeProvider clock, string? port)
+    internal static HeardStation[] BuildHeard(
+        NodeHostedService host, TimeProvider clock, string? port, double? txdelayThresholdMs = null)
     {
         // The log handle is null on a host built without one (older tests / an embedder that didn't
         // register the singleton) — an empty array is the honest read, never a throw.
@@ -328,6 +330,15 @@ public static class PdnReadApi
             return [];
         }
         var now = clock.GetUtcNow();
+
+        // The passive excess-TXDELAY advisory (docs/research/txdelay-optimisation.md): peers whose
+        // rolling median pre-data carrier exceeds the threshold get a one-line flag on their row —
+        // the "link health" read the tuning view lists. Threshold overridable per request.
+        var advisorOptions = txdelayThresholdMs is { } t and > 0
+            ? new Packet.Tune.Core.ExcessTxDelayAdvisorOptions { ThresholdMs = t }
+            : null;
+        string? Advisory(string callsign, float? medianMs, int samples) =>
+            Packet.Tune.Core.ExcessTxDelayAdvisor.Assess(callsign, medianMs, samples, advisorOptions)?.Message;
 
         if (string.IsNullOrWhiteSpace(port))
         {
@@ -340,7 +351,10 @@ public static class PdnReadApi
                 Count: s.Count,
                 Ports: s.Ports,
                 LastRssiDbm: s.LastRssiDbm,
-                LastSnrDb: s.LastSnrDb)).ToArray();
+                LastSnrDb: s.LastSnrDb,
+                MedianPreDataCarrierMs: s.MedianPreDataCarrierMs,
+                PreDataCarrierSamples: s.PreDataCarrierSamples,
+                TxDelayAdvisory: Advisory(s.Callsign, s.MedianPreDataCarrierMs, s.PreDataCarrierSamples))).ToArray();
         }
 
         // Per-port: one row per callsign heard on that port.
@@ -352,7 +366,10 @@ public static class PdnReadApi
             Count: e.Count,
             Ports: 1,
             LastRssiDbm: e.LastRssiDbm,
-            LastSnrDb: e.LastSnrDb)).ToArray();
+            LastSnrDb: e.LastSnrDb,
+            MedianPreDataCarrierMs: e.MedianPreDataCarrierMs,
+            PreDataCarrierSamples: e.PreDataCarrierSamples,
+            TxDelayAdvisory: Advisory(e.Callsign, e.MedianPreDataCarrierMs, e.PreDataCarrierSamples))).ToArray();
     }
 
     internal static PeerCapability[] BuildCapabilities(NodeHostedService host, TimeProvider clock)

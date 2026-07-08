@@ -44,6 +44,13 @@
 //                                              the radios' SDM side channel: propose/confirm/
 //                                              commit, probe-verify both ways, revert-to-home
 //                                              on any failure (--sequence m[@ch],… | --sweep)
+//   txdelay-min --role coordinator|meter --tnc <port> --radio <ccdi> --peer <8charId>
+//                                              minimise the coordinator's own TXDELAY over the
+//                                              SDM side channel: step DOWN from --start, K
+//                                              separate keyings per step, meter counts decodes
+//                                              (+ as-heard pre-data via DCD); knee + margin
+//                                              recommendation; --apply verifies + keeps it;
+//                                              every exit path restores the original
 //   set-mode <tncPort> <mode>                  SETHW one TNC's mode (+16 RAM-only default)
 //                                              with settle frame + GETALL verify
 //   radio-channel <ccdiPort> [channel]         report — or switch and verify — a Tait
@@ -74,6 +81,7 @@ return args switch
     ["mode-survey", var tncA, var tncB, var ccdiA, var ccdiB, .. var rest] =>
         await ModeSurveyCommand.Run(tncA, tncB, ccdiA, ccdiB, rest),
     ["mode-coord", .. var rest] => await ModeCoordCommand.Run(rest),
+    ["txdelay-min", .. var rest] => await TxDelayMinCommand.Run(rest),
     ["hail", .. var rest] => await HailCommand.Run(rest),
     ["set-mode", var tnc, var mode, .. var rest] => await SetModeCommand.Run(tnc, mode, rest),
     ["radio-channel", var ccdi, .. var rest] => await RadioChannelCommand.Run(ccdi, rest),
@@ -107,6 +115,12 @@ static int Usage()
     Console.WriteLine("             [--home-mode 6] [--home-channel 0] [--probes 5] [--callsign X] [--verbose]");
     Console.WriteLine("                               (mode/channel renegotiation over the radios' SDM side");
     Console.WriteLine("                                channel; any failure reverts both ends to home)");
+    Console.WriteLine("  txdelay-min --role coordinator|meter --tnc <port> --radio <ccdi> --peer <8charId>");
+    Console.WriteLine("             [--start 500] [--step 40] [--min 20] [--probes 5] [--callsign X]");
+    Console.WriteLine("             [--apply | --apply-at ms] [--verbose]");
+    Console.WriteLine("                               (minimise the coordinator's OWN TXDELAY: sweep down,");
+    Console.WriteLine("                                K SEPARATE keyings/step, meter counts decodes + as-heard");
+    Console.WriteLine("                                pre-data; knee+margin recommendation; abort-safe restore)");
     Console.WriteLine("  hail --tnc <port> --radio <ccdi> --peer <8charId> [--callsign X] [--verbose]");
     Console.WriteLine("       [--respond]");
     Console.WriteLine("                               (query — or, with --respond, answer — a peer's mode/modem +");

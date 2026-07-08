@@ -39,6 +39,13 @@ public enum TuningVerb
     /// channel, supported modes, capabilities, and the responder's RSSI of the hail).
     /// The richer status can exceed the plain-SDM budget and rides an extended SDM.</summary>
     Status,
+
+    /// <summary><c>TXD</c> — a TXDELAY-minimisation message (propose / confirm /
+    /// reject / step / sent / report / apply / done / abort). Args are the
+    /// <see cref="TxDelayMinMessage"/> wire form, e.g. <c>step|300|5</c>. A large
+    /// <c>report</c> can exceed the plain-SDM budget and rides an extended SDM,
+    /// like <see cref="Status"/>.</summary>
+    TxDelay,
 }
 
 /// <summary>
@@ -148,6 +155,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         TuningVerb.ModeCoordination => "MODE",
         TuningVerb.Hail => "HAIL",
         TuningVerb.Status => "STAT",
+        TuningVerb.TxDelay => "TXD",
         _ => throw new ArgumentOutOfRangeException(nameof(verb), verb, "unknown tuning verb"),
     };
 
@@ -161,6 +169,7 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
         "MODE" => TuningVerb.ModeCoordination,
         "HAIL" => TuningVerb.Hail,
         "STAT" => TuningVerb.Status,
+        "TXD" => TuningVerb.TxDelay,
         _ => null,
     };
 

@@ -81,6 +81,16 @@ public sealed record LogLine(string T, string Lvl, string Msg);
 /// (on this port, or on whichever port heard it last for the node-wide view), when a radio control
 /// channel measured it — <c>null</c> when the port has no radio attached or the newest frame carried
 /// no attributed SNR.</param>
+/// <param name="MedianPreDataCarrierMs">Rolling median of the station's measured carrier-rise→data
+/// lead (ms) — its effective TXDELAY as heard here plus a small constant rig overhead — over the last
+/// 32 burst-opening frames a radio attributed. <c>null</c> when never measured.</param>
+/// <param name="PreDataCarrierSamples">Samples behind <see cref="MedianPreDataCarrierMs"/> (a
+/// confidence signal); 0 when never measured.</param>
+/// <param name="TxDelayAdvisory">The passive excess-TXDELAY advisory for this station, when its
+/// median pre-data carrier exceeds the threshold with enough samples behind it (e.g.
+/// <c>"GB7XXX keys ~412 ms before data — TXDELAY likely too high, wasting airtime …"</c>);
+/// <c>null</c> for a healthy or unmeasured station. Computed by
+/// <c>Packet.Tune.Core.ExcessTxDelayAdvisor</c> — see docs/research/txdelay-optimisation.md.</param>
 public sealed record HeardStation(
     string Callsign,
     string? PortId,
@@ -89,7 +99,10 @@ public sealed record HeardStation(
     long Count,
     int Ports,
     float? LastRssiDbm = null,
-    float? LastSnrDb = null);
+    float? LastSnrDb = null,
+    float? MedianPreDataCarrierMs = null,
+    int PreDataCarrierSamples = 0,
+    string? TxDelayAdvisory = null);
 
 /// <summary>One learned per-peer AX.25 capability record, projected for the operator
 /// surface (the web Capabilities screen + the MCP read tool). Mirrors the live

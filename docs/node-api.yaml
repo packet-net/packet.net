@@ -238,10 +238,14 @@ paths:
         node restart. No `port` query → the node-wide view (each callsign merged across
         the ports it was heard on). `?port=<id>` → that port's stations. `lastRssiDbm` /
         `lastSnrDb` are the newest frame's RSSI/SNR when a radio control channel measured
-        them, else null.
+        them, else null. `medianPreDataCarrierMs` is the rolling-median TXDELAY-as-heard,
+        and `txDelayAdvisory` flags a peer keying excess preamble (see
+        docs/research/txdelay-optimisation.md); `?txdelayThresholdMs=` overrides its
+        threshold (default 250 ms).
       security: [{ bearerAuth: [read] }]
       parameters:
         - { name: port, in: query, required: false, schema: { type: string } }
+        - { name: txdelayThresholdMs, in: query, required: false, schema: { type: number } }
       responses:
         "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/HeardStation" } } } } }
 
@@ -387,6 +391,54 @@ paths:
       responses:
         "200": { description: stopped }
         "404": { description: no session was active on the port }
+
+  /ports/{id}/tuning/txdelay-min:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Arm a TXDELAY-minimisation sweep on a port
+      description: >
+        Start an operator-initiated, two-station TXDELAY-minimisation session over the radios' SDM
+        side channel (docs/research/txdelay-optimisation.md, layer 2). Role `coordinator` sweeps THIS
+        port's own KISS TXDELAY down (it KEYS separately-keyed probe frames per step) and reports a
+        knee + margin recommendation; role `meter` is passive decode counting for a remote coordinator.
+        Both pause the port's normal AX.25 traffic; admin-scoped, audited, and the response carries an
+        `rfCaveat`. Shares the one-session-per-port claim, the `.../tuning/events` feed (sweep steps
+        arrive as `kind=round` events with `txDelayMs`/`preDataCarrierMs`) and the stop verbs with the
+        deviation session. The sweep NEVER leaves a reduced TXDELAY in place — use `.../apply` to keep a
+        value. 404 unknown/not-running port · 400 not a NinoTNC / no Tait radio / bad role or peer id /
+        SDM disabled · 409 a session is already active.
+      security: [{ bearerAuth: [admin] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TxDelayMinStartRequest" } } }
+      responses:
+        "200": { description: armed, content: { application/json: { schema: { type: object, properties: { session: { $ref: "#/components/schemas/TuningSessionInfo" }, rfCaveat: { type: string } } } } } }
+        "400": { description: the port cannot host a session, or the request is malformed }
+        "404": { description: unknown or not-running port }
+        "409": { description: a tuning session is already active on the port }
+
+  /ports/{id}/tuning/txdelay-min/apply:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [tools]
+      summary: Apply + verify a TXDELAY (explicit, after a sweep)
+      description: >
+        Set + settle + verify a specific TXDELAY (typically a sweep's recommendation) with the far
+        meter counting probes, and — only when every verify probe decodes — persist it to the port's
+        `kiss.txDelay` config (default; on the node the session-ending port rebuild re-applies the
+        configured KISS params, so an unpersisted apply is transient). A failed verify restores the
+        fallback. KEYS THE RADIO; admin-scoped, audited, `rfCaveat` on the response. 404/400/409 as for
+        the sweep.
+      security: [{ bearerAuth: [admin] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TxDelayApplyRequest" } } }
+      responses:
+        "200": { description: armed, content: { application/json: { schema: { type: object, properties: { session: { $ref: "#/components/schemas/TuningSessionInfo" }, rfCaveat: { type: string } } } } } }
+        "400": { description: the port cannot host a session, or the request is malformed }
+        "404": { description: unknown or not-running port }
+        "409": { description: a tuning session is already active on the port }
 
   /ports/{id}/hail:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
@@ -861,6 +913,9 @@ components:
         ports: { type: integer }
         lastRssiDbm: { type: [number, "null"], description: "RSSI (dBm) of the newest frame heard, when a radio measured it; else null" }
         lastSnrDb: { type: [number, "null"], description: "SNR (dB) of the newest frame heard, when a radio measured it; else null" }
+        medianPreDataCarrierMs: { type: [number, "null"], description: "rolling median (last 32) of the station's measured carrier-rise→data lead (ms) — its effective TXDELAY as heard here + a small constant rig overhead; else null. See docs/research/txdelay-optimisation.md." }
+        preDataCarrierSamples: { type: integer, description: "samples behind medianPreDataCarrierMs (0 when never measured)" }
+        txDelayAdvisory: { type: [string, "null"], description: "passive excess-TXDELAY advisory when the median exceeds the threshold with enough samples; else null" }
 
     RadioStatus:
       type: object
@@ -960,17 +1015,40 @@ components:
         peerSdmId: { type: string, description: "the peer radio's 8-character SDM data identity" }
         burstFrames: { type: integer, minimum: 1, maximum: 50, default: 5, description: "frames per measurement burst" }
 
+    TxDelayMinStartRequest:
+      type: object
+      description: Request to arm a TXDELAY-minimisation sweep on a port.
+      required: [role, peerSdmId]
+      properties:
+        role: { type: string, enum: [coordinator, meter], description: "coordinator sweeps its OWN TXDELAY down (transmits!); meter is passive decode counting for a remote coordinator" }
+        peerSdmId: { type: string, description: "the peer radio's 8-character SDM data identity" }
+        startMs: { type: [integer, "null"], description: "coordinator: the TXDELAY to sweep down from, in ms (default = the port's configured kiss.txDelay, else 500)" }
+        stepMs: { type: integer, default: 40, description: "coordinator: the sweep decrement in ms" }
+        minMs: { type: integer, default: 20, description: "coordinator: the sweep floor in ms" }
+        probesPerStep: { type: integer, minimum: 1, maximum: 20, default: 5, description: "separately-keyed probes per step" }
+
+    TxDelayApplyRequest:
+      type: object
+      description: Request to apply + verify a specific TXDELAY (typically a sweep's recommendation).
+      required: [peerSdmId, txDelayMs]
+      properties:
+        peerSdmId: { type: string, description: "the peer radio's 8-character SDM data identity (its port must be running a txdelay-min meter session)" }
+        txDelayMs: { type: integer, minimum: 1, maximum: 2550, description: "the TXDELAY to apply and verify, in ms" }
+        probes: { type: integer, minimum: 1, maximum: 20, default: 5, description: "verify probes" }
+        persist: { type: boolean, default: true, description: "persist a verified value into the port's kiss.txDelay config" }
+        fallbackMs: { type: [integer, "null"], description: "the TXDELAY restored when the verify fails (default = the port's configured kiss.txDelay, else 500)" }
+
     TuningSessionInfo:
       type: object
-      description: A guided deviation-tuning session's state.
+      description: A tuning session's state (deviation or txdelay flavour).
       required: [sessionId, portId, role, peerSdmId, state, burstFrames, startedAt]
       properties:
         sessionId: { type: string }
         portId: { type: string }
-        role: { type: string, enum: [tuned, meter] }
+        role: { type: string, enum: [tuned, meter, txdelay-coordinator, txdelay-meter, txdelay-apply] }
         peerSdmId: { type: string }
         state: { type: string, enum: [armed, peer-connected, awaiting-adjustment, ended, error, stopped] }
-        burstFrames: { type: integer }
+        burstFrames: { type: integer, description: "deviation: burst size; txdelay: probes per step" }
         startedAt: { type: string, format: date-time }
 
     TuningEvent:
@@ -989,6 +1067,9 @@ components:
         advice: { type: [string, "null"], enum: [up, down, ok, sweep, null], description: "pot advice for the operator (round events)" }
         note: { type: [string, "null"], description: "one-line operator-facing note (round events)" }
         error: { type: [string, "null"], description: "failure detail (error events)" }
+        txDelayMs: { type: [integer, "null"], description: "the commanded TXDELAY of a txdelay-min sweep step, in ms (round events of a txdelay session)" }
+        preDataCarrierMs: { type: [number, "null"], description: "the meter's median measured carrier-rise→data lead for the step, in ms — the as-heard effective TXDELAY (round events of a txdelay session, with a carrier-sensing radio)" }
+        recommendedTxDelayMs: { type: [integer, "null"], description: "the sweep's recommendation, in ms (the ended event of a completed txdelay sweep)" }
 
     LogLine:
       type: object
