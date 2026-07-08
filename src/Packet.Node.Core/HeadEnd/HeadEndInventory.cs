@@ -31,6 +31,18 @@ public sealed record HeadEndPortInfo
     /// never derived from by-id (see <see cref="ById"/>).</summary>
     public string Id { get; init; } = "";
 
+    /// <summary>Which link <see cref="Id"/> was derived from — <c>by-path</c> (the stable
+    /// <c>/dev/serial/by-path</c> basename) or <c>dev</c> (the kernel <c>/dev</c> basename, the
+    /// unstable last resort). Null when the head-end predates the id-stability fields
+    /// (&lt; headend-v0.1.3) and didn't report one — unknown, not assumed.</summary>
+    public string? IdSource { get; init; }
+
+    /// <summary>Whether <see cref="Id"/> survives a reboot / same-socket replug. <c>false</c> only
+    /// for the <c>dev</c> fallback (the kernel name renumbers) — PDN warns on it, a binding to it
+    /// may not survive a replug. Null when the head-end predates the id-stability fields
+    /// (&lt; headend-v0.1.3): unknown — deliberately NOT defaulted to stable/true.</summary>
+    public bool? IdStable { get; init; }
+
     /// <summary>The device's <c>/dev</c> path on the head-end (diagnostic only; PDN never opens it).</summary>
     public string DevPath { get; init; } = "";
 

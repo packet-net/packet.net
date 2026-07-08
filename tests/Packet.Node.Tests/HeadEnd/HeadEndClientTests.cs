@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Tests.Support;
 
@@ -12,6 +13,8 @@ namespace Packet.Node.Tests.HeadEnd;
 [Trait("Category", "Node")]
 public sealed class HeadEndClientTests
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
     private static HeadEndClient ClientOver(StubHeadEndHandler handler) =>
         new(new Uri("http://headend.test:7300/"), new HttpClient(handler));
 
@@ -36,6 +39,44 @@ public sealed class HeadEndClientTests
         result.Ports[0].TcpPort.Should().Be(8001);
         result.Ports[1].Id.Should().Be("tait0");
         result.Ports[1].Baud.Should().Be(28800);
+    }
+
+    [Fact]
+    public async Task GetInventoryAsync_parses_the_id_stability_fields_when_reported()
+    {
+        var inventory = new HeadEndInventory
+        {
+            InstanceId = "pi-shack",
+            Ports =
+            [
+                new HeadEndPortInfo { Id = "platform-xhci-usb-0", IdSource = "by-path", IdStable = true, TcpPort = 8001, Baud = 57600 },
+                new HeadEndPortInfo { Id = "ttyUSB1", IdSource = "dev", IdStable = false, TcpPort = 8002, Baud = 28800 },
+            ],
+        };
+
+        var result = await ClientOver(new StubHeadEndHandler(inventory)).GetInventoryAsync();
+
+        result.Ports[0].IdSource.Should().Be("by-path");
+        result.Ports[0].IdStable.Should().BeTrue();
+        result.Ports[1].IdSource.Should().Be("dev");
+        result.Ports[1].IdStable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_inventory_without_the_id_stability_fields_reads_as_unknown_not_stable()
+    {
+        // A head-end < v0.1.3 doesn't emit idSource/idStable. Absent must deserialize to NULL
+        // (unknown) — deliberately NOT assumed stable, so old head-ends neither warn nor reassure.
+        const string json = """
+            {"instanceId":"old-pi","ports":[{"id":"usb-0","devPath":"/dev/ttyUSB0","tcpPort":8001,"baud":57600,"dataBits":8,"parity":"none","stopBits":1}]}
+            """;
+
+        var inventory = JsonSerializer.Deserialize<HeadEndInventory>(json, WebJson)!;
+
+        var port = inventory.Ports.Should().ContainSingle().Subject;
+        port.Id.Should().Be("usb-0");
+        port.IdSource.Should().BeNull("an old head-end didn't report it — unknown, not defaulted");
+        port.IdStable.Should().BeNull("absent is unknown, never assumed stable");
     }
 
     [Fact]

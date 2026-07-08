@@ -20,7 +20,8 @@ namespace Packet.Node.Core.Radios;
 /// <remarks>
 /// <para>
 /// <b>This transmits.</b> It is an explicitly operator-initiated action
-/// (<c>POST /api/v1/radios/headends/{instanceId}/pair-by-keyup</c>, operate-scope) with an RF caveat on
+/// (<c>POST /api/v1/radios/headends/{instanceId}/pair-by-keyup</c>, admin-scope — the same bar as
+/// hail/tuning/doctor, the other transmitting endpoints) with an RF caveat on
 /// the response — never part of the passive <c>GET /radios/headends</c> scan. One NinoTNC is keyed at a
 /// time, briefly, and each Tait watcher is reset between keyups so an edge is attributed to the right
 /// modem.
