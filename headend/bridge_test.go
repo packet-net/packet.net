@@ -22,9 +22,10 @@ type fakeSerial struct {
 	closed   chan struct{}
 	once     sync.Once
 
-	mu       sync.Mutex
-	line     LineParams
-	setCalls int
+	mu         sync.Mutex
+	line       LineParams
+	setCalls   int
+	drainCalls int
 }
 
 func newFakeSerial(l LineParams) *fakeSerial {
@@ -108,6 +109,29 @@ func (f *fakeSerial) SetLine(l LineParams) error {
 	return nil
 }
 
+// DrainInput discards everything currently queued toward the client, matching
+// the real tcflush(TCIFLUSH) semantics: instantaneous, only what is buffered at
+// call time. drainCalls lets tests synchronize on "the bridge has drained".
+func (f *fakeSerial) DrainInput() error {
+	for {
+		select {
+		case <-f.inbound:
+		default:
+			f.mu.Lock()
+			f.drainCalls++
+			f.mu.Unlock()
+			return nil
+		}
+	}
+}
+
+// drainCount reads drainCalls thread-safely.
+func (f *fakeSerial) drainCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.drainCalls
+}
+
 func (f *fakeSerial) Close() error {
 	f.once.Do(func() { close(f.closed) })
 	return nil
@@ -162,6 +186,10 @@ func TestBridge_SerialToClient(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	// Wait for the connect-time stale-input drain before emitting, so the
+	// payload is unambiguously post-connect (see TestBridge_DrainsStaleInputOnConnect).
+	waitForDrainCount(t, fake, 1)
 
 	want := []byte{0xFF, 0x01, 0xC0, 0x7E, 0x00}
 	fake.inject(want)
@@ -231,6 +259,77 @@ func TestNewBridge_BindsToBindAddr(t *testing.T) {
 	}
 	if got := fake.deviceRead(t, len(want), 2*time.Second); string(got) != string(want) {
 		t.Errorf("device received %v, want %v", got, want)
+	}
+}
+
+// waitForDrainCount blocks until the fake has seen n connect-time drains (so a
+// test can inject post-drain bytes deterministically, not sleep-based).
+func waitForDrainCount(t *testing.T, fake *fakeSerial, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for fake.drainCount() < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("bridge never reached %d connect-time drain(s) (at %d)", n, fake.drainCount())
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestBridge_DrainsStaleInputOnConnect proves #586 item 3: bytes the device
+// emitted while NO client was attached are flushed when a client connects —
+// including between two clients — and bytes emitted AFTER the connect are
+// delivered intact.
+func TestBridge_DrainsStaleInputOnConnect(t *testing.T) {
+	b, fake, addr := newTestBridge(t)
+	defer b.Close()
+
+	// Stale garbage buffered before any client attaches.
+	fake.inject([]byte{0xDE, 0xAD, 0xBE, 0xEF, 0xC0, 0xFF})
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	waitForDrainCount(t, fake, 1)
+
+	fresh := []byte{0xC0, 0x00, 0x01, 0x02, 0xC0}
+	fake.inject(fresh)
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	got := make([]byte, len(fresh))
+	if _, err := io.ReadFull(conn, got); err != nil {
+		t.Fatalf("read fresh bytes: %v", err)
+	}
+	if string(got) != string(fresh) {
+		t.Errorf("client received %v, want only the post-connect bytes %v (stale leaked?)", got, fresh)
+	}
+
+	// No stragglers: the stale bytes are gone, not merely reordered.
+	_ = conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	extra := make([]byte, 16)
+	if n, _ := conn.Read(extra); n != 0 {
+		t.Errorf("client received %d unexpected extra bytes %v after the fresh payload", n, extra[:n])
+	}
+	conn.Close()
+
+	// The real-world shape: garbage accumulates BETWEEN clients; the next
+	// client must not start its session with it either.
+	fake.inject([]byte{0x55, 0xAA, 0x55})
+	conn2, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial second client: %v", err)
+	}
+	defer conn2.Close()
+	waitForDrainCount(t, fake, 2)
+
+	fresh2 := []byte{0xC0, 0x0D, 0xC0}
+	fake.inject(fresh2)
+	_ = conn2.SetReadDeadline(time.Now().Add(2 * time.Second))
+	got2 := make([]byte, len(fresh2))
+	if _, err := io.ReadFull(conn2, got2); err != nil {
+		t.Fatalf("second client read: %v", err)
+	}
+	if string(got2) != string(fresh2) {
+		t.Errorf("second client received %v, want %v", got2, fresh2)
 	}
 }
 

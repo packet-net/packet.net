@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -148,6 +149,92 @@ func TestLineControl_BadStopBits400(t *testing.T) {
 	reg.handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (invalid stopBits)", rr.Code)
+	}
+}
+
+// TestStatuszShape pins the GET /statusz contract (#583): instanceId, the live
+// bridge count, and per-bridge {id, tcpPort, clientConnected} — the surface
+// external monitoring watches the Pi through directly.
+func TestStatuszShape(t *testing.T) {
+	reg, _ := testRegistry()
+
+	// Attach a client to ONE of the two bridges so both states are exercised.
+	b, ok := reg.lookup("usb-NinoTNC_TARPN-if00")
+	if !ok {
+		t.Fatal("test bridge missing from registry")
+	}
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+	b.mu.Lock()
+	b.activeConn = c1
+	b.mu.Unlock()
+
+	rr := httptest.NewRecorder()
+	reg.handler().ServeHTTP(rr, httptest.NewRequest("GET", "/statusz", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	var st StatusResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &st); err != nil {
+		t.Fatalf("decode statusz: %v\nbody: %s", err, rr.Body.String())
+	}
+	if st.InstanceID != "pi-shack" {
+		t.Errorf("instanceId = %q, want pi-shack", st.InstanceID)
+	}
+	if st.BridgeCount != 2 || len(st.Bridges) != 2 {
+		t.Fatalf("bridgeCount = %d, bridges = %d, want 2/2", st.BridgeCount, len(st.Bridges))
+	}
+	// Rows are TCP-port ordered (same as inventory).
+	if st.Bridges[0].ID != "usb-NinoTNC_TARPN-if00" || st.Bridges[0].TCPPort != 7301 || !st.Bridges[0].ClientConnected {
+		t.Errorf("bridge[0] = %+v, want id usb-NinoTNC_TARPN-if00 :7301 clientConnected=true", st.Bridges[0])
+	}
+	if st.Bridges[1].ID != "usb-FTDI_Tait-if00-port0" || st.Bridges[1].TCPPort != 7302 || st.Bridges[1].ClientConnected {
+		t.Errorf("bridge[1] = %+v, want id usb-FTDI_Tait-if00-port0 :7302 clientConnected=false", st.Bridges[1])
+	}
+
+	// Pin the exact JSON keys monitoring binds to.
+	var raw map[string]any
+	_ = json.Unmarshal(rr.Body.Bytes(), &raw)
+	for _, key := range []string{"instanceId", "bridgeCount", "bridges"} {
+		if _, ok := raw[key]; !ok {
+			t.Errorf("missing top-level key %q", key)
+		}
+	}
+	rows, _ := raw["bridges"].([]any)
+	if len(rows) == 0 {
+		t.Fatal("missing bridges array")
+	}
+	first, _ := rows[0].(map[string]any)
+	for _, key := range []string{"id", "tcpPort", "clientConnected"} {
+		if _, ok := first[key]; !ok {
+			t.Errorf("bridge JSON missing key %q", key)
+		}
+	}
+}
+
+// TestStatusz_EmptyRegistry proves a head-end with no bridged devices still
+// reports a well-formed (count 0, empty array — not null) status.
+func TestStatusz_EmptyRegistry(t *testing.T) {
+	reg := newRegistry("bare-pi", nil)
+	rr := httptest.NewRecorder()
+	reg.handler().ServeHTTP(rr, httptest.NewRequest("GET", "/statusz", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if n, _ := raw["bridgeCount"].(float64); n != 0 {
+		t.Errorf("bridgeCount = %v, want 0", raw["bridgeCount"])
+	}
+	if rows, ok := raw["bridges"].([]any); !ok || len(rows) != 0 {
+		t.Errorf("bridges = %v (%T), want an empty JSON array, not null", raw["bridges"], raw["bridges"])
 	}
 }
 

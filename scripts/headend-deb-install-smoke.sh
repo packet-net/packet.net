@@ -13,10 +13,15 @@
 #   2. dpkg state is 'installed'; the binary + unit + example config landed at the
 #      staged paths; the unit's ExecStart points at the installed binary and it
 #      carries the enable wiring ([Install] + postinst `systemctl enable --now`),
-#      and postinst correctly SKIPPED systemctl (no booted systemd in a container).
+#      postinst correctly SKIPPED systemctl (no booted systemd in a container),
+#      and the unit's sandbox/notify wiring is intact (RestrictAddressFamilies
+#      includes AF_NETLINK for mDNS (#577) + AF_UNIX for sd_notify; Type=notify;
+#      WatchdogSec).
 #   3. the static binary BOOTS on pure DEFAULTS (no config file — plug-and-go) and
 #      serves /healthz on :7300 — proving the shipped unit's plug-and-go default.
-#   4. `apt purge` removes the payload cleanly.
+#   4. the startup log shows "mDNS advertising" and NOT the #577 failure
+#      signature ("Could not determine host IP addresses").
+#   5. `apt purge` removes the payload cleanly.
 #
 # Container-isolated by design: nothing is installed onto the (self-hosted,
 # non-ephemeral) CI runner, and :7300 is probed INSIDE the container.
@@ -52,6 +57,18 @@ grep -q "^ExecStart=/usr/lib/packetnet/packetnet-headend$" /lib/systemd/system/p
   || fail "unit ExecStart does not point at the installed binary"
 grep -q "^WantedBy=multi-user.target" /lib/systemd/system/packetnet-headend.service \
   || fail "unit missing [Install] WantedBy (would not enable)"
+# The sandbox must not strangle the daemon (#577): AF_NETLINK is required for
+# mDNS registration (Go net.Interfaces() opens a netlink route socket) and
+# AF_UNIX for the sd_notify READY/WATCHDOG datagrams (Type=notify would hang
+# in activating without it).
+grep -Eq "^RestrictAddressFamilies=.*AF_NETLINK" /lib/systemd/system/packetnet-headend.service \
+  || fail "unit RestrictAddressFamilies missing AF_NETLINK (mDNS breaks under the sandbox, #577)"
+grep -Eq "^RestrictAddressFamilies=.*AF_UNIX" /lib/systemd/system/packetnet-headend.service \
+  || fail "unit RestrictAddressFamilies missing AF_UNIX (sd_notify blocked -> Type=notify start hangs)"
+grep -q "^Type=notify" /lib/systemd/system/packetnet-headend.service \
+  || fail "unit not Type=notify (readiness/watchdog wiring missing)"
+grep -q "^WatchdogSec=" /lib/systemd/system/packetnet-headend.service \
+  || fail "unit missing WatchdogSec (hung-daemon restart)"
 # postinst skips systemctl when no systemd is booted (container) — so the unit is not
 # actually enabled here, but the enable wiring must be present for a real boot.
 [ ! -d /run/systemd/system ] || echo "  note: booted systemd present in image"
@@ -72,7 +89,26 @@ kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true
 [ "$ok" = 1 ] || { echo "  --- startup log ---"; sed "s/^/    /" /tmp/he.log; fail "healthz never answered on :$PORT within 30s"; }
 echo "  ok: process stayed up on defaults and /healthz answered on :$PORT"
 
-echo "== 4. purge cleans up =="
+echo "== 4. mDNS advertised (and NOT the #577 AF_NETLINK failure signature) =="
+# The daemon logs exactly one of these before serving HTTP, so by healthz time
+# the line is in the log. "Could not determine host IP addresses" is the #577
+# signature (interface enumeration blocked / no addresses) — always fatal here.
+# A container on a default docker bridge has a routable eth0, so full
+# registration is expected to succeed; if some exotic runner network ever makes
+# multicast registration legitimately impossible, weaken ONLY the positive
+# assert — the signature assert must stay.
+if grep -q "Could not determine host IP addresses" /tmp/he.log; then
+  grep "mDNS" /tmp/he.log | sed "s/^/    /"
+  fail "mDNS failed with the #577 signature (interface enumeration broken)"
+fi
+if grep -q "mDNS advertise failed" /tmp/he.log; then
+  grep "mDNS" /tmp/he.log | sed "s/^/    /"
+  fail "mDNS advertise failed (registration broken)"
+fi
+grep -q "mDNS advertising" /tmp/he.log || { sed "s/^/    /" /tmp/he.log; fail "no \"mDNS advertising\" line in the startup log"; }
+echo "  ok: $(grep "mDNS advertising" /tmp/he.log | head -1)"
+
+echo "== 5. purge cleans up =="
 apt-get purge -y packetnet-headend >/dev/null 2>&1   || fail "apt purge (non-zero)"
 [ -e /usr/lib/packetnet/packetnet-headend ]          && fail "payload survived purge"
 echo "  ok: payload removed"

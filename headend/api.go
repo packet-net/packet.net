@@ -38,6 +38,25 @@ type InventoryResponse struct {
 	Ports      []PortInfo `json:"ports"`
 }
 
+// BridgeStatus is one row of GET /statusz: the bridge's identity, its pipe
+// port, and whether a client is currently attached to the pipe.
+type BridgeStatus struct {
+	ID              string `json:"id"`
+	TCPPort         int    `json:"tcpPort"`
+	ClientConnected bool   `json:"clientConnected"`
+}
+
+// StatusResponse is GET /statusz — head-end self-observability (#583), so
+// external monitoring can watch the Pi directly instead of inferring its state
+// through PDN: the instance identity, the live bridge count, and each bridge's
+// client-connection state. /healthz stays a bare liveness "ok" (backward
+// compatible); this is the richer, additive surface.
+type StatusResponse struct {
+	InstanceID  string         `json:"instanceId"`
+	BridgeCount int            `json:"bridgeCount"`
+	Bridges     []BridgeStatus `json:"bridges"`
+}
+
 // lineRequest is the POST /ports/{id}/line body. Fields are pointers so a
 // partial request (the common baud-only sweep call) leaves the other params
 // unchanged; baud is required.
@@ -191,11 +210,32 @@ func (reg *Registry) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /inventory", reg.handleInventory)
 	mux.HandleFunc("POST /ports/{id}/line", reg.handleLine)
+	mux.HandleFunc("GET /statusz", reg.handleStatusz)
+	// /healthz stays exactly "ok" — a pure liveness probe, pinned for backward
+	// compatibility (PDN's HealthAsync, the .deb install smoke). Rich state
+	// lives on /statusz above.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	return mux
+}
+
+func (reg *Registry) handleStatusz(w http.ResponseWriter, _ *http.Request) {
+	bridges := reg.snapshot()
+	resp := StatusResponse{
+		InstanceID:  reg.InstanceID,
+		BridgeCount: len(bridges),
+		Bridges:     make([]BridgeStatus, 0, len(bridges)),
+	}
+	for _, b := range bridges {
+		resp.Bridges = append(resp.Bridges, BridgeStatus{
+			ID:              b.dev.ID,
+			TCPPort:         b.tcpPort,
+			ClientConnected: b.clientConnected(),
+		})
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (reg *Registry) handleInventory(w http.ResponseWriter, _ *http.Request) {
