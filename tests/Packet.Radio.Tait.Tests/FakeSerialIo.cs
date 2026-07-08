@@ -8,7 +8,7 @@ namespace Packet.Radio.Tait.Tests;
 internal sealed class FakeSerialIo : ISerialIo
 {
     private readonly BlockingCollection<byte[]> incoming = [];
-    private readonly ConcurrentDictionary<string, string> responses = new();
+    private readonly ConcurrentDictionary<string, (string Response, Func<bool>? OnlyWhen)> responses = new();
     private readonly StringBuilder written = new();
     private readonly List<byte> writtenBytes = [];
     private readonly List<int> baudRates = [];
@@ -57,8 +57,13 @@ internal sealed class FakeSerialIo : ISerialIo
 
     public void Enqueue(byte[] bytes) => incoming.Add(bytes);
 
-    public void RespondTo(string commandWithoutCr, string responseAscii) =>
-        responses[commandWithoutCr] = responseAscii;
+    /// <summary>Answer every write of <paramref name="commandWithoutCr"/> with
+    /// <paramref name="responseAscii"/> — but only while <paramref name="onlyWhen"/> (evaluated at
+    /// write time) returns true; while it returns false the command is silently swallowed. A null
+    /// gate always answers. The gate models radio state a command can change, e.g. "a radio stuck
+    /// in Transparent mode only answers CCDI once the <c>+++</c> escape has been seen".</summary>
+    public void RespondTo(string commandWithoutCr, string responseAscii, Func<bool>? onlyWhen = null) =>
+        responses[commandWithoutCr] = (responseAscii, onlyWhen);
 
     /// <summary>Make every subsequent <see cref="Read"/> throw <paramref name="fault"/> —
     /// models a hard IO failure (a dead head-end socket), which faults the driver's pump.</summary>
@@ -86,9 +91,10 @@ internal sealed class FakeSerialIo : ISerialIo
             written.Append(ascii);
             writtenBytes.AddRange(buffer.AsSpan(offset, count).ToArray());
         }
-        if (responses.TryGetValue(ascii.TrimEnd('\r'), out string? reply))
+        if (responses.TryGetValue(ascii.TrimEnd('\r'), out var reply)
+            && (reply.OnlyWhen is null || reply.OnlyWhen()))
         {
-            Enqueue(reply);
+            Enqueue(reply.Response);
         }
     }
 

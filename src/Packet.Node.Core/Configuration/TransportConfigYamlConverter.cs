@@ -117,6 +117,10 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             {
                 Device = fields.GetValueOrDefault("device") ?? "",
                 Serial = fields.GetValueOrDefault("serial") ?? "",
+                // The head-end binding mode (#585) — all binding fields are optional here;
+                // the validator enforces exactly-one mode across device/serial/headEnd pair.
+                HeadEndId = fields.GetValueOrDefault("headendid") ?? "",
+                DeviceId = fields.GetValueOrDefault("deviceid") ?? "",
                 Baud = Int(fields, "baud", 28800, start),
                 TransparentBaud = Int(fields, "transparentbaud", 28800, start),
                 FfskBaud = Int(fields, "ffskbaud", 2400, start),
@@ -228,6 +232,14 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 if (!string.IsNullOrWhiteSpace(t.Serial))
                 {
                     EmitField(emitter, "serial", t.Serial);
+                }
+                if (!string.IsNullOrWhiteSpace(t.HeadEndId))
+                {
+                    EmitField(emitter, "headEndId", t.HeadEndId);
+                }
+                if (!string.IsNullOrWhiteSpace(t.DeviceId))
+                {
+                    EmitField(emitter, "deviceId", t.DeviceId);
                 }
                 EmitField(emitter, "baud", t.Baud.ToString(CultureInfo.InvariantCulture));
                 EmitField(emitter, "transparentBaud", t.TransparentBaud.ToString(CultureInfo.InvariantCulture));

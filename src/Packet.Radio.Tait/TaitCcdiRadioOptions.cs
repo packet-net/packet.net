@@ -38,6 +38,17 @@ public sealed record TaitCcdiRadioOptions
     /// Applies to prompt-completed commands only; queries are unaffected.
     /// </summary>
     public TimeSpan PromptErrorGrace { get; init; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// TCP only (<see cref="TaitCcdiRadio.OpenTcp"/>; ignored for a local serial port): the
+    /// read-idle budget before a silent head-end pipe is presumed half-open and dead. <c>null</c>
+    /// (the default) uses the transport's 5-minute default; <see cref="TimeSpan.Zero"/> or
+    /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> disables the in-band budget
+    /// entirely, leaving OS TCP keepalive (and a FIN) as the drop detector. Disable it for a
+    /// Transparent-mode byte pipe: there is no in-band probe that doesn't transmit over the air,
+    /// so an RF-quiet channel is indistinguishable from a dead link by bytes alone.
+    /// </summary>
+    public TimeSpan? ReadIdleTimeout { get; init; }
 }
 
 /// <summary>Which serial-protocol interpreter the radio port is in.</summary>

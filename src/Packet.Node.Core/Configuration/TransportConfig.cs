@@ -260,7 +260,10 @@ public sealed record AxudpPeerConfig
 /// AX.25 frames ride the radio's internal FFSK modem (an 8-bit-clean byte pipe) with KISS SLIP
 /// framing, driven by <c>Packet.Radio.Tait.TaitTransparentTransport</c>. The radio is bound by
 /// device path (<see cref="Device"/>) OR — preferred — by CCDI serial (<see cref="Serial"/>),
-/// resolved at bring-up so a re-enumerated <c>/dev/ttyUSB*</c> still finds the right radio.
+/// resolved at bring-up so a re-enumerated <c>/dev/ttyUSB*</c> still finds the right radio; OR by
+/// a split-station head-end device (<see cref="HeadEndId"/>+<see cref="DeviceId"/>, #585), in
+/// which case the byte pipe is the head-end's raw TCP bridge and the Command↔Transparent runtime
+/// re-clock rides the head-end's <c>POST /ports/{id}/line</c> verb. Exactly one binding mode.
 /// </summary>
 /// <remarks>
 /// Unlike a serial-modem port with an optional <c>radio:</c> control channel, here the radio IS
@@ -274,15 +277,38 @@ public sealed record TaitTransparentTransportConfig : TransportConfig
     /// <inheritdoc/>
     public override string Kind => TransportKinds.TaitTransparent;
 
-    /// <summary>The radio's serial device path (e.g. <c>/dev/ttyUSB0</c>). Mutually exclusive
-    /// with <see cref="Serial"/>: set exactly one.</summary>
+    /// <summary>The radio's serial device path (e.g. <c>/dev/ttyUSB0</c>). One of the three
+    /// mutually-exclusive binding modes (<see cref="Device"/> / <see cref="Serial"/> /
+    /// <see cref="HeadEndId"/>+<see cref="DeviceId"/>): set exactly one.</summary>
     public string Device { get; init; } = "";
 
     /// <summary>The radio's CCDI serial number (e.g. <c>1G000123</c>) — the stable binding that
     /// survives <c>/dev/ttyUSB*</c> renumbering and the shared-USB-serial CP2102 dongle ambiguity.
-    /// When set, bring-up scans for the radio answering with this serial. Mutually exclusive with
-    /// <see cref="Device"/>: set exactly one.</summary>
+    /// When set, bring-up scans for the radio answering with this serial. One of the three
+    /// mutually-exclusive binding modes: set exactly one.</summary>
     public string Serial { get; init; } = "";
+
+    /// <summary>
+    /// <b>Head-end binding</b> (split-station topology, #585): the <see cref="HeadEndConfig.Id"/>
+    /// of the head-end hosting this radio's serial port, paired with <see cref="DeviceId"/>. When
+    /// set, the transport dials the head-end's raw TCP pipe instead of opening a local serial
+    /// port, with the CCDI command baud and any Command↔Transparent runtime re-clock routed
+    /// through the head-end's line verb (the data socket is a pure binary pipe and cannot carry
+    /// line rate). The third mutually-exclusive binding mode; requires <see cref="DeviceId"/> too.
+    /// </summary>
+    public string HeadEndId { get; init; } = "";
+
+    /// <summary>The stable device id (the inventory <c>id</c>) of the radio's serial port on the
+    /// head-end named by <see cref="HeadEndId"/>. Required with, and only with,
+    /// <see cref="HeadEndId"/>.</summary>
+    public string DeviceId { get; init; } = "";
+
+    /// <summary>True when this transport is bound to a head-end device (both
+    /// <see cref="HeadEndId"/> and <see cref="DeviceId"/> set) rather than a local serial port /
+    /// CCDI serial. The single authority the validator, the factory and the port supervisor all
+    /// consult — mirrors <see cref="PortRadioConfig.IsHeadEndBound"/>.</summary>
+    public bool IsHeadEndBound =>
+        !string.IsNullOrWhiteSpace(HeadEndId) && !string.IsNullOrWhiteSpace(DeviceId);
 
     /// <summary>CCDI Command-mode serial baud (the rate the Transparent enter/exit commands use).
     /// Default 28800 — the Tait factory default (<c>TaitCcdiRadio.DefaultBaudRate</c>).</summary>
@@ -303,5 +329,7 @@ public sealed record TaitTransparentTransportConfig : TransportConfig
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() =>
-        $"tait-transparent:{(string.IsNullOrWhiteSpace(Device) ? "serial:" + Serial : Device)}";
+        IsHeadEndBound
+            ? $"tait-transparent:{HeadEndId}/{DeviceId}"
+            : $"tait-transparent:{(string.IsNullOrWhiteSpace(Device) ? "serial:" + Serial : Device)}";
 }
