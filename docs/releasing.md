@@ -47,8 +47,9 @@ The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/work
 - `Packet.Rhp2`
 - `Packet.Radio`
 - `Packet.Radio.Tait`
+- `Packet.Tune.Core`
 
-**The `projects:` matrix in the workflow is the authoritative list** — the list above is a 2026-07-02 snapshot (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
+**The `projects:` matrix in the workflow is the authoritative list** — the list above is a 2026-07-08 snapshot of the 14-package matrix (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
 
 Then **wait for nuget.org flat-container indexing (~5–10 min)** before any downstream bump — a consumer `dotnet restore` against an unindexed version 404s.
 
@@ -59,15 +60,23 @@ git tag -a node-v<semver> origin/main -m "node-v<semver> — <one-line summary>"
 git push origin node-v<semver>
 ```
 
-The `node-v*` tag triggers [`.github/workflows/publish-node.yml`](../.github/workflows/publish-node.yml): it builds **amd64 / arm64 / armhf** self-contained `.deb`s (arm cross-published from x64 via crossgen2 R2R — serial, because three concurrent cross-publishes OOM-kill), install-smokes the amd64 one on Debian-stable + Ubuntu-LTS, and `gh release create node-v<semver>` with the `.deb`s + `SHA256SUMS` attached. The web UI is built into the `.deb` (`npm ci && vite build` inside `scripts/build-deb.sh`). It's independent of the `lib-v*` tag — the node builds from `ProjectReference`s, not NuGet.
+The `node-v*` tag triggers [`.github/workflows/publish-node.yml`](../.github/workflows/publish-node.yml): it builds **amd64 / arm64 / armhf** self-contained `.deb`s (arm cross-published from x64 via crossgen2 R2R — serial, because three concurrent cross-publishes OOM-kill), tars the same published tree per arch as the **self-contained channel's** `.tar.gz` artifacts (Phase 7 in-app self-update; `latest.json` is the channel's update manifest), install-smokes the amd64 `.deb` on Debian-stable + Ubuntu-LTS, and `gh release create node-v<semver>` with the `.deb`s + `.tar.gz`s + `SHA256SUMS` + `latest.json` attached (it also uploads the `latest.json` + tarball feed to the OARC static host for the self-update poll). The web UI is built into the `.deb` (`npm ci && vite build` inside `scripts/build-deb.sh`). It's independent of the `lib-v*` tag — the node builds from `ProjectReference`s, not NuGet.
 
-Verify the release is **non-draft with 4 assets** (three `.deb`s + `SHA256SUMS`):
+Verify the release is **non-draft with 8 assets** (three `.deb`s + three self-contained `.tar.gz`s + `SHA256SUMS` + `latest.json`):
 
 ```sh
 gh release view node-v<semver> --repo packet-net/packet.net
 ```
 
 Both tags can be pushed together; the two workflows run independently.
+
+### Step 2a — the Docker leg (`publish-docker.yml`, same tag, no extra action)
+
+The same `node-v*` tag **also** triggers [`.github/workflows/publish-docker.yml`](../.github/workflows/publish-docker.yml): it builds and pushes the **multi-arch (amd64 + arm64)** node image to GHCR as `ghcr.io/packet-net/packet.net:<semver>` and `:latest` (`scripts/docker-image.sh`; the arm64 image's `RUN` steps run under QEMU, the .NET tree is SDK-cross-published, and the push uses the built-in `GITHUB_TOKEN` — no external creds). It is deliberately **decoupled from `publish-node`** so the `.deb` release never waits on it; a slow or failed image build doesn't block Step 2. It can also be re-run standalone via `workflow_dispatch` (takes a `version` input) to (re)publish the image for an existing version without cutting a release. Verify with:
+
+```sh
+docker manifest inspect ghcr.io/packet-net/packet.net:<semver>
+```
 
 ## Step 2b — tag the head-end → static binaries GitHub Release (`publish-headend.yml`)
 
@@ -114,14 +123,15 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 
 ## Repo visibility
 
-`packet-net/packet.net` is **private**. `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/packet-term-web` are **public** — mind what release notes say.
+`packet-net/packet.net` is **public** (it was private originally; #413 tracks flushing out stale "repo is private" assumptions — this line was one of them), as are `packet-net/ax25-ts`, `packet-net/axcall`, `packet-net/packet-term-tui`, and `packet-net/packet-term-web` — release notes, issues, and CI logs are all world-readable; mind what they say.
 
 ## Quick reference
 
 | Tag / action | Workflow | Produces |
 |---|---|---|
-| `lib-v<semver>` | `publish-libs.yml` | 6 NuGet packages on nuget.org |
-| `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s on a GitHub Release |
+| `lib-v<semver>` | `publish-libs.yml` | 14 NuGet packages on nuget.org (the `projects:` matrix is authoritative) |
+| `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s + self-contained `.tar.gz`s + `latest.json` on a GitHub Release |
+| `node-v<semver>` (same tag) | `publish-docker.yml` | multi-arch (amd64+arm64) `ghcr.io/packet-net/packet.net:<semver>` + `:latest` |
 | `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 `.deb`s + static Go binaries on a GitHub Release |
 | `packet-net/axcall` `v*` | its `release.yml` | six-platform app binaries |
 | `packet-net/packet-term-tui` `v*` | its `release.yml` | six-platform app binaries |

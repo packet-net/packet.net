@@ -1,8 +1,9 @@
 # Split-station RF head-end over TCP + PDN autodiscovery
 
 **Status:** ✅ **arc complete** (2026-07-05) — all four stages shipped (see the Stage plan
-below and plan.md §17). Anchors the "Pi holds the modems+radios, a separate LXC runs PDN"
-topology.
+below and plan.md §17), with post-arc follow-on releases tracked under the Stage plan
+(`.deb` packaging, hot-plug + by-path ids, the #577/#583/#586 head-end fixes; #576 node-side
+resilience in flight). Anchors the "Pi holds the modems+radios, a separate LXC runs PDN" topology.
 
 ## Topology
 
@@ -51,9 +52,14 @@ carrier-sense/DCD, tuning, SDM, hail) or a NinoTNC's *full* control surface (GET
 - **Stable instance identity.** Each head-end advertises a stable id/name (a config value, not its
   IP) in its mDNS TXT record and its inventory. This is how PDN tells instances apart and re-finds
   one whose IP changed (DHCP lease, reboot).
-- **PDN keys device→port bindings by `(instance-id, stable-serial)`**, not by `host:port`. A Pi
+- **PDN keys device→port bindings by `(instance-id, device-id)`**, not by `host:port`. A Pi
   rebooting onto a new address must not orphan its port configs — PDN resolves `instance-id →
-  current address` via mDNS (or the manual map) at bring-up, then dials the raw pipe.
+  current address` via mDNS (or the manual map) at bring-up, then dials the raw pipe. The
+  `device-id` is the head-end's stable inventory id: since #575 (headend-v0.1.3) that is the
+  **`/dev/serial/by-path` basename — the physical USB socket** — unique by construction and stable
+  across reboot/same-socket replug (moving a device to a different socket changes its id →
+  re-adopt). This superseded the original "stable-serial" (by-id) notion: a shared, non-unique USB
+  serial makes by-id collide and flip between siblings (#574), so by-id is informational only.
 - **Pairing is within an instance.** The discover-and-offer flow matches a TNC with a radio only
   within a single instance's inventory (honouring the co-location invariant); it never proposes a
   cross-instance pair.
@@ -160,9 +166,10 @@ Handling:
   that forbids a `radio:` block on non-serial transports.
 - A remote `IRadioScanner`: mDNS discovery (+ a manual *list* of addresses) → enumerate **every**
   head-end instance → pull each one's inventory → reach through each pipe to identify + baud-lock →
-  return `RadioScanResult` rows tagged with their `(instance-id, stable-serial)`.
-- Port configs reference the radio/modem by `(instance-id, stable-serial)`, resolved to a current
-  `host:port` at bring-up — so a re-addressed head-end doesn't orphan its ports.
+  return `RadioScanResult` rows tagged with their `(instance-id, device-id)`.
+- Port configs reference the radio/modem by `(instance-id, device-id)` (the by-path socket id —
+  see "Multiple instances"), resolved to a current `host:port` at bring-up — so a re-addressed
+  head-end doesn't orphan its ports.
 - A discover-and-offer-matched-pairs flow on `PdnRadiosApi` → `PdnPortsApi` that pairs a TNC with a
   radio **within a single instance's inventory** (create the matched KISS + control ports).
 - Apply `ReconnectingKissModem`-style supervision **per socket**, so any one head-end bouncing
@@ -212,6 +219,34 @@ Handling:
      YAML config, troubleshooting), an optional `bindAddr` on the head-end daemon (fence the
      auth-less listeners onto one trusted interface; default empty = bind-all, no behaviour
      change), and the arc-complete ledger entry.
+
+### Post-arc follow-ons (after the 2026-07-05 arc-complete)
+
+- **headend-v0.1.2 — `.deb` packaging. ✅ Shipped** (§17 2026-07-05): the daemon ships as a
+  Debian package per arch (amd64/arm64/armhf), mirroring the node —
+  `scripts/build-headend-deb.sh`, systemd unit **enabled + started on install** (plug-and-go on
+  defaults), postinst **`try-restart` on upgrade** (a running daemon is bounced so the new binary
+  loads — every bridge drops; PDN's supervision reconnects adopted ports), amd64 install-smoke in
+  `publish-headend.yml`.
+- **headend-v0.1.3 — hot-plug + by-path device ids. ✅ Shipped** (§17 2026-07-06,
+  hardware-validated): poll-based re-enumerate + diff (`--rescan-interval`, default **3s**, `0`
+  disables) adds/removes bridges at runtime, leaving unchanged bridges and their connected clients
+  untouched (#572); and the device id became the **`/dev/serial/by-path` basename** — the physical
+  USB socket, collision-proof by construction — with `/dev` basename as the unstable last resort
+  and by-id demoted to an informational hint (#574 fix, PR #575). See the keying note under
+  "Multiple instances".
+- **headend-v0.1.4 — resilience follow-ons (2026-07-08 arc review).**
+  [#577](https://github.com/packet-net/packet.net/issues/577): the shipped systemd unit's
+  `RestrictAddressFamilies` blocked `AF_NETLINK`, so every `.deb`-installed head-end silently lost
+  mDNS advertisement (confirmed empirically) — the fix (allow `AF_NETLINK`, mDNS assert in the
+  install-smoke, plus [#583]'s notify/watchdog + `/statusz` and [#586]'s stale-input drain)
+  **landed on main in PR #587**, shipping as `headend-v0.1.4`. Alongside it (node-side, not a
+  head-end release):
+  [#576](https://github.com/packet-net/packet.net/issues/576) — head-end-bound **radio-control
+  supervision**, so the CCDI control socket reconnects like the data path does (data + radio
+  channels both self-heal across a head-end bounce), reopens at the *configured* CCDI baud rather
+  than the inventory's current rate, clears the latched carrier-sense on fault, and retries an
+  unreachable head-end at bring-up with backoff.
 
 ## Discovery & adoption flow
 
