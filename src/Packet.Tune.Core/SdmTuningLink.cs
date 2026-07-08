@@ -31,12 +31,28 @@ public sealed record SdmTuningLinkOptions
     public TimeSpan ReceivePollInterval { get; init; } = TimeSpan.FromSeconds(1.5);
 
     /// <summary>
-    /// Minimum gap between receiving a telegram and transmitting anything:
-    /// our own radio's auto-acknowledgement of that telegram is still going
-    /// out, and an SDM send (or any PTT) racing it wedges the TM8110's ack
-    /// engine (see the class remarks). Default 2 s.
+    /// Minimum gap between receiving a telegram and transmitting: the radio may still be
+    /// transmitting its own auto-acknowledgement of the just-received SDM, and half-duplex
+    /// etiquette is not to key over it. (This is politeness only — it does NOT prevent the
+    /// SDM auto-ack refractory, which is unavoidable and instead handled by not depending on the
+    /// delivery receipt; see <see cref="WaitForDeliveryReceipt"/> and
+    /// docs/research/tm8110-sdm-autoack-refractory.md.) Default 2 s.
     /// </summary>
     public TimeSpan PostReceiveGuard { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// When <c>true</c>, <see cref="SdmTuningLink.SendAsync"/> waits for the radio's over-air
+    /// delivery receipt (PROGRESS 1D) and retries/throws on its absence — the original
+    /// behaviour. That is only dependable for <b>unidirectional or ≥~9 s-spaced</b> SDM, or
+    /// radios programmed with SDM auto-ack OFF. For the close bidirectional traffic a
+    /// coordination protocol generates, the receipt is <b>not</b> a reliable success signal: a
+    /// radio's auto-ack transmission poisons its next send's receipt for one send and ~9 s
+    /// (see docs/research/tm8110-sdm-autoack-refractory.md), while the SDM <em>payload</em> is
+    /// delivered every time. When <c>false</c> (default), a send completes as soon as the radio
+    /// accepts the datagram; the receipt is advisory only and delivery reliability is the
+    /// caller's application-level reply. Default <c>false</c>.
+    /// </summary>
+    public bool WaitForDeliveryReceipt { get; init; }
 }
 
 /// <summary>
@@ -49,14 +65,15 @@ public sealed record SdmTuningLinkOptions
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-///   <item><b>Reliability:</b> each send waits for the radio's over-air
-///     delivery receipt (<see cref="IRadioSideChannel.DeliveryReceipt"/> —
-///     for Tait, PROGRESS 1D, which requires SDM auto-acks enabled in both
-///     radios' programming) and retries up to
-///     <see cref="SdmTuningLinkOptions.MaxAttempts"/> times with
-///     <see cref="SdmTuningLinkOptions.RetryBackoff"/> between attempts;
-///     the receiver dedupes on the telegram sequence number, so a receipt
-///     lost after successful delivery cannot double-deliver.</item>
+///   <item><b>Reliability:</b> by default (<see cref="SdmTuningLinkOptions.WaitForDeliveryReceipt"/>
+///     false) a send completes as soon as the radio accepts the datagram — on a working channel
+///     the SDM payload is always delivered — and the over-air delivery receipt
+///     (<see cref="IRadioSideChannel.DeliveryReceipt"/>; for Tait, PROGRESS 1D) is treated as
+///     advisory only, because it is <b>not</b> a dependable success signal for close bidirectional
+///     SDM (see the auto-ack refractory note below). Delivery reliability is then the caller's
+///     application-level reply (send-until-expected-reply). Only a radio-level command rejection
+///     is retried (up to <see cref="SdmTuningLinkOptions.MaxAttempts"/> times). The receiver still
+///     dedupes on the telegram sequence number, so a transport retry never surfaces twice.</item>
 ///   <item><b>Half-duplex etiquette:</b> a send waits for the radio's own
 ///     DCD to show the channel clear before keying (never transmit over a
 ///     burst in flight).</item>
@@ -69,14 +86,15 @@ public sealed record SdmTuningLinkOptions
 ///     poll for missed events.</item>
 /// </list>
 /// <para>
-/// <b>Hardware trap (TM8110, bench-found 2026-07-03):</b> keying the radio
-/// through its data PTT line while its SDM auto-acknowledgement is pending
-/// or in flight <em>wedges the radio's auto-ack engine</em> — from then on
-/// it still receives SDMs (RING + buffer) but never acks again, so every
-/// peer send reports "not delivered" until the radio is soft-reset (CCR
-/// enter/exit) or power-cycled. Never transmit on a radio that has just
-/// received a telegram until its ack has had time to go out —
-/// <c>TuningSessionOptions.PreBurstDelay</c> exists precisely for this.
+/// <b>SDM auto-ack refractory (TM8110, characterised 2026-07-08 — supersedes the earlier
+/// "keying wedges the ack engine" account, which was wrong).</b> The SDM <em>payload</em> is
+/// delivered every time. But a radio captures its own send's over-air delivery receipt only if it
+/// has not transmitted an SDM auto-acknowledge since its previous send AND ≥~9 s have elapsed since
+/// its last auto-ack; otherwise it reports a NAK after the ~6 s protocol timeout though the payload
+/// arrived. Close bidirectional SDM (any coordination protocol) therefore NAKs structurally.
+/// Bare keying does not cause it, and it cannot be disabled at runtime (auto-ack is codeplug-only).
+/// Full proof: docs/research/tm8110-sdm-autoack-refractory.md. This is why the default does not
+/// depend on the receipt.
 /// </para>
 /// </remarks>
 public sealed class SdmTuningLink : ITuningLink
@@ -173,7 +191,14 @@ public sealed class SdmTuningLink : ITuningLink
                 await WaitOutPostReceiveGuardAsync(cancellationToken).ConfigureAwait(false);
                 await WaitForChannelClearAsync(cancellationToken).ConfigureAwait(false);
 
-                var receipt = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                // The over-air delivery receipt (PROGRESS 1D) is a dependable success signal only
+                // for unidirectional / well-spaced SDM (or radios with auto-ack off) — the strict
+                // WaitForDeliveryReceipt mode. For close bidirectional traffic it is unreliable by
+                // radio design (the auto-ack refractory — docs/research/tm8110-sdm-autoack-refractory.md),
+                // so the default mode does not arm a receipt waiter and does not gate the send on it.
+                var receipt = options.WaitForDeliveryReceipt
+                    ? new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+                    : null;
                 pendingReceipt = receipt;
                 try
                 {
@@ -185,10 +210,10 @@ public sealed class SdmTuningLink : ITuningLink
                     }
                     catch (Exception ex) when (ex is TaitCcdiException or IOException or TimeoutException)
                     {
-                        // The radio refused the datagram — busy / not-ready right after a prior
-                        // transmission, or a programming rejection (e.g. SDM disabled, 0/06).
-                        // Treat as a failed attempt and retry; surface the last such error if
-                        // every attempt fails.
+                        // The radio itself refused the datagram — busy / not-ready right after a
+                        // prior transmission, or a programming rejection (e.g. SDM disabled, 0/06).
+                        // This is the one genuine transport failure worth retrying; surface the
+                        // last such error if every attempt fails.
                         sent = false;
                         lastSendError = ex.Message;
                         Log?.Invoke($"sdm-link: send rejected by the radio ({ex.Message}) — will retry");
@@ -196,10 +221,18 @@ public sealed class SdmTuningLink : ITuningLink
 
                     if (sent)
                     {
+                        if (!options.WaitForDeliveryReceipt)
+                        {
+                            // Default: the radio accepted the datagram — on a working channel the
+                            // payload is delivered. Don't gate on the (unreliable) receipt; the
+                            // caller confirms via its application-level reply.
+                            return;
+                        }
+
                         bool? acked;
                         try
                         {
-                            acked = await receipt.Task.WaitAsync(options.ReceiptTimeout, cancellationToken)
+                            acked = await receipt!.Task.WaitAsync(options.ReceiptTimeout, cancellationToken)
                                 .ConfigureAwait(false);
                         }
                         catch (TimeoutException)
@@ -234,7 +267,7 @@ public sealed class SdmTuningLink : ITuningLink
         }
 
         throw new TuningLinkException(
-            $"SDM to {peerId} not acknowledged after {options.MaxAttempts} attempts: {wire}"
+            $"SDM to {peerId} not delivered after {options.MaxAttempts} attempts: {wire}"
             + (lastSendError is null ? string.Empty : $" (last radio error: {lastSendError})"));
     }
 

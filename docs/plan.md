@@ -1243,6 +1243,14 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-08 — SDM "wedge" characterised (auto-ack refractory, not keying) + tuning link made receipt-tolerant ([#597])
+
+Live TXDELAY sweeps were aborting on "COORDINATION LOST — SDM not acknowledged". Characterised the cause empirically on the bench (fresh eyes, one variable at a time): **not** the documented "keying wedges the ack engine" story — bare keying is harmless. The real mechanism: a TM8110 captures its SDM send's over-air delivery receipt (PROGRESS 1D) only if it has not transmitted an auto-ack since its previous send **and** ≥~9 s since its last auto-ack; otherwise NAK after the ~6 s timeout — but the SDM payload is delivered every time. Close bidirectional SDM (all the tuning protocols) NAKs structurally. Auto-ack is codeplug-only (no runtime opt-out). Full proof: [research/tm8110-sdm-autoack-refractory.md](research/tm8110-sdm-autoack-refractory.md).
+
+Fix (Route A): `SdmTuningLink` is receipt-tolerant by default (`SdmTuningLinkOptions.WaitForDeliveryReceipt=false`) — a send completes on radio-accept, the 1D receipt is advisory (never a failure trigger), only a radio command-reject retries; strict receipt-wait stays behind the flag for unidirectional / ≥9 s-spaced use or auto-ack-off radios. `TxDelayMinimizer` gains reply-driven retry (`TxDelayMinOptions.LinkRetryAttempts`, default 3) — a lost propose/report is recovered by re-running the exchange with a fresh sequence (the meter re-confirms / opens a fresh tagged counter idempotently). Corrected the wrong "keying wedge" remarks (`SdmTuningLink`, `TxDelayMinimization`, Tait README, bench memory); `txdelay-min` gained `--gap`.
+
+Validated on the rig with **auto-acks ON, no reprogramming**: full sweeps complete end-to-end (mode 6 400→100 ms; mode 2 9k6 200→0 ms; every step 5/5, knee found) where they previously aborted. `Packet.Tune.Core` 203/203. Bench TXDELAY campaign recorded in [research/txdelay-optimisation.md](research/txdelay-optimisation.md) — 9k6 floors at the NinoTNC's ~10 ms residual preamble on this cabled link (a lower bound; the real-world tens-of-ms knee needs an on-air path — parked, feature left as-is). Follow-ups: same reply-retry for mode-coord + station-hail (already on the tolerant transport); a targeted reply-retry unit test.
+
 ### 2026-07-08 — TXDELAY optimisation: passive excess-TXDELAY observation + active own-TXDELAY minimisation
 
 A two-layer feature that makes TXDELAY (the pre-data preamble every AX.25 transmission pays) measurable and

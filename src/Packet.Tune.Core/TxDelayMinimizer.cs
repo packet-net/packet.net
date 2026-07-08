@@ -93,30 +93,53 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
         // ── propose (doubles as the handshake) ─────────────────────────────
         Log?.Invoke(string.Create(CultureInfo.InvariantCulture,
             $"txdmin: proposing sweep from {options.StartTxDelayMs} ms down in {options.StepMs} ms steps, {k} probes/step"));
-        try
+        // Reply-driven reliability: the SDM delivery receipt is unreliable for this close
+        // bidirectional traffic, so a lost propose/confirm is recovered by re-proposing (fresh
+        // sequence) until the meter's confirm arrives. The meter re-confirms idempotently.
+        (int Sequence, TxDelayMinMessage Message)? reply = null;
+        for (int attempt = 1; attempt <= options.LinkRetryAttempts; attempt++)
         {
-            await SendAsync(
-                new TxDelayMinMessage
+            try
+            {
+                await SendAsync(
+                    new TxDelayMinMessage
+                    {
+                        Action = TxDelayMinAction.Propose,
+                        Count = k,
+                        StartTxDelayMs = options.StartTxDelayMs,
+                        StepMs = options.StepMs,
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (TuningLinkException ex)
+            {
+                if (attempt >= options.LinkRetryAttempts)
                 {
-                    Action = TxDelayMinAction.Propose,
-                    Count = k,
-                    StartTxDelayMs = options.StartTxDelayMs,
-                    StepMs = options.StepMs,
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (TuningLinkException ex)
-        {
-            return Fail(TxDelaySweepOutcome.LinkFailed, $"propose undelivered: {ex.Message}");
-        }
+                    return Fail(TxDelaySweepOutcome.LinkFailed, $"propose undelivered: {ex.Message}");
+                }
+                Log?.Invoke(string.Create(CultureInfo.InvariantCulture,
+                    $"txdmin: propose send rejected ({ex.Message}) — retrying {attempt + 1}/{options.LinkRetryAttempts}"));
+                continue;
+            }
 
-        var reply = await WaitForAsync(
-            m => m.Action is TxDelayMinAction.Confirm or TxDelayMinAction.Reject,
-            options.ConfirmTimeout, cancellationToken).ConfigureAwait(false);
+            reply = await WaitForAsync(
+                m => m.Action is TxDelayMinAction.Confirm or TxDelayMinAction.Reject,
+                options.ConfirmTimeout, cancellationToken).ConfigureAwait(false);
+            if (reply is not null)
+            {
+                break;
+            }
+            if (attempt < options.LinkRetryAttempts)
+            {
+                Log?.Invoke(string.Create(CultureInfo.InvariantCulture,
+                    $"txdmin: no confirm within {options.ConfirmTimeout.TotalSeconds:0}s — re-proposing {attempt + 1}/{options.LinkRetryAttempts}"));
+            }
+        }
         if (reply is null)
         {
             return Fail(TxDelaySweepOutcome.ConfirmTimeout,
-                $"no confirm within {options.ConfirmTimeout.TotalSeconds:0}s");
+                string.Create(CultureInfo.InvariantCulture,
+                    $"no confirm within {options.ConfirmTimeout.TotalSeconds:0}s after {options.LinkRetryAttempts} attempts"));
         }
         if (reply.Value.Message.Action == TxDelayMinAction.Reject)
         {
@@ -139,7 +162,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
         {
             for (int ms = options.StartTxDelayMs; ms >= options.MinTxDelayMs; ms -= options.StepMs)
             {
-                var step = await RunProbePassAsync(TxDelayMinAction.Step, ms, k, cancellationToken)
+                var step = await RunProbePassWithRetryAsync(TxDelayMinAction.Step, ms, k, cancellationToken)
                     .ConfigureAwait(false);
                 steps.Add(step);
                 StepCompleted?.Invoke(step);
@@ -219,7 +242,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
             TxDelaySweepStep verify;
             try
             {
-                verify = await RunProbePassAsync(TxDelayMinAction.Apply, txDelayMs, k, cancellationToken)
+                verify = await RunProbePassWithRetryAsync(TxDelayMinAction.Apply, txDelayMs, k, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is TuningLinkException or TxDelayMinException)
@@ -286,6 +309,29 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
         {
         }
         pumpCts.Dispose();
+    }
+
+    /// <summary>Reply-driven retry around <see cref="RunProbePassAsync"/>: a lost report (the SDM
+    /// receipt is unreliable — see <see cref="SdmTuningLink"/>) is recovered by re-running the whole
+    /// pass. A fresh pass carries a fresh announce sequence = a fresh probe tag, so the meter opens a
+    /// fresh counter and re-measures — re-running is idempotent bar the re-keyed probes. Station
+    /// faults (<see cref="TxDelayMinException"/>) are not retried; the final attempt's failure
+    /// propagates to the caller's abort/restore path.</summary>
+    private async Task<TxDelaySweepStep> RunProbePassWithRetryAsync(
+        TxDelayMinAction announce, int txDelayMs, int k, CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await RunProbePassAsync(announce, txDelayMs, k, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TuningLinkException ex) when (attempt < options.LinkRetryAttempts)
+            {
+                Log?.Invoke(string.Create(CultureInfo.InvariantCulture,
+                    $"txdmin: {txDelayMs} ms pass got no report ({ex.Message}) — re-running {attempt + 1}/{options.LinkRetryAttempts}"));
+            }
+        }
     }
 
     /// <summary>One announce→set→probe→report pass, shared by the sweep steps and the
