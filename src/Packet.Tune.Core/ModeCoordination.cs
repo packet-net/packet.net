@@ -153,9 +153,18 @@ public sealed record ModeCoordOptions
     /// finish their mode/channel applies (including the settle frame). Default 5 s.</summary>
     public TimeSpan SwitchSettle { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>Coordinator: how many times to (re)run the propose→confirm handshake before
+    /// giving up. The SDM delivery receipt is unreliable for close bidirectional traffic (the
+    /// TM8110 auto-ack refractory — see <see cref="SdmTuningLink"/> and
+    /// docs/research/tm8110-sdm-autoack-refractory.md), so reliability is reply-driven: a lost
+    /// propose/confirm is recovered by re-proposing with a fresh sequence (the responder
+    /// re-confirms idempotently — nothing is committed until the commit phase). Default 3.</summary>
+    public int LinkRetryAttempts { get; init; } = 3;
+
     /// <summary>Minimum gap between receiving a side-channel telegram and keying the
-    /// TNC: the coordination radio's SDM auto-ack must clear first (the TM8110
-    /// auto-ack wedge — see <see cref="SdmTuningLink"/>). Default 2.5 s.</summary>
+    /// TNC: the coordination radio may still be sending its SDM auto-ack, and a brief gap
+    /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> —
+    /// the auto-ack refractory itself is handled by not depending on the receipt). Default 2.5 s.</summary>
     public TimeSpan PreProbeDelay { get; init; } = TimeSpan.FromSeconds(2.5);
 
     /// <summary>After a <c>sent</c> announcement arrives, how long to keep the probe

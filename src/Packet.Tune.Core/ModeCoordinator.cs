@@ -121,27 +121,46 @@ public sealed class ModeCoordinator : IAsyncDisposable
                 ResponderToCoordinator = rToC,
             };
 
-        // ── propose ────────────────────────────────────────────────────────
+        // ── propose (reply-driven: the SDM receipt is unreliable for this close bidirectional
+        //    traffic, so recover a lost propose/confirm by re-proposing with a fresh sequence;
+        //    nothing is committed yet, and the responder re-confirms idempotently) ───────────
         Log?.Invoke($"coord: proposing mode {mode} ({modeName})" +
                     (wireChannel is { } wc0 ? $" on channel {wc0}" : string.Empty));
-        try
+        (int Sequence, ModeCoordMessage Message)? reply = null;
+        for (int attempt = 1; attempt <= options.LinkRetryAttempts; attempt++)
         {
-            await SendModeAsync(
-                new ModeCoordMessage { Action = ModeCoordAction.Propose, Mode = mode, Channel = wireChannel },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (TuningLinkException ex)
-        {
-            return Fail(ModeCoordOutcome.LinkFailed, $"propose undelivered: {ex.Message}");
-        }
+            try
+            {
+                await SendModeAsync(
+                    new ModeCoordMessage { Action = ModeCoordAction.Propose, Mode = mode, Channel = wireChannel },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (TuningLinkException ex)
+            {
+                if (attempt >= options.LinkRetryAttempts)
+                {
+                    return Fail(ModeCoordOutcome.LinkFailed, $"propose undelivered: {ex.Message}");
+                }
+                Log?.Invoke($"coord: propose send rejected ({ex.Message}) — retrying {attempt + 1}/{options.LinkRetryAttempts}");
+                continue;
+            }
 
-        var reply = await WaitForModeAsync(
-            m => (m.Action is ModeCoordAction.Confirm or ModeCoordAction.Reject) && m.Mode == mode,
-            options.ConfirmTimeout, cancellationToken).ConfigureAwait(false);
+            reply = await WaitForModeAsync(
+                m => (m.Action is ModeCoordAction.Confirm or ModeCoordAction.Reject) && m.Mode == mode,
+                options.ConfirmTimeout, cancellationToken).ConfigureAwait(false);
+            if (reply is not null)
+            {
+                break;
+            }
+            if (attempt < options.LinkRetryAttempts)
+            {
+                Log?.Invoke($"coord: no confirm within {options.ConfirmTimeout.TotalSeconds:0}s — re-proposing {attempt + 1}/{options.LinkRetryAttempts}");
+            }
+        }
         if (reply is null)
         {
             return Fail(ModeCoordOutcome.ConfirmTimeout,
-                $"no confirm within {options.ConfirmTimeout.TotalSeconds:0}s");
+                $"no confirm within {options.ConfirmTimeout.TotalSeconds:0}s after {options.LinkRetryAttempts} attempts");
         }
         if (reply.Value.Message.Action == ModeCoordAction.Reject)
         {
