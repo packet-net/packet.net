@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.Radios;
 using Packet.Radio.Tait;
 using Packet.Tune.Core;
 
@@ -120,7 +121,9 @@ public sealed partial class PortHailService : BackgroundService
 
         var running = host.Supervisor?.GetPort(portId)
             ?? throw new HailException(HailError.NotFound, $"port '{portId}' is not running");
-        if (running.Radio is not TaitCcdiRadio tait)
+        // Resolve the LIVE driver: a head-end-bound radio sits behind the reconnect facade
+        // (#576), so the concrete Tait handle is re-resolved per hail, never cached.
+        if (RadioControls.LiveTait(running.Radio) is not { } tait)
         {
             throw new HailException(HailError.BadRequest,
                 "this port has no Tait CCDI radio attached — a hail needs the radio's SDM side channel");
@@ -242,7 +245,7 @@ public sealed partial class PortHailService : BackgroundService
         foreach (string portId in supervisor.RunningPortIds)
         {
             var running = supervisor.GetPort(portId);
-            if (running?.Radio is TaitCcdiRadio && running.NinoTnc is not null &&
+            if (running is not null && RadioControls.LiveTait(running.Radio) is not null && running.NinoTnc is not null &&
                 running.Config.Radio is { HailResponder: true, HailResponderPeer.Length: TaitSdmSideChannel.IdentityLength })
             {
                 desired[portId] = running;
@@ -250,13 +253,15 @@ public sealed partial class PortHailService : BackgroundService
         }
 
         // Stop responders no longer wanted — port gone / disabled, peer changed, or the radio handle
-        // was replaced (a port restart reopens the radio, so a same-peer resident bound to the OLD
-        // handle is now dead and must be rebuilt against the new one).
+        // was replaced (a port restart reopens the radio — and a head-end-bound radio's reconnect
+        // facade swaps its inner driver on a fault (#576) — so a same-peer resident bound to the OLD
+        // handle is now dead and must be rebuilt against the new one). Compare against the LIVE
+        // driver behind the stable facade, not the facade itself.
         foreach (var (portId, resident) in residents.ToArray())
         {
             bool stillWanted = desired.TryGetValue(portId, out var running)
                 && string.Equals(running!.Config.Radio!.HailResponderPeer, resident.Peer, StringComparison.Ordinal)
-                && ReferenceEquals(running.Radio, resident.Radio);
+                && ReferenceEquals(RadioControls.LiveTait(running.Radio), resident.Radio);
             if (!stillWanted)
             {
                 await StopResidentAsync(portId, force: false).ConfigureAwait(false);
@@ -270,7 +275,7 @@ public sealed partial class PortHailService : BackgroundService
             {
                 continue;
             }
-            if (running.Radio is TaitCcdiRadio tait && running.NinoTnc is not null)
+            if (RadioControls.LiveTait(running.Radio) is { } tait && running.NinoTnc is not null)
             {
                 await StartResidentAsync(portId, running.Config.Radio!.HailResponderPeer, tait, running.NinoTnc, cancellationToken)
                     .ConfigureAwait(false);

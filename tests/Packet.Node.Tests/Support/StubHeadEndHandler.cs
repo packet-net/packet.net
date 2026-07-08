@@ -17,14 +17,27 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private readonly HeadEndInventory inventory;
+    private readonly Func<HeadEndInventory> inventory;
     private readonly bool healthy;
+    private int inventoryFetches;
 
     public StubHeadEndHandler(HeadEndInventory inventory, bool healthy = true)
+        : this(() => inventory, healthy)
+    {
+    }
+
+    /// <summary>Live-inventory form: <paramref name="inventory"/> is consulted per
+    /// <c>GET /inventory</c>, so a test can move a device's raw-pipe TCP port between fetches
+    /// (the head-end-bounce reconnect scenario, #576).</summary>
+    public StubHeadEndHandler(Func<HeadEndInventory> inventory, bool healthy = true)
     {
         this.inventory = inventory;
         this.healthy = healthy;
     }
+
+    /// <summary>How many <c>GET /inventory</c> requests have been served — lets a reconnect test
+    /// assert the head-end was genuinely re-resolved, not re-dialled from a cached binding.</summary>
+    public int InventoryFetches => Volatile.Read(ref inventoryFetches);
 
     /// <summary>One recorded <c>POST /ports/{id}/line</c>: the device id and the raw JSON body.</summary>
     public sealed record LineCall(string DeviceId, string RawBody);
@@ -45,7 +58,8 @@ public sealed class StubHeadEndHandler : HttpMessageHandler
 
         if (request.Method == HttpMethod.Get && path == "/inventory")
         {
-            return Json200(inventory);
+            Interlocked.Increment(ref inventoryFetches);
+            return Json200(inventory());
         }
 
         if (request.Method == HttpMethod.Get && path == "/healthz")

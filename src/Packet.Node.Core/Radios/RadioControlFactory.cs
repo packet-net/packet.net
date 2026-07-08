@@ -85,8 +85,13 @@ public sealed class RadioControlFactory : IRadioControlFactory
                 "but none was supplied.");
 
         var binding = await resolver.ResolveAsync(radio.HeadEndId, radio.DeviceId, cancellationToken).ConfigureAwait(false);
+        // The CONFIGURED CCDI rate, not the head-end's current line rate (#576): the open-time
+        // setBaud must genuinely re-clock a restarted head-end (whose bridge reopens at its
+        // default) back to the rate the radio is programmed for. Passing binding.Baud here would
+        // "re-clock" the port to the rate it is already at — every head-end restart would then
+        // fail against the radio until an operator re-ran a scan or POSTed the line verb.
         return await TaitCcdiRadio.OpenTcp(
-            binding.Host, binding.TcpPort, binding.Baud,
+            binding.Host, binding.TcpPort, radio.Baud,
             setBaud: binding.SetBaud, options: null, timeProvider, cancellationToken).ConfigureAwait(false);
     }
 

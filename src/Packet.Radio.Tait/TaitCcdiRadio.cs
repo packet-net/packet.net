@@ -48,6 +48,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
 
     private Transaction? active;
     private bool? channelBusy;
+    private DateTimeOffset? busySince;
     private bool weKeyedTransmitter;
     private char transparentEscape = '+';
     private TaitProtocolMode mode = TaitProtocolMode.Command;
@@ -64,9 +65,13 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         lastInboundAt = clock.GetUtcNow();
         pumpThread = new Thread(PumpReads) { IsBackground = true, Name = $"tait-ccdi:{io.PortName}" };
         pumpThread.Start();
-        if (this.options.KeepAliveInterval is { } interval && interval > TimeSpan.Zero)
+        // One loop serves both watchdog duties: the quiet-link keep-alive ping and the
+        // stale-busy re-validation (#576). Either being enabled starts it.
+        bool keepAlive = this.options.KeepAliveInterval is { } ka && ka > TimeSpan.Zero;
+        bool staleBusy = this.options.StaleBusyRevalidateAfter is { } sb && sb > TimeSpan.Zero;
+        if (keepAlive || staleBusy)
         {
-            watchdogLoop = Task.Run(() => WatchdogAsync(interval, pumpCts.Token));
+            watchdogLoop = Task.Run(() => WatchdogAsync(pumpCts.Token));
         }
     }
 
@@ -82,6 +87,9 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         RadioCapabilities.SideChannel;
 
     /// <inheritdoc/>
+    /// <remarks>Reset to <c>null</c> (unknown ⇒ the CSMA gate fails open) when the link faults
+    /// (#576) and when a stale latched-busy fails its re-validation probe
+    /// (<see cref="TaitCcdiRadioOptions.StaleBusyRevalidateAfter"/>).</remarks>
     public bool? ChannelBusy
     {
         get
@@ -1240,6 +1248,7 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
                     lock (stateGate)
                     {
                         channelBusy = busy;
+                        busySince = busy ? clock.GetUtcNow() : null;
                     }
                     CarrierSenseChanged?.Invoke(this, new CarrierSenseChange(busy, clock.GetUtcNow()));
                 }
@@ -1269,20 +1278,37 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         }
     }
 
-    private async Task WatchdogAsync(TimeSpan interval, CancellationToken cancellationToken)
+    private async Task WatchdogAsync(CancellationToken cancellationToken)
     {
-        var checkEvery = TimeSpan.FromTicks(Math.Max(interval.Ticks / 2, TimeSpan.TicksPerSecond));
+        TimeSpan? keepAlive = options.KeepAliveInterval is { } ka && ka > TimeSpan.Zero ? ka : null;
+        TimeSpan? staleBusy = options.StaleBusyRevalidateAfter is { } sb && sb > TimeSpan.Zero ? sb : null;
+        long shortest = Math.Min(keepAlive?.Ticks ?? long.MaxValue, staleBusy?.Ticks ?? long.MaxValue);
+        var checkEvery = TimeSpan.FromTicks(Math.Max(shortest / 2, TimeSpan.TicksPerSecond));
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(checkEvery, clock, cancellationToken).ConfigureAwait(false);
+                if (Mode == TaitProtocolMode.Transparent)
+                {
+                    continue;
+                }
+
+                if (staleBusy is { } staleAfter)
+                {
+                    await RevalidateStaleBusyAsync(staleAfter, cancellationToken).ConfigureAwait(false);
+                }
+
+                if (keepAlive is not { } interval)
+                {
+                    continue;
+                }
                 bool quiet;
                 lock (stateGate)
                 {
                     quiet = clock.GetUtcNow() - lastInboundAt >= interval;
                 }
-                if (!quiet || Mode == TaitProtocolMode.Transparent)
+                if (!quiet)
                 {
                     continue;
                 }
@@ -1318,17 +1344,93 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         }
     }
 
+    /// <summary>
+    /// Stale-DCD re-validation (#576, bench spike items 9–11): a busy state latched for
+    /// <paramref name="staleAfter"/> without a clear edge is suspect — the classic cause is a lost
+    /// DCD-clear PROGRESS message, whose effect is every subsequent keyup deferring the CSMA
+    /// gate's full MaxWait. Probe the radio; if it does not answer, reset busy to <c>null</c>
+    /// (unknown ⇒ fail-open) and raise a final carrier-clear edge so event-driven consumers agree
+    /// with the cleared state. A responsive radio keeps its state and the staleness timer re-arms.
+    /// </summary>
+    private async Task RevalidateStaleBusyAsync(TimeSpan staleAfter, CancellationToken cancellationToken)
+    {
+        lock (stateGate)
+        {
+            if (channelBusy != true || busySince is not { } since || clock.GetUtcNow() - since < staleAfter)
+            {
+                return;
+            }
+        }
+
+        bool ok;
+        try
+        {
+            ok = await PingAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // A dead link (write failure) counts as unresponsive; the pump/watchdog fault
+            // machinery handles the connection state separately.
+            ok = false;
+        }
+
+        if (ok)
+        {
+            MarkHealthy();
+            lock (stateGate)
+            {
+                if (channelBusy == true)
+                {
+                    busySince = clock.GetUtcNow();   // re-arm: re-validate again a full period later
+                }
+            }
+            return;
+        }
+
+        bool cleared = false;
+        lock (stateGate)
+        {
+            if (channelBusy == true)
+            {
+                channelBusy = null;
+                busySince = null;
+                cleared = true;
+            }
+        }
+        if (cleared)
+        {
+            CarrierSenseChanged?.Invoke(this, new CarrierSenseChange(Busy: false, clock.GetUtcNow()));
+        }
+    }
+
     private void MarkFaulted(Exception cause)
     {
         bool changed;
+        bool busyCleared;
         Transaction? pending;
         lock (stateGate)
         {
             changed = connectionState != TaitConnectionState.Faulted;
             connectionState = TaitConnectionState.Faulted;
+            // A faulted link's last DCD report is no longer evidence (#576): a radio that died
+            // busy would otherwise latch the CSMA gate into deferring every keyup its full
+            // MaxWait. Unknown (null) fails open, which is the correct degraded behaviour.
+            busyCleared = channelBusy == true;
+            channelBusy = null;
+            busySince = null;
             pending = active;
         }
         pending?.Done.TrySetException(cause);
+        if (busyCleared)
+        {
+            // A final carrier-clear edge so event-driven consumers (window trackers etc.)
+            // agree with the cleared state before the fault is announced.
+            CarrierSenseChanged?.Invoke(this, new CarrierSenseChange(Busy: false, clock.GetUtcNow()));
+        }
         if (changed)
         {
             ConnectionStateChanged?.Invoke(this, TaitConnectionState.Faulted);

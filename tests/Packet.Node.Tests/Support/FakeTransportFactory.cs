@@ -42,6 +42,14 @@ public sealed class FakeTransportFactory : ITransportFactory
         return this;
     }
 
+    /// <summary>Stop faulting an endpoint (models the head-end coming back up — the bring-up
+    /// retry loop's recovery case, #576). Pair with <see cref="Provide"/> for the next open.</summary>
+    public FakeTransportFactory ClearFault(string endpoint)
+    {
+        faults.TryRemove(endpoint, out _);
+        return this;
+    }
+
     /// <summary>The supervisor passes only the TransportConfig, so we key on its
     /// endpoint description which the tests make unique per port.</summary>
     public Task<IAx25Transport> CreateAsync(

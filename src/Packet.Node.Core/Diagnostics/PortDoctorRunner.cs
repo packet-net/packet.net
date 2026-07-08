@@ -1,6 +1,7 @@
 using Packet.Kiss.NinoTnc;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Radios;
 using Packet.Radio;
 using Packet.Radio.Tait;
 using Packet.Tune.Core;
@@ -86,7 +87,8 @@ public sealed class PortDoctorRunner : IDisposable
             return new PortDoctorReport(portId, TransparentReadinessChecklist(), clock.GetUtcNow());
         }
 
-        var tait = radio as TaitCcdiRadio;
+        // Resolve the LIVE driver behind a possible reconnect facade (#576) per run.
+        var tait = RadioControls.LiveTait(radio);
         var options = new TuningDoctorOptions
         {
             Callsign = string.IsNullOrWhiteSpace(callsign) ? "N0CALL" : callsign,

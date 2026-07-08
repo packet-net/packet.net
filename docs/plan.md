@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-06
+**As of:** 2026-07-08
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-08 — **Head-end radio-integration resilience cluster (#576/#578/#580/#581)** — the 2026-07-08 arc review's critical findings fixed in one PR: reconnect supervision for the head-end-bound Tait CCDI control channel (a stable `ReconnectingRadioControl` facade — a head-end restart no longer permanently degrades radio control), `MarkFaulted` clears the latched carrier-sense + a stale-busy re-validation probe, the open-time re-clock uses the CONFIGURED baud, bounded head-end bring-up retry, a legacy by-id → by-path device-id fallback, a NinoTNC GETVER keep-alive that stops the nino-tnc-tcp 5-min idle churn, and scan↔keyup-pairing single-flight. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: by-path is the primary device id (shared-serial by-id flip fix, #574)** — the Go head-end (`headend/`) now derives every device's stable id from `/dev/serial/by-path` (the physical USB socket → unique by construction, can't collide), with the `/dev` basename as the sole unstable last resort; `/dev/serial/by-id` is dropped as an id source and kept only as the informational `byId` field (device serial/model + allow/deny match key). Fixes #574: two CP2102 Tait CCDI dongles share USB serial `0001`, so udev makes a single shared by-id symlink and can **flip** it to a hot-replugged sibling — under the old by-id-first chain (#569) the returned device then enumerated with the same id as the still-running sibling's bridge, so the rescan diff treated it as already-bridged and dropped it. Now both dongles get distinct, stable by-path ids regardless of which holds the shared by-id, so the flip is irrelevant. `idSource` values become `by-path` | `dev` (never `by-id`). Consequence: moving a device to a **different** USB port changes its id (a physical reconfiguration → re-adopt); same-port replug + reboot keep it. Plus a rescan **cross-pass id-collision guard** (belt-and-suspenders): a newly-enumerated device whose id equals a live bridge's is disambiguated (append a by-path/dev discriminator, like the within-pass `dedupeIDs`) and added, never dropped or mis-bound. Go fakes-only tests (fake /dev+/sys tree; the shared-serial both-by-path case + the by-id **flip** across two enumerations + by-path-absent → unstable `/dev` + the cross-pass guard); `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Supersedes #569's by-id-first chain; closes #574. Ships in `headend-v0.1.3` (with #572; release is the orchestrator's post-rig step). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-06 — **Head-end: hot-plug support (poll-based re-enumerate + diff, #572)** — the Go head-end (`headend/`) now adds/removes device bridges at runtime without a restart. A dep-free poll (no udev/netlink) re-enumerates every `RescanInterval` (flag `--rescan-interval` / env `PACKETNET_HEADEND_RESCAN_INTERVAL` / JSON `rescanInterval`; **default 3s**, **`0` disables** → startup-only, no regression) and diffs against the live bridge set keyed by device id **and** resolved kernel path: new device → `newBridge` on the lowest free TCP port ≥ base + registry add + `bridge added` (transient open failure warned once, retried); gone device → `Bridge.Close` (listener + client + serial) + port freed + `bridge removed`; existing device + its connected client left **untouched** (diff acts only on the delta). Registry is now mutex-guarded (`/inventory` reflects the live set); `Bridge.close()`→idempotent `Close()` over a done-channel. Go fakes-only tests (scripted enumerator + fake opener) cover appear/disappear/untouched/failed-open-retry-warn-once/`0`-disabled; `go test`(+`-race`)/`vet`/`gofmt` + arm64 static + `.deb` build green. Head-end Go only — no .NET / no ax25-ts leg. Ships in `headend-v0.1.3` (release is the orchestrator's post-rig step). Closes #572. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-05 — **RELEASE: lib-v0.20.0 + node-v0.29.0 + headend-v0.1.1** — the "read the radio map off the hardware" follow-up shipped off green `main` (`fe7f4a1`). `lib-v0.20.0` (NuGet): the `Packet.Radio.Tait` band catalog (reads the band split off the CCDI `q3[00]` product code — A4=4m, B1=2m, H5/6/7=70cm). `node-v0.29.0` (`.deb`): identify/pair/name v2 — #567 NinoTNC-57600, keyup pairing (physical modem↔radio map via `PttActivated`), band-naming into adopt. `headend-v0.1.1`: #569 stable-unique device ids (by-id → by-path → dev). Hardware-validated end-to-end through the head-end (remote parity); downstream N/A; no TS leg; closes #567/#569. See §17](#17-amendment-log)
@@ -1239,6 +1240,66 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-08 — Head-end radio-integration resilience cluster ([#576], [#578], [#580], [#581])
+
+The critical cluster from the 2026-07-08 arc review, fixed in one PR. The headline defect ([#576]): **a head-end
+restart — including a routine `.deb` upgrade's `try-restart` — permanently degraded radio control on every adopted
+port** (the nino-tnc-tcp DATA path self-heals via `ReconnectingKissModem`; the co-located CCDI CONTROL path had no
+supervision at all), and could wreck channel timing while doing so (a radio that died busy latched the CSMA gate
+into deferring EVERY keyup its full 10 s MaxWait).
+
+- **[#576] Radio-control reconnect supervision** — new `ReconnectingRadioControl`
+  (`src/Packet.Node.Core/Radios/`): the **stable `IRadioControl` facade** every consumer on the port holds
+  (RSSI-tagging transport, `RadioCarrierSense` gate, status monitor, `RunningPort.Radio`); on the driver's
+  `ConnectionStateChanged→Faulted` it logs a WARNING, disposes the dead driver, and re-opens through
+  `IRadioControlFactory` with 1→30 s capped backoff — **re-resolving the head-end inventory each attempt** (fresh
+  `HeadEndDeviceResolver` from live config, so a re-addressed head-end or a moved raw-pipe TCP port is found) with
+  the factory re-running the progress-messages enable. Head-end-bound radios only; local-serial keeps today's
+  behaviour (a USB unplug is a physical event). The tuning/hail/doctor `as TaitCcdiRadio` downcasts now resolve the
+  LIVE driver per operation via `RadioControls.LiveTait` (never cached across a swap); the status monitor rebuilds
+  per swap (`SwappingRadioStatusMonitor`); the hail resident's staleness check compares the live inner.
+- **[#576] Fault clears carrier-sense + stale-busy re-validation** — `TaitCcdiRadio.MarkFaulted` resets
+  `channelBusy` to `null` (unknown ⇒ the CSMA gate fails OPEN) and raises a final carrier-clear
+  `CarrierSenseChanged`; and a busy latched longer than `TaitCcdiRadioOptions.StaleBusyRevalidateAfter`
+  (default 30 s — the lost-DCD-clear PROGRESS case from the bench spike, items 9–11) is re-validated with the
+  watchdog's solicited RSSI probe: unresponsive ⇒ reset to `null` + carrier-clear; responsive ⇒ kept (a genuine
+  long carrier) and the timer re-arms.
+- **[#576] Configured-baud reopen** — `RadioControlFactory.OpenHeadEndTaitAsync` passes the CONFIGURED
+  `PortRadioConfig.Baud` (default 28800) to `TaitCcdiRadio.OpenTcp`, not the inventory's current line rate — so the
+  open-time `setBaud` genuinely re-clocks a restarted head-end (whose bridge reopened at its default) back to the
+  radio's programmed rate instead of "re-clocking" to the wrong rate it is already at.
+- **[#576] Head-end bring-up retry** — a head-end-bound port whose bring-up fails (the Pi boots slower than the
+  node's LXC) arms a 30 s retry loop in `PortSupervisor` (serialised against reconciles via a new internal mutation
+  gate; live-config re-read per attempt; state transitions logged once, attempts at Debug) instead of staying down
+  until a config edit.
+- **[#578] Legacy by-id device-id fallback** — `HeadEndDeviceResolver.ResolveAsync` (and the fleet scanner's
+  bound-device detection) falls back to matching a binding's `deviceId` against each inventory port's `byId`
+  basename when no primary id matches, with a "re-adopt to migrate to the by-path id" WARNING — so a NodeConfig
+  adopted against head-end ≤0.1.2 keeps working across the 0.1.3 by-path id switch ([#575]). The binding always
+  carries the CURRENT inventory id (the line verb addresses the device by it).
+- **[#580] nino-tnc-tcp keep-alive** — `NinoTncSerialPort` gains a GETVER keep-alive
+  (`NinoTncSerialPortOptions.KeepAliveInterval`, default 2 min, on by default for `OpenTcp` only): an RF-quiet
+  channel generates no bytes, so the transport's 5-min read-idle liveness budget was tearing a healthy port down
+  every 5 minutes all night; the probe's reply bytes feed the budget while a dead link (no reply) still faults on
+  it and reconnects fast. Mirrors the Tait watchdog pattern.
+- **[#581] Scan ↔ keyup-pairing single-flight** — `HeadEndRadioScanner.ScanAsync` and
+  `HeadEndKeyupPairer.RunKeyupAsync` serialise on a shared process-wide `HeadEndProbeGate` (waiters wait, bounded
+  60 s), mirroring the local bus scanner's semaphore — a scan's Tait baud sweep can no longer re-clock lines under
+  a live pairing's PTT watchers (wrongly-unpaired radios) or queue probes into its open pipes.
+- **Tests (fakes/loopback only — no hardware, no RF):** 17 new + 1 updated across
+  `Packet.Radio.Tait.Tests` (fault clears busy + raises carrier-clear; stale-busy reset on unresponsive; kept on
+  responsive), `Packet.Node.Tests` (head-end bounce → reopen with fresh resolve + configured re-clock + progress
+  re-enable + consumers survive the swap; facade dispose; legacy by-id resolve/warn/scan-bound ×4; configured-baud
+  at open; single-flight both directions; bring-up retry ×2; ambiguous shared-serial legacy id refused), and `Packet.Kiss.NinoTnc.Tests` (keep-alive fires
+  when quiet; local serial has none; fake-clock TCP march past the idle budget alive + dead link still faults).
+  No parser/listener/parity surface touched — driver- and node-side only, no ax25-ts leg.
+
+[#575]: https://github.com/packet-net/packet.net/issues/575
+[#576]: https://github.com/packet-net/packet.net/issues/576
+[#578]: https://github.com/packet-net/packet.net/issues/578
+[#580]: https://github.com/packet-net/packet.net/issues/580
+[#581]: https://github.com/packet-net/packet.net/issues/581
 
 ### 2026-07-08 — Node: MQTT emitter hardening ([#582]) + adopt/validation polish ([#586] .NET items)
 

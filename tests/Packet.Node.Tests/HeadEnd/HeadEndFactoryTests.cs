@@ -30,19 +30,21 @@ public sealed class HeadEndFactoryTests
     }
 
     [Fact]
-    public async Task Head_end_bound_tait_resolves_the_inventory_opens_the_pipe_and_clocks_via_the_line_verb()
+    public async Task Head_end_bound_tait_resolves_the_inventory_opens_the_pipe_and_clocks_the_configured_rate()
     {
         using var pipe = new LoopbackRawPipe();
         var responder = pipe.RespondCcdiPromptsAsync();   // answer the progress-enable with a prompt
 
+        // The head-end's CURRENT line rate is stale (its bridge reopened at the 9600 default —
+        // e.g. after a head-end restart); the radio itself is programmed for the configured 28800.
         var handler = new StubHeadEndHandler(new HeadEndInventory
         {
             InstanceId = "pi-shack",
-            Ports = [new HeadEndPortInfo { Id = "tait0", TcpPort = pipe.Port, Baud = 19200 }],
+            Ports = [new HeadEndPortInfo { Id = "tait0", TcpPort = pipe.Port, Baud = 9600 }],
         });
         var resolver = ResolverOver(handler, "pi-shack");
 
-        var radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi-shack", DeviceId = "tait0" };
+        var radio = new PortRadioConfig { Kind = "tait-ccdi", HeadEndId = "pi-shack", DeviceId = "tait0", Baud = 28800 };
 
         var control = await RadioControlFactory.Instance.CreateAsync(radio, timeProvider: null, resolver);
         await using (control)
@@ -50,11 +52,12 @@ public sealed class HeadEndFactoryTests
             control.Should().BeOfType<TaitCcdiRadio>();
             _ = await pipe.Accepted.WaitAsync(Timeout);
 
-            // setBaud fired at OpenTcp → POST /ports/tait0/line with the inventory baud (the head-end
-            // owns the physical clock; this is the line-control seam Stage 3b's sweep will drive).
+            // setBaud fired at OpenTcp → POST /ports/tait0/line with the CONFIGURED CCDI rate (#576):
+            // passing the inventory's current rate would "re-clock" the port to the rate it is
+            // already at, so a restarted head-end (bridge back at its default) would never recover.
             handler.LineCalls.Should().ContainSingle();
             handler.LineCalls[0].DeviceId.Should().Be("tait0");
-            handler.LineCalls[0].RawBody.Should().Contain("\"baud\":19200");
+            handler.LineCalls[0].RawBody.Should().Contain("\"baud\":28800");
         }
 
         await responder;

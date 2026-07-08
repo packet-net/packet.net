@@ -32,6 +32,8 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     private readonly TimeProvider clock;
 
     private Task? dispatchLoop;
+    private Task? keepAliveLoop;
+    private long lastInboundTicks;
     private int ackSequenceCursor;
     private int disposed;
     private int currentMode = -1;
@@ -40,6 +42,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     {
         this.modem = modem;
         clock = timeProvider ?? TimeProvider.System;
+        lastInboundTicks = clock.GetUtcNow().UtcTicks;
         inbound = Channel.CreateUnbounded<KissFrame>(new UnboundedChannelOptions
         {
             SingleReader = false,
@@ -126,12 +129,16 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// Clock used to stamp inbound frames' <see cref="Ax25InboundFrame.ReceivedAt"/> on the
     /// <see cref="IAx25Transport"/> seam. Null uses the system clock.
     /// </param>
+    /// <param name="options">Behavioural knobs; null uses defaults — which for the TCP path
+    /// includes the GETVER keep-alive poll (#580), so an RF-quiet channel never trips the
+    /// socket's 5-min read-idle liveness budget while a dead link still faults on it.</param>
     /// <param name="cancellationToken">Cancels the connect.</param>
     public static async Task<NinoTncSerialPort> OpenTcp(
-        string host, int port, TimeProvider? timeProvider = null, CancellationToken cancellationToken = default)
+        string host, int port, TimeProvider? timeProvider = null,
+        NinoTncSerialPortOptions? options = null, CancellationToken cancellationToken = default)
     {
         var inner = await KissSerialModem.OpenTcp(host, port, timeProvider, cancellationToken).ConfigureAwait(false);
-        return StartDispatching(inner, timeProvider);
+        return StartDispatching(inner, timeProvider, options ?? new NinoTncSerialPortOptions());
     }
 
     /// <summary>
@@ -141,17 +148,61 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     /// serial port. Lets tests drive the ACKMODE TX-completion correlation, frame
     /// classification/fan-out, and dispose-fails-pending-acks teardown deterministically.
     /// </summary>
-    internal static NinoTncSerialPort OpenForTest(KissSerialModem modem, TimeProvider? timeProvider = null)
+    internal static NinoTncSerialPort OpenForTest(
+        KissSerialModem modem, TimeProvider? timeProvider = null, NinoTncSerialPortOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(modem);
-        return StartDispatching(modem, timeProvider);
+        return StartDispatching(modem, timeProvider, options);
     }
 
-    private static NinoTncSerialPort StartDispatching(KissSerialModem modem, TimeProvider? timeProvider)
+    private static NinoTncSerialPort StartDispatching(
+        KissSerialModem modem, TimeProvider? timeProvider, NinoTncSerialPortOptions? options = null)
     {
         var tnc = new NinoTncSerialPort(modem, timeProvider);
         tnc.dispatchLoop = Task.Run(() => tnc.DispatchFramesAsync(tnc.dispatchCts.Token));
+        if (options?.KeepAliveInterval is { } interval && interval > TimeSpan.Zero)
+        {
+            tnc.keepAliveLoop = Task.Run(() => tnc.KeepAliveAsync(interval, tnc.dispatchCts.Token));
+        }
         return tnc;
+    }
+
+    /// <summary>
+    /// The keep-alive poll (#580), mirroring the Tait driver's watchdog: when no inbound frame
+    /// has arrived for <paramref name="interval"/>, issue a GETVER. On a healthy-but-RF-quiet
+    /// link the reply's bytes reset the TCP pipe's read-idle liveness budget, so the port never
+    /// churns through a pointless reconnect cycle; on a dead link the probe goes unanswered (or
+    /// the write fails) and the idle budget faults the pump exactly as before — dead links still
+    /// fault fast, quiet links stop faulting at all.
+    /// </summary>
+    private async Task KeepAliveAsync(TimeSpan interval, CancellationToken cancellationToken)
+    {
+        var checkEvery = TimeSpan.FromTicks(Math.Max(interval.Ticks / 2, TimeSpan.TicksPerSecond));
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(checkEvery, clock, cancellationToken).ConfigureAwait(false);
+                bool quiet = clock.GetUtcNow().UtcTicks - Volatile.Read(ref lastInboundTicks) >= interval.Ticks;
+                if (!quiet)
+                {
+                    continue;
+                }
+                try
+                {
+                    _ = await GetVersionAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // No reply / link down: liveness policy stays with the transport layer (the
+                    // read-idle budget faults a dead pipe); the probe's only job was to generate
+                    // bytes on a healthy one.
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
     /// <summary>
@@ -578,6 +629,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     private void DispatchFrame(KissFrame frame)
     {
+        Volatile.Write(ref lastInboundTicks, clock.GetUtcNow().UtcTicks);
         if (KissAckMode.TryParseAcknowledgement(frame, out var tag) &&
             pendingAcks.TryRemove(tag, out var tcs))
         {
@@ -632,6 +684,16 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
             if (dispatchLoop is not null)
             {
                 await dispatchLoop.ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+        }
+        try
+        {
+            if (keepAliveLoop is not null)
+            {
+                await keepAliveLoop.ConfigureAwait(false);
             }
         }
         catch
