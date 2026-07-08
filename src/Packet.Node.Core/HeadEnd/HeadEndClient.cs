@@ -83,6 +83,18 @@ public sealed class HeadEndClient
                ?? throw new HttpRequestException("head-end returned an empty line-params body.");
     }
 
+    /// <summary><c>GET /statusz</c> — the richer self-observability surface (#583): instance id,
+    /// live bridge count, per-bridge client-connection state. Throws on any failure; in particular a
+    /// pre-0.1.4 daemon answers 404 (<see cref="HttpRequestException.StatusCode"/> is
+    /// <c>NotFound</c>), which callers treat as "fall back to <see cref="HealthAsync"/>".</summary>
+    public async Task<HeadEndStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await http.GetAsync(new Uri(BaseAddress, "statusz"), cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<HeadEndStatus>(Json, cancellationToken).ConfigureAwait(false)
+               ?? throw new HttpRequestException("head-end returned an empty statusz body.");
+    }
+
     /// <summary><c>GET /healthz</c> — true iff the head-end answers 2xx. Never throws (an
     /// unreachable / erroring head-end is simply "not healthy").</summary>
     public async Task<bool> HealthAsync(CancellationToken cancellationToken = default)

@@ -31,6 +31,14 @@ public sealed record HeadEndScan(
 /// <param name="ProposedPairs">Suggested TNC↔radio pairs among the FREE devices.</param>
 /// <param name="PairingAmbiguous">True when more than one free TNC or radio makes the pairing a
 /// manual choice — the <see cref="ProposedPairs"/> are then candidate combinations, not auto-suggestions.</param>
+/// <param name="ReachableNow">The background health poller's live view (#583): whether the
+/// instance answered its most recent ~30 s health poll. Null when the
+/// <see cref="HeadEnd.HeadEndHealthMonitor"/> has no data yet (not registered, first cycle pending,
+/// or the instance isn't configured/referenced) — distinct from <see cref="Reachable"/>, which says
+/// whether THIS scan fetched the inventory. Folded in from the in-memory snapshot, never probed on
+/// the request path.</param>
+/// <param name="LastSeen">When the instance last answered a background health poll, or null when
+/// the poller has no data / it never has answered.</param>
 public sealed record HeadEndInstanceScan(
     string InstanceId,
     string Host,
@@ -40,7 +48,9 @@ public sealed record HeadEndInstanceScan(
     string? Error,
     IReadOnlyList<HeadEndDeviceScan> Devices,
     IReadOnlyList<HeadEndPairProposal> ProposedPairs,
-    bool PairingAmbiguous);
+    bool PairingAmbiguous,
+    bool? ReachableNow = null,
+    DateTimeOffset? LastSeen = null);
 
 /// <summary>
 /// One device on a head-end, as seen by the scan: its stable id, its reach-through classification,

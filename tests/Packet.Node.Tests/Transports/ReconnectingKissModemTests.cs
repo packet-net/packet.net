@@ -96,6 +96,52 @@ public sealed class ReconnectingKissModemTests
     }
 
     [Fact]
+    public async Task IsReconnecting_is_true_exactly_while_the_link_is_down()
+    {
+        // The pdn_port_transport_reconnecting source (#583): false on a live link, true from the
+        // drop until the fresh inner is live, false again after.
+        var first = new FakeModem(endAfterFrames: true, Data("A"));     // yields A, then drops
+        var second = new FakeModem(endAfterFrames: false, Data("B"));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Func<CancellationToken, Task<IAx25Transport>> reconnect = async _ =>
+        {
+            await gate.Task.ConfigureAwait(false);                      // hold mid-reconnect
+            return second;
+        };
+        await using var modem = new ReconnectingKissModem(
+            first, reconnect, "test", NullLogger.Instance, minBackoff: TimeSpan.Zero, maxBackoff: TimeSpan.Zero);
+
+        modem.IsReconnecting.Should().BeFalse("the initial link is up");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var got = new List<string>();
+        var pump = Task.Run(async () =>
+        {
+            await foreach (var f in modem.ReceiveAsync(cts.Token).ConfigureAwait(false))
+            {
+                got.Add(Encoding.ASCII.GetString(f.Ax25.Span));
+                if (got.Count == 2)
+                {
+                    break;
+                }
+            }
+        });
+
+        // The pump delivers A, hits end-of-stream, and parks in the gated reconnect: observable.
+        while (!modem.IsReconnecting && !pump.IsCompleted)
+        {
+            await Task.Delay(10);
+        }
+        modem.IsReconnecting.Should().BeTrue("the link is down and the wrapper is re-dialling");
+
+        gate.SetResult();                                               // release the reconnect
+        await pump;
+
+        got.Should().Equal("A", "B");
+        modem.IsReconnecting.Should().BeFalse("a fresh inner is live again");
+    }
+
+    [Fact]
     public async Task Send_while_the_link_is_down_is_dropped_not_thrown()
     {
         var down = new FakeModem(endAfterFrames: false) { ThrowOnSend = true };

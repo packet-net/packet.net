@@ -74,6 +74,7 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 | `pdn_port_info_bytes_transmitted_total` | counter | `port` | Information-field bytes transmitted (summed over peers). |
 | `pdn_port_rej_total` | counter | `port` | REJ (go-back-N reject) frames seen (summed over peers). |
 | `pdn_port_srej_total` | counter | `port` | SREJ (selective reject) frames seen (summed over peers). |
+| `pdn_port_transport_reconnecting` | gauge | `port` | `1` while the port's self-healing transport (the reconnect decorator on a kiss-tcp / nino-tnc-tcp port) has lost its link and is re-dialling, else `0`. The honest counterpart to `pdn_port_up`, which stays `1` through a far-end bounce (the listener itself never goes down). Emitted only for reconnect-supervised (networked) ports; absent on local-serial / AXUDP ports. |
 | `pdn_port_retries` | gauge | `port` | Sum of the current retry counter (RC) over the port's live sessions. |
 | `pdn_port_tx_queue_depth` | gauge | `port` | Sum of pending (unsent) I-frames queued over the port's live sessions. |
 | `pdn_port_outstanding_iframes` | gauge | `port` | Sum of sent-but-unacknowledged I-frames over the port's live sessions. |
@@ -112,6 +113,23 @@ Emitted **only** for a port whose radio the node currently has open and is polli
 | `pdn_link_snr_db` | gauge | `port`, `peer` | SNR (dB) of the newest frame heard from a link partner, by port + remote callsign. One series per (port, callsign) the node has heard *with a measured SNR*. See [the cardinality note](#the-one-peer-labelled-series-pdn_link_snr_db) — this is the single deliberate peer label. |
 
 Absent entirely on a node with no radio telemetry (no partner has a measured SNR).
+
+### Head-end fleet (split-station nodes only)
+
+Read from the `HeadEndHealthMonitor`'s rolling snapshot — a background ~30 s poll of each
+configured/referenced head-end's HTTP control plane (`GET /statusz`, falling back to `GET /healthz`
+on a pre-0.1.4 daemon; #583) — the same data the `GET /api/v1/radios/headends` `reachableNow` /
+`lastSeen` enrichment serves, never probed on the scrape path. The `instance` label is the
+head-end's stable instance id — a closed, operator-controlled set, so cardinality stays bounded
+like `port`. (Note: a Prometheus scrape also attaches its own target-level `instance` label; with
+the default `honor_labels: false` this series label lands as `exported_instance` on ingest.) The
+whole bucket is **absent on a node with no head-ends** (or before the monitor's first cycle).
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `pdn_headend_reachable` | gauge | `instance` | The head-end's control plane answered the most recent health poll (`1`) or not (`0`). |
+| `pdn_headend_devices` | gauge | `instance` | Devices (serial bridges) the head-end currently exposes. Omitted while unreachable, and on an older daemon that only answers `/healthz` — an absent sample, never a stale count. |
+| `pdn_headend_poll_failures_total` | counter | `instance` | Failed health polls since the node started tracking the instance. Always emitted (from `0`) for every monitored instance, so `rate()` works from the first scrape. |
 
 ## Example scrape
 
