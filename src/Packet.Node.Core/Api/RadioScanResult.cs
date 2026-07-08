@@ -16,10 +16,18 @@ namespace Packet.Node.Core.Api;
 /// <param name="ByIdPath">The <c>/dev/serial/by-id/*</c> symlink that canonicalises to
 /// <see cref="DevicePath"/>, or <c>null</c> when there is none, when two dongles' symlinks collide
 /// (shared USB serial — ambiguous), or off Linux. Informational only; bind by <see cref="Serial"/>.</param>
+/// <param name="BandCode">The Tait band designator (e.g. <c>B1</c>) read from the radio's product
+/// code, or null when the radio reported no parseable product code. Parity with the head-end scan's
+/// device rows.</param>
+/// <param name="AmateurBand">The UK amateur band the radio's split covers (<c>2m</c> / <c>70cm</c> /
+/// <c>4m</c>), or null for a split with no amateur allocation — so a local-attach port can be
+/// band-named exactly like a head-end-adopted one.</param>
 public sealed record RadioScanResult(
     string Serial,
     string Model,
     string CcdiVersion,
     int Baud,
     string DevicePath,
-    string? ByIdPath);
+    string? ByIdPath,
+    string? BandCode = null,
+    string? AmateurBand = null);

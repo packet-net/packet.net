@@ -49,6 +49,17 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     private readonly IConfigProvider config;
     private readonly ILogger<MqttFrameEmitter> logger;
     private readonly Func<MqttConfig, string, CancellationToken, ValueTask<IMqttPublishSink>> sinkFactory;
+    private readonly string machineSuffix;
+
+    // Publish counters, exported as pdn_mqtt_published_total / pdn_mqtt_publish_failures_total by
+    // the /metrics exporter (#582 — the emitter previously only logged). Interlocked because the
+    // background loop writes while a scrape reads.
+    private long publishedTotal;
+    private long publishFailuresTotal;
+
+    // The live sink (when started) so the exporter can read the managed client's pending-queue
+    // depth. Volatile: written by the loop, read by scrapes.
+    private volatile IMqttPublishSink? activeSink;
 
     /// <summary>Production constructor — the sink is a real started <see cref="ManagedMqttPublishSink"/>.</summary>
     public MqttFrameEmitter(NodeTelemetry telemetry, IConfigProvider config, ILogger<MqttFrameEmitter>? logger = null)
@@ -57,18 +68,34 @@ public sealed partial class MqttFrameEmitter : BackgroundService
     }
 
     /// <summary>Test seam (InternalsVisibleTo Packet.Node.Tests): inject a capturing publish sink so
-    /// the topic + payload contract can be asserted without a broker.</summary>
+    /// the topic + payload contract can be asserted without a broker, and a fixed
+    /// <paramref name="machineSuffix"/> so the salted client id is deterministic.</summary>
     internal MqttFrameEmitter(
         NodeTelemetry telemetry,
         IConfigProvider config,
         ILogger<MqttFrameEmitter>? logger,
-        Func<MqttConfig, string, CancellationToken, ValueTask<IMqttPublishSink>> sinkFactory)
+        Func<MqttConfig, string, CancellationToken, ValueTask<IMqttPublishSink>> sinkFactory,
+        string? machineSuffix = null)
     {
         this.telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.logger = logger ?? NullLogger<MqttFrameEmitter>.Instance;
         this.sinkFactory = sinkFactory ?? throw new ArgumentNullException(nameof(sinkFactory));
+        this.machineSuffix = machineSuffix ?? MachineSuffix.Value;
     }
+
+    /// <summary>Messages successfully handed to the publish sink (the managed client's queue), for
+    /// <c>pdn_mqtt_published_total</c>. Two per emitted frame (unframed + framed).</summary>
+    public long PublishedTotal => Interlocked.Read(ref publishedTotal);
+
+    /// <summary>Publish attempts that faulted (the frame is dropped from the MQTT feed only — the
+    /// radio path is unaffected), for <c>pdn_mqtt_publish_failures_total</c>.</summary>
+    public long PublishFailuresTotal => Interlocked.Read(ref publishFailuresTotal);
+
+    /// <summary>Messages queued in the managed client awaiting the broker (bounded, drop-oldest —
+    /// see <see cref="ManagedMqttPublishSink.MaxPendingMessages"/>), for
+    /// <c>pdn_mqtt_pending_messages</c>. Zero until the sink starts.</summary>
+    public long PendingMessages => activeSink?.PendingMessageCount ?? 0;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -92,6 +119,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
                     try
                     {
                         sink = await sinkFactory(cfg, ClientId(cfg), stoppingToken).ConfigureAwait(false);
+                        activeSink = sink;
                         LogStarted(cfg.BrokerHost, cfg.BrokerPort);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
@@ -119,6 +147,7 @@ public sealed partial class MqttFrameEmitter : BackgroundService
         {
             if (sink is not null)
             {
+                activeSink = null;
                 try { await sink.DisposeAsync().ConfigureAwait(false); } catch { /* best-effort */ }
             }
         }
@@ -143,12 +172,30 @@ public sealed partial class MqttFrameEmitter : BackgroundService
 
         // unframed: the SLIP-decoded AX.25 bytes = MonitorEvent.Raw (frame.ToBytes()) — the topic the
         // collector actually ingests.
-        await sink.PublishAsync(unframedTopic, Encode(cfg, ax25), cfg.Qos, retain: false, ct).ConfigureAwait(false);
+        await PublishCountedAsync(sink, unframedTopic, Encode(cfg, ax25), cfg.Qos, ct).ConfigureAwait(false);
 
         // framed: the full raw KISS frame WITH FEND framing — 0xC0 | (port<<4)|Data | SLIP(ax25) | 0xC0
         // via the shared Packet.Kiss encoder (no hand-rolled SLIP).
         var framed = KissEncoder.Encode(KissPort, KissCommand.Data, ax25);
-        await sink.PublishAsync(framedTopic, Encode(cfg, framed), cfg.Qos, retain: false, ct).ConfigureAwait(false);
+        await PublishCountedAsync(sink, framedTopic, Encode(cfg, framed), cfg.Qos, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>One counted publish: success bumps <see cref="PublishedTotal"/>, a fault bumps
+    /// <see cref="PublishFailuresTotal"/> and rethrows (the loop's catch logs it and drops the
+    /// frame from the MQTT feed only — the radio path is unaffected).</summary>
+    private async ValueTask PublishCountedAsync(
+        IMqttPublishSink sink, string topic, byte[] payload, int qos, CancellationToken ct)
+    {
+        try
+        {
+            await sink.PublishAsync(topic, payload, qos, retain: false, ct).ConfigureAwait(false);
+            Interlocked.Increment(ref publishedTotal);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Interlocked.Increment(ref publishFailuresTotal);
+            throw;
+        }
     }
 
     /// <summary>Build the (unframed, framed) topic strings for a frame:
@@ -183,8 +230,14 @@ public sealed partial class MqttFrameEmitter : BackgroundService
 
     /// <summary>The managed client id. kissproxy runs one client per band
     /// (<c>{host}_kissproxy_{instance}</c>); pdn runs one client per node covering all ports, so the
-    /// id is node-scoped. Cosmetic for broker identity only — the collector keys off topics.</summary>
-    private static string ClientId(MqttConfig cfg) => $"{ResolveNodeName(cfg)}_pdn";
+    /// id is node-scoped — and salted with the stable per-machine suffix (<see cref="MachineSuffix"/>,
+    /// the head-end's <c>machineSuffix</c> pattern), because MQTT brokers disconnect the older session
+    /// on a client-id collision: two image-cloned Pis with the default node name (both
+    /// <c>raspberrypi</c>) would otherwise kick each other off in a reconnect loop and gap BOTH feeds
+    /// (#582). The salt is appended even to an explicit <see cref="MqttConfig.NodeName"/> — it guards
+    /// duplicate configured names just the same, and the id is cosmetic broker identity only (the
+    /// collector keys off topics, which the salt never touches).</summary>
+    internal string ClientId(MqttConfig cfg) => $"{ResolveNodeName(cfg)}_pdn_{machineSuffix}";
 
     /// <summary>Payload encoding: raw binary by default; base64 (with .NET
     /// <see cref="Base64FormattingOptions.InsertLineBreaks"/>) when <see cref="MqttConfig.Base64"/> —

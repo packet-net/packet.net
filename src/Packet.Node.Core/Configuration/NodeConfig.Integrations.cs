@@ -126,7 +126,9 @@ public sealed record MqttConfig
 
     /// <summary>The <c>{node}</c> topic segment + the client-id stem. Null (the default) resolves to
     /// <see cref="Environment.MachineName"/> at runtime — set it explicitly to match an existing
-    /// collector's host key (e.g. <c>gb7rdg-node</c>) when migrating a site off kissproxy.</summary>
+    /// collector's host key (e.g. <c>gb7rdg-node</c>) when migrating a site off kissproxy. The broker
+    /// client id additionally carries a stable per-machine salt (never the topics), so two
+    /// same-named nodes don't kick each other off the broker.</summary>
     public string? NodeName { get; init; }
 
     /// <summary>Whether payloads are base64-encoded (kissproxy's per-modem base64 flag). Default

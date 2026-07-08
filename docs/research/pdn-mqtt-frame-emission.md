@@ -1,10 +1,13 @@
 # PDN MQTT frame emission (kissproxy-compatible)
 
 **Status:** ✅ **shipped** (PR #558 — `MqttFrameEmitter`, default-off; released in **node-v0.28.0**,
-2026-07-05). Emitter hardening (client-id collision between same-hostname nodes, unbounded
-managed-client pending queue while the broker is down) is tracked in
-[#582](https://github.com/packet-net/packet.net/issues/582); the fidelity caveats below are
-**accepted limitations** of the shipped v1, noted inline. Goal: PDN emits every KISS/AX.25 frame it
+2026-07-05). Emitter hardening ([#582](https://github.com/packet-net/packet.net/issues/582)) has since
+landed: the client id is salted with a stable per-machine suffix (`{node}_pdn_{8-hex}`, the head-end's
+`machineSuffix` pattern — same-hostname nodes no longer kick each other off the broker), the managed
+client's pending queue is bounded (10 k, drop-oldest) instead of MQTTnet's unbounded default, and the
+emitter exports `pdn_mqtt_published_total` / `pdn_mqtt_publish_failures_total` /
+`pdn_mqtt_pending_messages` on `/metrics`. The fidelity caveats below are **accepted limitations** of
+the shipped v1, noted inline. Goal: PDN emits every KISS/AX.25 frame it
 sends/receives to an MQTT broker in **kissproxy's native wire format**, so PDN can replace kissproxy
 at a site (e.g. `gb7rdg-node`) without losing the downstream `kiss-collector` capture pipeline.
 

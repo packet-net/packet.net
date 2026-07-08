@@ -18,4 +18,8 @@ internal interface IMqttPublishSink : IAsyncDisposable
     /// queues internally and drains as the broker connection allows, so a slow/dead broker never
     /// back-pressures the caller (the frame tap).</summary>
     ValueTask PublishAsync(string topic, byte[] payload, int qos, bool retain, CancellationToken ct);
+
+    /// <summary>Messages currently queued awaiting the broker (the managed client's bounded pending
+    /// queue), for the <c>pdn_mqtt_pending_messages</c> gauge. A test double may return 0.</summary>
+    long PendingMessageCount { get; }
 }

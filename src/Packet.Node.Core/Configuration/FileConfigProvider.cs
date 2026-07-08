@@ -229,13 +229,13 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     // Surface non-fatal config warnings (things that parse + validate but are worth the
     // operator's attention) at load/apply, on the boot log — the existing channel for
     // config concerns (cf. the LogValidationFailed/LogWroteTemplate warnings). Currently
-    // the NET/ROM routing back-compat resolver: a legacy connect/forward combo that maps
-    // onto the new routing knob with a caveat (e.g. the always-inert forward:true without
-    // connect). Pure read of the already-resolved config; never throws.
+    // the NET/ROM routing back-compat resolver (a legacy connect/forward combo that maps
+    // onto the new routing knob with a caveat) and the duplicate-MqttInstance merge
+    // (NodeConfigWarnings). Pure read of the already-resolved config; never throws.
     private void WarnOnConfigQuirks(NodeConfig config)
     {
         var (_, warnings) = config.NetRom.ResolveRouting();
-        foreach (var warning in warnings)
+        foreach (var warning in warnings.Concat(NodeConfigWarnings.DuplicateMqttInstances(config)))
         {
             LogConfigWarning(warning);
         }

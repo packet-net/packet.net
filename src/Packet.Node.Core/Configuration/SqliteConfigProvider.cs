@@ -337,7 +337,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
     private void WarnOnConfigQuirks(NodeConfig config)
     {
         var (_, warnings) = config.NetRom.ResolveRouting();
-        foreach (var warning in warnings)
+        foreach (var warning in warnings.Concat(NodeConfigWarnings.DuplicateMqttInstances(config)))
         {
             LogConfigWarning(warning);
         }

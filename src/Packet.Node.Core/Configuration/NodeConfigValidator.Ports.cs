@@ -91,11 +91,28 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                         "locally-cabled radio control channel."));
 
             When(p => p.Radio!.IsHeadEndBound, () =>
+            {
                 RuleFor(p => p.Transport)
                     .Must(t => t is NinoTncTcpTransport)
                     .WithMessage(p =>
                         $"a head-end-bound radio pairs with a '{TransportKinds.NinoTncTcp}' transport (the co-located " +
-                        $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port."));
+                        $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port.");
+
+                // "Same head-end" means SAME head-end: the transport-TYPE rule above admits a
+                // nino-tnc-tcp transport on instance A beside a radio on instance B, which is a
+                // split pair that can never be co-located hardware. When both halves carry an id,
+                // they must be equal (blank halves are reported by their own completeness rules).
+                RuleFor(p => p)
+                    .Must(p => p.Transport is not NinoTncTcpTransport t
+                        || string.IsNullOrWhiteSpace(t.HeadEndId)
+                        || string.IsNullOrWhiteSpace(p.Radio!.HeadEndId)
+                        || string.Equals(t.HeadEndId, p.Radio!.HeadEndId, StringComparison.Ordinal))
+                    .WithMessage(p =>
+                        $"a head-end-bound radio must live on the SAME head-end as its port's transport " +
+                        $"(radio headEndId '{p.Radio!.HeadEndId}' != transport headEndId " +
+                        $"'{(p.Transport as NinoTncTcpTransport)?.HeadEndId}') — the modem+radio pair is " +
+                        "co-located on one instance.");
+            });
         });
     }
 }

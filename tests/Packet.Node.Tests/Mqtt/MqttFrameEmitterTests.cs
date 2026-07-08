@@ -35,8 +35,17 @@ public sealed class MqttFrameEmitterTests
         public List<(string Topic, byte[] Payload, int Qos, bool Retain)> Published { get; } = new();
         public int DisposeCount;
 
+        /// <summary>When set, every publish throws — the failure-counter path.</summary>
+        public Exception? FailWith { get; set; }
+
+        public long PendingMessageCount { get; set; }
+
         public ValueTask PublishAsync(string topic, byte[] payload, int qos, bool retain, CancellationToken ct)
         {
+            if (FailWith is { } ex)
+            {
+                throw ex;
+            }
             lock (gate)
             {
                 Published.Add((topic, payload, qos, retain));
@@ -73,7 +82,7 @@ public sealed class MqttFrameEmitterTests
     ];
 
     private static (MqttFrameEmitter Emitter, CapturingSink Sink, TestConfigProvider Provider, StrongBox<int> FactoryCalls)
-        Build(MqttConfig mqtt, IEnumerable<PortConfig>? ports = null)
+        Build(MqttConfig mqtt, IEnumerable<PortConfig>? ports = null, string machineSuffix = "1a2b3c4d")
     {
         var config = new NodeConfig
         {
@@ -88,7 +97,8 @@ public sealed class MqttFrameEmitterTests
             new NodeTelemetry(),
             provider,
             NullLogger<MqttFrameEmitter>.Instance,
-            (_, _, _) => { calls.Value++; return ValueTask.FromResult<IMqttPublishSink>(sink); });
+            (_, _, _) => { calls.Value++; return ValueTask.FromResult<IMqttPublishSink>(sink); },
+            machineSuffix);
         return (emitter, sink, provider, calls);
     }
 
@@ -233,6 +243,121 @@ public sealed class MqttFrameEmitterTests
         await emitter.EmitAsync(sink, provider.Current.Mqtt, Rx("vhf", Ui()), default);
 
         sink.Published.Should().HaveCount(2);
+    }
+
+    // ── Salted client id (#582) ──────────────────────────────────────────
+
+    [Fact]
+    public void Client_id_appends_the_machine_suffix_to_an_explicit_node_name()
+    {
+        // The salt guards duplicate configured NodeNames just as it guards duplicate hostnames —
+        // the client id is broker identity only, so salting it never touches the topics.
+        var (emitter, _, provider, _) = Build(Enabled(), machineSuffix: "1a2b3c4d");
+
+        emitter.ClientId(provider.Current.Mqtt).Should().Be("gb7rdg-node_pdn_1a2b3c4d");
+    }
+
+    [Fact]
+    public void Client_id_defaults_to_the_machine_name_plus_suffix()
+    {
+        var (emitter, _, provider, _) = Build(Enabled() with { NodeName = null }, machineSuffix: "1a2b3c4d");
+
+        emitter.ClientId(provider.Current.Mqtt).Should().Be($"{Environment.MachineName}_pdn_1a2b3c4d");
+    }
+
+    [Fact]
+    public void Client_ids_differ_across_machines_even_with_identical_config()
+    {
+        // The #582 failure mode: two image-cloned Pis, same hostname, same (default) config — their
+        // client ids must differ so the broker never disconnects one session for the other.
+        var (a, _, provider, _) = Build(Enabled(), machineSuffix: "1a2b3c4d");
+        var (b, _, _, _) = Build(Enabled(), machineSuffix: "9f8e7d6c");
+
+        a.ClientId(provider.Current.Mqtt).Should().NotBe(b.ClientId(provider.Current.Mqtt));
+    }
+
+    [Fact]
+    public async Task The_salted_client_id_is_what_reaches_the_sink_factory()
+    {
+        var config = new NodeConfig
+        {
+            Identity = new Identity { Callsign = "M0LTE-1" },
+            Ports = DefaultPorts().ToList(),
+            Mqtt = Enabled(),
+        };
+        var provider = new TestConfigProvider(config);
+        var captured = new CapturingSink();
+        string? clientId = null;
+        var telemetry = new NodeTelemetry();
+        var emitter = new MqttFrameEmitter(
+            telemetry, provider, NullLogger<MqttFrameEmitter>.Instance,
+            (_, id, _) => { clientId = id; return ValueTask.FromResult<IMqttPublishSink>(captured); },
+            machineSuffix: "1a2b3c4d");
+
+        await emitter.StartAsync(default);
+        await Wait.ForAsync(() => telemetry.SubscriberCount >= 1, "the emitter subscribed to telemetry");
+        telemetry.Observe("vhf", new Ax25FrameEventArgs { Frame = Ui(), Direction = FrameDirection.Received, Timestamp = T0 });
+        await Wait.ForAsync(() => captured.Published.Count >= 2, "the traced frame published");
+        await emitter.StopAsync(default);
+
+        clientId.Should().Be("gb7rdg-node_pdn_1a2b3c4d");
+    }
+
+    // ── Publish counters (#582) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task Published_counter_counts_both_subtopics_per_frame()
+    {
+        var (emitter, sink, provider, _) = Build(Enabled());
+
+        await emitter.EmitAsync(sink, provider.Current.Mqtt, Rx("vhf", Ui()), default);
+        await emitter.EmitAsync(sink, provider.Current.Mqtt, Tx("vhf", Ui()), default);
+
+        emitter.PublishedTotal.Should().Be(4, "each frame emits unframed + framed");
+        emitter.PublishFailuresTotal.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Failure_counter_counts_a_faulted_publish()
+    {
+        var (emitter, sink, provider, _) = Build(Enabled());
+        sink.FailWith = new InvalidOperationException("broker exploded");
+
+        var act = () => emitter.EmitAsync(sink, provider.Current.Mqtt, Rx("vhf", Ui()), default).AsTask();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        emitter.PublishFailuresTotal.Should().Be(1, "the first sub-topic faulted (the second is never attempted)");
+        emitter.PublishedTotal.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pending_gauge_reads_the_live_sink_queue_depth()
+    {
+        var config = new NodeConfig
+        {
+            Identity = new Identity { Callsign = "M0LTE-1" },
+            Ports = DefaultPorts().ToList(),
+            Mqtt = Enabled(),
+        };
+        var provider = new TestConfigProvider(config);
+        var captured = new CapturingSink { PendingMessageCount = 7 };
+        var telemetry = new NodeTelemetry();
+        var emitter = new MqttFrameEmitter(
+            telemetry, provider, NullLogger<MqttFrameEmitter>.Instance,
+            (_, _, _) => ValueTask.FromResult<IMqttPublishSink>(captured),
+            machineSuffix: "1a2b3c4d");
+
+        emitter.PendingMessages.Should().Be(0, "no sink is live before the loop starts one");
+
+        await emitter.StartAsync(default);
+        await Wait.ForAsync(() => telemetry.SubscriberCount >= 1, "the emitter subscribed to telemetry");
+        telemetry.Observe("vhf", new Ax25FrameEventArgs { Frame = Ui(), Direction = FrameDirection.Received, Timestamp = T0 });
+        await Wait.ForAsync(() => captured.Published.Count >= 2, "the traced frame published");
+
+        emitter.PendingMessages.Should().Be(7, "the gauge reads the managed client's pending queue");
+
+        await emitter.StopAsync(default);
+        emitter.PendingMessages.Should().Be(0, "the sink is released on shutdown");
     }
 
     // ── Default-off gate (loop-driven) ───────────────────────────────────
