@@ -90,6 +90,42 @@ public sealed class HeadEndAdoptionTests
         port.MqttInstance.Should().BeNull();
     }
 
+    // ---- explicit MQTT {instance} label (#579: the UI's adopt Options exposes it) ------------------
+
+    [Fact]
+    public void BuildCandidate_lets_an_explicit_mqtt_instance_win_over_the_band_default()
+    {
+        var candidate = HeadEndAdoption.BuildCandidate(
+            Empty(), "pi-shack",
+            new HeadEndAdoptRequest("nino0", "tait0", AmateurBand: "2m", MqttInstance: "vhf-main"));
+
+        var port = candidate.Ports.Single();
+        port.Id.Should().Be("2m", "the band still names the port id — MqttInstance only overrides the label");
+        port.MqttInstance.Should().Be("vhf-main");
+        new NodeConfigValidator().Validate(candidate).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildCandidate_uses_an_explicit_mqtt_instance_even_without_a_band()
+    {
+        var candidate = HeadEndAdoption.BuildCandidate(
+            Empty(), "pi-shack", new HeadEndAdoptRequest("nino0", "tait0", MqttInstance: "vhf-main"));
+
+        var port = candidate.Ports.Single();
+        port.Id.Should().Be("pi-shack");
+        port.MqttInstance.Should().Be("vhf-main");
+    }
+
+    [Fact]
+    public void BuildCandidate_treats_a_blank_mqtt_instance_as_unset_keeping_the_band_default()
+    {
+        var candidate = HeadEndAdoption.BuildCandidate(
+            Empty(), "pi-shack",
+            new HeadEndAdoptRequest("nino0", "tait0", AmateurBand: "2m", MqttInstance: "   "));
+
+        candidate.Ports.Single().MqttInstance.Should().Be("2m", "whitespace is not a label — the band default holds");
+    }
+
     // ---- default-id uniquify (#586: the second same-band adopt must not 400) ----------------------
 
     [Fact]

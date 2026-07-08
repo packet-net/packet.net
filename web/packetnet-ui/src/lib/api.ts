@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
-  RadioStatus, RadioScanResult, DoctorReport, HeadEndScan, HeadEndAdoptRequest,
+  RadioStatus, RadioScanResult, DoctorReport, HeadEndScan, HeadEndAdoptRequest, HeadEndKeyupResult,
   PingResult, PingReply, UserSummary, LoginResult, SetupState, SetupRequest, SetupResult,
   WebAuthnCredential, AssertBeginResponse, RegisterCompleteResponse,
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
@@ -322,6 +322,11 @@ export const api = {
   // uses. Returns the ReconcileResult; a 422 throws ConfigRejected (declared-reference / co-location
   // rule), a 400 (missing device ids) surfaces its { error } as an Error.
   adoptHeadEnd: (instanceId: string, body: HeadEndAdoptRequest) => adoptHeadEnd(instanceId, body),
+  // Keyup pairing (POST /api/v1/radios/headends/{instanceId}/pair-by-keyup, ADMIN-scoped + audited —
+  // it TRANSMITS: each free NinoTNC is briefly keyed to discover its physically-cabled radio by the
+  // PTT it asserts). Returns the resolved pairs / unpaired / ambiguous lists + the server's RF caveat.
+  // Never part of the passive scan — the Head-ends screen gates it behind an RF-warning confirm.
+  pairHeadEndByKeyup: (instanceId: string) => pairHeadEndByKeyup(instanceId),
   // Capability doctor (GET/POST /api/v1/ports/{id}/doctor). runDoctor(id, false) = the safe,
   // read-scoped, non-transmitting check; runDoctor(id, true) = the admin/audited full check that
   // briefly transmits (POST ?interrupt=true). A 404 (unknown/not-running port) surfaces as an Error.
@@ -641,6 +646,24 @@ async function adoptHeadEnd(instanceId: string, body: HeadEndAdoptRequest): Prom
   }
   if (!res.ok) throw new Error(await errorMessage(res, `Could not adopt on '${instanceId}' (${res.status}).`));
   return (await res.json()) as ReconcileResult;
+}
+
+// Keyup pairing — the RF-emitting physical modem↔radio resolver (admin scope). Mock mode returns a
+// believable result from the fixture so the flow demos with no node (and no RF!); live mode POSTs and
+// surfaces the server's { error } (403 scope, 404 unknown instance, 409 probe-in-flight) as an Error.
+// A reachable:false RESULT (unreachable instance / duplicate-id conflict) is NOT an HTTP error — the
+// caller renders result.error.
+async function pairHeadEndByKeyup(instanceId: string): Promise<HeadEndKeyupResult> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 600));
+    return mock.headEndKeyup(instanceId);
+  }
+  const res = await authFetch(`/radios/headends/${encodeURIComponent(instanceId)}/pair-by-keyup`, {
+    method: "POST",
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Keyup pairing failed on '${instanceId}' (${res.status}).`));
+  return (await res.json()) as HeadEndKeyupResult;
 }
 
 // Capability doctor. The SAFE form is a read-scoped GET that never transmits; the FULL form is an

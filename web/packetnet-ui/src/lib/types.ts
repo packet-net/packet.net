@@ -357,6 +357,13 @@ export type HeadEndDeviceKind = "nino-tnc" | "tait-ccdi" | "unknown";
 // port) is NOT probed (single-client-per-pipe) — its `kind` then comes from the binding and `free`
 // is false. `serial`/`model` are Tait-only; `version` is the NinoTNC GETVER firmware or the Tait CCDI
 // version; `baud` is the rate the device answered at (the sweep-locked rate for a Tait).
+// `bandCode`/`amateurBand` (identify/pair/name v2, #568): the Tait band designator (e.g. "B1") and the
+// UK amateur band its split covers ("2m"/"70cm"/"4m") — null for a NinoTNC / unknown-band Tait; adopt
+// defaults the port id + MQTT {instance} label to the amateur band when known, so pass it in the adopt
+// body. `idSource`/`idStable` (id stability, #570/#575): which link the head-end derived `deviceId`
+// from ("by-path" stable | "dev" the unstable kernel-name last resort) and whether it survives a
+// reboot/replug — `idStable === false` warrants a warning (the binding may not survive a replug);
+// null/absent = the head-end predates the fields (unknown, deliberately NOT assumed stable).
 export interface HeadEndDeviceScan {
   deviceId: string;
   kind: HeadEndDeviceKind;
@@ -365,6 +372,10 @@ export interface HeadEndDeviceScan {
   serial: string | null;
   baud: number;
   free: boolean;
+  bandCode?: string | null;
+  amateurBand?: string | null;
+  idSource?: string | null;
+  idStable?: boolean | null;
 }
 // A suggested pairing within one instance (the co-location invariant — a TNC pairs only with a radio
 // on the SAME instance). `auto` is true only when the instance has exactly one free TNC and one free
@@ -393,8 +404,10 @@ export interface HeadEndScan {
 }
 // POST /api/v1/radios/headends/{instanceId}/adopt body (server: HeadEndAdoptRequest). The operator's
 // chosen pairing → one matched port (a nino-tnc-tcp transport + a head-end-bound tait-ccdi radio).
-// `portId` defaults to the instance id; `mode` to 0; `enabled` to true; `address` (optional manual
-// host:port) is stored on the head-end config only when the instance isn't already declared.
+// `portId` defaults to the amateur band when known, else the instance id (uniquified); `mode` to 0;
+// `enabled` to true; `address` (optional manual host:port) is stored on the head-end config only when
+// the instance isn't already declared. `amateurBand` (from the selected radio's scan row) band-names
+// the port + its MQTT {instance} label; `mqttInstance` explicitly overrides that label when set.
 export interface HeadEndAdoptRequest {
   tncDeviceId: string;
   radioDeviceId: string;
@@ -402,6 +415,26 @@ export interface HeadEndAdoptRequest {
   mode?: number | null;
   enabled?: boolean | null;
   address?: string | null;
+  amateurBand?: string | null;
+  mqttInstance?: string | null;
+}
+// POST /api/v1/radios/headends/{instanceId}/pair-by-keyup → HeadEndKeyupResult (server:
+// Packet.Node.Core.Api.HeadEndKeyupResult). The PHYSICAL modem↔radio map discovered by briefly
+// KEYING each free NinoTNC's transmitter (RF is emitted — admin-scoped, same bar as hail/tuning/
+// doctor) and watching which co-located Tait reports its PTT asserting. Ground truth: replaces the
+// scan's co-location guess for the ambiguous case, verifies the unambiguous one. `caveat` is the
+// server's RF warning text, always present. Reachable:false leaves the lists empty and sets `error`.
+export interface HeadEndKeyupPair { tncDeviceId: string; radioDeviceId: string }
+export interface HeadEndKeyupAmbiguity { tncDeviceId: string; radioDeviceIds: string[] }
+export interface HeadEndKeyupResult {
+  instanceId: string;
+  reachable: boolean;
+  error: string | null;
+  pairs: HeadEndKeyupPair[];
+  unpairedTncs: string[];
+  unpairedRadios: string[];
+  ambiguous: HeadEndKeyupAmbiguity[];
+  caveat: string;
 }
 // One heard station for the MHeard surface (server: Packet.Node.Core.Api.HeardStation). For the
 // node-wide view portId is null and ports is the count of distinct ports the station was heard on;

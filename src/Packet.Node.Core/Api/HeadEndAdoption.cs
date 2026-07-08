@@ -20,6 +20,10 @@ namespace Packet.Node.Core.Api;
 /// Defaults the new port's MQTT <c>{instance}</c> label (<see cref="Configuration.PortConfig.MqttInstance"/>)
 /// and — when <see cref="PortId"/> is unset — the port id, so a band-named port drops in without
 /// operator input. Null/blank leaves both to their instance-id defaults.</param>
+/// <param name="MqttInstance">An explicit MQTT <c>{instance}</c> label for the new port
+/// (<see cref="Configuration.PortConfig.MqttInstance"/>). When set it wins over the
+/// <see cref="AmateurBand"/> default (which still names the port id when <see cref="PortId"/> is
+/// unset). Null/blank keeps the band default (or leaves the label unset when no band is known).</param>
 public sealed record HeadEndAdoptRequest(
     string TncDeviceId,
     string RadioDeviceId,
@@ -27,7 +31,8 @@ public sealed record HeadEndAdoptRequest(
     int? Mode = null,
     bool? Enabled = null,
     string? Address = null,
-    string? AmateurBand = null);
+    string? AmateurBand = null,
+    string? MqttInstance = null);
 
 /// <summary>
 /// Builds the candidate <see cref="NodeConfig"/> for adopting a matched head-end pair — the pure
@@ -75,11 +80,15 @@ public static class HeadEndAdoption
         var portId = !string.IsNullOrWhiteSpace(request.PortId) ? request.PortId!.Trim()
             : UniquePortId(current.Ports, band ?? instanceId);
 
+        // An explicit MQTT {instance} label wins over the band default (#579) — the band still names
+        // the port id above; this only overrides the collector-continuity label.
+        var mqttInstance = string.IsNullOrWhiteSpace(request.MqttInstance) ? band : request.MqttInstance!.Trim();
+
         var port = new PortConfig
         {
             Id = portId,
             Enabled = request.Enabled ?? true,
-            MqttInstance = band,
+            MqttInstance = mqttInstance,
             Transport = new NinoTncTcpTransport
             {
                 HeadEndId = instanceId,

@@ -10,7 +10,7 @@ import type {
   ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
   TailscaleStatus, SystemInfo, NetRomRouting,
-  RadioStatus, RadioScanResult, HeardStation, HeadEndScan,
+  RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
 } from "./types";
@@ -244,10 +244,15 @@ export const RADIO_SCAN: RadioScanResult[] = [
 // preview the Head-ends screen renders. Covers every state the operator surface must handle:
 //   shack-north — mDNS-discovered, reachable, exactly one free TNC + one free radio → an AUTO pairing
 //                 (one-click adopt), plus a device already bound to a running port (free:false).
+//                 The free radio carries its band (B1 → 2m) so the band badge + band-named adopt show.
 //   garage-pi   — config-pinned, reachable, TWO free TNCs + TWO free radios → pairingAmbiguous: the
-//                 operator picks a TNC + a radio before adopting (proposedPairs lists the combos).
+//                 operator picks a TNC + a radio before adopting (proposedPairs lists the combos) —
+//                 or resolves it physically with keyup pairing (see headEndKeyup below). One TNC has
+//                 an UNSTABLE dev-fallback id (idStable:false → the warning badge); one radio is 70cm.
 //   attic-relay — mDNS-discovered but UNREACHABLE → its Error shows and no devices/pairs render.
 // Plus a duplicate-instance-id CONFLICT (two boxes advertising "spare-pi" with no config address).
+// idSource/idStable ride the daemon inventory (headend-v0.1.3+); a device from an older head-end
+// would carry nulls (unknown — no badge either way).
 export const HEADEND_SCAN: HeadEndScan = {
   instances: [
     {
@@ -258,9 +263,9 @@ export const HEADEND_SCAN: HeadEndScan = {
       reachable: true,
       error: null,
       devices: [
-        { deviceId: "usb-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
-        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "19925328", baud: 28800, free: true },
-        { deviceId: "usb-2", kind: "tait-ccdi", model: "Tait TM8115", version: "1.10.0", serial: "1G000999", baud: 28800, free: false },
+        { deviceId: "usb-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "by-path", idStable: true },
+        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "19925328", baud: 28800, free: true, bandCode: "B1", amateurBand: "2m", idSource: "by-path", idStable: true },
+        { deviceId: "usb-2", kind: "tait-ccdi", model: "Tait TM8115", version: "1.10.0", serial: "1G000999", baud: 28800, free: false, bandCode: null, amateurBand: null, idSource: "by-path", idStable: true },
       ],
       proposedPairs: [{ tncDeviceId: "usb-0", radioDeviceId: "usb-1", auto: true }],
       pairingAmbiguous: false,
@@ -273,16 +278,18 @@ export const HEADEND_SCAN: HeadEndScan = {
       reachable: true,
       error: null,
       devices: [
-        { deviceId: "acm-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true },
-        { deviceId: "acm-1", kind: "nino-tnc", model: "NinoTNC N9600A3", version: "3.41", serial: null, baud: 57600, free: true },
-        { deviceId: "usb-0", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "2G001111", baud: 28800, free: true },
-        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8200", version: "2.03.0", serial: "2G002222", baud: 19200, free: true },
+        { deviceId: "acm-0", kind: "nino-tnc", model: "NinoTNC N9600A4", version: "3.44", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "by-path", idStable: true },
+        // A dev-fallback id: no by-path/by-id link, so the id is the kernel name — unstable across
+        // replug. Exercises the "unstable id" warning badge.
+        { deviceId: "ttyACM1", kind: "nino-tnc", model: "NinoTNC N9600A3", version: "3.41", serial: null, baud: 57600, free: true, bandCode: null, amateurBand: null, idSource: "dev", idStable: false },
+        { deviceId: "usb-0", kind: "tait-ccdi", model: "Tait TM8110", version: "1.10.0", serial: "2G001111", baud: 28800, free: true, bandCode: "B1", amateurBand: "2m", idSource: "by-path", idStable: true },
+        { deviceId: "usb-1", kind: "tait-ccdi", model: "Tait TM8200", version: "2.03.0", serial: "2G002222", baud: 19200, free: true, bandCode: "H5", amateurBand: "70cm", idSource: "by-path", idStable: true },
       ],
       proposedPairs: [
         { tncDeviceId: "acm-0", radioDeviceId: "usb-0", auto: false },
         { tncDeviceId: "acm-0", radioDeviceId: "usb-1", auto: false },
-        { tncDeviceId: "acm-1", radioDeviceId: "usb-0", auto: false },
-        { tncDeviceId: "acm-1", radioDeviceId: "usb-1", auto: false },
+        { tncDeviceId: "ttyACM1", radioDeviceId: "usb-0", auto: false },
+        { tncDeviceId: "ttyACM1", radioDeviceId: "usb-1", auto: false },
       ],
       pairingAmbiguous: true,
     },
@@ -302,6 +309,50 @@ export const HEADEND_SCAN: HeadEndScan = {
     { instanceId: "spare-pi", addresses: ["192.168.1.90:8080", "192.168.1.91:8080"] },
   ],
 };
+
+// The server's RF caveat (HeadEndKeyupCaveat.Text) — surfaced verbatim with every keyup response.
+const KEYUP_CAVEAT =
+  "RF WARNING: this action briefly keyed (transmitted through) each free NinoTNC on the head-end " +
+  "to discover its physically-cabled radio by the PTT it asserts. It emits on-air and must only be " +
+  "run by an operator on frequencies they are licensed and clear to key. It is never part of the " +
+  "passive head-end scan.";
+
+// Keyup-pairing result (POST /api/v1/radios/headends/{id}/pair-by-keyup) — the physical ground-truth
+// map. garage-pi resolves its ambiguity (each keyup fired exactly one Tait's PTT); any other reachable
+// instance pairs its first free TNC+radio; an unknown/unreachable id comes back reachable:false —
+// exactly the live endpoint's honest-failure shape.
+export function headEndKeyup(instanceId: string): HeadEndKeyupResult {
+  if (instanceId === "garage-pi") {
+    return {
+      instanceId,
+      reachable: true,
+      error: null,
+      pairs: [
+        { tncDeviceId: "acm-0", radioDeviceId: "usb-1" },
+        { tncDeviceId: "ttyACM1", radioDeviceId: "usb-0" },
+      ],
+      unpairedTncs: [],
+      unpairedRadios: [],
+      ambiguous: [],
+      caveat: KEYUP_CAVEAT,
+    };
+  }
+  const inst = HEADEND_SCAN.instances.find((i) => i.instanceId === instanceId && i.reachable);
+  const tnc = inst?.devices.find((d) => d.free && d.kind === "nino-tnc");
+  const radio = inst?.devices.find((d) => d.free && d.kind === "tait-ccdi");
+  if (!inst || !tnc || !radio) {
+    return {
+      instanceId, reachable: false,
+      error: `head-end '${instanceId}' was not found by the scan (or has no free TNC + radio)`,
+      pairs: [], unpairedTncs: [], unpairedRadios: [], ambiguous: [], caveat: KEYUP_CAVEAT,
+    };
+  }
+  return {
+    instanceId, reachable: true, error: null,
+    pairs: [{ tncDeviceId: tnc.deviceId, radioDeviceId: radio.deviceId }],
+    unpairedTncs: [], unpairedRadios: [], ambiguous: [], caveat: KEYUP_CAVEAT,
+  };
+}
 
 // Capability-doctor mock (GET/POST /api/v1/ports/{id}/doctor). A believable checklist per port so
 // the "Check radio" surface renders with no node — covering all three states: pass (green), fail
