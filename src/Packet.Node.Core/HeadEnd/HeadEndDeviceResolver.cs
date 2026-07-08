@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Core.HeadEnd;
@@ -19,11 +21,12 @@ namespace Packet.Node.Core.HeadEnd;
 /// takes the <em>resolved</em> base <see cref="Uri"/> and is injectable so tests point resolution at
 /// a stub inventory server.
 /// </remarks>
-public sealed class HeadEndDeviceResolver
+public sealed partial class HeadEndDeviceResolver
 {
     private readonly IReadOnlyList<HeadEndConfig> headEnds;
     private readonly Func<Uri, HeadEndClient> clientFactory;
     private readonly IHeadEndAddressResolver? addressResolver;
+    private readonly ILogger<HeadEndDeviceResolver> logger;
 
     /// <summary>Build a resolver over the configured head-end fleet. A null
     /// <paramref name="clientFactory"/> builds a real <see cref="HeadEndClient"/> for the resolved
@@ -33,11 +36,13 @@ public sealed class HeadEndDeviceResolver
     public HeadEndDeviceResolver(
         IReadOnlyList<HeadEndConfig> headEnds,
         Func<Uri, HeadEndClient>? clientFactory = null,
-        IHeadEndAddressResolver? addressResolver = null)
+        IHeadEndAddressResolver? addressResolver = null,
+        ILoggerFactory? loggerFactory = null)
     {
         this.headEnds = headEnds ?? [];
         this.clientFactory = clientFactory ?? DefaultClient;
         this.addressResolver = addressResolver;
+        logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<HeadEndDeviceResolver>();
     }
 
     /// <summary>
@@ -61,13 +66,49 @@ public sealed class HeadEndDeviceResolver
 
         var client = clientFactory(baseAddress);
         var inventory = await client.GetInventoryAsync(cancellationToken).ConfigureAwait(false);
-        var device = inventory.Ports.FirstOrDefault(p => string.Equals(p.Id, deviceId, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException(
+        var device = inventory.Ports.FirstOrDefault(p => string.Equals(p.Id, deviceId, StringComparison.Ordinal));
+        if (device is null)
+        {
+            // Legacy-binding fallback (#578): head-end ≤0.1.2 used by-id basenames as device ids;
+            // 0.1.3 switched to by-path (#575), keeping the by-id string as the informational
+            // `byId` hint. A NodeConfig adopted against the old head-end would otherwise fault at
+            // bring-up after the upgrade and stay down until re-adopted.
+            device = inventory.Ports.FirstOrDefault(p => MatchesLegacyById(p, deviceId));
+            if (device is not null)
+            {
+                LogLegacyByIdBinding(deviceId, device.Id, headEndId);
+            }
+        }
+        if (device is null)
+        {
+            throw new InvalidOperationException(
                 $"head-end '{headEndId}' inventory has no device '{deviceId}' " +
                 $"(known: {(inventory.Ports.Count == 0 ? "<none>" : string.Join(", ", inventory.Ports.Select(p => p.Id)))}).");
+        }
 
-        return new HeadEndDeviceBinding(client, client.BaseAddress.Host, device.TcpPort, device.Baud, deviceId);
+        // Always bind the CURRENT inventory id (not the config's legacy alias): the line-control
+        // verb (`POST /ports/{id}/line`) addresses the device by its live id.
+        return new HeadEndDeviceBinding(client, client.BaseAddress.Host, device.TcpPort, device.Baud, device.Id);
     }
+
+    /// <summary>Does <paramref name="deviceId"/> (a config binding's device id) match
+    /// <paramref name="port"/>'s legacy identity — the basename of its <c>/dev/serial/by-id</c>
+    /// path (the id head-end ≤0.1.2 used)? Shared with the fleet scanner's bound-device
+    /// detection so both resolve legacy bindings the same way (#578).</summary>
+    internal static bool MatchesLegacyById(HeadEndPortInfo port, string deviceId) =>
+        !string.IsNullOrWhiteSpace(port.ById)
+        && string.Equals(ByIdBasename(port.ById), deviceId, StringComparison.Ordinal);
+
+    /// <summary>The basename of a <c>/dev/serial/by-id</c> path (already-bare values pass through).</summary>
+    internal static string ByIdBasename(string byIdPath)
+    {
+        var trimmed = byIdPath.TrimEnd('/');
+        int slash = trimmed.LastIndexOf('/');
+        return slash >= 0 ? trimmed[(slash + 1)..] : trimmed;
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{HeadEndId}': binding uses a legacy by-id device id '{LegacyId}' (matched inventory device '{CurrentId}' via its byId hint) — re-adopt the pairing to migrate the config to the stable by-path id.")]
+    private partial void LogLegacyByIdBinding(string legacyId, string currentId, string headEndId);
 
     // The headEndId → base address step. With a discovery-backed resolver: config address, else an
     // mDNS browse of the instance id (a duplicate-id conflict resolves to null → a clear throw).

@@ -73,6 +73,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private readonly Dictionary<Callsign, AppCallsignRegistration> appCallsigns = new();
     private readonly object appCallsignGate = new();
     private readonly Dictionary<string, RunningPort> ports = new(StringComparer.Ordinal);
+    // Serialises port-set mutation between the caller-serialised paths (StartAsync / ApplyAsync /
+    // RestartPortAsync — the host's supervisor gate already keeps THOSE from overlapping) and the
+    // supervisor's own head-end bring-up retry loops (#576), which run on background timers and
+    // would otherwise race a reconcile touching the same port set.
+    private readonly SemaphoreSlim mutationGate = new(1, 1);
+    // One armed retry loop per head-end-bound port whose bring-up failed (#576): portId → its
+    // cancellation. Guarded by its own lock; loops remove themselves when they succeed or abandon.
+    private readonly Dictionary<string, CancellationTokenSource> bringUpRetries = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
     // Remotes a console connect-OUT is dialling right now (with a refcount, since
     // two console sessions could dial the same call). SessionAccepted for a remote
@@ -228,7 +236,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         HeadEnd.IHeadEndAddressResolver? addressResolver = headEndDiscovery is null
             ? null
             : new HeadEnd.HeadEndAddressResolver(headEnds, headEndDiscovery, loggerFactory);
-        return new HeadEndDeviceResolver(headEnds, addressResolver: addressResolver);
+        return new HeadEndDeviceResolver(headEnds, addressResolver: addressResolver, loggerFactory: loggerFactory);
     }
 
     // Reverse-resolve a listener to the id of the running port that owns it (for logging).
@@ -534,10 +542,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     /// host start, before the first <see cref="ApplyAsync"/>.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var current = config.Current;
-        foreach (var port in current.Ports.Where(p => p.Enabled))
+        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await BringUpAsync(port, current.Identity, cancellationToken).ConfigureAwait(false);
+            var current = config.Current;
+            foreach (var port in current.Ports.Where(p => p.Enabled))
+            {
+                await BringUpAsync(port, current.Identity, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            mutationGate.Release();
         }
     }
 
@@ -559,8 +575,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             return false;   // nothing to restart — unknown or disabled (use up/down to enable)
         }
-        await TearDownAsync(id).ConfigureAwait(false);
-        await BringUpAsync(port, current.Identity, cancellationToken).ConfigureAwait(false);
+        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await TearDownAsync(id).ConfigureAwait(false);
+            await BringUpAsync(port, current.Identity, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
         return true;
     }
 
@@ -574,6 +598,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(newConfig);
 
+        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ApplyCoreAsync(plan, newConfig, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
+    }
+
+    private async Task ApplyCoreAsync(ReconcilePlan plan, NodeConfig newConfig, CancellationToken cancellationToken)
+    {
         if (plan.NodeWideReset)
         {
             LogNodeWideReset(newConfig.Identity.Callsign);
@@ -654,7 +691,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    private async Task BringUpAsync(PortConfig port, Identity identity, CancellationToken ct)
+    private async Task BringUpAsync(PortConfig port, Identity identity, CancellationToken ct, bool quiet = false)
     {
         if (!Callsign.TryParse(identity.Callsign, out var myCall))
         {
@@ -687,8 +724,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         catch (Exception ex)
         {
             // Runtime fault on THIS port only — log + skip; the reconcile and the
-            // rest of the ports proceed.
-            LogPortFaultedEx(ex, port.Id, endpointText);
+            // rest of the ports proceed. A head-end-bound port arms a background retry
+            // (#576): a Pi that boots slower than the node must not need a config edit.
+            if (quiet)
+            {
+                LogPortRetryStillDown(port.Id, ex.Message);
+            }
+            else
+            {
+                LogPortFaultedEx(ex, port.Id, endpointText);
+            }
+            ScheduleHeadEndBringUpRetry(port, ct);
             return;
         }
 
@@ -758,6 +804,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             try
             {
                 radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, ct).ConfigureAwait(false);
+
+                // Head-end-bound radio control gets reconnect supervision (#576): the stable
+                // facade is what every consumer below holds (tagging transport, carrier-sense
+                // gate, status monitor, RunningPort.Radio), so when the control socket dies —
+                // a head-end restart, a .deb upgrade's try-restart, a replug — the facade
+                // disposes the dead driver and re-opens it (fresh inventory resolve, configured
+                // baud re-clock, progress re-enable) underneath them all. A local-serial radio
+                // keeps today's behaviour: a USB unplug is a physical event, not a bounce.
+                if (radioConfig.IsHeadEndBound)
+                {
+                    radio = new ReconnectingRadioControl(
+                        radio, port.Id, radioConfig, radioFactory, BuildHeadEndResolver,
+                        loggerFactory.CreateLogger<ReconnectingRadioControl>(), timeProvider);
+                }
 
                 // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
                 // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
@@ -841,7 +901,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
         catch (Exception ex)
         {
-            LogPortFaultedEx(ex, port.Id, endpointText);
+            if (quiet)
+            {
+                LogPortRetryStillDown(port.Id, ex.Message);
+            }
+            else
+            {
+                LogPortFaultedEx(ex, port.Id, endpointText);
+            }
             await listener.DisposeAsync().ConfigureAwait(false);
             await transport.DisposeAsync().ConfigureAwait(false);
             if (!ReferenceEquals(transport, modemTransport))
@@ -856,6 +923,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 await radio.DisposeAsync().ConfigureAwait(false);
             }
+            ScheduleHeadEndBringUpRetry(port, ct);
             return;
         }
 
@@ -953,6 +1021,102 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             telemetry?.DetachPort(p.Id);
             beacons?.DetachPort(p.Id);
             await p.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>How often a failed head-end-bound port bring-up is retried (#576). A head-end
+    /// that boots slower than the node (the Pi vs the LXC) or bounces while the node is up must
+    /// come back without a config edit — reconcile only runs on config change.</summary>
+    public static readonly TimeSpan HeadEndBringUpRetryInterval = TimeSpan.FromSeconds(30);
+
+    // A port is head-end-bound when its data pipe or its radio control channel lives on a
+    // split-station head-end — the class of port whose bring-up failure is worth retrying on a
+    // timer (the head-end being briefly unreachable is an expected, recoverable state; a missing
+    // local serial device is a physical event).
+    private static bool IsHeadEndBound(PortConfig port) =>
+        port.Transport is NinoTncTcpTransport || port.Radio is { IsHeadEndBound: true };
+
+    // Arm the background retry loop for a head-end-bound port whose bring-up just failed. One
+    // loop per port (re-arming while armed is a no-op — BringUpAsync calls this on every failed
+    // attempt, including the loop's own). State transitions log once; per-attempt noise is Debug.
+    private void ScheduleHeadEndBringUpRetry(PortConfig port, CancellationToken ct)
+    {
+        if (!IsHeadEndBound(port) || ct.IsCancellationRequested
+            || Volatile.Read(ref disposed) != 0 || lifecycle.IsCancellationRequested)
+        {
+            return;
+        }
+        lock (bringUpRetries)
+        {
+            if (bringUpRetries.ContainsKey(port.Id))
+            {
+                return;   // already armed — this is a retry attempt's own failure
+            }
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(lifecycle.Token);
+            bringUpRetries[port.Id] = cts;
+            LogHeadEndRetryArmed(port.Id, (int)HeadEndBringUpRetryInterval.TotalSeconds);
+            // Deliberately NOT the caller's token: the loop outlives this reconcile and is
+            // cancelled by its own linked CTS (lifecycle / abandon), never by the reconcile ending.
+            _ = Task.Run(() => RetryBringUpLoopAsync(port.Id, cts), CancellationToken.None);
+        }
+    }
+
+    private async Task RetryBringUpLoopAsync(string portId, CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(HeadEndBringUpRetryInterval, timeProvider, ct).ConfigureAwait(false);
+
+                await mutationGate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    // Always read LIVE config: a config edit between attempts must win (and a
+                    // reconcile that removed/disabled the port ends the loop; one that already
+                    // brought it up makes this attempt a no-op success).
+                    var current = config.Current;
+                    var port = current.Ports.FirstOrDefault(
+                        p => string.Equals(p.Id, portId, StringComparison.Ordinal));
+                    if (port is null || !port.Enabled || !IsHeadEndBound(port))
+                    {
+                        LogHeadEndRetryAbandoned(portId);
+                        return;
+                    }
+                    if (TryGetRunning(portId) is not null)
+                    {
+                        return;   // a reconcile/restart brought it up meanwhile — nothing to log
+                    }
+
+                    await BringUpAsync(port, current.Identity, ct, quiet: true).ConfigureAwait(false);
+                    if (TryGetRunning(portId) is not null)
+                    {
+                        LogHeadEndRetrySucceeded(portId);
+                        return;
+                    }
+                    // Still down — loop for the next attempt (the failure logged at Debug).
+                }
+                finally
+                {
+                    mutationGate.Release();
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // supervisor shutting down / lifecycle cancelled
+        }
+        finally
+        {
+            lock (bringUpRetries)
+            {
+                if (bringUpRetries.TryGetValue(portId, out var current) && ReferenceEquals(current, cts))
+                {
+                    bringUpRetries.Remove(portId);
+                }
+            }
+            cts.Dispose();
         }
     }
 
@@ -1239,8 +1403,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             return;
         }
+        // Cancelling the lifecycle stops the head-end bring-up retry loops; taking the mutation
+        // gate then waits out any attempt already mid-bring-up so the teardown can't interleave
+        // with it (the cancelled token makes that attempt fail fast and clean itself up).
         await lifecycle.CancelAsync().ConfigureAwait(false);
-        await TearDownAllAsync().ConfigureAwait(false);
+        await mutationGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await TearDownAllAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            mutationGate.Release();
+        }
         lifecycle.Dispose();
     }
 
@@ -1264,6 +1439,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: head-end-bound bring-up failed; retrying every {Seconds}s until the head-end appears (logged once — attempts are Debug).")]
+    private partial void LogHeadEndRetryArmed(string id, int seconds);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Port {Id}: bring-up retry still failing ({Reason}).")]
+    private partial void LogPortRetryStillDown(string id, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: head-end bring-up retry succeeded; the port is up.")]
+    private partial void LogHeadEndRetrySucceeded(string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: head-end bring-up retry abandoned (port removed, disabled, or no longer head-end-bound).")]
+    private partial void LogHeadEndRetryAbandoned(string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: KISS parameters applied live (no restart).")]
     private partial void LogKissParamsApplied(string id);

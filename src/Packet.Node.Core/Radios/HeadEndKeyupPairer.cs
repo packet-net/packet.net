@@ -177,8 +177,32 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
 
     // The RF-keying loop, isolated behind the open seams so it is unit-tested with fakes. Opens every
     // Tait watcher, then keys each NinoTNC in turn (resetting watchers between) and attributes the PTT
-    // edge(s) that fire within the observation window.
+    // edge(s) that fire within the observation window. Single-flight with the fleet scan (#581):
+    // the whole open-watch/key/observe phase holds the shared probe gate, so a scan (e.g. a UI tab
+    // auto-refreshing GET /radios/headends) can never re-clock a line under a live PTT watcher or
+    // queue probes into the pipes this run has open — it waits (bounded) instead.
     internal async Task<HeadEndKeyupResult> RunKeyupAsync(
+        string instanceId,
+        IReadOnlyList<KeyupTarget> tncs,
+        IReadOnlyList<KeyupTarget> radios,
+        OpenKeyupModem openModem,
+        OpenKeyupWatch openWatch,
+        HeadEndKeyupOptions options,
+        CancellationToken cancellationToken)
+    {
+        await HeadEndProbeGate.EnterAsync("keyup pairing", cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await RunKeyupGatedAsync(
+                instanceId, tncs, radios, openModem, openWatch, options, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            HeadEndProbeGate.Exit();
+        }
+    }
+
+    private async Task<HeadEndKeyupResult> RunKeyupGatedAsync(
         string instanceId,
         IReadOnlyList<KeyupTarget> tncs,
         IReadOnlyList<KeyupTarget> radios,
@@ -305,7 +329,8 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
     private OpenKeyupModem ProductionModemOpener(HeadEndClient client, Callsign source) => async (target, ct) =>
     {
         await client.SetLineAsync(target.DeviceId, HeadEndRadioScanner.NinoTncKissBaud, cancellationToken: ct).ConfigureAwait(false);
-        var nino = await NinoTncSerialPort.OpenTcp(target.Host, target.TcpPort, timeProvider, ct).ConfigureAwait(false);
+        var nino = await NinoTncSerialPort.OpenTcp(
+            target.Host, target.TcpPort, timeProvider, options: null, ct).ConfigureAwait(false);
         return new NinoKeyupModem(nino, source, options.KeySeconds);
     };
 

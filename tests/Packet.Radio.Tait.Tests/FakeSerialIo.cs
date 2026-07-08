@@ -51,6 +51,8 @@ internal sealed class FakeSerialIo : ISerialIo
         }
     }
 
+    private volatile Exception? readFault;
+
     public void Enqueue(string ascii) => incoming.Add(Encoding.Latin1.GetBytes(ascii));
 
     public void Enqueue(byte[] bytes) => incoming.Add(bytes);
@@ -58,8 +60,16 @@ internal sealed class FakeSerialIo : ISerialIo
     public void RespondTo(string commandWithoutCr, string responseAscii) =>
         responses[commandWithoutCr] = responseAscii;
 
+    /// <summary>Make every subsequent <see cref="Read"/> throw <paramref name="fault"/> —
+    /// models a hard IO failure (a dead head-end socket), which faults the driver's pump.</summary>
+    public void FailReads(Exception fault) => readFault = fault;
+
     public int Read(byte[] buffer, int offset, int count)
     {
+        if (readFault is { } fault)
+        {
+            throw fault;
+        }
         if (!incoming.TryTake(out var chunk, TimeSpan.FromMilliseconds(25)))
         {
             throw new TimeoutException();

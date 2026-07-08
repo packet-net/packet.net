@@ -66,22 +66,34 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
     }
 
     /// <inheritdoc/>
+    /// <remarks>Single-flight with keyup pairing (#581): a scan's Tait baud sweep re-clocks lines
+    /// under a pairing run's PTT watchers (and the head-end queues, not rejects, a second pipe
+    /// client), so the two probe actions serialise on the shared <see cref="HeadEndProbeGate"/> —
+    /// a concurrent caller waits (bounded) rather than corrupting the in-flight run's results.</remarks>
     public async Task<HeadEndScan> ScanAsync(NodeConfig config, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(config);
 
-        var discovered = await discovery.DiscoverAsync(discoveryTimeout, cancellationToken).ConfigureAwait(false);
-        var bound = BoundDevices(config);
-
-        var (instancesToScan, conflicts) = ResolveInstances(config.HeadEnds, discovered);
-
-        var instances = new List<HeadEndInstanceScan>(instancesToScan.Count);
-        foreach (var instance in instancesToScan)
+        await HeadEndProbeGate.EnterAsync("head-end scan", cancellationToken).ConfigureAwait(false);
+        try
         {
-            instances.Add(await ScanInstanceAsync(instance, bound, cancellationToken).ConfigureAwait(false));
-        }
+            var discovered = await discovery.DiscoverAsync(discoveryTimeout, cancellationToken).ConfigureAwait(false);
+            var bound = BoundDevices(config);
 
-        return new HeadEndScan(instances, conflicts);
+            var (instancesToScan, conflicts) = ResolveInstances(config.HeadEnds, discovered);
+
+            var instances = new List<HeadEndInstanceScan>(instancesToScan.Count);
+            foreach (var instance in instancesToScan)
+            {
+                instances.Add(await ScanInstanceAsync(instance, bound, cancellationToken).ConfigureAwait(false));
+            }
+
+            return new HeadEndScan(instances, conflicts);
+        }
+        finally
+        {
+            HeadEndProbeGate.Exit();
+        }
     }
 
     // Merge config head-ends with discovery into the set to scan, and separate out duplicate-id
@@ -172,7 +184,20 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
         var devices = new List<HeadEndDeviceScan>(inventory.Ports.Count);
         foreach (var port in inventory.Ports)
         {
-            if (bound.TryGetValue((instance.InstanceId, port.Id), out var boundKind))
+            string? boundKind = null;
+            if (!bound.TryGetValue((instance.InstanceId, port.Id), out boundKind)
+                && !string.IsNullOrWhiteSpace(port.ById))
+            {
+                // Legacy-binding fallback (#578): a config adopted against head-end ≤0.1.2 binds
+                // the by-id basename; 0.1.3's ids are by-path. Without this, the scan would treat
+                // a bound device as free and probe it — fighting the running port for the pipe.
+                var legacyId = HeadEndDeviceResolver.ByIdBasename(port.ById);
+                if (bound.TryGetValue((instance.InstanceId, legacyId), out boundKind))
+                {
+                    LogLegacyByIdBound(legacyId, port.Id, instance.InstanceId);
+                }
+            }
+            if (boundKind is not null)
             {
                 // Already bound to a running/configured port — don't probe (single-client-per-pipe).
                 // Its role is known from the binding, so still surface it (marked not-free).
@@ -226,7 +251,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
             // via the line verb before GETVER so the raw pipe speaks at the rate the NinoTNC expects.
             await setBaud(NinoTncKissBaud, connectCts.Token).ConfigureAwait(false);
             await using var nino = await NinoTncSerialPort
-                .OpenTcp(host, port.TcpPort, timeProvider, connectCts.Token).ConfigureAwait(false);
+                .OpenTcp(host, port.TcpPort, timeProvider, options: null, connectCts.Token).ConfigureAwait(false);
 
             var version = await nino.GetVersionAsync(identifyTimeout, cancellationToken).ConfigureAwait(false);
             // NinoTNC baud is fictional over USB-CDC — report the inventory baud, no sweep.
@@ -371,6 +396,9 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Head-end device '{DeviceId}' identified as a Tait CCDI radio after sweeping to {Baud} baud.")]
     private partial void LogBaudSwept(string deviceId, int baud);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{InstanceId}': a port binding uses the legacy by-id device id '{LegacyId}' (inventory device '{CurrentId}') — re-adopt the pairing to migrate the config to the stable by-path id.")]
+    private partial void LogLegacyByIdBound(string legacyId, string currentId, string instanceId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Head-end '{InstanceId}' at {Host}:{Port} inventory fetch failed during scan.")]
     private partial void LogInstanceUnreachable(Exception ex, string instanceId, string host, int port);

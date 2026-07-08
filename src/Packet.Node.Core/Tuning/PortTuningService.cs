@@ -3,6 +3,7 @@ using Packet.Core;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.Radios;
 using Packet.Radio.Tait;
 using Packet.Tune.Core;
 
@@ -123,7 +124,9 @@ public sealed partial class PortTuningService : IAsyncDisposable
 
         var running = host.Supervisor?.GetPort(portId)
             ?? throw new TuningStartException(TuningStartError.NotFound, $"port '{portId}' is not running");
-        var tait = running.Radio as TaitCcdiRadio;
+        // Resolve the LIVE driver: a head-end-bound radio sits behind the reconnect facade
+        // (#576), so the concrete Tait handle must be re-resolved per operation, never cached.
+        var tait = RadioControls.LiveTait(running.Radio);
         if (!TuningPreflight.CanArm(running.NinoTnc is not null, tait is not null, peerSdmId, out var reason))
         {
             throw new TuningStartException(TuningStartError.BadRequest, reason!);

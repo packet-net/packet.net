@@ -34,9 +34,11 @@ public sealed class LoopbackRawPipe : IDisposable
     /// Answer every inbound CCDI command with a <c>.</c> prompt (0x2E) — the transaction-complete
     /// marker <c>TaitCcdiRadio</c> waits for on a prompt-completed command like the progress-enable
     /// the radio factory issues. Runs until the socket closes. Await the returned task after tearing
-    /// the radio down.
+    /// the radio down. When <paramref name="received"/> is supplied, every inbound byte is captured
+    /// into it (as ASCII, lock-guarded on the builder) so a test can assert WHAT the driver sent —
+    /// e.g. that a reconnect re-issued the progress-enable (<c>f03041…</c> on the wire).
     /// </summary>
-    public Task RespondCcdiPromptsAsync() => Task.Run(async () =>
+    public Task RespondCcdiPromptsAsync(StringBuilder? received = null) => Task.Run(async () =>
     {
         var socket = await Accepted.ConfigureAwait(false);
         var buffer = new byte[256];
@@ -55,6 +57,13 @@ public sealed class LoopbackRawPipe : IDisposable
             {
                 break;
             }
+            if (received is not null)
+            {
+                lock (received)
+                {
+                    received.Append(Encoding.Latin1.GetString(buffer, 0, read));
+                }
+            }
             try
             {
                 await socket.SendAsync(Encoding.Latin1.GetBytes(".").AsMemory()).ConfigureAwait(false);
@@ -65,6 +74,29 @@ public sealed class LoopbackRawPipe : IDisposable
             }
         }
     });
+
+    /// <summary>
+    /// Push raw bytes from the head-end side onto the accepted socket (e.g. an unsolicited CCDI
+    /// PROGRESS line, to prove DCD edges flow to a reconnected consumer).
+    /// </summary>
+    public async Task SendAsync(string latin1)
+    {
+        var socket = await Accepted.ConfigureAwait(false);
+        await socket.SendAsync(Encoding.Latin1.GetBytes(latin1).AsMemory()).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Kill the pipe from the head-end side: close the accepted socket (and stop listening) so the
+    /// dialled client sees the connection die — the head-end-bounce trigger for reconnect tests.
+    /// </summary>
+    public void Kill()
+    {
+        listener.Stop();
+        if (Accepted.IsCompletedSuccessfully)
+        {
+            Accepted.Result.Dispose();
+        }
+    }
 
     /// <summary>
     /// Answer a NinoTNC GETVER reach-through probe: wait for the GETVER command frame, then reply

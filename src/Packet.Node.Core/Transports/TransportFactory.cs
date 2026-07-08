@@ -81,7 +81,12 @@ public sealed class TransportFactory : ITransportFactory
                             "head-end resolver, but none was supplied.");
                     var binding = await resolver.ResolveAsync(nt.HeadEndId, nt.DeviceId, cancellationToken).ConfigureAwait(false);
                     await binding.SetBaud(HeadEndRadioScanner.NinoTncKissBaud, cancellationToken).ConfigureAwait(false);
-                    var tnc = await NinoTncSerialPort.OpenTcp(binding.Host, binding.TcpPort, timeProvider, cancellationToken).ConfigureAwait(false);
+                    // Default options carry the GETVER keep-alive poll (#580): an RF-quiet channel
+                    // generates no bytes, and without the poll the pipe's 5-min read-idle liveness
+                    // budget would tear a healthy port down every 5 minutes all night.
+                    var tnc = await NinoTncSerialPort.OpenTcp(
+                        binding.Host, binding.TcpPort, timeProvider,
+                        options: null, cancellationToken).ConfigureAwait(false);
                     try
                     {
                         await tnc.SetModeAsync((byte)nt.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);

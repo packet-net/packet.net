@@ -264,9 +264,16 @@ public sealed class RssiTaggingTransport : IAx25Transport, IAsyncDisposable
                     float dbm = await radio.ReadRssiDbmAsync(cancellationToken).ConfigureAwait(false);
                     Record(dbm, busy);
                 }
-                catch (Exception ex) when (ex is TimeoutException or IOException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception)
                 {
                     // One missed poll is not fatal; the attribution window just gets sparser.
+                    // Deliberately broad: a radio behind a reconnect facade throws
+                    // ObjectDisposedException / InvalidOperationException while its control
+                    // channel is being re-opened, and the sampler must outlive that window.
                 }
 
                 await Task.Delay(busy ? options.BusySamplePeriod : options.IdleSamplePeriod, clock, cancellationToken)
