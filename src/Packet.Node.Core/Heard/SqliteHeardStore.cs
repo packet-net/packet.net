@@ -29,13 +29,15 @@ public sealed partial class SqliteHeardStore : IHeardStore
 {
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS heard_log (
-            port_id         TEXT NOT NULL,
-            callsign        TEXT NOT NULL,
-            first_heard_utc TEXT NOT NULL,
-            last_heard_utc  TEXT NOT NULL,
-            count           INTEGER NOT NULL,
-            last_rssi_dbm   REAL,
-            last_snr_db     REAL,
+            port_id            TEXT NOT NULL,
+            callsign           TEXT NOT NULL,
+            first_heard_utc    TEXT NOT NULL,
+            last_heard_utc     TEXT NOT NULL,
+            count              INTEGER NOT NULL,
+            last_rssi_dbm      REAL,
+            last_snr_db        REAL,
+            predata_median_ms  REAL,
+            predata_samples    INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (port_id, callsign));
         """;
 
@@ -82,6 +84,14 @@ public sealed partial class SqliteHeardStore : IHeardStore
             {
                 conn.Execute("ALTER TABLE heard_log ADD COLUMN last_snr_db REAL;");
             }
+            if (!columns.Contains("predata_median_ms"))
+            {
+                conn.Execute("ALTER TABLE heard_log ADD COLUMN predata_median_ms REAL;");
+            }
+            if (!columns.Contains("predata_samples"))
+            {
+                conn.Execute("ALTER TABLE heard_log ADD COLUMN predata_samples INTEGER NOT NULL DEFAULT 0;");
+            }
         }
         catch (SqliteException ex)
         {
@@ -97,10 +107,11 @@ public sealed partial class SqliteHeardStore : IHeardStore
         {
             using var conn = Open();
             conn.Execute(
-                "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count, last_rssi_dbm, last_snr_db) " +
-                "VALUES (@p, @c, @first, @last, @count, @rssi, @snr) " +
+                "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count, last_rssi_dbm, last_snr_db, predata_median_ms, predata_samples) " +
+                "VALUES (@p, @c, @first, @last, @count, @rssi, @snr, @pre, @preN) " +
                 "ON CONFLICT(port_id, callsign) DO UPDATE SET " +
-                "first_heard_utc = @first, last_heard_utc = @last, count = @count, last_rssi_dbm = @rssi, last_snr_db = @snr;",
+                "first_heard_utc = @first, last_heard_utc = @last, count = @count, last_rssi_dbm = @rssi, last_snr_db = @snr, " +
+                "predata_median_ms = @pre, predata_samples = @preN;",
                 new
                 {
                     p = entry.PortId,
@@ -110,6 +121,8 @@ public sealed partial class SqliteHeardStore : IHeardStore
                     count = entry.Count,
                     rssi = entry.LastRssiDbm is { } v ? (double?)v : null,
                     snr = entry.LastSnrDb is { } s ? (double?)s : null,
+                    pre = entry.MedianPreDataCarrierMs is { } m ? (double?)m : null,
+                    preN = entry.PreDataCarrierSamples,
                 });
         }
         catch (SqliteException ex)
@@ -127,7 +140,8 @@ public sealed partial class SqliteHeardStore : IHeardStore
             var rows = conn.Query<HeardRow>(
                 "SELECT port_id AS PortId, callsign AS Callsign, first_heard_utc AS FirstHeardUtc, " +
                 "last_heard_utc AS LastHeardUtc, count AS Count, last_rssi_dbm AS LastRssiDbm, " +
-                "last_snr_db AS LastSnrDb FROM heard_log;").ToList();
+                "last_snr_db AS LastSnrDb, predata_median_ms AS PreDataMedianMs, " +
+                "predata_samples AS PreDataSamples FROM heard_log;").ToList();
             return rows.Select(ToEntry).ToList();
         }
         catch (Exception ex) when (ex is SqliteException or FormatException)
@@ -224,7 +238,9 @@ public sealed partial class SqliteHeardStore : IHeardStore
         // Stored as REAL (8-byte double); narrow back to the float the 0.1 dB source used so it
         // renders cleanly (e.g. -95.3, not -95.30000305).
         row.LastRssiDbm is { } d ? (float?)d : null,
-        row.LastSnrDb is { } s ? (float?)s : null);
+        row.LastSnrDb is { } s ? (float?)s : null,
+        row.PreDataMedianMs is { } m ? (float?)m : null,
+        (int)row.PreDataSamples);
 
     private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
 
@@ -241,6 +257,8 @@ public sealed partial class SqliteHeardStore : IHeardStore
         public long Count { get; set; }
         public double? LastRssiDbm { get; set; }
         public double? LastSnrDb { get; set; }
+        public double? PreDataMedianMs { get; set; }
+        public long PreDataSamples { get; set; }
     }
 
     [LoggerMessage(Level = LogLevel.Warning,

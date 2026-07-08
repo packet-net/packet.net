@@ -50,6 +50,14 @@ public sealed record TuningSessionInfo(
 /// <param name="Note">A one-line operator-facing note (what to do with the pot, plus any level
 /// trend), for <c>round</c> events.</param>
 /// <param name="Error">A human-readable failure detail, for <c>error</c> events.</param>
+/// <param name="TxDelayMs">The commanded TXDELAY of a TXDELAY-minimisation step, in ms
+/// (<c>round</c> events of a txdelay session only). Additive (trailing optional): deviation-session
+/// events omit it.</param>
+/// <param name="PreDataCarrierMs">The meter's median measured carrier-rise→data lead for the step,
+/// in ms — the as-heard effective TXDELAY cross-check (<c>round</c> events of a txdelay session,
+/// when the meter has a carrier-sensing radio).</param>
+/// <param name="RecommendedTxDelayMs">The sweep's recommendation, in ms (the final <c>ended</c>
+/// event of a completed txdelay sweep only).</param>
 public sealed record TuningEvent(
     string Kind,
     DateTimeOffset At,
@@ -61,4 +69,7 @@ public sealed record TuningEvent(
     double? RssiDbm = null,
     string? Advice = null,
     string? Note = null,
-    string? Error = null);
+    string? Error = null,
+    int? TxDelayMs = null,
+    double? PreDataCarrierMs = null,
+    int? RecommendedTxDelayMs = null);

@@ -23,6 +23,15 @@ namespace Packet.Node.Core.Heard;
 /// frame carried no attributed SNR. Additive (trailing optional), mirroring <see cref="LastRssiDbm"/>:
 /// a heard row without it round-trips exactly as before. This is the per-partner SNR the observability
 /// exporter surfaces, bounded to configured neighbours / active links (see docs/observability.md).</param>
+/// <param name="MedianPreDataCarrierMs">Rolling median of the measured carrier-rise→first-data lead
+/// (ms) of this station's transmissions — its effective TXDELAY as heard here (+ a small constant rig
+/// overhead), over the last <see cref="Packet.Tune.Core.PreDataCarrierWindow.DefaultCapacity"/>
+/// burst-opening frames a radio control channel attributed. <c>null</c> when never measured. The
+/// input to the passive excess-TXDELAY advisory (<c>Packet.Tune.Core.ExcessTxDelayAdvisor</c>; see
+/// docs/research/txdelay-optimisation.md). Additive (trailing optional), like the RSSI/SNR fields.</param>
+/// <param name="PreDataCarrierSamples">How many samples sit behind
+/// <see cref="MedianPreDataCarrierMs"/> (≤ the window capacity) — a confidence signal. 0 when never
+/// measured.</param>
 public sealed record HeardEntry(
     string PortId,
     string Callsign,
@@ -30,4 +39,6 @@ public sealed record HeardEntry(
     DateTimeOffset LastHeard,
     long Count,
     float? LastRssiDbm = null,
-    float? LastSnrDb = null);
+    float? LastSnrDb = null,
+    float? MedianPreDataCarrierMs = null,
+    int PreDataCarrierSamples = 0);

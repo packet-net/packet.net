@@ -93,6 +93,7 @@ public static class PdnMetricsApi
         WritePortAndLinkStats(w, host, config);
         WriteRadioStats(w, RadioReadModels.All(host.Supervisor, config.Current));
         WriteLinkSnr(w, host.Heard);
+        WriteLinkPreDataCarrier(w, host.Heard);
         WriteForwarding(w, host);
         WriteMqttStats(w, mqtt);
 
@@ -480,6 +481,48 @@ public static class PdnMetricsApi
         foreach (var e in rows)
         {
             w.Sample(Ns + "link_snr_db", e.LastSnrDb!.Value, ("port", e.PortId), ("peer", e.Callsign));
+        }
+    }
+
+    // ─── per-partner pre-data carrier (TXDELAY-as-heard; same accepted per-peer cardinality
+    //     policy as pdn_link_snr_db — see docs/research/txdelay-optimisation.md) ───────────────────
+
+    /// <summary>
+    /// The per-partner pre-data-carrier gauge <c>pdn_link_predata_carrier_ms{port,peer}</c> — one
+    /// sample per (port, remote callsign) with a measured rolling median, straight from the heard
+    /// log (fed by <c>RadioMetadata.PreDataCarrier</c> on burst-opening frames). The value is the
+    /// peer's effective TXDELAY as heard on this port, plus a small constant rig overhead
+    /// (~40–75 ms at 1200 Bd) — trend it, alert on peers persistently above the excess-TXDELAY
+    /// threshold. Carries the <c>peer</c> label under the same deliberate, Tom-accepted
+    /// cardinality exception as <see cref="WriteLinkSnr"/>. Peers with no measurement contribute
+    /// nothing, so the whole bucket is absent on a node with no radio telemetry. Exposed
+    /// (internal) so a test can format a seeded heard log directly.
+    /// </summary>
+    internal static void WriteLinkPreDataCarrier(PrometheusTextWriter w, HeardLog? heard)
+    {
+        if (heard is null)
+        {
+            return;
+        }
+
+        var rows = heard.All()
+            .Where(e => e.MedianPreDataCarrierMs is not null)
+            .OrderByDescending(e => e.LastHeard)
+            .ThenBy(e => e.PortId, StringComparer.Ordinal)
+            .ThenBy(e => e.Callsign, StringComparer.Ordinal)
+            .ToList();
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        w.Help(Ns + "link_predata_carrier_ms",
+            "Rolling median carrier-rise-to-data lead (ms) of frames heard from a link partner — its effective TXDELAY as heard — by port and remote callsign.");
+        w.Type(Ns + "link_predata_carrier_ms", "gauge");
+        foreach (var e in rows)
+        {
+            w.Sample(Ns + "link_predata_carrier_ms", e.MedianPreDataCarrierMs!.Value,
+                ("port", e.PortId), ("peer", e.Callsign));
         }
     }
 

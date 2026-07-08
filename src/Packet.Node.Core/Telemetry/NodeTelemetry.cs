@@ -178,10 +178,15 @@ public sealed partial class NodeTelemetry
 
             // MHeard (#454): a RECEIVED frame means we heard its SOURCE station on this port. The
             // heard log owns persistence + survival-across-teardown; this is just the feed. TX
-            // frames are ours, so they are never a "hearing".
+            // frames are ours, so they are never a "hearing". PreDataCarrier (the burst-opening
+            // frame's measured carrier-rise→data lead — the peer's effective TXDELAY as heard)
+            // rides along into the log's rolling per-station median, feeding the passive
+            // excess-TXDELAY advisory (docs/research/txdelay-optimisation.md).
             if (rx)
             {
-                heardLog?.Record(portId, evt.Source, e.Timestamp, radio?.RssiDbm, radio?.SnrDb);
+                heardLog?.Record(
+                    portId, evt.Source, e.Timestamp, radio?.RssiDbm, radio?.SnrDb,
+                    radio?.PreDataCarrier is { } pre ? (float?)pre.TotalMilliseconds : null);
             }
 
             lock (historyLock)

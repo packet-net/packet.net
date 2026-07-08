@@ -1241,6 +1241,57 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-08 — TXDELAY optimisation: passive excess-TXDELAY observation + active own-TXDELAY minimisation
+
+A two-layer feature that makes TXDELAY (the pre-data preamble every AX.25 transmission pays) measurable and
+minimisable. Design note: [`docs/research/txdelay-optimisation.md`](research/txdelay-optimisation.md). No RF is keyed
+by any test in this repo — the live sweep is an operator bench run; the code is exercised end-to-end over fakes.
+
+**Layer 1 — passive, zero RF.** `RssiTaggingTransport` already measures each received burst-opening frame's
+pre-data carrier (`RadioMetadata.PreDataCarrier` — the peer's effective TXDELAY as heard, + a ~40–75 ms constant rig
+overhead). It is now aggregated per heard *source* callsign as a **rolling median** (last N=32) — a slow-moving
+property a single frame shouldn't redefine, unlike the newest-wins RSSI/SNR. New `Packet.Tune.Core.PreDataCarrierWindow`
+holds the window; `HeardLog` maintains it; `HeardEntry`/`HeardStationSummary`/`HeardStation` gain
+`MedianPreDataCarrierMs` + `PreDataCarrierSamples` (SQLite additive ADD-COLUMN migration, mirroring the RSSI/SNR
+columns; persisted median is display-only across a restart, the live window restarts empty). Surfaces: `/api/v1/heard`
+rows carry the fields + a computed `txDelayAdvisory` string; a Prometheus gauge `pdn_link_predata_carrier_ms{port,peer}`
+(same accepted per-peer cardinality exception as `pdn_link_snr_db` — added in its own exporter block to avoid the
+concurrent `pdn_headend_*` work). The advisory logic is `Packet.Tune.Core.ExcessTxDelayAdvisor` (default threshold
+250 ms, ≥4 samples — generous so one long first-keying never flags), reused by the CLI + node.
+
+**Layer 2 — active, operator-initiated, two-station.** A **coordinator** sweeps its OWN KISS TXDELAY *down* while a
+**meter** counts decodes per step, coordinated over the existing `ITuningLink` side channel (SDM). Not a new protocol:
+a `TXD` verb joined `TuningVerb` with a `TxDelayMinMessage` codec (propose/confirm/reject/step/sent/report/apply/done/
+abort), parallel to `ModeCoordMessage`. New in `Packet.Tune.Core`: `ITxDelayMinStation`/`NinoTncTxDelayMinStation`
+(KISS writes; **settle frame after every set** — the NinoTNC applies a param from the 2nd frame; **K separate keyings**
+per step — a train shares one preamble; **DCD-based per-probe pre-data measurement** — the self-evidencing cross-check),
+`TxDelayMinimizer` (coordinator), `TxDelayMinResponder` (meter), `TxDelayMinReport`. Persistence **pinned 255 /
+slottime 0** during the sweep and restored 63/10 after — reusing exactly what `TxDelayControlCheck` does and why (the
+default p-persistence's random ~100 ms deferrals would swamp the step). **Knee** = lowest full-decode step;
+**recommendation** = knee + `max(2 steps, 25%)`. `RunSweepAsync` never leaves the reduced value in place; APPLY is a
+separate explicit `ApplyAsync` (set + settle + verify + optional persist). **Abort-safe**: every failure/timeout/cancel
+routes through a `finally` that restores the original TXDELAY + channel access, independent of the side channel still
+working.
+
+**Surfaces.** CLI `packet-tune txdelay-min --role coordinator|meter --tnc <port> --radio <ccdi> --peer <8charId>
+[--start 500] [--step 40] [--min 20] [--probes 5] [--apply | --apply-at ms]` (mirrors `mode-coord`/`deviation-sdm`).
+Node API (admin-scope, audited, RF-caveat — the keyup-pairing pattern): `POST /api/v1/ports/{id}/tuning/txdelay-min`
+(sweep) + `POST /api/v1/ports/{id}/tuning/txdelay-min/apply` (verify + optionally persist to `kiss.txDelay`). A new
+`IPortTuningSession` seam lets `TxDelayMinPortSession` share the one-session-per-port registry, the SSE `tuning/events`
+feed (its sweep steps project as `round` events; `TuningEvent` gained `TxDelayMs`/`PreDataCarrierMs`/
+`RecommendedTxDelayMs`) and the stop verbs with the deviation `PortTuningSession`.
+
+**Tests (fakes only, no RF):** +21 `Packet.Tune.Core.Tests` (`TxDelayMinMessageTests` — codec/budget/probe-tag/settle-
+never-probe/recommendation; `ExcessTxDelayAdvisorTests` — window median/capacity/garbage-reject + threshold; and
+`TxDelayMinimizerTests` — the sweep state machine over a scripted fake link+station: knee found, margin applied, pre-data
+cross-check plumbed, floor-reached, not-solid-at-start, **settle-before-probes ordering asserted**, **K separate keyings
+asserted**, link-fail + station-fail + reject all restore, apply verifies/persists/fails-restores). +11
+`Packet.Node.Tests` (`HeardPreDataCarrierTests` — rolling-median aggregation, node-wide merge, store round-trip +
+migration; `TxDelayMinPortSessionTests` — sweep→ended-with-recommendation, apply persist/no-persist/fail, restore-once;
+`RadioMetricsExporterTests` — the new gauge). Affected suites green locally (the sandbox's `/tmp`-write denial fails only
+the unrelated ~61 Tailscale/app-package Node.Tests — environmental, check against CI). **No ax25-ts leg** — radio/tuning
+is a C#-only surface; nothing on the parity-tracked AX.25 contract changed.
+
 ### 2026-07-08 — Head-end radio-integration resilience cluster ([#576], [#578], [#580], [#581])
 
 The critical cluster from the 2026-07-08 arc review, fixed in one PR. The headline defect ([#576]): **a head-end

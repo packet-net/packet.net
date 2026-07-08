@@ -102,8 +102,9 @@ public sealed partial class PortTuningService : IAsyncDisposable
         this.clock = clock ?? TimeProvider.System;
     }
 
-    /// <summary>The live session on a port, or <c>null</c> when none is active.</summary>
-    public PortTuningSession? Get(string portId) => registry.Get(portId);
+    /// <summary>The live session on a port (deviation or txdelay flavour), or <c>null</c>
+    /// when none is active.</summary>
+    public IPortTuningSession? Get(string portId) => registry.Get(portId);
 
     /// <summary>
     /// Arm a tuning session on a port: validate, pause normal traffic, open the SDM link, and start.
@@ -116,8 +117,151 @@ public sealed partial class PortTuningService : IAsyncDisposable
     /// <returns>The armed session's projection.</returns>
     /// <exception cref="TuningStartException">The start was refused; <see cref="TuningStartException.Error"/>
     /// says whether that is a 404, 400 or 409.</exception>
-    public async Task<TuningSessionInfo> StartAsync(
+    public Task<TuningSessionInfo> StartAsync(
         string portId, TuningRole role, string peerSdmId, int burstFrames, CancellationToken cancellationToken = default)
+    {
+        int frames = Math.Clamp(burstFrames, 1, 50);
+        return ArmSessionAsync(portId, peerSdmId, async (running, tait, link, restore) =>
+        {
+            var options = new TuningSessionOptions { BurstFrames = frames };
+            var source = ParseCallsign(config.Current.Identity.Callsign);
+
+            IBurstStimulus? stimulus = null;
+            IBurstMeter? meter = null;
+            if (role == TuningRole.Tuned)
+            {
+                stimulus = new NinoTncBurstStimulus(running.NinoTnc!, source);
+            }
+            else
+            {
+                var burstMeter = new NinoTncBurstMeter(running.NinoTnc!, tait);
+                // Probe the (firmware-3.41-era) GETRSSI level fast path once; captures the idle
+                // baseline. A no-op query on newer firmware — never fatal.
+                try
+                {
+                    await burstMeter.ProbeAudioLevelMeterAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    LogGetRssiProbeFailed(ex, portId);
+                }
+                meter = burstMeter;
+            }
+
+            PortTuningSession session = null!;
+            session = new PortTuningSession(
+                Guid.NewGuid().ToString("N"), portId, peerSdmId, role, link, stimulus, meter, options,
+                restore: c => restore(session, c),
+                clock: clock)
+            {
+                Log = line => LogSessionNote(portId, line),
+            };
+            return session;
+        }, s => ((PortTuningSession)s).Start(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Arm a TXDELAY-minimisation session on a port (layer 2 of
+    /// docs/research/txdelay-optimisation.md): coordinator (sweeps this port's OWN
+    /// TXDELAY down, keying probes) or meter (purely passive counting for a remote
+    /// coordinator). Same validate/pause/SDM plumbing — and the same
+    /// port-always-restored guarantee — as <see cref="StartAsync"/>.
+    /// </summary>
+    /// <param name="portId">The running port.</param>
+    /// <param name="coordinator"><c>true</c> = coordinator (transmits!), <c>false</c> = meter.</param>
+    /// <param name="peerSdmId">The peer radio's 8-character SDM data identity.</param>
+    /// <param name="options">Sweep options. For the coordinator, a null
+    /// <c>StartTxDelayMs</c> caller should pre-seed from the port's configured KISS
+    /// txDelay — the API layer does.</param>
+    /// <param name="cancellationToken">Cancels the start (before the session is registered).</param>
+    /// <exception cref="TuningStartException">The start was refused (404/400/409).</exception>
+    public Task<TuningSessionInfo> StartTxDelayMinAsync(
+        string portId, bool coordinator, string peerSdmId, TxDelayMinOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return ArmSessionAsync(portId, peerSdmId, (running, tait, link, restore) =>
+        {
+            var session = BuildTxDelaySession(
+                running, tait, link, restore, portId, peerSdmId,
+                coordinator ? TxDelayMinMode.SweepCoordinator : TxDelayMinMode.Meter,
+                options);
+            return Task.FromResult<IPortTuningSession>(session);
+        }, s => ((TxDelayMinPortSession)s).Start(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Arm the explicit APPLY: set + settle + verify <paramref name="txDelayMs"/> with
+    /// the far meter counting, then persist via <paramref name="persist"/> when
+    /// verified. On the node an apply only outlives the session when persisted — the
+    /// port restore is a full rebuild that re-applies the configured KISS params.
+    /// </summary>
+    /// <param name="portId">The running port.</param>
+    /// <param name="peerSdmId">The peer radio's 8-character SDM data identity.</param>
+    /// <param name="txDelayMs">The TXDELAY to apply and verify, in ms.</param>
+    /// <param name="options">Verify options (probes, timeouts; StartTxDelayMs = the fallback
+    /// restored on a failed verify).</param>
+    /// <param name="persist">Persist a verified value into the port's KISS-params config
+    /// (the API wires this to the config store); null = transient apply.</param>
+    /// <param name="cancellationToken">Cancels the start (before the session is registered).</param>
+    /// <exception cref="TuningStartException">The start was refused (404/400/409).</exception>
+    public Task<TuningSessionInfo> StartTxDelayApplyAsync(
+        string portId, string peerSdmId, int txDelayMs, TxDelayMinOptions options,
+        Func<int, CancellationToken, Task<bool>>? persist,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(txDelayMs);
+        return ArmSessionAsync(portId, peerSdmId, (running, tait, link, restore) =>
+        {
+            var session = BuildTxDelaySession(
+                running, tait, link, restore, portId, peerSdmId, TxDelayMinMode.Apply, options,
+                txDelayMs, persist);
+            return Task.FromResult<IPortTuningSession>(session);
+        }, s => ((TxDelayMinPortSession)s).Start(), cancellationToken);
+    }
+
+    private TxDelayMinPortSession BuildTxDelaySession(
+        RunningPort running, TaitCcdiRadio tait, SdmTuningLink link,
+        Func<IPortTuningSession, CancellationToken, ValueTask> restore,
+        string portId, string peerSdmId, TxDelayMinMode mode, TxDelayMinOptions options,
+        int applyTxDelayMs = 0, Func<int, CancellationToken, Task<bool>>? persist = null)
+    {
+        var source = ParseCallsign(config.Current.Identity.Callsign);
+        var station = new NinoTncTxDelayMinStation(running.NinoTnc!, source, tait)
+        {
+            Log = line => LogSessionNote(portId, line),
+        };
+        TxDelayMinPortSession session = null!;
+        session = new TxDelayMinPortSession(
+            Guid.NewGuid().ToString("N"), portId, peerSdmId, mode, link, station, options,
+            restore: c => restore(session, c),
+            applyTxDelayMs: applyTxDelayMs,
+            persist: persist,
+            clock: clock)
+        {
+            Log = line => LogSessionNote(portId, line),
+        };
+        return session;
+    }
+
+    /// <summary>
+    /// The shared arm plumbing every session flavour uses: validate the port (running,
+    /// NinoTNC + live Tait + peer id), claim the one-session-per-port slot, pause normal
+    /// AX.25 traffic, enable PROGRESS + fail-fast SDM check, open the SDM link, build +
+    /// register + start the session — and restore the port if anything fails before the
+    /// session takes ownership of restore.
+    /// </summary>
+    private async Task<TuningSessionInfo> ArmSessionAsync(
+        string portId,
+        string peerSdmId,
+        Func<RunningPort, TaitCcdiRadio, SdmTuningLink, Func<IPortTuningSession, CancellationToken, ValueTask>, Task<IPortTuningSession>> factory,
+        Action<IPortTuningSession> start,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(portId);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
@@ -131,7 +275,6 @@ public sealed partial class PortTuningService : IAsyncDisposable
         {
             throw new TuningStartException(TuningStartError.BadRequest, reason!);
         }
-        int frames = Math.Clamp(burstFrames, 1, 50);
 
         await startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -160,49 +303,13 @@ public sealed partial class PortTuningService : IAsyncDisposable
                 var link = SdmTuningLink.Create(tait, peerSdmId);
                 link.Log = line => LogSdmLink(portId, line);
 
-                var options = new TuningSessionOptions { BurstFrames = frames };
-                var source = ParseCallsign(config.Current.Identity.Callsign);
-
-                IBurstStimulus? stimulus = null;
-                IBurstMeter? meter = null;
-                if (role == TuningRole.Tuned)
-                {
-                    stimulus = new NinoTncBurstStimulus(running.NinoTnc!, source);
-                }
-                else
-                {
-                    var burstMeter = new NinoTncBurstMeter(running.NinoTnc!, tait);
-                    // Probe the (firmware-3.41-era) GETRSSI level fast path once; captures the idle
-                    // baseline. A no-op query on newer firmware — never fatal.
-                    try
-                    {
-                        await burstMeter.ProbeAudioLevelMeterAsync(cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogGetRssiProbeFailed(ex, portId);
-                    }
-                    meter = burstMeter;
-                }
-
-                PortTuningSession session = null!;
-                session = new PortTuningSession(
-                    Guid.NewGuid().ToString("N"), portId, peerSdmId, role, link, stimulus, meter, options,
-                    restore: c => RestoreAsync(session, c),
-                    clock: clock)
-                {
-                    Log = line => LogSessionNote(portId, line),
-                };
-
+                var session = await factory(running, tait, link, (s, c) => RestoreAsync(s, c))
+                    .ConfigureAwait(false);
                 registry.TryAdd(session);
-                session.Start();
+                start(session);
                 startedOk = true;
                 var info = session.Info;
-                LogSessionArmed(portId, info.Role, peerSdmId, frames);
+                LogSessionArmed(portId, info.Role, peerSdmId, info.BurstFrames);
                 return info;
             }
             finally
@@ -231,11 +338,11 @@ public sealed partial class PortTuningService : IAsyncDisposable
     {
         var session = registry.Get(portId)
             ?? throw new TuningStartException(TuningStartError.NotFound, $"no tuning session on port '{portId}'");
-        if (!session.SignalNext())
+        if (session is not PortTuningSession deviation || !deviation.SignalNext())
         {
             throw new TuningStartException(
                 TuningStartError.Conflict,
-                "no measurement round is awaiting the operator (meter role, or a round is still running)");
+                "no measurement round is awaiting the operator (meter role, a txdelay session, or a round is still running)");
         }
         return true;
     }
@@ -268,7 +375,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
         startGate.Dispose();
     }
 
-    private async ValueTask RestoreAsync(PortTuningSession session, CancellationToken cancellationToken)
+    private async ValueTask RestoreAsync(IPortTuningSession session, CancellationToken cancellationToken)
     {
         try
         {

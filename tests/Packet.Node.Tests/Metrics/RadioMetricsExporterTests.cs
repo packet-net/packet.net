@@ -55,6 +55,13 @@ public sealed class RadioMetricsExporterTests
         return w.ToString();
     }
 
+    private static string RenderLinkPreData(HeardLog? heard)
+    {
+        var w = new PrometheusTextWriter();
+        PdnMetricsApi.WriteLinkPreDataCarrier(w, heard);
+        return w.ToString();
+    }
+
     private static RadioStatus Attached(string port, string state, bool? busy, RadioHealth? health) =>
         new(PortId: port, Attached: true, Kind: "tait-ccdi", ControlPort: "/dev/ttyUSB0", Serial: null,
             Identity: null, ConnectionState: state, ChannelBusy: busy, Health: health);
@@ -174,6 +181,39 @@ public sealed class RadioMetricsExporterTests
         var log = new HeardLog(store: null);
         log.Record("vhf", "G0ABC-1", T0, rssiDbm: -80f);   // heard, but no SNR ever measured
         RenderLinkSnr(log).Should().NotContain("pdn_link_snr_db");
+    }
+
+    // ─── per-partner pre-data carrier (TXDELAY as heard) ────────────────────────
+
+    [Fact]
+    public void Link_predata_emits_one_gauge_per_heard_partner_with_a_measured_median()
+    {
+        var log = new HeardLog(store: null);
+        log.Record("vhf", "GB7XXX", T0, preDataCarrierMs: 400f);
+        log.Record("vhf", "GB7XXX", T0.AddMinutes(1), preDataCarrierMs: 420f);
+        log.Record("vhf", "M0LTE-1", T0.AddSeconds(2), preDataCarrierMs: 150f);
+        // Heard, but only an SNR reading (no pre-data) — must NOT appear in this gauge.
+        log.Record("vhf", "M7NIL-3", T0.AddSeconds(3), snrDb: 12f);
+
+        var body = RenderLinkPreData(log);
+        var s = ParseSamples(body);
+
+        body.Should().Contain("# TYPE pdn_link_predata_carrier_ms gauge");
+        s["pdn_link_predata_carrier_ms{port=\"vhf\",peer=\"GB7XXX\"}"].Should().Be(410);
+        s["pdn_link_predata_carrier_ms{port=\"vhf\",peer=\"M0LTE-1\"}"].Should().Be(150);
+        s.Keys.Where(k => k.StartsWith("pdn_link_predata_carrier_ms", StringComparison.Ordinal))
+            .Should().HaveCount(2, "the SNR-only partner is excluded");
+        body.Should().NotContain("M7NIL-3");
+    }
+
+    [Fact]
+    public void Link_predata_bucket_is_absent_when_no_heard_log_or_no_measurement()
+    {
+        RenderLinkPreData(heard: null).Should().BeEmpty();
+
+        var log = new HeardLog(store: null);
+        log.Record("vhf", "GB7XXX", T0, rssiDbm: -80f);   // heard, but no pre-data ever measured
+        RenderLinkPreData(log).Should().NotContain("pdn_link_predata_carrier_ms");
     }
 
     // ─── the full document over a no-radio host ─────────────────────────────────

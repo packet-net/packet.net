@@ -30,7 +30,7 @@ namespace Packet.Node.Core.Tuning;
 /// <see cref="ITuningLink"/> pair plus fake <see cref="IBurstStimulus"/>/<see cref="IBurstMeter"/> and
 /// a recording restore callback.</para>
 /// </remarks>
-public sealed class PortTuningSession : IAsyncDisposable
+public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
 {
     private const int MaxHistory = 512;
 

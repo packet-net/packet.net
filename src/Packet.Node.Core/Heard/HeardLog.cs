@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Packet.Tune.Core;
 
 namespace Packet.Node.Core.Heard;
 
@@ -93,8 +94,14 @@ public sealed class HeardLog
     /// last-heard (so the stored figure tracks the newest frame, and a null on a later frame does
     /// not erase a real earlier reading — only a newer real reading replaces it).
     /// <paramref name="snrDb"/> is the matching per-frame SNR (dB) and tracks last-heard the same way.
+    /// <paramref name="preDataCarrierMs"/> is the frame's measured carrier-rise→first-data lead in ms
+    /// (only burst-opening frames carry one); unlike the last-heard RSSI/SNR it feeds a rolling
+    /// per-station median window (last 32 measured samples) rather than a newest-wins field, because
+    /// the peer's effective TXDELAY is a slow-moving property a single frame shouldn't redefine.
     /// </summary>
-    public void Record(string portId, string callsign, DateTimeOffset at, float? rssiDbm = null, float? snrDb = null)
+    public void Record(
+        string portId, string callsign, DateTimeOffset at,
+        float? rssiDbm = null, float? snrDb = null, float? preDataCarrierMs = null)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(callsign);
@@ -125,8 +132,22 @@ public sealed class HeardLog
                     entry.LastSnrDb = snrDb;
                 }
             }
+            if (preDataCarrierMs is { } pre)
+            {
+                // Rolling median, not newest-wins: the sample joins the entry's bounded window
+                // (created lazily — most stations on a radio-less port never measure one) and the
+                // stored median/count are recomputed from the live window. A restart hydrates the
+                // persisted median/count for display, but the window itself restarts empty — the
+                // first new sample honestly resets the count to 1.
+                entry.PreData ??= new PreDataCarrierWindow();
+                entry.PreData.Add(pre);
+                entry.MedianPreDataCarrierMs = entry.PreData.MedianMs is { } median ? (float)median : null;
+                entry.PreDataCarrierSamples = entry.PreData.Count;
+            }
             entry.Count++;
-            snapshot = new HeardEntry(portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count, entry.LastRssiDbm, entry.LastSnrDb);
+            snapshot = new HeardEntry(
+                portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count,
+                entry.LastRssiDbm, entry.LastSnrDb, entry.MedianPreDataCarrierMs, entry.PreDataCarrierSamples);
         }
         store?.Upsert(snapshot);
 
@@ -174,12 +195,15 @@ public sealed class HeardLog
                     Ports = s.Ports + 1,
                     LastRssiDbm = entryNewer ? entry.LastRssiDbm : s.LastRssiDbm,
                     LastSnrDb = entryNewer ? entry.LastSnrDb : s.LastSnrDb,
+                    MedianPreDataCarrierMs = entryNewer ? entry.MedianPreDataCarrierMs : s.MedianPreDataCarrierMs,
+                    PreDataCarrierSamples = entryNewer ? entry.PreDataCarrierSamples : s.PreDataCarrierSamples,
                 };
             }
             else
             {
                 byCall[entry.Callsign] = new HeardStationSummary(
-                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1, entry.LastRssiDbm, entry.LastSnrDb);
+                    entry.Callsign, entry.FirstHeard, entry.LastHeard, entry.Count, Ports: 1,
+                    entry.LastRssiDbm, entry.LastSnrDb, entry.MedianPreDataCarrierMs, entry.PreDataCarrierSamples);
             }
         }
         return byCall.Values
@@ -259,7 +283,9 @@ public sealed class HeardLog
     {
         lock (e)
         {
-            return new HeardEntry(e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count, e.LastRssiDbm, e.LastSnrDb);
+            return new HeardEntry(
+                e.PortId, e.Callsign, e.FirstHeard, e.LastHeard, e.Count,
+                e.LastRssiDbm, e.LastSnrDb, e.MedianPreDataCarrierMs, e.PreDataCarrierSamples);
         }
     }
 
@@ -281,6 +307,13 @@ public sealed class HeardLog
         public float? LastRssiDbm;
         public float? LastSnrDb;
 
+        // The live rolling window (created on the first measured sample) and the stored
+        // median/count it maintains. Hydration restores median/count for display only —
+        // the window restarts empty, so the first post-restart sample resets the count.
+        public PreDataCarrierWindow? PreData;
+        public float? MedianPreDataCarrierMs;
+        public int PreDataCarrierSamples;
+
         public Entry(DateTimeOffset at)
         {
             FirstHeard = at;
@@ -296,6 +329,8 @@ public sealed class HeardLog
             Count = e.Count,
             LastRssiDbm = e.LastRssiDbm,
             LastSnrDb = e.LastSnrDb,
+            MedianPreDataCarrierMs = e.MedianPreDataCarrierMs,
+            PreDataCarrierSamples = e.PreDataCarrierSamples,
         };
     }
 }
@@ -313,6 +348,11 @@ public sealed class HeardLog
 /// recently, or <c>null</c> when none of those ports had a radio measuring it.</param>
 /// <param name="LastSnrDb">Last-heard SNR (dB) from the port that heard this station most recently,
 /// or <c>null</c> when none of those ports had a radio measuring it.</param>
+/// <param name="MedianPreDataCarrierMs">Rolling median measured pre-data carrier (ms) from the port
+/// that heard this station most recently (the merge follows last-heard, like the RSSI/SNR fields),
+/// or <c>null</c> when never measured.</param>
+/// <param name="PreDataCarrierSamples">Samples behind <see cref="MedianPreDataCarrierMs"/> on that
+/// port; 0 when never measured.</param>
 public sealed record HeardStationSummary(
     string Callsign,
     DateTimeOffset FirstHeard,
@@ -320,4 +360,6 @@ public sealed record HeardStationSummary(
     long Count,
     int Ports,
     float? LastRssiDbm = null,
-    float? LastSnrDb = null);
+    float? LastSnrDb = null,
+    float? MedianPreDataCarrierMs = null,
+    int PreDataCarrierSamples = 0);
