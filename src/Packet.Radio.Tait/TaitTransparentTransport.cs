@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Packet.Ax25.Transport;
 using Packet.Kiss;
@@ -81,6 +82,11 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         clock = timeProvider ?? TimeProvider.System;
         this.ownsRadio = ownsRadio;
         radio.TransparentDataReceived += OnTransparentData;
+        // A dead serial link / dropped head-end pipe faults the radio's read pump; complete the
+        // inbound channel so ReceiveAsync ENDS instead of going silent forever — end-of-stream is
+        // the drop signal a reconnect supervisor (the node's ReconnectingKissModem) keys on,
+        // mirroring how KissTcpClient surfaces a dead socket.
+        radio.ConnectionStateChanged += OnConnectionState;
     }
 
     /// <summary>Raised on every send with the transmission's timing envelope (queue instant,
@@ -110,6 +116,64 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         // the port is a Transparent byte pipe, so disable it for this radio.
         var radio = TaitCcdiRadio.Open(
             portName, opts.CommandBaud, new TaitCcdiRadioOptions { KeepAliveInterval = null }, timeProvider);
+        return await EnterOwningAsync(radio, opts, timeProvider, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Open a Tait radio whose serial port is bridged as a raw binary TCP pipe by a split-station
+    /// head-end and enter Transparent mode, returning a ready-to-use transport that owns the
+    /// radio — the remote twin of <see cref="OpenAsync"/>. The <c>t</c> entry command is issued at
+    /// <see cref="TaitTransparentTransportOptions.CommandBaud"/>, clocked onto the physical UART
+    /// via <paramref name="setBaud"/> at open; when
+    /// <see cref="TaitTransparentTransportOptions.TransparentBaud"/> differs, the enter/exit
+    /// re-clocks also route through <paramref name="setBaud"/> (the data socket is a pure binary
+    /// pipe — line rate travels out-of-band through the head-end's line verb).
+    /// </summary>
+    /// <remarks>
+    /// The pipe's <b>read-idle liveness budget is disabled</b> here: in Transparent mode any
+    /// in-band probe byte would be transmitted over the air, so an RF-quiet channel is
+    /// indistinguishable from a dead link by bytes alone — the 5-minute default would tear a
+    /// healthy port down every quiet stretch (the same failure #580 fixed for nino-tnc-tcp,
+    /// which CAN probe in-band with GETVER). Drop detection relies on OS TCP keepalive and a FIN,
+    /// both of which fault the pump and end <see cref="ReceiveAsync"/>.
+    /// </remarks>
+    /// <param name="host">Head-end host bridging the radio's serial port.</param>
+    /// <param name="port">Head-end TCP port for the radio's raw byte pipe.</param>
+    /// <param name="setBaud">Line-control callback (the head-end's <c>POST /ports/{id}/line</c>
+    /// verb); null trusts the head-end's current clock and makes re-clocks no-ops.</param>
+    /// <param name="options">Transport options; null uses defaults.</param>
+    /// <param name="timeProvider">Clock (test seam); null uses the system clock.</param>
+    /// <param name="cancellationToken">Cancels the connect / mode entry.</param>
+    public static async Task<TaitTransparentTransport> OpenTcpAsync(
+        string host,
+        int port,
+        Func<int, CancellationToken, Task>? setBaud = null,
+        TaitTransparentTransportOptions? options = null,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
+    {
+        var opts = options ?? new TaitTransparentTransportOptions();
+        var radio = await TaitCcdiRadio.OpenTcp(
+            host, port, opts.CommandBaud, setBaud,
+            new TaitCcdiRadioOptions
+            {
+                // No CCDI watchdog (a byte pipe can't answer queries) and no in-band read-idle
+                // budget (no probe is possible without transmitting) — see the remarks.
+                KeepAliveInterval = null,
+                ReadIdleTimeout = Timeout.InfiniteTimeSpan,
+            },
+            timeProvider, cancellationToken).ConfigureAwait(false);
+        return await EnterOwningAsync(radio, opts, timeProvider, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Shared open tail: wrap the freshly-opened radio, enter Transparent (with the
+    // stale-Transparent recovery), and dispose the whole stack on failure.
+    private static async Task<TaitTransparentTransport> EnterOwningAsync(
+        TaitCcdiRadio radio,
+        TaitTransparentTransportOptions opts,
+        TimeProvider? timeProvider,
+        CancellationToken cancellationToken)
+    {
         var transport = new TaitTransparentTransport(radio, opts, timeProvider, ownsRadio: true);
         try
         {
@@ -128,6 +192,18 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
     /// transparent baud differs — re-clock the open port to it. Idempotent-safe: a second call is
     /// a no-op.
     /// </summary>
+    /// <remarks>
+    /// <b>Stale-Transparent recovery.</b> A radio whose previous session ended without a clean
+    /// teardown — the node crashed, or (the split-station case) the head-end pipe died before the
+    /// escape could be delivered — is still a Transparent byte pipe: the <c>t</c> entry command is
+    /// then transmitted over the air as data and no prompt ever comes back. When the entry times
+    /// out, this presumes exactly that state and recovers: re-clock to the transparent baud (where
+    /// the stale pipe is clocked), run the §1.7.2 escape blind, re-clock back, and retry the entry
+    /// once. A radio that was merely off/unreachable fails the retry the same way it failed the
+    /// first attempt (the blind escape is harmless noise to a Command-mode radio); a radio wedged
+    /// by "Ignore Escape Sequence" ON still fails — that misconfiguration has no software recovery
+    /// (see the class-level WARNING and the Transparent-readiness doctor).
+    /// </remarks>
     public async Task EnterTransparentModeAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.CompareExchange(ref entered, 1, 0) != 0)
@@ -136,8 +212,28 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         }
         try
         {
-            await radio.EnterTransparentModeAsync(
-                options.EscapeChar, thsd: false, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await radio.EnterTransparentModeAsync(
+                    options.EscapeChar, thsd: false, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // No CCDI answer at the command baud — presume a stale Transparent pipe from a
+                // session that never got to exit (see remarks). Escape it and retry once.
+                if (options.TransparentBaud != options.CommandBaud)
+                {
+                    radio.SetSerialBaudRate(options.TransparentBaud);
+                }
+                await radio.EscapeTransparentBlindAsync(
+                    options.EscapeChar, options.EscapeGuard, cancellationToken).ConfigureAwait(false);
+                if (options.TransparentBaud != options.CommandBaud)
+                {
+                    radio.SetSerialBaudRate(options.CommandBaud);
+                }
+                await radio.EnterTransparentModeAsync(
+                    options.EscapeChar, thsd: false, cancellationToken).ConfigureAwait(false);
+            }
             if (options.TransparentBaud != options.CommandBaud)
             {
                 radio.SetSerialBaudRate(options.TransparentBaud);
@@ -233,6 +329,16 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
         }
     }
 
+    // A faulted radio (dead serial link / dropped head-end pipe — the pump broke on a hard IO
+    // failure) can never deliver another byte: end the inbound stream so consumers see the drop.
+    private void OnConnectionState(object? sender, TaitConnectionState state)
+    {
+        if (state == TaitConnectionState.Faulted)
+        {
+            inbound.Writer.TryComplete();
+        }
+    }
+
     private TimeSpan EstimateAirtime(int onAirByteCount) =>
         TimeSpan.FromSeconds(onAirByteCount * 8.0 / options.FfskBaud);
 
@@ -248,6 +354,7 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
             return;
         }
         radio.TransparentDataReceived -= OnTransparentData;
+        radio.ConnectionStateChanged -= OnConnectionState;
         inbound.Writer.TryComplete();
 
         if (Interlocked.Exchange(ref entered, 0) == 1)
@@ -260,10 +367,11 @@ public sealed class TaitTransparentTransport : ITxCompletionTransport, IAsyncDis
                     radio.SetSerialBaudRate(options.CommandBaud);
                 }
             }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException or TimeoutException)
+            catch (Exception ex) when (ex is IOException or InvalidOperationException or TimeoutException or SocketException)
             {
-                // Best-effort exit — the radio may already be gone / power-cycled. Dispose the
-                // radio below regardless.
+                // Best-effort exit — the radio may already be gone / power-cycled, or the
+                // head-end pipe already dead (SocketException / IOException from the socket or
+                // the line-verb callback). Dispose the radio below regardless.
             }
         }
 
@@ -309,6 +417,11 @@ public sealed record TaitTransparentTransportOptions
     /// <summary>The Transparent-mode escape character (§1.7.2) — the byte sent ×3 (guarded by
     /// idle time) to leave Transparent. Default <c>'+'</c> (the <c>+++</c> sequence).</summary>
     public char EscapeChar { get; init; } = '+';
+
+    /// <summary>The §1.7.2 idle guard either side of the escape burst when the enter path runs
+    /// the stale-Transparent recovery (see <see cref="TaitTransparentTransport.EnterTransparentModeAsync"/>).
+    /// Default 2.1 s (the protocol minimum). Tests pass a short value to keep fast.</summary>
+    public TimeSpan EscapeGuard { get; init; } = TimeSpan.FromMilliseconds(2100);
 }
 
 /// <summary>

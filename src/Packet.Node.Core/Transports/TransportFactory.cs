@@ -137,9 +137,9 @@ public sealed class TransportFactory : ITransportFactory
             case TaitTransparentTransportConfig t:
                 {
                     // The radio IS the modem: open it, enter Transparent mode, and frame AX.25
-                    // over its FFSK byte pipe with KISS SLIP. Bind by serial (scanned) or device
-                    // path — same stable-identity resolution as the radio-attach path.
-                    var device = await ResolveTaitTransparentDeviceAsync(t, cancellationToken).ConfigureAwait(false);
+                    // over its FFSK byte pipe with KISS SLIP. Bind by serial (scanned), device
+                    // path — same stable-identity resolution as the radio-attach path — or a
+                    // split-station head-end device (#585).
                     var opts = new TaitTransparentTransportOptions
                     {
                         CommandBaud = t.Baud,
@@ -147,6 +147,28 @@ public sealed class TransportFactory : ITransportFactory
                         FfskBaud = t.FfskBaud,
                         LeadIn = TimeSpan.FromMilliseconds(t.LeadInMs),
                     };
+
+                    if (t.IsHeadEndBound)
+                    {
+                        // Head-end branch (#585): resolve (headEndId, deviceId) → host:tcpPort via
+                        // the inventory and dial the raw pipe, with setBaud wired to the head-end's
+                        // POST /ports/{id}/line verb. That callback carries BOTH the open-time
+                        // clock to the CONFIGURED CCDI command baud (#576's configured-baud
+                        // convention — a restarted head-end's bridge reopens at its default, so
+                        // the inventory's current rate must not be trusted) AND the
+                        // Command↔Transparent runtime re-clock (tait-transparent is the only
+                        // runtime SetBaudRate caller; the raw socket cannot carry line rate).
+                        var resolver = headEndResolver
+                            ?? throw new InvalidOperationException(
+                                $"tait-transparent transport for head-end '{t.HeadEndId}' device '{t.DeviceId}' " +
+                                "needs a head-end resolver, but none was supplied.");
+                        var binding = await resolver.ResolveAsync(t.HeadEndId, t.DeviceId, cancellationToken).ConfigureAwait(false);
+                        return await TaitTransparentTransport.OpenTcpAsync(
+                            binding.Host, binding.TcpPort, binding.SetBaud,
+                            opts, timeProvider, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    var device = await ResolveTaitTransparentDeviceAsync(t, cancellationToken).ConfigureAwait(false);
                     return await TaitTransparentTransport
                         .OpenAsync(device, opts, timeProvider, cancellationToken).ConfigureAwait(false);
                 }

@@ -206,6 +206,135 @@ public sealed class HeadEndConfigTests
         Validator.Validate(TwoPorts(Pair("a", "nino0", "tait0"), b, Pi, other)).IsValid.Should().BeTrue();
     }
 
+    // ---- the head-end-bound tait-transparent transport (#585) -----------------------------------
+
+    private static PortConfig TransparentPort(
+        string headEndId = "pi", string deviceId = "tait0",
+        string device = "", string serial = "", string id = "t") => new()
+    {
+        Id = id,
+        Transport = new TaitTransparentTransportConfig
+        {
+            HeadEndId = headEndId,
+            DeviceId = deviceId,
+            Device = device,
+            Serial = serial,
+        },
+    };
+
+    [Fact]
+    public void A_head_end_bound_tait_transparent_on_a_declared_head_end_is_valid()
+    {
+        Validator.Validate(Config(TransparentPort(), Pi)).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_tait_transparent_referencing_an_undeclared_head_end_is_invalid()
+    {
+        Validator.Validate(Config(TransparentPort(headEndId: "ghost"))).IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("pi", "tait0", true)]    // both halves — a valid head-end binding
+    [InlineData("pi", "", false)]        // only headEndId — incomplete
+    [InlineData("", "tait0", false)]     // only deviceId — incomplete
+    public void A_head_end_tait_transparent_needs_both_head_end_id_and_device_id(
+        string headEndId, string deviceId, bool valid)
+    {
+        Validator.Validate(Config(TransparentPort(headEndId, deviceId), Pi)).IsValid.Should().Be(valid);
+    }
+
+    [Theory]
+    [InlineData("/dev/ttyUSB0", "")]     // head-end binding + local device path
+    [InlineData("", "1G000123")]         // head-end binding + local CCDI serial
+    public void A_tait_transparent_with_both_a_local_and_a_head_end_binding_is_invalid(string device, string serial)
+    {
+        Validator.Validate(Config(TransparentPort(device: device, serial: serial), Pi))
+            .IsValid.Should().BeFalse("binding modes are mutually exclusive — several is ambiguous");
+    }
+
+    [Fact]
+    public void A_tait_transparent_and_another_ports_radio_binding_the_same_device_are_invalid()
+    {
+        // The single-client rule (#586) covers this kind too (#585): the transparent port's byte
+        // pipe and another port's radio control channel naming one physical device would fight.
+        var result = Validator.Validate(TwoPorts(TransparentPort(deviceId: "tait0"), Pair("b", "nino0", "tait0"), Pi));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("'pi/tait0'"));
+    }
+
+    [Fact]
+    public void A_tait_transparent_and_a_nino_tnc_tcp_binding_the_same_device_are_invalid()
+    {
+        // Cross-KIND collision: DescribeEndpoint differs by kind prefix, so only the dedicated
+        // (headEndId, deviceId) rule catches it.
+        var b = new PortConfig
+        {
+            Id = "b",
+            Transport = new NinoTncTcpTransport { HeadEndId = "pi", DeviceId = "tait0", Mode = 6 },
+        };
+        var result = Validator.Validate(TwoPorts(TransparentPort(deviceId: "tait0"), b, Pi));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("'pi/tait0'"));
+    }
+
+    [Fact]
+    public void Two_tait_transparent_ports_on_distinct_devices_stay_valid()
+    {
+        Validator.Validate(TwoPorts(
+            TransparentPort(deviceId: "tait0", id: "a"), TransparentPort(deviceId: "tait1", id: "b"), Pi))
+            .IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_head_end_tait_transparent_round_trips_through_yaml()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            headEnds:
+              - id: pi-shack
+                address: 192.168.1.10:7300
+            ports:
+              - id: tait
+                transport:
+                  kind: tait-transparent
+                  headEndId: pi-shack
+                  deviceId: platform-xhci-hcd.1-usb-0:2:1.0-port0
+                  baud: 28800
+                  transparentBaud: 19200
+            """;
+
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(NodeConfigYaml.Parse(yaml)));
+
+        var transport = reparsed.Ports[0].Transport.Should().BeOfType<TaitTransparentTransportConfig>().Subject;
+        transport.HeadEndId.Should().Be("pi-shack");
+        transport.DeviceId.Should().Be("platform-xhci-hcd.1-usb-0:2:1.0-port0");
+        transport.IsHeadEndBound.Should().BeTrue();
+        transport.Device.Should().BeEmpty();
+        transport.Serial.Should().BeEmpty();
+        transport.Baud.Should().Be(28800);
+        transport.TransparentBaud.Should().Be(19200);
+
+        Validator.Validate(reparsed).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_head_end_tait_transparent_round_trips_through_json()
+    {
+        var config = Config(TransparentPort(), Pi);
+
+        var reparsed = NodeConfigJson.Deserialize(NodeConfigJson.Serialize(config));
+
+        var transport = reparsed.Ports[0].Transport.Should().BeOfType<TaitTransparentTransportConfig>().Subject;
+        transport.HeadEndId.Should().Be("pi");
+        transport.DeviceId.Should().Be("tait0");
+        transport.IsHeadEndBound.Should().BeTrue();
+        Validator.Validate(reparsed).IsValid.Should().BeTrue();
+    }
+
     // ---- head-end fleet validity ---------------------------------------------------------------
 
     [Fact]

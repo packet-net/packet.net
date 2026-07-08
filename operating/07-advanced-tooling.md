@@ -65,6 +65,18 @@ re-verifies the version.
 > your modem mode afterwards, e.g. `packet-tune set-mode <tncPort> 6` (or set it in
 > your port config so it's re-applied on the next port start).
 
+> [!NOTE]
+> **`flash-tnc` is local-serial only — it does not reach through a
+> [head-end](08-split-station-head-end.md).** Its pre-flight checks are inherently
+> local (`<tncPort>` is a local device path, and the "is another process holding
+> the port" exclusivity scan reads the local machine's `/proc`), and a 2–4-minute
+> bootloader transfer is not something to run across a network pipe anyway. To
+> flash a NinoTNC hosted on a remote Pi, **SSH to the head-end box**, stop (or
+> disable) the port that owns the device so the head-end's bridge isn't holding it,
+> and run `flash-tnc` there against the local device — then bring the port back.
+> This is deliberate; see the remote-parity table in
+> [chapter 8](08-split-station-head-end.md#what-works-remotely-and-what-stays-local).
+
 ## Mode coordination
 
 `mode-coord` lets two stations **agree on a modem mode** (baud/modulation) over the

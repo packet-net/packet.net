@@ -368,8 +368,9 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
         return (combos, true);
     }
 
-    // Every (instanceId, deviceId) a configured port already binds — a nino-tnc-tcp transport (TNC)
-    // or a head-end-bound radio (radio) — with the role the binding implies.
+    // Every (instanceId, deviceId) a configured port already binds — a nino-tnc-tcp transport (TNC),
+    // a head-end-bound tait-transparent transport (#585 — the radio IS the modem, its pipe is a
+    // Tait CCDI serial port), or a head-end-bound radio — with the role the binding implies.
     private static Dictionary<(string, string), string> BoundDevices(NodeConfig config)
     {
         var bound = new Dictionary<(string, string), string>();
@@ -379,6 +380,10 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
                 && !string.IsNullOrWhiteSpace(t.DeviceId))
             {
                 bound[(t.HeadEndId, t.DeviceId)] = HeadEndDeviceKind.NinoTnc;
+            }
+            if (port.Transport is TaitTransparentTransportConfig { IsHeadEndBound: true } tt)
+            {
+                bound[(tt.HeadEndId, tt.DeviceId)] = HeadEndDeviceKind.TaitCcdi;
             }
             if (port.Radio is { IsHeadEndBound: true } radio)
             {

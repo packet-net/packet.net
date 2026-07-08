@@ -234,6 +234,66 @@ public class TaitTransparentTransportTests
         io.BaudRates.Should().Equal(19200, 28800);
     }
 
+    [Fact]
+    public async Task Enter_Recovers_A_Radio_Stuck_In_Transparent_By_Escaping_Then_Retrying()
+    {
+        // The stale-Transparent scenario (#585): the previous session's pipe died before teardown,
+        // so the RADIO is still a Transparent byte pipe while a freshly-opened driver believes it
+        // is in Command mode. The fake only answers the `t` entry once the +++ escape has been
+        // seen — exactly the physical behaviour (a Transparent radio transmits the entry as data).
+        var io = new FakeSerialIo();
+        io.RespondTo(EnterCommand(), ".", onlyWhen: () => io.WrittenAscii.Contains("+++"));
+        var radio = TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions
+        {
+            KeepAliveInterval = null,
+            TransactionTimeout = TimeSpan.FromMilliseconds(150),   // fail the first entry fast
+        });
+        var options = new TaitTransparentTransportOptions
+        {
+            CommandBaud = 28800,
+            TransparentBaud = 19200,
+            EscapeGuard = TimeSpan.FromMilliseconds(40),           // keep the §1.7.2 dance fast
+        };
+        await using var transport = new TaitTransparentTransport(radio, options);
+
+        await transport.EnterTransparentModeAsync();
+
+        io.WrittenAscii.Should().Contain("+++", "the recovery escapes the stale byte pipe before retrying");
+        // The re-clock dance around the recovery: to the transparent rate (where the stale pipe
+        // is clocked) for the escape, back to the command rate for the entry retry, then the
+        // normal post-enter re-clock to the transparent rate.
+        io.BaudRates.Should().Equal(19200, 28800, 19200);
+    }
+
+    [Fact]
+    public async Task Enter_Does_Not_Escape_When_The_Radio_Answers_First_Time()
+    {
+        var (io, radio) = OpenRadio();
+        await using var transport = new TaitTransparentTransport(radio, new TaitTransparentTransportOptions());
+
+        await transport.EnterTransparentModeAsync();
+
+        io.WrittenAscii.Should().NotContain("+++", "a radio that answers the entry needs no recovery escape");
+    }
+
+    [Fact]
+    public async Task Receive_Stream_Ends_When_The_Radio_Faults()
+    {
+        // A dead link (unplugged USB / dropped head-end pipe) faults the radio's read pump. The
+        // inbound stream must END — end-of-stream is the drop signal the node's reconnect
+        // supervisor (ReconnectingKissModem) keys on; a silent never-ending stream would leave
+        // the port dead until a process restart.
+        var (io, radio) = OpenRadio();
+        await using var transport = new TaitTransparentTransport(radio, new TaitTransparentTransportOptions());
+        await transport.EnterTransparentModeAsync();
+
+        io.FailReads(new IOException("head-end pipe died"));
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var e = transport.ReceiveAsync(cts.Token).GetAsyncEnumerator(cts.Token);
+        (await e.MoveNextAsync()).Should().BeFalse("a faulted radio can never deliver another byte");
+    }
+
     private static async Task<Ax25InboundFrame> FirstFrameAsync(TaitTransparentTransport transport)
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

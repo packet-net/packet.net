@@ -151,7 +151,17 @@ internal sealed class TcpSerialIo : ISerialIo
         {
             return;
         }
-        setBaud(baudRate, CancellationToken.None).GetAwaiter().GetResult();
+        try
+        {
+            setBaud(baudRate, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // Normalise the callback's failure (typically an HTTP error against an unreachable
+            // head-end) to the ISerialIo contract's IO failure, so callers' best-effort teardown
+            // paths — which catch IOException like any dead serial handle — behave the same here.
+            throw new IOException($"line-control (baud) callback failed for {portName}", ex);
+        }
     }
 
     public void Dispose() => socket.Dispose();

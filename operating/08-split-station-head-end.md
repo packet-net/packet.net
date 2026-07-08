@@ -302,10 +302,18 @@ across reboots and same-socket replugs. Two consequences worth knowing:
   shared USB serials make it collide (see
   [`headend/README.md` § Device identity](../headend/README.md#device-identity--stability)).
 
+**A TNC-less `tait-transparent` port** ([chapter 6](06-tnc-less-tait-links.md)) can
+ride a head-end too: instead of the modem+radio pair above, the transport itself
+binds the Tait's serial port by the same `headEndId`+`deviceId` pair (no `radio:`
+block — the radio *is* the modem). See
+[chapter 6 § Run it over a head-end](06-tnc-less-tait-links.md#run-it-over-a-head-end)
+for the config and the Transparent-specific caveats.
+
 Validation enforces the
 rules the UI enforces for you: every `headEndId` a port references must be declared
-in `headEnds:`, and a head-end-bound radio must pair with the co-located
-`nino-tnc-tcp` transport on the **same** instance.
+in `headEnds:`, a head-end-bound radio must pair with the co-located
+`nino-tnc-tcp` transport on the **same** instance, and no two bindings may name the
+same `(headEndId, deviceId)` — a head-end device is one-client-per-pipe.
 
 > [!NOTE]
 > Because PDN binds by `(headEndId, deviceId)` and resolves the id to a current
@@ -336,6 +344,22 @@ socket gives it a new id (see [the config way](#attach-from-pdn--the-config-way)
 
 Set `--rescan-interval 0` to disable the poll entirely (startup-only
 enumeration). Details: [`headend/README.md` § Hot-plug](../headend/README.md#hot-plug).
+
+## What works remotely (and what stays local)
+
+The head-end's design goal is **remote parity**: PDN's own drivers reach through
+the raw pipes, so a remotely-hosted device behaves like a local one. Where the two
+genuinely differ, it's listed here — nothing else is silently local-only:
+
+| Capability | Remote over a head-end? | Notes |
+|---|---|---|
+| NinoTNC modem (`nino-tnc-tcp`) | ✅ | Full control surface: GETVER, mode, GETRSSI, ACKMODE. |
+| Tait CCDI radio control (`radio:` on the port) | ✅ | RSSI/SNR, DCD carrier-sense, tuning, SDM, hail — identical to local. |
+| TNC-less `tait-transparent` port | ✅ | Binds by `headEndId`+`deviceId`; the Command↔Transparent runtime re-clock rides the line verb. See [chapter 6](06-tnc-less-tait-links.md#run-it-over-a-head-end) — the "Ignore Escape Sequence OFF" gotcha matters *more* remotely. |
+| Doctor / tuning / mode coordination / hail | ✅ | They drive the same drivers through the same pipes. |
+| Scan / adopt from the Head-ends screen | ✅ | Adopts NinoTNC+Tait pairs; a remote `tait-transparent` port is config/API-declared (no adopt affordance for it yet). |
+| **Firmware flashing (`packet-tune flash-tnc`)** | ❌ **local serial only** | The pre-flight port-exclusivity scan reads the local `/proc`, and a 2–4-min bootloader transfer doesn't belong on a network pipe. **SSH to the head-end box and flash there** (free the device from its bridge first). See [chapter 7](07-advanced-tooling.md#firmware-flashing-flash-tnc). |
+| `packet-tune`'s other bench verbs against a *local* device path | ❌ by definition | They take local `/dev/…` paths. Run them on whichever box the serial lives on. |
 
 ## Troubleshooting
 

@@ -234,7 +234,8 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
         CancellationToken cancellationToken = default)
     {
         var io = await TcpSerialIo.ConnectAsync(
-            host, port, setBaud, readTimeout: null, readIdleTimeout: null, timeProvider, cancellationToken)
+            host, port, setBaud, readTimeout: null, readIdleTimeout: options?.ReadIdleTimeout,
+            timeProvider, cancellationToken)
             .ConfigureAwait(false);
         try
         {
@@ -783,6 +784,27 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// never called. Not a general runtime knob — CCDI transactions assume the programmed rate.
     /// </summary>
     internal void SetSerialBaudRate(int baudRate) => io.SetBaudRate(baudRate);
+
+    /// <summary>
+    /// Run the §1.7.2 escape guard sequence (idle — escape char ×3 — idle) <b>blind</b>: no
+    /// mode precondition and no driver-mode mutation. The stale-Transparent recovery primitive
+    /// for <see cref="TaitTransparentTransport"/>: a radio whose previous session's pipe died
+    /// before teardown is still a Transparent byte pipe while this freshly-opened driver believes
+    /// it is in Command mode — <see cref="ExitTransparentModeAsync"/> and
+    /// <see cref="EscapeAndVerifyTransparentAsync"/> both refuse that state, so this writes the
+    /// escape without asking. The caller proves the outcome (e.g. by retrying the <c>t</c> entry);
+    /// on a radio already in Command mode the three characters are harmless CCDI noise, and on a
+    /// radio programmed "Ignore Escape Sequence" ON they are transmitted over the air as data.
+    /// </summary>
+    internal async Task EscapeTransparentBlindAsync(
+        char escapeChar, TimeSpan guardTime, CancellationToken cancellationToken = default)
+    {
+        byte esc = (byte)escapeChar;
+        byte[] escape = [esc, esc, esc];
+        await Task.Delay(guardTime, clock, cancellationToken).ConfigureAwait(false);
+        io.Write(escape, 0, escape.Length);
+        await Task.Delay(guardTime, clock, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>Send raw bytes over the air while in Transparent mode.</summary>
     public Task SendTransparentAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)

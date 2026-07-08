@@ -1283,6 +1283,57 @@ re-dialling a dead head-end.
 Closes [#583] — both halves (Go #587 + this) done.
 
 [#583]: https://github.com/packet-net/packet.net/issues/583
+### 2026-07-08 — Remote parity: `tait-transparent` over a head-end + flash-tnc documented local-only ([#585])
+
+Closes the two remote-parity gaps from the 2026-07-08 arc review ([#585]): the TNC-less `tait-transparent`
+port kind was silently local-serial-only (no head-end binding, no factory branch, and its Command↔Transparent
+runtime re-clock — **the only runtime `SetBaudRate` caller** — went to the local port instead of the head-end
+line verb that exists precisely for runtime re-clocking), and `packet-tune flash-tnc`'s local-only nature was
+documented nowhere.
+
+- **Head-end binding on the config** — `TaitTransparentTransportConfig` gains `headEndId`+`deviceId` as a
+  third, mutually-exclusive binding mode beside `device`/`serial` (exactly-one, both-halves-required —
+  mirroring `PortRadioConfig`'s discipline), with `IsHeadEndBound` as the single authority and a
+  `tait-transparent:{headEndId}/{deviceId}` endpoint key. YAML/JSON arms extended; the whole-config
+  declared-head-end rule and the [#586]/#589-era **single-client unique-device rule** now cover this kind's
+  `(headEndId, deviceId)` too, and the head-end scanner counts it as a bound (in-use) Tait device.
+- **Factory remote branch + the line-verb re-clock** — `TransportFactory` resolves the binding via
+  `HeadEndDeviceResolver` and opens `TaitTransparentTransport.OpenTcpAsync` (new, the remote twin of
+  `OpenAsync`): `TaitCcdiRadio.OpenTcp` with `setBaud` wired to `POST /ports/{id}/line`, clocking the
+  CONFIGURED CCDI command baud at open ([#576]'s configured-baud convention), then entering Transparent —
+  the enter/exit `SetSerialBaudRate` calls route through `TcpSerialIo.SetBaudRate` → the same line verb, so
+  the runtime re-clock works remotely with **zero changes to the re-clock call sites**. The remote pipe
+  disables the in-band read-idle budget (new `TaitCcdiRadioOptions.ReadIdleTimeout`): a Transparent pipe
+  cannot be probed in-band without transmitting (the [#580] problem, but with no GETVER analogue), so drop
+  detection is OS TCP keepalive + FIN.
+- **Supervision** — the transparent transport is the port's `IAx25Transport`, so it takes the SAME
+  `ReconnectingKissModem` wrap as kiss-tcp/nino-tnc-tcp (not the [#576] radio-facade pattern, which exists
+  for the *attachment* seam): the transport now completes its inbound stream on the driver's
+  `ConnectionStateChanged→Faulted` (end-of-stream is the wrapper's drop signal), and head-end-bound
+  transparent ports join the wrap condition + the [#576] bring-up retry class. Reconnect re-resolves the
+  inventory, re-clocks via the line verb, and re-enters Transparent — with a new **stale-Transparent
+  recovery** in the enter path (a pipe that died before teardown leaves the radio a deaf byte pipe; on entry
+  timeout: re-clock to the transparent baud, blind §1.7.2 escape via the new internal
+  `TaitCcdiRadio.EscapeTransparentBlindAsync`, re-clock back, retry once). Local transparent ports keep
+  today's behaviour (a USB unplug is a physical event) but gain the same stale recovery at bring-up.
+  `TcpSerialIo.SetBaudRate` normalises callback failures to `IOException` so teardown against a dead
+  head-end degrades like any dead serial handle.
+- **flash-tnc documented local-only** — `operating/07` (SSH to the head-end box, free the device from its
+  bridge, flash against local serial — the exclusivity pre-flight reads the local `/proc`) and a new
+  `operating/08` **"What works remotely (and what stays local)"** parity table naming flash-tnc as the one
+  deliberate exception; `operating/06` gains "Run it over a head-end" (config, the line-verb re-clock story,
+  and the sharpened Ignore-Escape warning: the remote RECOVERY path depends on the escape, so run the
+  Transparent-readiness doctor before the radio goes up the mast).
+- **Tests (fakes/loopback only — no hardware, no RF): 20 new** across `Packet.Radio.Tait.Tests` (stale-
+  Transparent recovery escape + re-clock dance; no escape when entry answers; fault ends the inbound
+  stream), and `Packet.Node.Tests` (config: YAML/JSON round-trips, exactly-one/both-halves binding ×5,
+  undeclared head-end, unique-device incl. cross-kind vs nino-tnc-tcp and vs another port's radio; factory:
+  resolve→dial→enter with the full open/enter/exit line-verb re-clock sequence asserted against the stub
+  head-end, no-resolver failure; supervision: a killed pipe reconnects through a FRESH inventory resolve to
+  the device's new TCP port and resumes the same stream). No parser/listener/parity surface touched —
+  driver- and node-side only, no ax25-ts leg.
+
+[#585]: https://github.com/packet-net/packet.net/issues/585
 
 ### 2026-07-08 — Head-end radio-integration resilience cluster ([#576], [#578], [#580], [#581])
 
