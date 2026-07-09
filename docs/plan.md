@@ -1243,6 +1243,12 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-09 — RELEASE: lib-v0.21.0 + node-v0.30.0 + headend-v0.1.4 (tuning-link robustness + head-end radio-integration cluster)
+
+Shipped the session's whole arc off green `main` (4b7ecde; ci + interop both success). **NuGet:** `lib-v0.21.0` → the 14 `Packet.*` packages (verified pushed + indexed). **Node:** `node-v0.30.0` → amd64/arm64/armhf `.deb`s + self-contained tarballs + `latest.json` (8 assets) and the multi-arch GHCR image `ghcr.io/packet-net/packet.net:0.30.0`. **Head-end:** the previously-cancelled `headend-v0.1.4` publish re-triggered → 7 assets (`headend/` unchanged since the tag, so no new version — the limbo is resolved). **Downstream .NET consumers** bumped `Packet.*` 0.19.0 → 0.21.0, built + tested locally against the fresh NuGet, and released: [`packet-net/axcall`](https://github.com/packet-net/axcall) `v0.2.18` (28/28) and [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui) `v0.2.18` (14/14). **No TS leg** — `ax25-ts` didn't change this cycle (the tuning stack is C#-only).
+
+What shipped: SDM tuning-link robustness — the auto-ack refractory characterisation + receipt-tolerant transport + reply-retry ([#597]) with the mode-coord follow-up, the per-session random sequence base ([#590]), and the mode-coord settle-frame settling delay ([#591]); the head-end radio-integration cluster from the earlier waves ([#576]–[#596]: resilience, mDNS-under-systemd, MQTT emitter hardening, fleet observability, remote transparent, head-ends UI); the [#576]/[#591] HardwareLoop regression tests; and the tuning-link reliability doc/comment corrections.
+
 ### 2026-07-09 — Hardware regression tests bank the [#576] + [#591] rig validations
 
 Promoted this session's two one-off validation harnesses into repeatable HardwareLoop tests
