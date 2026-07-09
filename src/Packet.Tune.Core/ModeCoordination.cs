@@ -161,6 +161,15 @@ public sealed record ModeCoordOptions
     /// re-confirms idempotently — nothing is committed until the commit phase). Default 3.</summary>
     public int LinkRetryAttempts { get; init; } = 3;
 
+    /// <summary>Coordinator: how many whole coordination attempts to make when a transient
+    /// side-channel loss in the <b>commit/probe</b> phase reverts both ends safely to home.
+    /// The commit is a state change (not a re-runnable telegram), and every post-commit loss
+    /// already reverts both radios home — so the revert-safe unit to retry is the whole attempt
+    /// (see <see cref="ModeCoordinator.CoordinateWithRetryAsync"/>). Only outcomes that left both
+    /// ends confirmed-home retry; real verdicts (rejected / switch-failed / probe-dead) do not.
+    /// Default 3.</summary>
+    public int CommitRetryAttempts { get; init; } = 3;
+
     /// <summary>Minimum gap between receiving a side-channel telegram and keying the
     /// TNC: the coordination radio may still be sending its SDM auto-ack, and a brief gap
     /// avoids keying the TNC over it (half-duplex etiquette; see <see cref="SdmTuningLink"/> —

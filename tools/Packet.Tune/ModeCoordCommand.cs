@@ -95,7 +95,7 @@ internal static class ModeCoordCommand
                 string name = NinoTncCatalog.TryGetByMode(mode)?.Name ?? $"mode {mode}";
                 Console.WriteLine($"  ── coordinate: mode {mode} ({name})" +
                                   (channel is { } ch ? $" @ channel {ch}" : string.Empty) + " ──");
-                var attempt = await coordinator.CoordinateAsync(mode, channel, cancellationToken);
+                var attempt = await coordinator.CoordinateWithRetryAsync(mode, channel, cancellationToken);
                 attempts.Add(attempt);
                 Console.WriteLine($"  → {ModeCoordReport.DescribeOutcome(attempt)}");
             }
