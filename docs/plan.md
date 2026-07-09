@@ -1243,6 +1243,17 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-09 — Hardware regression tests bank the [#576] + [#591] rig validations
+
+Promoted this session's two one-off validation harnesses into repeatable HardwareLoop tests
+(`tests/Packet.Interop.Tests/Hardware/`): `HeadEndBounceRecovery` ([#576] — adopt a Tait through the
+head-end with the production factory/resolver/`ReconnectingRadioControl`, kill + restart the head-end,
+assert the fault is detected, reopened with backoff, the by-path device re-resolved, and control
+resumes on a swapped driver) and `ModeCoordSettleEchoLoop` ([#591] — `ApplyMode` ×10, assert ≤1
+settle-echo miss and no 8 s stall). Both `SkippableFact` (skip without a NinoTNC + Tait / the head-end
+binary — `PACKETNET_HEADEND_BIN` override), in the serialised HardwareLoop collection. Ran green on
+the rig (2/2, 42 s). Closes the "validations were ephemeral scratch harnesses" gap.
+
 ### 2026-07-09 — Mode-coord: settle-frame echo miss fixed with a settling delay after SETHW ([#591])
 
 Investigated the settle-frame ACKMODE TX-completion echo misses under mode-coord. Bench-measured: a settle frame sent **immediately** after SETHW has its echo dropped ~60% of the time (8/12 mode-change, 7/12 same-mode SETHW — so it is the SETHW command itself briefly disrupting the ACKMODE echo path, not the mode change), while a ~750 ms settling delay first takes that to **0/12**; and when the echo lands it is fast (~520 ms), so the old 8 s `SettleTxTimeout` was 15× too long and every miss paid it in full. Fix in `NinoTncModeCoordStation.ApplyModeAsync`: a 1 s settling delay after SETHW before the settle frame, and `SettleTxTimeout` 8 s → 3 s. Validated on the real code path: **0/12 misses**, applies a steady 1.2–1.8 s (was ~60% × 8 s stalls). `Packet.Tune.Core` 207/207.
