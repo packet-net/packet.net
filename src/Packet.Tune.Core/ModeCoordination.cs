@@ -118,9 +118,9 @@ public static class ModeProbe
 }
 
 /// <summary>Tunables shared by <see cref="ModeCoordinator"/> and <see cref="ModeResponder"/>.
-/// The timing defaults encode the bench-measured SDM cadence (a delivered+receipted
-/// telegram costs seconds) and the TM8110 auto-ack wedge guards (never key the TNC
-/// right after the coordination radio received a telegram).</summary>
+/// The timing defaults encode the bench-measured SDM cadence and the post-receive
+/// auto-ack guards (a brief gap before keying the TNC right after the coordination radio
+/// received a telegram — half-duplex etiquette; see <see cref="SdmTuningLink"/>).</summary>
 public sealed record ModeCoordOptions
 {
     /// <summary>The session's home TNC mode — where both ends revert to on any failure,

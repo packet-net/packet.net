@@ -23,8 +23,8 @@ public interface IStationStatusProvider
 /// </summary>
 /// <remarks>
 /// The reply is sent through the link's own <see cref="ITuningLink.SendAsync"/>, which — for
-/// <see cref="SdmTuningLink"/> — already waits out the TM8110 post-receive auto-ack guard before
-/// keying, so replying to a hail can never wedge the radio's ack engine. The responder itself
+/// <see cref="SdmTuningLink"/> — already waits out the post-receive auto-ack guard before keying
+/// (half-duplex etiquette), so a reply never keys over the radio's own auto-ack in flight. The responder itself
 /// keeps no per-peer state: each hail is answered independently.
 /// </remarks>
 public sealed class StationHailResponder

@@ -60,9 +60,10 @@ public sealed record TuningSessionOptions
 /// <list type="number">
 ///   <item>The tuned end sends <c>HI|tuned</c> — its "ready for a burst"
 ///     beacon, re-sent after the operator confirms each pot adjustment. The
-///     meter sends nothing unsolicited (over SDM, a telegram arriving while
-///     the tuned end's TNC is keyed is the PTT-vs-auto-ack race that wedges
-///     the TM8110 — see <see cref="SdmTuningLink"/>).</item>
+///     meter sends nothing unsolicited (over the half-duplex SDM channel a
+///     telegram sent while the tuned end is keyed for a burst would collide
+///     with it, and the tuned radio can't cleanly receive/auto-ack an SDM
+///     mid-transmit — so the meter only answers the idle-channel beacon).</item>
 ///   <item>On <c>HI|tuned</c> the meter sends <c>RQ|n</c> and opens its
 ///     measurement window; the tuned end fires an n-frame burst (after
 ///     <see cref="TuningSessionOptions.PreBurstDelay"/>).</item>
@@ -109,12 +110,12 @@ public static class TuningSession
         int round = 0;
         MeterReport? previous = null;
 
-        // Deliberately no unsolicited HI from the meter: over the SDM link,
-        // a telegram landing at the tuned radio while that radio's TNC is
-        // keyed (session-start CQBEEP arming, a burst) is exactly the
-        // PTT-vs-auto-ack race that wedges the TM8110's ack engine. The
-        // meter's first transmission is the RQ answering the tuned end's
-        // ready beacon — which the tuned end sends from an idle channel.
+        // Deliberately no unsolicited HI from the meter: over the half-duplex SDM
+        // channel, a telegram landing at the tuned radio while it is keyed
+        // (session-start CQBEEP arming, a burst) would collide with that
+        // transmission and can't be cleanly received/auto-acked. The meter's first
+        // transmission is the RQ answering the tuned end's ready beacon — which the
+        // tuned end sends from an idle channel.
         await output.WriteLineAsync("meter: waiting for the tuned end's ready beacon...").ConfigureAwait(false);
 
         try

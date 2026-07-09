@@ -465,7 +465,8 @@ public sealed class TxDelayMinException : Exception
 
 /// <summary>Tunables shared by <see cref="TxDelayMinimizer"/> and
 /// <see cref="TxDelayMinResponder"/>. The timing defaults encode the bench-measured SDM
-/// cadence and the TM8110 auto-ack wedge guard, mirroring <see cref="ModeCoordOptions"/>.</summary>
+/// cadence and the post-receive auto-ack guard (half-duplex etiquette; see
+/// <see cref="SdmTuningLink"/>), mirroring <see cref="ModeCoordOptions"/>.</summary>
 public sealed record TxDelayMinOptions
 {
     /// <summary>The TXDELAY the sweep starts from — the value the modem is believed to
