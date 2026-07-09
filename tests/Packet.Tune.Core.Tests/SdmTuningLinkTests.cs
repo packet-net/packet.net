@@ -206,6 +206,49 @@ public class SdmTuningLinkTests
         channel.Sent.Should().BeEmpty();
     }
 
+    [Fact]
+    public void Each_session_gets_a_distinct_random_sequence_base()
+    {
+        // #590: a re-run must not restart the per-sender sequence counter at 1 (a still-running
+        // peer's dedupe would eat it as a duplicate of the prior session). Each session starts from
+        // a fresh random base drawn from a wide space.
+        var bases = new HashSet<int>();
+        for (int i = 0; i < 100; i++)
+        {
+            bases.Add(TuningTelegram.NewSessionSequenceBase());
+        }
+
+        bases.Count.Should().BeGreaterThan(90, "session bases are drawn from a wide random space");
+        bases.Should().OnlyContain(b => b >= 0 && b < (1 << 24));
+    }
+
+    [Fact]
+    public async Task Telegrams_from_distinct_session_bases_all_survive_the_seq_dedupe()
+    {
+        // #590: two coordinator sessions (distinct random bases) must both get through a
+        // still-running responder's dedupe; only a same-base transport retry is dropped.
+        var channel = new FakeSdmChannel();
+        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions);
+
+        channel.Deliver("V1|1000001|HI|sessA");   // session A (base ~1e6)
+        await Task.Delay(150);
+        channel.Deliver("V1|9000001|HI|sessB");   // session B — distinct base, same relative seq
+        await Task.Delay(150);
+        channel.Deliver("V1|1000001|HI|sessA");   // A's transport retry — deduped
+
+        var received = new List<TuningTelegram>();
+        await foreach (var telegram in link.ReceiveAsync().WithTimeout(Timeout))
+        {
+            received.Add(telegram);
+            if (received.Count == 2)
+            {
+                break;
+            }
+        }
+
+        received.Select(t => t.Sequence).Should().Equal(1000001, 9000001);
+    }
+
     /// <summary>Scripted <see cref="IRadioSideChannel"/>: records sends, answers
     /// receipts from a plan, and delivers inbound messages through the
     /// one-deep buffer + arrival event like the real radio.</summary>

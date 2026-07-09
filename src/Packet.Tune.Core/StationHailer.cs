@@ -57,7 +57,7 @@ public sealed class StationHailer : IAsyncDisposable
     private readonly Channel<TuningTelegram> inbox = Channel.CreateUnbounded<TuningTelegram>();
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     /// <summary>Create over a link. The link's lifetime stays the caller's.</summary>
     /// <param name="link">The (mode-agnostic) telegram link to the peer.</param>

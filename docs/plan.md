@@ -1243,6 +1243,10 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-09 — SDM tuning link: per-session random sequence base — re-runs no longer deduped ([#590])
+
+The SDM tuning link dedupes on telegram sequence (64-entry window). A coordinator/responder whose **process** restarted resumed its counter at 1, so a re-run against a still-running peer was silently eaten by the peer's dedupe (the "one process per session" bench trap). Each session's sequence counter now starts from a fresh random base (`TuningTelegram.NewSessionSequenceBase()`, 2^24 space), so two sessions' telegrams land in distinct ranges. The base is only ever text-encoded (wire form + the `PTXD`/`PMODE` probe tag), so a large value is harmless — no wire-format or budget change, and the seq/tag coupling stays intact. Applied to all seven senders (`FanOutTuningLink` + the six coordinator/responder protocols). Tests: distinct-base spread + two distinct-base sessions both surviving the dedupe. `Packet.Tune.Core` 207/207.
+
 ### 2026-07-09 — Mode-coord commit/probe reply-retry (completes the [#597] follow-up)
 
 Extended the reply-driven retry to `ModeCoordinator`. The commit is a state change (not a re-runnable telegram — committing twice is ignored) and every post-commit loss already reverts both radios safely home, so the revert-safe unit is the whole attempt. New opt-in `CoordinateWithRetryAsync` (`ModeCoordOptions.CommitRetryAttempts`, default 3) re-runs the attempt only on outcomes that left both ends confirmed-home (`CommitUndelivered`, or `LinkFailed` with the home link verified alive) — real verdicts (rejected / switch-failed / probe-dead) and the pre-commit confirm timeout (already retried inside the handshake) return as-is. The `mode-coord` CLI now uses it; recovery test added (dropped C→R `ProbesSent` → revert-home → retry succeeds). `Packet.Tune.Core` 205/205. Closes the optional follow-up noted in the [#597] fix.

@@ -42,7 +42,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
     private readonly Channel<TuningTelegram> inbox = Channel.CreateUnbounded<TuningTelegram>();
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>

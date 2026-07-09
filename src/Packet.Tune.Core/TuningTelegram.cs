@@ -80,6 +80,18 @@ public sealed record TuningTelegram(int Sequence, TuningVerb Verb, string Args)
     /// form must fit inside it.</summary>
     public const int SdmCharacterBudget = 32;
 
+    /// <summary>
+    /// A fresh random starting point for a sender's per-session <see cref="Sequence"/> counter
+    /// (issue #590). A restarted coordinator/responder process would otherwise restart its counter
+    /// at 1, and a still-running peer's sequence dedupe would silently eat the re-run's telegrams
+    /// as "duplicates" of the previous session (the "one process per session" trap). Starting each
+    /// session from a wide random base drops the two sessions' telegrams into distinct ranges. The
+    /// value is only ever text-encoded (the wire form and the probe tag), so a large base is
+    /// harmless; the 2^24 space is wide enough that a fresh session almost never lands on a base
+    /// still inside a peer's 64-entry dedupe window.
+    /// </summary>
+    public static int NewSessionSequenceBase() => Random.Shared.Next(0, 1 << 24);
+
     /// <summary>Encode to the canonical wire form <c>V1|seq|verb|args</c>
     /// (the trailing <c>|args</c> is omitted when <see cref="Args"/> is empty).</summary>
     public string Encode()

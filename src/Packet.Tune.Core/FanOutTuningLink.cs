@@ -34,7 +34,7 @@ public sealed class FanOutTuningLink : ITuningLink
     private readonly List<Channel<TuningTelegram>> subscribers = [];
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
     private int disposed;
 
     /// <summary>Wrap an inner link.</summary>
