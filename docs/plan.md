@@ -1243,6 +1243,10 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-09 — Mode-coord: settle-frame echo miss fixed with a settling delay after SETHW ([#591])
+
+Investigated the settle-frame ACKMODE TX-completion echo misses under mode-coord. Bench-measured: a settle frame sent **immediately** after SETHW has its echo dropped ~60% of the time (8/12 mode-change, 7/12 same-mode SETHW — so it is the SETHW command itself briefly disrupting the ACKMODE echo path, not the mode change), while a ~750 ms settling delay first takes that to **0/12**; and when the echo lands it is fast (~520 ms), so the old 8 s `SettleTxTimeout` was 15× too long and every miss paid it in full. Fix in `NinoTncModeCoordStation.ApplyModeAsync`: a 1 s settling delay after SETHW before the settle frame, and `SettleTxTimeout` 8 s → 3 s. Validated on the real code path: **0/12 misses**, applies a steady 1.2–1.8 s (was ~60% × 8 s stalls). `Packet.Tune.Core` 207/207.
+
 ### 2026-07-09 — SDM tuning link: per-session random sequence base — re-runs no longer deduped ([#590])
 
 The SDM tuning link dedupes on telegram sequence (64-entry window). A coordinator/responder whose **process** restarted resumed its counter at 1, so a re-run against a still-running peer was silently eaten by the peer's dedupe (the "one process per session" bench trap). Each session's sequence counter now starts from a fresh random base (`TuningTelegram.NewSessionSequenceBase()`, 2^24 space), so two sessions' telegrams land in distinct ranges. The base is only ever text-encoded (wire form + the `PTXD`/`PMODE` probe tag), so a large value is harmless — no wire-format or budget change, and the seq/tag coupling stays intact. Applied to all seven senders (`FanOutTuningLink` + the six coordinator/responder protocols). Tests: distinct-base spread + two distinct-base sessions both surviving the dedupe. `Packet.Tune.Core` 207/207.

@@ -17,10 +17,15 @@ namespace Packet.Tune.Core;
 /// </summary>
 public sealed class NinoTncModeCoordStation : IModeCoordStation
 {
-    // The echo normally lands within a frame-time + TXDELAY (~1 s at 1200 baud,
-    // ~4 s at 300); when it goes missing (the known sporadic quirk) waiting
-    // longer never helps and only delays the peer's probe window.
-    private static readonly TimeSpan SettleTxTimeout = TimeSpan.FromSeconds(8);
+    // A SETHW command briefly disrupts the NinoTNC's ACKMODE TX-completion echo path (#591): a
+    // settle frame sent immediately after SETHW has its echo dropped ~60% of the time (bench-
+    // measured 8/12 mode-change + 7/12 same-mode SETHW), while a ~750 ms settling delay first
+    // takes that to 0/12. So wait out the disruption, THEN send the settle frame.
+    private static readonly TimeSpan SethwSettleDelay = TimeSpan.FromSeconds(1);
+    // With the settling delay above, the echo lands fast and reliably (~520 ms bench-measured), so
+    // the wait for it is short — a rare residual miss is logged + tolerated, never a whole-apply
+    // stall. (Was 8 s, which every miss paid in full before the settling delay was understood.)
+    private static readonly TimeSpan SettleTxTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan InterProbeGap = TimeSpan.FromMilliseconds(400);
 
     private readonly NinoTncSerialPort tnc;
@@ -60,9 +65,14 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
         }
         currentMode = mode;
 
-        // Settle frame: the changed mode applies from the SECOND frame. Its
-        // ACKMODE echo is sporadically absent right after SETHW (bench-observed)
-        // — the frame still keys, so a missing echo is logged and tolerated.
+        // Let the SETHW settle before the settle frame: sending it immediately races the TNC's
+        // SETHW processing and the ACKMODE echo is dropped ~60% of the time (#591); this delay
+        // takes that to ~0. The mode is already applied — this only steadies the echo path.
+        await Task.Delay(SethwSettleDelay, cancellationToken).ConfigureAwait(false);
+
+        // Settle frame: the changed mode applies from the SECOND frame. With the settling delay
+        // above the ACKMODE echo now lands reliably; a rare miss is still logged and tolerated
+        // (the frame keyed regardless) but no longer stalls the apply for the old 8 s.
         byte[] settle = ModeSurvey.BuildSettleFrame(source, mode).ToBytes();
         try
         {
