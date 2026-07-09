@@ -302,6 +302,36 @@ public sealed class ModeCoordinator : IAsyncDisposable
         };
     }
 
+    /// <summary>
+    /// <see cref="CoordinateAsync"/> with reply-driven retry across the commit/probe phase: a
+    /// transient side-channel loss there reverts both ends safely to home (the SDM receipt is
+    /// unreliable — see <see cref="SdmTuningLink"/>), and the commit is a state change rather than
+    /// a re-runnable telegram, so the revert-safe unit to retry is the whole attempt, re-run from a
+    /// known home state. Only outcomes that left both ends confirmed-home retry —
+    /// <see cref="ModeCoordOutcome.CommitUndelivered"/> (never switched) and
+    /// <see cref="ModeCoordOutcome.LinkFailed"/> with the home link verified alive; real verdicts
+    /// (rejected / switch-failed / probe-dead) and the pre-commit confirm timeout (already retried
+    /// inside the handshake) return as-is. Up to <see cref="ModeCoordOptions.CommitRetryAttempts"/>.
+    /// </summary>
+    public async Task<ModeCoordAttempt> CoordinateWithRetryAsync(
+        byte mode, int? channel = null, CancellationToken cancellationToken = default)
+    {
+        for (int attemptNo = 1; ; attemptNo++)
+        {
+            var attempt = await CoordinateAsync(mode, channel, cancellationToken).ConfigureAwait(false);
+
+            bool recoverableAndHome =
+                attempt.Outcome == ModeCoordOutcome.CommitUndelivered             // never switched — still home
+                || (attempt.Outcome == ModeCoordOutcome.LinkFailed && attempt.HomeLinkAlive == true); // reverted, home confirmed alive
+            if (!recoverableAndHome || attemptNo >= options.CommitRetryAttempts)
+            {
+                return attempt;
+            }
+            Log?.Invoke(
+                $"coord: attempt {attemptNo} {attempt.Outcome} (both ends home) — re-running {attemptNo + 1}/{options.CommitRetryAttempts}");
+        }
+    }
+
     /// <summary>Coordinate a switch back to the session's home mode/channel (a normal
     /// propose/confirm/commit attempt — the raw revert path is only for failures).</summary>
     public Task<ModeCoordAttempt> ReturnHomeAsync(CancellationToken cancellationToken = default) =>

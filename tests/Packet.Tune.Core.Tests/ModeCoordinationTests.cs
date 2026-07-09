@@ -230,6 +230,60 @@ public class ModeCoordinationTests
         counter.Count.Should().Be(0);
     }
 
+    [Fact]
+    public async Task A_dropped_probes_sent_reverts_home_and_the_commit_retry_completes()
+    {
+        var rig = FakeRig.Create();
+        var options = FastOptions with { ReportTimeout = TimeSpan.FromMilliseconds(300) };
+        // Drop the coordinator's FIRST C→R 'ProbesSent' announce: the responder never reports, so
+        // the attempt reverts both ends safely home — and CoordinateWithRetryAsync re-runs the whole
+        // (revert-safe) attempt, which succeeds the second time.
+        var droppyLink = new DropFirstModeActionLink(rig.CoordinatorLink, ModeCoordAction.ProbesSent, 1);
+        await using var coordinator = new ModeCoordinator(droppyLink, rig.CoordinatorStation, options);
+        var responderRun = RunResponder(rig, out var responderCts);
+
+        var attempt = await coordinator.CoordinateWithRetryAsync(2, channel: 1).WaitAsync(Timeout);
+
+        attempt.Outcome.Should().Be(ModeCoordOutcome.Switched, "the reverted-home attempt is re-run to success");
+        rig.CoordinatorStation.Mode.Should().Be(2);
+        rig.ResponderStation.Mode.Should().Be(2);
+
+        await EndSession(coordinator, responderRun, responderCts);
+    }
+
+    /// <summary>Delegates to the inner link but silently drops the first <c>count</c> sends whose
+    /// decoded <see cref="ModeCoordMessage"/> has the given action — the receipt-tolerant send
+    /// "succeeds" but the peer never sees it, exercising the commit-phase retry.</summary>
+    private sealed class DropFirstModeActionLink : ITuningLink
+    {
+        private readonly ITuningLink inner;
+        private readonly ModeCoordAction drop;
+        private int remaining;
+
+        public DropFirstModeActionLink(ITuningLink inner, ModeCoordAction drop, int count)
+        {
+            this.inner = inner;
+            this.drop = drop;
+            remaining = count;
+        }
+
+        public Task SendAsync(TuningTelegram telegram, CancellationToken cancellationToken = default)
+        {
+            if (remaining > 0 && ModeCoordMessage.TryFromTelegram(telegram, out var message)
+                && message!.Action == drop)
+            {
+                remaining--;
+                return Task.CompletedTask;
+            }
+            return inner.SendAsync(telegram, cancellationToken);
+        }
+
+        public IAsyncEnumerable<TuningTelegram> ReceiveAsync(CancellationToken cancellationToken = default) =>
+            inner.ReceiveAsync(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+
     private static Task<int> RunResponder(FakeRig rig, out CancellationTokenSource cts)
     {
         var responder = new ModeResponder(rig.ResponderLink, rig.ResponderStation, FastOptions);

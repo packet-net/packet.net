@@ -1243,6 +1243,10 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-09 — Mode-coord commit/probe reply-retry (completes the [#597] follow-up)
+
+Extended the reply-driven retry to `ModeCoordinator`. The commit is a state change (not a re-runnable telegram — committing twice is ignored) and every post-commit loss already reverts both radios safely home, so the revert-safe unit is the whole attempt. New opt-in `CoordinateWithRetryAsync` (`ModeCoordOptions.CommitRetryAttempts`, default 3) re-runs the attempt only on outcomes that left both ends confirmed-home (`CommitUndelivered`, or `LinkFailed` with the home link verified alive) — real verdicts (rejected / switch-failed / probe-dead) and the pre-commit confirm timeout (already retried inside the handshake) return as-is. The `mode-coord` CLI now uses it; recovery test added (dropped C→R `ProbesSent` → revert-home → retry succeeds). `Packet.Tune.Core` 205/205. Closes the optional follow-up noted in the [#597] fix.
+
 ### 2026-07-08 — SDM "wedge" characterised (auto-ack refractory, not keying) + tuning link made receipt-tolerant ([#597])
 
 Live TXDELAY sweeps were aborting on "COORDINATION LOST — SDM not acknowledged". Characterised the cause empirically on the bench (fresh eyes, one variable at a time): **not** the documented "keying wedges the ack engine" story — bare keying is harmless. The real mechanism: a TM8110 captures its SDM send's over-air delivery receipt (PROGRESS 1D) only if it has not transmitted an auto-ack since its previous send **and** ≥~9 s since its last auto-ack; otherwise NAK after the ~6 s timeout — but the SDM payload is delivered every time. Close bidirectional SDM (all the tuning protocols) NAKs structurally. Auto-ack is codeplug-only (no runtime opt-out). Full proof: [research/tm8110-sdm-autoack-refractory.md](research/tm8110-sdm-autoack-refractory.md).
