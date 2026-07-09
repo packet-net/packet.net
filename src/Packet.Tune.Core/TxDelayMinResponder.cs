@@ -135,7 +135,7 @@ public sealed class TxDelayMinResponder
                     {
                         // The tag every probe of this step carries is the announce
                         // telegram's sequence number. Open the counter NOW — the
-                        // coordinator keys only after its wedge-guard delay, but the
+                        // coordinator keys only after its pre-key guard delay, but the
                         // counter is passive and cheap, so first-open-then-wait can
                         // never miss an early probe.
                         counter?.Dispose();

@@ -1,21 +1,28 @@
 namespace Packet.Tune.Core;
 
 /// <summary>
-/// A reliable-ish ordered telegram channel between the two ends of a tuning
-/// session. Implementations retry inside <see cref="SendAsync"/> (so a
-/// completed send means "very probably delivered") and dedupe repeated
-/// sequence numbers on receive (so a transport retry never surfaces twice).
-/// Two flavours ship: <see cref="SdmTuningLink"/> (radio-to-radio Tait SDMs,
-/// no internet) and <see cref="WebSocketTuningLink"/> (internet, via a
-/// PIN-rendezvous relay).
+/// An ordered telegram channel between the two ends of a tuning session, with
+/// per-sender sequence numbers the receiver dedupes on (a transport retry never
+/// surfaces twice; each session starts its counter from a random base — #590 — so a
+/// re-run against a still-running peer is not mistaken for the prior session's traffic).
+/// Two flavours ship: <see cref="SdmTuningLink"/> (radio-to-radio Tait SDMs, no internet)
+/// and <see cref="WebSocketTuningLink"/> (internet, via a PIN-rendezvous relay).
+/// <para><b>Delivery model differs by transport.</b> The WebSocket relay is a reliable
+/// stream, but <see cref="SdmTuningLink"/> is <em>receipt-tolerant</em>: the Tait SDM
+/// over-air delivery receipt is unreliable for close bidirectional traffic (the auto-ack
+/// refractory — see <see cref="SdmTuningLink"/>), so a completed send means "the transport
+/// accepted the datagram", and end-to-end reliability is the caller's application-level
+/// reply (send-until-expected-reply, e.g. propose→confirm / step→report).</para>
 /// </summary>
 public interface ITuningLink : IAsyncDisposable
 {
     /// <summary>
-    /// Send one telegram, retrying inside as the transport allows.
+    /// Send one telegram. Returns once the transport has accepted it for delivery — for
+    /// <see cref="SdmTuningLink"/>, once the radio accepts the datagram (the over-air receipt
+    /// is advisory and not awaited by default); the caller confirms delivery via its own reply.
     /// </summary>
-    /// <exception cref="TuningLinkException">The telegram could not be
-    /// delivered after the transport's retries were exhausted.</exception>
+    /// <exception cref="TuningLinkException">The transport could not accept the telegram
+    /// (radio command-rejects exhausted / relay gone / socket closed mid-session).</exception>
     Task SendAsync(TuningTelegram telegram, CancellationToken cancellationToken = default);
 
     /// <summary>
