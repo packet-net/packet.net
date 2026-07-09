@@ -22,7 +22,7 @@ public sealed class TxDelayMinResponder
     private readonly ITuningLink link;
     private readonly ITxDelayMinStation station;
     private readonly TxDelayMinOptions options;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>

@@ -26,7 +26,7 @@ public sealed class ModeResponder
     private readonly ITuningLink link;
     private readonly IModeCoordStation station;
     private readonly ModeCoordOptions options;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     // Session state.
     private (int Tag, byte Mode, int? Channel)? pendingProposal;

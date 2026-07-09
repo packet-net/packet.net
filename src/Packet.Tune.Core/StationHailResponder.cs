@@ -31,7 +31,7 @@ public sealed class StationHailResponder
 {
     private readonly ITuningLink link;
     private readonly IStationStatusProvider provider;
-    private int sequence;
+    private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     /// <summary>Create over a link + status provider. Both lifetimes stay the caller's.</summary>
     public StationHailResponder(ITuningLink link, IStationStatusProvider provider)
