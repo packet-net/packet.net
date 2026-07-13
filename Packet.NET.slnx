@@ -18,6 +18,9 @@
     <Project Path="src/Packet.Radio/Packet.Radio.csproj" />
     <Project Path="src/Packet.Rhp2.Server/Packet.Rhp2.Server.csproj" />
     <Project Path="src/Packet.Rhp2/Packet.Rhp2.csproj" />
+    <Project Path="src/Packet.Rig.Flrig/Packet.Rig.Flrig.csproj" />
+    <Project Path="src/Packet.Rig.Hamlib/Packet.Rig.Hamlib.csproj" />
+    <Project Path="src/Packet.Rig/Packet.Rig.csproj" />
     <Project Path="src/Packet.Tune.Core/Packet.Tune.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -37,6 +40,9 @@
     <Project Path="tests/Packet.Radio.Tait.Tests/Packet.Radio.Tait.Tests.csproj" />
     <Project Path="tests/Packet.Radio.Tests/Packet.Radio.Tests.csproj" />
     <Project Path="tests/Packet.Rhp2.Tests/Packet.Rhp2.Tests.csproj" />
+    <Project Path="tests/Packet.Rig.Flrig.Tests/Packet.Rig.Flrig.Tests.csproj" />
+    <Project Path="tests/Packet.Rig.Hamlib.Tests/Packet.Rig.Hamlib.Tests.csproj" />
+    <Project Path="tests/Packet.Rig.Tests/Packet.Rig.Tests.csproj" />
     <Project Path="tests/Packet.Tune.Core.Tests/Packet.Tune.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

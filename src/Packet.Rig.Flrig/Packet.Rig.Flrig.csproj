@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Rig.Flrig.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Rig.Flrig</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Rig.Flrig — rig control over flrig's XML-RPC server</Title>
+    <Description>Client for flrig's XML-RPC rig-control server (default port 12345) implementing the Packet.Rig IRigControl abstraction: get/set frequency and mode, PTT, SWR and RF-power metering with hamlib-compatible meter conversions, plus a raw method-call escape hatch. No dependencies beyond Packet.Rig. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>amateur-radio;rig-control;cat;flrig;xml-rpc;transceiver;swr</PackageTags>
+  </PropertyGroup>
+
+</Project>

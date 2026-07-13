@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Deliberately dependency-free: this is the abstraction package generic rig-control
+       consumers (loggers, digimode apps, anything CAT-shaped) can take without inheriting
+       any of the Packet.NET AX.25 stack. Backends (Packet.Rig.Hamlib, Packet.Rig.Flrig)
+       depend on this; nothing here depends on them. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Rig.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Rig</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Rig — station-rig (CAT) control abstraction</Title>
+    <Description>Rig-control (CAT) abstraction for amateur-radio transceivers: get/set frequency and mode, PTT, and SWR / RF-power metering behind capability probes (IRigControl + RigCapabilities). Dependency-free; backends plug in underneath (Packet.Rig.Hamlib speaks hamlib's rigctld network protocol, Packet.Rig.Flrig speaks flrig XML-RPC). Part of the Packet.NET stack but usable standalone. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>amateur-radio;rig-control;cat;hamlib;flrig;transceiver;swr</PackageTags>
+  </PropertyGroup>
+
+</Project>

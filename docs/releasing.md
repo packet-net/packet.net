@@ -47,9 +47,12 @@ The `lib-v*` tag triggers [`.github/workflows/publish-libs.yml`](../.github/work
 - `Packet.Rhp2`
 - `Packet.Radio`
 - `Packet.Radio.Tait`
+- `Packet.Rig`
+- `Packet.Rig.Hamlib`
+- `Packet.Rig.Flrig`
 - `Packet.Tune.Core`
 
-**The `projects:` matrix in the workflow is the authoritative list** — the list above is a 2026-07-08 snapshot of the 14-package matrix (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
+**The `projects:` matrix in the workflow is the authoritative list** — the list above is a 2026-07-13 snapshot of the 17-package matrix (this doc had previously drifted from the matrix). `Packet.Node*` and `Packet.Rhp2.Server` are **not** on the NuGet publish set — add to the `projects:` matrix in the workflow if that changes. The version is the tag minus the `lib-v` prefix. Publishing needs the `NUGET_API_KEY` secret (set on the self-hosted runner org/repo); a missing key downgrades to a warning and *skips* the push, so check the run actually pushed.
 
 Then **wait for nuget.org flat-container indexing (~5–10 min)** before any downstream bump — a consumer `dotnet restore` against an unindexed version 404s.
 
