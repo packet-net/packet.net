@@ -192,8 +192,13 @@ Node clients, 2025-26 cohort):
 - **Node integration**: a `rig:` binding on PDN ports/config, a poller (rigproxy's
   typed-poll-with-auto-demotion model is the one to copy), `/api/v1` surfacing, then UI. This
   unlocks Phase 10's frequency-agile workstream (QSY across a plan; HF packet).
-- **`IRadioControl` bridge**: expose an `IRigControl` rig's PTT + `\get_dcd` as the packet
-  stack's carrier-sense/PTT seam — OQ-011's third data point.
+- ~~**Tait adapter**~~ **done same day**: `TaitRigControl` in `Packet.Radio.Tait` implements
+  `IRigControl` (PTT get/set + relative RF-power meter from the CCTM 318 detector;
+  frequency/mode/SWR/watts honestly unadvertised — see the class remarks for the calibration
+  and CCR gates). Residual: light up `FrequencySet` when CCR retune is bench-proven, and decide
+  detector calibration before advertising `SwrMeter`/`RfPowerMeterWatts`.
+- **`IRadioControl` bridge** (the inverse direction): expose an `IRigControl` rig's PTT +
+  `\get_dcd` as the packet stack's carrier-sense/PTT seam — the remaining OQ-011 pressure test.
 - **TCI backend** (`Packet.Rig.Tci`) if SDR (Thetis/ExpertSDR) users appear — push telemetry
   incl. SWR/fwd/rev power would make TX-health monitoring event-driven.
 - **rigctld-emulator compat pass**: wfview/SDR++/GQRX speak subsets (some may lack the extended

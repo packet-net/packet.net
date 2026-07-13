@@ -36,6 +36,9 @@ Packet.NET AX.25 stack. Backends:
 - [`Packet.Rig.Hamlib`](https://www.nuget.org/packages/Packet.Rig.Hamlib) — hamlib's `rigctld`
   network protocol (any of hamlib's 200+ rigs, plus the many rigctld-protocol emulators).
 - [`Packet.Rig.Flrig`](https://www.nuget.org/packages/Packet.Rig.Flrig) — flrig's XML-RPC server.
+- [`Packet.Radio.Tait`](https://www.nuget.org/packages/Packet.Radio.Tait) — `TaitRigControl`, a
+  partial view (PTT + relative RF-power meter) of a Tait TM8100/TM8200 over CCDI, demonstrating
+  a backend that honestly advertises only a slice of the surface.
 
 Part of [Packet.NET](https://github.com/packet-net/packet.net). Design and research notes:
 `docs/research/rig-control-spike.md` in the repo.
