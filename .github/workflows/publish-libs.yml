@@ -19,6 +19,9 @@ name: publish-libs
 #   Packet.Rhp2
 #   Packet.Radio
 #   Packet.Radio.Tait
+#   Packet.Rig
+#   Packet.Rig.Hamlib
+#   Packet.Rig.Flrig
 #   Packet.Tune.Core
 #
 # Add more by appending to the `projects:` matrix below and giving
@@ -90,6 +93,9 @@ jobs:
           - Packet.Rhp2
           - Packet.Radio
           - Packet.Radio.Tait
+          - Packet.Rig
+          - Packet.Rig.Hamlib
+          - Packet.Rig.Flrig
           - Packet.Tune.Core
     env:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

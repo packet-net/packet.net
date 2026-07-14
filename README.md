@@ -24,6 +24,12 @@ Each library is its own NuGet package (or planned package). They compose: the no
 | `src/Packet.Axudp/` | AXUDP (AX.25-over-IP / RFC 1226) transport (`AxudpSocket`) | [`Packet.Axudp`](https://www.nuget.org/packages/Packet.Axudp) |
 | `src/Packet.Kiss.Serial/` | Generic serial-port KISS modem | [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) |
 | `src/Packet.Kiss.NinoTnc/` | NinoTNC-specific KISS extensions (ACKMODE, SETHW, frame classification) | [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) |
+| `src/Packet.Radio/` | Radio-control abstraction for the packet medium (`IRadioControl`: RSSI, carrier-sense/DCD, PTT; `RssiTaggingTransport`) | [`Packet.Radio`](https://www.nuget.org/packages/Packet.Radio) |
+| `src/Packet.Radio.Tait/` | Tait TM8100/TM8200 CCDI driver (RSSI, DCD, SDM side channel, Transparent-mode transport) | [`Packet.Radio.Tait`](https://www.nuget.org/packages/Packet.Radio.Tait) |
+| `src/Packet.Rig/` | Station-rig (CAT) control abstraction (`IRigControl`: frequency, mode, PTT, SWR/power meters) — dependency-free | [`Packet.Rig`](https://www.nuget.org/packages/Packet.Rig) |
+| `src/Packet.Rig.Hamlib/` | Rig control over hamlib's `rigctld` network protocol (no native libhamlib dependency) | [`Packet.Rig.Hamlib`](https://www.nuget.org/packages/Packet.Rig.Hamlib) |
+| `src/Packet.Rig.Flrig/` | Rig control over flrig's XML-RPC server | [`Packet.Rig.Flrig`](https://www.nuget.org/packages/Packet.Rig.Flrig) |
+| `src/Packet.Tune.Core/` | RF tuning/coordination toolkit (mode coordination, TXDELAY minimisation, tuning doctor) | [`Packet.Tune.Core`](https://www.nuget.org/packages/Packet.Tune.Core) |
 | `src/Packet.Mcp/` | MCP server scaffolding | _not yet published_ |
 | `src/Packet.Rhp2/` | RHPv2 (Radio Host Protocol v2) wire codec | [`Packet.Rhp2`](https://www.nuget.org/packages/Packet.Rhp2) |
 | `src/Packet.Rhp2.Server/` | RHPv2 server (node network plane) | n/a — node-internal (depends on `Packet.Node.Core`) |
