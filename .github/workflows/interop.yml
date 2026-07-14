@@ -50,6 +50,11 @@ jobs:
   interop:
     name: interop matrix
     runs-on: [self-hosted, Linux, X64]
+    # Normal end-to-end runtime is 10-17 min. Without this, a wedged test step holds the
+    # runner for GitHub's default 6 h job timeout and starves the whole queue — seen for real
+    # on 2026-07-14 (run 29325324017: NET/ROM step hung 85+ min before being cancelled by
+    # hand; see issue #611).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
