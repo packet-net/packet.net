@@ -77,7 +77,7 @@ public static class RigReadModels
             PortId: portId,
             Attached: false,
             Kind: rigConfig.Kind,
-            Endpoint: $"{rigConfig.Host}:{rigConfig.Port ?? RigKinds.DefaultPort(rigConfig.Kind)}",
+            Endpoint: rigConfig.DescribeEndpoint(),
             Backend: null,
             Manufacturer: null,
             Model: null,

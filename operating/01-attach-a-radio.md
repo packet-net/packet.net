@@ -121,6 +121,30 @@ the `kiss-tcp` soundmodem + `rigctld` pairing above is the motivating setup. The
 unreachable daemon degrades exactly like an unplugged control cable: the port runs,
 just without the radio.
 
+### Let the node run rigctld for you (`device:` + `model:`)
+
+The `rig:` block has **two shapes**. `host:`/`port:` (as above) points at a daemon
+**you** run — and remains the only shape for **flrig** (it's a GUI application the
+node can't sensibly spawn). Alternatively, give the node the rig's serial device and
+hamlib model number, and it **spawns and supervises `rigctld` itself**:
+
+```yaml
+    rig:
+      kind: hamlib               # node-managed shape is hamlib-only
+      device: /dev/serial/by-id/usb-Icom_Inc._IC-7300_02012345-if00-port0
+      model: 3073                # hamlib rig model number — `rigctl -l` lists them
+      # serialSpeed: 115200      # optional — omit for hamlib's per-model default
+```
+
+The node launches `rigctld -m <model> -r <device>` on a loopback port it allocates
+itself, points its own rig client(s) at it, and **restarts it with backoff** if it
+dies or the USB device disappears — plug the rig back in and the attachment
+self-heals, no config edit, no systemd unit of your own. Set **either** `device:` +
+`model:` **or** `host:`/`port:` — never both (`device:` selects the node-managed
+shape, so `port:` and a remote `host:` must stay unset). Prefer the
+`/dev/serial/by-id/…` path: it survives USB renumbering, exactly like binding a Tait
+by CCDI serial.
+
 ## Why bind by serial, not device path
 
 USB serial devices **renumber**. Unplug and replug, or reboot, and the radio that

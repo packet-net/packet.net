@@ -270,7 +270,7 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
                 PortId: portId,
                 Attached: true,
                 Kind: config.Kind,
-                Endpoint: $"{config.Host}:{config.Port ?? RigKinds.DefaultPort(config.Kind)}",
+                Endpoint: config.DescribeEndpoint(),
                 Backend: rig.Info.Backend,
                 Manufacturer: rig.Info.Manufacturer,
                 Model: rig.Info.Model,

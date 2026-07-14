@@ -52,6 +52,28 @@ public sealed class RigStatusMonitorTests
     }
 
     [Fact]
+    public async Task A_node_managed_rig_projects_the_device_based_endpoint()
+    {
+        var clock = new FakeTimeProvider();
+        var rig = new FakeRigControl();
+        // The effective config the supervisor hands the monitor for a node-managed rig is the
+        // daemon's ClientConfig: the original device/model plus the allocated loopback port.
+        var config = new PortRigConfig
+        {
+            Kind = "hamlib",
+            Device = "/dev/serial/by-id/usb-Icom_Inc._IC-7300_02012345-if00-port0",
+            Model = 3073,
+            Host = "127.0.0.1",
+            Port = 4531,
+        };
+        await using var monitor = RigStatusMonitors.Create("hf", config, rig, telemetry: null, clock);
+
+        monitor.Snapshot().Endpoint.Should().Be(
+            "/dev/serial/by-id/usb-Icom_Inc._IC-7300_02012345-if00-port0 (managed rigctld @127.0.0.1:4531)",
+            "the endpoint must say what is really attached, not a wrong host:port default");
+    }
+
+    [Fact]
     public async Task Idle_rig_polls_at_the_slow_cadence()
     {
         var clock = new FakeTimeProvider();

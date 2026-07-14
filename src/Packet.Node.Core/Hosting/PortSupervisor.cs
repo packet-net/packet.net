@@ -819,6 +819,51 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // must target, because the tagging wrapper deliberately doesn't forward those.
         var modemTransport = transport;
 
+        // Node-managed rigctld (plug-and-play rig): a rig: block bound by device/model
+        // (instead of host/port) means the NODE owns the daemon — spawn a supervised rigctld
+        // on a loopback port allocated once, wait for it to listen, and point every rig dial
+        // below (the radio kind-rig arm AND the rig status attach) at it via the effective
+        // config. Started FIRST because both dials need a live endpoint. Degrade-cleanly, like
+        // an unreachable BYO daemon: a spawn failure or a daemon that never starts listening
+        // leaves the effective rig config null, so the rest of bring-up sees "no rig" (a
+        // radio: kind rig port then degrades its radio exactly as it does when a BYO daemon is
+        // down). Once ready, the daemon self-heals for the port's lifetime — it respawns with
+        // capped backoff on the SAME port, so the re-dialling clients recover when an unplugged
+        // USB CAT device comes back.
+        ManagedRigDaemon? rigDaemon = null;
+        var effectiveRig = port.Rig;
+        if (port.Rig is { IsNodeManaged: true } managedRig)
+        {
+            try
+            {
+                rigDaemon = ManagedRigDaemon.Start(port.Id, managedRig, loggerFactory, timeProvider);
+                if (await rigDaemon.WaitUntilReadyAsync(ManagedRigDaemon.DefaultReadyBudget, ct).ConfigureAwait(false))
+                {
+                    effectiveRig = rigDaemon.ClientConfig;
+                }
+                else
+                {
+                    LogRigDaemonFailed(
+                        port.Id, managedRig.Device!,
+                        "the daemon never started listening within the readiness budget " +
+                        "(missing rigctld binary, or a device/model it cannot open — see the rigctld log)");
+                    await rigDaemon.DisposeAsync().ConfigureAwait(false);
+                    rigDaemon = null;
+                    effectiveRig = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogRigDaemonFailed(port.Id, managedRig.Device!, ex.Message);
+                if (rigDaemon is not null)
+                {
+                    await rigDaemon.DisposeAsync().ConfigureAwait(false);
+                    rigDaemon = null;
+                }
+                effectiveRig = null;
+            }
+        }
+
         // Optional radio-control attachment (port.radio, restart-class): open the
         // radio's control channel and wrap the transport OUTERMOST so every inbound
         // frame the listener sees carries per-frame RSSI/SNR metadata
@@ -833,19 +878,30 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         if (port.Radio is { } radioConfig)
         {
             // Describe the attachment by whichever key pins it: a rig-backed radio (kind rig) by
-            // the rig daemon it dials a dedicated connection to; a cabled radio by its control
-            // device, or — serial-bound radios have an empty Port (the device is resolved by
-            // scanning) — its CCDI serial.
+            // the rig daemon it dials a dedicated connection to (the EFFECTIVE config, so a
+            // node-managed daemon shows its device + allocated loopback port); a cabled radio by
+            // its control device, or — serial-bound radios have an empty Port (the device is
+            // resolved by scanning) — its CCDI serial.
             var radioEndpoint = RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig)
-                ? (port.Rig is { } rigCfg
-                    ? $"rig:{rigCfg.Host}:{rigCfg.Port ?? RigKinds.DefaultPort(rigCfg.Kind)}"
-                    : "rig:(no rig: block)")
+                ? (effectiveRig is { } rigCfg
+                    ? $"rig:{rigCfg.DescribeEndpoint()}"
+                    : port.Rig is { } deadRig
+                        ? $"rig:{deadRig.DescribeEndpoint()}"
+                        : "rig:(no rig: block)")
                 : !string.IsNullOrWhiteSpace(radioConfig.Port)
                     ? radioConfig.Port
                     : $"serial:{radioConfig.Serial}";
             try
             {
-                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, port.Rig, ct).ConfigureAwait(false);
+                // A node-managed rig whose daemon failed above has nothing to dial: degrade the
+                // rig-backed radio through the same catch an unreachable BYO daemon would hit.
+                if (RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig) && effectiveRig is null && port.Rig is not null)
+                {
+                    throw new RigConnectionException(
+                        "the port's node-managed rigctld is not running (it failed to start — " +
+                        "see the log above), so the rig-backed radio has no daemon to dial.");
+                }
+                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, effectiveRig, ct).ConfigureAwait(false);
 
                 // Head-end-bound radio control gets reconnect supervision (#576): the stable
                 // facade is what every consumer below holds (tagging transport, carrier-sense
@@ -978,6 +1034,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 await radio.DisposeAsync().ConfigureAwait(false);
             }
+            if (rigDaemon is not null)
+            {
+                // Last, mirroring RunningPort.DisposeAsync: the (possibly rig-backed) radio
+                // client above goes before the daemon it dials.
+                await rigDaemon.DisposeAsync().ConfigureAwait(false);
+            }
             ScheduleHeadEndBringUpRetry(port, ct);
             return;
         }
@@ -992,9 +1054,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // until the next reconcile.
         IRigControl? rig = null;
         IRigStatusMonitor? rigStatus = null;
-        if (port.Rig is { } rigConfig)
+        if (effectiveRig is { } rigConfig)
         {
-            var rigEndpoint = $"{rigConfig.Host}:{rigConfig.Port ?? RigKinds.DefaultPort(rigConfig.Kind)}";
+            // The EFFECTIVE config: for a node-managed rig this is daemon.ClientConfig (device +
+            // the allocated loopback port), so both the dial and the status monitor's projected
+            // endpoint stay honest; for a BYO daemon it IS port.Rig, byte-for-byte.
+            var rigEndpoint = rigConfig.DescribeEndpoint();
             try
             {
                 rig = await rigFactory.CreateAsync(rigConfig, timeProvider, ct).ConfigureAwait(false);
@@ -1030,6 +1095,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             RadioStatus = radioStatus,
             Rig = rig,
             RigStatus = rigStatus,
+            RigDaemon = rigDaemon,
             LinkState = linkState,
             Listener = listener,
             Started = true,
@@ -1548,6 +1614,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: rig control ({Kind} at {Endpoint}) failed to connect; the port runs WITHOUT rig status.")]
     private partial void LogRigFaulted(Exception ex, string id, string kind, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: node-managed rigctld for {Device} failed to come up ({Reason}); the port runs WITHOUT rig control.")]
+    private partial void LogRigDaemonFailed(string id, string device, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);

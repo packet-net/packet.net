@@ -62,6 +62,13 @@ public sealed class RunningPort : IAsyncDisposable
     /// when no rig is attached. Disposed BEFORE the rig it polls.</summary>
     public Rigs.IRigStatusMonitor? RigStatus { get; init; }
 
+    /// <summary>The supervised node-managed <c>rigctld</c> when this port's <c>rig:</c> block is
+    /// the <c>device</c>+<c>model</c> shape (and the daemon came up), or null (BYO daemon, no
+    /// rig, or the daemon failed and the port degraded to running without a rig). Disposed
+    /// <b>LAST</b> — every rig client (the status poller's connection AND a rig-backed radio's
+    /// dedicated one) dials it until they are gone.</summary>
+    public Rigs.ManagedRigDaemon? RigDaemon { get; init; }
+
     /// <summary>
     /// The transport to feature-detect KISS/CSMA capabilities on
     /// (<c>ICsmaChannelParams</c> / <c>ITxCompletionTransport</c>): the modem chain
@@ -126,6 +133,12 @@ public sealed class RunningPort : IAsyncDisposable
         if (Rig is not null)
         {
             await Rig.DisposeAsync().ConfigureAwait(false);
+        }
+        // The node-managed rigctld goes LAST of all: the rig client above and a rig-backed
+        // radio's dedicated connection (disposed with the radio, further up) both dial it.
+        if (RigDaemon is not null)
+        {
+            await RigDaemon.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

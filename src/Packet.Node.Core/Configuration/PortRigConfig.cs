@@ -19,6 +19,17 @@ namespace Packet.Node.Core.Configuration;
 /// The rig never touches the packet path.
 /// </para>
 /// <para>
+/// <b>Two binding shapes.</b> The <b>BYO-daemon</b> shape (<see cref="Host"/> +
+/// <see cref="Port"/>) points at a rigctld/flrig the operator already runs — the only shape
+/// flrig supports (it is a GUI app the node can't sensibly spawn). The <b>node-managed</b>
+/// shape (<see cref="Device"/> + <see cref="Model"/>, hamlib only) hands the daemon's lifetime
+/// to the node: it spawns <c>rigctld -m &lt;model&gt; -r &lt;device&gt;</c> on a loopback port it
+/// allocates itself, supervises it (respawn with capped backoff — an unplugged USB CAT cable
+/// self-heals on replug), and dials that. <see cref="Device"/> being set is what selects the
+/// shape; <see cref="Host"/>/<see cref="Port"/> then stay unset (the node owns the endpoint),
+/// and <see cref="Model"/>/<see cref="SerialSpeed"/> belong only to it.
+/// </para>
+/// <para>
 /// A rig that fails to connect at port start degrades cleanly: the fault is logged and the port
 /// runs without rig status — an absent rigctld/flrig daemon must never take a working packet
 /// channel down. After a successful attach, transport drops self-heal (the backends re-dial per
@@ -33,13 +44,38 @@ public sealed record PortRigConfig
     /// Matched case- and hyphen/underscore-insensitively.</summary>
     public string Kind { get; init; } = "";
 
-    /// <summary>Host running the rig daemon. Default loopback — neither rigctld nor flrig has
-    /// authentication, so pointing beyond localhost is a deliberate station-owner choice.</summary>
+    /// <summary>Host running the rig daemon (the BYO-daemon shape). Default loopback — neither
+    /// rigctld nor flrig has authentication, so pointing beyond localhost is a deliberate
+    /// station-owner choice. Must stay unset (or the loopback default) when <see cref="Device"/>
+    /// selects the node-managed shape — the node spawns its daemon locally.</summary>
     public string Host { get; init; } = "127.0.0.1";
 
-    /// <summary>The daemon's TCP port. Null uses the kind's stock port
-    /// (<c>hamlib</c> → 4532, <c>flrig</c> → 12345).</summary>
+    /// <summary>The daemon's TCP port (the BYO-daemon shape). Null uses the kind's stock port
+    /// (<c>hamlib</c> → 4532, <c>flrig</c> → 12345). Must stay unset when <see cref="Device"/>
+    /// selects the node-managed shape — the node allocates a loopback port itself.</summary>
     public int? Port { get; init; }
+
+    /// <summary>The rig's serial device path (e.g. <c>/dev/serial/by-id/usb-Icom_Inc._IC-7300…</c>
+    /// — the by-id path survives renumbering). Setting this selects the <b>node-managed</b>
+    /// shape: the node spawns and supervises <c>rigctld</c> against this device instead of
+    /// dialling an operator-run daemon. hamlib only; <see cref="Model"/> is required with it.</summary>
+    public string? Device { get; init; }
+
+    /// <summary>The hamlib rig model number <c>rigctld -m</c> is given (see <c>rigctl -l</c> for
+    /// the list, e.g. 3073 = IC-7300). Node-managed shape only — required with, and only with,
+    /// <see cref="Device"/>.</summary>
+    public int? Model { get; init; }
+
+    /// <summary>The CAT serial speed <c>rigctld -s</c> is given, in baud. Node-managed shape
+    /// only. Null = hamlib's per-backend default for the model.</summary>
+    public int? SerialSpeed { get; init; }
+
+    /// <summary>True when this block binds by <see cref="Device"/>+<see cref="Model"/> — the
+    /// node-managed shape, where the node spawns and supervises the rigctld itself. The single
+    /// authority the validator and the port supervisor both consult, so a shape the validator
+    /// accepted always resolves the same way at bring-up. (Mirrors
+    /// <see cref="PortRadioConfig.IsHeadEndBound"/>.)</summary>
+    public bool IsNodeManaged => !string.IsNullOrWhiteSpace(Device);
 
     /// <summary>How often (seconds) the rig status monitor polls frequency/mode/PTT while the
     /// transmitter is idle. Null uses the 5 s default. Must be positive when set. Each poll is a
@@ -51,6 +87,20 @@ public sealed record PortRigConfig
     /// there is no point polling them fast otherwise). Null uses the 1 s default. Must be
     /// positive when set.</summary>
     public int? MeterIntervalSeconds { get; init; }
+
+    /// <summary>
+    /// Human-readable endpoint for status surfaces — the single authority behind
+    /// <see cref="Api.RigStatus.Endpoint"/> (<c>Rigs.RigStatusMonitor</c> and
+    /// <c>Rigs.RigReadModels</c> both use it). BYO daemon: <c>host:port</c> with the kind default
+    /// resolved. Node-managed: the device path plus the spawned daemon's loopback endpoint when
+    /// the allocated port is known (i.e. on the effective config the supervisor dials), or just
+    /// the device path when it isn't (the config-only projection of an unattached rig — the port
+    /// only exists once the daemon runs).
+    /// </summary>
+    public string DescribeEndpoint() =>
+        !IsNodeManaged ? $"{Host}:{Port ?? RigKinds.DefaultPort(Kind)}"
+        : Port is { } p ? $"{Device} (managed rigctld @{Host}:{p})"
+        : $"{Device} (managed rigctld)";
 }
 
 /// <summary>
