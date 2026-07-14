@@ -161,6 +161,21 @@ public sealed class RigStatusMonitorTests
     }
 
     [Fact]
+    public async Task RequestRefresh_ticks_immediately_without_waiting_for_the_cadence()
+    {
+        var clock = new FakeTimeProvider();
+        var rig = new FakeRigControl { FrequencyHz = 14_074_000 };
+        await using var monitor = RigStatusMonitors.Create("hf", Config, rig, null, clock);
+        await WaitUntilAsync(() => monitor.Snapshot().FrequencyHz == 14_074_000);
+
+        // A mutation lands between ticks; the wake makes it visible NOW, no clock advance.
+        rig.FrequencyHz = 7_074_000;
+        monitor.RequestRefresh();
+
+        await WaitUntilAsync(() => monitor.Snapshot().FrequencyHz == 7_074_000);
+    }
+
+    [Fact]
     public async Task Dispose_stops_the_loop_but_not_the_rig()
     {
         var clock = new FakeTimeProvider();

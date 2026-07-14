@@ -68,10 +68,13 @@ Use the official C# SDK — **`ModelContextProtocol`** (core, stdio) + **`ModelC
 | `recent_frames` | `read` | `RecentFramesAsync` | `port?`, `peer?`, `kind?`, `since?`, `limit?` (≤250) | `MonitorFrame[]` from the telemetry ring (oldest→newest) |
 | `link_quality` | `read` | `LinkQualityAsync` | `remote`, `port?` | per-link SRTT, retries, REJ/SREJ, frame/byte counts, T1/T3 (see Monitor-v2) |
 | `network_topology` | `read` | `NetworkTopologyAsync` | — | NET/ROM neighbours + destinations + routes (the `/netrom/routes` shape) |
+| `get_rig_status` | `read` | `RigStatusAsync` | `port?` | `McpRigStatus[]` — the `RigStatus` read model with the TX-side meters flattened (all rig-configured ports, or one port; empty = no such port) |
 | `send_ui_frame` | `operate` | `SendUiFrameAsync` | `port`, `dest`, `payload`, `path?`, `pid?` | send result (accepted/queued) |
 | `reset_port` | `operate` | `ResetPortAsync` | `port` | port-restart result (maps to the `restart` lifecycle) |
 | `disconnect_session` | `operate` | `DisconnectSessionAsync` | `id` (`port:peer`) | disconnect result |
 | `set_kiss_param` | `operate` | `SetKissParamAsync` | `port`, `param`, `value` | applied/queued, plus whether it took live or needs a restart |
+| `set_rig_frequency` | `operate` | `SetRigFrequencyAsync` | `port`, `frequencyHz` | QSY result with the read-back dial frequency (maps to `POST /ports/{id}/rig/frequency`; capability-gated, audited as `rig_set_frequency`) |
+| `set_rig_mode` | `operate` | `SetRigModeAsync` | `port`, `mode`, `passbandHz?` (null = rig default width) | mode result with the read-back mode/passband (maps to `POST /ports/{id}/rig/mode`; capability-gated, audited as `rig_set_mode`) |
 
 Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` builds frames through the spec-strict factories — MCP never produces a frame the encoder would reject, even though decode/inbound accepts lenient input.
 

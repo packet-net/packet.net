@@ -8,9 +8,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { Page, PageHeader } from "@/components/layout/shell";
 import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent, StatusDot, Tooltip, Icon,
+  Modal, Field, Input, Select,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { api, useQuery, subscribeFrames, subscribeRigs } from "@/lib/api";
+import { useAuth } from "@/app/auth";
 import { portHealth } from "@/lib/health";
 import { KIND_LABEL, fmtUptime, fmtRigFrequency } from "@/lib/mock";
 import type { RadioStatus, RigStatus } from "@/lib/types";
@@ -385,8 +387,9 @@ function RigCard({ r }: { r: RigStatus }) {
               : <>{r.kind} · <span className="font-mono">{r.endpoint}</span></>}
           </p>
         </div>
-        {/* PTT — the transmitter state, when the rig can report it */}
-        <div className="shrink-0 text-right">
+        {/* PTT — the transmitter state, when the rig can report it — plus the TUNE
+            affordance when the rig advertises a settable dial (frequencySet / modeSet). */}
+        <div className="flex shrink-0 flex-col items-end gap-1 text-right">
           {!can("pttGet") || r.transmitting == null ? (
             <span className="text-[11px] text-muted-foreground/60">—</span>
           ) : r.transmitting ? (
@@ -398,6 +401,7 @@ function RigCard({ r }: { r: RigStatus }) {
               <span className="h-1.5 w-1.5 rounded-full bg-success" /> receive
             </span>
           )}
+          {r.attached && (can("frequencySet") || can("modeSet")) && <RigTuneButton r={r} />}
         </div>
       </div>
 
@@ -464,5 +468,147 @@ function RigCard({ r }: { r: RigStatus }) {
         </div>
       )}
     </Card>
+  );
+}
+
+// ---- TUNE — the rig card's one write affordance (operate scope) ---------------------
+// The trigger follows the DoctorButton shape (a small ghost button opening a self-contained
+// modal) and the scope convention: DISABLED with an explanatory title without the operate
+// scope, never hidden. Rendered only when the rig is attached and advertises a settable
+// dial (frequencySet / modeSet) — see the call site in RigCard.
+function RigTuneButton({ r }: { r: RigStatus }) {
+  const { has } = useAuth();
+  const canOperate = has("operate");
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        size="xs"
+        variant="ghost"
+        disabled={!canOperate}
+        title={canOperate
+          ? "Retune the transceiver's current VFO"
+          : "Retuning a transmitter requires the operate scope"}
+        onClick={() => setOpen(true)}
+      >
+        <Icon name="gauge" size={13} /> Tune
+      </Button>
+      {open && <RigTuneModal r={r} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+// The mode picker's common tokens; "Other…" reveals a free-text input for rig-native
+// tokens ("DATA-U", …) the shortlist can't know about.
+const COMMON_RIG_MODES = ["USB", "LSB", "CW", "PKTUSB", "PKTFM", "FM", "AM", "RTTY"];
+
+// Dial-entry parsing: a value under 1000 reads as MHz-decimal ("14.074" → 14 074 000 Hz),
+// anything else as raw Hz ("14074000"). The ranges can't collide — no dial we would retune
+// sits below 1 kHz. Returns null for anything non-numeric or non-positive.
+function parseDialInput(raw: string): number | null {
+  const v = Number(raw.trim());
+  if (!Number.isFinite(v) || v <= 0) return null;
+  return Math.round(v < 1000 ? v * 1e6 : v);
+}
+
+// The TUNE modal — renders exactly the settable slice (frequency input iff frequencySet,
+// mode picker iff modeSet), applies ONLY the fields the operator filled in (sequentially:
+// frequency, then mode; empty = leave unchanged), and closes on success. No re-fetch on
+// close: the server wakes the rig poller after a set, so the next `event: rig` SSE tick
+// replaces the card's status. Errors surface INLINE (the doctor.tsx pattern), not as a
+// toast. Passband is deliberately not offered — the rig's default for the mode applies.
+function RigTuneModal({ r, onClose }: { r: RigStatus; onClose: () => void }) {
+  const can = (cap: string) => r.capabilities.includes(cap);
+  const [freq, setFreq] = useState("");
+  const [modeSel, setModeSel] = useState("");     // "" = leave unchanged; "other" = free text
+  const [modeCustom, setModeCustom] = useState("");
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parsedHz = freq.trim() === "" ? null : parseDialInput(freq);
+  const badFreq = freq.trim() !== "" && parsedHz == null;
+  const newMode = modeSel === "other" ? modeCustom.trim() : modeSel;
+  const dirty = (can("frequencySet") && freq.trim() !== "") || (can("modeSet") && newMode !== "");
+
+  const apply = async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      if (can("frequencySet") && freq.trim() !== "") {
+        if (parsedHz == null) throw new Error("Enter a frequency in MHz (e.g. 14.074) or in Hz.");
+        await api.setRigFrequency(r.portId, parsedHz);
+      }
+      if (can("modeSet") && newMode !== "") await api.setRigMode(r.portId, newMode);
+      onClose();   // success — the next rig SSE tick shows the new dial on the card
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Tune — ${r.portId}`} footer={<>
+      <Button variant="outline" size="sm" onClick={onClose} disabled={running}>Cancel</Button>
+      <Button
+        size="sm"
+        onClick={apply}
+        disabled={running || !dirty || badFreq}
+        title={dirty ? undefined : "Fill in a frequency and/or a mode — empty fields are left unchanged"}
+      >
+        <Icon name="gauge" size={14} /> {running ? "Applying…" : "Apply"}
+      </Button>
+    </>}>
+      <div className="space-y-4">
+        <div className="flex items-start gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+          <Icon name="info" size={13} className="mt-px shrink-0" />
+          <span>Retunes the transceiver's current VFO. No RF is emitted by a retune.</span>
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-2 text-[11px] text-warning">
+            <Icon name="alert" size={13} className="mt-px shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {can("frequencySet") && (
+          <Field
+            label="Frequency"
+            hint={parsedHz != null
+              ? <>→ <span className="font-mono">{fmtRigFrequency(parsedHz)}</span> MHz</>
+              : badFreq
+                ? <span className="text-warning">Not a number — enter MHz-decimal (14.074) or raw Hz (14074000).</span>
+                : <>Now <span className="font-mono">{r.frequencyHz != null ? fmtRigFrequency(r.frequencyHz) : "—"}</span> MHz. Leave empty to keep it.</>}
+          >
+            <Input
+              value={freq}
+              onChange={(e) => setFreq(e.target.value)}
+              placeholder="14.074 (MHz) or 14074000 (Hz)"
+              inputMode="decimal"
+            />
+          </Field>
+        )}
+
+        {can("modeSet") && (
+          <Field label="Mode" hint={<>Now <span className="font-mono">{r.mode ?? "—"}</span>. Leave unchanged to keep it.</>}>
+            <div className="space-y-1.5">
+              <Select value={modeSel} onChange={(e) => setModeSel(e.target.value)}>
+                <option value="">(leave unchanged)</option>
+                {COMMON_RIG_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                <option value="other">Other (rig-native token)…</option>
+              </Select>
+              {modeSel === "other" && (
+                <Input
+                  value={modeCustom}
+                  onChange={(e) => setModeCustom(e.target.value)}
+                  placeholder='Rig-native mode token, e.g. "DATA-U"'
+                />
+              )}
+            </div>
+          </Field>
+        )}
+      </div>
+    </Modal>
   );
 }

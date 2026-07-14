@@ -93,6 +93,96 @@ public class RestNodeMcpBackendTests
     }
 
     [Fact]
+    public async Task Rig_status_maps_the_rest_json_and_flattens_the_meters()
+    {
+        var handler = new StubHandler(new()
+        {
+            ["GET /api/v1/rigs"] = (HttpStatusCode.OK,
+                """
+                [{"portId":"hf","attached":true,"kind":"hamlib","endpoint":"127.0.0.1:4532",
+                  "backend":"Hamlib rigctld","manufacturer":"Yaesu","model":"FT-991A",
+                  "capabilities":["frequencyGet","frequencySet","swrMeter"],"connectionState":"healthy",
+                  "frequencyHz":14074000,"mode":"PKTUSB","passbandHz":3000,"transmitting":true,
+                  "meters":{"swr":1.2,"rfPowerWatts":42.5,"rfPowerRelative":0.42,"sampleAt":"2026-06-13T00:00:00Z"},
+                  "sampledAt":"2026-06-13T00:00:00Z"}]
+                """),
+        });
+
+        var rigs = await Backend(handler).RigStatusAsync();
+
+        var rig = rigs.Should().ContainSingle().Subject;
+        rig.PortId.Should().Be("hf");
+        rig.Attached.Should().BeTrue();
+        rig.Capabilities.Should().Contain("swrMeter");
+        rig.FrequencyHz.Should().Be(14_074_000);
+        rig.Mode.Should().Be("PKTUSB");
+        rig.Swr.Should().Be(1.2);
+        rig.RfPowerWatts.Should().Be(42.5);
+        rig.RfPowerRelative.Should().Be(0.42);
+    }
+
+    [Fact]
+    public async Task Rig_status_for_one_port_maps_404_to_the_empty_result()
+    {
+        var handler = new StubHandler(new()
+        {
+            ["GET /api/v1/ports/hf/rig"] = (HttpStatusCode.OK,
+                """{"portId":"hf","attached":false,"kind":"hamlib","endpoint":"127.0.0.1:4532","capabilities":[],"connectionState":"unknown"}"""),
+        });
+        var backend = Backend(handler);
+
+        (await backend.RigStatusAsync("hf")).Should().ContainSingle()
+            .Which.Attached.Should().BeFalse();
+        (await backend.RigStatusAsync("ghost")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Set_rig_frequency_returns_the_read_back_and_maps_the_error_body()
+    {
+        var handler = new StubHandler(new()
+        {
+            ["POST /api/v1/ports/hf/rig/frequency"] = (HttpStatusCode.OK, """{"frequencyHz":14074010}"""),
+            ["POST /api/v1/ports/vhf/rig/frequency"] = (HttpStatusCode.Conflict,
+                """{"error":"port 'vhf' has no rig: block configured."}"""),
+        });
+        var backend = Backend(handler);
+
+        var ok = await backend.SetRigFrequencyAsync(new SetRigFrequencyRequest("hf", 14_074_000), McpCaller.LocalStdio);
+        ok.Accepted.Should().BeTrue();
+        ok.FrequencyHz.Should().Be(14_074_010, "the node reads the dial back after the set");
+
+        var conflict = await backend.SetRigFrequencyAsync(new SetRigFrequencyRequest("vhf", 14_074_000), McpCaller.LocalStdio);
+        conflict.Accepted.Should().BeFalse();
+        conflict.FrequencyHz.Should().BeNull();
+        conflict.Message.Should().Be("port 'vhf' has no rig: block configured.");
+
+        var missing = await backend.SetRigFrequencyAsync(new SetRigFrequencyRequest("ghost", 14_074_000), McpCaller.LocalStdio);
+        missing.Accepted.Should().BeFalse();
+        missing.Message.Should().Be("no such port 'ghost'.");
+    }
+
+    [Fact]
+    public async Task Set_rig_mode_returns_the_read_back_and_maps_the_error_body()
+    {
+        var handler = new StubHandler(new()
+        {
+            ["POST /api/v1/ports/hf/rig/mode"] = (HttpStatusCode.OK, """{"mode":"PKTUSB","passbandHz":3000}"""),
+            ["POST /api/v1/ports/vhf/rig/mode"] = (HttpStatusCode.BadRequest,
+                """{"error":"mode is required (a hamlib token like USB/PKTUSB, or the rig's native name)."}"""),
+        });
+        var backend = Backend(handler);
+
+        var ok = await backend.SetRigModeAsync(new SetRigModeRequest("hf", "PKTUSB"), McpCaller.LocalStdio);
+        ok.Accepted.Should().BeTrue();
+        ok.Mode.Should().Be("PKTUSB");
+        ok.PassbandHz.Should().Be(3000);
+
+        var bad = await backend.SetRigModeAsync(new SetRigModeRequest("vhf", " "), McpCaller.LocalStdio);
+        bad.Accepted.Should().BeFalse();
+        bad.Message.Should().StartWith("mode is required");
+    }
+
+    [Fact]
     public async Task Send_ui_frame_and_set_kiss_param_are_sse_only_over_the_bridge()
     {
         var backend = Backend(new StubHandler(new()));

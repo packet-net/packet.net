@@ -47,4 +47,11 @@ public sealed class ReadTools(INodeMcpBackend backend)
     [Description("The NET/ROM topology the node has learned: directly-heard neighbours and reachable destinations with their routes.")]
     public Task<McpNetworkTopology> NetworkTopology(CancellationToken ct = default)
         => backend.NetworkTopologyAsync(ct);
+
+    [McpServerTool(Name = "get_rig_status")]
+    [Description("Rig-control (CAT) status per port: attachment/health, backend identity, the advertised capability slice (sets against an unadvertised capability are refused), dial frequency, mode/passband, PTT state, and the last TX-side meter sample (SWR / RF power — meters sample only while transmitting; idle they read null or stale). Omit port for every rig-configured port; name a port for just its rig (empty result = no such port; a port with no rig block reports attached:false with an empty kind).")]
+    public Task<IReadOnlyList<McpRigStatus>> GetRigStatus(
+        [Description("Only this port's rig; omit for every rig-configured port.")] string? port = null,
+        CancellationToken ct = default)
+        => backend.RigStatusAsync(port, ct);
 }

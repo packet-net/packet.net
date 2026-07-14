@@ -298,6 +298,46 @@ paths:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RigStatus" } } } }
         "404": { description: no such port }
 
+  /ports/{id}/rig/frequency:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [rigs]
+      summary: QSY — set the attached rig's current-VFO frequency
+      description: >
+        Retunes the transceiver (no RF is emitted by a retune — keying is deliberately not
+        exposed). Capability-gated on frequencySet; audit-logged; wakes the status poller so the
+        `event: rig` feed carries the new dial within a tick. 409 = configured-but-not-attached,
+        capability absent, or the rig rejected/faulted (transient — the backend re-dials).
+      security: [{ bearerAuth: [operate] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [frequencyHz], properties: { frequencyHz: { type: integer, format: int64, minimum: 1 } } } } }
+      responses:
+        "200": { description: "retuned — the read-back frequency", content: { application/json: { schema: { type: object, properties: { frequencyHz: { type: integer, format: int64 } } } } } }
+        "400": { description: bad frequency }
+        "404": { description: no such port }
+        "409": { description: "no rig attached / capability absent / rig refused" }
+
+  /ports/{id}/rig/mode:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [rigs]
+      summary: Set the attached rig's operating mode
+      description: >
+        Sets the current-VFO mode (a hamlib token like USB/PKTUSB, or the rig's native name —
+        flrig vocabularies are rig-specific). passbandHz omitted/null selects the rig's default
+        width for the mode; flrig cannot set widths and rejects an explicit one. Same gating,
+        audit and poller-wake semantics as the frequency endpoint.
+      security: [{ bearerAuth: [operate] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string }, passbandHz: { type: [integer, "null"] } } } } }
+      responses:
+        "200": { description: "set — the read-back mode/passband", content: { application/json: { schema: { type: object, properties: { mode: { type: string }, passbandHz: { type: [integer, "null"] } } } } } }
+        "400": { description: bad mode token }
+        "404": { description: no such port }
+        "409": { description: "no rig attached / capability absent / rig refused" }
+
   /rigs/events:
     get:
       tags: [rigs]

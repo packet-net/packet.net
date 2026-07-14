@@ -1264,6 +1264,30 @@ direct tag push 403s, so each `v0.2.19` tag was cut via the repo's `release.yml`
 HEAD = the pin-bump merge commit). Source-compatible, no code change either side; no TS leg
 (unchanged this cycle).
 
+### 2026-07-14 — Rig mutation slice: QSY + mode set over REST, MCP tools, and the card's Tune control
+
+The first write surface on the rig arc, deliberately narrow. **REST** (`PdnRigsApi`):
+`POST /api/v1/ports/{id}/rig/frequency` + `/mode` — **operate**-scoped (a retune emits no RF;
+the admin bar stays reserved for keying, which is deliberately NOT exposed pending a proper
+tune-button design), audit-logged (`rig_set_frequency`/`rig_set_mode`, `requested` at entry),
+capability-gated against the rig's advertised `RigCapabilities` (an unadvertised set is refused
+without touching the rig), run under the host's exclusive gate so a write can't race a port
+teardown, error taxonomy 400 (bad input) / 404 (no such port) / 409 (configured-but-not-attached
+· capability absent · rig refused/faulted — transient, the backends re-dial), and each success
+returns the **read-back** value and wakes the poller (`IRigStatusMonitor.RequestRefresh()`, new:
+the poll delay carries a per-cycle wake token) so the `event: rig` SSE feed shows the new dial
+immediately instead of at the next cadence boundary. **MCP**: `get_rig_status` +
+`set_rig_frequency`/`set_rig_mode` tools on the established `INodeMcpBackend` seam (operate
+step-up via the WriteTools discipline; live backend through `RunExclusiveAsync` + audit + poller
+wake, stdio/REST backend through the endpoints above). **UI**: an operate-gated Tune control on
+the rig card (modal: MHz-or-Hz frequency entry with parsed preview, mode select; applies only
+changed fields; the SSE tick refreshes the card — no client re-fetch). Guardrails note:
+frequency validation here is sanity-only (positive Hz) — **band-plan validation lands with the
+channel-plan/QSY-policy slice**, which is where a wrong-band QSY actually becomes reachable
+from automation. Built with the new working pattern (Tom, same day): local gates decide,
+merge on green local tests, CI monitored in the background; MCP tools and the UI control were
+built by parallel sub-agents against the REST contract.
+
 ### 2026-07-14 — Web UI: the rig card (read-only) — dial, PTT, TX meters, live over SSE
 
 The rig arc reaches the operator surface. `RigsPanel`/`RigCard` on the dashboard (the sibling
