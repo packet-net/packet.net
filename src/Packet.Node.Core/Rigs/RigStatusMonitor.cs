@@ -15,6 +15,11 @@ public interface IRigStatusMonitor : IAsyncDisposable
 {
     /// <summary>Project the rig's current status. Non-blocking — reads captured state only.</summary>
     RigStatus Snapshot();
+
+    /// <summary>Wake the poll loop for an immediate tick — called after a mutation (set
+    /// frequency/mode) so the projection and the SSE feed reflect the change now rather than at
+    /// the next cadence boundary. Non-blocking; a no-op on a disposed monitor.</summary>
+    void RequestRefresh();
 }
 
 /// <summary>Builds the <see cref="IRigStatusMonitor"/> for an attached rig.</summary>
@@ -70,6 +75,8 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
     private readonly CancellationTokenSource cts = new();
     private readonly Task loop;
     private readonly object gate = new();
+    private readonly object wakeGate = new();
+    private CancellationTokenSource? wake;
 
     // Captured state, written by the loop under the gate, read by Snapshot().
     private long? frequencyHz;
@@ -108,16 +115,54 @@ public sealed class RigStatusMonitor : IRigStatusMonitor
                 return;
             }
 
+            // Fast while transmitting so the SWR/power meters are live during a transmission —
+            // the moment that matters for TX health; slow while idle so a quiet rig costs a
+            // couple of CAT round-trips per poll interval and no more. The delay carries a
+            // wake token so RequestRefresh() (post-mutation) ticks immediately.
+            CancellationTokenSource delayCts;
+            lock (wakeGate)
+            {
+                delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                wake = delayCts;
+            }
             try
             {
-                // Fast while transmitting so the SWR/power meters are live during a
-                // transmission — the moment that matters for TX health; slow while idle so a
-                // quiet rig costs a couple of CAT round-trips per poll interval and no more.
-                await Task.Delay(keyed ? meterInterval : pollInterval, clock, ct).ConfigureAwait(false);
+                await Task.Delay(keyed ? meterInterval : pollInterval, clock, delayCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Woken early by RequestRefresh — fall through to the next tick now.
             }
             catch (OperationCanceledException)
             {
                 return;
+            }
+            finally
+            {
+                lock (wakeGate)
+                {
+                    if (ReferenceEquals(wake, delayCts))
+                    {
+                        wake = null;
+                    }
+                }
+                delayCts.Dispose();
+            }
+        }
+    }
+
+    /// <inheritdoc/>
+    public void RequestRefresh()
+    {
+        lock (wakeGate)
+        {
+            try
+            {
+                wake?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The loop just moved past this delay — the next tick is imminent anyway.
             }
         }
     }
