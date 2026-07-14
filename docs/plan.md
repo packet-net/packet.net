@@ -1244,6 +1244,31 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-14 — RELEASE: lib-v0.22.0 (rig control: `Packet.Rig` + hamlib/flrig backends + Tait adapter)
+
+The rig-control arc (next two entries) shipped to nuget.org as **0.22.0** — 17 packages, three
+of them new (`Packet.Rig`, `Packet.Rig.Hamlib`, `Packet.Rig.Flrig`; `Packet.Radio.Tait` gained
+`TaitRigControl`). Arc: PR [#606](https://github.com/packet-net/packet.net/pull/606) (the
+libraries), PR [#607](https://github.com/packet-net/packet.net/pull/607) (release-gate hotfix,
+next paragraph), `ci` + `interop` green on the release commit `ef5f419`, `publish-libs` run
+green with all 17 pushes confirmed and flat-container indexing verified.
+
+**Release-gate find:** every `interop` run on `main` had been red since the 3-way-mirror merge
+(#605) — not a test: the "clone packet-net/pico-node" step's `git sparse-checkout set` used
+cone mode (directories only) with two *file* paths, which git 2.53 on the runners turned from
+tolerated into fatal. All C# interop tests were passing in those red runs; the parity guard and
+phases B/C simply never executed. Fixed with `--no-cone` anchored patterns (#607) — first green
+interop on `main` since the mirror landed.
+
+**Procedure notes:** published via `publish-libs.yml`'s `workflow_dispatch`
+(`override_version=0.22.0`) against `ef5f419` because the release was driven from a session
+whose git credential is branch-scoped and cannot push tags — the annotated `lib-v0.22.0` tag on
+`ef5f419` is pushed separately by Tom (same commit, same version; the workflow's dispatch path
+exists for exactly this). No `node-v`/`headend-v` this cycle (no node or head-end changes — the
+node doesn't reference `Packet.Rig`). ax25-ts unchanged → no TS leg. **Outstanding downstream
+(releasing.md Step 3):** bump the `Packet.*` pins in `packet-net/axcall` and
+`packet-net/packet-term-tui` to 0.22.0 and cut their releases.
+
 ### 2026-07-13 — Rig control (CAT) lands: `Packet.Rig` + hamlib (rigctld) + flrig backends
 
 Tom asked for rig control in PDN — get/set frequency and mode at minimum, SWR/power monitoring
