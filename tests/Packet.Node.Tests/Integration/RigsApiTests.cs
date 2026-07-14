@@ -3,15 +3,22 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Packet.Node.Core.Api;
+using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Rigs;
+using Packet.Node.Core.SelfUpdate;
 
 namespace Packet.Node.Tests.Integration;
 
 /// <summary>
 /// Boots the real composition root and exercises the rig-control read surface:
-/// <c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>, and the <c>event: rig</c> SSE
-/// feed at <c>GET /api/v1/rigs/events</c>. Ports stay disabled (no transports are opened) —
-/// the endpoints exercise the configured-but-not-attached projections, and the SSE test drives
-/// the live <c>RigTelemetry</c> hub directly through the composition root.
+/// <c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>, the plug-and-play wizard pair
+/// (<c>GET /api/v1/rigs/scan</c> with an injected fake scanner, <c>GET /api/v1/rigs/models</c>
+/// with a catalogue over a canned process runner — no rigctl or serial hardware is touched),
+/// and the <c>event: rig</c> SSE feed at <c>GET /api/v1/rigs/events</c>. Ports stay disabled
+/// (no transports are opened) — the endpoints exercise the configured-but-not-attached
+/// projections, and the SSE test drives the live <c>RigTelemetry</c> hub directly through the
+/// composition root.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class RigsApiTests : IDisposable
@@ -56,6 +63,40 @@ public sealed class RigsApiTests : IDisposable
 
     private sealed class NodeAppFactory : WebApplicationFactory<Program>;
 
+    private sealed class FakeRigScanner : IRigScanner
+    {
+        public Task<RigScan> ScanAsync(NodeConfig current, CancellationToken cancellationToken = default)
+            => Task.FromResult(new RigScan(
+                [
+                    new RigScanDevice(
+                        "/dev/ttyUSB0",
+                        "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_IC-7300_03001234-if00-port0",
+                        "usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_IC-7300_03001234-if00-port0",
+                        ClaimedBy: null,
+                        new RigSuggestion("Icom", "IC-7300", 3073, "by-id")),
+                    new RigScanDevice(
+                        "/dev/ttyACM0", ByIdPath: null, Descriptor: null,
+                        ClaimedBy: "port 'hf' rig", Suggestion: null),
+                ],
+                CatalogueAvailable: true));
+    }
+
+    /// <summary>A canned <c>rigctl -l</c> runner so /rigs/models exercises the real catalogue
+    /// parse without rigctl installed (verbatim Hamlib 4.5.5 lines).</summary>
+    private sealed class CannedRigctlRunner : IProcessRunner
+    {
+        private const string Sample =
+"""
+ Rig #  Mfg                    Model                   Version         Status      Macro
+     1  Hamlib                 Dummy                   20221128.0      Stable      RIG_MODEL_DUMMY
+  1004  Yaesu                  MARK-V FT-1000MP        20230104.0      Stable      RIG_MODEL_FT1000MPMKV
+  3073  Icom                   IC-7300                 20230109.10     Stable      RIG_MODEL_IC7300
+""";
+
+        public ProcessRunResult Run(string fileName, IReadOnlyList<string> arguments)
+            => ProcessRunResult.Ran(0, Sample);
+    }
+
     [Fact]
     public async Task Rigs_lists_the_configured_rig_as_not_attached_when_its_port_is_down()
     {
@@ -87,6 +128,62 @@ public sealed class RigsApiTests : IDisposable
 
         var missing = await client.GetAsync("/api/v1/ports/nope/rig");
         missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Rigs_scan_returns_the_scanner_projection()
+    {
+        await using var factory = new NodeAppFactory().WithWebHostBuilder(b =>
+            b.ConfigureTestServices(services => services.AddSingleton<IRigScanner>(new FakeRigScanner())));
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/api/v1/rigs/scan");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("catalogueAvailable").GetBoolean().Should().BeTrue();
+
+        var devices = doc.RootElement.GetProperty("devices");
+        devices.GetArrayLength().Should().Be(2);
+
+        var suggested = devices[0];
+        suggested.GetProperty("devicePath").GetString().Should().Be("/dev/ttyUSB0");
+        suggested.GetProperty("descriptor").GetString().Should().Contain("IC-7300");
+        suggested.GetProperty("claimedBy").ValueKind.Should().Be(JsonValueKind.Null);
+        var suggestion = suggested.GetProperty("suggestion");
+        suggestion.GetProperty("manufacturer").GetString().Should().Be("Icom");
+        suggestion.GetProperty("model").GetString().Should().Be("IC-7300");
+        suggestion.GetProperty("modelNumber").GetInt32().Should().Be(3073);
+        suggestion.GetProperty("source").GetString().Should().Be("by-id");
+
+        var claimed = devices[1];
+        claimed.GetProperty("claimedBy").GetString().Should().Be("port 'hf' rig");
+        claimed.GetProperty("suggestion").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Rigs_models_serves_the_parsed_catalogue()
+    {
+        await using var factory = new NodeAppFactory().WithWebHostBuilder(b =>
+            b.ConfigureTestServices(services =>
+                services.AddSingleton(new RigModelCatalogue(new CannedRigctlRunner()))));
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/api/v1/rigs/models");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("available").GetBoolean().Should().BeTrue();
+
+        var models = doc.RootElement.GetProperty("models").EnumerateArray().ToArray();
+        models.Should().HaveCount(3);
+        models[0].GetProperty("number").GetInt32().Should().Be(1);
+        models[0].GetProperty("manufacturer").GetString().Should().Be("Hamlib");
+        // A model name with internal spaces must survive the columnar parse onto the wire.
+        models[1].GetProperty("model").GetString().Should().Be("MARK-V FT-1000MP");
+        models[2].GetProperty("number").GetInt32().Should().Be(3073);
+        models[2].GetProperty("model").GetString().Should().Be("IC-7300");
+        models[2].GetProperty("status").GetString().Should().Be("Stable");
     }
 
     [Fact]

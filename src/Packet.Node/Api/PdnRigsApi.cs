@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
+using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Audit;
@@ -12,7 +14,9 @@ namespace Packet.Node.Api;
 
 /// <summary>
 /// The rig-control (CAT) read surface of the pdn node API: per-port rig attachment status
-/// (<c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>) and the live poll-tick feed
+/// (<c>GET /api/v1/rigs</c>, <c>GET /api/v1/ports/{id}/rig</c>), the plug-and-play device scan +
+/// hamlib model catalogue behind the rig-setup wizard (<c>GET /api/v1/rigs/scan</c>,
+/// <c>GET /api/v1/rigs/models</c> — passive, no serial I/O), and the live poll-tick feed
 /// (<c>GET /api/v1/rigs/events</c> — SSE, <c>event: rig</c>). All read-scoped; the gates are
 /// no-ops when <c>management.auth.enabled</c> is off. The status endpoints project the live
 /// <see cref="PortSupervisor"/> via <see cref="RigReadModels"/> (no rig I/O on the request
@@ -53,6 +57,29 @@ public static class PdnRigsApi
             => RigReadModels.ForPort(host.Supervisor, config.Current, id) is { } status
                 ? Results.Ok(status)
                 : Results.NotFound());
+
+        // Plug-and-play scan: enumerate the local CAT-candidate serial devices, mark which the
+        // current config already claims, and suggest a hamlib model where the by-id descriptor
+        // identifies one. Passive (no serial I/O — unlike /radios/scan nothing is probed), but
+        // bounded + single-flight all the same. Read-scope: adoption happens through the normal
+        // port-write path (attach a rig: block), not here. The scanner is unregistered only in a
+        // stripped embedder; then an empty scan is honest.
+        v1.MapGet("/rigs/scan",
+            async ([FromServices] IRigScanner? scanner, IConfigProvider config, CancellationToken ct) =>
+        {
+            var scan = scanner is null
+                ? new RigScan([], CatalogueAvailable: false)
+                : await scanner.ScanAsync(config.Current, ct).ConfigureAwait(false);
+            return Results.Ok(scan);
+        });
+
+        // The hamlib model catalogue (rigctl -l), parsed once and cached for the process
+        // lifetime. No query param — the client filters. available:false with an empty list on a
+        // host without rigctl (or a stripped embedder that didn't register the catalogue).
+        v1.MapGet("/rigs/models", ([FromServices] RigModelCatalogue? catalogue) =>
+            catalogue is null
+                ? Results.Ok(new { available = false, models = Array.Empty<RigCatalogueModel>() })
+                : Results.Ok(new { available = catalogue.Available, models = catalogue.Models }));
 
         // QSY: retune the attached rig's current VFO. Operate-scoped (a retune emits no RF —
         // the admin bar is for keying), audit-logged, capability-gated, run under the host's

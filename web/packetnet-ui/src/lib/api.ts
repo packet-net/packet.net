@@ -18,7 +18,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
-  RigStatus,
+  RigStatus, RigScan, RigModelCatalogue,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -324,6 +324,16 @@ export const api = {
   // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
   // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
   scanRadios: () => scanRadios(),
+  // Rig (CAT) discovery scan (GET /api/v1/rigs/scan, read scope): every candidate serial device,
+  // with the stable by-id path, what already claims it (a claimed device isn't pickable), and a
+  // curated-table suggestion where the by-id descriptor identifies the rig (suggestion.modelNumber
+  // may be null — matched the curated table but not the local hamlib catalogue, so the operator
+  // picks the model). The PortEditor rig section's "Scan for rigs" button drives this.
+  scanRigs: () => get<RigScan>("/rigs/scan", () => mock.RIG_SCAN),
+  // The node's local hamlib model catalogue (GET /api/v1/rigs/models, read scope) — the rig
+  // section's searchable model picker source. available:false = hamlib isn't installed on the
+  // node (the picker disables with a note; the node-managed rig shape can't run there).
+  getRigModels: () => get<RigModelCatalogue>("/rigs/models", () => mock.RIG_MODELS),
   // ---- split-station head-end fleet scan + adopt (read + operate) ----
   // Discover every head-end instance (config ∪ mDNS), reach through each free device to identify it,
   // and preview the matched TNC↔radio pairs + any duplicate-instance-id conflicts (GET

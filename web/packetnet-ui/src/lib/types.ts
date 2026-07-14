@@ -76,6 +76,29 @@ export interface RadioConfig {
   // Not surfaced by the editor — carried through untouched so a YAML-set value survives a save.
   healthIntervalSeconds?: number | null;
 }
+// Optional per-port rig-control (CAT) attachment (server: Packet.Node.Core.Configuration.PortRigConfig).
+// The station-control sibling of the radio: block — the CAT channel to the transceiver behind this
+// port's modem (dial frequency / mode / PTT / TX meters); it never touches the packet path, so unlike
+// radio: it is valid on EVERY transport kind. Two binding shapes, selected by `device` being set
+// (mirrors the server's PortRigConfig.IsNodeManaged authority):
+//   node-managed — { kind: "hamlib", device, model, serialSpeed? }: the node spawns + supervises
+//     rigctld -m <model> -r <device> on a loopback port it allocates itself (host/port stay unset;
+//     hamlib only — flrig is a GUI app the node can't spawn). Prefer the /dev/serial/by-id device
+//     path: it survives /dev/ttyUSB* renumbering across replug/reboot.
+//   BYO daemon  — { kind: "hamlib"|"flrig", host, port? }: dial a rigctld/flrig the operator already
+//     runs (model/serialSpeed stay unset; a null port means the kind default — 4532 / 12345).
+export interface RigConfig {
+  kind: "hamlib" | "flrig";
+  host?: string;
+  port?: number;
+  device?: string;
+  model?: number;
+  serialSpeed?: number;
+  // Poll cadences (idle / keyed), seconds. Not surfaced by the editor — carried through untouched
+  // so a YAML-set value survives a Forms save (mirrors RadioConfig.healthIntervalSeconds).
+  pollIntervalSeconds?: number | null;
+  meterIntervalSeconds?: number | null;
+}
 export interface PortConfig {
   id: string;
   enabled: boolean;
@@ -87,6 +110,8 @@ export interface PortConfig {
   compat?: PortCompatConfig | null;
   // Per-port radio-control attachment (RSSI/health). Null/absent = no radio.
   radio?: RadioConfig | null;
+  // Per-port rig-control (CAT) attachment. Null/absent = no rig.
+  rig?: RigConfig | null;
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality. See Packet.Node.Core.Configuration.PortConfig.NetRomQuality.
   netRomQuality?: number | null;
@@ -370,6 +395,47 @@ export interface RadioScanResult {
   baud: number;
   devicePath: string;
   byIdPath: string | null;
+}
+
+// ---- rig (CAT) discovery scan (GET /api/v1/rigs/scan) ----
+// One row per candidate serial device the node can see. `byIdPath` is the stable
+// /dev/serial/by-id symlink (preferred bind key — survives /dev/ttyUSB* renumbering); null when
+// the device exposes none. `descriptor` is the by-id name the suggestion was matched against.
+// `claimedBy` non-null = the device is already in use (a port transport / radio / rig references
+// it) — the row is not pickable, and the string says what claims it. `suggestion` is the curated
+// descriptor-table match; its `modelNumber` may be null when the name matched the curated table
+// but not the local hamlib catalogue — the operator then picks the model explicitly.
+export interface RigSuggestion {
+  manufacturer: string;
+  model: string;
+  modelNumber: number | null;
+  source: string;
+}
+export interface RigScanDevice {
+  devicePath: string;
+  byIdPath: string | null;
+  descriptor: string | null;
+  claimedBy: string | null;
+  suggestion: RigSuggestion | null;
+}
+export interface RigScan {
+  devices: RigScanDevice[];
+  catalogueAvailable: boolean;
+}
+
+// ---- hamlib model catalogue (GET /api/v1/rigs/models) ----
+// The node's local hamlib rig list (`rigctl -l`), for the editor's model picker.
+// available:false = hamlib is not installed on the node (models is then empty and the
+// node-managed rig shape can't run) — the picker disables with a note.
+export interface RigModel {
+  number: number;
+  manufacturer: string;
+  model: string;
+  status: string;
+}
+export interface RigModelCatalogue {
+  available: boolean;
+  models: RigModel[];
 }
 
 // ---- split-station RF head-end fleet scan + adopt (server: Packet.Node.Core.Api.HeadEndScan) ----

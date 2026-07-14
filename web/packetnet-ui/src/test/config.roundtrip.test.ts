@@ -17,8 +17,8 @@ function wireRoundTrip<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-// A minimal editor draft with the given transport + radio block — the shape saveDraft reconstructs.
-function draftWith(transport: TransportConfig, radio: PortDraft["radio"]): PortDraft {
+// A minimal editor draft with the given transport + radio/rig blocks — the shape saveDraft reconstructs.
+function draftWith(transport: TransportConfig, radio: PortDraft["radio"], rig: PortDraft["rig"] = null): PortDraft {
   return {
     id: "vhf-x",
     enabled: true,
@@ -29,6 +29,7 @@ function draftWith(transport: TransportConfig, radio: PortDraft["radio"]): PortD
     beacon: null,
     compat: null,
     radio,
+    rig,
     netRomQuality: null,
     netRomMinQuality: null,
     nodesPaclen: null,
@@ -129,5 +130,70 @@ describe("radio-control block survives the PortEditor save (saveDraft reconstruc
     const draft = draftWith({ kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, null);
     const out = wireRoundTrip(portDraftToConfig(draft));
     expect(out.radio).toBeNull();
+  });
+});
+
+// The rig: block (plug-and-play rig, stage 2) rides the same field-by-field saveDraft
+// reconstruction — a shape missing here is silently dropped on a Forms save (the radio: bug's
+// sibling). Both server shapes must survive: node-managed (device + model [+ serialSpeed],
+// hamlib only) and BYO daemon (host [+ port], either kind). Unlike radio:, the rig block is
+// valid on EVERY transport kind (it never touches the packet path), so a kiss-tcp port keeps it.
+describe("rig (CAT) block survives the PortEditor save (saveDraft reconstruction)", () => {
+  it("a node-managed hamlib rig (device + model + serialSpeed) round-trips intact", () => {
+    const rig = {
+      kind: "hamlib" as const,
+      device: "/dev/serial/by-id/usb-Icom_Inc._IC-7300_IC-7300_02012345-if00-port0",
+      model: 3073,
+      serialSpeed: 115200,
+    };
+    const draft = draftWith({ kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, null, rig);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toEqual(rig);
+  });
+
+  it("a BYO rigctld daemon (host + port) round-trips intact", () => {
+    const rig = { kind: "hamlib" as const, host: "127.0.0.1", port: 4532 };
+    const draft = draftWith({ kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, null, rig);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toEqual(rig);
+  });
+
+  it("a BYO flrig daemon with the port omitted round-trips intact (the kind default stays absent)", () => {
+    const rig = { kind: "flrig" as const, host: "127.0.0.1" };
+    const draft = draftWith({ kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, null, rig);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toEqual(rig);
+    expect(out.rig).not.toHaveProperty("port");
+  });
+
+  it("a rig on a kiss-tcp port is preserved (the rig block is not serial-transport-gated)", () => {
+    const rig = { kind: "hamlib" as const, host: "127.0.0.1", port: 4532 };
+    const draft = draftWith({ kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, null, rig);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toEqual(rig);
+  });
+
+  it("YAML-set poll cadences ride through the reconstruction untouched", () => {
+    // The editor never surfaces pollIntervalSeconds/meterIntervalSeconds — a YAML-set value
+    // must survive a Forms load→save (the healthIntervalSeconds convention on radio:).
+    const rig = { kind: "hamlib" as const, device: "/dev/ttyUSB5", model: 1, pollIntervalSeconds: 10, meterIntervalSeconds: 2 };
+    const draft = draftWith({ kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, null, rig);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toEqual(rig);
+  });
+
+  it("a port with no rig reconstructs rig as null (not undefined-dropped)", () => {
+    const draft = draftWith({ kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, null, null);
+    const out = wireRoundTrip(portDraftToConfig(draft));
+    expect(out.rig).toBeNull();
+  });
+
+  it("the mock config's rig-attached ports round-trip byte-for-byte", () => {
+    for (const p of NODE_CONFIG.ports.filter((x) => x.rig)) {
+      const out = wireRoundTrip(p);
+      expect(out.rig).toEqual(p.rig);
+    }
+    // The fixture seeds at least one rig-attached port, so the loop above really ran.
+    expect(NODE_CONFIG.ports.some((x) => x.rig)).toBe(true);
   });
 });

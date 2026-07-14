@@ -138,6 +138,17 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
 // serial. No hardware is touched until a scan is requested; the scanner is bounded + single-flight.
 builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.Node.Core.Radios.TaitRadioScanner());
 
+// Rig plug-and-play scan (GET /api/v1/rigs/scan) + the hamlib model catalogue behind it
+// (GET /api/v1/rigs/models). Passive — unlike the radio scanner nothing is ever written to a
+// serial device: the scan enumerates /dev/ttyUSB* + /dev/ttyACM*, marks devices claimed by the
+// current config, and suggests a model from the by-id descriptor. The catalogue shells
+// `rigctl -l` once via the guarded IProcessRunner seam and caches for the process lifetime; a
+// rigctl-less host reports available:false and the scan still works (numberless suggestions).
+builder.Services.AddSingleton(sp => new Packet.Node.Core.Rigs.RigModelCatalogue(
+    sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IProcessRunner>()));
+builder.Services.AddSingleton<Packet.Node.Core.Rigs.IRigScanner>(sp =>
+    new Packet.Node.Core.Rigs.RigScanner(sp.GetRequiredService<Packet.Node.Core.Rigs.RigModelCatalogue>()));
+
 // Split-station head-end discovery + fleet scanner (Stage 3b). mDNS discovery (_pdnhead._tcp) is a
 // thin Zeroconf wrapper; NodeHostedService picks the discovery singleton up via its optional ctor
 // param, so a head-end binding with a blank config address resolves via mDNS at bring-up. The fleet

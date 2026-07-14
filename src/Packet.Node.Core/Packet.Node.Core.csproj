@@ -31,6 +31,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The rig scanner's off-Linux candidate-device fallback (SerialPort.GetPortNames), the
+         same last resort TaitRadioPortDiscovery uses. -->
+    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="YamlDotNet" />
     <!-- kissproxy-compatible MQTT frame emission (default-off; docs/research/pdn-mqtt-frame-emission.md).
