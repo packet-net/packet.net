@@ -14,6 +14,8 @@ using Packet.Node.Core.Console;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Radios;
+using Packet.Node.Core.Rigs;
+using Packet.Rig;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
 using Packet.Radio;
@@ -48,6 +50,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private readonly IConfigProvider config;
     private readonly ITransportFactory transportFactory;
     private readonly IRadioControlFactory radioFactory;
+    private readonly IRigControlFactory rigFactory;
+    private readonly RigTelemetry? rigTelemetry;
     private readonly TimeProvider timeProvider;
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<PortSupervisor> logger;
@@ -103,7 +107,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         IApplicationHost? applicationHost = null,
         PeerCapabilityCache? capabilityCache = null,
         IRadioControlFactory? radioFactory = null,
-        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null)
+        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null,
+        IRigControlFactory? rigFactory = null,
+        RigTelemetry? rigTelemetry = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
@@ -115,6 +121,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // IRadioControl. Defaults to the production factory (real serial hardware);
         // component tests substitute a scripted radio.
         this.radioFactory = radioFactory ?? RadioControlFactory.Instance;
+        // Optional rig-control (CAT) seam: how a port's `rig:` block becomes a live
+        // IRigControl. Defaults to the production factory (real daemons); component
+        // tests substitute a scripted rig. The telemetry hub, when present, receives a
+        // RigStatus after every poll tick (the /api/v1/rigs/events SSE feed).
+        this.rigFactory = rigFactory ?? RigControlFactory.Instance;
+        this.rigTelemetry = rigTelemetry;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.sysopContext = sysopContext;
@@ -948,6 +960,41 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             return;
         }
 
+        // Rig-control (CAT) attachment: dial the rig daemon and start the status poller.
+        // Placed after every throwing bring-up step so a port-level failure can't leak a
+        // connected rig, and self-degrading — an unreachable rigctld/flrig must never take
+        // a working packet channel down. The rig never touches the packet path (it is the
+        // station-control sibling of the radio: seam, plan OQ-011), so no transport
+        // wrapping happens here. After attach, backend transport drops self-heal (the
+        // clients re-dial per command); only an attach-time failure leaves the rig off
+        // until the next reconcile.
+        IRigControl? rig = null;
+        IRigStatusMonitor? rigStatus = null;
+        if (port.Rig is { } rigConfig)
+        {
+            var rigEndpoint = $"{rigConfig.Host}:{rigConfig.Port ?? RigKinds.DefaultPort(rigConfig.Kind)}";
+            try
+            {
+                rig = await rigFactory.CreateAsync(rigConfig, timeProvider, ct).ConfigureAwait(false);
+                rigStatus = RigStatusMonitors.Create(port.Id, rigConfig, rig, rigTelemetry, timeProvider);
+                LogRigAttached(port.Id, rigConfig.Kind, rigEndpoint);
+            }
+            catch (Exception ex)
+            {
+                LogRigFaulted(ex, port.Id, rigConfig.Kind, rigEndpoint);
+                if (rigStatus is not null)
+                {
+                    await rigStatus.DisposeAsync().ConfigureAwait(false);
+                    rigStatus = null;
+                }
+                if (rig is not null)
+                {
+                    await rig.DisposeAsync().ConfigureAwait(false);
+                    rig = null;
+                }
+            }
+        }
+
         var running = new RunningPort
         {
             Id = port.Id,
@@ -959,6 +1006,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             NinoTnc = ninoTnc,
             Radio = radio,
             RadioStatus = radioStatus,
+            Rig = rig,
+            RigStatus = rigStatus,
             LinkState = linkState,
             Listener = listener,
             Started = true,
@@ -1468,6 +1517,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
     private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: rig control attached ({Kind} at {Endpoint}) — frequency/mode/PTT/meters are polled and projected on /api/v1/rigs.")]
+    private partial void LogRigAttached(string id, string kind, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: rig control ({Kind} at {Endpoint}) failed to connect; the port runs WITHOUT rig status.")]
+    private partial void LogRigFaulted(Exception ex, string id, string kind, string endpoint);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);

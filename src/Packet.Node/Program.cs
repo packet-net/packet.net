@@ -332,6 +332,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 {
                     var path = context.HttpContext.Request.Path;
                     bool isSse = path.StartsWithSegments("/api/v1/events")
+                        || path.StartsWithSegments("/api/v1/rigs/events")
                         || (path.StartsWithSegments("/api/v1/sessions") && path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true)
                         || (path.StartsWithSegments("/api/v1/console") && path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true);
                     if (isSse)
@@ -789,6 +790,7 @@ app.MapPdnPortsApi();
 // projecting the live supervisor; the scan opens serial ports transiently but is bounded. Mapped
 // before the catch-all; specific routes win. See PdnRadiosApi.
 app.MapPdnRadiosApi();
+app.MapPdnRigsApi();
 
 // Capability doctor: an operator's "Check radio setup" for one port. GET is safe + read-scoped
 // (non-transmitting probes only); POST ?interrupt=true is admin-scoped + audited and briefly

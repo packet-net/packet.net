@@ -78,6 +78,12 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         //    (nino-tnc-tcp) — the modem+radio pair is always on one instance. This lifts the
         //    serial-only rule specifically for head-end ports; a kiss-tcp (LinBPQ) port still can't
         //    carry a radio.
+        // A rig (CAT/station-control) attachment has no transport pairing to enforce — rigctld and
+        // flrig are always TCP daemons beside any kind of port (an HF kiss-tcp port with an IC-7300
+        // behind it is the motivating case), so the block validates standalone.
+        When(p => p.Rig is not null, () =>
+            RuleFor(p => p.Rig!).SetValidator(new PortRigValidator()));
+
         When(p => p.Radio is not null, () =>
         {
             RuleFor(p => p.Radio!).SetValidator(new PortRadioValidator());
@@ -189,6 +195,42 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
             (HasNonEmptySerial(r) ? 1 : 0) +
             (HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r) ? 1 : 0);
         return modes == 1;
+    }
+}
+
+/// <summary>
+/// Validates a port's <c>rig:</c> attachment (<see cref="PortRigConfig"/>): a known kind, a
+/// non-empty host, a sane TCP port when set, and positive poll cadences when set. Kind knowledge
+/// lives in <see cref="RigKinds"/> (the same authority the rig factory resolves with), not here.
+/// </summary>
+public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
+{
+    public PortRigValidator()
+    {
+        RuleFor(r => r.Kind)
+            .Must(RigKinds.IsKnown)
+            .WithMessage(r =>
+                $"rig.kind '{r.Kind}' is not a known rig-control kind " +
+                $"(expected one of: {string.Join(", ", RigKinds.Names)}).");
+
+        RuleFor(r => r.Host)
+            .Must(h => !string.IsNullOrWhiteSpace(h))
+            .WithMessage("rig.host must not be empty (omit it for the 127.0.0.1 default).");
+
+        RuleFor(r => r.Port!.Value).InclusiveBetween(1, 65535)
+            .When(r => r.Port.HasValue)
+            .WithMessage(r =>
+                $"rig.port must be in 1..65535 (omit it for the kind default, " +
+                $"{RigKinds.Hamlib} → {RigKinds.DefaultPort(RigKinds.Hamlib)}, " +
+                $"{RigKinds.Flrig} → {RigKinds.DefaultPort(RigKinds.Flrig)}).");
+
+        RuleFor(r => r.PollIntervalSeconds!.Value).GreaterThan(0)
+            .When(r => r.PollIntervalSeconds.HasValue)
+            .WithMessage("rig.pollIntervalSeconds must be positive (omit it for the 5 s default).");
+
+        RuleFor(r => r.MeterIntervalSeconds!.Value).GreaterThan(0)
+            .When(r => r.MeterIntervalSeconds.HasValue)
+            .WithMessage("rig.meterIntervalSeconds must be positive (omit it for the 1 s default).");
     }
 }
 

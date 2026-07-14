@@ -18,6 +18,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
+  RigStatus,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -309,6 +310,8 @@ export const api = {
   // One port's radio status (GET /api/v1/ports/{id}/radio). A 404 (unknown port, or a port with no
   // radio block) surfaces the server's message as an Error.
   getPortRadio: (id: string) => getPortRadio(id),
+  getRigs: () => get<RigStatus[]>("/rigs", () => mock.RIGS),
+  getPortRig: (id: string) => getPortRig(id),
   // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
   // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
   scanRadios: () => scanRadios(),
@@ -607,6 +610,21 @@ async function getPortRadio(id: string): Promise<RadioStatus> {
   if (res.status === 404) throw new Error(await errorMessage(res, `No radio for port '${id}'.`));
   if (!res.ok) throw new Error(`/ports/${id}/radio: ${res.status} ${res.statusText}`);
   return (await res.json()) as RadioStatus;
+}
+
+// One port's rig-control (CAT) status — 404 means "no such port" (a port with no rig block
+// returns attached:false instead). Mirrors getPortRadio.
+async function getPortRig(id: string): Promise<RigStatus> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 60));
+    const found = mock.RIGS.find((x) => x.portId === id);
+    if (!found) throw new Error(`No rig attached to port '${id}'.`);
+    return structuredClone(found);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/rig`, { headers: { accept: "application/json" } });
+  if (res.status === 404) throw new Error(await errorMessage(res, `No rig for port '${id}'.`));
+  if (!res.ok) throw new Error(`/ports/${id}/rig: ${res.status} ${res.statusText}`);
+  return (await res.json()) as RigStatus;
 }
 
 // Bus discovery scan (GET /api/v1/radios/scan). Mock mode returns the RADIO_SCAN fixture after a short
@@ -1408,6 +1426,26 @@ export function subscribeFrames(onFrame: (f: MonitorEvent) => void): () => void 
   };
   es.addEventListener("frame", handler as EventListener);
   return () => { es.removeEventListener("frame", handler as EventListener); es.close(); };
+}
+
+// Live rig poll ticks (SSE /rigs/events, `event: rig`): one full RigStatus per attached rig per
+// tick — REPLACE per portId, don't append (unlike the frame stream). Idle rigs tick at the poll
+// cadence (~5 s); a keyed transmitter ticks at the meter cadence (~1 s) so SWR/power are live
+// during a transmission. EventSource auto-reconnects; heartbeat comments are ignored natively.
+export function subscribeRigs(onRig: (r: RigStatus) => void): () => void {
+  if (MODE === "mock") {
+    const id = setInterval(() => {
+      const rig = mock.RIGS[0];
+      if (rig?.attached) onRig({ ...structuredClone(rig), sampledAt: new Date().toISOString() });
+    }, 5000);
+    return () => clearInterval(id);
+  }
+  const es = new EventSource(withTokenParam(`${BASE}/rigs/events`));
+  const handler = (e: MessageEvent) => {
+    try { onRig(JSON.parse(e.data) as RigStatus); } catch { /* skip a malformed tick */ }
+  };
+  es.addEventListener("rig", handler as EventListener);
+  return () => { es.removeEventListener("rig", handler as EventListener); es.close(); };
 }
 
 /** Seed the monitor with a recent backlog (mock only; live seeds from the stream). */
