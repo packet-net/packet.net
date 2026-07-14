@@ -32,7 +32,7 @@ if (rig.Capabilities.HasFlag(RigCapabilities.DcdRead))
   genuinely diverge across backends, so this is not a closed enum.
 - **Receive-side reads** — `ReadDcdAsync` (true = carrier present / channel busy) and
   `ReadSignalStrengthDbmAsync` (dBm) are what the packet stack's carrier-sense seam needs;
-  the `IRadioControl` bridge adapter that consumes them is separate work in `Packet.Radio`.
+  the `IRadioControl` bridge adapter that consumes them is `Packet.Radio`'s `RigRadioControl`.
 - **Errors** are typed: `RigConnectionException` (link down — retry is sane),
   `RigTimeoutException`, `RigCommandException` (the backend said no; carries its native code),
   `RigProtocolException` (unparseable reply).

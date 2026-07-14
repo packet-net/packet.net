@@ -18,7 +18,7 @@ namespace Packet.Rig;
 /// capability-flag pattern (plan OQ-011). The receive-side reads the packet stack's
 /// carrier-sense seam needs — <see cref="ReadDcdAsync"/> and
 /// <see cref="ReadSignalStrengthDbmAsync"/> — live here; the <c>IRadioControl</c> adapter that
-/// bridges them into the packet stack is separate work in <c>Packet.Radio</c>.
+/// bridges them into the packet stack is <c>Packet.Radio</c>'s <c>RigRadioControl</c>.
 /// </para>
 /// <para>
 /// <b>Threading.</b> Implementations serialise commands internally — callers may issue
