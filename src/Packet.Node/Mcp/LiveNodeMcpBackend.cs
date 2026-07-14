@@ -5,6 +5,8 @@ using Packet.Mcp;
 using Packet.Node.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Core.Rigs;
+using Packet.Rig;
 
 namespace Packet.Node.Mcp;
 
@@ -124,6 +126,23 @@ public sealed class LiveNodeMcpBackend(
         return Task.FromResult(new McpNetworkTopology(snapshot.GeneratedAt, neighbours, destinations));
     }
 
+    public Task<IReadOnlyList<McpRigStatus>> RigStatusAsync(string? portId = null, CancellationToken ct = default)
+    {
+        // Same projections as GET /api/v1/rigs and /ports/{id}/rig (RigReadModels — no rig I/O
+        // on the request path; attached rigs report their monitor's latest poll-tick snapshot).
+        IReadOnlyList<Packet.Node.Core.Api.RigStatus> statuses = portId is null
+            ? RigReadModels.All(host.Supervisor, config.Current)
+            : RigReadModels.ForPort(host.Supervisor, config.Current, portId) is { } one ? [one] : [];
+
+        IReadOnlyList<McpRigStatus> result = statuses.Select(ToMcpRigStatus).ToList();
+        return Task.FromResult(result);
+    }
+
+    private static McpRigStatus ToMcpRigStatus(Packet.Node.Core.Api.RigStatus s) => new(
+        s.PortId, s.Attached, s.Kind, s.Endpoint, s.Backend, s.Manufacturer, s.Model,
+        s.Capabilities, s.ConnectionState, s.FrequencyHz, s.Mode, s.PassbandHz, s.Transmitting,
+        s.Meters?.Swr, s.Meters?.RfPowerWatts, s.Meters?.RfPowerRelative, s.SampledAt);
+
     // ---- write (operate-gated upstream in WriteTools; audited here) ----
 
     public async Task<SendResult> SendUiFrameAsync(SendUiRequest req, McpCaller caller, CancellationToken ct = default)
@@ -217,6 +236,116 @@ public sealed class LiveNodeMcpBackend(
                 .ApplyAsync(port.Transport, req.Param, req.Value, ct).ConfigureAwait(false);
             return new KissParamResult(r.Accepted, r.RequiresRestart, r.Message);
         }, ct).ConfigureAwait(false);
+    }
+
+    public async Task<RigFrequencyResult> SetRigFrequencyAsync(SetRigFrequencyRequest req, McpCaller caller, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+        if (req.FrequencyHz <= 0)
+        {
+            return new RigFrequencyResult(false, req.Port, null, "frequencyHz must be a positive Hz value.");
+        }
+        Audit(caller, "rig_set_frequency", req.Port, $"hz={req.FrequencyHz}");
+
+        long readBack = req.FrequencyHz;
+        string? error = await MutateRigAsync(req.Port, RigCapabilities.FrequencySet, async rig =>
+        {
+            await rig.SetFrequencyAsync(req.FrequencyHz, ct).ConfigureAwait(false);
+            if (rig.Capabilities.HasFlag(RigCapabilities.FrequencyGet))
+            {
+                readBack = await rig.GetFrequencyAsync(ct).ConfigureAwait(false);
+            }
+        }, ct).ConfigureAwait(false);
+
+        return error is null
+            ? new RigFrequencyResult(true, req.Port, readBack, $"rig on '{req.Port}' tuned to {readBack} Hz.")
+            : new RigFrequencyResult(false, req.Port, null, error);
+    }
+
+    public async Task<RigModeResult> SetRigModeAsync(SetRigModeRequest req, McpCaller caller, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+        RigMode mode;
+        try
+        {
+            mode = RigMode.From(req.Mode);
+        }
+        catch (ArgumentException ex)
+        {
+            return new RigModeResult(false, req.Port, null, null, ex.Message);
+        }
+        Audit(caller, "rig_set_mode", req.Port,
+            $"mode={mode.Token} passband={req.PassbandHz?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "default"}");
+
+        string readBackMode = mode.Token;
+        int? readBackPassband = req.PassbandHz;
+        string? error = await MutateRigAsync(req.Port, RigCapabilities.ModeSet, async rig =>
+        {
+            await rig.SetModeAsync(mode, req.PassbandHz, ct).ConfigureAwait(false);
+            if (rig.Capabilities.HasFlag(RigCapabilities.ModeGet))
+            {
+                var state = await rig.GetModeAsync(ct).ConfigureAwait(false);
+                readBackMode = state.Mode.Token;
+                readBackPassband = state.PassbandHz;
+            }
+        }, ct).ConfigureAwait(false);
+
+        return error is null
+            ? new RigModeResult(true, req.Port, readBackMode, readBackPassband,
+                $"rig on '{req.Port}' set to {readBackMode}.")
+            : new RigModeResult(false, req.Port, null, null, error);
+    }
+
+    // The MCP twin of PdnRigsApi.MutateRigAsync: resolve the port and its attached rig, gate on
+    // the advertised capability, run the action under the host's exclusive gate (so a rig write
+    // can't race a port teardown), and wake the poller so the event: rig feed carries the change
+    // within a tick. The REST 400/404/409 outcomes come back as a failure message here (the
+    // result-record convention this backend uses); null means success.
+    private async Task<string?> MutateRigAsync(
+        string portId, RigCapabilities required, Func<IRigControl, Task> action, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(portId))
+        {
+            return "port is required.";
+        }
+        var port = config.Current.Ports.FirstOrDefault(p => string.Equals(p.Id, portId, StringComparison.Ordinal));
+        if (port is null)
+        {
+            return $"no such port '{portId}'.";
+        }
+        var running = host.Supervisor?.GetPort(portId);
+        var rig = running?.Rig;
+        if (port.Rig is null)
+        {
+            return $"port '{portId}' has no rig: block configured.";
+        }
+        if (rig is null)
+        {
+            return $"port '{portId}' has a rig configured but not attached (port down, or the daemon was unreachable at bring-up).";
+        }
+        if (!rig.Capabilities.HasFlag(required))
+        {
+            return $"the attached rig does not advertise {required} — nothing was changed.";
+        }
+
+        try
+        {
+            await host.RunExclusiveAsync(() => action(rig), ct).ConfigureAwait(false);
+            running!.RigStatus?.RequestRefresh();
+            return null;
+        }
+        catch (RigException ex)
+        {
+            return ex.Message;
+        }
+        catch (ObjectDisposedException)
+        {
+            return $"port '{portId}' tore down while the command was in flight.";
+        }
+        catch (NotSupportedException ex)
+        {
+            return ex.Message;
+        }
     }
 
     // Persist the privileged-action invocation to the node-wide audit log (pdn.db).

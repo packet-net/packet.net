@@ -72,6 +72,31 @@ public sealed record McpDestination(
 /// <summary>One route to a destination, via a neighbour.</summary>
 public sealed record McpRoute(string Neighbour, int Quality, int Obsolescence);
 
+/// <summary>
+/// One port's rig-control (CAT) attachment (the <c>get_rig_status</c> projection) — mirrors the
+/// node's <c>RigStatus</c> read model with the TX-side meter sample flattened. Meters are polled
+/// fast only while <see cref="Transmitting"/>; an idle rig reads ~0 on all of them, so they are
+/// meaningful only during a transmission.
+/// </summary>
+public sealed record McpRigStatus(
+    [property: Description("Port the rig is (or would be) attached to.")] string PortId,
+    [property: Description("True when the rig backend is connected and being polled; false when configured but not attached (port down, or the daemon was unreachable at bring-up).")] bool Attached,
+    [property: Description("Rig-control kind: hamlib | flrig. Empty when the port has no rig configured.")] string Kind,
+    [property: Description("Daemon endpoint as host:port.")] string Endpoint,
+    [property: Description("What the backend calls itself (e.g. 'Hamlib rigctld', 'flrig'), or null when not attached.")] string? Backend,
+    [property: Description("Rig manufacturer as the backend reports it, when known.")] string? Manufacturer,
+    [property: Description("Rig model as the backend reports it, when known.")] string? Model,
+    [property: Description("Capability flags the rig actually advertises (frequencyGet, frequencySet, modeGet, modeSet, pttGet, pttSet, swrMeter, rfPowerMeter, rfPowerMeterWatts). Sets against an unadvertised capability are refused.")] IReadOnlyList<string> Capabilities,
+    [property: Description("Control-link health: healthy | faulted (self-heals — the backend re-dials on each poll) | unknown.")] string ConnectionState,
+    [property: Description("Current-VFO frequency in Hz, or null (capability absent, read failed, or no poll tick yet).")] long? FrequencyHz,
+    [property: Description("Current operating mode token (hamlib vocabulary or the rig's native name — USB, PKTUSB, DATA-U, ...), or null.")] string? Mode,
+    [property: Description("Receiver passband width in Hz where the backend reports one (hamlib does; flrig doesn't), or null.")] int? PassbandHz,
+    [property: Description("Last observed PTT state, or null when unreadable.")] bool? Transmitting,
+    [property: Description("SWR as a dimensionless ratio (1.0 = perfect match) from the last TX-side meter sample; meters sample only while transmitting, so null (or stale) when idle.")] double? Swr,
+    [property: Description("RF power output in watts from the last TX-side meter sample (calibrated backends only), or null.")] double? RfPowerWatts,
+    [property: Description("RF power output as a fraction of full scale (0-1) from the last TX-side meter sample, or null.")] double? RfPowerRelative,
+    [property: Description("When the last successful poll tick completed (UTC), or null before the first.")] DateTimeOffset? SampledAt);
+
 /// <summary>Filter for <c>recent_frames</c>. All fields optional.</summary>
 public sealed record FrameFilter(
     [property: Description("Only frames on this port.")] string? Port = null,
@@ -111,6 +136,30 @@ public sealed record SetKissParamRequest(
 /// (the construction-time params like <c>kiss.ackMode</c>).
 /// </summary>
 public sealed record KissParamResult(bool Accepted, bool RequiresRestart, string Message);
+
+/// <summary>Request for <c>set_rig_frequency</c>.</summary>
+public sealed record SetRigFrequencyRequest(
+    [property: Description("Port whose attached rig to retune.")] string Port,
+    [property: Description("Target current-VFO frequency in Hz.")] long FrequencyHz);
+
+/// <summary>
+/// Result of <c>set_rig_frequency</c>. <paramref name="FrequencyHz"/> is the read-back dial
+/// frequency on success (the requested value when the rig can't report one), null on refusal.
+/// </summary>
+public sealed record RigFrequencyResult(bool Accepted, string PortId, long? FrequencyHz, string Message);
+
+/// <summary>Request for <c>set_rig_mode</c>.</summary>
+public sealed record SetRigModeRequest(
+    [property: Description("Port whose attached rig's mode to set.")] string Port,
+    [property: Description("Mode token — hamlib vocabulary (USB, PKTUSB, ...) or the rig's native name.")] string Mode,
+    [property: Description("Explicit passband width in Hz; null = the rig's default width for the mode.")] int? PassbandHz = null);
+
+/// <summary>
+/// Result of <c>set_rig_mode</c>. <paramref name="Mode"/>/<paramref name="PassbandHz"/> are the
+/// read-back values on success (the requested values when the rig can't report them), null on
+/// refusal.
+/// </summary>
+public sealed record RigModeResult(bool Accepted, string PortId, string? Mode, int? PassbandHz, string Message);
 
 /// <summary>
 /// Scope names mirroring the node's <c>AuthScopes</c> (the hierarchical
