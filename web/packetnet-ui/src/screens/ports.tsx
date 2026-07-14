@@ -3,7 +3,7 @@
 // save-confirm. Port of the design handoff's screens-manage.jsx Ports/
 // PortEditor/NinoTestFlash, wired to the typed API client + mock domain models.
 // ============================================================
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button, Badge, Card, StatusDot, Input, Field, Label, Tooltip,
@@ -16,6 +16,7 @@ import { DoctorButton } from "@/components/doctor";
 import type {
   PortConfig, PortStatus, TransportConfig, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
   PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult,
+  RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
 } from "@/lib/types";
 import {
   NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, CHANNEL_MODES,
@@ -48,6 +49,9 @@ export interface PortDraft {
   compat: PortCompatConfig | null;
   // Per-port radio-control attachment (RSSI/health). Null = no radio attached.
   radio: RadioConfig | null;
+  // Per-port rig-control (CAT) attachment. Null = no rig attached. Unlike radio, valid on
+  // every transport kind — the rig never touches the packet path.
+  rig: RigConfig | null;
   // Per-port NET/ROM route quality (BPQ per-port QUALITY), 0..255. Null = inherit the
   // node-wide netRom.defaultNeighbourQuality.
   netRomQuality: number | null;
@@ -110,6 +114,9 @@ export function portDraftToConfig(d: PortDraft): PortConfig {
     // The radio-control attachment (RSSI/health). Only the serial-modem kinds can carry one, so a
     // transport switched to kiss-tcp / AXUDP drops it; otherwise it round-trips intact.
     radio: RADIO_CAPABLE_KINDS.has(d.transport.kind) ? (d.radio ?? null) : null,
+    // The rig-control (CAT) attachment. Valid on every transport kind (the rig never touches the
+    // packet path — server: PortRigConfig), so it round-trips regardless of the transport.
+    rig: d.rig ?? null,
     netRomQuality: d.netRomQuality,
     netRomMinQuality: d.netRomMinQuality,
     nodesPaclen: d.nodesPaclen,
@@ -159,6 +166,7 @@ export function Ports() {
     beacon: null,
     compat: null,
     radio: null,
+    rig: null,
     netRomQuality: null,
     netRomMinQuality: null,
     nodesPaclen: null,
@@ -176,6 +184,7 @@ export function Ports() {
       beacon: p.beacon,
       compat: p.compat ?? null,
       radio: p.radio ?? null,
+      rig: p.rig ?? null,
       netRomQuality: p.netRomQuality ?? null,
       netRomMinQuality: p.netRomMinQuality ?? null,
       nodesPaclen: p.nodesPaclen ?? null,
@@ -463,6 +472,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
       return { ...d, compat: isDefault ? null : next };
     });
   const setRadio = (radio: RadioConfig | null) => setModel((d) => (d ? { ...d, radio } : d));
+  const setRig = (rig: RigConfig | null) => setModel((d) => (d ? { ...d, rig } : d));
 
   const profile = RADIO_PROFILES.find((r) => r.id === setup.radio);
   const baseline: Record<string, number> = profile ? profile.baseline : { ...AX25_DEFAULTS, ...KISS_DEFAULTS };
@@ -638,6 +648,9 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
         {RADIO_CAPABLE_KINDS.has(t.kind) && (
           <RadioControlSection key={srcKey} radio={model.radio} onChange={setRadio} />
         )}
+
+        {/* rig-control (CAT) attachment — every transport kind (the rig never touches the packet path) */}
+        <RigControlSection key={srcKey ? srcKey + ":rig" : undefined} rig={model.rig} onChange={setRig} />
 
         {/* advanced parameters */}
         <details className="rounded-lg border border-border" open={setup.custom}>
@@ -884,6 +897,321 @@ function RadioControlSection({ radio, onChange }: {
             <div className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
               <Icon name="alert" size={13} className="mt-px shrink-0" />
               <span>Set exactly one of a CCDI serial or a device path — {hasSerial && hasPort ? "not both." : "the radio has neither yet (scan, or enter one)."}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- rig-control (CAT) attachment editor: attach the transceiver's station-control channel ----
+// A "Rig control (CAT)" section for EVERY transport kind (unlike radio:, the rig never touches the
+// packet path — server: PortRigConfig). Two binding shapes, mirroring the server's
+// `device`-selects-node-managed discipline (PortRigConfig.IsNodeManaged):
+//   node-managed — "Scan for rigs" (GET /rigs/scan) → pick the detected device (byIdPath preferred:
+//     it survives renumbering) → confirm/pick the hamlib model (GET /rigs/models, filter-as-you-
+//     type). The node then spawns + supervises rigctld itself. hamlib only.
+//   BYO daemon — the collapsible "Use an existing rigctld/flrig daemon" path: kind + host + optional
+//     port, for a daemon the operator already runs (the only shape flrig supports).
+// Mutating controls are operate-gated, disable-never-hide: without the scope the section stays
+// visible read-only. Saving flows through the ordinary draft save (editPort/addPort).
+const RIG_DEFAULT_PORTS: Record<RigConfig["kind"], number> = { hamlib: 4532, flrig: 12345 };
+
+// One-line summary of the current rig config (kind + device/model, or kind + host:port).
+function rigDesc(r: RigConfig): string {
+  if (r.device?.trim()) {
+    return `hamlib · ${r.device}` +
+      (r.model != null ? ` · model #${r.model}` : " · model not set") +
+      (r.serialSpeed != null ? ` · ${r.serialSpeed} baud` : "");
+  }
+  return `${r.kind} · ${r.host ?? "127.0.0.1"}:${r.port ?? RIG_DEFAULT_PORTS[r.kind]}`;
+}
+
+function RigControlSection({ rig, onChange }: {
+  rig: RigConfig | null;
+  onChange: (r: RigConfig | null) => void;
+}) {
+  const { has } = useAuth();
+  const canOperate = has("operate"); // mutating the rig attachment is a config write (operate)
+  const attached = rig != null;
+  // The BYO-daemon path is collapsed by default; open it when the loaded config already binds
+  // that way (`device` unset — the server's IsNodeManaged authority, inverted).
+  const [useDaemon, setUseDaemon] = useState<boolean>(attached && !rig?.device?.trim());
+  const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState<RigScan | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [models, setModels] = useState<RigModelCatalogue | null>(null);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelQuery, setModelQuery] = useState("");
+
+  // Load the hamlib catalogue once the node-managed shape is being edited (the model picker
+  // needs it; the BYO shape doesn't — its daemon already knows its rig).
+  useEffect(() => {
+    if (!attached || useDaemon || models || modelsError) return;
+    let live = true;
+    api.getRigModels()
+      .then((m) => { if (live) setModels(m); })
+      .catch((e) => { if (live) setModelsError(String((e as Error)?.message ?? e)); });
+    return () => { live = false; };
+  }, [attached, useDaemon, models, modelsError]);
+
+  // Keeps the block a valid RigConfig (kind is required); a field cleared to undefined drops
+  // from the JSON, preserving the server's exactly-one-shape discipline.
+  const patch = (p: Partial<RigConfig>) => onChange({ ...(rig ?? { kind: "hamlib" }), ...p });
+  const enable = () => { onChange({ kind: "hamlib" }); setUseDaemon(false); };
+  const disable = () => { onChange(null); setUseDaemon(false); setScan(null); setScanError(null); };
+  // Flip between the two shapes, dropping the other shape's fields (the server rejects a mixed
+  // block) while carrying the untouched passthrough cadences.
+  const setDaemonMode = (on: boolean) => {
+    setUseDaemon(on);
+    if (!rig) return;
+    if (on) {
+      onChange({
+        kind: rig.kind, host: rig.host ?? "127.0.0.1", port: rig.port,
+        device: undefined, model: undefined, serialSpeed: undefined,
+        pollIntervalSeconds: rig.pollIntervalSeconds, meterIntervalSeconds: rig.meterIntervalSeconds,
+      });
+    } else {
+      onChange({
+        kind: "hamlib", device: rig.device, model: rig.model, serialSpeed: rig.serialSpeed,
+        host: undefined, port: undefined,
+        pollIntervalSeconds: rig.pollIntervalSeconds, meterIntervalSeconds: rig.meterIntervalSeconds,
+      });
+    }
+  };
+  // Picking an unclaimed scan row binds the stable device path (by-id preferred) and fills the
+  // model from the suggestion when the catalogue resolved one; otherwise the model picker takes over.
+  const pick = (dev: RigScanDevice) => {
+    onChange({
+      kind: "hamlib",
+      device: dev.byIdPath ?? dev.devicePath,
+      model: dev.suggestion?.modelNumber ?? rig?.model,
+      serialSpeed: rig?.serialSpeed,
+      host: undefined, port: undefined,
+      pollIntervalSeconds: rig?.pollIntervalSeconds, meterIntervalSeconds: rig?.meterIntervalSeconds,
+    });
+  };
+
+  const doScan = async () => {
+    setScanning(true); setScanError(null);
+    try { setScan(await api.scanRigs()); }
+    catch (e) { setScanError(String((e as Error)?.message ?? e)); }
+    finally { setScanning(false); }
+  };
+
+  // What "complete" means per shape (the server validates the same way on save).
+  const valid = !attached ? true : useDaemon
+    ? !!rig.host?.trim()
+    : !!rig.device?.trim() && rig.model != null;
+
+  const noHamlib = models != null && !models.available;
+  const selectedModel = rig?.model != null
+    ? models?.models.find((m) => m.number === rig.model) ?? null
+    : null;
+  const q = modelQuery.trim().toLowerCase();
+  const matches = q && models?.available
+    ? models.models
+        .filter((m) => `${m.manufacturer} ${m.model} ${m.number}`.toLowerCase().includes(q))
+        .slice(0, 8)
+    : [];
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="rig-control">
+      <div className="mb-3 flex items-center justify-between">
+        <Label className="text-foreground">Rig control (CAT)</Label>
+        <div className="flex items-center gap-2">
+          {attached && (valid ? <Badge variant="success">attached</Badge> : <Badge variant="warning">incomplete</Badge>)}
+          <Switch
+            checked={attached}
+            onChange={(v) => (v ? enable() : disable())}
+            disabled={!canOperate}
+            title={canOperate
+              ? (attached ? "Remove the rig attachment from this port" : "Attach the transceiver's CAT (rig-control) channel")
+              : "Changing the rig attachment requires the operate scope"}
+          />
+        </div>
+      </div>
+
+      {!attached ? (
+        <p className="text-xs text-muted-foreground">
+          Attach the transceiver's <strong>CAT</strong> (rig-control) channel so pdn can show its dial
+          frequency, mode, PTT and TX meters — and retune it from the panel. Scan for a plugged-in rig
+          (the node runs <span className="font-mono">rigctld</span> for you), or point at a
+          rigctld / flrig daemon you already run.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {/* the current attachment at a glance (kind + device/model, or kind + host:port) */}
+          <div className="rounded-md bg-muted/40 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground" data-testid="rig-summary">
+            {rigDesc(rig)}
+          </div>
+
+          {!useDaemon ? (
+            <div className="space-y-2">
+              <Field label="Rig serial device" info="The rig's CAT serial device. The /dev/serial/by-id path is preferred — it survives /dev/ttyUSB* renumbering across replug/reboot. Scan to discover plugged-in rigs; the node spawns and supervises rigctld against this device.">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={rig.device ?? ""}
+                    onChange={(e) => patch({ device: e.target.value })}
+                    placeholder="/dev/serial/by-id/usb-…"
+                    className="font-mono"
+                    disabled={!canOperate}
+                  />
+                  <Button variant="outline" size="sm" onClick={doScan} disabled={scanning || !canOperate}
+                    title={canOperate ? undefined : "Scanning is read-only, but binding the result requires the operate scope"}>
+                    <Icon name={scanning ? "restart" : "search"} size={14} className={cn(scanning && "animate-spin")} />
+                    {scanning ? "Scanning…" : "Scan for rigs"}
+                  </Button>
+                </div>
+              </Field>
+              {scanError && <p className="text-[11px] text-danger">{scanError}</p>}
+              {scan && scan.devices.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">No candidate serial devices found on the node.</p>
+              )}
+              {scan && scan.devices.length > 0 && (
+                <div className="space-y-1.5">
+                  {scan.devices.map((dev) => {
+                    const claimed = dev.claimedBy != null;
+                    const key = dev.byIdPath ?? dev.devicePath;
+                    const selected = rig.device === key;
+                    const sugg = dev.suggestion;
+                    return (
+                      <button
+                        key={dev.devicePath}
+                        onClick={() => pick(dev)}
+                        disabled={claimed || !canOperate}
+                        title={claimed
+                          ? `In use — claimed by ${dev.claimedBy}`
+                          : canOperate ? undefined : "Binding a rig requires the operate scope"}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left transition-colors",
+                          selected ? "border-primary bg-primary/5" : "border-border",
+                          claimed ? "opacity-60" : !selected && "hover:bg-accent",
+                        )}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-sm">{dev.descriptor ?? dev.devicePath}</span>
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                            {dev.devicePath}
+                            {claimed ? ` · claimed by ${dev.claimedBy}` : ""}
+                          </span>
+                          {sugg && (
+                            <span className="block text-[11px] font-medium text-success">
+                              {sugg.manufacturer} {sugg.model}
+                              {sugg.modelNumber != null ? ` · hamlib #${sugg.modelNumber}` : " · pick the model below"}
+                            </span>
+                          )}
+                        </span>
+                        {claimed
+                          ? <Badge variant="muted">claimed</Badge>
+                          : selected && <Icon name="check" size={15} className="shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <Field label="Hamlib model" info="The hamlib rig model number rigctld is launched with (rigctl -l lists them, e.g. 3073 = IC-7300). A scan suggestion fills it automatically when the device identifies itself; otherwise search the node's catalogue.">
+                {noHamlib ? (
+                  <div className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+                    <Icon name="alert" size={13} className="mt-px shrink-0" />
+                    <span>hamlib is not installed on the node — the model catalogue is unavailable, and the node can't run rigctld. Install hamlib, or use an existing daemon below.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] text-muted-foreground">
+                      {rig.model != null
+                        ? <>Selected: <span className="font-mono text-foreground">
+                            {selectedModel ? `${selectedModel.manufacturer} ${selectedModel.model} (#${selectedModel.number})` : `hamlib #${rig.model}`}
+                          </span></>
+                        : "No model selected yet — search the catalogue."}
+                    </p>
+                    <Input
+                      value={modelQuery}
+                      onChange={(e) => setModelQuery(e.target.value)}
+                      placeholder="Search the catalogue — e.g. IC-7300"
+                      disabled={!canOperate || models == null}
+                      aria-label="Search rig models"
+                    />
+                    {modelsError && <p className="text-[11px] text-danger">{modelsError}</p>}
+                    {q && models?.available && matches.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground">No catalogue model matches “{modelQuery.trim()}”.</p>
+                    )}
+                    {matches.length > 0 && (
+                      <div className="space-y-1">
+                        {matches.map((m) => (
+                          <button
+                            key={m.number}
+                            onClick={() => { patch({ model: m.number }); setModelQuery(""); }}
+                            disabled={!canOperate}
+                            className="flex w-full items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5 text-left text-sm transition-colors hover:bg-accent"
+                          >
+                            <span>{m.manufacturer} {m.model} <span className="font-mono text-[11px] text-muted-foreground">(#{m.number})</span></span>
+                            <Badge variant="muted">{m.status}</Badge>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Field>
+
+              <Field label="CAT serial speed" info="Advanced, optional: the baud rigctld opens the CAT serial device at (rigctld -s). Leave blank for hamlib's per-model default." className="max-w-[12rem]">
+                <Input
+                  type="number"
+                  value={rig.serialSpeed ?? ""}
+                  placeholder="model default"
+                  onChange={(e) => patch({ serialSpeed: e.target.value === "" ? undefined : +e.target.value })}
+                  className="font-mono"
+                  disabled={!canOperate}
+                />
+              </Field>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Daemon kind" info="What protocol the daemon speaks: hamlib's rigctld network protocol, or flrig's XML-RPC server.">
+                <Select value={rig.kind} onChange={(e) => patch({ kind: e.target.value as RigConfig["kind"] })} disabled={!canOperate} aria-label="Daemon kind">
+                  <option value="hamlib">hamlib rigctld</option>
+                  <option value="flrig">flrig</option>
+                </Select>
+              </Field>
+              <Field label="Host" info="Where the daemon runs. Neither rigctld nor flrig authenticates, so anything beyond 127.0.0.1 is a deliberate station-owner choice.">
+                <Input value={rig.host ?? ""} onChange={(e) => patch({ host: e.target.value })} placeholder="127.0.0.1" className="font-mono" disabled={!canOperate} />
+              </Field>
+              <Field label="TCP port" info="The daemon's TCP port. Leave blank for the kind default — 4532 (rigctld) or 12345 (flrig).">
+                <Input
+                  type="number" min={1} max={65535}
+                  value={rig.port ?? ""}
+                  placeholder={String(RIG_DEFAULT_PORTS[rig.kind])}
+                  onChange={(e) => patch({ port: e.target.value === "" ? undefined : +e.target.value })}
+                  className="font-mono"
+                  disabled={!canOperate}
+                />
+              </Field>
+            </div>
+          )}
+
+          {/* the BYO-daemon escape hatch, collapsed by default (mirrors AdoptOptions in headends.tsx) */}
+          <button
+            type="button"
+            onClick={() => setDaemonMode(!useDaemon)}
+            disabled={!canOperate}
+            title={canOperate ? undefined : "Changing the rig binding requires the operate scope"}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Icon name="chevRight" size={12} className={cn("transition-transform", useDaemon && "rotate-90")} />
+            {useDaemon ? "Use an existing rigctld/flrig daemon (on) — back to a node-managed rig" : "Use an existing rigctld/flrig daemon"}
+          </button>
+
+          {!valid && (
+            <div className="flex items-start gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+              <Icon name="alert" size={13} className="mt-px shrink-0" />
+              <span>
+                {useDaemon
+                  ? "Enter the daemon's host (127.0.0.1 for a daemon on the node itself)."
+                  : "Pick the rig's serial device and its hamlib model — scan to discover plugged-in rigs."}
+              </span>
             </div>
           )}
         </div>
