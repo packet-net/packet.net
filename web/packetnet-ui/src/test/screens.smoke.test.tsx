@@ -63,6 +63,19 @@ describe("screens render without crashing", () => {
     expect(screen.getAllByText(/dBm/).length).toBeGreaterThan(0);
   });
 
+  it("Dashboard surfaces the Rigs panel with the dial and TX meters", async () => {
+    mount(<Dashboard />);
+    // The station-control card: model identity, the frequency dial, mode badge, and the
+    // TX-meters section (SWR is sampled during transmissions, last sample stays on display).
+    await waitFor(() => expect(screen.getByText(/^Rigs$/)).toBeInTheDocument());
+    expect(screen.getAllByText(/IC-7300/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("14.074.000").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PKTUSB").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/TX meters/i).length).toBeGreaterThan(0);
+    // The configured-but-unreachable flrig renders honestly.
+    expect(screen.getAllByText(/not attached/i).length).toBeGreaterThan(0);
+  });
+
   it("Sessions renders", async () => {
     const { container } = mount(<Sessions />);
     expect(container.firstChild).toBeTruthy();

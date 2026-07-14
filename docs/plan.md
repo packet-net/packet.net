@@ -1264,6 +1264,26 @@ direct tag push 403s, so each `v0.2.19` tag was cut via the repo's `release.yml`
 HEAD = the pin-bump merge commit). Source-compatible, no code change either side; no TS leg
 (unchanged this cycle).
 
+### 2026-07-14 — Web UI: the rig card (read-only) — dial, PTT, TX meters, live over SSE
+
+The rig arc reaches the operator surface. `RigsPanel`/`RigCard` on the dashboard (the sibling
+of `RadiosPanel`, same card idiom/tokens): per rig-attached port — the **dial** (frequency hero
+in rig-display grouping, `14.074.000 MHz`, via a new `fmtRigFrequency`; mode badge + passband),
+a **PTT pill** (transmitting/receive/—), and **TX meters** (SWR with a threshold-coloured bar,
+1.5/2.5 green/amber/red; power in watts, falling back to % of full scale) with the honest
+"sampled while keyed; last transmission stays on display" tooltip. **Capability-driven by
+contract**: the card renders exactly the `capabilities` slice the rig advertises — no
+per-backend UI code, a Tait adapter would show PTT + power and nothing else. Live path: seeded
+from `GET /rigs`, then the `event: rig` SSE feed **replaces per portId** (keyed stream — the
+deliberate contrast with the append-only frame stream, encoded in `subscribeRigs`). Not-attached
+rigs render the muted config projection. api.ts gains `getRigs`/`getPortRig`/`subscribeRigs`
+(the `subscribeFrames`/`getPortRadio` patterns verbatim), types.ts the wire contract, mock.ts
+fixtures (an attached IC-7300 over rigctld + an unreachable flrig). Gate: `npm run build`
+(tsc strict + vite) + all 119 vitest tests green incl. a new dashboard smoke assertion battery.
+Noted in passing: `npm run lint` is broken repo-wide (no eslint config file exists anywhere in
+`web/packetnet-ui/` — flat-config migration never happened?); CI doesn't run lint, so not
+blocking, but worth a cleanup pass someday.
+
 ### 2026-07-14 — Node rig integration, read-only slice: `rig:` on a port → poller → API + SSE
 
 The `Packet.Rig*` libraries (released this morning as 0.22.0) reach the node. **Port-scoped by

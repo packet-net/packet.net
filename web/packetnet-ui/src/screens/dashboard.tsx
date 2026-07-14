@@ -10,10 +10,10 @@ import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent, StatusDot, Tooltip, Icon,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { api, useQuery, subscribeFrames } from "@/lib/api";
+import { api, useQuery, subscribeFrames, subscribeRigs } from "@/lib/api";
 import { portHealth } from "@/lib/health";
-import { KIND_LABEL, fmtUptime } from "@/lib/mock";
-import type { RadioStatus } from "@/lib/types";
+import { KIND_LABEL, fmtUptime, fmtRigFrequency } from "@/lib/mock";
+import type { RadioStatus, RigStatus } from "@/lib/types";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -156,6 +156,9 @@ export function Dashboard() {
 
       {/* radios — link quality + health for every radio-attached port */}
       <RadiosPanel />
+
+      {/* rigs — the station-control (CAT) view for every rig-attached port */}
+      <RigsPanel />
 
       {/* recent activity — journald-style log tail */}
       <Card className="mt-4">
@@ -308,6 +311,158 @@ function RadioCard({ r }: { r: RadioStatus }) {
           <div><p className="text-muted-foreground">Rev/Fwd</p><p className="tnum mt-0.5 font-mono">{h?.reverseForwardRatio != null ? h.reverseForwardRatio.toFixed(3) : "—"}</p></div>
         </div>
       </div>
+    </Card>
+  );
+}
+
+
+// ---- rig-control (CAT) panel (GET /api/v1/rigs + the `event: rig` SSE feed) -----------------
+// The station-control sibling of RadiosPanel: one card per rig-attached port — the dial
+// (frequency + mode), a PTT pill, and SWR/power meters that come alive during a transmission.
+// Capability-driven by contract: the card renders exactly the slice the rig advertises in
+// `capabilities` (an IC-7300 over rigctld shows everything; a Tait adapter would show PTT and a
+// power bar and nothing else). Seeded from REST, then live: each SSE tick REPLACES that port's
+// status (the stream is keyed, not append-only like frames). Absent on a node with no rigs.
+function RigsPanel() {
+  const { data: seeded } = useQuery(api.getRigs, []);
+  const [byPort, setByPort] = useState<Record<string, RigStatus>>({});
+  useEffect(() => {
+    if (!seeded) return;
+    setByPort((prev) => {
+      const next = { ...prev };
+      for (const r of seeded) next[r.portId] ??= r;
+      return next;
+    });
+  }, [seeded]);
+  useEffect(() => subscribeRigs((r) => setByPort((prev) => ({ ...prev, [r.portId]: r }))), []);
+
+  const rigs = Object.values(byPort).sort((a, b) => a.portId.localeCompare(b.portId));
+  if (rigs.length === 0) return null;
+  return (
+    <section className="mt-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon name="gauge" size={15} className="text-muted-foreground" />
+        <h2 className="text-sm font-semibold tracking-tight">Rigs</h2>
+        <Badge variant="muted">{rigs.length}</Badge>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {rigs.map((r) => <RigCard key={r.portId} r={r} />)}
+      </div>
+    </section>
+  );
+}
+
+// SWR ratio → a glance colour: a good match reads green, worth-a-look amber, get-off-the-key red.
+function swrTone(swr: number): string {
+  if (swr <= 1.5) return "text-success";
+  if (swr <= 2.5) return "text-warning";
+  return "text-danger";
+}
+
+function swrBarClass(swr: number): string {
+  if (swr <= 1.5) return "bg-success";
+  if (swr <= 2.5) return "bg-warning";
+  return "bg-danger";
+}
+
+function RigCard({ r }: { r: RigStatus }) {
+  const conn = CONNECTION_BADGE[r.connectionState];
+  const can = (cap: string) => r.capabilities.includes(cap);
+  const meters = r.meters;
+  const showMeters = can("swrMeter") || can("rfPowerMeter") || can("rfPowerMeterWatts");
+  return (
+    <Card className={cn("p-4", r.connectionState === "faulted" && "border-danger/40")}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-semibold">{r.portId}</span>
+            <Badge variant={conn.variant}>{conn.label}</Badge>
+            {!r.attached && <Badge variant="muted">not attached</Badge>}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {r.model
+              ? <>{r.manufacturer ? `${r.manufacturer} ` : ""}{r.model} · {r.backend ?? r.kind}</>
+              : <>{r.kind} · <span className="font-mono">{r.endpoint}</span></>}
+          </p>
+        </div>
+        {/* PTT — the transmitter state, when the rig can report it */}
+        <div className="shrink-0 text-right">
+          {!can("pttGet") || r.transmitting == null ? (
+            <span className="text-[11px] text-muted-foreground/60">—</span>
+          ) : r.transmitting ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-danger">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger live-dot" /> transmitting
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" /> receive
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* the dial — frequency hero + mode badge */}
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Frequency</p>
+          <p className="tnum font-mono text-2xl font-semibold leading-none">
+            {can("frequencyGet") && r.frequencyHz != null
+              ? <>{fmtRigFrequency(r.frequencyHz)}<span className="ml-1 text-sm font-normal text-muted-foreground">MHz</span></>
+              : <span className="text-muted-foreground/50">—</span>}
+          </p>
+        </div>
+        <div className="text-right">
+          {can("modeGet") && r.mode
+            ? <>
+                <Badge variant="secondary" className="font-mono">{r.mode}</Badge>
+                {r.passbandHz != null && r.passbandHz > 0 && (
+                  <p className="tnum mt-1 text-[11px] text-muted-foreground">{(r.passbandHz / 1000).toFixed(1)} kHz</p>
+                )}
+              </>
+            : <span className="text-[11px] text-muted-foreground/60">—</span>}
+        </div>
+      </div>
+
+      {/* TX meters — sampled only while transmitting; the last TX sample stays on display */}
+      {showMeters && (
+        <div className="mt-3 border-t border-border pt-3">
+          <Tooltip text="SWR and power are sampled while the transmitter is keyed (an idle rig reads ~0, so meters aren't polled between transmissions). The values shown are from the most recent transmission.">
+            <p className="mb-1.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              TX meters <Icon name="info" size={11} />
+            </p>
+          </Tooltip>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {can("swrMeter") && (
+              <div>
+                <p className="text-muted-foreground">SWR</p>
+                {meters?.swr != null ? (
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <span className={cn("tnum font-mono font-semibold", swrTone(meters.swr))}>{meters.swr.toFixed(1)}</span>
+                    <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                      <span
+                        className={cn("block h-full rounded-full", swrBarClass(meters.swr))}
+                        style={{ width: `${Math.min(100, Math.max(4, ((meters.swr - 1) / 3) * 100))}%` }}
+                      />
+                    </span>
+                  </div>
+                ) : <p className="tnum mt-0.5 font-mono text-muted-foreground/50">—</p>}
+              </div>
+            )}
+            {(can("rfPowerMeterWatts") || can("rfPowerMeter")) && (
+              <div>
+                <p className="text-muted-foreground">Power</p>
+                <p className="tnum mt-0.5 font-mono">
+                  {meters?.rfPowerWatts != null
+                    ? <>{Math.round(meters.rfPowerWatts)}<span className="ml-0.5 text-muted-foreground">W</span></>
+                    : meters?.rfPowerRelative != null
+                      ? <>{Math.round(meters.rfPowerRelative * 100)}<span className="ml-0.5 text-muted-foreground">%</span></>
+                      : <span className="text-muted-foreground/50">—</span>}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

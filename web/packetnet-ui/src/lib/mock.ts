@@ -13,6 +13,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
+  RigStatus,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -238,6 +239,30 @@ export const RADIOS: RadioStatus[] = [
 export const RADIO_SCAN: RadioScanResult[] = [
   { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
   { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
+];
+
+// Rig-control attachments (GET /api/v1/rigs) — the station-control (CAT) view. One attached
+// hamlib rig mid-QSO shape (dial + mode + a last-TX meter sample) and one configured flrig
+// whose daemon isn't up, so the card's not-attached projection renders.
+export const RIGS: RigStatus[] = [
+  {
+    portId: "hf-300", attached: true, kind: "hamlib", endpoint: "127.0.0.1:4532",
+    backend: "Hamlib rigctld", manufacturer: "Icom", model: "IC-7300",
+    capabilities: [
+      "frequencyGet", "frequencySet", "modeGet", "modeSet", "pttGet", "pttSet",
+      "swrMeter", "rfPowerMeter", "rfPowerMeterWatts",
+    ],
+    connectionState: "healthy", frequencyHz: 14074000, mode: "PKTUSB", passbandHz: 3000,
+    transmitting: false,
+    meters: { swr: 1.3, rfPowerWatts: 42, rfPowerRelative: 0.42, sampleAt: new Date(Date.now() - 90_000).toISOString() },
+    sampledAt: new Date(Date.now() - 3000).toISOString(),
+  },
+  {
+    portId: "vhf-1", attached: false, kind: "flrig", endpoint: "127.0.0.1:12345",
+    backend: null, manufacturer: null, model: null, capabilities: [],
+    connectionState: "unknown", frequencyHz: null, mode: null, passbandHz: null,
+    transmitting: null, meters: null, sampledAt: null,
+  },
 ];
 
 // Split-station head-end fleet scan (GET /api/v1/radios/headends) — the "plug into any port and go"
@@ -568,6 +593,15 @@ export const AVAILABLE_APPS: AvailableApp[] = [
 ];
 
 // formatters -------------------------------------------------
+// Rig-dial frequency grouping: 14_074_000 Hz → "14.074.000" (MHz.kHz.Hz, how transceivers
+// render the dial). Callers add the unit suffix.
+export function fmtRigFrequency(hz: number): string {
+  const mhz = Math.floor(hz / 1_000_000);
+  const khz = Math.floor(hz / 1_000) % 1_000;
+  const rem = hz % 1_000;
+  return `${mhz}.${String(khz).padStart(3, "0")}.${String(rem).padStart(3, "0")}`;
+}
+
 export function fmtUptime(s: number): string {
   const d = Math.floor(s / 86400); s %= 86400;
   const h = Math.floor(s / 3600); s %= 3600;

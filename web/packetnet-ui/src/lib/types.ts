@@ -329,6 +329,37 @@ export interface RadioStatus {
   channelBusy: boolean | null;
   health: RadioHealth | null;
 }
+// ---- rig-control (CAT) status (server: Packet.Node.Core.Api.RigStatus) ----
+// GET /api/v1/rigs → RigStatus[]; GET /api/v1/ports/{id}/rig → RigStatus (404 unknown port);
+// GET /api/v1/rigs/events → SSE, one `event: rig` per poll tick per attached rig. One per port
+// that has a `rig:` block — the station-control sibling of RadioStatus (a port can carry both).
+// `capabilities` is the render contract: show exactly the slice the rig advertises.
+export type RigConnectionState = "healthy" | "faulted" | "unknown";
+// Latest TX-side meter sample — sampled only while the transmitter is keyed (idle rigs read ~0).
+export interface RigMeters {
+  swr: number | null;              // dimensionless ratio, 1.0 = perfect match
+  rfPowerWatts: number | null;     // calibrated backends
+  rfPowerRelative: number | null;  // 0..1 fraction of full scale
+  sampleAt: string;
+}
+export interface RigStatus {
+  portId: string;
+  attached: boolean;
+  kind: string;                    // "hamlib" | "flrig" ("" for a port with no rig block)
+  endpoint: string;                // host:port, config defaults resolved
+  backend: string | null;          // e.g. "Hamlib rigctld", "flrig"
+  manufacturer: string | null;
+  model: string | null;            // e.g. "IC-7300"
+  capabilities: string[];          // camelCased RigCapabilities flag names
+  connectionState: RigConnectionState; // "faulted" self-heals — the backends re-dial per poll
+  frequencyHz: number | null;      // current-VFO Hz
+  mode: string | null;             // "USB" | "PKTUSB" | rig-native ("DATA-U", …)
+  passbandHz: number | null;       // hamlib reports it; flrig can't
+  transmitting: boolean | null;    // last observed PTT
+  meters: RigMeters | null;
+  sampledAt: string | null;        // last successful poll tick
+}
+
 // GET /api/v1/radios/scan → RadioScanResult[]. One row per radio a bus scan found. `serial` (the CCDI
 // serial number) is the STABLE primary key: device paths renumber across replug/reboot and the CP2102
 // CCDI dongles share a USB serial, so `byIdPath` may be null (ambiguous) — bind a port by `serial`.
