@@ -352,6 +352,45 @@ paths:
       responses:
         "200": { description: SSE stream, content: { text/event-stream: { schema: { type: string } } } }
 
+  /rigs/scan:
+    get:
+      tags: [rigs]
+      summary: Scan local serial devices for CAT-capable rigs (passive — no serial I/O)
+      description: >
+        Enumerates the machine's candidate CAT serial devices (/dev/ttyUSB* + /dev/ttyACM*),
+        resolves each one's stable /dev/serial/by-id descriptor, marks devices already claimed
+        by the current config (a port's transport, radio or rig block), and — where the
+        descriptor is genuinely model-distinctive (an IC-7300's bridge, a native-USB IC-705) —
+        suggests a hamlib manufacturer/model with its catalogue number resolved against the
+        installed rigctl. Passive identification only: nothing is ever written to a device (no
+        ID;/CI-V probing). Adoption happens through the normal port-write path (attach a `rig:`
+        block to a port); there is no adopt endpoint. Bounded + single-flight.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RigScan" } } } }
+
+  /rigs/models:
+    get:
+      tags: [rigs]
+      summary: The hamlib rig model catalogue (rigctl -l)
+      description: >
+        The installed hamlib's model table, parsed from `rigctl -l` once and cached for the
+        process lifetime — number, manufacturer, model, status. The wizard's model picker;
+        no query parameter — the client filters. available=false with an empty list on a host
+        without rigctl.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available, models]
+                properties:
+                  available: { type: boolean, description: "false = rigctl not installed (or no catalogue registered)" }
+                  models: { type: array, items: { $ref: "#/components/schemas/RigCatalogueModel" } }
+
   /ports/{id}/doctor:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     get:
@@ -1064,6 +1103,45 @@ components:
         rfPowerWatts: { type: [number, "null"], description: "RF power output in watts (calibrated backends)" }
         rfPowerRelative: { type: [number, "null"], description: "RF power output as a fraction of full scale (0–1)" }
         sampleAt: { type: string, format: date-time }
+
+    RigScan:
+      type: object
+      description: The rig plug-and-play scan — every candidate local CAT serial device, with claim marking and (where the by-id descriptor identifies one) a hamlib model suggestion. Passive; nothing is written to any device.
+      required: [devices, catalogueAvailable]
+      properties:
+        devices: { type: array, items: { $ref: "#/components/schemas/RigScanDevice" } }
+        catalogueAvailable: { type: boolean, description: "whether the hamlib catalogue (rigctl -l) was available to resolve suggestion model numbers" }
+
+    RigScanDevice:
+      type: object
+      description: One local serial device seen by a rig scan.
+      required: [devicePath]
+      properties:
+        devicePath: { type: string, description: "current device, e.g. /dev/ttyUSB0 (may renumber between scans — bind rig.device: to byIdPath)" }
+        byIdPath: { type: [string, "null"], description: "the /dev/serial/by-id/* symlink for this device, or null when absent/ambiguous/off-Linux" }
+        descriptor: { type: [string, "null"], description: "the by-id basename (the udev USB descriptor string), or null when byIdPath is" }
+        claimedBy: { type: [string, "null"], description: "what already claims this device in config (e.g. \"port 'hf' rig\", \"port 'vhf' transport (serial-kiss)\"), or null when free" }
+        suggestion: { oneOf: [{ $ref: "#/components/schemas/RigSuggestion" }, { type: "null" }] }
+
+    RigSuggestion:
+      type: object
+      description: A hamlib model suggestion for a scanned device. Numbers are resolved against the installed rigctl's catalogue by name (they drift across hamlib versions), never hardcoded.
+      required: [manufacturer, model, source]
+      properties:
+        manufacturer: { type: string, description: "as the hamlib catalogue spells it, e.g. Icom" }
+        model: { type: string, description: "as the hamlib catalogue spells it, e.g. IC-7300" }
+        modelNumber: { type: [integer, "null"], description: "the hamlib model number (rigctld -m), or null when rigctl is absent / the installed hamlib doesn't know the model" }
+        source: { type: string, enum: [by-id], description: "how the suggestion was derived (passive USB-descriptor identification only in this slice)" }
+
+    RigCatalogueModel:
+      type: object
+      description: One row of the hamlib model catalogue (a parsed `rigctl -l` line).
+      required: [number, manufacturer, model]
+      properties:
+        number: { type: integer, description: "the hamlib model number (rigctld -m)" }
+        manufacturer: { type: string }
+        model: { type: string, description: "may contain spaces, e.g. MARK-V FT-1000MP" }
+        status: { type: [string, "null"], description: "backend status (Stable/Beta/Alpha/…), or null" }
 
     RadioScanResult:
       type: object
