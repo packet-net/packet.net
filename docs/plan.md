@@ -1250,6 +1250,23 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-14 — Research: headless C# soundmodem (QtSoundModem as reference)
+
+New options analysis [`docs/research/headless-soundmodem.md`](research/headless-soundmodem.md): can PDN
+grow a native headless soundcard modem in C#/.NET 10 — DCD through the `ICarrierSense` seam, browser
+waterfall over the tuning-SSE pattern, KISS/in-process transport shapes. Verdict: feasible (managed-DSP
+worst case measured at ~14 % of one 2012 x64 core; every architectural seam already exists), gated on
+(1) licensing — a QtSM port must be GPL-3.0-or-later, which surfaces that the repo's own licence is
+currently self-contradictory (`LICENSE` = AGPL-3.0 since `ac2fe22`, README/plan §3/`PackageLicenseExpression`
+still MIT — needs resolving regardless), and (2) target modes — live GB7RDG traffic is 100 % NinoTNC
+IL2P+CRC PSK/GFSK, 0 % classic 1200 AFSK, so NinoTNC-waveform interop is the acceptance bar. Core
+decisions taken same day (doc §Decisions): the modem lives in a **separate `packet-net/soundmodem`
+repo** (GPL-3.0-or-later, consumed via NuGet like `Packet.Ax25.Sdl`); packet.net resolves to
+**AGPL-3.0 throughout** (separate change); Phase 1 targets 300 BPSK IL2P+CRC + 1200 AFSK; QtSM-style
+multiplex channel model; both an integrated PDN port and a standalone headless KISS daemon are goals.
+No plan phase/scope change yet — §11's "KISS modems only" line gets its logged revision when the
+PDN-side port lands.
+
 ### 2026-07-14 — lib-v0.23.0 downstream cascade: axcall + packet-term-tui v0.2.20
 
 Closes the lib-v0.23.0 entry's remaining Step 3 (next entry). Both downstream .NET consumers
