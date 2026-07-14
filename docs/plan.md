@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-14
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-14 — **lib-v0.23.0 downstream cascade** — axcall + packet-term-tui bumped `Packet.*` 0.22.0→0.23.0, built + tested against the published nuget.org packages, merged on green CI (axcall#20 / packet-term-tui#25), and released as **v0.2.20** each (six-platform binaries, 6 assets, verified non-draft). Tags cut via each repo's `release.yml` `workflow_dispatch` (branch-scoped credential can't push tags). Closes the lib-v0.23.0 entry's remaining Step 3; releasing.md cascade complete for 0.23.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **RELEASE lib-v0.23.0 + node-v0.31.0** — the whole rig-control arc ships: 17 NuGet packages verified indexed (DcdRead/SignalStrengthRead, RigRadioControl), and the node release carries the rig card + Tune, the scan/adopt wizard, ManagedRigDaemon and `radio: kind rig` (deb gains `Depends: libhamlib-utils`). Version-train divergence learning fixed in releasing.md (#618). Downstream axcall/packet-term-tui pin bumps outstanding](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-ends web UI + API caught up to identify/pair/name v2 + id-stability (#579)** — the Head-ends screen (PR #562) shipped before the v2 backend and was never caught up; this closes the four confirmed gaps in one UI+API PR. **UI:** a "Resolve physically (keys each modem briefly)" button on instances with a free TNC+radio — **admin-scope gated** (it transmits — the same bar as hail/tuning/doctor; disabled+titled otherwise) behind an RF-warning confirm dialog that quotes the API caveat, renders the returned pairs/unpaired/ambiguous, refreshes the scan, and pre-selects the adopt pickers with the resolved pair; a per-device **band badge** (`amateurBand`, falling back to `bandCode`); an **"unstable id" warning badge** on `idStable === false` devices (tooltip: no by-path/by-id link, binding may not survive replug); and an **"MQTT instance label"** field in the adopt Options. UI adopts now pass `amateurBand` (from the selected radio's scan row) so they get band-named ports like API adopts. **API (additive):** `HeadEndPortInfo` gains `IdSource` (string) + `IdStable` (**nullable** bool — absent from an old head-end reads as *unknown*, never assumed stable), the scan (`HeadEndDeviceScan`) carries them, the scanner populates them; `HeadEndAdoptRequest` gains `MqttInstance` (string?) honoured by `BuildCandidate` over the band default. Stale "operate-scope" doc-comment on the keyup endpoint corrected to admin. **Tests:** 6 C# (id-stability parse present/absent, scan flow-through, MqttInstance override ×3) + 8 vitest (keyup admin-gating/confirm/post/render/pre-select + band badge + unstable badge + amateurBand/mqttInstance in adopt body); UI `npm run build && npm run test` green (118), `dotnet build` + head-end Node.Tests green (the /tmp-sandbox 61-failure baseline is unrelated). No ax25-ts parity surface. Closes #579. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-end fleet observability, .NET half (#583)** — the node now watches its head-end fleet instead of inferring it: a background `HeadEndHealthMonitor` (`BackgroundService`, ~30 s) polls every configured/referenced head-end's `GET /statusz` (#587's Go half; `GET /healthz` fallback for pre-0.1.4 daemons) — config-else-mDNS address resolution, transition-only logging (one WARNING per outage, events 5301/5302), self-gating on a head-end-less node. Feeds a new `pdn_headend_*` metrics bucket (`reachable`/`devices`/`poll_failures_total`, `instance`-labelled) + a `pdn_port_transport_reconnecting{port}` gauge off a new `ITransportLinkState` seam on `ReconnectingKissModem` (the honest counterpart to `pdn_port_up`, which reads 1 through a far-end bounce), and `GET /api/v1/radios/headends` instances gain `reachableNow`/`lastSeen` from the in-memory snapshot (never probed on the request path). Closes #583 (both halves done). See §17](#17-amendment-log)
@@ -1249,6 +1250,20 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-14 — lib-v0.23.0 downstream cascade: axcall + packet-term-tui v0.2.20
+
+Closes the lib-v0.23.0 entry's remaining Step 3 (next entry). Both downstream .NET consumers
+bumped `Packet.*` 0.22.0 → 0.23.0 (axcall's five pins, the TUI's four), each built + tested
+locally against the freshly-indexed nuget.org 0.23.0 packages before merge (axcall 25/25 unit —
+the Testcontainers integration leg ran on its CI runner; TUI 14/14), merged on green CI
+([axcall#20](https://github.com/packet-net/axcall/pull/20),
+[packet-term-tui#25](https://github.com/packet-net/packet-term-tui/pull/25)) and released as
+**v0.2.20** each — six-platform binaries, both releases non-draft with 6 assets, verified.
+Same tag mechanics as the v0.2.19 cascade: the branch-scoped session credential can't push
+tags, so each `v0.2.20` tag was cut via the repo's `release.yml` `workflow_dispatch`
+(`tag=v0.2.20`, ref `main` = the pin-bump merge commit). Source-compatible, no code change
+either side; no TS leg (unchanged this cycle).
+
 ### 2026-07-14 — RELEASE: lib-v0.23.0 + node-v0.31.0 (the whole rig-control arc ships)
 
 The day's six merged PRs (#612 mutation slice, #613 OQ-011 bridge, #614 interop timeout,
@@ -1269,10 +1284,9 @@ runner host was down; post-reboot the backlog was still draining) — released o
 instruction with the full local default suite green on the exact release tree as the test
 evidence, per the standing local-gates working pattern. Same tag mechanics as 0.22.0: the
 branch-scoped session credential can't push tags (Tom pushed both; the lib publish was also
-pre-armed via `workflow_dispatch` `override_version`). **Remaining Step 3 (downstream)**:
-axcall + packet-term-tui pins 0.22.0 → 0.23.0 — not doable from this session (repo scope), same
-as the 0.22.0 cascade; ledger to be completed when they ship. Step 4 (TS leg) skipped —
-ax25-ts unchanged.
+pre-armed via `workflow_dispatch` `override_version`). **Step 3 (downstream)**: shipped —
+axcall + packet-term-tui v0.2.20; see the downstream-cascade entry above. Step 4 (TS leg)
+skipped — ax25-ts unchanged.
 
 ### 2026-07-14 — Plug-and-play stage 2: rig scan + the port editor's rig wizard
 
