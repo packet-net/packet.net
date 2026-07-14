@@ -140,7 +140,11 @@ jobs:
           rm -rf "${RUNNER_TEMP}/pico-node"
           git clone --depth=1 --branch main --filter=blob:none --sparse \
             https://github.com/packet-net/pico-node.git "${RUNNER_TEMP}/pico-node"
-          git -C "${RUNNER_TEMP}/pico-node" sparse-checkout set parity-manifest.toml parity-exceptions.json parity
+          # --no-cone: cone mode (the default) only accepts DIRECTORIES and newer git
+          # (2.53 on the runners) makes a file path a fatal error — two of these three
+          # parity artifacts are files. Non-cone patterns are anchored gitignore-style.
+          git -C "${RUNNER_TEMP}/pico-node" sparse-checkout set --no-cone \
+            /parity-manifest.toml /parity-exceptions.json "/parity/"
 
       # Cross-stack parity drift guard — a TRUE 3-way mirror. ax25-ts ships
       # scripts/parity-check.mjs, which extracts the C# named-flag / preset /
