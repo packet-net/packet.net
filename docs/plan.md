@@ -1243,6 +1243,23 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-14 — Research: headless C# soundmodem (QtSoundModem as reference)
+
+New options analysis [`docs/research/headless-soundmodem.md`](research/headless-soundmodem.md): can PDN
+grow a native headless soundcard modem in C#/.NET 10 — DCD through the `ICarrierSense` seam, browser
+waterfall over the tuning-SSE pattern, KISS/in-process transport shapes. Verdict: feasible (managed-DSP
+worst case measured at ~14 % of one 2012 x64 core; every architectural seam already exists), gated on
+(1) licensing — a QtSM port must be GPL-3.0-or-later, which surfaces that the repo's own licence is
+currently self-contradictory (`LICENSE` = AGPL-3.0 since `ac2fe22`, README/plan §3/`PackageLicenseExpression`
+still MIT — needs resolving regardless), and (2) target modes — live GB7RDG traffic is 100 % NinoTNC
+IL2P+CRC PSK/GFSK, 0 % classic 1200 AFSK, so NinoTNC-waveform interop is the acceptance bar. Core
+decisions taken same day (doc §Decisions): the modem lives in a **separate `packet-net/soundmodem`
+repo** (GPL-3.0-or-later, consumed via NuGet like `Packet.Ax25.Sdl`); packet.net resolves to
+**AGPL-3.0 throughout** (separate change); Phase 1 targets 300 BPSK IL2P+CRC + 1200 AFSK; QtSM-style
+multiplex channel model; both an integrated PDN port and a standalone headless KISS daemon are goals.
+No plan phase/scope change yet — §11's "KISS modems only" line gets its logged revision when the
+PDN-side port lands.
+
 ### 2026-07-09 — RELEASE: lib-v0.21.0 + node-v0.30.0 + headend-v0.1.4 (tuning-link robustness + head-end radio-integration cluster)
 
 Shipped the session's whole arc off green `main` (4b7ecde; ci + interop both success). **NuGet:** `lib-v0.21.0` → the 14 `Packet.*` packages (verified pushed + indexed). **Node:** `node-v0.30.0` → amd64/arm64/armhf `.deb`s + self-contained tarballs + `latest.json` (8 assets) and the multi-arch GHCR image `ghcr.io/packet-net/packet.net:0.30.0`. **Head-end:** the previously-cancelled `headend-v0.1.4` publish re-triggered → 7 assets (`headend/` unchanged since the tag, so no new version — the limbo is resolved). **Downstream .NET consumers** bumped `Packet.*` 0.19.0 → 0.21.0, built + tested locally against the fresh NuGet, and released: [`packet-net/axcall`](https://github.com/packet-net/axcall) `v0.2.18` (28/28) and [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui) `v0.2.18` (14/14). **No TS leg** — `ax25-ts` didn't change this cycle (the tuning stack is C#-only).
