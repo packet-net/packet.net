@@ -44,4 +44,4 @@ The FCS is part of the AXUDP wire format and is unconditional: there is no FCS-l
 - [Packet.Core](https://www.nuget.org/packages/Packet.Core) — shared primitives, including the `Crc16Ccitt` FCS
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

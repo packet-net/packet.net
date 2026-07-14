@@ -60,4 +60,4 @@ Because the package carries `ReadOnlyMemory<byte>` rather than a parsed `Ax25Fra
 - [Packet.Axudp](https://www.nuget.org/packages/Packet.Axudp) — an AXUDP transport that implements only the core interface
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

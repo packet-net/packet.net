@@ -72,7 +72,9 @@ The full interop matrix (docker stack + cross-runtime tests) lives in [`.github/
 
 ## License
 
-[MIT](LICENSE).
+[AGPL-3.0](LICENSE) — the whole repo and every published `Packet.*` NuGet package. (The repo was
+MIT until 2026-06-14; the switch was ratified and the package metadata brought into line on
+2026-07-14 — plan §17.)
 
 ## Acknowledgements
 

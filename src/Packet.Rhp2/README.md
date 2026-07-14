@@ -69,4 +69,4 @@ The shapes here are pinned against **live XRouter**, not just the published spec
 - [Packet.Ax25](https://www.nuget.org/packages/Packet.Ax25) — the AX.25 link layer underneath
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

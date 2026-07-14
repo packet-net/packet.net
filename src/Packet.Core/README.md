@@ -48,4 +48,4 @@ ushort fcs = Crc16Ccitt.Compute("123456789"u8); // 0x906E
 - [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) — KISS TNC framing.
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

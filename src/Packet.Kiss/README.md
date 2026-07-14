@@ -75,4 +75,4 @@ await foreach (KissFrame frame in client.ReadFramesAsync())
 - [`Packet.Kiss.Serial`](https://www.nuget.org/packages/Packet.Kiss.Serial) — generic serial-port KISS modem.
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
