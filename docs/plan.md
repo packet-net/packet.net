@@ -566,6 +566,9 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
 - **Frequency-agile operation** — if the radio is CAT-controllable, schedule QSY across a frequency plan. Use cases: APRS digi tail on calling channel + drop to working channel for connected-mode sessions; per-link QSY when SNR drops below threshold; automatic channel hunting in poor band conditions.
   - 🟡 **CAT seam shipped 2026-07-13** (see §17): `Packet.Rig` (`IRigControl`: freq/mode get+set, PTT, SWR + RF-power meters behind capability probes) with `Packet.Rig.Hamlib` (rigctld network protocol — any hamlib rig, no native dependency) and `Packet.Rig.Flrig` backends. Released to NuGet as 0.22.0 (2026-07-14). Research in [`docs/research/rig-control-spike.md`](research/rig-control-spike.md).
   - 🟡 **Node read-only slice shipped 2026-07-14** (see §17): port-scoped `rig:` config → `PortSupervisor` bring-up (degrade-cleanly) → `RigStatusMonitor` poller (idle/keyed cadences, meters only during PTT) → `GET /api/v1/rigs` + `/ports/{id}/rig` + the `event: rig` SSE feed. Remaining: the UI rig card (next), then mutation endpoints + MCP tools (separately auth-gated), then QSY policy (deferred).
+  - ⬜ **Plug-and-play rig adoption** (direction set 2026-07-14, Tom: "plug in rig, and pdn can BE configured to handle it through the UI — no system-level user intervention"). Two named stages:
+    1. **Node-managed rigctld** — a second `rig:` binding shape (`device:` + `model:` instead of `host:`/`port:`): the node spawns `rigctld -m <model> -r <device>` on a loopback port as a supervised child (the FreeDATA/WaveLogGate pattern; sidecar-supervision precedent in-tree: tsnet, app services) and points the existing protocol client at it. `.deb` grows `Depends: libhamlib-utils` (all target distros ship it; version skew 4.3.1→4.6.x already handled by the client). BYO-daemon `host:`/`port:` stays (and remains the only flrig path — a GUI app is out of plug-and-play scope by nature).
+    2. **Scan + adopt** — `GET /api/v1/rigs/scan` + adopt endpoint + UI wizard, reusing the head-end scan→preview→adopt seam and the Tait probe-candidate-ports discipline (exclude claimed ports, operator-initiated, bounded, single-flight). Identification tiers: USB by-id descriptor (modern Icoms name themselves), safe `ID;`/CI-V probes (Kenwood/Yaesu/Elecraft/Icom answer read-only model queries), else a searchable hamlib model picker (catalogue parsed from `rigctl -l` at runtime). Curated USB/ID-code → hamlib-model mapping table for the popular rigs.
 - **NinoTNC mode agility / negotiation** — currently the operator picks a NinoTNC mode (0–15) at config. Goal: query NinoTNC capabilities at startup, negotiate the optimal mode for current channel quality (1200 → 4800 → 9600 based on SNR), renegotiate on degradation. Requires SETHW probe + mode-change handshake (open question: does NinoTNC firmware support runtime mode change?).
   - 🟡 **Coordination seed shipped 2026-07-03** (see §17): the mode-change handshake exists and is hardware-proven — `IRadioSideChannel` (`Packet.Radio`, radio-native small-datagram control plane; Tait SDM implementation) + the propose/confirm/commit/probe-verify/revert-to-home protocol (`ModeCoordinator`/`ModeResponder` in `Packet.Tune.Core`) + `packet-tune mode-coord`. The side channel is mode/channel-agnostic, which breaks the negotiate-over-the-link-being-changed chicken-and-egg. Node-side integration (ports, beacons, policy) not started — the map is [`docs/research/radio-side-channel-mode-agility.md`](research/radio-side-channel-mode-agility.md).
 - **NinoTNC firmware upgrades** — port [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) flow into `packetnet ctl flash-tnc` so non-technical users can update firmware from the web UI. Bootloader protocol reverse-engineering needed.
@@ -1289,6 +1292,14 @@ fake clock, supervisor attach/degrade/dispose-order integration over `FakeRigCon
 composition-root API + SSE tests, reconcile classification. Parity note: no
 `Ax25ParseOptions`/quirk/XID/listener change → **no ax25-ts leg**. Next: the read-only UI rig
 card (brought forward per Tom), then mutation + MCP tools, then the OQ-011 bridge.
+
+**Direction addendum (same day):** Tom set the target UX — "plug in rig, and pdn can BE
+configured to handle it through the UI; no system-level user intervention" — assessed feasible
+and folded into the Phase 10 frequency-agile workstream as two named stages: (1) node-managed
+rigctld (a `device:`+`model:` rig binding the node spawns/supervises itself; `.deb` gains
+`Depends: libhamlib-utils`), then (2) rig scan→adopt (USB by-id / safe `ID;`+CI-V probe /
+manual hamlib-model picker, through the same operator-confirmed adopt seam the head-ends use).
+See the Phase 10 workstream list for the full breakdown.
 
 ### 2026-07-14 — RELEASE: lib-v0.22.0 (rig control: `Packet.Rig` + hamlib/flrig backends + Tait adapter)
 
