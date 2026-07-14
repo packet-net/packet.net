@@ -14,12 +14,13 @@ on:
     # Nightly at 02:17 UTC — same minute as the existing interop nightly
     # to keep them spaced apart from any half-hour scheduled chaos.
     - cron: '17 2 * * *'
-  pull_request:
+  push:
     branches: [main]
     paths:
-      # Run on PRs that touch the fuzzer itself, the targets, or this
-      # workflow — so changes to a fuzzed parser get an immediate smoke
-      # signal rather than waiting for the nightly.
+      # Run on main pushes that touch the fuzzer itself, the targets, or this
+      # workflow — so a merged change to a fuzzed parser gets an immediate smoke
+      # signal rather than waiting for the nightly. (Main-only by design,
+      # 2026-07-14 — see ci.yml.)
       - 'src/Packet.Ax25/**'
       - 'src/Packet.Kiss/**'
       - 'src/Packet.Aprs/**'
@@ -36,7 +37,7 @@ on:
 
 concurrency:
   group: fuzz-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
