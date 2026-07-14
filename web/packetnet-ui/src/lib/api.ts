@@ -18,6 +18,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
+  RigStatus, RigScan, RigModelCatalogue,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -309,9 +310,30 @@ export const api = {
   // One port's radio status (GET /api/v1/ports/{id}/radio). A 404 (unknown port, or a port with no
   // radio block) surfaces the server's message as an Error.
   getPortRadio: (id: string) => getPortRadio(id),
+  getRigs: () => get<RigStatus[]>("/rigs", () => mock.RIGS),
+  getPortRig: (id: string) => getPortRig(id),
+  // Retune an attached rig's current VFO (POST /api/v1/ports/{id}/rig/frequency, operate
+  // scope). No client re-fetch on success: the server wakes the rig poller after a set, so
+  // the next `event: rig` SSE tick replaces the card's status. 400/404/409 surface their
+  // { error } as a thrown Error.
+  setRigFrequency: (id: string, frequencyHz: number) => setRigFrequency(id, frequencyHz),
+  // Set an attached rig's operating mode (POST /api/v1/ports/{id}/rig/mode, operate scope).
+  // passbandHz omitted → the rig's default passband for that mode. Same SSE-refresh contract
+  // and { error } mapping as setRigFrequency.
+  setRigMode: (id: string, rigMode: string, passbandHz?: number) => setRigMode(id, rigMode, passbandHz),
   // Bus discovery scan (GET /api/v1/radios/scan): probe candidate serial ports for attached radios,
   // keyed by CCDI serial (the stable bind key). The PortEditor's "Scan for radios" button drives this.
   scanRadios: () => scanRadios(),
+  // Rig (CAT) discovery scan (GET /api/v1/rigs/scan, read scope): every candidate serial device,
+  // with the stable by-id path, what already claims it (a claimed device isn't pickable), and a
+  // curated-table suggestion where the by-id descriptor identifies the rig (suggestion.modelNumber
+  // may be null — matched the curated table but not the local hamlib catalogue, so the operator
+  // picks the model). The PortEditor rig section's "Scan for rigs" button drives this.
+  scanRigs: () => get<RigScan>("/rigs/scan", () => mock.RIG_SCAN),
+  // The node's local hamlib model catalogue (GET /api/v1/rigs/models, read scope) — the rig
+  // section's searchable model picker source. available:false = hamlib isn't installed on the
+  // node (the picker disables with a note; the node-managed rig shape can't run there).
+  getRigModels: () => get<RigModelCatalogue>("/rigs/models", () => mock.RIG_MODELS),
   // ---- split-station head-end fleet scan + adopt (read + operate) ----
   // Discover every head-end instance (config ∪ mDNS), reach through each free device to identify it,
   // and preview the matched TNC↔radio pairs + any duplicate-instance-id conflicts (GET
@@ -607,6 +629,63 @@ async function getPortRadio(id: string): Promise<RadioStatus> {
   if (res.status === 404) throw new Error(await errorMessage(res, `No radio for port '${id}'.`));
   if (!res.ok) throw new Error(`/ports/${id}/radio: ${res.status} ${res.statusText}`);
   return (await res.json()) as RadioStatus;
+}
+
+// One port's rig-control (CAT) status — 404 means "no such port" (a port with no rig block
+// returns attached:false instead). Mirrors getPortRadio.
+async function getPortRig(id: string): Promise<RigStatus> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 60));
+    const found = mock.RIGS.find((x) => x.portId === id);
+    if (!found) throw new Error(`No rig attached to port '${id}'.`);
+    return structuredClone(found);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/rig`, { headers: { accept: "application/json" } });
+  if (res.status === 404) throw new Error(await errorMessage(res, `No rig for port '${id}'.`));
+  if (!res.ok) throw new Error(`/ports/${id}/rig: ${res.status} ${res.statusText}`);
+  return (await res.json()) as RigStatus;
+}
+
+// Retune the rig dial (POST /api/v1/ports/{id}/rig/frequency, operate scope). Mock mode mutates
+// the RIGS fixture in place so the mock SSE tick shows the new dial — mirroring the live
+// wake-the-poller contract, where the next `event: rig` tick carries the retuned status; live
+// mode POSTs and surfaces the server's { error } (400 bad value · 404 unknown port · 409 not
+// attached) as a thrown Error. The 200 body ({ frequencyHz }) is ignored: the SSE feed is the
+// read path, so callers never re-fetch after a set.
+async function setRigFrequency(id: string, frequencyHz: number): Promise<void> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 120));
+    const rig = mock.RIGS.find((x) => x.portId === id);
+    if (!rig?.attached) throw new Error(`No rig attached to port '${id}'.`);
+    rig.frequencyHz = frequencyHz;
+    return;
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/rig/frequency`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ frequencyHz }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not set frequency on '${id}' (${res.status}).`));
+}
+
+// Set the rig's operating mode (POST /api/v1/ports/{id}/rig/mode, operate scope). passbandHz
+// omitted → the rig picks its default passband for the mode. Mock/live behaviour, SSE-refresh
+// contract, and { error } mapping mirror setRigFrequency.
+async function setRigMode(id: string, rigMode: string, passbandHz?: number): Promise<void> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 120));
+    const rig = mock.RIGS.find((x) => x.portId === id);
+    if (!rig?.attached) throw new Error(`No rig attached to port '${id}'.`);
+    rig.mode = rigMode;
+    if (passbandHz != null) rig.passbandHz = passbandHz;
+    return;
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/rig/mode`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(passbandHz != null ? { mode: rigMode, passbandHz } : { mode: rigMode }),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, `Could not set mode on '${id}' (${res.status}).`));
 }
 
 // Bus discovery scan (GET /api/v1/radios/scan). Mock mode returns the RADIO_SCAN fixture after a short
@@ -1408,6 +1487,26 @@ export function subscribeFrames(onFrame: (f: MonitorEvent) => void): () => void 
   };
   es.addEventListener("frame", handler as EventListener);
   return () => { es.removeEventListener("frame", handler as EventListener); es.close(); };
+}
+
+// Live rig poll ticks (SSE /rigs/events, `event: rig`): one full RigStatus per attached rig per
+// tick — REPLACE per portId, don't append (unlike the frame stream). Idle rigs tick at the poll
+// cadence (~5 s); a keyed transmitter ticks at the meter cadence (~1 s) so SWR/power are live
+// during a transmission. EventSource auto-reconnects; heartbeat comments are ignored natively.
+export function subscribeRigs(onRig: (r: RigStatus) => void): () => void {
+  if (MODE === "mock") {
+    const id = setInterval(() => {
+      const rig = mock.RIGS[0];
+      if (rig?.attached) onRig({ ...structuredClone(rig), sampledAt: new Date().toISOString() });
+    }, 5000);
+    return () => clearInterval(id);
+  }
+  const es = new EventSource(withTokenParam(`${BASE}/rigs/events`));
+  const handler = (e: MessageEvent) => {
+    try { onRig(JSON.parse(e.data) as RigStatus); } catch { /* skip a malformed tick */ }
+  };
+  es.addEventListener("rig", handler as EventListener);
+  return () => { es.removeEventListener("rig", handler as EventListener); es.close(); };
 }
 
 /** Seed the monitor with a recent backlog (mock only; live seeds from the stream). */

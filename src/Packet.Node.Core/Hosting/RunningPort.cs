@@ -51,6 +51,24 @@ public sealed class RunningPort : IAsyncDisposable
     /// radio it polls, AFTER the modem chain.</summary>
     public IRadioStatusMonitor? RadioStatus { get; init; }
 
+    /// <summary>The open rig-control (CAT) backend connection feeding the rig status poller, or
+    /// null when this port has no rig attached (config absent, or the daemon was unreachable and
+    /// the port degraded to running without it). Disposed after <see cref="RigStatus"/> — the
+    /// poller reads it until stopped.</summary>
+    public Packet.Rig.IRigControl? Rig { get; init; }
+
+    /// <summary>The per-port rig status poller (frequency/mode/PTT + TX meters) driving
+    /// <c>GET /api/v1/rigs</c>, <c>/ports/{id}/rig</c> and the <c>event: rig</c> SSE feed, or null
+    /// when no rig is attached. Disposed BEFORE the rig it polls.</summary>
+    public Rigs.IRigStatusMonitor? RigStatus { get; init; }
+
+    /// <summary>The supervised node-managed <c>rigctld</c> when this port's <c>rig:</c> block is
+    /// the <c>device</c>+<c>model</c> shape (and the daemon came up), or null (BYO daemon, no
+    /// rig, or the daemon failed and the port degraded to running without a rig). Disposed
+    /// <b>LAST</b> — every rig client (the status poller's connection AND a rig-backed radio's
+    /// dedicated one) dials it until they are gone.</summary>
+    public Rigs.ManagedRigDaemon? RigDaemon { get; init; }
+
     /// <summary>
     /// The transport to feature-detect KISS/CSMA capabilities on
     /// (<c>ICsmaChannelParams</c> / <c>ITxCompletionTransport</c>): the modem chain
@@ -105,6 +123,22 @@ public sealed class RunningPort : IAsyncDisposable
         if (Radio is not null)
         {
             await Radio.DisposeAsync().ConfigureAwait(false);
+        }
+        // The rig pair is independent of the radio/modem chain; same discipline — the
+        // poller stops before the backend it reads.
+        if (RigStatus is not null)
+        {
+            await RigStatus.DisposeAsync().ConfigureAwait(false);
+        }
+        if (Rig is not null)
+        {
+            await Rig.DisposeAsync().ConfigureAwait(false);
+        }
+        // The node-managed rigctld goes LAST of all: the rig client above and a rig-backed
+        // radio's dedicated connection (disposed with the radio, further up) both dial it.
+        if (RigDaemon is not null)
+        {
+            await RigDaemon.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

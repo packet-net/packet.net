@@ -17,6 +17,7 @@ dotnet add package Packet.Radio.Tait
 - **Telemetry + health** — PA temperature (CCTM 047), forward/reverse power detector readings (CCTM 318/319, an antenna-health proxy while transmitting), and a periodic **`TaitRadioHealthMonitor`** that trends them: idle-offset-corrected fwd/rev + ratio (a TREND, never VSWR — the detectors are raw √P-scaled millivolts per Tait's service docs), typed sample events + rolling min/median/max summaries.
 - **Identity** — model/tier, CCDI version, serial number, firmware/hardware version inventory.
 - **An escape hatch** (`TransactRawAsync`) for CCDI commands the driver doesn't model yet — framing and checksumming handled, responses returned decoded.
+- **A station-control view** (`TaitRigControl`) — re-presents the radio through the [`Packet.Rig`](https://www.nuget.org/packages/Packet.Rig) `IRigControl` abstraction (the same seam the hamlib/rigctld and flrig backends implement), advertising the slice CCDI can honestly serve: PTT set/get and a relative RF-power meter (the CCTM 318 forward detector over its full scale). Frequency, mode, SWR and watts are deliberately unadvertised — the tuned frequency isn't CCDI-readable, the radio has no mode concept, and the power detectors are raw √P-scaled millivolts, not calibrated units. Cross-backend rig consumers feature-probe `RigCapabilities` and get exactly what's real.
 
 ## Usage
 ```csharp

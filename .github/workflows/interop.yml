@@ -1,23 +1,10 @@
 name: interop
 
+# main-only by design (2026-07-14): PRs merge on green LOCAL test runs (the working
+# pattern), so the PR-triggered matrix just doubled the heaviest job on the runners —
+# the push-to-main run is the interop signal. Use workflow_dispatch for an on-demand
+# branch run.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/Packet.Ax25/**'
-      - 'src/Packet.Ax25.Sdl/**'
-      - 'src/Packet.Kiss/**'
-      - 'src/Packet.Axudp/**'
-      - 'src/Packet.Rhp2/**'
-      - 'src/Packet.Rhp2.Server/**'
-      - 'src/Packet.Agw/**'
-      - 'src/Packet.Node/**'
-      - 'src/Packet.Node.Core/**'
-      - 'src/Packet.NetRom/**'
-      - 'tests/Packet.Interop.Tests/**'
-      - 'docker/**'
-      - 'scripts/interop-recreate-stack.sh'
-      - '.github/workflows/interop.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -50,6 +37,11 @@ jobs:
   interop:
     name: interop matrix
     runs-on: [self-hosted, Linux, X64]
+    # Normal end-to-end runtime is 10-17 min. Without this, a wedged test step holds the
+    # runner for GitHub's default 6 h job timeout and starves the whole queue — seen for real
+    # on 2026-07-14 (run 29325324017: NET/ROM step hung 85+ min before being cancelled by
+    # hand; see issue #611).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
@@ -130,17 +122,40 @@ jobs:
           rm -rf "${RUNNER_TEMP}/ax25-ts"
           git clone --depth=1 --branch main https://github.com/packet-net/ax25-ts.git "${RUNNER_TEMP}/ax25-ts"
 
-      # Cross-stack parity drift guard: ax25-ts ships scripts/parity-check.mjs,
-      # which compares the C# named-flag / preset / listener-surface inventories
-      # (THIS checkout — i.e. the PR head) against the TS ones (ax25-ts main).
+      # The Rust leg of the 3-way mirror: pico-node (packet-net/pico-node) is a
+      # PUBLIC repo, cloned the same way as ax25-ts above (no token). Its parity
+      # contract — parity-manifest.toml, the vendored C# expected-inventory map,
+      # and parity-exceptions.json — is all the drift guard needs, so a blobless
+      # sparse checkout of the parity artifacts is enough.
+      - name: clone packet-net/pico-node
+        run: |
+          rm -rf "${RUNNER_TEMP}/pico-node"
+          git clone --depth=1 --branch main --filter=blob:none --sparse \
+            https://github.com/packet-net/pico-node.git "${RUNNER_TEMP}/pico-node"
+          # --no-cone: cone mode (the default) only accepts DIRECTORIES and newer git
+          # (2.53 on the runners) makes a file path a fatal error — two of these three
+          # parity artifacts are files. Non-cone patterns are anchored gitignore-style.
+          git -C "${RUNNER_TEMP}/pico-node" sparse-checkout set --no-cone \
+            /parity-manifest.toml /parity-exceptions.json "/parity/"
+
+      # Cross-stack parity drift guard — a TRUE 3-way mirror. ax25-ts ships
+      # scripts/parity-check.mjs, which extracts the C# named-flag / preset /
+      # listener-surface inventories (THIS checkout — i.e. the PR head) once and
+      # asserts BOTH legs off that single live C# source of truth:
+      #   * C# ⊆ TS  (@packet-net/ax25, ax25-ts main), and
+      #   * C# ⊆ Rust (pico-node's declared coverage: its parity-manifest.toml
+      #     opted-in vector sets + capabilities, mapped via its
+      #     parity/expected-inventory.json, with reasoned parity-exceptions.json).
       # A C# change that adds a named flag or widens the listener surface fails
-      # here until the TS parity leg exists — or until a reviewed exception is
-      # recorded in ax25-ts scripts/parity-exceptions.json (ship that first,
-      # then this re-runs green). The mirror of this check runs in ax25-ts's own
-      # ci.yml against packet.net main, so drift fails CI on whichever side
+      # here until BOTH the TS parity leg exists (or an ax25-ts exception is
+      # recorded) AND pico-node's manifest+snapshot cover it (or a pico-node
+      # exception is recorded). Because the item list is LIVE C#, the Rust leg
+      # also catches a C# item pico-node's vendored snapshot has not yet mapped.
+      # Mirrors run in ax25-ts's own ci.yml (which clones packet.net + pico-node)
+      # and in pico-node's own guard, so drift fails on whichever side
       # introduces it. Costs ~a second; runs before the stack comes up.
-      - name: ax25-ts parity check (drift guard)
-        run: node "${RUNNER_TEMP}/ax25-ts/scripts/parity-check.mjs" --csharp . --ts "${RUNNER_TEMP}/ax25-ts"
+      - name: ax25-ts parity check (3-way drift guard)
+        run: node "${RUNNER_TEMP}/ax25-ts/scripts/parity-check.mjs" --csharp . --ts "${RUNNER_TEMP}/ax25-ts" --rust "${RUNNER_TEMP}/pico-node"
 
       - name: recreate stack (phase B — ax25-ts)
         run: scripts/interop-recreate-stack.sh

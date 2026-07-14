@@ -1,5 +1,6 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.HeadEnd;
+using Packet.Node.Core.Rigs;
 using Packet.Radio;
 using Packet.Radio.Tait;
 
@@ -13,20 +14,38 @@ namespace Packet.Node.Core.Radios;
 /// <c>tait-ccdi</c> → <see cref="TaitCcdiRadio.Open"/> +
 /// <see cref="TaitCcdiRadio.SetProgressMessagesAsync"/>(true) — unsolicited PROGRESS
 /// output is what makes the driver's carrier-sense (DCD) events fire, which the
-/// RSSI-tagging transport uses for per-burst frame attribution. A kind this build
-/// doesn't implement throws <see cref="NotSupportedException"/> (unreachable for
-/// validated config — the validator shares <see cref="RadioKinds"/>).
+/// RSSI-tagging transport uses for per-burst frame attribution. <c>rig</c> → a
+/// SECOND, dedicated connection to the port's <c>rig:</c> CAT daemon (via the
+/// <see cref="IRigControlFactory"/> collaborator) wrapped in an owning
+/// <see cref="RigRadioControl"/> — dedicated so the carrier-sense poll never queues
+/// behind the rig status poller's meter reads on the shared connection. A kind this
+/// build doesn't implement throws <see cref="NotSupportedException"/> (unreachable
+/// for validated config — the validator shares <see cref="RadioKinds"/>).
 /// </remarks>
 public sealed class RadioControlFactory : IRadioControlFactory
 {
-    /// <summary>A shared default instance (the factory holds no state).</summary>
+    private readonly IRigControlFactory rigFactory;
+
+    /// <summary>A shared default instance (production collaborators throughout).</summary>
     public static RadioControlFactory Instance { get; } = new();
+
+    /// <summary>
+    /// Create the factory. <paramref name="rigFactory"/> is how the kind-<c>rig</c> arm dials
+    /// its dedicated rig connection — pass the DI-registered seam so component tests that
+    /// substitute a scripted rig factory script the radio arm too; null uses the production
+    /// <see cref="RigControlFactory.Instance"/>.
+    /// </summary>
+    public RadioControlFactory(IRigControlFactory? rigFactory = null)
+    {
+        this.rigFactory = rigFactory ?? RigControlFactory.Instance;
+    }
 
     /// <inheritdoc/>
     public async Task<IRadioControl> CreateAsync(
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
         HeadEndDeviceResolver? headEndResolver = null,
+        PortRigConfig? rig = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(radio);
@@ -50,6 +69,32 @@ public sealed class RadioControlFactory : IRadioControlFactory
                 throw;
             }
             return tait;
+        }
+
+        if (RadioKinds.Is(radio.Kind, RadioKinds.Rig))
+        {
+            if (rig is null)
+            {
+                throw new InvalidOperationException(
+                    "radio kind 'rig' needs the port's rig: block (the CAT daemon its dedicated " +
+                    "connection dials), but none was supplied — validated config always carries " +
+                    "one, so this is a wiring bug at the call site.");
+            }
+            var rigControl = await rigFactory.CreateAsync(rig, timeProvider, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                // ownsRig: the adapter's disposal disposes this dedicated connection — the rig
+                // status poller's own connection (dialled separately by the supervisor's rig
+                // arm) is untouched, which is the whole point of dialling twice.
+                return new RigRadioControl(rigControl, options: null, timeProvider, ownsRig: true);
+            }
+            catch
+            {
+                // The bridge rejected the rig (it advertises nothing the packet-medium seam can
+                // use) — don't leak the just-dialled connection.
+                await rigControl.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
 
         throw new NotSupportedException(

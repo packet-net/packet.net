@@ -141,12 +141,17 @@ public static class ReconcilePlanner
             // serial control channel and wraps the transport in the RSSI-tagging
             // decorator at bring-up, so adding / removing / re-pointing it restarts
             // the port.
+            // The rig attachment (port.rig) is construction-time as well: the CAT backend is
+            // dialled and capability-probed at bring-up, so adding / removing / re-pointing it
+            // restarts the port. (A hot-swap of the side-poller is possible in principle —
+            // promote it to the hot class if restart churn ever matters here.)
             if (!Equals(oldPort.Transport, newPort.Transport) ||
                 !string.Equals(oldPort.Profile, newPort.Profile, StringComparison.OrdinalIgnoreCase) ||
                 AckModeChanged(oldPort.Kiss, newPort.Kiss) ||
-                !Equals(oldPort.Radio, newPort.Radio))
+                !Equals(oldPort.Radio, newPort.Radio) ||
+                !Equals(oldPort.Rig, newPort.Rig))
             {
-                restart.Add(newPort);   // transport / profile / ackMode / radio change → single-port restart
+                restart.Add(newPort);   // transport / profile / ackMode / radio / rig change → single-port restart
                 continue;
             }
 

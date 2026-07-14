@@ -8,6 +8,10 @@
          (IAx25Transport / Ax25InboundFrame / RadioMetadata), which the transport also uses. -->
     <ProjectReference Include="..\Packet.Kiss\Packet.Kiss.csproj" />
     <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
+    <!-- TaitRigControl re-presents the CCDI radio through the station-control seam
+         (Packet.Rig.IRigControl). Packet.Rig is the dependency-free abstraction package, so
+         this adds no transitive weight. -->
+    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -25,7 +29,7 @@
     <PackageId>Packet.Radio.Tait</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Radio.Tait — Tait TM8100/TM8200 CCDI radio control</Title>
-    <Description>Tait TM8100/TM8200 CCDI serial control for the Packet.NET stack — per-frame RSSI in dBm, hardware carrier-sense (DCD) events, transmitter keying, and radio telemetry (PA temperature, forward/reverse power), implementing the Packet.Radio IRadioControl abstraction. Source: github.com/packet-net/packet.net.</Description>
+    <Description>Tait TM8100/TM8200 CCDI serial control for the Packet.NET stack — per-frame RSSI in dBm, hardware carrier-sense (DCD) events, transmitter keying, and radio telemetry (PA temperature, forward/reverse power), implementing the Packet.Radio IRadioControl abstraction (packet-medium seam) and, via TaitRigControl, the Packet.Rig IRigControl station-control seam (PTT + relative RF-power meter). Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;tait;tm8100;ccdi;rssi;dcd</PackageTags>
   </PropertyGroup>
 

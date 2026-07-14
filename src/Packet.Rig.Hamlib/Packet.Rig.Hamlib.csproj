@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Packet.Rig.Hamlib.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>Packet.Rig.Hamlib</PackageId>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Title>Packet.Rig.Hamlib — rig control over hamlib's rigctld network protocol</Title>
+    <Description>Pure-managed client for hamlib's NET rigctl protocol (rigctld, TCP 4532) implementing the Packet.Rig IRigControl abstraction: get/set frequency and mode, PTT, SWR and RF-power metering, capability discovery via dump_caps, plus raw-command and get-level escape hatches. No native libhamlib dependency. Source: github.com/packet-net/packet.net.</Description>
+    <PackageTags>amateur-radio;rig-control;cat;hamlib;rigctld;transceiver;swr</PackageTags>
+  </PropertyGroup>
+
+</Project>

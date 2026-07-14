@@ -77,41 +77,66 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         //  - a HEAD-END-bound radio needs the co-located full-control NinoTNC on the same head-end
         //    (nino-tnc-tcp) — the modem+radio pair is always on one instance. This lifts the
         //    serial-only rule specifically for head-end ports; a kiss-tcp (LinBPQ) port still can't
-        //    carry a radio.
+        //    carry a cabled radio.
+        //  - a RIG-backed radio (kind rig) has no cable at all — it dials the port's rig: daemon —
+        //    so it pairs with ANY transport but requires the rig: block (rules inside the arm).
+        // A rig (CAT/station-control) attachment has no transport pairing to enforce — rigctld and
+        // flrig are always TCP daemons beside any kind of port (an HF kiss-tcp port with an IC-7300
+        // behind it is the motivating case), so the block validates standalone.
+        When(p => p.Rig is not null, () =>
+            RuleFor(p => p.Rig!).SetValidator(new PortRigValidator()));
+
         When(p => p.Radio is not null, () =>
         {
             RuleFor(p => p.Radio!).SetValidator(new PortRadioValidator());
 
-            When(p => !p.Radio!.IsHeadEndBound, () =>
-                RuleFor(p => p.Transport)
-                    .Must(t => t is SerialKissTransport or NinoTncTransport)
-                    .WithMessage(p =>
-                        $"a local radio (port/serial) is only valid on a serial-modem transport " +
-                        $"({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — a '{p.Transport?.Kind}' port has no " +
-                        "locally-cabled radio control channel."));
+            // radio: kind rig — the port's rig: (CAT) daemon re-presented as the packet-medium
+            // seam over a dedicated second connection. It has no control cable of its own, so
+            // NONE of the transport-pairing rules below apply: a rig-backed radio works with any
+            // transport (the headline case is a kiss-tcp soundmodem beside rigctld). What it DOES
+            // need is the rig: block that says which daemon to dial.
+            When(p => RadioKinds.Is(p.Radio!.Kind, RadioKinds.Rig), () =>
+                RuleFor(p => p.Rig)
+                    .NotNull()
+                    .WithMessage(
+                        "radio: kind rig requires a rig: block on the same port — it is the " +
+                        "rig's DCD/strength/PTT re-presented as the port's radio."));
 
-            When(p => p.Radio!.IsHeadEndBound, () =>
+            When(p => !RadioKinds.Is(p.Radio!.Kind, RadioKinds.Rig), () =>
             {
-                RuleFor(p => p.Transport)
-                    .Must(t => t is NinoTncTcpTransport)
-                    .WithMessage(p =>
-                        $"a head-end-bound radio pairs with a '{TransportKinds.NinoTncTcp}' transport (the co-located " +
-                        $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port.");
+                // The tait-ccdi (and future cabled-control) pairing rules, exactly as before —
+                // the rig arm above must not weaken any of them.
+                When(p => !p.Radio!.IsHeadEndBound, () =>
+                    RuleFor(p => p.Transport)
+                        .Must(t => t is SerialKissTransport or NinoTncTransport)
+                        .WithMessage(p =>
+                            $"a local radio (port/serial) is only valid on a serial-modem transport " +
+                            $"({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — a '{p.Transport?.Kind}' port has no " +
+                            "locally-cabled radio control channel."));
 
-                // "Same head-end" means SAME head-end: the transport-TYPE rule above admits a
-                // nino-tnc-tcp transport on instance A beside a radio on instance B, which is a
-                // split pair that can never be co-located hardware. When both halves carry an id,
-                // they must be equal (blank halves are reported by their own completeness rules).
-                RuleFor(p => p)
-                    .Must(p => p.Transport is not NinoTncTcpTransport t
-                        || string.IsNullOrWhiteSpace(t.HeadEndId)
-                        || string.IsNullOrWhiteSpace(p.Radio!.HeadEndId)
-                        || string.Equals(t.HeadEndId, p.Radio!.HeadEndId, StringComparison.Ordinal))
-                    .WithMessage(p =>
-                        $"a head-end-bound radio must live on the SAME head-end as its port's transport " +
-                        $"(radio headEndId '{p.Radio!.HeadEndId}' != transport headEndId " +
-                        $"'{(p.Transport as NinoTncTcpTransport)?.HeadEndId}') — the modem+radio pair is " +
-                        "co-located on one instance.");
+                When(p => p.Radio!.IsHeadEndBound, () =>
+                {
+                    RuleFor(p => p.Transport)
+                        .Must(t => t is NinoTncTcpTransport)
+                        .WithMessage(p =>
+                            $"a head-end-bound radio pairs with a '{TransportKinds.NinoTncTcp}' transport (the co-located " +
+                            $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port.");
+
+                    // "Same head-end" means SAME head-end: the transport-TYPE rule above admits a
+                    // nino-tnc-tcp transport on instance A beside a radio on instance B, which is a
+                    // split pair that can never be co-located hardware. When both halves carry an id,
+                    // they must be equal (blank halves are reported by their own completeness rules).
+                    RuleFor(p => p)
+                        .Must(p => p.Transport is not NinoTncTcpTransport t
+                            || string.IsNullOrWhiteSpace(t.HeadEndId)
+                            || string.IsNullOrWhiteSpace(p.Radio!.HeadEndId)
+                            || string.Equals(t.HeadEndId, p.Radio!.HeadEndId, StringComparison.Ordinal))
+                        .WithMessage(p =>
+                            $"a head-end-bound radio must live on the SAME head-end as its port's transport " +
+                            $"(radio headEndId '{p.Radio!.HeadEndId}' != transport headEndId " +
+                            $"'{(p.Transport as NinoTncTcpTransport)?.HeadEndId}') — the modem+radio pair is " +
+                            "co-located on one instance.");
+                });
             });
         });
     }
@@ -120,11 +145,13 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
 /// <summary>
 /// Validates a per-port radio-control attachment (<see cref="PortRadioConfig"/>):
 /// a known <c>kind</c> (a typo'd one would otherwise silently fail at bring-up),
-/// <b>exactly one</b> binding mode — <c>port</c> (the local control-channel device), <c>serial</c>
-/// (the local CCDI serial — the stable identity that survives device renumbering), or
-/// <c>headEndId</c>+<c>deviceId</c> (a Tait CCDI device on a split-station head-end, both halves
-/// required) — a positive baud, and a positive health interval when set. Kind knowledge lives in
-/// <see cref="RadioKinds"/> (the same authority the radio factory resolves with), not here.
+/// the binding-mode discipline for a cabled (non-<c>rig</c>) kind — <b>exactly one</b> of
+/// <c>port</c> (the local control-channel device), <c>serial</c> (the local CCDI serial — the
+/// stable identity that survives device renumbering), or <c>headEndId</c>+<c>deviceId</c> (a Tait
+/// CCDI device on a split-station head-end, both halves required) — or, for kind <c>rig</c>,
+/// that NO binding-mode field is set (the rig-backed radio dials the port's <c>rig:</c> daemon
+/// instead) — plus a positive baud and a positive health interval when set. Kind knowledge lives
+/// in <see cref="RadioKinds"/> (the same authority the radio factory resolves with), not here.
 /// </summary>
 public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
 {
@@ -136,24 +163,40 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 $"radio.kind '{r.Kind}' is not a known radio-control kind " +
                 $"(expected one of: {string.Join(", ", RadioKinds.Names)}).");
 
-        // Pin the radio by EXACTLY ONE binding mode: the local device path (`port`), the local CCDI
-        // serial (`serial`), or a split-station head-end device (`headEndId`+`deviceId`). Several is
-        // ambiguous (which wins?); none leaves bring-up nothing to open.
-        RuleFor(r => r)
-            .Must(ExactlyOneBindingMode)
-            .WithMessage(
-                "radio requires exactly one binding mode: `port` (the control-channel device, e.g. " +
-                "/dev/ttyUSB0), `serial` (the CCDI serial — the stable identity that survives device " +
-                "renumbering), or `headEndId`+`deviceId` (a Tait CCDI device on a split-station head-end); " +
-                "set one mode, not several, not none.");
+        // Kind rig has no control channel of its own — it dials a SECOND, dedicated connection to
+        // the port's rig: daemon — so the binding-mode fields (which describe a Tait CCDI link)
+        // are meaningless and must stay unset. (That the rig: block exists is a cross-field rule
+        // at the PortConfig level, where the sibling block is visible.)
+        When(r => RadioKinds.Is(r.Kind, RadioKinds.Rig), () =>
+            RuleFor(r => r)
+                .Must(r => !HasNonEmptyPort(r) && !HasNonEmptySerial(r)
+                    && !HasNonEmptyHeadEndId(r) && !HasNonEmptyDeviceId(r))
+                .WithMessage(
+                    "radio: kind rig has no control channel of its own (it dials the port's rig: " +
+                    "daemon over a dedicated connection), so `port`, `serial`, `headEndId` and " +
+                    "`deviceId` must not be set — they describe a tait-ccdi link."));
 
-        // A head-end binding needs BOTH halves — the instance id AND the device id on it.
-        RuleFor(r => r)
-            .Must(r => HasNonEmptyHeadEndId(r) && HasNonEmptyDeviceId(r))
-            .When(r => HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r))
-            .WithMessage(
-                "a head-end-bound radio requires BOTH `headEndId` (the head-end instance id) and " +
-                "`deviceId` (the device id on it) — set both, not one.");
+        When(r => !RadioKinds.Is(r.Kind, RadioKinds.Rig), () =>
+        {
+            // Pin the radio by EXACTLY ONE binding mode: the local device path (`port`), the local CCDI
+            // serial (`serial`), or a split-station head-end device (`headEndId`+`deviceId`). Several is
+            // ambiguous (which wins?); none leaves bring-up nothing to open.
+            RuleFor(r => r)
+                .Must(ExactlyOneBindingMode)
+                .WithMessage(
+                    "radio requires exactly one binding mode: `port` (the control-channel device, e.g. " +
+                    "/dev/ttyUSB0), `serial` (the CCDI serial — the stable identity that survives device " +
+                    "renumbering), or `headEndId`+`deviceId` (a Tait CCDI device on a split-station head-end); " +
+                    "set one mode, not several, not none.");
+
+            // A head-end binding needs BOTH halves — the instance id AND the device id on it.
+            RuleFor(r => r)
+                .Must(r => HasNonEmptyHeadEndId(r) && HasNonEmptyDeviceId(r))
+                .When(r => HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r))
+                .WithMessage(
+                    "a head-end-bound radio requires BOTH `headEndId` (the head-end instance id) and " +
+                    "`deviceId` (the device id on it) — set both, not one.");
+        });
 
         RuleFor(r => r.Baud).GreaterThan(0).WithMessage("radio baud must be positive.");
 
@@ -189,6 +232,107 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
             (HasNonEmptySerial(r) ? 1 : 0) +
             (HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r) ? 1 : 0);
         return modes == 1;
+    }
+}
+
+/// <summary>
+/// Validates a port's <c>rig:</c> attachment (<see cref="PortRigConfig"/>): a known kind, the
+/// binding-shape discipline — the BYO-daemon shape (<c>host</c>/<c>port</c>, either rig kind) or
+/// the node-managed shape (<c>device</c>+<c>model</c>, hamlib only, no <c>port</c>, no remote
+/// <c>host</c>) — plus a non-empty host, a sane TCP port when set, and positive poll cadences
+/// when set. Kind and shape knowledge live in <see cref="RigKinds"/> /
+/// <see cref="PortRigConfig.IsNodeManaged"/> (the same authorities the rig factory and the port
+/// supervisor resolve with), not here.
+/// </summary>
+public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
+{
+    public PortRigValidator()
+    {
+        RuleFor(r => r.Kind)
+            .Must(RigKinds.IsKnown)
+            .WithMessage(r =>
+                $"rig.kind '{r.Kind}' is not a known rig-control kind " +
+                $"(expected one of: {string.Join(", ", RigKinds.Names)}).");
+
+        RuleFor(r => r.Host)
+            .Must(h => !string.IsNullOrWhiteSpace(h))
+            .WithMessage("rig.host must not be empty (omit it for the 127.0.0.1 default).");
+
+        RuleFor(r => r.Port!.Value).InclusiveBetween(1, 65535)
+            .When(r => r.Port.HasValue)
+            .WithMessage(r =>
+                $"rig.port must be in 1..65535 (omit it for the kind default, " +
+                $"{RigKinds.Hamlib} → {RigKinds.DefaultPort(RigKinds.Hamlib)}, " +
+                $"{RigKinds.Flrig} → {RigKinds.DefaultPort(RigKinds.Flrig)}).");
+
+        // The node-managed shape (`device` set → the node spawns and supervises rigctld):
+        // `model` is what rigctld -m needs to speak the rig's CAT dialect, so it is required;
+        // flrig is a GUI app the node can't sensibly spawn, so the shape is hamlib-only;
+        // `port`/a remote `host` describe a daemon somebody ELSE runs, which contradicts a
+        // locally-spawned one. (Mirrors PortRadioValidator's binding-mode discipline.)
+        When(r => r.IsNodeManaged, () =>
+        {
+            RuleFor(r => r.Model)
+                .NotNull()
+                .WithMessage(
+                    "a node-managed rig (`device` set) requires `model` — the hamlib rig model " +
+                    "number rigctld is launched with (see `rigctl -l` for the list).");
+
+            RuleFor(r => r)
+                .Must(r => RigKinds.Is(r.Kind, RigKinds.Hamlib))
+                .WithMessage(
+                    "a node-managed rig (`device` set) must be kind `hamlib` — the node spawns " +
+                    "rigctld itself. flrig is a GUI application the node cannot spawn; run it " +
+                    "yourself and bind by `host`/`port` instead.");
+
+            RuleFor(r => r.Port)
+                .Null()
+                .WithMessage(
+                    "a node-managed rig (`device` set) must not set `port` — the node spawns " +
+                    "rigctld on a loopback port it allocates itself. Set `host`/`port` (without " +
+                    "`device`) to point at a daemon you run yourself.");
+
+            RuleFor(r => r.Host)
+                .Must(h => string.IsNullOrWhiteSpace(h) || h == "127.0.0.1")
+                .WithMessage(
+                    "a node-managed rig (`device` set) must not set a remote `host` — the node " +
+                    "spawns rigctld locally on 127.0.0.1. Set `host`/`port` (without `device`) " +
+                    "to point at a daemon running elsewhere.");
+        });
+
+        RuleFor(r => r.Model!.Value).GreaterThan(0)
+            .When(r => r.Model.HasValue)
+            .WithMessage("rig.model must be positive (a hamlib rig model number — see `rigctl -l`).");
+
+        RuleFor(r => r.SerialSpeed!.Value).GreaterThan(0)
+            .When(r => r.SerialSpeed.HasValue)
+            .WithMessage("rig.serialSpeed must be positive (baud; omit it for hamlib's per-model default).");
+
+        // `model`/`serialSpeed` describe the daemon the node spawns; without `device` there is
+        // no spawned daemon for them to describe — a BYO daemon already knows its own rig.
+        When(r => !r.IsNodeManaged, () =>
+        {
+            RuleFor(r => r.Model)
+                .Null()
+                .WithMessage(
+                    "rig.model only applies to a node-managed rig — set `device` (the rig's " +
+                    "serial device path) with it, or drop it for the `host`/`port` shape (your " +
+                    "own daemon already knows its rig).");
+
+            RuleFor(r => r.SerialSpeed)
+                .Null()
+                .WithMessage(
+                    "rig.serialSpeed only applies to a node-managed rig — set `device` (the " +
+                    "rig's serial device path) with it, or drop it for the `host`/`port` shape.");
+        });
+
+        RuleFor(r => r.PollIntervalSeconds!.Value).GreaterThan(0)
+            .When(r => r.PollIntervalSeconds.HasValue)
+            .WithMessage("rig.pollIntervalSeconds must be positive (omit it for the 5 s default).");
+
+        RuleFor(r => r.MeterIntervalSeconds!.Value).GreaterThan(0)
+            .When(r => r.MeterIntervalSeconds.HasValue)
+            .WithMessage("rig.meterIntervalSeconds must be positive (omit it for the 1 s default).");
     }
 }
 

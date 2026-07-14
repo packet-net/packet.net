@@ -666,6 +666,55 @@ public class NodeConfigValidatorTests
         Validator.Validate(config).IsValid.Should().BeFalse();
     }
 
+    // ── radio: kind rig — the port's rig: daemon re-presented as the radio ──
+
+    private static PortConfig RigBackedPort(PortRadioConfig radio, PortRigConfig? rig, TransportConfig? transport = null) => new()
+    {
+        Id = "hf",
+        Transport = transport ?? new KissTcpTransport { Host = "127.0.0.1", Port = 8010 },
+        Radio = radio,
+        Rig = rig,
+    };
+
+    [Fact]
+    public void Accepts_a_rig_backed_radio_on_a_kiss_tcp_port_with_a_rig_block()
+    {
+        // The headline case: a kiss-tcp soundmodem beside rigctld — a rig-backed radio has no
+        // control cable, so no transport pairing applies.
+        var config = Valid(RigBackedPort(new PortRadioConfig { Kind = "rig" }, new PortRigConfig { Kind = "hamlib" }));
+        Validator.Validate(config).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_rig_backed_radio_requires_a_rig_block_on_the_same_port()
+    {
+        var result = Validator.Validate(Valid(RigBackedPort(new PortRadioConfig { Kind = "rig" }, rig: null)));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.ErrorMessage.Contains("requires a rig: block"));
+    }
+
+    [Theory]
+    [InlineData("/dev/ttyUSB0", "", "", "")]      // a control device is a tait-ccdi concept
+    [InlineData("", "1G000123", "", "")]           // so is a CCDI serial
+    [InlineData("", "", "pi-shack", "tait0")]      // and a head-end device binding
+    public void A_rig_backed_radio_must_not_carry_binding_mode_fields(
+        string port, string serial, string headEndId, string deviceId)
+    {
+        var config = Valid(RigBackedPort(
+            new PortRadioConfig { Kind = "rig", Port = port, Serial = serial, HeadEndId = headEndId, DeviceId = deviceId },
+            new PortRigConfig { Kind = "hamlib" }));
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_rig_block_does_not_lift_the_tait_ccdi_transport_pairing()
+    {
+        // Regression: kind rig's any-transport freedom must not leak to tait-ccdi — a cabled
+        // radio on a kiss-tcp port stays rejected even when the port also carries a rig: block.
+        var config = Valid(RigBackedPort(TaitRadio(), new PortRigConfig { Kind = "hamlib" }));
+        Validator.Validate(config).IsValid.Should().BeFalse();
+    }
+
     [Fact]
     public void Rejects_telnet_port_out_of_range()
     {

@@ -175,7 +175,7 @@ public sealed partial class ReconnectingRadioControl : IRadioControl
                     // line to the CONFIGURED baud, and re-enables progress messages — the full
                     // bring-up, not a bare re-dial.
                     var fresh = await factory
-                        .CreateAsync(config, time, resolverFactory(), ct).ConfigureAwait(false);
+                        .CreateAsync(config, time, resolverFactory(), rig: null, ct).ConfigureAwait(false);
                     bool adopted = false;
                     lock (swapGate)
                     {

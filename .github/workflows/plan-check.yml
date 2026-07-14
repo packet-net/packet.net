@@ -1,12 +1,16 @@
 name: plan-check
 
+# main-only by design (2026-07-14, see ci.yml): runs on each push to main and diffs the
+# pushed range instead of a PR. Post-merge it's a red flag rather than a merge gate —
+# which matches the working pattern (merge on green local tests) — and the override
+# channel is commit messages only (a merge commit doesn't carry the PR body).
 on:
-  pull_request:
+  push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 env:
   # Opt into Node.js 24 for JavaScript actions ahead of GitHub's
@@ -32,10 +36,21 @@ jobs:
       - name: classify changed files
         id: changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # A forced push or branch creation has no usable `before`; nothing to diff.
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            echo "::notice::no usable base SHA for this push — skipping plan-check"
+            {
+              echo "plan_changed=true"
+              echo "plan_relevant_changed=false"
+              echo "plan_relevant_list<<EOF"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mapfile -t changed < <(git diff --name-only "$BASE_SHA..$HEAD_SHA")
           printf '%s\n' "${changed[@]}" > /tmp/changed.txt
 
@@ -68,17 +83,15 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: check override markers (commit messages + PR body)
+      - name: check override markers (commit messages)
         id: override
         if: steps.changes.outputs.plan_relevant_changed == 'true' && steps.changes.outputs.plan_changed == 'false'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          commits=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
-          combined="$commits"$'\n'"$PR_BODY"
+          combined=$(git log --format=%B "$BASE_SHA..$HEAD_SHA")
           if echo "$combined" | grep -qE '\[(skip-plan|no-plan-update)\]'; then
             echo "override=true" >> "$GITHUB_OUTPUT"
             echo "::notice::plan-check override honoured ([skip-plan] / [no-plan-update] found)"
@@ -93,27 +106,26 @@ jobs:
           steps.override.outputs.override != 'true'
         run: |
           cat <<'EOF'
-          ::error::This PR changes plan-relevant files but does not update docs/plan.md.
+          ::error::This push changes plan-relevant files but does not update docs/plan.md.
 
-          Plan-relevant files changed in this PR:
+          Plan-relevant files changed in this push:
           EOF
           echo "${{ steps.changes.outputs.plan_relevant_list }}"
           cat <<'EOF'
 
-          docs/plan.md §18 requires that PRs which change project direction,
+          docs/plan.md §18 requires that changes to project direction,
           scope, locked decisions, working agreements, dependencies, or that
           complete a phase exit criterion, update docs/plan.md in the same
-          PR — including a §17 amendment-log entry.
+          change — including a §17 amendment-log entry.
 
           Two ways forward:
 
-            1) Update docs/plan.md in this PR. The PR description should
-               mention the plan change. See docs/plan.md §18 for the discipline.
+            1) Follow up with a docs/plan.md update (a §17 entry) — this
+               check runs post-merge, so it flags rather than blocks.
 
             2) If this change is genuinely plan-irrelevant (typo fix,
                test-only refactor with no behavioural change, etc.), include
-               '[skip-plan]' or '[no-plan-update]' in any commit message or
-               in the PR description, then re-run this check.
+               '[skip-plan]' or '[no-plan-update]' in a commit message.
           EOF
           exit 1
 

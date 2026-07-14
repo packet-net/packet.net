@@ -63,6 +63,55 @@ describe("screens render without crashing", () => {
     expect(screen.getAllByText(/dBm/).length).toBeGreaterThan(0);
   });
 
+  it("Dashboard surfaces the Rigs panel with the dial and TX meters", async () => {
+    mount(<Dashboard />);
+    // The station-control card: model identity, the frequency dial, mode badge, and the
+    // TX-meters section (SWR is sampled during transmissions, last sample stays on display).
+    await waitFor(() => expect(screen.getByText(/^Rigs$/)).toBeInTheDocument());
+    expect(screen.getAllByText(/IC-7300/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("14.074.000").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PKTUSB").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/TX meters/i).length).toBeGreaterThan(0);
+    // The configured-but-unreachable flrig renders honestly.
+    expect(screen.getAllByText(/not attached/i).length).toBeGreaterThan(0);
+    // The TUNE affordance renders on the attached rig only (it advertises frequencySet/
+    // modeSet; the unattached flrig gets none). These mounts skip the router gate that
+    // enters mock mode as admin, so no scope is held — per the disable-never-hide
+    // convention the button renders disabled with the explanatory title.
+    const tune = screen.getAllByRole("button", { name: "Tune" });
+    expect(tune.length).toBe(1);
+    expect(tune[0]).toBeDisabled();
+    expect(tune[0]).toHaveAttribute("title", "Retuning a transmitter requires the operate scope");
+  });
+
+  it("Rig card Tune opens the retune modal and previews the parsed dial", async () => {
+    // Seed an admin session (the Console-test pattern) so has("operate") passes — the smoke
+    // mounts skip the router gate that would enterAnonymous("admin") in mock mode.
+    localStorage.setItem(
+      "pdn.session",
+      JSON.stringify({ token: "test.jwt", refreshToken: null, username: "tom", scope: "admin" }),
+    );
+    try {
+      mount(<Dashboard />);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Tune" })).not.toBeDisabled());
+      fireEvent.click(screen.getByRole("button", { name: "Tune" }));
+
+      // The modal renders the no-RF note plus both settable fields (the mock IC-7300
+      // advertises frequencySet and modeSet). Scope to the dialog — the card behind it
+      // also says "Frequency".
+      await waitFor(() => expect(screen.getByText(/No RF is emitted by a retune/i)).toBeInTheDocument());
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Frequency")).toBeInTheDocument();
+      expect(within(dialog).getByText("Mode")).toBeInTheDocument();
+
+      // MHz-decimal entry previews the parsed Hz through fmtRigFrequency ("14.205" → 14.205.000).
+      fireEvent.change(within(dialog).getByPlaceholderText(/14\.074 \(MHz\)/), { target: { value: "14.205" } });
+      expect(within(dialog).getByText("14.205.000")).toBeInTheDocument();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
   it("Sessions renders", async () => {
     const { container } = mount(<Sessions />);
     expect(container.firstChild).toBeTruthy();

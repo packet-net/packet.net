@@ -13,6 +13,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
+  RigStatus, RigScan, RigModelCatalogue,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -20,11 +21,11 @@ export const NODE_CONFIG: NodeConfig = {
   schemaVersion: 3,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
-    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 } },
+    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
     { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 400, persistence: 63, slotTime: 100, txTail: 80 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
     { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
-    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 } },
+    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
   management: {
@@ -239,6 +240,81 @@ export const RADIO_SCAN: RadioScanResult[] = [
   { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
   { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
 ];
+
+// Rig-control attachments (GET /api/v1/rigs) — the station-control (CAT) view. One attached
+// hamlib rig mid-QSO shape (dial + mode + a last-TX meter sample) and one configured flrig
+// whose daemon isn't up, so the card's not-attached projection renders.
+export const RIGS: RigStatus[] = [
+  {
+    portId: "hf-300", attached: true, kind: "hamlib", endpoint: "127.0.0.1:4532",
+    backend: "Hamlib rigctld", manufacturer: "Icom", model: "IC-7300",
+    capabilities: [
+      "frequencyGet", "frequencySet", "modeGet", "modeSet", "pttGet", "pttSet",
+      "swrMeter", "rfPowerMeter", "rfPowerMeterWatts",
+    ],
+    connectionState: "healthy", frequencyHz: 14074000, mode: "PKTUSB", passbandHz: 3000,
+    transmitting: false,
+    meters: { swr: 1.3, rfPowerWatts: 42, rfPowerRelative: 0.42, sampleAt: new Date(Date.now() - 90_000).toISOString() },
+    sampledAt: new Date(Date.now() - 3000).toISOString(),
+  },
+  {
+    portId: "vhf-1", attached: false, kind: "flrig", endpoint: "127.0.0.1:12345",
+    backend: null, manufacturer: null, model: null, capabilities: [],
+    connectionState: "unknown", frequencyHz: null, mode: null, passbandHz: null,
+    transmitting: null, meters: null, sampledAt: null,
+  },
+];
+
+// Rig discovery scan (GET /api/v1/rigs/scan) — what "Scan for rigs" surfaces in the PortEditor's
+// rig (CAT) section. Three rows covering every state the picker must render:
+//   - an IC-7300 whose by-id descriptor matched the curated table AND the local hamlib catalogue
+//     (a full suggestion: pick the row and the model fills itself);
+//   - a device already claimed by a configured port (hf-300's serial-kiss modem on /dev/ttyUSB1)
+//     — not pickable, the row says what claims it;
+//   - a bare FTDI CAT cable with a by-id path but no suggestion (generic bridge chip — the
+//     descriptor identifies the cable, not the rig behind it) — picking it requires the model picker.
+export const RIG_SCAN: RigScan = {
+  devices: [
+    {
+      devicePath: "/dev/ttyUSB3",
+      byIdPath: "/dev/serial/by-id/usb-Icom_Inc._IC-7300_IC-7300_02012345-if00-port0",
+      descriptor: "usb-Icom_Inc._IC-7300_IC-7300_02012345-if00-port0",
+      claimedBy: null,
+      suggestion: { manufacturer: "Icom", model: "IC-7300", modelNumber: 3073, source: "by-id" },
+    },
+    {
+      devicePath: "/dev/ttyUSB1",
+      byIdPath: null,
+      descriptor: null,
+      claimedBy: "port 'hf-300' transport (serial-kiss)",
+      suggestion: null,
+    },
+    {
+      devicePath: "/dev/ttyUSB4",
+      byIdPath: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0",
+      descriptor: "usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0",
+      claimedBy: null,
+      suggestion: null,
+    },
+  ],
+  catalogueAvailable: true,
+};
+
+// The node's hamlib model catalogue (GET /api/v1/rigs/models) — the editor's model picker source.
+// A small believable slice of `rigctl -l`: Dummy (#1, hamlib's loopback test rig) and the IC-7300
+// (#3073, matching the RIG_SCAN suggestion) plus a spread of manufacturers so filter-as-you-type
+// has something to narrow.
+export const RIG_MODELS: RigModelCatalogue = {
+  available: true,
+  models: [
+    { number: 1, manufacturer: "Hamlib", model: "Dummy", status: "Stable" },
+    { number: 1035, manufacturer: "Yaesu", model: "FT-857", status: "Stable" },
+    { number: 2031, manufacturer: "Kenwood", model: "TS-590S", status: "Stable" },
+    { number: 2311, manufacturer: "Elecraft", model: "K3", status: "Stable" },
+    { number: 3073, manufacturer: "Icom", model: "IC-7300", status: "Stable" },
+    { number: 3081, manufacturer: "Icom", model: "IC-9700", status: "Stable" },
+  ],
+};
 
 // Split-station head-end fleet scan (GET /api/v1/radios/headends) — the "plug into any port and go"
 // preview the Head-ends screen renders. Covers every state the operator surface must handle:
@@ -568,6 +644,15 @@ export const AVAILABLE_APPS: AvailableApp[] = [
 ];
 
 // formatters -------------------------------------------------
+// Rig-dial frequency grouping: 14_074_000 Hz → "14.074.000" (MHz.kHz.Hz, how transceivers
+// render the dial). Callers add the unit suffix.
+export function fmtRigFrequency(hz: number): string {
+  const mhz = Math.floor(hz / 1_000_000);
+  const khz = Math.floor(hz / 1_000) % 1_000;
+  const rem = hz % 1_000;
+  return `${mhz}.${String(khz).padStart(3, "0")}.${String(rem).padStart(3, "0")}`;
+}
+
 export function fmtUptime(s: number): string {
   const d = Math.floor(s / 86400); s %= 86400;
   const h = Math.floor(s / 3600); s %= 3600;

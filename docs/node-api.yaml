@@ -31,6 +31,7 @@ tags:
   - { name: config }
   - { name: monitor }
   - { name: radios }
+  - { name: rigs }
   - { name: auth }
   - { name: users }
   - { name: tools }
@@ -271,6 +272,125 @@ paths:
       responses:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RadioStatus" } } } }
         "404": { description: no such port }
+
+  /rigs:
+    get:
+      tags: [rigs]
+      summary: Per-port rig-control (CAT) attachment status
+      description: >
+        One entry per port with a `rig:` block — the station-control view of the transceiver
+        (frequency, mode, PTT, TX meters) polled over hamlib's rigctld protocol or flrig.
+        `attached` distinguishes a rig the node connected to and is polling from one
+        configured-but-not-attached (the port is down, or the daemon was unreachable at
+        bring-up and the port degraded to running without it). Read-only surface: the node
+        never tunes, changes mode, or keys.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/RigStatus" } } } } }
+
+  /ports/{id}/rig:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [rigs]
+      summary: One port's rig-control status
+      description: "A configured port with no rig block returns attached=false with an empty kind; an unknown port id is 404."
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RigStatus" } } } }
+        "404": { description: no such port }
+
+  /ports/{id}/rig/frequency:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [rigs]
+      summary: QSY — set the attached rig's current-VFO frequency
+      description: >
+        Retunes the transceiver (no RF is emitted by a retune — keying is deliberately not
+        exposed). Capability-gated on frequencySet; audit-logged; wakes the status poller so the
+        `event: rig` feed carries the new dial within a tick. 409 = configured-but-not-attached,
+        capability absent, or the rig rejected/faulted (transient — the backend re-dials).
+      security: [{ bearerAuth: [operate] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [frequencyHz], properties: { frequencyHz: { type: integer, format: int64, minimum: 1 } } } } }
+      responses:
+        "200": { description: "retuned — the read-back frequency", content: { application/json: { schema: { type: object, properties: { frequencyHz: { type: integer, format: int64 } } } } } }
+        "400": { description: bad frequency }
+        "404": { description: no such port }
+        "409": { description: "no rig attached / capability absent / rig refused" }
+
+  /ports/{id}/rig/mode:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    post:
+      tags: [rigs]
+      summary: Set the attached rig's operating mode
+      description: >
+        Sets the current-VFO mode (a hamlib token like USB/PKTUSB, or the rig's native name —
+        flrig vocabularies are rig-specific). passbandHz omitted/null selects the rig's default
+        width for the mode; flrig cannot set widths and rejects an explicit one. Same gating,
+        audit and poller-wake semantics as the frequency endpoint.
+      security: [{ bearerAuth: [operate] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string }, passbandHz: { type: [integer, "null"] } } } } }
+      responses:
+        "200": { description: "set — the read-back mode/passband", content: { application/json: { schema: { type: object, properties: { mode: { type: string }, passbandHz: { type: [integer, "null"] } } } } } }
+        "400": { description: bad mode token }
+        "404": { description: no such port }
+        "409": { description: "no rig attached / capability absent / rig refused" }
+
+  /rigs/events:
+    get:
+      tags: [rigs]
+      summary: Live rig poll-tick feed (SSE)
+      description: >
+        Server-Sent Events: one `event: rig` per poll tick per attached rig, each `data:` line a
+        RigStatus JSON document. Idle rigs tick at the poll cadence (default 5 s); a keyed
+        transmitter ticks at the meter cadence (default 1 s) so SWR/power are live during a
+        transmission. Heartbeat comments (`: ping`) every 15 s. EventSource clients may pass the
+        bearer token as `?access_token=` (the SSE allowlist covers this path).
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: SSE stream, content: { text/event-stream: { schema: { type: string } } } }
+
+  /rigs/scan:
+    get:
+      tags: [rigs]
+      summary: Scan local serial devices for CAT-capable rigs (passive — no serial I/O)
+      description: >
+        Enumerates the machine's candidate CAT serial devices (/dev/ttyUSB* + /dev/ttyACM*),
+        resolves each one's stable /dev/serial/by-id descriptor, marks devices already claimed
+        by the current config (a port's transport, radio or rig block), and — where the
+        descriptor is genuinely model-distinctive (an IC-7300's bridge, a native-USB IC-705) —
+        suggests a hamlib manufacturer/model with its catalogue number resolved against the
+        installed rigctl. Passive identification only: nothing is ever written to a device (no
+        ID;/CI-V probing). Adoption happens through the normal port-write path (attach a `rig:`
+        block to a port); there is no adopt endpoint. Bounded + single-flight.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RigScan" } } } }
+
+  /rigs/models:
+    get:
+      tags: [rigs]
+      summary: The hamlib rig model catalogue (rigctl -l)
+      description: >
+        The installed hamlib's model table, parsed from `rigctl -l` once and cached for the
+        process lifetime — number, manufacturer, model, status. The wizard's model picker;
+        no query parameter — the client filters. available=false with an empty list on a host
+        without rigctl.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available, models]
+                properties:
+                  available: { type: boolean, description: "false = rigctl not installed (or no catalogue registered)" }
+                  models: { type: array, items: { $ref: "#/components/schemas/RigCatalogueModel" } }
 
   /ports/{id}/doctor:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
@@ -924,7 +1044,7 @@ components:
       properties:
         portId: { type: string }
         attached: { type: boolean }
-        kind: { type: string, description: "radio-control kind, e.g. tait-ccdi (empty for a port with no radio block)" }
+        kind: { type: string, description: "radio-control kind, e.g. tait-ccdi or rig (empty for a port with no radio block)" }
         controlPort: { type: [string, "null"], description: "the serial device the control channel is on (the resolved /dev/ttyUSB* when attached)" }
         serial: { type: [string, "null"], description: "the radio's CCDI serial number (config or queried identity)" }
         identity: { oneOf: [{ $ref: "#/components/schemas/RadioIdentity" }, { type: "null" }] }
@@ -950,6 +1070,79 @@ components:
         reverseTrendMillivolts: { type: [integer, "null"], description: "offset-corrected reverse detector (mV), transmit samples only — a TREND" }
         reverseForwardRatio: { type: [number, "null"], description: "offset-corrected reverse/forward ratio — a TREND, NEVER VSWR" }
         sampleAt: { type: [string, "null"], format: date-time }
+
+    RigStatus:
+      type: object
+      description: A port's rig-control (CAT) attachment. attached=false = configured but not connected (port down, or degraded after an unreachable daemon at bring-up).
+      required: [portId, attached, kind, endpoint, capabilities, connectionState]
+      properties:
+        portId: { type: string }
+        attached: { type: boolean }
+        kind: { type: string, enum: ["", hamlib, flrig], description: "rig-control kind (empty for a port with no rig block)" }
+        endpoint: { type: string, description: "the daemon endpoint as host:port (config defaults resolved)" }
+        backend: { type: [string, "null"], description: "what the backend calls itself, e.g. 'Hamlib rigctld', 'flrig'" }
+        manufacturer: { type: [string, "null"] }
+        model: { type: [string, "null"], description: "rig model as the backend reports it, e.g. 'Dummy', 'IC-7300'" }
+        capabilities:
+          type: array
+          items: { type: string }
+          description: "camel-cased Packet.Rig.RigCapabilities flag names the rig actually advertises (frequencyGet, modeSet, swrMeter, …) — render exactly this slice"
+        connectionState: { type: string, enum: [healthy, faulted, unknown], description: "faulted self-heals: the backends re-dial on the next poll" }
+        frequencyHz: { type: [integer, "null"], format: int64, description: "current-VFO frequency in Hz" }
+        mode: { type: [string, "null"], description: "operating mode token (hamlib vocabulary or the rig's native name)" }
+        passbandHz: { type: [integer, "null"], description: "receiver passband width in Hz where reported (hamlib yes, flrig no)" }
+        transmitting: { type: [boolean, "null"], description: "last observed PTT state" }
+        meters: { oneOf: [{ $ref: "#/components/schemas/RigMeters" }, { type: "null" }] }
+        sampledAt: { type: [string, "null"], format: date-time, description: "when the last successful poll tick completed" }
+
+    RigMeters:
+      type: object
+      description: Latest TX-side meter sample — meaningful while transmitting (idle rigs read ~0, so meters are only polled fast during PTT).
+      required: [sampleAt]
+      properties:
+        swr: { type: [number, "null"], description: "SWR as a dimensionless ratio, 1.0 = perfect match" }
+        rfPowerWatts: { type: [number, "null"], description: "RF power output in watts (calibrated backends)" }
+        rfPowerRelative: { type: [number, "null"], description: "RF power output as a fraction of full scale (0–1)" }
+        sampleAt: { type: string, format: date-time }
+
+    RigScan:
+      type: object
+      description: The rig plug-and-play scan — every candidate local CAT serial device, with claim marking and (where the by-id descriptor identifies one) a hamlib model suggestion. Passive; nothing is written to any device.
+      required: [devices, catalogueAvailable]
+      properties:
+        devices: { type: array, items: { $ref: "#/components/schemas/RigScanDevice" } }
+        catalogueAvailable: { type: boolean, description: "whether the hamlib catalogue (rigctl -l) was available to resolve suggestion model numbers" }
+
+    RigScanDevice:
+      type: object
+      description: One local serial device seen by a rig scan.
+      required: [devicePath]
+      properties:
+        devicePath: { type: string, description: "current device, e.g. /dev/ttyUSB0 (may renumber between scans — bind rig.device: to byIdPath)" }
+        byIdPath: { type: [string, "null"], description: "the /dev/serial/by-id/* symlink for this device, or null when absent/ambiguous/off-Linux" }
+        descriptor: { type: [string, "null"], description: "the by-id basename (the udev USB descriptor string), or null when byIdPath is" }
+        claimedBy: { type: [string, "null"], description: "what already claims this device in config (e.g. \"port 'hf' rig\", \"port 'vhf' transport (serial-kiss)\"), or null when free" }
+        suggestion: { oneOf: [{ $ref: "#/components/schemas/RigSuggestion" }, { type: "null" }] }
+
+    RigSuggestion:
+      type: object
+      description: A hamlib model suggestion for a scanned device. Numbers are resolved against the installed rigctl's catalogue by name (they drift across hamlib versions), never hardcoded.
+      required: [manufacturer, model, source]
+      properties:
+        manufacturer: { type: string, description: "as the hamlib catalogue spells it, e.g. Icom" }
+        model: { type: string, description: "as the hamlib catalogue spells it, e.g. IC-7300" }
+        modelNumber: { type: [integer, "null"], description: "the hamlib model number (rigctld -m), or null when rigctl is absent / the installed hamlib doesn't know the model" }
+        source: { type: string, enum: [by-id], description: "how the suggestion was derived (passive USB-descriptor identification only in this slice)" }
+
+    RigCatalogueModel:
+      type: object
+      description: One row of the hamlib model catalogue (a parsed `rigctl -l` line).
+      required: [number, manufacturer, model]
+      properties:
+        number: { type: integer, description: "the hamlib model number (rigctld -m)" }
+        manufacturer: { type: string }
+        model: { type: string, description: "may contain spaces, e.g. MARK-V FT-1000MP" }
+        status: { type: [string, "null"], description: "backend status (Stable/Beta/Alpha/…), or null" }
 
     RadioScanResult:
       type: object

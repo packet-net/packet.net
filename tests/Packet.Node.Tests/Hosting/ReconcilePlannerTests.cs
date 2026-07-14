@@ -122,6 +122,38 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void Rig_attachment_change_is_a_single_port_restart()
+    {
+        // port.rig is construction-time too: the CAT backend is dialled and capability-probed
+        // at bring-up. Adding, removing, or re-pointing it restarts exactly that port.
+        var hamlib = new PortRigConfig { Kind = "hamlib", Port = 4532 };
+
+        var without = Config("M0LTE-1", Tcp("a"));
+        var with = Config("M0LTE-1", Tcp("a") with { Rig = hamlib });
+        var moved = Config("M0LTE-1", Tcp("a") with { Rig = hamlib with { Port = 4534 } });
+        // The node-managed shape's fields ride the same record equality: re-pointing the
+        // device, changing the model, or switching shape entirely restarts exactly that port
+        // (the supervised rigctld is spawned at bring-up).
+        var managed = Config("M0LTE-1", Tcp("a") with
+        {
+            Rig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB0", Model = 3073 },
+        });
+        var remodelled = Config("M0LTE-1", Tcp("a") with
+        {
+            Rig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB0", Model = 3074 },
+        });
+
+        foreach (var (from, to) in new[]
+            { (without, with), (with, without), (with, moved), (with, managed), (managed, remodelled) })
+        {
+            var plan = ReconcilePlanner.Plan(from, to);
+            plan.ToRestart.Select(p => p.Id).Should().Equal("a");
+            plan.ToBringUp.Should().BeEmpty();
+            plan.ToTearDown.Should().BeEmpty();
+        }
+    }
+
+    [Fact]
     public void Radio_attachment_change_is_a_single_port_restart()
     {
         // port.radio is construction-time: the radio control channel is opened and the

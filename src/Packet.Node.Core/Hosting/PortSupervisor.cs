@@ -14,6 +14,8 @@ using Packet.Node.Core.Console;
 using Packet.Node.Core.HeadEnd;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Radios;
+using Packet.Node.Core.Rigs;
+using Packet.Rig;
 using Packet.Node.Core.Telemetry;
 using Packet.Node.Core.Transports;
 using Packet.Radio;
@@ -48,6 +50,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private readonly IConfigProvider config;
     private readonly ITransportFactory transportFactory;
     private readonly IRadioControlFactory radioFactory;
+    private readonly IRigControlFactory rigFactory;
+    private readonly RigTelemetry? rigTelemetry;
     private readonly TimeProvider timeProvider;
     private readonly ILoggerFactory loggerFactory;
     private readonly ILogger<PortSupervisor> logger;
@@ -103,7 +107,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         IApplicationHost? applicationHost = null,
         PeerCapabilityCache? capabilityCache = null,
         IRadioControlFactory? radioFactory = null,
-        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null)
+        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null,
+        IRigControlFactory? rigFactory = null,
+        RigTelemetry? rigTelemetry = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
@@ -111,10 +117,19 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // blank resolves its current host:port via mDNS at bring-up (keyed by instance id, so a
         // re-addressed Pi keeps its port configs). Null = config-address-only (a purely-local node).
         this.headEndDiscovery = headEndDiscovery;
+        // Optional rig-control (CAT) seam: how a port's `rig:` block becomes a live
+        // IRigControl. Defaults to the production factory (real daemons); component
+        // tests substitute a scripted rig. The telemetry hub, when present, receives a
+        // RigStatus after every poll tick (the /api/v1/rigs/events SSE feed).
+        this.rigFactory = rigFactory ?? RigControlFactory.Instance;
         // Optional radio-control seam: how a port's `radio:` block becomes a live
         // IRadioControl. Defaults to the production factory (real serial hardware);
-        // component tests substitute a scripted radio.
-        this.radioFactory = radioFactory ?? RadioControlFactory.Instance;
+        // component tests substitute a scripted radio. The default is built OVER this
+        // supervisor's rig seam, so a `radio: kind rig` port dials its dedicated rig
+        // connection through the same factory the status poller uses — inject a fake
+        // rig factory once and both arms are scripted.
+        this.radioFactory = radioFactory ?? new RadioControlFactory(this.rigFactory);
+        this.rigTelemetry = rigTelemetry;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         this.sysopContext = sysopContext;
@@ -804,6 +819,51 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // must target, because the tagging wrapper deliberately doesn't forward those.
         var modemTransport = transport;
 
+        // Node-managed rigctld (plug-and-play rig): a rig: block bound by device/model
+        // (instead of host/port) means the NODE owns the daemon — spawn a supervised rigctld
+        // on a loopback port allocated once, wait for it to listen, and point every rig dial
+        // below (the radio kind-rig arm AND the rig status attach) at it via the effective
+        // config. Started FIRST because both dials need a live endpoint. Degrade-cleanly, like
+        // an unreachable BYO daemon: a spawn failure or a daemon that never starts listening
+        // leaves the effective rig config null, so the rest of bring-up sees "no rig" (a
+        // radio: kind rig port then degrades its radio exactly as it does when a BYO daemon is
+        // down). Once ready, the daemon self-heals for the port's lifetime — it respawns with
+        // capped backoff on the SAME port, so the re-dialling clients recover when an unplugged
+        // USB CAT device comes back.
+        ManagedRigDaemon? rigDaemon = null;
+        var effectiveRig = port.Rig;
+        if (port.Rig is { IsNodeManaged: true } managedRig)
+        {
+            try
+            {
+                rigDaemon = ManagedRigDaemon.Start(port.Id, managedRig, loggerFactory, timeProvider);
+                if (await rigDaemon.WaitUntilReadyAsync(ManagedRigDaemon.DefaultReadyBudget, ct).ConfigureAwait(false))
+                {
+                    effectiveRig = rigDaemon.ClientConfig;
+                }
+                else
+                {
+                    LogRigDaemonFailed(
+                        port.Id, managedRig.Device!,
+                        "the daemon never started listening within the readiness budget " +
+                        "(missing rigctld binary, or a device/model it cannot open — see the rigctld log)");
+                    await rigDaemon.DisposeAsync().ConfigureAwait(false);
+                    rigDaemon = null;
+                    effectiveRig = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogRigDaemonFailed(port.Id, managedRig.Device!, ex.Message);
+                if (rigDaemon is not null)
+                {
+                    await rigDaemon.DisposeAsync().ConfigureAwait(false);
+                    rigDaemon = null;
+                }
+                effectiveRig = null;
+            }
+        }
+
         // Optional radio-control attachment (port.radio, restart-class): open the
         // radio's control channel and wrap the transport OUTERMOST so every inbound
         // frame the listener sees carries per-frame RSSI/SNR metadata
@@ -817,14 +877,31 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         IInboundRadioSource? radioSource = null;
         if (port.Radio is { } radioConfig)
         {
-            // Serial-bound radios have an empty Port (the device is resolved by scanning), so
-            // describe the attachment by whichever key is set.
-            var radioEndpoint = !string.IsNullOrWhiteSpace(radioConfig.Port)
-                ? radioConfig.Port
-                : $"serial:{radioConfig.Serial}";
+            // Describe the attachment by whichever key pins it: a rig-backed radio (kind rig) by
+            // the rig daemon it dials a dedicated connection to (the EFFECTIVE config, so a
+            // node-managed daemon shows its device + allocated loopback port); a cabled radio by
+            // its control device, or — serial-bound radios have an empty Port (the device is
+            // resolved by scanning) — its CCDI serial.
+            var radioEndpoint = RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig)
+                ? (effectiveRig is { } rigCfg
+                    ? $"rig:{rigCfg.DescribeEndpoint()}"
+                    : port.Rig is { } deadRig
+                        ? $"rig:{deadRig.DescribeEndpoint()}"
+                        : "rig:(no rig: block)")
+                : !string.IsNullOrWhiteSpace(radioConfig.Port)
+                    ? radioConfig.Port
+                    : $"serial:{radioConfig.Serial}";
             try
             {
-                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, ct).ConfigureAwait(false);
+                // A node-managed rig whose daemon failed above has nothing to dial: degrade the
+                // rig-backed radio through the same catch an unreachable BYO daemon would hit.
+                if (RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig) && effectiveRig is null && port.Rig is not null)
+                {
+                    throw new RigConnectionException(
+                        "the port's node-managed rigctld is not running (it failed to start — " +
+                        "see the log above), so the rig-backed radio has no daemon to dial.");
+                }
+                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, effectiveRig, ct).ConfigureAwait(false);
 
                 // Head-end-bound radio control gets reconnect supervision (#576): the stable
                 // facade is what every consumer below holds (tagging transport, carrier-sense
@@ -832,7 +909,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 // a head-end restart, a .deb upgrade's try-restart, a replug — the facade
                 // disposes the dead driver and re-opens it (fresh inventory resolve, configured
                 // baud re-clock, progress re-enable) underneath them all. A local-serial radio
-                // keeps today's behaviour: a USB unplug is a physical event, not a bounce.
+                // keeps today's behaviour: a USB unplug is a physical event, not a bounce. A
+                // rig-backed radio (kind rig, never head-end-bound) also skips the wrap — the
+                // rig backends re-dial per command, so the adapter self-heals on its own.
                 if (radioConfig.IsHeadEndBound)
                 {
                     radio = new ReconnectingRadioControl(
@@ -840,25 +919,36 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                         loggerFactory.CreateLogger<ReconnectingRadioControl>(), timeProvider);
                 }
 
-                // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
-                // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
-                // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
-                // concern kept entirely OFF the parity-tracked AX.25 listener contract.
-                var tagging = new RssiTaggingTransport(
-                    transport,
-                    radio,
-                    new RssiTaggingOptions
-                    {
-                        // A NinoTNC modem reports its live over-air bit rate; consulted
-                        // per frame so a mode change is picked up without a restart.
-                        BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
-                    },
-                    timeProvider);
-                var tap = new InboundRadioTap(tagging);
-                transport = tap;
-                radioSource = tap;
+                if (radio.Capabilities.HasFlag(RadioCapabilities.RssiRead))
+                {
+                    // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
+                    // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
+                    // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
+                    // concern kept entirely OFF the parity-tracked AX.25 listener contract.
+                    var tagging = new RssiTaggingTransport(
+                        transport,
+                        radio,
+                        new RssiTaggingOptions
+                        {
+                            // A NinoTNC modem reports its live over-air bit rate; consulted
+                            // per frame so a mode change is picked up without a restart.
+                            BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
+                        },
+                        timeProvider);
+                    var tap = new InboundRadioTap(tagging);
+                    transport = tap;
+                    radioSource = tap;
+                    LogRadioAttached(port.Id, radioConfig.Kind, radioEndpoint);
+                }
+                else
+                {
+                    // A radio without RSSI reads (e.g. a rig whose DCD is calibrated but whose
+                    // strength meter isn't): no tagging wrapper — the inbound path stays exactly
+                    // as a no-radio port's — but the carrier-sense gate and the status monitor
+                    // below still get the radio.
+                    LogRadioAttachedNoRssi(port.Id, radioConfig.Kind, radioEndpoint, radio.Capabilities);
+                }
                 radioStatus = RadioStatusMonitors.Create(port.Id, radioConfig, radio, timeProvider);
-                LogRadioAttached(port.Id, radioConfig.Kind, radioEndpoint);
             }
             catch (Exception ex)
             {
@@ -944,8 +1034,52 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 await radio.DisposeAsync().ConfigureAwait(false);
             }
+            if (rigDaemon is not null)
+            {
+                // Last, mirroring RunningPort.DisposeAsync: the (possibly rig-backed) radio
+                // client above goes before the daemon it dials.
+                await rigDaemon.DisposeAsync().ConfigureAwait(false);
+            }
             ScheduleHeadEndBringUpRetry(port, ct);
             return;
+        }
+
+        // Rig-control (CAT) attachment: dial the rig daemon and start the status poller.
+        // Placed after every throwing bring-up step so a port-level failure can't leak a
+        // connected rig, and self-degrading — an unreachable rigctld/flrig must never take
+        // a working packet channel down. The rig never touches the packet path (it is the
+        // station-control sibling of the radio: seam, plan OQ-011), so no transport
+        // wrapping happens here. After attach, backend transport drops self-heal (the
+        // clients re-dial per command); only an attach-time failure leaves the rig off
+        // until the next reconcile.
+        IRigControl? rig = null;
+        IRigStatusMonitor? rigStatus = null;
+        if (effectiveRig is { } rigConfig)
+        {
+            // The EFFECTIVE config: for a node-managed rig this is daemon.ClientConfig (device +
+            // the allocated loopback port), so both the dial and the status monitor's projected
+            // endpoint stay honest; for a BYO daemon it IS port.Rig, byte-for-byte.
+            var rigEndpoint = rigConfig.DescribeEndpoint();
+            try
+            {
+                rig = await rigFactory.CreateAsync(rigConfig, timeProvider, ct).ConfigureAwait(false);
+                rigStatus = RigStatusMonitors.Create(port.Id, rigConfig, rig, rigTelemetry, timeProvider);
+                LogRigAttached(port.Id, rigConfig.Kind, rigEndpoint);
+            }
+            catch (Exception ex)
+            {
+                LogRigFaulted(ex, port.Id, rigConfig.Kind, rigEndpoint);
+                if (rigStatus is not null)
+                {
+                    await rigStatus.DisposeAsync().ConfigureAwait(false);
+                    rigStatus = null;
+                }
+                if (rig is not null)
+                {
+                    await rig.DisposeAsync().ConfigureAwait(false);
+                    rig = null;
+                }
+            }
         }
 
         var running = new RunningPort
@@ -959,6 +1093,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             NinoTnc = ninoTnc,
             Radio = radio,
             RadioStatus = radioStatus,
+            Rig = rig,
+            RigStatus = rigStatus,
+            RigDaemon = rigDaemon,
             LinkState = linkState,
             Listener = listener,
             Started = true,
@@ -1466,8 +1603,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) — inbound frames carry RSSI/SNR metadata.")]
     private partial void LogRadioAttached(string id, string kind, string radioPort);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads — capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
+    private partial void LogRadioAttachedNoRssi(string id, string kind, string radioPort, RadioCapabilities capabilities);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
     private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: rig control attached ({Kind} at {Endpoint}) — frequency/mode/PTT/meters are polled and projected on /api/v1/rigs.")]
+    private partial void LogRigAttached(string id, string kind, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: rig control ({Kind} at {Endpoint}) failed to connect; the port runs WITHOUT rig status.")]
+    private partial void LogRigFaulted(Exception ex, string id, string kind, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: node-managed rigctld for {Device} failed to come up ({Reason}); the port runs WITHOUT rig control.")]
+    private partial void LogRigDaemonFailed(string id, string device, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);

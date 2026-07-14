@@ -1,15 +1,16 @@
 name: ci
 
+# main-only by design (2026-07-14): PRs merge on green LOCAL test runs (the working
+# pattern), so PR-triggered CI just doubled every slice's runner load — the push-to-main
+# run is the CI signal. Use workflow_dispatch for an on-demand branch run.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

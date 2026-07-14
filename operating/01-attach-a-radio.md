@@ -9,9 +9,12 @@ control channel is a **second cable** the node reads alongside.
 
 ## Before you start
 
-- A **NinoTNC** or **serial KISS** port already working in PDN. (The radio block is
-  only valid on the serial-modem port kinds — `nino-tnc` and `serial-kiss`. A
-  `kiss-tcp` or AXUDP port has no physical radio beside the node to cable to.)
+- A **NinoTNC** or **serial KISS** port already working in PDN. (A *cabled*
+  `tait-ccdi` radio block is only valid on the serial-modem port kinds —
+  `nino-tnc` and `serial-kiss`. A `kiss-tcp` or AXUDP port has no physical radio
+  beside the node to cable to — though a `kiss-tcp` port *can* carry a
+  [rig-backed radio](#kind-rig--re-use-the-ports-cat-rig-as-its-radio), which
+  needs no cable at all.)
 - A **Tait TM8100 / TM8200** radio wired to the machine by its **CCDI** serial
   cable (typically a CP2102 USB-serial dongle showing up as `/dev/ttyUSB0`).
 - The radio programmed so CCDI answers at its serial rate (the Tait factory default
@@ -59,7 +62,7 @@ ports:
       baud: 57600
       mode: 6
     radio:                       # attach the radio's serial CONTROL channel
-      kind: tait-ccdi            # Tait TM8100/TM8200 CCDI (only kind today)
+      kind: tait-ccdi            # Tait TM8100/TM8200 CCDI (or `rig` — see below)
       serial: "19925328"         # PREFERRED — pin by CCDI serial (stable)
       baud: 28800                # CCDI control-channel baud (Tait default)
       healthIntervalSeconds: 10  # optional — how often to sample health (default 10 s)
@@ -69,15 +72,91 @@ The fields:
 
 | Field | Meaning | Default |
 |---|---|---|
-| `kind` | Control protocol. Only `tait-ccdi` today. | *(required)* |
-| `serial` | The radio's **CCDI serial number** — the stable binding. | — |
-| `port` | **OR** the control device path, e.g. `/dev/ttyUSB0`. | — |
-| `baud` | Control-channel baud. | `28800` |
-| `healthIntervalSeconds` | Health-sample cadence, seconds. | `10` |
+| `kind` | Control protocol: `tait-ccdi` (this chapter), or `rig` (below). | *(required)* |
+| `serial` | The radio's **CCDI serial number** — the stable binding. `tait-ccdi` only. | — |
+| `port` | **OR** the control device path, e.g. `/dev/ttyUSB0`. `tait-ccdi` only. | — |
+| `baud` | Control-channel baud. `tait-ccdi` only. | `28800` |
+| `healthIntervalSeconds` | Health-sample cadence, seconds. `tait-ccdi` only. | `10` |
 
 > [!IMPORTANT]
-> Set **exactly one** of `serial` or `port` — not both, not neither. Binding by
-> `serial` is strongly preferred (next section). `port` is the advanced fallback.
+> For `tait-ccdi`, set **exactly one** of `serial` or `port` — not both, not
+> neither. Binding by `serial` is strongly preferred (next section). `port` is the
+> advanced fallback. For `kind: rig` set **neither** — the rig-backed radio has no
+> control cable of its own.
+
+## `kind: rig` — re-use the port's CAT rig as its radio
+
+A port that already has a `rig:` block (hamlib `rigctld` / flrig CAT control) can
+re-present **that same rig** as the port's radio:
+
+```yaml
+ports:
+  - id: hf
+    enabled: true
+    transport:
+      kind: kiss-tcp             # e.g. a soundmodem beside the node
+      host: 127.0.0.1
+      port: 8001
+    rig:                         # the CAT view: dial/mode/PTT/meters
+      kind: hamlib               # rigctld on its stock port 4532
+    radio:                       # AND the packet-medium view of the same rig
+      kind: rig
+```
+
+The node dials a **second, dedicated connection** to the same daemon, so the
+carrier-sense polling never queues behind the status poller's meter reads. What you
+get depends on what the rig reports:
+
+- **DCD** (`get_dcd`) gates the node's CSMA — the node holds its keyups while the
+  rig hears carrier, exactly like a Tait's hardware DCD.
+- **Calibrated signal strength** (dBm) RSSI-tags inbound frames, feeding the same
+  link-quality surfaces as a Tait attachment ([chapter 2](02-see-your-link-quality.md)).
+  A rig with DCD but no calibrated meter still works — the port just runs without
+  per-frame signal metadata.
+
+Because there is no control cable, a rig-backed radio works with **any** transport —
+the `kiss-tcp` soundmodem + `rigctld` pairing above is the motivating setup. The
+`rig:` block on the same port is **required** (it says which daemon to dial); the
+`serial`/`port`/`baud` fields above are `tait-ccdi`-only and must stay unset. An
+unreachable daemon degrades exactly like an unplugged control cable: the port runs,
+just without the radio.
+
+### Let the node run rigctld for you (`device:` + `model:`)
+
+The `rig:` block has **two shapes**. `host:`/`port:` (as above) points at a daemon
+**you** run — and remains the only shape for **flrig** (it's a GUI application the
+node can't sensibly spawn). Alternatively, give the node the rig's serial device and
+hamlib model number, and it **spawns and supervises `rigctld` itself**:
+
+```yaml
+    rig:
+      kind: hamlib               # node-managed shape is hamlib-only
+      device: /dev/serial/by-id/usb-Icom_Inc._IC-7300_02012345-if00-port0
+      model: 3073                # hamlib rig model number — `rigctl -l` lists them
+      # serialSpeed: 115200      # optional — omit for hamlib's per-model default
+```
+
+The node launches `rigctld -m <model> -r <device>` on a loopback port it allocates
+itself, points its own rig client(s) at it, and **restarts it with backoff** if it
+dies or the USB device disappears — plug the rig back in and the attachment
+self-heals, no config edit, no systemd unit of your own. Set **either** `device:` +
+`model:` **or** `host:`/`port:` — never both (`device:` selects the node-managed
+shape, so `port:` and a remote `host:` must stay unset). Prefer the
+`/dev/serial/by-id/…` path: it survives USB renumbering, exactly like binding a Tait
+by CCDI serial.
+
+### The easy way: scan and click (web UI)
+
+You don't have to type any of that. The port editor (**Ports → edit → Rig control
+(CAT)**) has a **Scan for rigs** button: the node lists the local serial devices,
+greys out anything already claimed by a port (and says what claims it), and — where
+the USB descriptor identifies the rig (modern Icoms name themselves) — pre-fills the
+hamlib model for you. Pick the device (the by-id path is chosen automatically), and
+if the model wasn't recognised, pick it from the searchable hamlib catalogue
+(the same list `rigctl -l` prints). Saving writes the `rig:` block through the same
+validated config path as everything else. The collapsible *"Use an existing
+rigctld/flrig daemon"* toggle in the same section covers the `host:`/`port:` shape,
+so the whole thing is doable without touching YAML.
 
 ## Why bind by serial, not device path
 

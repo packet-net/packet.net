@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Packet.Rig\Packet.Rig.csproj" />
+  </ItemGroup>
+
+</Project>

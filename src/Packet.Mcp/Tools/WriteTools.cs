@@ -66,4 +66,21 @@ public sealed class WriteTools(INodeMcpBackend backend, IMcpCallerAccessor calle
         [Description("Parameter value (0..255).")] int value,
         CancellationToken ct = default)
         => backend.SetKissParamAsync(new SetKissParamRequest(port, param, value), RequireOperate(), ct);
+
+    [McpServerTool(Name = "set_rig_frequency")]
+    [Description("QSY: retune the current VFO of a port's attached rig (CAT). A retune emits no RF — transmitter keying is not exposed here. Refused when the rig does not advertise the frequencySet capability (see get_rig_status). Returns the read-back dial frequency where the rig can report one.")]
+    public Task<RigFrequencyResult> SetRigFrequency(
+        [Description("Port whose attached rig to retune.")] string port,
+        [Description("Target current-VFO frequency in Hz (e.g. 14074000).")] long frequencyHz,
+        CancellationToken ct = default)
+        => backend.SetRigFrequencyAsync(new SetRigFrequencyRequest(port, frequencyHz), RequireOperate(), ct);
+
+    [McpServerTool(Name = "set_rig_mode")]
+    [Description("Set the operating mode on the current VFO of a port's attached rig (CAT). Refused when the rig does not advertise the modeSet capability (see get_rig_status). passbandHz null selects the rig's default width for the mode — the only cross-backend semantics (flrig rejects explicit widths). Returns the read-back mode/passband where the rig can report them.")]
+    public Task<RigModeResult> SetRigMode(
+        [Description("Port whose attached rig's mode to set.")] string port,
+        [Description("Mode token — hamlib vocabulary (USB, PKTUSB, ...) or the rig's native name (DATA-U, DIG, ...).")] string mode,
+        [Description("Explicit passband width in Hz; omit for the rig's default width for the mode.")] int? passbandHz = null,
+        CancellationToken ct = default)
+        => backend.SetRigModeAsync(new SetRigModeRequest(port, mode, passbandHz), RequireOperate(), ct);
 }

@@ -18,6 +18,12 @@
     <ProjectReference Include="..\Packet.Kiss.NinoTnc\Packet.Kiss.NinoTnc.csproj" />
     <ProjectReference Include="..\Packet.Radio\Packet.Radio.csproj" />
     <ProjectReference Include="..\Packet.Radio.Tait\Packet.Radio.Tait.csproj" />
+    <!-- Rig control (CAT): the station-control seam behind a port's `rig:` block —
+         Packet.Rig is the dependency-free abstraction, Hamlib/Flrig are the backends the
+         RigControlFactory dispatches to. -->
+    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
+    <ProjectReference Include="..\Packet.Rig.Hamlib\Packet.Rig.Hamlib.csproj" />
+    <ProjectReference Include="..\Packet.Rig.Flrig\Packet.Rig.Flrig.csproj" />
     <!-- The capability doctor (GET /api/v1/ports/{id}/doctor) reuses the Packet.Tune.Core
          probe core against the live RunningPort handles. Tom approved pulling Tune.Core into
          the node for this; only the doctor probes are used here (not the tuning link machinery). -->
@@ -25,6 +31,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The rig scanner's off-Linux candidate-device fallback (SerialPort.GetPortNames), the
+         same last resort TaitRadioPortDiscovery uses. -->
+    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="YamlDotNet" />
     <!-- kissproxy-compatible MQTT frame emission (default-off; docs/research/pdn-mqtt-frame-emission.md).

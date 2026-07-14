@@ -4,8 +4,10 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-08
+**As of:** 2026-07-14
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-14 — **lib-v0.23.0 downstream cascade** — axcall + packet-term-tui bumped `Packet.*` 0.22.0→0.23.0, built + tested against the published nuget.org packages, merged on green CI (axcall#20 / packet-term-tui#25), and released as **v0.2.20** each (six-platform binaries, 6 assets, verified non-draft). Tags cut via each repo's `release.yml` `workflow_dispatch` (branch-scoped credential can't push tags). Closes the lib-v0.23.0 entry's remaining Step 3; releasing.md cascade complete for 0.23.0](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-07-14 — **RELEASE lib-v0.23.0 + node-v0.31.0** — the whole rig-control arc ships: 17 NuGet packages verified indexed (DcdRead/SignalStrengthRead, RigRadioControl), and the node release carries the rig card + Tune, the scan/adopt wizard, ManagedRigDaemon and `radio: kind rig` (deb gains `Depends: libhamlib-utils`). Version-train divergence learning fixed in releasing.md (#618). Downstream axcall/packet-term-tui pin bumps outstanding](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-ends web UI + API caught up to identify/pair/name v2 + id-stability (#579)** — the Head-ends screen (PR #562) shipped before the v2 backend and was never caught up; this closes the four confirmed gaps in one UI+API PR. **UI:** a "Resolve physically (keys each modem briefly)" button on instances with a free TNC+radio — **admin-scope gated** (it transmits — the same bar as hail/tuning/doctor; disabled+titled otherwise) behind an RF-warning confirm dialog that quotes the API caveat, renders the returned pairs/unpaired/ambiguous, refreshes the scan, and pre-selects the adopt pickers with the resolved pair; a per-device **band badge** (`amateurBand`, falling back to `bandCode`); an **"unstable id" warning badge** on `idStable === false` devices (tooltip: no by-path/by-id link, binding may not survive replug); and an **"MQTT instance label"** field in the adopt Options. UI adopts now pass `amateurBand` (from the selected radio's scan row) so they get band-named ports like API adopts. **API (additive):** `HeadEndPortInfo` gains `IdSource` (string) + `IdStable` (**nullable** bool — absent from an old head-end reads as *unknown*, never assumed stable), the scan (`HeadEndDeviceScan`) carries them, the scanner populates them; `HeadEndAdoptRequest` gains `MqttInstance` (string?) honoured by `BuildCandidate` over the band default. Stale "operate-scope" doc-comment on the keyup endpoint corrected to admin. **Tests:** 6 C# (id-stability parse present/absent, scan flow-through, MqttInstance override ×3) + 8 vitest (keyup admin-gating/confirm/post/render/pre-select + band badge + unstable badge + amateurBand/mqttInstance in adopt body); UI `npm run build && npm run test` green (118), `dotnet build` + head-end Node.Tests green (the /tmp-sandbox 61-failure baseline is unrelated). No ax25-ts parity surface. Closes #579. See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-end fleet observability, .NET half (#583)** — the node now watches its head-end fleet instead of inferring it: a background `HeadEndHealthMonitor` (`BackgroundService`, ~30 s) polls every configured/referenced head-end's `GET /statusz` (#587's Go half; `GET /healthz` fallback for pre-0.1.4 daemons) — config-else-mDNS address resolution, transition-only logging (one WARNING per outage, events 5301/5302), self-gating on a head-end-less node. Feeds a new `pdn_headend_*` metrics bucket (`reachable`/`devices`/`poll_failures_total`, `instance`-labelled) + a `pdn_port_transport_reconnecting{port}` gauge off a new `ITransportLinkState` seam on `ReconnectingKissModem` (the honest counterpart to `pdn_port_up`, which reads 1 through a far-end bounce), and `GET /api/v1/radios/headends` instances gain `reachableNow`/`lastSeen` from the in-memory snapshot (never probed on the request path). Closes #583 (both halves done). See §17](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-end radio-integration resilience cluster (#576/#578/#580/#581)** — the 2026-07-08 arc review's critical findings fixed in one PR: reconnect supervision for the head-end-bound Tait CCDI control channel (a stable `ReconnectingRadioControl` facade — a head-end restart no longer permanently degrades radio control), `MarkFaulted` clears the latched carrier-sense + a stale-busy re-validation probe, the open-time re-clock uses the CONFIGURED baud, bounded head-end bring-up retry, a legacy by-id → by-path device-id fallback, a NinoTNC GETVER keep-alive that stops the nino-tnc-tcp 5-min idle churn, and scan↔keyup-pairing single-flight. See §17](#17-amendment-log)
@@ -563,6 +565,11 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
   - 🟢 **Node API surfacing shipped 2026-07-04** (see §17): the radio-control arc reaches `Packet.Node`'s `/api/v1` — per-frame RSSI/SNR on `/events`/`/monitor/recent`/`/traffic`/`/heard` (via a parity-safe node-owned inbound tap, kept off the AX.25 listener contract), per-port radio status+health on `/api/v1/radios` + `/ports/{id}/radio` (`TaitRadioHealthMonitor` wired per port), a `/radios/scan` discovery endpoint keyed by CCDI serial (+ `/dev/serial/by-id`), and `radio.serial:` stable config binding. Web UI + adaptive-parameter feedback still to come.
   - 🟢 **FFSK Transparent transport shipped 2026-07-04** (see §17): `Packet.Radio.Tait.TaitTransparentTransport` — a **TNC-less** AX.25 link over the radio's own internal FFSK modem (Transparent mode = an 8-bit-clean byte pipe), KISS-SLIP framed, with the transport owning the transmission so it stamps per-frame TX/RX airtime timing (`TxTiming` event + `ITxCompletionTransport`; inbound `ReceivedAt` + `RadioMetadata.EstimatedAirtime`). New `tait-transparent` PDN port kind (bind by CCDI serial or device path). The inherent trade-off vs NinoTNC+CCDI (`RssiTaggingTransport`): one device and no audio wiring, but **no signal telemetry** — RSSI/SNR/noise-floor/DCD are unavailable while the CCDI channel is a byte pipe. Hardware round-trip proven radio-to-radio on the rig.
 - **Frequency-agile operation** — if the radio is CAT-controllable, schedule QSY across a frequency plan. Use cases: APRS digi tail on calling channel + drop to working channel for connected-mode sessions; per-link QSY when SNR drops below threshold; automatic channel hunting in poor band conditions.
+  - 🟡 **CAT seam shipped 2026-07-13** (see §17): `Packet.Rig` (`IRigControl`: freq/mode get+set, PTT, SWR + RF-power meters behind capability probes) with `Packet.Rig.Hamlib` (rigctld network protocol — any hamlib rig, no native dependency) and `Packet.Rig.Flrig` backends. Released to NuGet as 0.22.0 (2026-07-14). Research in [`docs/research/rig-control-spike.md`](research/rig-control-spike.md).
+  - 🟡 **Node read-only slice shipped 2026-07-14** (see §17): port-scoped `rig:` config → `PortSupervisor` bring-up (degrade-cleanly) → `RigStatusMonitor` poller (idle/keyed cadences, meters only during PTT) → `GET /api/v1/rigs` + `/ports/{id}/rig` + the `event: rig` SSE feed. The UI rig card, mutation endpoints (QSY + mode, operate-scoped) + MCP tools, and the OQ-011 bridge (`radio: kind: rig` — rig DCD/strength feeding CSMA + RSSI tagging) all shipped same day (see §17). Remaining: QSY *policy* (frequency agility — deferred).
+  - ✅ **Plug-and-play rig adoption — complete 2026-07-14** (direction set same day, Tom: "plug in rig, and pdn can BE configured to handle it through the UI — no system-level user intervention"). Two named stages, both shipped:
+    1. ✅ **Node-managed rigctld — shipped 2026-07-14** (see §17): the second `rig:` binding shape (`device:` + `model:` [+ `serialSpeed:`] instead of `host:`/`port:`) landed as `ManagedRigDaemon` — the node spawns `rigctld -m <model> -r <device> -T 127.0.0.1 -t <allocated-port>` as a supervised child (tsnet spawn/backoff/SIGTERM discipline; respawn-forever with capped backoff on a STABLE port so the re-dialling clients self-heal when an unplugged USB device returns) and points the existing protocol client(s) at it via an effective config — including the `radio: kind rig` second dial. `.deb` grew `Depends: libhamlib-utils`. BYO-daemon `host:`/`port:` stays (and remains the only flrig path — a GUI app is out of plug-and-play scope by nature).
+    2. ✅ **Scan + adopt — shipped 2026-07-14** (see §17), with two recorded deviations from the sketch above: (a) **passive identification only** — the `ID;`/CI-V active-probe tier was deliberately dropped (unlike Tait's model-agnostic CCDI query, active rig probes write bytes into unidentified serial devices; the by-id-descriptor tier + the model picker cover the plug-and-play cases) and stays a named follow-up if field experience demands it; (b) **no dedicated adopt endpoint** — a rig belongs to an existing port (direction set 2026-07-14), so adoption = the port editor attaching a `rig:` block through the existing validated `ApplyCandidate` port-write path; no second config-write surface to secure/audit. Shipped: `GET /api/v1/rigs/scan` (claimed-device exclusion via canonicalised paths, curated by-id→model-name table resolved against the runtime catalogue) + `GET /api/v1/rigs/models` (`rigctl -l` parsed through `IProcessRunner`, cached) + the port editor's "Rig control (CAT)" section (scan → pick → model picker → save; BYO daemon path included).
 - **NinoTNC mode agility / negotiation** — currently the operator picks a NinoTNC mode (0–15) at config. Goal: query NinoTNC capabilities at startup, negotiate the optimal mode for current channel quality (1200 → 4800 → 9600 based on SNR), renegotiate on degradation. Requires SETHW probe + mode-change handshake (open question: does NinoTNC firmware support runtime mode change?).
   - 🟡 **Coordination seed shipped 2026-07-03** (see §17): the mode-change handshake exists and is hardware-proven — `IRadioSideChannel` (`Packet.Radio`, radio-native small-datagram control plane; Tait SDM implementation) + the propose/confirm/commit/probe-verify/revert-to-home protocol (`ModeCoordinator`/`ModeResponder` in `Packet.Tune.Core`) + `packet-tune mode-coord`. The side channel is mode/channel-agnostic, which breaks the negotiate-over-the-link-being-changed chicken-and-egg. Node-side integration (ports, beacons, policy) not started — the map is [`docs/research/radio-side-channel-mode-agility.md`](research/radio-side-channel-mode-agility.md).
 - **NinoTNC firmware upgrades** — port [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) flow into `packetnet ctl flash-tnc` so non-technical users can update firmware from the web UI. Bootloader protocol reverse-engineering needed.
@@ -573,7 +580,7 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
 
 **Exit criteria** (high-level):
 
-- `IRadioControl` abstraction with at least Tait CCDI implementation. ✅ (2026-07-02, experimental — shape may still move; see OQ-011)
+- `IRadioControl` abstraction with at least Tait CCDI implementation. ✅ (2026-07-02; shape confirmed 2026-07-14 — four implementations without an interface change, OQ-011 resolved)
 - Per-link quality index visible in web UI + persisted to time-series.
 - At least one adaptive parameter (T1 or k) wired to quality feedback under a `--adaptive` flag.
 - NinoTNC mode-change demonstrated end-to-end (manual trigger, no auto-negotiation needed for exit).
@@ -1214,7 +1221,7 @@ Tracked here so they don't get lost. Once resolved, move the resolution into the
 | OQ-008 ([`packet-net/ax25sdl#15`](https://github.com/packet-net/ax25sdl/issues/15)) | Publish `/spec-sdl/` as a community-canonical AX.25 v2.2 state-machine artifact, separate from this repo? The YAML is language-agnostic by design — a Rust/Python/Go/TS codegen against the same files would produce the same transitions, and our C# codegen becomes the reference implementation rather than the source of truth. Three things would need to firm up before "authoritative" is defensible: (a) the guard mini-DSL needs a real grammar (today `GuardEvaluator` parses by ad-hoc string splitting — fine for one consumer, not for many); (b) action verbs need a stable catalog with documented semantics (today they're free-form strings like `"RNR response"`, `"start_T1"`); (c) the schema + events catalog need semver. Realistic move: finish the 27 pages, stabilise the schema, then split `/spec-sdl/` + schema + events into a sibling repo (likely under `packethacking/`). What makes this credibly authoritative rather than just *another* transcription is the encode-then-verify discipline + collaboration with the spec author — both already in place. Revisit at the end of Phase 2. | Open | Tom |
 | OQ-009 ([#192](https://github.com/packet-net/packet.net/issues/192)) | NinoTNC mode-change handshake — does the firmware support runtime mode switching without a write-to-flash cycle? `SETHW(mode + 16)` is the "don't write to flash" form; is the actual mode change immediate, or does it require power-cycle? Affects feasibility of Phase 10's mode-agility workstream. Probe once hardware is on the bench. | ✅ Answered 2026-07-02 on the bench rig (firmware 3.44): `SETHW(mode+16)` takes effect immediately — no re-init, no power cycle. Both TNCs were sitting in different modes, were SETHW'd to mode 6 live, and passed RF traffic first try (see §17 2026-07-02). Flash-persist variant not exercised (deliberately — spares the flash). | Phase 10 |
 | OQ-010 ([#193](https://github.com/packet-net/packet.net/issues/193)) | NinoTNC bootloader / firmware-update protocol — `flashtnc` is the canonical tool; what's the wire protocol? Best to read [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) source rather than reinvent. Affects feasibility + risk of `packetnet ctl flash-tnc`. | ✅ Answered 2026-07-03 — protocol read from flashtnc.py, validated by 7 upstream flashes on the rig, then reimplemented natively: `BootloaderNinoTncFirmwareFlasher` + `packet-tune flash-tnc`, hardware-validated (zero-change 3.41 reflash of `/dev/ttyACM1`, 17 535 lines/193 s). Wire protocol documented in [`docs/research/tait-ccdi-spike.md`](research/tait-ccdi-spike.md) §flash-tnc; feasibility of `packetnet ctl flash-tnc` = proven (the node-host wiring is the remaining, now low-risk, step). | Phase 10 |
-| OQ-011 ([#194](https://github.com/packet-net/packet.net/issues/194)) | Radio-control abstraction shape — what's the right `IRadioControl` API? Tait CCDI gives us SNR / RSSI / busy / channel / TX-keying. Yaesu CAT and ICOM CI-V have different feature sets. Common subset is probably {frequency-set, frequency-get, RSSI-get, busy-get, PTT-set} — anything radio-specific (Tait's SNR is unusually rich) goes behind a feature-probe. Decide before locking the Tait implementation. 2026-07-02: v0 shipped in `Packet.Radio` exactly as proposed — {RSSI-get, busy-get (property + carrier-sense events), PTT-set} with `RadioCapabilities` feature flags and reserved flags for channel/frequency/TX-power; frequency members deliberately deferred. Still open until a second implementation (Yaesu CAT / ICOM CI-V) pressure-tests the shape. | Open (v0 shipped) | Phase 10 |
+| OQ-011 ([#194](https://github.com/packet-net/packet.net/issues/194)) | Radio-control abstraction shape — what's the right `IRadioControl` API? Tait CCDI gives us SNR / RSSI / busy / channel / TX-keying. Yaesu CAT and ICOM CI-V have different feature sets. Common subset is probably {frequency-set, frequency-get, RSSI-get, busy-get, PTT-set} — anything radio-specific (Tait's SNR is unusually rich) goes behind a feature-probe. Decide before locking the Tait implementation. 2026-07-02: v0 shipped in `Packet.Radio` exactly as proposed — {RSSI-get, busy-get (property + carrier-sense events), PTT-set} with `RadioCapabilities` feature flags and reserved flags for channel/frequency/TX-power; frequency members deliberately deferred. Still open until a second implementation (Yaesu CAT / ICOM CI-V) pressure-tests the shape. 2026-07-13: rig control shipped as a *sibling* seam (`Packet.Rig.IRigControl` — station-control: freq/mode/PTT/meters; see §17), deliberately not merged into `IRadioControl`; same day, `TaitRigControl` landed as the rig seam's third implementation (CCDI PTT + relative RF-power meter; frequency/mode/SWR honestly flagged off), pressure-testing `IRigControl` from the channelised-PMR side without interface change. The remaining pressure test for `IRadioControl`'s deferred frequency members is the inverse bridge (a rig-backed PTT/DCD source feeding the packet stack). 2026-07-14: that bridge landed (see §17 — `IRigControl.ReadDcdAsync`/`ReadSignalStrengthDbmAsync`, `Packet.Radio.RigRadioControl`, node `radio: kind: rig`): a fourth implementation absorbed by the capability flags with **zero `IRadioControl` interface change**, and the frequency question answered by seam placement — QSY lives on the rig seam (station control), so `IRadioControl`'s frequency flags stay reserved with no member pressure. Shape confirmed. | ✅ Resolved 2026-07-14 (frequency flags stay reserved; reopen only if a native CAT radio driver ever needs in-seam frequency members) | Phase 10 |
 | OQ-012 | Native DCD seam — hardware carrier-sense (radio DCD via `IRadioControl`, and Nino's coming KISS DCD extension) should feed the AX.25 stack's *native* channel-busy machinery (the spec's physical/link-multiplexer layer models a real DCD input driving p-persistence and seize/release), i.e. emulate a TNC that exposes DCD — NOT a parallel transport-level deferral. `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is explicitly the interim/degenerate form; retire or demote it once the real seam exists. Open spec-side question for [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl): are the physical/LM state machines transcribed, or is that a prerequisite? Both DCD sources (radio control channel + KISS extension) must land in the same seam. **2026-07-04: confirmed feasible in-repo** — `Packet.Ax25.Session.LinkMultiplexerSignal` is exactly the native medium-access seam (LM_SEIZE/RELEASE, "the arbiter that owns the radio"). **2026-07-04: landed.** Architectural finding along the way: in this implementation the LM_SEIZE→confirm round-trip drives *only* the §6.7.1.2 delayed-ack RR timing — actual frame emission (I/S/U/UI, SABM) drains directly to the listener's `SendBytes` sink (the code that literally owns the modem and serialises frames), bypassing the LM. So the carrier-sense gate sits at that transmit chokepoint (the multiplexer's radio-serialisation point), not at the seize-confirm (which would defer acks only). New injectable `ICarrierSense` (in `Packet.Ax25.Transport.Abstractions`) is consulted by a new `Packet.Ax25.Session.CarrierSenseGate` (slot-time wait-for-clear, fail-open) at every `Ax25Listener` keyup; default = no source = always-clear = byte-for-byte prior behaviour, so the SDL battery is untouched. **2026-07-04 (parity rework):** the source is now supplied on a **first-class, parity-tracked** `Ax25ListenerOptions.CarrierSense` member — carrier-sense is a general engine capability (any AX.25 stack should defer keyup while the channel is busy), not a Tait detail, so it belongs on the parity surface, not hidden on a ctor param. The ax25-ts counterpart (`Ax25ListenerOptions.carrierSense` + a `CarrierSense`/`CarrierSenseGate` seam) landed alongside, so `scripts/parity-check.mjs` sees the seam mirrored on both inventories (no new exception, no gap). The node bridges a radio-attached port's `IRadioControl` DCD via `RadioCarrierSense` in `PortSupervisor` bring-up, passed on that option. The interim transport-level `Packet.Radio.CarrierSenseTxGate` (2026-07-02) is now **deleted** (unreleased — never in a `lib-v*` tag — and fully superseded by the native seam). **Residual:** Nino's KISS DCD extension lands in the same gate (a KISS transport implementing `ICarrierSense`), and routing *all* emissions through the LM (so seize/release genuinely gates the medium) stays future spec-side work. | ✅ Landed 2026-07-04 (parity-symmetric; residual: KISS DCD source) | Phase 11 |
 
 ---
@@ -1259,6 +1266,315 @@ repo** (GPL-3.0-or-later, consumed via NuGet like `Packet.Ax25.Sdl`); packet.net
 multiplex channel model; both an integrated PDN port and a standalone headless KISS daemon are goals.
 No plan phase/scope change yet — §11's "KISS modems only" line gets its logged revision when the
 PDN-side port lands.
+
+### 2026-07-14 — lib-v0.23.0 downstream cascade: axcall + packet-term-tui v0.2.20
+
+Closes the lib-v0.23.0 entry's remaining Step 3 (next entry). Both downstream .NET consumers
+bumped `Packet.*` 0.22.0 → 0.23.0 (axcall's five pins, the TUI's four), each built + tested
+locally against the freshly-indexed nuget.org 0.23.0 packages before merge (axcall 25/25 unit —
+the Testcontainers integration leg ran on its CI runner; TUI 14/14), merged on green CI
+([axcall#20](https://github.com/packet-net/axcall/pull/20),
+[packet-term-tui#25](https://github.com/packet-net/packet-term-tui/pull/25)) and released as
+**v0.2.20** each — six-platform binaries, both releases non-draft with 6 assets, verified.
+Same tag mechanics as the v0.2.19 cascade: the branch-scoped session credential can't push
+tags, so each `v0.2.20` tag was cut via the repo's `release.yml` `workflow_dispatch`
+(`tag=v0.2.20`, ref `main` = the pin-bump merge commit). Source-compatible, no code change
+either side; no TS leg (unchanged this cycle).
+
+### 2026-07-14 — RELEASE: lib-v0.23.0 + node-v0.31.0 (the whole rig-control arc ships)
+
+The day's six merged PRs (#612 mutation slice, #613 OQ-011 bridge, #614 interop timeout,
+#615 node-managed rigctld, #616 scan + wizard, #617 main-only CI triggers) released end to end.
+**lib-v0.23.0** (tag on ea1d160): all 17 matrix packages pushed and verified indexed on
+nuget.org — headline surface: `Packet.Rig` `DcdRead`/`SignalStrengthRead` + `ReadDcdAsync`/
+`ReadSignalStrengthDbmAsync`, `Packet.Rig.Hamlib` `\get_dcd`/`STRENGTH` + `S9ReferenceDbm`,
+`Packet.Radio.RigRadioControl` (and its new `Packet.Rig` dependency). **node-v0.31.0** (tag on
+7f4c938): three-arch `.deb`s + self-contained-channel tarballs + `latest.json` published 17:42Z,
+install smoke green (exercising the new `Depends: libhamlib-utils`); ships the dashboard rig
+card + Tune, the port editor's scan/adopt wizard, `ManagedRigDaemon`, and `radio: kind rig`.
+Docker leg (`publish-docker.yml`) runs decoupled as usual. **Release-process learnings, both
+fixed in-repo**: (a) the lib and node version trains had silently diverged (node was at 0.30.0)
+— a stale "lockstep" line in `docs/releasing.md` produced a `node-v0.23.0` tag collision with
+June's release; the doc now documents independent trains + the `sort -V` list-before-you-tag
+one-liner (#618). (b) Step 0's green-CI-on-main precondition was unsatisfiable at tag time (the
+runner host was down; post-reboot the backlog was still draining) — released on Tom's explicit
+instruction with the full local default suite green on the exact release tree as the test
+evidence, per the standing local-gates working pattern. Same tag mechanics as 0.22.0: the
+branch-scoped session credential can't push tags (Tom pushed both; the lib publish was also
+pre-armed via `workflow_dispatch` `override_version`). **Step 3 (downstream)**: shipped —
+axcall + packet-term-tui v0.2.20; see the downstream-cascade entry above. Step 4 (TS leg)
+skipped — ax25-ts unchanged.
+
+### 2026-07-14 — Plug-and-play stage 2: rig scan + the port editor's rig wizard
+
+The UI half of "plug in rig, configure through the UI". **Backend** (read-scoped, both in
+`PdnRigsApi`): `GET /api/v1/rigs/scan` — `RigScanner` (TaitRadioScanner scaffolding: per-instance
+single-flight, bounded 5 s, partial-on-timeout) enumerates `/dev/ttyUSB*` + `/dev/ttyACM*`,
+resolves `/dev/serial/by-id`, marks devices already claimed by config (`ClaimedSerialDevices` —
+NEW: canonicalised-path collision so a by-id in config claims the raw path a scan finds; disabled
+ports still claim; serial-number bindings deliberately don't — resolving them needs a probe and
+this slice is passive), and suggests a model where the by-id descriptor is genuinely distinctive
+(curated table, Icom-heavy by honest necessity — generic FTDI/CP210x bridges suggest nothing;
+names resolved to hamlib numbers at runtime, no hardcoded numbers to rot). `GET /api/v1/rigs/models`
+— the hamlib catalogue via `rigctl -l` through the `IProcessRunner` seam (header-offset columnar
+parser that survives models-with-spaces and version drift; process-lifetime cache;
+`available:false` degrades honestly when hamlib is missing). **UI**: the port editor gains a
+"Rig control (CAT)" section on every transport kind — scan → pick (claimed rows disabled with
+the reason; by-id preferred for device identity) → suggested model pre-filled or a
+filter-as-you-type catalogue picker → save through the EXISTING validated port-write path, plus
+a collapsible BYO rigctld/flrig path so the section fully replaces hand-editing YAML. **Two
+deviations from the plan sketch, recorded on the Phase 10 item**: no active `ID;`/CI-V probe
+tier (passive-only — active probes write into unidentified devices), and no dedicated adopt
+endpoint (a rig belongs to an existing port; the port PUT is the adopt). MCP deliberately
+untouched (config writes are outside its live-state model). Built by two parallel sub-agents
+(.NET / npm), merged on green local gates.
+
+### 2026-07-14 — Plug-and-play stage 1: node-managed rigctld (`device:` + `model:`)
+
+The `rig:` block gains its second binding shape: `device:` + `model:` (+ optional
+`serialSpeed:`) instead of `host:`/`port:` means **the node owns the daemon**. New
+`Packet.Node.Core.Rigs.ManagedRigDaemon` (one per port, tracked on `RunningPort`, disposed
+last): allocates a loopback port once (bind-release probe), spawns
+`rigctld -m <model> -r <device> [-s <speed>] -T 127.0.0.1 -t <port>` with the tsnet sidecar
+discipline (setsid group leader, stderr→log pump, SIGTERM → grace → SIGKILL), and supervises
+with a respawn-forever loop (doubling backoff, 60 s cap, injected clock) — deliberately no
+crash-loop breaker: endless capped-backoff respawn on a STABLE port is exactly right for a rig
+whose USB device comes and goes, because the per-command-re-dialling clients recover the moment
+the daemon is back. The supervisor starts the daemon BEFORE the radio block so both dials (the
+`radio: kind rig` carrier-sense connection and the rig status attach) hit a live endpoint via
+the daemon's effective `ClientConfig`; spawn failure or readiness timeout degrades exactly like
+an unreachable BYO daemon (the port always comes up; a rig-backed radio degrades through the
+same catch with an honest message). `PortRigConfig.DescribeEndpoint()` is the single endpoint
+authority — a managed rig's status reads `/dev/serial/by-id/… (managed rigctld @127.0.0.1:NNNN)`.
+Validator: device⇒model required, hamlib-only (flrig is BYO-only — a GUI app can't be
+plug-and-play), no `port:`/remote `host:` with the managed shape; BYO rules byte-for-byte
+unchanged. Binary resolution: explicit → `PDN_RIGCTLD_BIN` → PATH; a missing binary degrades in
+<1 s via a spawn-fault fast path. `.deb`: `Depends: libhamlib-utils`. Tests run the REAL
+rigctld end-to-end (attach, kill-and-respawn on the same port, no-orphan disposal, full-stack
+supervisor happy path) plus fake-script failure paths; ReconcilePlanner restart-class coverage
+extended to BYO↔managed and model-change transitions. Stage 2 (scan + adopt + UI wizard)
+remains open. No ax25-ts leg. Built by one sub-agent, merged on green local gates.
+
+### 2026-07-14 — OQ-011 bridge: a CAT rig as a port's radio (DCD → CSMA, strength → RSSI)
+
+The inverse bridge OQ-011 was waiting for, in three layers. **Contract** (`Packet.Rig`):
+`IRigControl` grows receive-side reads — `ReadDcdAsync` (carrier present / channel busy) and
+`ReadSignalStrengthDbmAsync` — behind new `RigCapabilities.DcdRead` / `SignalStrengthRead`
+flags. Hamlib implements both (`\get_dcd` strict 1/0; `l STRENGTH` is calibrated dB-relative-S9,
+converted via the new `RigctldRigOptions.S9ReferenceDbm`, default −73 dBm / IARU R1 HF, VHF
+stations set −93; both wire shapes live-verified against rigctld 4.5.5, `dump_caps` gates on
+`Can get DCD:` + the `STRENGTH` level token). flrig advertises neither (no DCD over XML-RPC;
+its s-meter is uncalibrated 0–100 — the never-synthesize rule), and `TaitRigControl` refuses
+with pointers at `TaitCcdiRadio`'s native radio seam. **Adapter** (`Packet.Radio`):
+`RigRadioControl : IRadioControl` — the inverse-direction sibling of `TaitRigControl` —
+maps DcdRead→CarrierSense (owned 100 ms poll loop synthesizing `CarrierSenseChanged` edges;
+a `RigException` marks `ChannelBusy` null so the CSMA gate fails open, backs off to 2 s, and
+self-heals), SignalStrengthRead→RssiRead, PttSet→TransmitterControl (unkey-on-dispose per the
+Tait precedent); `ownsRig: true` transfers the rig connection's lifetime. **Node**:
+`radio: kind: rig` on a port that has a `rig:` block dials a SECOND, dedicated connection to
+the same daemon (carrier-sense polling never queues behind the status poller's meter reads;
+rigctld is multi-client) and wraps it owning; validator gives the rig kind its own arm
+(requires the sibling `rig:` block, forbids the tait-ccdi binding-mode fields, exempts it from
+transport pairing — the headline case is a kiss-tcp soundmodem beside rigctld) with every
+tait-ccdi rule preserved verbatim; the supervisor now gates `RssiTaggingTransport` on the
+`RssiRead` capability so a DCD-only rig degrades to carrier-sense-only cleanly. The existing
+`ICarrierSense` wiring picks the bridge up unchanged — rig DCD lands in the same native
+LM-keyup gate as Tait PROGRESS (OQ-012's seam). **OQ-011 is closed**: four implementations
+pressure-tested `IRadioControl` without an interface change, and frequency members stay
+deliberately on the rig seam (QSY is station control, not medium access). No ax25-ts leg —
+no parse-flag/preset/listener-surface change. Built under the working pattern: three
+sequential sub-agents (contract → adapter → node wiring), local gates each, merged on green
+local tests.
+
+### 2026-07-14 — lib-v0.22.0 downstream cascade: axcall + packet-term-tui v0.2.19
+
+Closes the lib-v0.22.0 entry's outstanding Step 3 (next entry). Both downstream .NET consumers
+bumped `Packet.*` 0.21.0 → 0.22.0 (axcall's five pins, the TUI's four), each built + tested
+locally against the freshly-indexed nuget.org 0.22.0 packages before merge (axcall 25/25 unit —
+the Testcontainers integration leg ran on its CI runner; TUI 14/14), merged on green CI
+([axcall#19](https://github.com/packet-net/axcall/pull/19),
+[packet-term-tui#24](https://github.com/packet-net/packet-term-tui/pull/24)) and released as
+**v0.2.19** each — six-platform binaries, both releases non-draft with 6 assets, verified.
+Procedure note: same branch-scoped-credential situation as the `lib-v0.22.0` tag itself — a
+direct tag push 403s, so each `v0.2.19` tag was cut via the repo's `release.yml`
+`workflow_dispatch` path (`tag=v0.2.19`, ref `main`; action-gh-release creates the tag at `main`
+HEAD = the pin-bump merge commit). Source-compatible, no code change either side; no TS leg
+(unchanged this cycle).
+
+### 2026-07-14 — Rig mutation slice: QSY + mode set over REST, MCP tools, and the card's Tune control
+
+The first write surface on the rig arc, deliberately narrow. **REST** (`PdnRigsApi`):
+`POST /api/v1/ports/{id}/rig/frequency` + `/mode` — **operate**-scoped (a retune emits no RF;
+the admin bar stays reserved for keying, which is deliberately NOT exposed pending a proper
+tune-button design), audit-logged (`rig_set_frequency`/`rig_set_mode`, `requested` at entry),
+capability-gated against the rig's advertised `RigCapabilities` (an unadvertised set is refused
+without touching the rig), run under the host's exclusive gate so a write can't race a port
+teardown, error taxonomy 400 (bad input) / 404 (no such port) / 409 (configured-but-not-attached
+· capability absent · rig refused/faulted — transient, the backends re-dial), and each success
+returns the **read-back** value and wakes the poller (`IRigStatusMonitor.RequestRefresh()`, new:
+the poll delay carries a per-cycle wake token) so the `event: rig` SSE feed shows the new dial
+immediately instead of at the next cadence boundary. **MCP**: `get_rig_status` +
+`set_rig_frequency`/`set_rig_mode` tools on the established `INodeMcpBackend` seam (operate
+step-up via the WriteTools discipline; live backend through `RunExclusiveAsync` + audit + poller
+wake, stdio/REST backend through the endpoints above). **UI**: an operate-gated Tune control on
+the rig card (modal: MHz-or-Hz frequency entry with parsed preview, mode select; applies only
+changed fields; the SSE tick refreshes the card — no client re-fetch). Guardrails note:
+frequency validation here is sanity-only (positive Hz) — **band-plan validation lands with the
+channel-plan/QSY-policy slice**, which is where a wrong-band QSY actually becomes reachable
+from automation. Built with the new working pattern (Tom, same day): local gates decide,
+merge on green local tests, CI monitored in the background; MCP tools and the UI control were
+built by parallel sub-agents against the REST contract.
+
+### 2026-07-14 — Web UI: the rig card (read-only) — dial, PTT, TX meters, live over SSE
+
+The rig arc reaches the operator surface. `RigsPanel`/`RigCard` on the dashboard (the sibling
+of `RadiosPanel`, same card idiom/tokens): per rig-attached port — the **dial** (frequency hero
+in rig-display grouping, `14.074.000 MHz`, via a new `fmtRigFrequency`; mode badge + passband),
+a **PTT pill** (transmitting/receive/—), and **TX meters** (SWR with a threshold-coloured bar,
+1.5/2.5 green/amber/red; power in watts, falling back to % of full scale) with the honest
+"sampled while keyed; last transmission stays on display" tooltip. **Capability-driven by
+contract**: the card renders exactly the `capabilities` slice the rig advertises — no
+per-backend UI code, a Tait adapter would show PTT + power and nothing else. Live path: seeded
+from `GET /rigs`, then the `event: rig` SSE feed **replaces per portId** (keyed stream — the
+deliberate contrast with the append-only frame stream, encoded in `subscribeRigs`). Not-attached
+rigs render the muted config projection. api.ts gains `getRigs`/`getPortRig`/`subscribeRigs`
+(the `subscribeFrames`/`getPortRadio` patterns verbatim), types.ts the wire contract, mock.ts
+fixtures (an attached IC-7300 over rigctld + an unreachable flrig). Gate: `npm run build`
+(tsc strict + vite) + all 119 vitest tests green incl. a new dashboard smoke assertion battery.
+Noted in passing: `npm run lint` is broken repo-wide (no eslint config file exists anywhere in
+`web/packetnet-ui/` — flat-config migration never happened?); CI doesn't run lint, so not
+blocking, but worth a cleanup pass someday.
+
+### 2026-07-14 — Node rig integration, read-only slice: `rig:` on a port → poller → API + SSE
+
+The `Packet.Rig*` libraries (released this morning as 0.22.0) reach the node. **Port-scoped by
+decision** (Tom: "a rig belongs to a port only — this would not prevent us extending that
+later"): a new `rig:` block on `PortConfig` (`kind: hamlib|flrig`, `host`, `port` defaulting to
+the kind's stock daemon port, `pollIntervalSeconds`/`meterIntervalSeconds`), validated by
+`PortRigValidator` against the `RigKinds` authority the `RigControlFactory` also resolves with —
+the `radio:`/`RadioKinds` discipline, mirrored. **Bring-up**: `PortSupervisor` dials the daemon
+after every throwing bring-up step (a port-level fault can't leak a rig), degrades cleanly when
+the daemon is unreachable (an absent rigctld must never take a packet channel down; post-attach
+outages self-heal because the backends re-dial per command), and `RunningPort` disposes the
+poller before the rig. `rig:` changes are restart-class in `ReconcilePlanner` (construction-time,
+like `radio:`). **The poller** (`RigStatusMonitor`): capability-gated reads (an unadvertised
+member is never called), frequency/mode/PTT at the idle cadence (default 5 s), SWR/watts/relative
+meters at the fast cadence (default 1 s) only while PTT is observed keyed — idle meters read ~0
+and cost CAT round-trips; per-read fault isolation projects `faulted` without losing
+last-known-good dial state; all timing on `Task.Delay(interval, clock, ct)` so tests drive a
+`FakeTimeProvider`. **Read-only surface**: `GET /api/v1/rigs`, `GET /api/v1/ports/{id}/rig`
+(`RigStatus`/`RigMeters` read models projected by `RigReadModels`, no rig I/O on the request
+path), and `GET /api/v1/rigs/events` — an `event: rig` SSE feed off a new `RigTelemetry`
+bounded-DropOldest hub every poll tick publishes into (query-token allowlisted for browser
+`EventSource`). Mutation (tune/mode/PTT) is deliberately absent — that's the next, separately
+auth-gated slice, after the read-only UI card. `docs/node-api.yaml` updated (paths + schemas).
+Tests (24 new): YAML round-trip + validator matrix, poller cadence/fault/dispose battery on the
+fake clock, supervisor attach/degrade/dispose-order integration over `FakeRigControl(Factory)`,
+composition-root API + SSE tests, reconcile classification. Parity note: no
+`Ax25ParseOptions`/quirk/XID/listener change → **no ax25-ts leg**. Next: the read-only UI rig
+card (brought forward per Tom), then mutation + MCP tools, then the OQ-011 bridge.
+
+**Direction addendum (same day):** Tom set the target UX — "plug in rig, and pdn can BE
+configured to handle it through the UI; no system-level user intervention" — assessed feasible
+and folded into the Phase 10 frequency-agile workstream as two named stages: (1) node-managed
+rigctld (a `device:`+`model:` rig binding the node spawns/supervises itself; `.deb` gains
+`Depends: libhamlib-utils`), then (2) rig scan→adopt (USB by-id / safe `ID;`+CI-V probe /
+manual hamlib-model picker, through the same operator-confirmed adopt seam the head-ends use).
+See the Phase 10 workstream list for the full breakdown.
+
+### 2026-07-14 — RELEASE: lib-v0.22.0 (rig control: `Packet.Rig` + hamlib/flrig backends + Tait adapter)
+
+The rig-control arc (next two entries) shipped to nuget.org as **0.22.0** — 17 packages, three
+of them new (`Packet.Rig`, `Packet.Rig.Hamlib`, `Packet.Rig.Flrig`; `Packet.Radio.Tait` gained
+`TaitRigControl`). Arc: PR [#606](https://github.com/packet-net/packet.net/pull/606) (the
+libraries), PR [#607](https://github.com/packet-net/packet.net/pull/607) (release-gate hotfix,
+next paragraph), `ci` + `interop` green on the release commit `ef5f419`, `publish-libs` run
+green with all 17 pushes confirmed and flat-container indexing verified.
+
+**Release-gate find:** every `interop` run on `main` had been red since the 3-way-mirror merge
+(#605) — not a test: the "clone packet-net/pico-node" step's `git sparse-checkout set` used
+cone mode (directories only) with two *file* paths, which git 2.53 on the runners turned from
+tolerated into fatal. All C# interop tests were passing in those red runs; the parity guard and
+phases B/C simply never executed. Fixed with `--no-cone` anchored patterns (#607) — first green
+interop on `main` since the mirror landed.
+
+**Procedure notes:** published via `publish-libs.yml`'s `workflow_dispatch`
+(`override_version=0.22.0`) against `ef5f419` because the release was driven from a session
+whose git credential is branch-scoped and cannot push tags — the annotated `lib-v0.22.0` tag on
+`ef5f419` is pushed separately by Tom (same commit, same version; the workflow's dispatch path
+exists for exactly this). No `node-v`/`headend-v` this cycle (no node or head-end changes — the
+node doesn't reference `Packet.Rig`). ax25-ts unchanged → no TS leg. **Downstream
+(releasing.md Step 3):** shipped — axcall + packet-term-tui v0.2.19; see the downstream-cascade
+entry above.
+
+### 2026-07-13 — Rig control (CAT) lands: `Packet.Rig` + hamlib (rigctld) + flrig backends
+
+Tom asked for rig control in PDN — get/set frequency and mode at minimum, SWR/power monitoring
+if supportable, integration layer only (UI later), reusable NuGet package, testing thought
+through. Shipped as **three new dependency-free packages** (all added to the `publish-libs.yml`
+matrix + `docs/releasing.md`): **`Packet.Rig`** — the `IRigControl` abstraction ({frequency
+get/set, mode get/set (canonical-token-or-native `RigMode`, `null` passband = rig default),
+PTT, SWR / RF-power / RF-power-watts meters} behind `RigCapabilities` probes, typed
+`RigException` taxonomy, unkey-on-dispose contract, poll-only by design); **`Packet.Rig.Hamlib`**
+— a pure-managed client for hamlib's NET-rigctl TCP protocol (Extended Response Protocol
+exclusively, `\chk_vfo` probe + `currVFO` injection for `--vfo` daemons, `\dump_caps`
+capability/identity discovery, RPRT→`rig_errcode_e` mapping, recover-by-redial on transport
+faults, `ReadLevelAsync`/`TransactRawAsync` escape hatches); **`Packet.Rig.Flrig`** — an flrig
+XML-RPC client mirroring hamlib's own flrig backend contract (stringly-typed freq gets/double
+sets, rig-native mode table via `rig.get_modes` with reject-don't-silently-drop semantics,
+`get_SWR`-probe-then-interpolate SWR, pwrmeter×scale power conversions — including matching C
+`round()` half-away-from-zero, which .NET's banker's rounding silently disagrees with; a test
+caught it). **Decision rationale:** every .NET hamlib P/Invoke binding is dead (incl. Tom's own
+HamLibSharpStandard/NRig lineage), hamlib 5 breaks the C ABI again, and the rigctld TCP
+protocol has been stable since 4.0 and also reaches the emulator ecosystem (wfview, SDR++,
+GQRX, SparkSDR, skycatd, nCAT) — so no native interop anywhere. **OmniRig researched, not
+built**: Windows-only COM, no metering at all (confirmed from OmniRig.ridl), 32-bit Hz
+ceiling; documented for a possible windows-only TFM later. **Relationship to OQ-011:**
+`IRigControl` is deliberately a *sibling* seam to `Packet.Radio.IRadioControl` (station-control
+vs packet-medium), sharing its capability-flag discipline; the node-side bridge (rig PTT +
+`\get_dcd` as an `ICarrierSense`/PTT source) is a named follow-up and OQ-011's third data
+point. **Testing** (95 tests): in-process scriptable fakes (`FakeRigctld` TCP server with
+RPRT/timeout/disconnect fault injection; `FakeFlrigHandler` — flrig has no headless mode, so
+faking the XML-RPC server is the established technique), parser units fed wire text captured
+from a live `rigctld -m 1` spike, and `SkippableFact` integration tests that spawn real
+`rigctld -m 1 --set-conf=static_data=1` on a free port (skip when hamlib isn't installed; ran
+green against 4.5.5 during development — `apt install libhamlib-utils` lights them up on a
+runner). Research + spike transcripts + follow-ups (node `rig:` port binding + poller, TCI
+backend, emulator-compat pass, multicast listener):
+[`docs/research/rig-control-spike.md`](research/rig-control-spike.md). Parity note: no
+`Ax25ParseOptions`/quirk/XID/listener change, so **no ax25-ts leg**.
+
+**Addendum (same day): `TaitRigControl` — the third `IRigControl` implementation.** On Tom's
+review question ("how much of the Tait 8100 integration belongs in these seams?") the answer
+was: the seams stay siblings, one honest slice overlaps, ship a thin adapter. So
+`Packet.Radio.Tait` gained `TaitRigControl` (~an adapter over `TaitCcdiRadio`; the package now
+references dependency-free `Packet.Rig`): advertises **PTT set/get** (FUNCTION 9; get served
+from last-known state fused with PROGRESS PTT edges — external/fist-mic keying is observed when
+PROGRESS output is on) and **relative RF-power meter** (CCTM 318 forward detector over its
+0–1200 mV full scale — a genuine meter-deflection fraction). Deliberately **not** advertised,
+with pointed `NotSupportedException` messages: watts and SWR (CCTM 318/319 are raw detector
+millivolts, an antenna-health *proxy* — deriving calibrated units needs a detector-calibration
+decision first; raw reads stay on `TaitCcdiRadio`), frequency (not CCDI-readable at all — band
+split only; set = CCR retune, still bench-unproven), and mode (FM PMR radio). Ownership model:
+`CreateAsync` queries identity for `RigInfo` (or `Create` with a cached
+`TaitRadioIdentity` — no wire traffic); `ownsRadio:false` (the node case) leaves the radio with
+the port supervisor and the adapter best-effort-unkeys anything *it* keyed on dispose. 11
+scripted-`FakeSerialIo` tests (codec-built frames, no guessed checksums) cover caps/identity,
+PTT round-trips + external-keying observation, detector scaling + clamping, CCDI-error →
+`RigCommandException` (error number preserved), transaction-timeout → `RigTimeoutException`,
+the not-supported surface, and both disposal modes. This is OQ-011's "third data point" in
+initial form: a channelised-PMR backend now pressure-tests the rig abstraction alongside
+rigctld and flrig, and the capability-flag model absorbed it without any interface change.
+
+### 2026-07-12 — Cross-stack parity is now a TRUE 3-way mirror (C# ↔ TS ↔ Rust pico-node)
+
+The parity drift guard graduated from C#⊆TS to a **3-way** mirror across the Packet stacks: C# `Packet.*` (authoritative) ⊆ TS `@packet-net/ax25` **and** ⊆ Rust [`packet-net/pico-node`](https://github.com/packet-net/pico-node). Previously only the TS leg was enforced (ax25-ts `scripts/parity-check.mjs`, invoked by our `interop.yml`); pico-node grew its own capability manifest + drift guard, so its leg is now wired into the same shared checker.
+
+**What changed.** ax25-ts `scripts/parity-check.mjs` gained an optional `--rust <pico-node root>` leg. It **reuses the same live C# inventory** the TS legs already extract (single C# source of truth — pico-node's C# side is never re-vendored into the checker), then reads pico-node's `parity-manifest.toml` (opted-in vector sets + capabilities), `parity/expected-inventory.json` (the C#-item → set/capability coverage map), and `parity-exceptions.json`, and asserts **C# ⊆ pico-node-declared** exactly as pico-node's own guard does: every live C# item is either mapped to an opted-in set whose capabilities include the named one, or carries a reasoned exception. Because the item *list* is live C#, the Rust leg also bites when C# grows an item pico-node's vendored snapshot hasn't mapped — keeping that snapshot honest. A node-builtins-only TOML reader (mirroring pico-node's) parses the manifest, so no new dependency and no build. **Backward-compatible:** with no `--rust`, output is byte-identical to before.
+
+**Where it runs.** Our `interop.yml` now shallow-clones `packet-net/pico-node` (PUBLIC, same as the ax25-ts clone — no token; sparse checkout of the parity artifacts) and passes `--rust "${RUNNER_TEMP}/pico-node"`, making the interop job a true 3-way gate. The mirror runs in ax25-ts's own `ci.yml` (which now clones pico-node too) and in pico-node's own guard, so drift fails on whichever side introduces it. All jobs stay on `[self-hosted, Linux, X64]`.
+
+Validated locally on the current inventory (packet.net `main` @ 9b59ed1, ax25-ts `main`, pico-node manifest): all three legs pass (TS: 4 documented exceptions; Rust: 38 covered, 12 excepted, 0 gaps); still passes byte-identical with `--rust` omitted; and fails (exit 1) when a capability is removed from a copy of pico-node's manifest — the Rust leg bites. The live C# extraction matched pico-node's vendored `expected-inventory.json` item-for-item across all seven sections (no reconciliation needed). TS-side change lands in ax25-ts (`scripts/parity-check.mjs` + `ci.yml`); no `parity-exceptions.json` change was needed on either side.
 
 ### 2026-07-09 — RELEASE: lib-v0.21.0 + node-v0.30.0 + headend-v0.1.4 (tuning-link robustness + head-end radio-integration cluster)
 

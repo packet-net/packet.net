@@ -99,13 +99,12 @@ dotnet add package Packet.Kiss.NinoTnc     # NinoTNC USB
 dotnet add package Packet.Agw              # AGWPE / SV2AGW client
 ```
 
-!!! note "Published vs. in-tree packages"
-    `Packet.Core`, `Packet.Ax25`, `Packet.Ax25.Transport.Abstractions`, and
-    `Packet.Kiss*` are published to NuGet. `Packet.Agw`, `Packet.Axudp`, and
-    `Packet.NetRom` build from source in this repository and may not yet be on
-    NuGet at the time you read this — check the
-    [top-level README](../README.md#libraries) for the current publication
-    matrix. If a package isn't published, reference the project directly.
+!!! note "Published packages"
+    Every package this guide uses — `Packet.Core`, `Packet.Ax25`,
+    `Packet.Ax25.Transport.Abstractions`, `Packet.Kiss*`, `Packet.Agw`,
+    `Packet.Axudp`, `Packet.NetRom` — is published to NuGet; see the
+    [top-level README](../README.md#whats-here) for the full publication
+    matrix.
 
 !!! info "A note on strictness"
     The engine **produces and accepts exactly what AX.25 v2.2 describes by

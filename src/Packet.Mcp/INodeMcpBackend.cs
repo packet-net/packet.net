@@ -33,6 +33,11 @@ public interface INodeMcpBackend
     /// <summary>The current NET/ROM topology snapshot.</summary>
     Task<McpNetworkTopology> NetworkTopologyAsync(CancellationToken ct = default);
 
+    /// <summary>Rig-control (CAT) attachment status: every rig-configured port when
+    /// <paramref name="portId"/> is null, else just that port's (empty when the port id is
+    /// unknown — the REST 404 equivalent).</summary>
+    Task<IReadOnlyList<McpRigStatus>> RigStatusAsync(string? portId = null, CancellationToken ct = default);
+
     // ---- write (operate-gated, audited by the host) ----
 
     /// <summary>Send a UI frame on a port.</summary>
@@ -46,4 +51,10 @@ public interface INodeMcpBackend
 
     /// <summary>Set a KISS parameter on a port.</summary>
     Task<KissParamResult> SetKissParamAsync(SetKissParamRequest req, McpCaller caller, CancellationToken ct = default);
+
+    /// <summary>QSY: retune a port's attached rig's current VFO.</summary>
+    Task<RigFrequencyResult> SetRigFrequencyAsync(SetRigFrequencyRequest req, McpCaller caller, CancellationToken ct = default);
+
+    /// <summary>Set the operating mode on a port's attached rig's current VFO.</summary>
+    Task<RigModeResult> SetRigModeAsync(SetRigModeRequest req, McpCaller caller, CancellationToken ct = default);
 }
