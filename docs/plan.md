@@ -564,7 +564,8 @@ The differentiator no other TNC stack does well: treat the radio + modem as firs
   - 🟢 **Node API surfacing shipped 2026-07-04** (see §17): the radio-control arc reaches `Packet.Node`'s `/api/v1` — per-frame RSSI/SNR on `/events`/`/monitor/recent`/`/traffic`/`/heard` (via a parity-safe node-owned inbound tap, kept off the AX.25 listener contract), per-port radio status+health on `/api/v1/radios` + `/ports/{id}/radio` (`TaitRadioHealthMonitor` wired per port), a `/radios/scan` discovery endpoint keyed by CCDI serial (+ `/dev/serial/by-id`), and `radio.serial:` stable config binding. Web UI + adaptive-parameter feedback still to come.
   - 🟢 **FFSK Transparent transport shipped 2026-07-04** (see §17): `Packet.Radio.Tait.TaitTransparentTransport` — a **TNC-less** AX.25 link over the radio's own internal FFSK modem (Transparent mode = an 8-bit-clean byte pipe), KISS-SLIP framed, with the transport owning the transmission so it stamps per-frame TX/RX airtime timing (`TxTiming` event + `ITxCompletionTransport`; inbound `ReceivedAt` + `RadioMetadata.EstimatedAirtime`). New `tait-transparent` PDN port kind (bind by CCDI serial or device path). The inherent trade-off vs NinoTNC+CCDI (`RssiTaggingTransport`): one device and no audio wiring, but **no signal telemetry** — RSSI/SNR/noise-floor/DCD are unavailable while the CCDI channel is a byte pipe. Hardware round-trip proven radio-to-radio on the rig.
 - **Frequency-agile operation** — if the radio is CAT-controllable, schedule QSY across a frequency plan. Use cases: APRS digi tail on calling channel + drop to working channel for connected-mode sessions; per-link QSY when SNR drops below threshold; automatic channel hunting in poor band conditions.
-  - 🟡 **CAT seam shipped 2026-07-13** (see §17): `Packet.Rig` (`IRigControl`: freq/mode get+set, PTT, SWR + RF-power meters behind capability probes) with `Packet.Rig.Hamlib` (rigctld network protocol — any hamlib rig, no native dependency) and `Packet.Rig.Flrig` backends. Node-side wiring (a `rig:` port binding, poller, API/UI) not started; research in [`docs/research/rig-control-spike.md`](research/rig-control-spike.md).
+  - 🟡 **CAT seam shipped 2026-07-13** (see §17): `Packet.Rig` (`IRigControl`: freq/mode get+set, PTT, SWR + RF-power meters behind capability probes) with `Packet.Rig.Hamlib` (rigctld network protocol — any hamlib rig, no native dependency) and `Packet.Rig.Flrig` backends. Released to NuGet as 0.22.0 (2026-07-14). Research in [`docs/research/rig-control-spike.md`](research/rig-control-spike.md).
+  - 🟡 **Node read-only slice shipped 2026-07-14** (see §17): port-scoped `rig:` config → `PortSupervisor` bring-up (degrade-cleanly) → `RigStatusMonitor` poller (idle/keyed cadences, meters only during PTT) → `GET /api/v1/rigs` + `/ports/{id}/rig` + the `event: rig` SSE feed. Remaining: the UI rig card (next), then mutation endpoints + MCP tools (separately auth-gated), then QSY policy (deferred).
 - **NinoTNC mode agility / negotiation** — currently the operator picks a NinoTNC mode (0–15) at config. Goal: query NinoTNC capabilities at startup, negotiate the optimal mode for current channel quality (1200 → 4800 → 9600 based on SNR), renegotiate on degradation. Requires SETHW probe + mode-change handshake (open question: does NinoTNC firmware support runtime mode change?).
   - 🟡 **Coordination seed shipped 2026-07-03** (see §17): the mode-change handshake exists and is hardware-proven — `IRadioSideChannel` (`Packet.Radio`, radio-native small-datagram control plane; Tait SDM implementation) + the propose/confirm/commit/probe-verify/revert-to-home protocol (`ModeCoordinator`/`ModeResponder` in `Packet.Tune.Core`) + `packet-tune mode-coord`. The side channel is mode/channel-agnostic, which breaks the negotiate-over-the-link-being-changed chicken-and-egg. Node-side integration (ports, beacons, policy) not started — the map is [`docs/research/radio-side-channel-mode-agility.md`](research/radio-side-channel-mode-agility.md).
 - **NinoTNC firmware upgrades** — port [`ninocarrillo/flashtnc`](https://github.com/ninocarrillo/flashtnc) flow into `packetnet ctl flash-tnc` so non-technical users can update firmware from the web UI. Bootloader protocol reverse-engineering needed.
@@ -1259,6 +1260,35 @@ direct tag push 403s, so each `v0.2.19` tag was cut via the repo's `release.yml`
 `workflow_dispatch` path (`tag=v0.2.19`, ref `main`; action-gh-release creates the tag at `main`
 HEAD = the pin-bump merge commit). Source-compatible, no code change either side; no TS leg
 (unchanged this cycle).
+
+### 2026-07-14 — Node rig integration, read-only slice: `rig:` on a port → poller → API + SSE
+
+The `Packet.Rig*` libraries (released this morning as 0.22.0) reach the node. **Port-scoped by
+decision** (Tom: "a rig belongs to a port only — this would not prevent us extending that
+later"): a new `rig:` block on `PortConfig` (`kind: hamlib|flrig`, `host`, `port` defaulting to
+the kind's stock daemon port, `pollIntervalSeconds`/`meterIntervalSeconds`), validated by
+`PortRigValidator` against the `RigKinds` authority the `RigControlFactory` also resolves with —
+the `radio:`/`RadioKinds` discipline, mirrored. **Bring-up**: `PortSupervisor` dials the daemon
+after every throwing bring-up step (a port-level fault can't leak a rig), degrades cleanly when
+the daemon is unreachable (an absent rigctld must never take a packet channel down; post-attach
+outages self-heal because the backends re-dial per command), and `RunningPort` disposes the
+poller before the rig. `rig:` changes are restart-class in `ReconcilePlanner` (construction-time,
+like `radio:`). **The poller** (`RigStatusMonitor`): capability-gated reads (an unadvertised
+member is never called), frequency/mode/PTT at the idle cadence (default 5 s), SWR/watts/relative
+meters at the fast cadence (default 1 s) only while PTT is observed keyed — idle meters read ~0
+and cost CAT round-trips; per-read fault isolation projects `faulted` without losing
+last-known-good dial state; all timing on `Task.Delay(interval, clock, ct)` so tests drive a
+`FakeTimeProvider`. **Read-only surface**: `GET /api/v1/rigs`, `GET /api/v1/ports/{id}/rig`
+(`RigStatus`/`RigMeters` read models projected by `RigReadModels`, no rig I/O on the request
+path), and `GET /api/v1/rigs/events` — an `event: rig` SSE feed off a new `RigTelemetry`
+bounded-DropOldest hub every poll tick publishes into (query-token allowlisted for browser
+`EventSource`). Mutation (tune/mode/PTT) is deliberately absent — that's the next, separately
+auth-gated slice, after the read-only UI card. `docs/node-api.yaml` updated (paths + schemas).
+Tests (24 new): YAML round-trip + validator matrix, poller cadence/fault/dispose battery on the
+fake clock, supervisor attach/degrade/dispose-order integration over `FakeRigControl(Factory)`,
+composition-root API + SSE tests, reconcile classification. Parity note: no
+`Ax25ParseOptions`/quirk/XID/listener change → **no ax25-ts leg**. Next: the read-only UI rig
+card (brought forward per Tom), then mutation + MCP tools, then the OQ-011 bridge.
 
 ### 2026-07-14 — RELEASE: lib-v0.22.0 (rig control: `Packet.Rig` + hamlib/flrig backends + Tait adapter)
 

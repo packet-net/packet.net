@@ -272,6 +272,46 @@ paths:
         "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RadioStatus" } } } }
         "404": { description: no such port }
 
+  /rigs:
+    get:
+      tags: [rigs]
+      summary: Per-port rig-control (CAT) attachment status
+      description: >
+        One entry per port with a `rig:` block — the station-control view of the transceiver
+        (frequency, mode, PTT, TX meters) polled over hamlib's rigctld protocol or flrig.
+        `attached` distinguishes a rig the node connected to and is polling from one
+        configured-but-not-attached (the port is down, or the daemon was unreachable at
+        bring-up and the port degraded to running without it). Read-only surface: the node
+        never tunes, changes mode, or keys.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/RigStatus" } } } } }
+
+  /ports/{id}/rig:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [rigs]
+      summary: One port's rig-control status
+      description: "A configured port with no rig block returns attached=false with an empty kind; an unknown port id is 404."
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/RigStatus" } } } }
+        "404": { description: no such port }
+
+  /rigs/events:
+    get:
+      tags: [rigs]
+      summary: Live rig poll-tick feed (SSE)
+      description: >
+        Server-Sent Events: one `event: rig` per poll tick per attached rig, each `data:` line a
+        RigStatus JSON document. Idle rigs tick at the poll cadence (default 5 s); a keyed
+        transmitter ticks at the meter cadence (default 1 s) so SWR/power are live during a
+        transmission. Heartbeat comments (`: ping`) every 15 s. EventSource clients may pass the
+        bearer token as `?access_token=` (the SSE allowlist covers this path).
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: SSE stream, content: { text/event-stream: { schema: { type: string } } } }
+
   /ports/{id}/doctor:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     get:
@@ -950,6 +990,40 @@ components:
         reverseTrendMillivolts: { type: [integer, "null"], description: "offset-corrected reverse detector (mV), transmit samples only — a TREND" }
         reverseForwardRatio: { type: [number, "null"], description: "offset-corrected reverse/forward ratio — a TREND, NEVER VSWR" }
         sampleAt: { type: [string, "null"], format: date-time }
+
+    RigStatus:
+      type: object
+      description: A port's rig-control (CAT) attachment. attached=false = configured but not connected (port down, or degraded after an unreachable daemon at bring-up).
+      required: [portId, attached, kind, endpoint, capabilities, connectionState]
+      properties:
+        portId: { type: string }
+        attached: { type: boolean }
+        kind: { type: string, enum: ["", hamlib, flrig], description: "rig-control kind (empty for a port with no rig block)" }
+        endpoint: { type: string, description: "the daemon endpoint as host:port (config defaults resolved)" }
+        backend: { type: [string, "null"], description: "what the backend calls itself, e.g. 'Hamlib rigctld', 'flrig'" }
+        manufacturer: { type: [string, "null"] }
+        model: { type: [string, "null"], description: "rig model as the backend reports it, e.g. 'Dummy', 'IC-7300'" }
+        capabilities:
+          type: array
+          items: { type: string }
+          description: "camel-cased Packet.Rig.RigCapabilities flag names the rig actually advertises (frequencyGet, modeSet, swrMeter, …) — render exactly this slice"
+        connectionState: { type: string, enum: [healthy, faulted, unknown], description: "faulted self-heals: the backends re-dial on the next poll" }
+        frequencyHz: { type: [integer, "null"], format: int64, description: "current-VFO frequency in Hz" }
+        mode: { type: [string, "null"], description: "operating mode token (hamlib vocabulary or the rig's native name)" }
+        passbandHz: { type: [integer, "null"], description: "receiver passband width in Hz where reported (hamlib yes, flrig no)" }
+        transmitting: { type: [boolean, "null"], description: "last observed PTT state" }
+        meters: { oneOf: [{ $ref: "#/components/schemas/RigMeters" }, { type: "null" }] }
+        sampledAt: { type: [string, "null"], format: date-time, description: "when the last successful poll tick completed" }
+
+    RigMeters:
+      type: object
+      description: Latest TX-side meter sample — meaningful while transmitting (idle rigs read ~0, so meters are only polled fast during PTT).
+      required: [sampleAt]
+      properties:
+        swr: { type: [number, "null"], description: "SWR as a dimensionless ratio, 1.0 = perfect match" }
+        rfPowerWatts: { type: [number, "null"], description: "RF power output in watts (calibrated backends)" }
+        rfPowerRelative: { type: [number, "null"], description: "RF power output as a fraction of full scale (0–1)" }
+        sampleAt: { type: string, format: date-time }
 
     RadioScanResult:
       type: object

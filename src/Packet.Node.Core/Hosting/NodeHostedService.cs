@@ -41,6 +41,8 @@ public sealed partial class NodeHostedService : BackgroundService
     // surfaced read-only by the MH console verb + the REST /api/v1/heard surface.
     private readonly Heard.HeardLog? heardLog;
     private readonly NodeTelemetry telemetry;
+    private readonly Rigs.RigTelemetry rigTelemetry;
+    private readonly Rigs.IRigControlFactory? rigFactory;
     private readonly BeaconService beacons;
     // Optional over-RF sysop dependencies (DI passes the registered user store + TOTP
     // verifier). Null in older tests / a node without them — the console then has no SYSOP
@@ -80,10 +82,14 @@ public sealed partial class NodeHostedService : BackgroundService
         Applications.Packages.IAppServiceSupervisor? appServices = null,
         PeerCapabilityCache? capabilityCache = null,
         Heard.HeardLog? heardLog = null,
-        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null)
+        HeadEnd.IHeadEndDiscovery? headEndDiscovery = null,
+        Rigs.IRigControlFactory? rigFactory = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         this.headEndDiscovery = headEndDiscovery;
+        // Optional rig-control factory seam: DI-registered fakes (integration tests) flow
+        // through to the port supervisor; null lets the supervisor use the production factory.
+        this.rigFactory = rigFactory;
         this.transportFactory = transportFactory ?? TransportFactory.Instance;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -95,6 +101,7 @@ public sealed partial class NodeHostedService : BackgroundService
         // Feed the heard log (when wired) from the same tap that feeds the link telemetry — one
         // source of truth (#454). Null heard log ⇒ telemetry behaves exactly as before.
         telemetry = new NodeTelemetry(this.loggerFactory.CreateLogger<NodeTelemetry>(), heardLog);
+        rigTelemetry = new Rigs.RigTelemetry();
         // The ID-beacon service. Optional ctor param (DI passes the registered singleton);
         // when null — every existing direct-construction test — we build one over the same
         // config + clock, so beacons are always wired but inert by default (default-off).
@@ -128,6 +135,10 @@ public sealed partial class NodeHostedService : BackgroundService
     /// feed). Created in the constructor so it's never null — the read API + the
     /// <c>/events</c> endpoint read it straight off this singleton.</summary>
     public NodeTelemetry Telemetry => telemetry;
+
+    /// <summary>The rig-status fan-out hub behind the <c>/api/v1/rigs/events</c> SSE stream —
+    /// every attached rig's poll ticks publish here.</summary>
+    public Rigs.RigTelemetry RigTelemetry => rigTelemetry;
 
     /// <summary>The ID-beacon service (per-port periodic UI-frame beacon). Created in
     /// the constructor so it's never null; inert until a port whose effective beacon is
@@ -193,7 +204,7 @@ public sealed partial class NodeHostedService : BackgroundService
         var host = new ApplicationHost(config, loggerFactory, appPackages);
         applicationHost = host;
 
-        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache, radioFactory: null, headEndDiscovery: headEndDiscovery);
+        supervisor = new PortSupervisor(config, transportFactory, timeProvider, loggerFactory, netRom, telemetry, beacons, sysopContext, applicationHost, capabilityCache, radioFactory: null, headEndDiscovery: headEndDiscovery, rigFactory: rigFactory, rigTelemetry: rigTelemetry);
         // The supervisor IS the live app-callsign registry; wire it back into the host now it exists
         // so a bare command verb reaches a self-deriving app that bound a non-PDN_APP_CALLSIGN SSID
         // (packet.net#476). Built after the host (its per-connection consoles need the host), so this

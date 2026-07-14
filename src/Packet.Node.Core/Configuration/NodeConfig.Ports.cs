@@ -55,6 +55,16 @@ public sealed record PortConfig
     public PortRadioConfig? Radio { get; init; }
 
     /// <summary>
+    /// Optional rig-control (CAT) attachment: the station-control view of the transceiver
+    /// behind this port — frequency/mode/PTT/meters polled over hamlib's rigctld protocol or
+    /// flrig, projected read-only on <c>/api/v1/rigs</c>. The station-control sibling of
+    /// <see cref="Radio"/> (which is the packet-medium seam); a rig never touches the packet
+    /// path, and one that fails to connect degrades cleanly. Null = no rig attached. See
+    /// <see cref="PortRigConfig"/>.
+    /// </summary>
+    public PortRigConfig? Rig { get; init; }
+
+    /// <summary>
     /// Optional AX.25 compatibility profile for this port: which wire frames it
     /// accepts (an <c>Ax25ParseOptions</c> preset — <c>strict</c> / <c>lenient</c> /
     /// <c>bpq</c> / <c>xrouter</c> / <c>direwolf</c> — plus per-flag overrides) and
