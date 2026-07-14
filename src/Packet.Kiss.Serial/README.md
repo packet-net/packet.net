@@ -58,4 +58,4 @@ Plain serial KISS has no TX-completion signal, so this transport deliberately do
 - [Packet.Ax25.Transport.Abstractions](https://www.nuget.org/packages/Packet.Ax25.Transport.Abstractions) — the `IAx25Transport` seam this implements.
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

@@ -57,4 +57,4 @@ AprsMicEDecoder.TryDecode("Q0PDN0", info, out AprsMicE micE);
 - [Packet.Core](https://www.nuget.org/packages/Packet.Core) — shared primitives including the strict `Callsign`
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

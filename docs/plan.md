@@ -264,7 +264,7 @@ These were settled during the initial planning round and have not been revisited
 | Frontend | React + TypeScript + Tailwind + shadcn/ui (Vite) | Polished 2026 component ecosystem |
 | Auth | Local users (Argon2id) + WebAuthn/passkeys + JWT scopes; OIDC pluggable | Works on a fresh install; passkey-first |
 | Persistence | SQLite via raw SQL + Dapper (no EF Core). One consolidated `pdn.db` (the learned NET/ROM routing table now; config + operational state join it later), with rolling packet capture kept in a separate `packets.db` if/when built | Single binary, zero ops; one store avoids DB sprawl while keeping the hot-path capture isolated |
-| License | MIT | Permissive, low friction |
+| License | AGPL-3.0 (repo + all published packages; was MIT until 2026-06-14, metadata reconciled 2026-07-14 — §17) | Copyleft incl. network use; keeps derivatives of the node + libraries open |
 | SDL handling | YAML DSL in `/spec-sdl/`, codegen → C# + conformance tests; per-SDL PR review | [ADR-0001](adr/0001-sdl-dsl.md) |
 | NET/ROM | The **full vanilla L3+L4 stack** now lives in `Packet.NetRom` + the node host: read-only NODES ingest, NODES origination, the L4 virtual-circuit transport (`CircuitManager`), interlinks, and `connect <alias>` routing. Hand-written, **not** via ax25sdl (no SDL, no normative standard — BPQ is the de-facto reference). INP3 + real-BPQ-L4 interop deferred. | Focus v1 on rock-solid AX.25; de-risk the divergence-prone L3 model early, then build the L4 transport behind named knobs |
 | MCP scope | Ops + diagnostics + network exploration; read-mostly with explicit write tools | Useful without being scary |
@@ -1249,6 +1249,20 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-14 — Licence reconciled: AGPL-3.0 everywhere (packages included)
+
+The soundmodem research surfaced that the repo's licensing had been self-contradictory since
+`ac2fe22` (2026-06-14): `LICENSE` said AGPL-3.0 while README §License, the §3 locked-decisions
+table and `Directory.Build.props` `<PackageLicenseExpression>` still said MIT — so every NuGet
+package was publishing as MIT against an AGPL repo. Tom ruled the AGPL switch was the intent and
+covers everything. Changed in this PR: `PackageLicenseExpression` → `AGPL-3.0-or-later` (SPDX;
+"or-later" chosen to mirror the GPL-3.0-or-later of the new sibling `packet-net/soundmodem` repo —
+shout if `-only` was wanted), README §License, the §3 License row, and the "*MIT-licensed*" footer
+in all 11 package READMEs that carried it. Historical §17/§14 mentions of MIT are left as accurate
+records of their time. Packages publish under the new licence from the next `lib-v*` tag.
+Note: sibling repos (`ax25-ts`, `ax25sdl`, `axcall`, `packet-term-tui`, `packet-term-web`) still
+carry their own MIT licences — aligning them (or not) is a separate, per-repo decision for Tom.
 
 ### 2026-07-14 — Research: headless C# soundmodem (QtSoundModem as reference)
 

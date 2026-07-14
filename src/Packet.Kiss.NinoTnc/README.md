@@ -139,4 +139,4 @@ POLL mode (`0x0E`), the XOR-checksum multi-drop variant, return-from-KISS (`0xFF
 - [NinoTNC wiki](https://wiki.oarc.uk/packet:ninotnc) — operator-facing hardware documentation.
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

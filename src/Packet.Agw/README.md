@@ -50,4 +50,4 @@ Writes larger than the per-frame cap (~256 bytes) are split into multiple data f
 - [Packet.Kiss](https://www.nuget.org/packages/Packet.Kiss) — the KISS-TNC alternative when you own the radio layer
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

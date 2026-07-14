@@ -87,4 +87,4 @@ if (Ax25Frame.TryParse(kissBytes, out var frame) && frame.IsUi)
 - [Packet.NetRom](https://www.nuget.org/packages/Packet.NetRom) — NET/ROM Layer 3/4 on top of AX.25
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

@@ -54,4 +54,4 @@ Call `table.Sweep()` at the broadcast interval to age routes out, `BuildAdvertis
 - [Packet.Core](https://www.nuget.org/packages/Packet.Core) — `Callsign` and the shared primitives
 
 ---
-*MIT-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
