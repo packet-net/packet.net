@@ -2,17 +2,17 @@
 
 How a packet.net change reaches the world. This is the **release cascade**: a single substantive merge to `main` fans out into NuGet packages, `.deb`s, downstream app releases, and (when the TS library moved) an npm publish + a static-site redeploy. It is tag-driven and mostly automated, but the *order* and the *downstream fan-out* are easy to forget — hence this doc.
 
-> **TL;DR** — on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the four `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump `packet-net/packet-term-web`'s pin. Finally, record the whole arc in `docs/plan.md` §17.
+> **TL;DR** — on green `main`: tag `lib-v<semver>` and `node-v<semver>` → CI publishes NuGet + builds a `.deb` GitHub Release. Then bump the `Packet.*` pins in `packet-net/axcall` and `packet-net/packet-term-tui` and cut their releases. If `ax25-ts` also changed, release it to npm and bump `packet-net/packet-term-web`'s pin. Finally, record the whole arc in `docs/plan.md` §17.
 
 ## When to release
 
 After a **substantive** merge to `main` — a library behaviour change, a node-host fix/feature, a new named flag. Not for plan-only edits, dev-tooling (the link bench), or test-only changes. When in doubt, a release is cheap and the libraries/`.deb`s being a few commits behind `main` is the thing to avoid (the fixes only reach users once tagged).
 
-The libraries and the node host are **independent version trains** — they started out in lockstep (`lib-v0.8.0` + `node-v0.8.0`) but diverged long ago (2026-07-14 snapshot: node at `0.30.0`, libs at `0.22.0`), because the node releases on every substantive node change while the libs only bump when library surface moves. **Always find the next number from the tags, never assume**: `git ls-remote --tags origin 'node-v*' | grep -v '\^{}' | sed 's|.*refs/tags/||' | sort -V | tail -1` (same with `lib-v*`) — note the `sort -V`; lexical sorting lies (`node-v0.9.x` sorts after `node-v0.30.0`). This bit for real on 2026-07-14: a `node-v0.23.0` tag "already exists" surprise mid-release, because the number was inferred from the lib train instead of listed. Pre-1.0, a normal release is a **minor** bump on its own train whether the changes are features or fixes; reserve patch bumps (`0.8.0 → 0.8.1`) for a hotfix on top of a release. The version lives **only in the tag** — the publish workflows pass `-p:Version=$VERSION` / read `${GITHUB_REF#refs/tags/...}`; there is no `<Version>` to edit in any `.csproj` or `Directory.Build.props`.
+The libraries and the node host are **independent version trains** — they started out in lockstep (`lib-v0.8.0` + `node-v0.8.0`) but diverged long ago (2026-07-14 snapshot: node at `0.31.0`, libs at `0.23.0`), because the node releases on every substantive node change while the libs only bump when library surface moves. **Always find the next number from the tags, never assume**: `git ls-remote --tags origin 'node-v*' | grep -v '\^{}' | sed 's|.*refs/tags/||' | sort -V | tail -1` (same with `lib-v*`) — note the `sort -V`; lexical sorting lies (`node-v0.9.x` sorts after `node-v0.30.0`). This bit for real on 2026-07-14: a `node-v0.23.0` tag "already exists" surprise mid-release, because the number was inferred from the lib train instead of listed. Pre-1.0, a normal release is a **minor** bump on its own train whether the changes are features or fixes; reserve patch bumps (`0.8.0 → 0.8.1`) for a hotfix on top of a release. The version lives **only in the tag** — the publish workflows pass `-p:Version=$VERSION` / read `${GITHUB_REF#refs/tags/...}`; there is no `<Version>` to edit in any `.csproj` or `Directory.Build.props`.
 
 ## Step 0 — verify `main` is green *before* tagging
 
-Tag only a commit whose **`ci` and `interop`** workflows both went green **on the merge commit on `main`** (not just on the PR):
+Tag only a commit whose **`ci` and `interop`** workflows both went green **on the merge commit on `main`** (since 2026-07-14 the push-to-main run is the *only* CI a change gets — PR triggers were dropped; PRs merge on green local test runs):
 
 ```sh
 gh run list --repo packet-net/packet.net --branch main --limit 6
@@ -109,7 +109,7 @@ Two public app repos pin the `Packet.*` NuGet packages:
 - [`packet-net/axcall`](https://github.com/packet-net/axcall)
 - [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui)
 
-For each: open a PR bumping the four `Packet.*` pins in its `Directory.Packages.props` to the new version, **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` — their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
+For each: open a PR bumping its `Packet.*` pins in `Directory.Packages.props` to the new version (axcall pins five packages, the TUI four), **build + test locally against the freshly-published NuGet first** (so an indexing lag or a packaging slip is caught before merge), merge on green, then tag `v0.x.y` — their `release.yml` builds the six-platform binaries; verify the assets attached. Do this only after Step 1's NuGet indexing has settled.
 
 ## Step 4 — the TS leg (only when `ax25-ts` changed)
 
@@ -132,7 +132,7 @@ Add a `docs/plan.md` §17 amendment-log entry capturing the whole arc: the `lib-
 
 | Tag / action | Workflow | Produces |
 |---|---|---|
-| `lib-v<semver>` | `publish-libs.yml` | 14 NuGet packages on nuget.org (the `projects:` matrix is authoritative) |
+| `lib-v<semver>` | `publish-libs.yml` | 17 NuGet packages on nuget.org (the `projects:` matrix is authoritative) |
 | `node-v<semver>` | `publish-node.yml` | amd64/arm64/armhf `.deb`s + self-contained `.tar.gz`s + `latest.json` on a GitHub Release |
 | `node-v<semver>` (same tag) | `publish-docker.yml` | multi-arch (amd64+arm64) `ghcr.io/packet-net/packet.net:<semver>` + `:latest` |
 | `headend-v<semver>` | `publish-headend.yml` | arm64/arm v7/amd64 `.deb`s + static Go binaries on a GitHub Release |
