@@ -1,7 +1,7 @@
 # Headless C# soundmodem for PDN — initial research
 
 *Research / options analysis. Status: **research complete 2026-07-14; core decisions taken same day**
-(see [Decisions](#decisions-tom-2026-07-14)) — **work commenced in `packet-net/soundmodem`**.
+(see [Decisions](#decisions-tom-2026-07-14)) — **work commenced in `packet-net/pdn-soundmodem`**.
 Grounded against QtSoundModem 0.0.0.76
 (commit `9cd2735`, cloned 2026-07-14 from `git://vps1.g8bpq.net/QtSM`), this repo at `main`
 (9b59ed1), live kiss-collector data, bpq32 groups.io + OARC Discord field reports, and a managed-DSP
@@ -486,7 +486,7 @@ reproduce).
 Taken the same day the research landed:
 
 1. **Separate repo** (§12.1 option (c) + §4.4 hybrid method): the modem lives in
-   **`packet-net/soundmodem`**, licensed **GPL-3.0-or-later**, consumed by packet.net via NuGet
+   **`packet-net/pdn-soundmodem`**, licensed **GPL-3.0-or-later**, consumed by packet.net via NuGet
    (the `Packet.Ax25.Sdl` pattern). Method inside that repo: port UZ7HO's proven demods from QtSM;
    implement IL2P/FX.25/RS from the open specs with their test vectors.
 2. **packet.net is AGPL-3.0 throughout** (§12.1 repo contradiction, §4.3): the `ac2fe22` LICENSE

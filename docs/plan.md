@@ -1257,7 +1257,7 @@ The soundmodem research surfaced that the repo's licensing had been self-contrad
 table and `Directory.Build.props` `<PackageLicenseExpression>` still said MIT — so every NuGet
 package was publishing as MIT against an AGPL repo. Tom ruled the AGPL switch was the intent and
 covers everything. Changed in this PR: `PackageLicenseExpression` → `AGPL-3.0-or-later` (SPDX;
-"or-later" chosen to mirror the GPL-3.0-or-later of the new sibling `packet-net/soundmodem` repo —
+"or-later" chosen to mirror the GPL-3.0-or-later of the new sibling `packet-net/pdn-soundmodem` repo —
 shout if `-only` was wanted), README §License, the §3 License row, and the "*MIT-licensed*" footer
 in all 11 package READMEs that carried it. Historical §17/§14 mentions of MIT are left as accurate
 records of their time. Packages publish under the new licence from the next `lib-v*` tag.
@@ -1274,7 +1274,7 @@ worst case measured at ~14 % of one 2012 x64 core; every architectural seam alre
 currently self-contradictory (`LICENSE` = AGPL-3.0 since `ac2fe22`, README/plan §3/`PackageLicenseExpression`
 still MIT — needs resolving regardless), and (2) target modes — live GB7RDG traffic is 100 % NinoTNC
 IL2P+CRC PSK/GFSK, 0 % classic 1200 AFSK, so NinoTNC-waveform interop is the acceptance bar. Core
-decisions taken same day (doc §Decisions): the modem lives in a **separate `packet-net/soundmodem`
+decisions taken same day (doc §Decisions): the modem lives in a **separate `packet-net/pdn-soundmodem`
 repo** (GPL-3.0-or-later, consumed via NuGet like `Packet.Ax25.Sdl`); packet.net resolves to
 **AGPL-3.0 throughout** (separate change); Phase 1 targets 300 BPSK IL2P+CRC + 1200 AFSK; QtSM-style
 multiplex channel model; both an integrated PDN port and a standalone headless KISS daemon are goals.
