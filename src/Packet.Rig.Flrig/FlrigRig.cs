@@ -243,6 +243,19 @@ public sealed class FlrigRig : IRigControl
         return Parse(meter, "rig.get_pwrmeter") * powerMeterScale;
     }
 
+    /// <inheritdoc />
+    public ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            "flrig exposes no data-carrier-detect / squelch state over XML-RPC — there is nothing " +
+            "to serve this read from.");
+
+    /// <inheritdoc />
+    public ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            "flrig's s-meter (rig.get_smeter) is an uncalibrated 0–100 needle deflection, and we " +
+            "never synthesize dBm from uncalibrated readings — use CallRawAsync(\"rig.get_smeter\", …) " +
+            "for the raw deflection.");
+
     /// <summary>
     /// Invoke any flrig XML-RPC method and get its string-form result — the escape hatch below
     /// the <see cref="IRigControl"/> common subset (<c>rig.cat_string</c> raw CAT passthrough,

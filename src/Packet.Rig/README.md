@@ -1,7 +1,8 @@
 # Packet.Rig
 
 Station-rig (CAT) control abstraction for amateur-radio transceivers: get/set **frequency** and
-**mode**, **PTT**, and **SWR / RF-power metering**, all behind capability probes.
+**mode**, **PTT**, **SWR / RF-power metering**, and receive-side **DCD / signal-strength**
+reads, all behind capability probes.
 
 ```csharp
 IRigControl rig = await RigctldRig.ConnectAsync();   // Packet.Rig.Hamlib
@@ -14,6 +15,11 @@ if (rig.Capabilities.HasFlag(RigCapabilities.SwrMeter))
 {
     var swr = await rig.ReadSwrAsync();              // dimensionless ratio, 1.0 = perfect
 }
+
+if (rig.Capabilities.HasFlag(RigCapabilities.DcdRead))
+{
+    var busy = await rig.ReadDcdAsync();             // true = carrier present / channel busy
+}
 ```
 
 ## Design
@@ -24,6 +30,9 @@ if (rig.Capabilities.HasFlag(RigCapabilities.SwrMeter))
 - **`RigMode`** wraps a canonical token (hamlib vocabulary: `USB`, `LSB`, `CW`, `PKTUSB`, …)
   with pass-through for backend-native names (`RigMode.From("DATA-U")`) — mode vocabularies
   genuinely diverge across backends, so this is not a closed enum.
+- **Receive-side reads** — `ReadDcdAsync` (true = carrier present / channel busy) and
+  `ReadSignalStrengthDbmAsync` (dBm) are what the packet stack's carrier-sense seam needs;
+  the `IRadioControl` bridge adapter that consumes them is `Packet.Radio`'s `RigRadioControl`.
 - **Errors** are typed: `RigConnectionException` (link down — retry is sane),
   `RigTimeoutException`, `RigCommandException` (the backend said no; carries its native code),
   `RigProtocolException` (unparseable reply).

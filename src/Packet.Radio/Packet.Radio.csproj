@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
+    <ProjectReference Include="..\Packet.Rig\Packet.Rig.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -12,7 +13,7 @@
     <PackageId>Packet.Radio</PackageId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Title>Packet.Radio — radio-control abstraction for the Packet.NET stack</Title>
-    <Description>Radio-control abstraction (IRadioControl: RSSI, carrier-sense/DCD, PTT; IRadioSideChannel: radio-native small-datagram control plane) plus the RssiTaggingTransport decorator that stamps per-frame RSSI/SNR metadata onto any IAx25Transport. Radio-specific implementations (e.g. Packet.Radio.Tait) plug in underneath. Source: github.com/packet-net/packet.net.</Description>
+    <Description>Radio-control abstraction (IRadioControl: RSSI, carrier-sense/DCD, PTT; IRadioSideChannel: radio-native small-datagram control plane) plus the RssiTaggingTransport decorator that stamps per-frame RSSI/SNR metadata onto any IAx25Transport, and the RigRadioControl bridge that surfaces a CAT rig (Packet.Rig: hamlib rigctld, flrig) through the same seam. Radio-specific implementations (e.g. Packet.Radio.Tait) plug in underneath. Source: github.com/packet-net/packet.net.</Description>
     <PackageTags>ax25;amateur-radio;packet-radio;radio-control;rssi;dcd</PackageTags>
   </PropertyGroup>
 

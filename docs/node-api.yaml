@@ -1004,7 +1004,7 @@ components:
       properties:
         portId: { type: string }
         attached: { type: boolean }
-        kind: { type: string, description: "radio-control kind, e.g. tait-ccdi (empty for a port with no radio block)" }
+        kind: { type: string, description: "radio-control kind, e.g. tait-ccdi or rig (empty for a port with no radio block)" }
         controlPort: { type: [string, "null"], description: "the serial device the control channel is on (the resolved /dev/ttyUSB* when attached)" }
         serial: { type: [string, "null"], description: "the radio's CCDI serial number (config or queried identity)" }
         identity: { oneOf: [{ $ref: "#/components/schemas/RadioIdentity" }, { type: "null" }] }

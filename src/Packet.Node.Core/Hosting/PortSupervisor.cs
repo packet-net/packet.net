@@ -117,15 +117,18 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // blank resolves its current host:port via mDNS at bring-up (keyed by instance id, so a
         // re-addressed Pi keeps its port configs). Null = config-address-only (a purely-local node).
         this.headEndDiscovery = headEndDiscovery;
-        // Optional radio-control seam: how a port's `radio:` block becomes a live
-        // IRadioControl. Defaults to the production factory (real serial hardware);
-        // component tests substitute a scripted radio.
-        this.radioFactory = radioFactory ?? RadioControlFactory.Instance;
         // Optional rig-control (CAT) seam: how a port's `rig:` block becomes a live
         // IRigControl. Defaults to the production factory (real daemons); component
         // tests substitute a scripted rig. The telemetry hub, when present, receives a
         // RigStatus after every poll tick (the /api/v1/rigs/events SSE feed).
         this.rigFactory = rigFactory ?? RigControlFactory.Instance;
+        // Optional radio-control seam: how a port's `radio:` block becomes a live
+        // IRadioControl. Defaults to the production factory (real serial hardware);
+        // component tests substitute a scripted radio. The default is built OVER this
+        // supervisor's rig seam, so a `radio: kind rig` port dials its dedicated rig
+        // connection through the same factory the status poller uses — inject a fake
+        // rig factory once and both arms are scripted.
+        this.radioFactory = radioFactory ?? new RadioControlFactory(this.rigFactory);
         this.rigTelemetry = rigTelemetry;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -829,14 +832,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         IInboundRadioSource? radioSource = null;
         if (port.Radio is { } radioConfig)
         {
-            // Serial-bound radios have an empty Port (the device is resolved by scanning), so
-            // describe the attachment by whichever key is set.
-            var radioEndpoint = !string.IsNullOrWhiteSpace(radioConfig.Port)
-                ? radioConfig.Port
-                : $"serial:{radioConfig.Serial}";
+            // Describe the attachment by whichever key pins it: a rig-backed radio (kind rig) by
+            // the rig daemon it dials a dedicated connection to; a cabled radio by its control
+            // device, or — serial-bound radios have an empty Port (the device is resolved by
+            // scanning) — its CCDI serial.
+            var radioEndpoint = RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig)
+                ? (port.Rig is { } rigCfg
+                    ? $"rig:{rigCfg.Host}:{rigCfg.Port ?? RigKinds.DefaultPort(rigCfg.Kind)}"
+                    : "rig:(no rig: block)")
+                : !string.IsNullOrWhiteSpace(radioConfig.Port)
+                    ? radioConfig.Port
+                    : $"serial:{radioConfig.Serial}";
             try
             {
-                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, ct).ConfigureAwait(false);
+                radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, port.Rig, ct).ConfigureAwait(false);
 
                 // Head-end-bound radio control gets reconnect supervision (#576): the stable
                 // facade is what every consumer below holds (tagging transport, carrier-sense
@@ -844,7 +853,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 // a head-end restart, a .deb upgrade's try-restart, a replug — the facade
                 // disposes the dead driver and re-opens it (fresh inventory resolve, configured
                 // baud re-clock, progress re-enable) underneath them all. A local-serial radio
-                // keeps today's behaviour: a USB unplug is a physical event, not a bounce.
+                // keeps today's behaviour: a USB unplug is a physical event, not a bounce. A
+                // rig-backed radio (kind rig, never head-end-bound) also skips the wrap — the
+                // rig backends re-dial per command, so the adapter self-heals on its own.
                 if (radioConfig.IsHeadEndBound)
                 {
                     radio = new ReconnectingRadioControl(
@@ -852,25 +863,36 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                         loggerFactory.CreateLogger<ReconnectingRadioControl>(), timeProvider);
                 }
 
-                // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
-                // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
-                // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
-                // concern kept entirely OFF the parity-tracked AX.25 listener contract.
-                var tagging = new RssiTaggingTransport(
-                    transport,
-                    radio,
-                    new RssiTaggingOptions
-                    {
-                        // A NinoTNC modem reports its live over-air bit rate; consulted
-                        // per frame so a mode change is picked up without a restart.
-                        BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
-                    },
-                    timeProvider);
-                var tap = new InboundRadioTap(tagging);
-                transport = tap;
-                radioSource = tap;
+                if (radio.Capabilities.HasFlag(RadioCapabilities.RssiRead))
+                {
+                    // Outer→inner: node tap → RSSI-tagging wrapper → modem chain. The listener consumes
+                    // the tap; the tap reads each inbound frame's RSSI/SNR (populated by the wrapper) so
+                    // NodeTelemetry can stamp it onto the monitor/heard/traffic surfaces — a node-telemetry
+                    // concern kept entirely OFF the parity-tracked AX.25 listener contract.
+                    var tagging = new RssiTaggingTransport(
+                        transport,
+                        radio,
+                        new RssiTaggingOptions
+                        {
+                            // A NinoTNC modem reports its live over-air bit rate; consulted
+                            // per frame so a mode change is picked up without a restart.
+                            BitRateHzProvider = ninoTnc is null ? null : () => ninoTnc.CurrentBitRateHz,
+                        },
+                        timeProvider);
+                    var tap = new InboundRadioTap(tagging);
+                    transport = tap;
+                    radioSource = tap;
+                    LogRadioAttached(port.Id, radioConfig.Kind, radioEndpoint);
+                }
+                else
+                {
+                    // A radio without RSSI reads (e.g. a rig whose DCD is calibrated but whose
+                    // strength meter isn't): no tagging wrapper — the inbound path stays exactly
+                    // as a no-radio port's — but the carrier-sense gate and the status monitor
+                    // below still get the radio.
+                    LogRadioAttachedNoRssi(port.Id, radioConfig.Kind, radioEndpoint, radio.Capabilities);
+                }
                 radioStatus = RadioStatusMonitors.Create(port.Id, radioConfig, radio, timeProvider);
-                LogRadioAttached(port.Id, radioConfig.Kind, radioEndpoint);
             }
             catch (Exception ex)
             {
@@ -1514,6 +1536,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) — inbound frames carry RSSI/SNR metadata.")]
     private partial void LogRadioAttached(string id, string kind, string radioPort);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads — capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
+    private partial void LogRadioAttachedNoRssi(string id, string kind, string radioPort, RadioCapabilities capabilities);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
     private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);

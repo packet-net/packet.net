@@ -18,9 +18,11 @@ await rig.SetFrequencyAsync(14_074_000);
 await rig.SetModeAsync(RigMode.PktUsb, passbandHz: 3000);
 var swr = await rig.ReadSwrAsync();
 var watts = await rig.ReadRfPowerWattsAsync();                    // hamlib ≥ 4.4 rigs
+var busy = await rig.ReadDcdAsync();                              // \get_dcd — channel busy?
+var dbm = await rig.ReadSignalStrengthDbmAsync();                 // STRENGTH + S9 reference
 
 // Escape hatches below the common subset:
-var strength = await rig.ReadLevelAsync("STRENGTH");
+var alc = await rig.ReadLevelAsync("ALC");
 var vfo = await rig.TransactRawAsync("v");
 ```
 
@@ -32,6 +34,9 @@ var vfo = await rig.TransactRawAsync("v");
 - Capabilities and identity come from `\dump_caps` at connect. Advertised capabilities are the
   backend's statement of intent — a rig can still reject at runtime, surfacing as
   `RigCommandException` with the hamlib error name (`RIG_ENAVAIL (-11)` …).
+- `ReadSignalStrengthDbmAsync` converts hamlib's `STRENGTH` level (calibrated dB relative to
+  S9) to dBm by adding `RigctldRigOptions.S9ReferenceDbm`. The default −73 dBm is the IARU
+  Region 1 HF convention; VHF/UHF stations conventionally use −93 — set the option accordingly.
 - One TCP connection, commands serialised in arrival order. On any transport fault, timeout, or
   cancellation mid-command the connection is dropped and the **next command re-dials** —
   rigctld holds all rig state, so redial is free.

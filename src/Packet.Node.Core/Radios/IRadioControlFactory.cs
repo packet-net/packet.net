@@ -16,8 +16,9 @@ public interface IRadioControlFactory
     /// <summary>
     /// Open the radio-control channel described by <paramref name="radio"/> and put it
     /// in the state the RSSI-tagging pipeline needs (for Tait CCDI: progress/DCD
-    /// reporting enabled). The returned radio is ready to sample; the caller owns its
-    /// disposal.
+    /// reporting enabled; for kind <c>rig</c>: a dedicated rig connection wrapped in
+    /// the rig→radio bridge). The returned radio is ready to sample; the caller owns
+    /// its disposal.
     /// </summary>
     /// <param name="radio">The validated per-port radio attachment config.</param>
     /// <param name="timeProvider">Clock for driver-internal timers (keep-alive
@@ -25,6 +26,9 @@ public interface IRadioControlFactory
     /// <param name="headEndResolver">Resolves a head-end-bound radio's
     /// <c>(headEndId, deviceId)</c> to a raw TCP pipe + line-control seam (split-station topology).
     /// Required for a head-end-bound radio; null (or a local-serial radio) uses the local open path.</param>
+    /// <param name="rig">The port's <c>rig:</c> block — which CAT daemon a kind-<c>rig</c> radio
+    /// dials its dedicated connection to. Required for kind <c>rig</c> (the validator guarantees
+    /// the block exists on the same port); ignored for every other kind.</param>
     /// <param name="cancellationToken">Cancels the open/handshake.</param>
     /// <exception cref="NotSupportedException">If the radio kind has no
     /// implementation in this build (unreachable for validated config — the
@@ -33,5 +37,6 @@ public interface IRadioControlFactory
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
         HeadEndDeviceResolver? headEndResolver = null,
+        PortRigConfig? rig = null,
         CancellationToken cancellationToken = default);
 }

@@ -164,6 +164,26 @@ public class TaitRigControlTests
     }
 
     [Fact]
+    public async Task Receive_Side_Reads_Point_At_The_Native_IRadioControl_Surface()
+    {
+        using var io = NewIoAnsweringIdentity();
+        await using var radio = NewRadio(io);
+        await using var rig = await TaitRigControl.CreateAsync(radio);
+
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.DcdRead);
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.SignalStrengthRead);
+
+        // The Tait driver serves carrier-sense and RSSI natively on IRadioControl — the
+        // messages redirect callers there instead of the rig-seam bridge.
+        var dcd = async () => await rig.ReadDcdAsync();
+        (await dcd.Should().ThrowAsync<NotSupportedException>())
+            .Which.Message.Should().Contain("CarrierSenseChanged");
+        var strength = async () => await rig.ReadSignalStrengthDbmAsync();
+        (await strength.Should().ThrowAsync<NotSupportedException>())
+            .Which.Message.Should().Contain("ReadRssiDbmAsync");
+    }
+
+    [Fact]
     public async Task Dispose_Unkeys_A_Transmitter_This_Adapter_Keyed_When_It_Does_Not_Own_The_Radio()
     {
         using var io = NewIoAnsweringIdentity();

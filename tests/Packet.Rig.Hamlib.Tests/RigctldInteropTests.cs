@@ -159,6 +159,33 @@ public sealed class RigctldInteropTests
     }
 
     [SkippableFact]
+    public async Task Dcd_And_Signal_Strength_Read_Against_Real_Rigctld()
+    {
+        Skip.If(RigctldPath is null, "rigctld not installed (apt install libhamlib-utils)");
+        var (daemon, rig) = await StartAsync();
+        try
+        {
+            await using var _ = rig;
+
+            rig.Capabilities.Should().HaveFlag(RigCapabilities.DcdRead | RigCapabilities.SignalStrengthRead);
+
+            // The dummy rig alternates DCD on every read — two reads prove the parse sees both
+            // wire states, without depending on which one comes first.
+            var first = await rig.ReadDcdAsync();
+            var second = await rig.ReadDcdAsync();
+            second.Should().Be(!first);
+
+            // Plausible-dBm assertion only: the dB-relative-S9 value is the dummy's business.
+            var dbm = await rig.ReadSignalStrengthDbmAsync();
+            dbm.Should().BeLessThan(0).And.BeGreaterThan(-200);
+        }
+        finally
+        {
+            KillQuietly(daemon);
+        }
+    }
+
+    [SkippableFact]
     public async Task Vfo_Mode_Daemon_Works_Through_CurrVfo_Injection()
     {
         Skip.If(RigctldPath is null, "rigctld not installed (apt install libhamlib-utils)");

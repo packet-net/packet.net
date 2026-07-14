@@ -165,6 +165,20 @@ public sealed class TaitRigControl : IRigControl
             "ReadReversePowerAsync (CCTM 318/319).");
 
     /// <inheritdoc />
+    public ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            "The Tait driver is a radio-control implementation in its own right — carrier sense " +
+            "is served natively on IRadioControl via TaitCcdiRadio.ChannelBusy/CarrierSenseChanged " +
+            "(PROGRESS), not through the rig-seam bridge.");
+
+    /// <inheritdoc />
+    public ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            "The Tait driver is a radio-control implementation in its own right — signal strength " +
+            "is served natively on IRadioControl via TaitCcdiRadio.ReadRssiDbmAsync (CCTM 064), " +
+            "not through the rig-seam bridge.");
+
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (disposed)

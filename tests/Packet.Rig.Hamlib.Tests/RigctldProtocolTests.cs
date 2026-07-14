@@ -107,7 +107,8 @@ public class RigctldProtocolTests
             RigCapabilities.FrequencyGet | RigCapabilities.FrequencySet |
             RigCapabilities.ModeGet | RigCapabilities.ModeSet |
             RigCapabilities.PttGet | RigCapabilities.PttSet |
-            RigCapabilities.SwrMeter | RigCapabilities.RfPowerMeter | RigCapabilities.RfPowerMeterWatts);
+            RigCapabilities.SwrMeter | RigCapabilities.RfPowerMeter | RigCapabilities.RfPowerMeterWatts |
+            RigCapabilities.DcdRead | RigCapabilities.SignalStrengthRead);
         info.Backend.Should().Be("Hamlib rigctld");
         info.Model.Should().Be("Dummy");
         info.Manufacturer.Should().Be("Hamlib");
@@ -131,7 +132,8 @@ public class RigctldProtocolTests
 
         var (caps, _) = RigctldProtocol.ParseDumpCaps(payload);
 
-        caps.Should().Be(RigCapabilities.FrequencyGet | RigCapabilities.ModeGet);
+        caps.Should().Be(
+            RigCapabilities.FrequencyGet | RigCapabilities.ModeGet | RigCapabilities.SignalStrengthRead);
     }
 
     [Fact]
@@ -149,5 +151,32 @@ public class RigctldProtocolTests
         var (caps, _) = RigctldProtocol.ParseDumpCaps(payload);
         caps.Should().HaveFlag(RigCapabilities.RfPowerMeter);
         caps.Should().NotHaveFlag(RigCapabilities.RfPowerMeterWatts);
+    }
+
+    [Fact]
+    public void ParseDumpCaps_Maps_Dcd_And_Strength_To_The_Receive_Side_Flags()
+    {
+        // Verbatim lines from `+\dump_caps` against rigctld 4.5.5 -m 1. "DCD type:" describes
+        // the detection mechanism, not readability — only "Can get DCD:" gates the flag.
+        string[] payload =
+        [
+            "Can get DCD:\tY",
+            "DCD type:\tRig capable",
+            "Get level: STRENGTH(0..0/0)",
+        ];
+
+        var (caps, _) = RigctldProtocol.ParseDumpCaps(payload);
+
+        caps.Should().Be(RigCapabilities.DcdRead | RigCapabilities.SignalStrengthRead);
+    }
+
+    [Fact]
+    public void ParseDumpCaps_Honours_N_For_Dcd_And_A_Missing_Strength_Level()
+    {
+        string[] payload = ["Can get DCD:\tN", "Get level: SWR(0..0/0)"];
+
+        var (caps, _) = RigctldProtocol.ParseDumpCaps(payload);
+
+        caps.Should().Be(RigCapabilities.SwrMeter);
     }
 }
