@@ -15,7 +15,10 @@ namespace Packet.Node.Core.Api;
 /// <param name="Attached"><c>true</c> when the rig backend is connected and being polled;
 /// <c>false</c> for a configured-but-not-attached rig (degraded or port down).</param>
 /// <param name="Kind">The rig-control kind — <c>hamlib</c> or <c>flrig</c>.</param>
-/// <param name="Endpoint">The daemon endpoint as <c>host:port</c> (config defaults resolved).</param>
+/// <param name="Endpoint">The daemon endpoint (<see cref="Packet.Node.Core.Configuration.PortRigConfig.DescribeEndpoint"/>):
+/// <c>host:port</c> for a BYO daemon (config defaults resolved), or the serial device plus the
+/// spawned daemon's loopback endpoint for a node-managed one —
+/// <c>/dev/serial/by-id/… (managed rigctld @127.0.0.1:NNNNN)</c>.</param>
 /// <param name="Backend">What the backend calls itself (e.g. <c>Hamlib rigctld</c>, <c>flrig</c>),
 /// or <c>null</c> when not attached.</param>
 /// <param name="Manufacturer">Rig manufacturer as the backend reports it, when known.</param>

@@ -236,9 +236,13 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
 }
 
 /// <summary>
-/// Validates a port's <c>rig:</c> attachment (<see cref="PortRigConfig"/>): a known kind, a
-/// non-empty host, a sane TCP port when set, and positive poll cadences when set. Kind knowledge
-/// lives in <see cref="RigKinds"/> (the same authority the rig factory resolves with), not here.
+/// Validates a port's <c>rig:</c> attachment (<see cref="PortRigConfig"/>): a known kind, the
+/// binding-shape discipline — the BYO-daemon shape (<c>host</c>/<c>port</c>, either rig kind) or
+/// the node-managed shape (<c>device</c>+<c>model</c>, hamlib only, no <c>port</c>, no remote
+/// <c>host</c>) — plus a non-empty host, a sane TCP port when set, and positive poll cadences
+/// when set. Kind and shape knowledge live in <see cref="RigKinds"/> /
+/// <see cref="PortRigConfig.IsNodeManaged"/> (the same authorities the rig factory and the port
+/// supervisor resolve with), not here.
 /// </summary>
 public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
 {
@@ -260,6 +264,67 @@ public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
                 $"rig.port must be in 1..65535 (omit it for the kind default, " +
                 $"{RigKinds.Hamlib} → {RigKinds.DefaultPort(RigKinds.Hamlib)}, " +
                 $"{RigKinds.Flrig} → {RigKinds.DefaultPort(RigKinds.Flrig)}).");
+
+        // The node-managed shape (`device` set → the node spawns and supervises rigctld):
+        // `model` is what rigctld -m needs to speak the rig's CAT dialect, so it is required;
+        // flrig is a GUI app the node can't sensibly spawn, so the shape is hamlib-only;
+        // `port`/a remote `host` describe a daemon somebody ELSE runs, which contradicts a
+        // locally-spawned one. (Mirrors PortRadioValidator's binding-mode discipline.)
+        When(r => r.IsNodeManaged, () =>
+        {
+            RuleFor(r => r.Model)
+                .NotNull()
+                .WithMessage(
+                    "a node-managed rig (`device` set) requires `model` — the hamlib rig model " +
+                    "number rigctld is launched with (see `rigctl -l` for the list).");
+
+            RuleFor(r => r)
+                .Must(r => RigKinds.Is(r.Kind, RigKinds.Hamlib))
+                .WithMessage(
+                    "a node-managed rig (`device` set) must be kind `hamlib` — the node spawns " +
+                    "rigctld itself. flrig is a GUI application the node cannot spawn; run it " +
+                    "yourself and bind by `host`/`port` instead.");
+
+            RuleFor(r => r.Port)
+                .Null()
+                .WithMessage(
+                    "a node-managed rig (`device` set) must not set `port` — the node spawns " +
+                    "rigctld on a loopback port it allocates itself. Set `host`/`port` (without " +
+                    "`device`) to point at a daemon you run yourself.");
+
+            RuleFor(r => r.Host)
+                .Must(h => string.IsNullOrWhiteSpace(h) || h == "127.0.0.1")
+                .WithMessage(
+                    "a node-managed rig (`device` set) must not set a remote `host` — the node " +
+                    "spawns rigctld locally on 127.0.0.1. Set `host`/`port` (without `device`) " +
+                    "to point at a daemon running elsewhere.");
+        });
+
+        RuleFor(r => r.Model!.Value).GreaterThan(0)
+            .When(r => r.Model.HasValue)
+            .WithMessage("rig.model must be positive (a hamlib rig model number — see `rigctl -l`).");
+
+        RuleFor(r => r.SerialSpeed!.Value).GreaterThan(0)
+            .When(r => r.SerialSpeed.HasValue)
+            .WithMessage("rig.serialSpeed must be positive (baud; omit it for hamlib's per-model default).");
+
+        // `model`/`serialSpeed` describe the daemon the node spawns; without `device` there is
+        // no spawned daemon for them to describe — a BYO daemon already knows its own rig.
+        When(r => !r.IsNodeManaged, () =>
+        {
+            RuleFor(r => r.Model)
+                .Null()
+                .WithMessage(
+                    "rig.model only applies to a node-managed rig — set `device` (the rig's " +
+                    "serial device path) with it, or drop it for the `host`/`port` shape (your " +
+                    "own daemon already knows its rig).");
+
+            RuleFor(r => r.SerialSpeed)
+                .Null()
+                .WithMessage(
+                    "rig.serialSpeed only applies to a node-managed rig — set `device` (the " +
+                    "rig's serial device path) with it, or drop it for the `host`/`port` shape.");
+        });
 
         RuleFor(r => r.PollIntervalSeconds!.Value).GreaterThan(0)
             .When(r => r.PollIntervalSeconds.HasValue)

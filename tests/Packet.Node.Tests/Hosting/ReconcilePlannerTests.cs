@@ -131,8 +131,20 @@ public class ReconcilePlannerTests
         var without = Config("M0LTE-1", Tcp("a"));
         var with = Config("M0LTE-1", Tcp("a") with { Rig = hamlib });
         var moved = Config("M0LTE-1", Tcp("a") with { Rig = hamlib with { Port = 4534 } });
+        // The node-managed shape's fields ride the same record equality: re-pointing the
+        // device, changing the model, or switching shape entirely restarts exactly that port
+        // (the supervised rigctld is spawned at bring-up).
+        var managed = Config("M0LTE-1", Tcp("a") with
+        {
+            Rig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB0", Model = 3073 },
+        });
+        var remodelled = Config("M0LTE-1", Tcp("a") with
+        {
+            Rig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB0", Model = 3074 },
+        });
 
-        foreach (var (from, to) in new[] { (without, with), (with, without), (with, moved) })
+        foreach (var (from, to) in new[]
+            { (without, with), (with, without), (with, moved), (with, managed), (managed, remodelled) })
         {
             var plan = ReconcilePlanner.Plan(from, to);
             plan.ToRestart.Select(p => p.Id).Should().Equal("a");

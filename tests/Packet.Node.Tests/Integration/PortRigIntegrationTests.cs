@@ -127,6 +127,115 @@ public sealed class PortRigIntegrationTests
         await act.Should().NotThrowAsync();
     }
 
+    // ---- the node-managed shape (device + model → the supervisor spawns rigctld) ----------
+
+    private static PortConfig PortWithManagedRig(string id, string device, PortRigConfig rig) => new()
+    {
+        Id = id,
+        Enabled = true,
+        Transport = new SerialKissTransport { Device = device },
+        Rig = rig,
+    };
+
+    [Fact]
+    public async Task A_node_managed_rig_whose_daemon_cannot_start_degrades_to_a_working_port()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        var bus = new SharedRadioBus();
+        var rigConfig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB9", Model = 3073 };
+        var config = new TestConfigProvider(Config(PortWithManagedRig("hf", "/dev/pty-hf", rigConfig)));
+        var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-hf", bus.Attach());
+        var rigs = new FakeRigControlFactory().Provide(new FakeRigControl());
+
+        // Point the daemon at a binary that cannot launch: the spawn fault fails readiness
+        // fast and the port must degrade to running with rig = null semantics.
+        Environment.SetEnvironmentVariable(ManagedRigDaemon.BinaryPathEnvVar, "/nonexistent/rigctld");
+        try
+        {
+            await using var supervisor = new PortSupervisor(
+                config, transports, TimeProvider.System, NullLoggerFactory.Instance, rigFactory: rigs);
+            await supervisor.StartAsync();
+            await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up despite the daemon fault");
+
+            var port = supervisor.GetPort("hf")!;
+            port.Started.Should().BeTrue("a rigctld that can't start must never take the packet channel down");
+            port.Rig.Should().BeNull();
+            port.RigStatus.Should().BeNull();
+            port.RigDaemon.Should().BeNull("a daemon that never came up is disposed, not tracked");
+            rigs.Requests.Should().BeEmpty("with no daemon there is nothing to dial");
+
+            // The read model reports the configured-but-not-attached rig by its device.
+            var status = RigReadModels.ForPort(supervisor, config.Current, "hf")!;
+            status.Attached.Should().BeFalse();
+            status.Endpoint.Should().Be("/dev/ttyUSB9 (managed rigctld)");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ManagedRigDaemon.BinaryPathEnvVar, null);
+        }
+    }
+
+    [SkippableFact]
+    public async Task A_node_managed_rig_spawns_a_real_rigctld_and_attaches_through_the_real_factory()
+    {
+        Skip.If(FindRigctld() is null, "rigctld not installed (apt install libhamlib-utils)");
+
+        var bus = new SharedRadioBus();
+        // The hamlib dummy (model 1) — the device is ignored, everything else is the real path.
+        var rigConfig = new PortRigConfig { Kind = "hamlib", Device = "/dev/null", Model = 1 };
+        var config = new TestConfigProvider(Config(PortWithManagedRig("hf", "/dev/pty-hf", rigConfig)));
+        var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-hf", bus.Attach());
+
+        int daemonPid;
+        // The DEFAULT rig factory: the supervisor spawns rigctld, waits for it to listen, and
+        // the production RigctldRig dials the allocated loopback port.
+        await using (var supervisor = new PortSupervisor(
+            config, transports, TimeProvider.System, NullLoggerFactory.Instance))
+        {
+            await supervisor.StartAsync();
+            await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up");
+
+            var port = supervisor.GetPort("hf")!;
+            port.Rig.Should().NotBeNull("the port dialled the daemon it spawned");
+            port.RigStatus.Should().NotBeNull();
+            port.RigDaemon.Should().NotBeNull();
+            daemonPid = port.RigDaemon!.ChildPid!.Value;
+
+            var status = RigReadModels.ForPort(supervisor, config.Current, "hf")!;
+            status.Attached.Should().BeTrue();
+            status.Model.Should().Be("Dummy");
+            status.Endpoint.Should().Be(
+                $"/dev/null (managed rigctld @127.0.0.1:{port.RigDaemon.Port})",
+                "the endpoint says what is really attached — device + the managed daemon's loopback port");
+        }
+
+        // Teardown must not orphan the daemon (clients first, daemon last, then it stops).
+        ProcessIsGone(daemonPid).Should().BeTrue("supervisor disposal must stop the spawned rigctld");
+    }
+
+    private static string? FindRigctld()
+        => Environment.GetEnvironmentVariable("PATH")?
+            .Split(Path.PathSeparator)
+            .Select(dir => Path.Combine(dir, "rigctld"))
+            .FirstOrDefault(File.Exists);
+
+    private static bool ProcessIsGone(int pid)
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById(pid);
+            return p.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return true;   // no such pid — fully reaped.
+        }
+    }
+
     [Fact]
     public async Task Read_models_report_a_rigless_port_and_an_unknown_port_distinctly()
     {

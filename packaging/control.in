@@ -2,7 +2,7 @@ Package: packetnet
 Version: @VERSION@
 Architecture: @ARCH@
 Maintainer: Tom Fanning <tom@m0lte.uk>
-Depends: adduser, libc6, polkitd | policykit-1
+Depends: adduser, libc6, polkitd | policykit-1, libhamlib-utils
 Recommends: python3, avahi-daemon, avahi-utils
 Section: hamradio
 Priority: optional
