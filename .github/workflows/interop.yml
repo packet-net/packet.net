@@ -1,23 +1,10 @@
 name: interop
 
+# main-only by design (2026-07-14): PRs merge on green LOCAL test runs (the working
+# pattern), so the PR-triggered matrix just doubled the heaviest job on the runners —
+# the push-to-main run is the interop signal. Use workflow_dispatch for an on-demand
+# branch run.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/Packet.Ax25/**'
-      - 'src/Packet.Ax25.Sdl/**'
-      - 'src/Packet.Kiss/**'
-      - 'src/Packet.Axudp/**'
-      - 'src/Packet.Rhp2/**'
-      - 'src/Packet.Rhp2.Server/**'
-      - 'src/Packet.Agw/**'
-      - 'src/Packet.Node/**'
-      - 'src/Packet.Node.Core/**'
-      - 'src/Packet.NetRom/**'
-      - 'tests/Packet.Interop.Tests/**'
-      - 'docker/**'
-      - 'scripts/interop-recreate-stack.sh'
-      - '.github/workflows/interop.yml'
   push:
     branches: [main]
   workflow_dispatch:
