@@ -62,7 +62,7 @@ ports:
       baud: 57600
       mode: 6
     radio:                       # attach the radio's serial CONTROL channel
-      kind: tait-ccdi            # Tait TM8100/TM8200 CCDI (only kind today)
+      kind: tait-ccdi            # Tait TM8100/TM8200 CCDI (or `rig` — see below)
       serial: "19925328"         # PREFERRED — pin by CCDI serial (stable)
       baud: 28800                # CCDI control-channel baud (Tait default)
       healthIntervalSeconds: 10  # optional — how often to sample health (default 10 s)
@@ -144,6 +144,19 @@ self-heals, no config edit, no systemd unit of your own. Set **either** `device:
 shape, so `port:` and a remote `host:` must stay unset). Prefer the
 `/dev/serial/by-id/…` path: it survives USB renumbering, exactly like binding a Tait
 by CCDI serial.
+
+### The easy way: scan and click (web UI)
+
+You don't have to type any of that. The port editor (**Ports → edit → Rig control
+(CAT)**) has a **Scan for rigs** button: the node lists the local serial devices,
+greys out anything already claimed by a port (and says what claims it), and — where
+the USB descriptor identifies the rig (modern Icoms name themselves) — pre-fills the
+hamlib model for you. Pick the device (the by-id path is chosen automatically), and
+if the model wasn't recognised, pick it from the searchable hamlib catalogue
+(the same list `rigctl -l` prints). Saving writes the `rig:` block through the same
+validated config path as everything else. The collapsible *"Use an existing
+rigctld/flrig daemon"* toggle in the same section covers the `host:`/`port:` shape,
+so the whole thing is doable without touching YAML.
 
 ## Why bind by serial, not device path
 

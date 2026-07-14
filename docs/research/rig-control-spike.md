@@ -1,6 +1,6 @@
 # Rig control (CAT) for PDN — research + spike + `Packet.Rig*` v0
 
-**Date:** 2026-07-13 · **Status:** shipped (v0 libraries + tests on this branch)
+**Date:** 2026-07-13 · **Status:** shipped (v0 libraries + tests; on nuget.org since `lib-v0.22.0` — §5's annotations track what landed after)
 **Ask (Tom):** add rig control to PDN, using hamlib presumably; also research flrig and OmniRig
 and whatever else exists. Get/set mode and frequency at minimum, SWR and power monitoring if
 supportable. Integration piece only (no UI yet). Reusable NuGet package. Think about testing.
@@ -127,7 +127,8 @@ pattern. PTT contract inherited from `IRadioControl`: **best-effort unkey on dis
 `IRigControl` is the station-control seam (QSY/mode/TX-health for CAT transceivers). They share
 the capability-flag pattern. A node-side bridge (e.g. an `IRigControl`-backed PTT/DCD source,
 hamlib `\get_dcd` exists) is future work and would be the *third* data point OQ-011 wants
-before freezing `IRadioControl`'s frequency members. Packaging is dependency-free specifically
+before freezing `IRadioControl`'s frequency members *(that bridge shipped 2026-07-14 as
+`Packet.Radio.RigRadioControl`, and OQ-011 is closed — see plan §17)*. Packaging is dependency-free specifically
 so non-PDN consumers can take `Packet.Rig*` without the AX.25 stack.
 
 ### Error taxonomy
@@ -189,16 +190,21 @@ Node clients, 2025-26 cohort):
 
 ## 5. Follow-ups (named, not started)
 
-- **Node integration**: a `rig:` binding on PDN ports/config, a poller (rigproxy's
-  typed-poll-with-auto-demotion model is the one to copy), `/api/v1` surfacing, then UI. This
-  unlocks Phase 10's frequency-agile workstream (QSY across a plan; HF packet).
+- ~~**Node integration**~~ **shipped 2026-07-14 — see plan §17**: a `rig:` binding on PDN
+  ports/config (BYO daemon or node-managed `rigctld` via `device:`+`model:`), a poller,
+  `/api/v1` surfacing (status/SSE/mutation/plug-and-play scan/models), then UI (the rig card +
+  Tune). What it unlocks — Phase 10's frequency-agile workstream (QSY across a plan; HF
+  packet) — is the part still open.
 - ~~**Tait adapter**~~ **done same day**: `TaitRigControl` in `Packet.Radio.Tait` implements
   `IRigControl` (PTT get/set + relative RF-power meter from the CCTM 318 detector;
   frequency/mode/SWR/watts honestly unadvertised — see the class remarks for the calibration
   and CCR gates). Residual: light up `FrequencySet` when CCR retune is bench-proven, and decide
   detector calibration before advertising `SwrMeter`/`RfPowerMeterWatts`.
-- **`IRadioControl` bridge** (the inverse direction): expose an `IRigControl` rig's PTT +
-  `\get_dcd` as the packet stack's carrier-sense/PTT seam — the remaining OQ-011 pressure test.
+- ~~**`IRadioControl` bridge**~~ **shipped 2026-07-14 — see plan §17** (the inverse direction):
+  expose an `IRigControl` rig's PTT + `\get_dcd` as the packet stack's carrier-sense/PTT seam —
+  the remaining OQ-011 pressure test. Landed as `IRigControl` receive-side reads
+  (`DcdRead`/`SignalStrengthRead`), `Packet.Radio.RigRadioControl`, and the node's
+  `radio: kind: rig`; OQ-011 closed.
 - **TCI backend** (`Packet.Rig.Tci`) if SDR (Thetis/ExpertSDR) users appear — push telemetry
   incl. SWR/fwd/rev power would make TX-health monitoring event-driven.
 - **rigctld-emulator compat pass**: wfview/SDR++/GQRX speak subsets (some may lack the extended

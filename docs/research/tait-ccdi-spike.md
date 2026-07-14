@@ -1202,7 +1202,9 @@ radio deaf?" into one FAIL line naming the Data-form checkbox to uncheck.
    from carrier-sense duty cycle.
 3. **Per-burst attribution refinement** in `RssiTaggingTransport` (above).
 4. **Second `IRadioControl` implementation** (Yaesu CAT or ICOM CI-V) before freezing the
-   abstraction; then close OQ-011.
+   abstraction; then close OQ-011. *(Done 2026-07-14: the CAT leg arrived via `Packet.Rig` +
+   the `RigRadioControl` bridge — four implementations, no interface change; OQ-011 closed.
+   See plan §17.)*
 5. **GO_TO_CHANNEL / CCR** modelling for frequency-agile operation (§5.10's QSY workstream) —
    next bench session, since it risks splitting the two radios onto different channels.
 6. **§5.Y items 3, 5–6** (SNR-vs-level calibration, 1000-iteration soak, mistune
@@ -1217,7 +1219,8 @@ radio deaf?" into one FAIL line naming the Data-form checkbox to uncheck.
    "check the radio's RX tap point (post-voice-filter tap)" — would have saved two
    sessions here.
 8. Housekeeping: `docs/releasing.md`'s "six published packages" list is stale against the
-   `publish-libs.yml` matrix (now 13); reconcile on the next release pass.
+   `publish-libs.yml` matrix (now 13); reconcile on the next release pass. *(Done — releasing.md
+   now names the workflow matrix as authoritative.)*
 9. **Stale-DCD escape for the busy gate** (from session 8's live failure): `TaitCcdiRadio`'s
    `ChannelBusy` is edge-derived, and one lost `p0206` latched it busy for the rest of the
    process — every SDM send then (correctly) refused to key, and only the watchdogs

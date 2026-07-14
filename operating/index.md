@@ -28,10 +28,14 @@ control channel as well, so the node can *read* the radio while packets flow:
   off transmitting while the channel is busy (real DCD), no config needed.
 - **Graph and alert** — a Prometheus `/metrics` surface exposes all of it for
   Grafana.
+- **Work the rig from the node** — a port with a `rig:` block (CAT control) gets a
+  live card in the panel: dial frequency, mode, PTT and TX meters, with QSY and
+  mode buttons.
 
-The radio the node currently knows how to talk to is the **Tait TM8100 / TM8200**
-family, over its CCDI serial protocol. (Other radio control protocols — CAT, CI-V
-— can be added later; the config leaves room for them.)
+Two kinds of radio control are supported today: the **Tait TM8100 / TM8200**
+family, over its CCDI serial protocol, and **CAT rigs** — anything hamlib's
+`rigctld` or flrig can drive — via a port's `rig:` block (both are
+[chapter 1](01-attach-a-radio.md)).
 
 ## Which of these do I want?
 
@@ -40,6 +44,7 @@ Start with the row that matches what you are trying to do.
 | I want to… | Go to | What it needs |
 |---|---|---|
 | Point the node at my radio | [1. Attach a radio](01-attach-a-radio.md) | A control cable + a couple of config fields (or one scan-and-click) |
+| Control my rig (CAT) from the node | [1. Attach a radio](01-attach-a-radio.md#kind-rig--re-use-the-ports-cat-rig-as-its-radio) | hamlib `rigctld` or flrig — or let the node run `rigctld` for you |
 | See how good my link is | [2. See your link quality](02-see-your-link-quality.md) | A radio attached (step 1) |
 | Find out why a link is bad | [3. Check your setup (the doctor)](03-check-your-setup-doctor.md) | Nothing extra — the safe check never transmits |
 | Set my transmit deviation right | [4. Tune your link](04-tune-your-link.md) | A second radio/TNC at the other end |
@@ -57,7 +62,8 @@ ways a Tait radio relates to a PDN port, and they are not the same thing:
    TNC (NinoTNC, KISS TNC); the radio sits *beside* it and the node reads it over a
    *second* serial cable for telemetry. This is what gives you RSSI/SNR, the health
    panel, the doctor, and hardware carrier-sense. Covered in
-   [chapter 1](01-attach-a-radio.md).
+   [chapter 1](01-attach-a-radio.md). (A CAT rig can back the `radio:` block too —
+   `radio: kind: rig`, no second cable; also chapter 1.)
 2. **A radio *as* the port** (the `tait-transparent` transport kind). There is **no
    TNC at all** — AX.25 rides the radio's own built-in FFSK modem. One device, no
    audio wiring, but no per-frame signal telemetry. Covered in

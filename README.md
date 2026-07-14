@@ -10,7 +10,7 @@ Each library is its own NuGet package (or planned package). They compose: the no
 
 > **Building your own tooling on the libraries?** Start with the [developer guide](guide/index.md) — it walks the public API from a raw frame dumper up through a beacon sender, a channel monitor, a connect client, and a hand-rolled node, all the way to NET/ROM.
 
-> **Running the node host with a radio attached?** Start with the [operator guide](operating/index.md) — attach a radio to a port, then see and improve your link: per-frame RSSI/SNR, a radio-health dashboard, the "check radio" doctor, guided deviation tuning, Prometheus metrics, and TNC-less Tait-to-Tait links.
+> **Running the node host with a radio attached?** Start with the [operator guide](operating/index.md) — attach a radio to a port, then see and improve your link: per-frame RSSI/SNR, a radio-health dashboard, the "check radio" doctor, guided deviation tuning, Prometheus metrics, CAT rig control (hamlib `rigctld` / flrig — dial, mode, meters, rig-DCD carrier-sense), and TNC-less Tait-to-Tait links.
 
 | Path | Purpose | NuGet |
 | --- | --- | --- |

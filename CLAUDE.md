@@ -4,7 +4,7 @@ Operating notes for Claude Code (and other agents) working in `packet-net/packet
 
 ## What this repo is
 
-The .NET libraries (`Packet.Core`, `Packet.Ax25`, `Packet.Kiss`, `Packet.Aprs`, `Packet.Agw`, `Packet.Axudp`, `Packet.Kiss.NinoTnc`, `Packet.Mcp`, `Packet.Rhp2*`) and the packet-radio node host (`Packet.Node*`). Plus C# interop CI (LinBPQ / XRouter / rax25 / netsim / NinoTNC-loop) — the `interop.yml` workflow also clones [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) and runs its integration suite against the docker stack standing up here.
+The .NET libraries (`Packet.Core`, `Packet.Ax25`, `Packet.Ax25.Transport.Abstractions`, `Packet.Kiss`, `Packet.Kiss.Serial`, `Packet.Kiss.NinoTnc`, `Packet.Aprs`, `Packet.Agw`, `Packet.Axudp`, `Packet.NetRom`, `Packet.Radio*`, `Packet.Rig*`, `Packet.Tune.Core`, `Packet.Mcp`, `Packet.Rhp2*`) and the packet-radio node host (`Packet.Node*`). Plus C# interop CI (LinBPQ / XRouter / rax25 / netsim / NinoTNC-loop) — the `interop.yml` workflow also clones [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) and runs its integration suite against the docker stack standing up here.
 
 After the 5-repo split on 2026-05-17, the SDL transcriptions, codegen, and multi-language artefacts live in [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl), and the TypeScript library lives in [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts). See [`README.md` § Sibling repos](README.md#sibling-repos). If a task is about spec-side work (transcribing a new figc4.x page, the YAML DSL, the codegen tools, the `Packet.Ax25.Sdl` package), it belongs in `packet-net/ax25sdl`. If it's about the browser AX.25 library (`@packet-net/ax25`), it belongs in `packet-net/ax25-ts`. Not here.
 
@@ -111,9 +111,11 @@ tools/Packet.*.Spike/            scratch experiments
 tools/Packet.Fuzz/               AFL-style fuzzer for the AX.25 / KISS parsers
 sidecar/tsnet/                   embedded Tailscale node (Go; built by build-deb.sh, staged at /usr/lib/packetnet/packetnet-tsnet)
 headend/                         split-station RF head-end daemon (Go; static Pi binary — raw serial↔TCP bridge + inventory/line HTTP + mDNS; touches no .NET code)
+web/packetnet-ui/                the node's React control panel (built into the .deb by build-deb.sh)
 docker/                          interop compose stack (LinBPQ + XRouter + rax25 + netsim) + fixtures
 docs/                            plan, ADRs, runtime capability docs, strict/pragmatic audit
-.github/workflows/               CI (ci.yml + interop.yml + plan-check.yml + publish-libs.yml)
+guide/ + operating/              developer guide (library API) / operator guide (node + radios + rigs)
+.github/workflows/               CI (ci.yml + interop.yml + plan-check.yml + fuzz/codeql/deb-smoke) + publish-* (libs / node / docker / headend)
 ```
 
 ## Things to avoid

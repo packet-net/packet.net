@@ -44,7 +44,8 @@ With carrier-sense, frames are attributed to the transmission window that contai
 ## See also
 - [Source & issues](https://github.com/packet-net/packet.net)
 - [`Packet.Radio.Tait`](https://www.nuget.org/packages/Packet.Radio.Tait) — the Tait TM8100/TM8200 CCDI implementation of this contract
+- [`Packet.Rig`](https://www.nuget.org/packages/Packet.Rig) — the station-control (CAT) seam `RigRadioControl` bridges from
 - [`Packet.Tune.Core`](https://www.nuget.org/packages/Packet.Tune.Core) — link-tuning + mode coordination over `IRadioSideChannel`
 - [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) — the NinoTNC `IAx25Transport` these decorators wrap
 
-Status: **experimental** — the `IRadioControl` shape is plan OQ-011's proposed common subset {RSSI-get, busy-get, PTT-set} and may move as second/third implementations (Yaesu CAT, ICOM CI-V) land.
+Status: **shape confirmed** — the `IRadioControl` subset {RSSI-get, busy-get, PTT-set} survived four implementations without an interface change (plan OQ-011, resolved 2026-07-14). The reserved flags (channel, frequency, TX power) stay reserved: QSY is station control and lives on the sibling rig seam ([`Packet.Rig`](https://www.nuget.org/packages/Packet.Rig)), not here.
