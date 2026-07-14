@@ -183,6 +183,32 @@ public sealed class RigctldRig : IRigControl
         return await ReadLevelAsync("RFPOWER_METER_WATTS", cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
+    public async ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default)
+    {
+        Require(RigCapabilities.DcdRead);
+        var payload = await TransactAsync("\\get_dcd", cancellationToken).ConfigureAwait(false);
+        var value = RigctldProtocol.GetField(payload, "DCD") ?? RigctldProtocol.BareValue(payload, "get_dcd");
+
+        // Hamlib DCD is strictly binary on the wire: 1 = carrier present, 0 = channel clear.
+        return value switch
+        {
+            "1" => true,
+            "0" => false,
+            _ => throw new RigProtocolException($"rigctld reply to 'get_dcd' had unrecognised DCD value '{value}'."),
+        };
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Hamlib's <c>STRENGTH</c> level is calibrated dB relative to S9; the dBm value is
+    /// <c>strength + </c><see cref="RigctldRigOptions.S9ReferenceDbm"/>.</remarks>
+    public async ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default)
+    {
+        Require(RigCapabilities.SignalStrengthRead);
+        var strengthDb = await ReadLevelAsync("STRENGTH", cancellationToken).ConfigureAwait(false);
+        return strengthDb + options.S9ReferenceDbm;
+    }
+
     /// <summary>
     /// Read any hamlib level by token (<c>STRENGTH</c>, <c>ALC</c>, <c>TEMP_METER</c>, …) — the
     /// escape hatch below the <see cref="IRigControl"/> common subset, same spirit as

@@ -1,12 +1,13 @@
 namespace Packet.Rig;
 
 /// <summary>
-/// Station-rig (CAT) control: frequency, mode, transmitter keying, and TX-side metering for the
-/// kind of radio an operator tunes — an HF/all-mode transceiver behind hamlib's <c>rigctld</c>,
-/// flrig, or a native CAT driver. The contract is the cross-backend common subset
-/// ({frequency get/set, mode get/set, PTT, SWR / RF-power meters}); everything is
-/// capability-probed via <see cref="Capabilities"/> because every backend, and every rig behind
-/// a backend, supports a different slice.
+/// Station-rig (CAT) control: frequency, mode, transmitter keying, TX-side metering, and
+/// receive-side channel sensing for the kind of radio an operator tunes — an HF/all-mode
+/// transceiver behind hamlib's <c>rigctld</c>, flrig, or a native CAT driver. The contract is
+/// the cross-backend common subset ({frequency get/set, mode get/set, PTT, SWR / RF-power
+/// meters, DCD / signal-strength reads}); everything is capability-probed via
+/// <see cref="Capabilities"/> because every backend, and every rig behind a backend, supports a
+/// different slice.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,8 +15,10 @@ namespace Packet.Rig;
 /// packet-medium seam — RSSI, hardware carrier-sense and PTT for CSMA on a channelised PMR
 /// radio (Tait CCDI). This one is the <em>station-control</em> seam: QSY, mode selection and
 /// transmit-health monitoring for CAT-controllable transceivers. They deliberately share the
-/// capability-flag pattern (plan OQ-011); a bridge that surfaces an <see cref="IRigControl"/>
-/// rig's PTT/DCD to the packet stack is future node-side work, not part of this abstraction.
+/// capability-flag pattern (plan OQ-011). The receive-side reads the packet stack's
+/// carrier-sense seam needs — <see cref="ReadDcdAsync"/> and
+/// <see cref="ReadSignalStrengthDbmAsync"/> — live here; the <c>IRadioControl</c> adapter that
+/// bridges them into the packet stack is separate work in <c>Packet.Radio</c>.
 /// </para>
 /// <para>
 /// <b>Threading.</b> Implementations serialise commands internally — callers may issue
@@ -78,6 +81,20 @@ public interface IRigControl : IAsyncDisposable
     /// <summary>Read the RF power-output meter in watts (backends that can calibrate;
     /// hamlib ≥ 4.4 exposes this as <c>RFPOWER_METER_WATTS</c>).</summary>
     ValueTask<double> ReadRfPowerWattsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read data-carrier-detect: true = the rig sees a carrier / the receive channel is busy.
+    /// Gated by <see cref="RigCapabilities.DcdRead"/> — unadvertised backends throw
+    /// <see cref="NotSupportedException"/>.
+    /// </summary>
+    ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read the received signal strength in dBm. Gated by
+    /// <see cref="RigCapabilities.SignalStrengthRead"/> — unadvertised backends throw
+    /// <see cref="NotSupportedException"/>.
+    /// </summary>
+    ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -117,6 +134,14 @@ public enum RigCapabilities
 
     /// <summary><see cref="IRigControl.ReadRfPowerWattsAsync"/> works (calibrated watts).</summary>
     RfPowerMeterWatts = 1 << 8,
+
+    /// <summary><see cref="IRigControl.ReadDcdAsync"/> works — the rig reports
+    /// data-carrier-detect / channel-busy state.</summary>
+    DcdRead = 1 << 9,
+
+    /// <summary><see cref="IRigControl.ReadSignalStrengthDbmAsync"/> works — the rig reports
+    /// received signal strength in dBm.</summary>
+    SignalStrengthRead = 1 << 10,
 }
 
 /// <summary>Identity of a connected rig: which backend is in the path and what it says the

@@ -22,7 +22,8 @@ public class RigctldRigTests
             RigCapabilities.FrequencyGet | RigCapabilities.FrequencySet |
             RigCapabilities.ModeGet | RigCapabilities.ModeSet |
             RigCapabilities.PttGet | RigCapabilities.PttSet |
-            RigCapabilities.SwrMeter | RigCapabilities.RfPowerMeter | RigCapabilities.RfPowerMeterWatts);
+            RigCapabilities.SwrMeter | RigCapabilities.RfPowerMeter | RigCapabilities.RfPowerMeterWatts |
+            RigCapabilities.DcdRead | RigCapabilities.SignalStrengthRead);
         rig.Info.Should().Be(new RigInfo("Hamlib rigctld", "Hamlib", "Dummy"));
     }
 
@@ -129,6 +130,68 @@ public class RigctldRigTests
         await using var rig = await ConnectAsync(fake);
 
         (await rig.ReadLevelAsync("STRENGTH")).Should().Be(-12);
+    }
+
+    [Fact]
+    public async Task Dcd_Reads_Both_Channel_States()
+    {
+        await using var fake = new FakeRigctld();
+        await using var rig = await ConnectAsync(fake);
+
+        (await rig.ReadDcdAsync()).Should().BeFalse();
+        fake.Dcd = true;
+        (await rig.ReadDcdAsync()).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SignalStrength_Converts_S9_Relative_Db_To_Dbm()
+    {
+        await using var fake = new FakeRigctld();
+        await using var rig = await ConnectAsync(fake);
+
+        // Fake STRENGTH is -12 dB relative to S9; the default S9 reference is -73 dBm.
+        (await rig.ReadSignalStrengthDbmAsync()).Should().Be(-85.0);
+    }
+
+    [Fact]
+    public async Task SignalStrength_Honours_A_Custom_S9_Reference()
+    {
+        await using var fake = new FakeRigctld();
+        await using var rig = await RigctldRig.ConnectAsync(new RigctldRigOptions
+        {
+            Port = fake.Port,
+            S9ReferenceDbm = -93.0, // the VHF/UHF convention
+        });
+
+        (await rig.ReadSignalStrengthDbmAsync()).Should().Be(-105.0);
+    }
+
+    [Fact]
+    public async Task Unadvertised_Receive_Side_Reads_Throw_NotSupported_Without_Touching_The_Wire()
+    {
+        await using var fake = new FakeRigctld
+        {
+            DumpCapsOverride =
+            [
+                "Model name:\tTxOnly",
+                "Mfg name:\tHamlib",
+                "Can get PTT:\tY",
+                "Can set PTT:\tY",
+                "Can get DCD:\tN",
+                "Get level: SWR(0..0/0)",
+            ],
+        };
+        await using var rig = await ConnectAsync(fake);
+
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.DcdRead);
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.SignalStrengthRead);
+
+        var commandsBefore = fake.ReceivedCommands.Count;
+        var dcd = async () => await rig.ReadDcdAsync();
+        await dcd.Should().ThrowAsync<NotSupportedException>();
+        var strength = async () => await rig.ReadSignalStrengthDbmAsync();
+        await strength.Should().ThrowAsync<NotSupportedException>();
+        fake.ReceivedCommands.Count.Should().Be(commandsBefore);
     }
 
     [Fact]

@@ -176,6 +176,12 @@ internal static class RigctldProtocol
             {
                 caps |= Supported(sp, RigCapabilities.PttSet);
             }
+            else if (Value(line, "Can get DCD:") is { } gd)
+            {
+                // "Can get DCD:" is the gate; the separate "DCD type:" line describes the
+                // detection mechanism, not whether the read works — deliberately ignored.
+                caps |= Supported(gd, RigCapabilities.DcdRead);
+            }
             else if (Value(line, "Get level:") is { } levels)
             {
                 foreach (var token in LevelTokens(levels))
@@ -185,6 +191,7 @@ internal static class RigctldProtocol
                         "SWR" => RigCapabilities.SwrMeter,
                         "RFPOWER_METER" => RigCapabilities.RfPowerMeter,
                         "RFPOWER_METER_WATTS" => RigCapabilities.RfPowerMeterWatts,
+                        "STRENGTH" => RigCapabilities.SignalStrengthRead,
                         _ => RigCapabilities.None,
                     };
                 }

@@ -21,6 +21,8 @@ public sealed class FakeRigControl(List<string>? disposalLog = null, string name
     public double Swr { get; set; } = 1.2;
     public double RfPowerWatts { get; set; } = 50;
     public double RfPowerRelative { get; set; } = 0.5;
+    public bool Dcd { get; set; }
+    public double SignalStrengthDbm { get; set; } = -120;
 
     /// <summary>When set, every read throws it — models a bounced daemon mid-poll.</summary>
     public RigException? ReadFault { get; set; }
@@ -101,6 +103,14 @@ public sealed class FakeRigControl(List<string>? disposalLog = null, string name
     /// <inheritdoc/>
     public ValueTask<double> ReadRfPowerWattsAsync(CancellationToken cancellationToken = default) =>
         new(Answer(RfPowerWatts));
+
+    /// <inheritdoc/>
+    public ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default) =>
+        new(Answer(Dcd));
+
+    /// <inheritdoc/>
+    public ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default) =>
+        new(Answer(SignalStrengthDbm));
 
     /// <inheritdoc/>
     public ValueTask DisposeAsync()

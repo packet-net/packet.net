@@ -38,6 +38,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
     internal string Mode = "FM";
     internal int PassbandHz = 15_000;
     internal int Ptt;
+    internal volatile bool Dcd;
     internal readonly ConcurrentDictionary<string, double> Levels = new()
     {
         ["SWR"] = 1.0,
@@ -79,6 +80,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
         "Can get Mode:\tY",
         "Can set PTT:\tY",
         "Can get PTT:\tY",
+        "Can get DCD:\tY",
         "Get level: SWR(0..0/0) RFPOWER_METER(0..0/0) RFPOWER_METER_WATTS(0..0/0) STRENGTH(0..0/0)",
     ];
 
@@ -219,6 +221,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
                     },
                     extended, "set_mode", args),
             "t" => Reply(extended, "get_ptt", args, $"PTT: {Ptt.ToString(CultureInfo.InvariantCulture)}"),
+            "\\get_dcd" => Reply(extended, "get_dcd", args, $"DCD: {(Dcd ? "1" : "0")}"),
             "T" when args.Count == 1 && int.TryParse(args[0], out var ptt) =>
                 Apply(() => Ptt = ptt, extended, "set_ptt", args),
             "l" when args.Count == 1 && Levels.TryGetValue(args[0], out var level) =>

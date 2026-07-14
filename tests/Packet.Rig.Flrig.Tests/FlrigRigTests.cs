@@ -188,6 +188,24 @@ public class FlrigRigTests
     }
 
     [Fact]
+    public async Task Receive_Side_Reads_Are_Honestly_Unsupported()
+    {
+        using var handler = new FakeFlrigHandler();
+        await using var rig = await ConnectAsync(handler);
+
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.DcdRead);
+        rig.Capabilities.Should().NotHaveFlag(RigCapabilities.SignalStrengthRead);
+
+        var dcd = async () => await rig.ReadDcdAsync();
+        await dcd.Should().ThrowAsync<NotSupportedException>();
+
+        // The uncalibrated s-meter stays reachable — the message teaches the escape hatch.
+        var strength = async () => await rig.ReadSignalStrengthDbmAsync();
+        (await strength.Should().ThrowAsync<NotSupportedException>())
+            .Which.Message.Should().Contain("rig.get_smeter");
+    }
+
+    [Fact]
     public async Task CallRawAsync_Reaches_Unmapped_Methods()
     {
         using var handler = new FakeFlrigHandler();
