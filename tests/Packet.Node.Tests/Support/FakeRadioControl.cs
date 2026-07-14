@@ -95,6 +95,7 @@ public sealed class FakeRadioControlFactory : IRadioControlFactory
         PortRadioConfig radio,
         TimeProvider? timeProvider = null,
         HeadEndDeviceResolver? headEndResolver = null,
+        PortRigConfig? rig = null,
         CancellationToken cancellationToken = default)
     {
         Requests.Add(radio);
