@@ -57,7 +57,7 @@ public sealed class TransportFactory : ITransportFactory
                     var tnc = NinoTncSerialPort.Open(n.Device, n.Baud, timeProvider);
                     try
                     {
-                        await tnc.SetModeAsync((byte)n.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
+                        await tnc.SetModeAsync((byte)n.Mode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -89,7 +89,7 @@ public sealed class TransportFactory : ITransportFactory
                         options: null, cancellationToken).ConfigureAwait(false);
                     try
                     {
-                        await tnc.SetModeAsync((byte)nt.Mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
+                        await tnc.SetModeAsync((byte)nt.Mode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
                     }
                     catch
                     {

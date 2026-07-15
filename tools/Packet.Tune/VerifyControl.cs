@@ -77,8 +77,19 @@ internal static class VerifyControl
             // post-flash default 0 — 9600 GFSK, dead on narrow channels)
             // makes the timing check report a false "pot override".
             Console.WriteLine($"  pinning mode {pinMode} (SETHW +16, non-persist) for the check — --keep-mode skips this");
-            await tnc.SetModeAsync(pinMode, persistToFlash: false);
-            await Task.Delay(250);
+            try
+            {
+                // Verified (#633): an ignored SETHW leaves the check measuring the OLD mode's bit
+                // rate against the new mode's arithmetic — a false "pot override" verdict, which is
+                // the very failure this command exists to rule out.
+                await tnc.SetModeAsync(pinMode, persistToFlash: false);
+            }
+            catch (NinoTncModeNotAppliedException ex)
+            {
+                Console.WriteLine($"  ! mode {pinMode} did not take — {ex.Message}");
+                Console.WriteLine("  aborting: the TXDELAY arithmetic would measure the wrong mode");
+                return 1;
+            }
             bitRate = NinoTncCatalog.TryGetByMode(pinMode) is { BitRateHz: > 0 } pinned ? pinned.BitRateHz : 1200;
         }
         Console.WriteLine();

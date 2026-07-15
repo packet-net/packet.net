@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Packet.Kiss;
+using Packet.Kiss.NinoTnc;
 using Packet.Radio.Tait.Ccdi;
 
 namespace Packet.Node.Tests.Support;
@@ -9,9 +10,11 @@ namespace Packet.Node.Tests.Support;
 /// <summary>
 /// A loopback <see cref="TcpListener"/> standing in for a head-end's raw byte pipe (the transport
 /// the head-end factory branches dial after resolving the inventory). Exposes the assigned
-/// <see cref="Port"/> (put it in the stub inventory's <c>tcpPort</c>) and the accepted socket, plus a
-/// tiny CCDI responder that answers each command with a prompt so a <c>TaitCcdiRadio.OpenTcp</c> +
-/// <c>SetProgressMessagesAsync</c> handshake completes over the socket.
+/// <see cref="Port"/> (put it in the stub inventory's <c>tcpPort</c>) and the accepted socket, plus
+/// tiny responders standing in for the device on the far end: a CCDI one that answers each command
+/// with a prompt so a <c>TaitCcdiRadio.OpenTcp</c> + <c>SetProgressMessagesAsync</c> handshake
+/// completes over the socket, and a NinoTNC one that answers GETALL with a running-mode report so a
+/// verified SETHW (#633) completes.
 /// </summary>
 public sealed class LoopbackRawPipe : IDisposable
 {
@@ -38,6 +41,53 @@ public sealed class LoopbackRawPipe : IDisposable
     /// into it (as ASCII, lock-guarded on the builder) so a test can assert WHAT the driver sent —
     /// e.g. that a reconnect re-issued the progress-enable (<c>f03041…</c> on the wire).
     /// </summary>
+    /// <summary>
+    /// Stand in for a NinoTNC on the far end of the pipe: answer every GETALL with a labelled
+    /// diagnostic reporting <paramref name="runningMode"/> as the running mode. A real TNC always
+    /// answers GETALL, and since #633 the driver's verified <c>SetModeAsync</c> requires the answer
+    /// to prove the SETHW took — an unanswering fake would model a TNC that doesn't exist. Runs
+    /// until the socket closes; await the returned task after tearing the transport down.
+    /// </summary>
+    /// <param name="runningMode">The DIP-position mode the fake TNC reports itself running.</param>
+    public Task RespondNinoTncGetAllAsync(byte runningMode) => Task.Run(async () =>
+    {
+        byte firmwareByte = NinoTncCatalog.FirmwareByteToMode.First(kv => kv.Value == runningMode).Key;
+        byte[] getAll = NinoTncCommands.BuildGetAllKissFrame();
+        byte[] reply = KissEncoder.Encode(14, KissCommand.Data, Encoding.ASCII.GetBytes(
+            $"=FirmwareVr:3.44=BrdSwchMod:040F00{firmwareByte:X2}=TxPktCount:00000000=PreamblCnt:00000000"));
+
+        var socket = await Accepted.ConfigureAwait(false);
+        var buffer = new byte[512];
+        while (true)
+        {
+            int read;
+            try
+            {
+                read = await socket.ReceiveAsync(buffer.AsMemory()).ConfigureAwait(false);
+            }
+            catch
+            {
+                break; // socket torn down — done
+            }
+            if (read == 0)
+            {
+                break;
+            }
+            if (buffer.AsSpan(0, read).IndexOf(getAll) < 0)
+            {
+                continue; // not a GETALL (SETHW, GETVER keep-alive, …) — a TNC answers only what it must
+            }
+            try
+            {
+                await socket.SendAsync(reply.AsMemory()).ConfigureAwait(false);
+            }
+            catch
+            {
+                break;
+            }
+        }
+    });
+
     public Task RespondCcdiPromptsAsync(StringBuilder? received = null) => Task.Run(async () =>
     {
         var socket = await Accepted.ConfigureAwait(false);

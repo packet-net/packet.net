@@ -30,7 +30,7 @@ likely to reach for:
 | `flash-tnc <tncPort> <hexFile>` | Flash NinoTNC firmware. | Below |
 | `mode-coord --role … --tnc … --radio … --peer …` | Negotiate a modem mode with a peer over the SDM side-channel. | Below |
 | `hail --tnc … --radio … --peer …` | Ask a peer for its mode/modem + capabilities over SDM — **works across a mode mismatch that blocks the packet path**. | Below |
-| `set-mode <tncPort> <mode>` | Set a NinoTNC's modem mode (`--persist` to keep it across reboot). | — |
+| `set-mode <tncPort> <mode>` | Set a NinoTNC's modem mode (`--persist` to keep it across reboot). Verifies the TNC actually applied it and retries — exit code 1 means the mode is **not** set. | — |
 | `radio-health <ccdiPort>` | Sample a Tait radio's RSSI / PA-temp / power-detector trend. | [Chapter 2](02-see-your-link-quality.md) |
 | `radio-channel <ccdiPort> [channel]` | Read or set the radio's channel. | — |
 | `mode-survey <tncA> <tncB> <ccdiA> <ccdiB>` | Sweep modem modes across a two-radio bench to compare decode rates. | — |

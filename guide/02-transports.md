@@ -206,7 +206,7 @@ using Packet.Kiss;             // Ax25FrameReceivedEvent et al. live here
 using Packet.Kiss.NinoTnc;
 
 await using var tnc = NinoTncSerialPort.Open("/dev/ttyACM0");
-await tnc.SetModeAsync(mode: 6);   // e.g. 1200 baud AFSK AX.25
+await tnc.SetModeAsync(mode: 6);   // e.g. 1200 baud AFSK AX.25 — verified applied, or it throws
 
 // Inbound AX.25 frames, same seam as any transport:
 await foreach (Ax25InboundFrame f in tnc.ReceiveAsync(ct)) { /* ... */ }
@@ -222,6 +222,32 @@ tnc.InboundEvent += (_, evt) =>
 Mode switching (`SetModeAsync`) is deliberately *not* on the transport seam — it
 varies per modem and is selected from config at construction, so it lives on the
 NinoTNC type itself, not on `IAx25Transport`.
+
+`SetModeAsync` **verifies the mode took** and throws `NinoTncModeNotAppliedException`
+if it didn't. KISS SETHW is unacknowledged and does silently fail to apply — the TNC
+carries on in its old mode, transmitting happily, and everything downstream scores
+zero in both directions, which reads as broken RF rather than an ignored command. So
+the driver settles ~1.5 s, reads the running mode back with GETALL, and re-sends up to
+three times before giving up loudly:
+
+```csharp
+try
+{
+    await tnc.SetModeAsync(mode: 11);
+}
+catch (NinoTncModeNotAppliedException ex)
+{
+    // ex.RunningMode is what the TNC says it is ACTUALLY running.
+    Console.WriteLine($"asked for {ex.RequestedMode}, stuck on {ex.RunningMode?.Mode}");
+}
+
+// Tune the settle / attempts, or opt out of the readback entirely:
+await tnc.SetModeAsync(11, verification: new NinoTncModeVerification { Attempts = 5 });
+await tnc.SetModeAsync(11, verification: NinoTncModeVerification.None);   // fire-and-forget
+```
+
+Mode 15 ("Set from KISS") is sent but never verified — it names where the mode comes
+from, not a mode to run, so there's nothing meaningful to read back.
 
 You can discover attached NinoTNCs by VID/PID rather than hard-coding a port:
 

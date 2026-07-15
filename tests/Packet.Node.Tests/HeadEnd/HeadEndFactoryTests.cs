@@ -71,6 +71,10 @@ public sealed class HeadEndFactoryTests
     public async Task Head_end_nino_tnc_tcp_resolves_the_inventory_and_opens_the_full_control_pipe()
     {
         using var pipe = new LoopbackRawPipe();
+        // The TNC on the far end answers GETALL with "running mode 6" — bring-up SETHWs mode 6 and,
+        // since #633, verifies it took through that readback rather than trusting the unacknowledged
+        // SETHW (a node silently left in the wrong mode is deaf and mute, for no visible reason).
+        var responder = pipe.RespondNinoTncGetAllAsync(runningMode: 6);
 
         var handler = new StubHeadEndHandler(new HeadEndInventory
         {
@@ -85,8 +89,10 @@ public sealed class HeadEndFactoryTests
         await using (created)
         {
             created.Should().BeOfType<NinoTncSerialPort>("nino-tnc-tcp is the full-control NinoTNC path, not a bare KISS pipe");
+            ((NinoTncSerialPort)created).CurrentMode.Should().Be((byte)6, "the configured mode is verified applied at bring-up");
             _ = await pipe.Accepted.WaitAsync(Timeout);
         }
+        await responder;
 
         // #567: a NinoTNC's KISS baud is a fixed 57600 — bring-up clocks the head-end line to it before
         // opening the pipe (the raw socket cannot carry line rate).
