@@ -357,16 +357,23 @@ public sealed record SoundModemTransportConfig : TransportConfig
 
     /// <summary>Capture sample rate. Card-native 48000 recommended; the modem decimates
     /// with a real anti-aliasing filter. Must be a multiple of the mode's DSP rate
-    /// (12000, or 48000 for the 9600 modes).</summary>
+    /// (12000, or 48000 for the direct-FSK modes).</summary>
     public int CaptureRate { get; init; } = 48000;
 
-    /// <summary>Modem mode: <c>afsk1200</c>, <c>afsk1200-multi</c>, <c>afsk1200-fx25</c>,
-    /// <c>afsk1200-fx25rx</c>, <c>bpsk300</c>, <c>bpsk300-nocrc</c>, <c>qpsk2400</c>,
-    /// <c>qpsk3600</c>, <c>fsk9600</c>, <c>fsk9600-il2p</c>.</summary>
+    /// <summary>Modem mode. Every mode below is bench-proven wire-compatible with the
+    /// NinoTNC mode in brackets (pdn-soundmodem docs/ninotnc-loop.md § Coverage):
+    /// <c>afsk1200</c> (6), <c>afsk1200-il2p</c> (7), <c>afsk300</c> (12),
+    /// <c>afsk300-il2p</c> (13), <c>afsk300-il2pc</c> (14), <c>bpsk300</c> (8),
+    /// <c>bpsk1200</c> (10), <c>qpsk600</c> (9), <c>qpsk2400</c> (11), <c>qpsk3600</c> (5),
+    /// <c>fsk4800-il2p</c> (4), <c>fsk9600</c> (0), <c>fsk9600-il2p</c> (2). Plus
+    /// <c>afsk1200-multi</c> (a multi-decoder bank — best for busy APRS channels),
+    /// <c>afsk1200-fx25</c> / <c>afsk1200-fx25rx</c> (FX.25 FEC; the NinoTNC has no FX.25)
+    /// and <c>bpsk300-nocrc</c>.</summary>
     public string Mode { get; init; } = "afsk1200";
 
-    /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK,
-    /// 1500 BPSK/QPSK-2400, 1650 QPSK-3600; not applicable to 9600 baseband).</summary>
+    /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK —
+    /// tones 1200/2200 at 1200 baud, 1600/1800 at 300; 1500 BPSK and QPSK-600/2400,
+    /// 1650 QPSK-3600; not applicable to the direct-FSK baseband modes).</summary>
     public double Frequency { get; init; }
 
     /// <summary>PTT control spec: empty for VOX, <c>serial:/dev/ttyUSB0[:rts|:dtr]</c>,

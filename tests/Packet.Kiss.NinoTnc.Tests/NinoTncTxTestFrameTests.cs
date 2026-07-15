@@ -13,7 +13,7 @@ public class NinoTncTxTestFrameTests
     public void Parses_All_Documented_Fields_From_A_Synthetic_Frame()
     {
         // Synthetic: board rev 04, DIP=0F (= 15, "Set from KISS"), firmware-mode
-        // ZZZZ = 0023 → low byte 0x23 → catalog mode 14 (300 AFSKPLL IL2P+CRC).
+        // ZZZZ = 0023 → low byte 0x23 → catalog mode 14 (300 AFSK IL2P+CRC).
         const string body = "=FirmwareVr:3.44=SerialNmbr:ABC123=UptimeMilS:0001A2B3" +
                             "=BrdSwchMod:040F0023=AX25RxPkts:0000007F=IL2PRxPkts:00000005" +
                             "=IL2PRxUnCr:00000001=TxPktCount:0000003E=PreamblCnt:00000041" +

@@ -9,11 +9,10 @@ namespace Packet.Kiss.NinoTnc;
 /// effective mode at runtime.
 /// </summary>
 /// <remarks>
-/// Ported from packet-net/kissproxy@web-interface, <c>KissFrameBuilder.cs</c> lines
-/// 45–112. The DIP-position → human-name table and the firmware-byte →
-/// human-name table are kept verbatim (one deliberate exception: the 4FSK
-/// mode names, corrected to carry their IL2P+CRC protocol per the OARC wiki
-/// — see the inline remark on modes 1/3) because:
+/// Originally ported from packet-net/kissproxy@web-interface,
+/// <c>KissFrameBuilder.cs</c> lines 45–112; the DIP-position names are now
+/// reconciled against Nino's own v44 mode table (see <see cref="ByMode"/>).
+/// The firmware-byte → mode table is kept verbatim because:
 /// <list type="bullet">
 ///   <item>Firmware-reported mode bytes (in TX-Test frames) are a small,
 ///         fixed set per firmware version and may not equal the DIP position
@@ -31,30 +30,57 @@ public static class NinoTncCatalog
     /// <summary>
     /// All 16 NinoTNC modes keyed by DIP-switch position.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Names reconciled 2026-07-15 against Nino's own v44 mode table —
+    /// <see href="https://github.com/ninocarrillo/flashtnc/blob/master/v44-op-modes.png">v44-op-modes.png</see>
+    /// plus the "MODE SWITCH MAPPING v3/4.43" block in
+    /// <see href="https://github.com/ninocarrillo/flashtnc/blob/master/release-notes.txt">release-notes.txt</see>,
+    /// which is the upstream source for both the names and the RF grouping.
+    /// Two corrections landed from it (the previous names came from
+    /// kissproxy, itself predating v42):
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>Modes 1/3 are <em>C4FSK</em> — coherent 4-level FSK, added in
+    ///         firmware 3/4.42 — not the bare "4FSK" kissproxy called them.</item>
+    ///   <item>Modes 13/14 are plain "300 AFSK"; the "AFSKPLL" spelling is
+    ///         retired upstream (3/4.42 gave every 300 AFSK mode coherent
+    ///         demodulation, so the PLL variant is no longer a distinct
+    ///         thing to name).</item>
+    /// </list>
+    /// <para>
+    /// The IL2P+CRC spelling stays "IL2P+CRC" rather than upstream's "IL2Pc":
+    /// it is what the rest of this codebase filters on, and the two names are
+    /// the same protocol.
+    /// </para>
+    /// </remarks>
     public static readonly FrozenDictionary<byte, NinoTncMode> ByMode = new[]
     {
-        new NinoTncMode(0,  "9600 GFSK AX.25",      9600),
-        // Modes 1 and 3 are IL2P+CRC (wiki: "IL2Pc"): there is no AX.25
-        // variant of 4FSK. The kissproxy source named them bare "19200 4FSK"
-        // / "9600 4FSK", which wrongly excluded them from IL2P+CRC name
-        // filters (e.g. the mode survey). Corrected per the OARC wiki mode
-        // table (https://wiki.oarc.uk/packet:ninotnc, retrieved 2026-07-03).
-        // The wiki also notes 19k2 "requires v41 firmware in practice".
-        new NinoTncMode(1,  "19200 4FSK IL2P+CRC", 19200),
-        new NinoTncMode(2,  "9600 GFSK IL2P+CRC",   9600),
-        new NinoTncMode(3,  "9600 4FSK IL2P+CRC",   9600),
-        new NinoTncMode(4,  "4800 GFSK IL2P+CRC",   4800),
-        new NinoTncMode(5,  "3600 QPSK IL2P+CRC",   3600),
-        new NinoTncMode(6,  "1200 AFSK AX.25",      1200),
-        new NinoTncMode(7,  "1200 AFSK IL2P+CRC",   1200),
-        new NinoTncMode(8,  "300 BPSK IL2P+CRC",     300),
-        new NinoTncMode(9,  "600 QPSK IL2P+CRC",     600),
-        new NinoTncMode(10, "1200 BPSK IL2P+CRC",   1200),
-        new NinoTncMode(11, "2400 QPSK IL2P+CRC",   2400),
-        new NinoTncMode(12, "300 AFSK AX.25",        300),
-        new NinoTncMode(13, "300 AFSKPLL IL2P",      300),
-        new NinoTncMode(14, "300 AFSKPLL IL2P+CRC",  300),
-        new NinoTncMode(15, "Set from KISS",           0),
+        // GFSK / C4FSK modes: need an FM radio with a '9600' data port or a
+        // discriminator/varactor connection.
+        new NinoTncMode(0,  "9600 GFSK AX.25",       9600),
+        new NinoTncMode(1,  "19200 C4FSK IL2P+CRC", 19200),
+        new NinoTncMode(2,  "9600 GFSK IL2P+CRC",    9600),
+        new NinoTncMode(3,  "9600 C4FSK IL2P+CRC",   9600),
+        new NinoTncMode(4,  "4800 GFSK IL2P+CRC",    4800),
+
+        // FM AFSK modes: fine through a speaker/mic connection.
+        new NinoTncMode(5,  "3600 QPSK IL2P+CRC",    3600),
+        new NinoTncMode(6,  "1200 AFSK AX.25",       1200),
+        new NinoTncMode(7,  "1200 AFSK IL2P+CRC",    1200),
+
+        // Shaped-PSK modes (SSB or FM): phase modulation of a 1500 Hz tone.
+        new NinoTncMode(8,  "300 BPSK IL2P+CRC",      300),
+        new NinoTncMode(9,  "600 QPSK IL2P+CRC",      600),
+        new NinoTncMode(10, "1200 BPSK IL2P+CRC",    1200),
+        new NinoTncMode(11, "2400 QPSK IL2P+CRC",    2400),
+
+        // SSB AFSK modes: legacy HF packet, 1600/1800 Hz tone FSK.
+        new NinoTncMode(12, "300 AFSK AX.25",         300),
+        new NinoTncMode(13, "300 AFSK IL2P",          300),
+        new NinoTncMode(14, "300 AFSK IL2P+CRC",      300),
+
+        new NinoTncMode(15, "Set from KISS",            0),
     }.ToFrozenDictionary(m => m.Mode);
 
     /// <summary>
@@ -84,10 +110,10 @@ public static class NinoTncCatalog
         { 0x31, 12 },
         { 0x22, 13 },
         { 0x23, 14 },
-        // Firmware 3.41 reports mode 14 (300 AFSKPLL IL2P+CRC) as 0x90 where
+        // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) as 0x90 where
         // 3.44 reports 0x23 — bench evidence: the 2026-07-03 wide-il2pc
         // mode-survey runs, where the GETALL verify read "unrecognised
-        // firmware byte 0x90" while the 300 AFSKPLL traffic decoding proved
+        // firmware byte 0x90" while the 300 AFSK traffic decoding proved
         // the mode was engaged.
         { 0x90, 14 },
         { 0xF3, 15 },
@@ -95,13 +121,18 @@ public static class NinoTncCatalog
 
     /// <summary>
     /// Modes whose published occupied bandwidth needs a wide (25 kHz) channel:
-    /// 0 (9600 GFSK AX.25), 1 (19200 4FSK IL2P+CRC) and 2 (9600 GFSK IL2P+CRC),
-    /// per the OARC wiki mode table (https://wiki.oarc.uk/packet:ninotnc,
-    /// retrieved 2026-07-03). Planning guidance, not a hard decode limit: the
-    /// bench rig decodes mode 2 on its narrow (12.5 kHz) programmed channel at
-    /// 38 dB SNR through an attenuator pad — adjacent-channel behaviour on air
-    /// is what the 25 kHz rating protects.
+    /// 0 (9600 GFSK AX.25), 1 (19200 C4FSK IL2P+CRC) and 2 (9600 GFSK
+    /// IL2P+CRC) — exactly the modes Nino's v3/4.43 mode-switch mapping rates
+    /// at 20 kHz OBW, the rest being 10 kHz (modes 3, 4) or narrower. Note
+    /// mode 3 (9600 C4FSK) is <em>not</em> here: C4FSK carries 9600 bps in
+    /// 10 kHz, which is the point of it.
     /// </summary>
+    /// <remarks>Planning guidance, not a hard decode limit: the bench rig
+    /// decodes mode 2 on its narrow (12.5 kHz) programmed channel at 38 dB SNR
+    /// through an attenuator pad — adjacent-channel behaviour on air is what
+    /// the 25 kHz rating protects. Sources: flashtnc release-notes.txt
+    /// (upstream OBW figures) corroborated by the OARC wiki mode table
+    /// (https://wiki.oarc.uk/packet:ninotnc, retrieved 2026-07-03).</remarks>
     public static readonly FrozenSet<byte> WideChannelModes = new byte[] { 0, 1, 2 }.ToFrozenSet();
 
     /// <summary>True when <paramref name="mode"/>'s published occupied bandwidth
