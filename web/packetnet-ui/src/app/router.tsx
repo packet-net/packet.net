@@ -18,6 +18,7 @@ import { HeadEnds } from "@/screens/headends";
 import { Config } from "@/screens/config";
 import { Users } from "@/screens/users";
 import { LinkTuner } from "@/screens/link-tuner";
+import { Waterfall } from "@/screens/waterfall";
 import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
 
 // ============================================================
@@ -122,6 +123,7 @@ export const router = createBrowserRouter([
       { path: "users", element: <Users /> },
       { path: "links", element: <LinkTroubleshoot /> },
       { path: "tools/tuner", element: <LinkTuner /> },
+      { path: "tools/waterfall", element: <Waterfall /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

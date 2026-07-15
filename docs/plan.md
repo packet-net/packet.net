@@ -1250,6 +1250,33 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-15 — kind: soundmodem — the in-process soundcard modem port (draft until NuGet publish)
+
+First consumer of the sibling [`packet-net/pdn-soundmodem`](https://github.com/packet-net/pdn-soundmodem)
+engine (GPL-3.0-or-later, combined per GPLv3 §13/AGPLv3 §13; `Packet.Node.Core` gains the
+`pdn-soundmodem` package dependency): a new `kind: soundmodem` transport runs the modem
+in-process over an ALSA device — modes afsk1200(+multi/+fx25), bpsk300, qpsk2400/3600,
+fsk9600(+il2p), serial/CM108 PTT. `SoundModemFrameTransport` implements the full optional-facet
+set the transport seam anticipated: **`ICarrierSense`** (native DCD + energy busy —
+`PortSupervisor` now probes `modemTransport as ICarrierSense` when no radio supplies carrier
+sense, completing the OQ-012 residual's shape), **`ITxCompletionTransport`** (sample-accurate:
+completion resolves when the audio has fully left the device) and **`ICsmaChannelParams`**
+(`kiss:` channel-access params drive the modem's own p-persistent CSMA). Config subtype +
+validator + YAML round-trip arms per the closed-DU discipline; tests cover yaml/validator plus
+an end-to-end fake-audio RX→frames / frames→TX→demodulate loop and the carrier-sense trilean.
+Stage 2 landed in the same PR (2026-07-15, per the research doc's §12.5 decision):
+**port-level status surface** — `RunningPort.CarrierSense` exposes whichever source feeds the
+listener's gate; `PortStatus.channelBusy` (API read models ×2 projections, node-api.yaml, web
+types/mock, a tri-state indicator on the Ports screen) and the `pdn_port_channel_busy` gauge —
+plus the **spectrum feed**: the transport publishes waterfall lines (always-on 4096-pt tap,
+~3/s), `GET /api/v1/ports/{id}/spectrum/events` (SSE, read-scoped, drop-oldest fan-out,
+documented in node-api.yaml) and a `/tools/waterfall` canvas screen (port picker, frequency
+grid, mock generator for UI dev). Drive-by fix: `/ports/{id}/tuning/events` was missing from
+the SSE `?access_token=` allowlist since it shipped (latent auth-on bug) — added alongside the
+spectrum path. **Blocked on**: the pdn-soundmodem 0.1.0 NuGet publish
+(pack+tests ran green on the runner; push skipped — the NUGET_API_KEY org secret needs
+granting to the new repo). Until then this PR restores only from a local dev feed.
+
 ### 2026-07-14 — Licence reconciled: AGPL-3.0 everywhere (packages included)
 
 The soundmodem research surfaced that the repo's licensing had been self-contradictory since

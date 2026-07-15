@@ -9,7 +9,7 @@
 // ============================================================
 
 // ---- 6.1 NodeConfig tree -----------------------------------
-export type TransportKind = "kiss-tcp" | "serial-kiss" | "nino-tnc" | "axudp" | "axudp-multipoint";
+export type TransportKind = "kiss-tcp" | "serial-kiss" | "nino-tnc" | "axudp" | "axudp-multipoint" | "soundmodem";
 
 export interface KissTcpTransport { kind: "kiss-tcp"; host: string; port: number }
 export interface SerialKissTransport { kind: "serial-kiss"; device: string; baud: number }
@@ -25,12 +25,19 @@ export interface AxudpPeer { call: string; host: string; port: number; broadcast
 // Packet.Node.Core.Configuration.AxudpMultipointTransport). Replaces the point-to-point
 // `axudp` host/port with a `peers[]` partner table.
 export interface AxudpMultipointTransport { kind: "axudp-multipoint"; localPort: number; peers: AxudpPeer[] }
+// In-process soundcard modem (the pdn-soundmodem engine) — native DCD, sample-accurate
+// TX-complete (server: Packet.Node.Core.Configuration.SoundModemTransportConfig).
+export interface SoundModemTransport {
+  kind: "soundmodem"; device: string; captureRate: number; mode: string;
+  frequency?: number; ptt?: string;
+}
 export type TransportConfig =
   | KissTcpTransport
   | SerialKissTransport
   | NinoTncTransport
   | AxudpTransport
-  | AxudpMultipointTransport;
+  | AxudpMultipointTransport
+  | SoundModemTransport;
 
 export interface Ax25PortParams {
   t1Ms?: number; t2Ms?: number; t3Ms?: number;
@@ -309,6 +316,18 @@ export interface PortStatus {
   id: string; enabled: boolean; state: PortState;
   sessionCount: number; lastError: string | null;
   framesIn: number; framesOut: number;
+  /** Port-level carrier sense (radio DCD or a channel-sensing transport such as the
+   *  in-process soundmodem): true=busy, false=clear, null=no source / not running. */
+  channelBusy: boolean | null;
+}
+
+/** One waterfall line from a soundmodem port's spectrum SSE feed. */
+export interface SpectrumEvent {
+  seq: number;
+  /** Hz per bin (bins run 0 Hz .. bins.length*binHz). */
+  binHz: number;
+  /** Base64 of dB-scaled bytes, one per bin. */
+  bins: string;
 }
 export type SessionRole = "console" | "interlink" | "bridge";
 export interface SessionInfo {

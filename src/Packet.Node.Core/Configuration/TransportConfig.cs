@@ -61,6 +61,10 @@ public static class TransportKinds
     /// <summary>A Tait TM8100/TM8200 radio in Transparent mode as the modem — no external TNC
     /// (AX.25 over the radio's own FFSK byte pipe with KISS SLIP framing).</summary>
     public const string TaitTransparent = "tait-transparent";
+
+    /// <summary>An in-process soundcard modem (the pdn-soundmodem engine): audio in/out via
+    /// ALSA, no external TNC or daemon — with native carrier-sense into the AX.25 stack.</summary>
+    public const string SoundModem = "soundmodem";
 }
 
 /// <summary>A generic serial-port KISS modem (<c>KissSerialModem.Open</c>).</summary>
@@ -332,4 +336,43 @@ public sealed record TaitTransparentTransportConfig : TransportConfig
         IsHeadEndBound
             ? $"tait-transparent:{HeadEndId}/{DeviceId}"
             : $"tait-transparent:{(string.IsNullOrWhiteSpace(Device) ? "serial:" + Serial : Device)}";
+}
+
+/// <summary>
+/// An in-process soundcard modem port (the <c>pdn-soundmodem</c> engine, GPL-3.0-or-later,
+/// combined per GPLv3 §13/AGPLv3 §13): the node runs the demodulator/modulator itself over an
+/// ALSA device. Native DCD feeds the AX.25 stack's carrier-sense gate, TX-complete is
+/// sample-accurate (the transport implements <c>ITxCompletionTransport</c>), and the KISS
+/// channel-access parameters drive the modem's own p-persistent CSMA
+/// (<c>ICsmaChannelParams</c>).
+/// </summary>
+public sealed record SoundModemTransportConfig : TransportConfig
+{
+    /// <inheritdoc/>
+    public override string Kind => TransportKinds.SoundModem;
+
+    /// <summary>ALSA device for capture and playback (e.g. <c>default</c>,
+    /// <c>plughw:1,0</c>).</summary>
+    public string Device { get; init; } = "default";
+
+    /// <summary>Capture sample rate. Card-native 48000 recommended; the modem decimates
+    /// with a real anti-aliasing filter. Must be a multiple of the mode's DSP rate
+    /// (12000, or 48000 for the 9600 modes).</summary>
+    public int CaptureRate { get; init; } = 48000;
+
+    /// <summary>Modem mode: <c>afsk1200</c>, <c>afsk1200-multi</c>, <c>afsk1200-fx25</c>,
+    /// <c>afsk1200-fx25rx</c>, <c>bpsk300</c>, <c>bpsk300-nocrc</c>, <c>qpsk2400</c>,
+    /// <c>qpsk3600</c>, <c>fsk9600</c>, <c>fsk9600-il2p</c>.</summary>
+    public string Mode { get; init; } = "afsk1200";
+
+    /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK,
+    /// 1500 BPSK/QPSK-2400, 1650 QPSK-3600; not applicable to 9600 baseband).</summary>
+    public double Frequency { get; init; }
+
+    /// <summary>PTT control spec: empty for VOX, <c>serial:/dev/ttyUSB0[:rts|:dtr]</c>,
+    /// or <c>cm108:/dev/hidraw0[:gpio]</c>.</summary>
+    public string Ptt { get; init; } = "";
+
+    /// <inheritdoc/>
+    public override string DescribeEndpoint() => $"soundmodem:{Device}/{Mode}";
 }

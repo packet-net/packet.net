@@ -192,7 +192,8 @@ public static class PdnReadApi
                 SessionCount: sessions,
                 LastError: null,        // TODO: surface the last bring-up fault per port (later step).
                 FramesIn: framesIn,     // Live per-port frame totals from the telemetry tap.
-                FramesOut: framesOut);
+                FramesOut: framesOut,
+                ChannelBusy: running is { Started: true } ? running.CarrierSense?.ChannelBusy : null);
         }).ToArray();
     }
 

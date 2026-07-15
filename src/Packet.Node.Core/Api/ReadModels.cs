@@ -27,6 +27,10 @@ public sealed record NetRomSummary(int Neighbours, int Destinations, bool Inp3En
 public sealed record TrafficLogStatus(bool Enabled, long Dropped);
 
 /// <summary>Live state of one configured port.</summary>
+/// <param name="ChannelBusy">Port-level carrier sense, from whichever source feeds the
+/// listener's gate (radio hardware DCD, or a channel-sensing transport such as the
+/// in-process soundmodem): true = busy, false = clear, null = the port has no
+/// carrier-sense source (or is not running).</param>
 public sealed record PortStatus(
     string Id,
     bool Enabled,
@@ -34,7 +38,8 @@ public sealed record PortStatus(
     int SessionCount,
     string? LastError,
     long FramesIn,
-    long FramesOut);
+    long FramesOut,
+    bool? ChannelBusy = null);
 
 /// <summary>One active connected-mode circuit.</summary>
 public sealed record SessionInfo(

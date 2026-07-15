@@ -487,6 +487,24 @@ paths:
         "200": { description: "SSE stream (text/event-stream) of TuningEvent", content: { text/event-stream: { schema: { $ref: "#/components/schemas/TuningEvent" } } } }
         "404": { description: no session is active on the port }
 
+  /ports/{id}/spectrum/events:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [tools]
+      summary: The soundmodem port's live spectrum feed (SSE) — the tuning waterfall's source
+      description: >
+        A `text/event-stream` of waterfall lines from a `kind: soundmodem` port. Each named
+        `spectrum` SSE event's `data:` is camelCase JSON `{seq, binHz, bins}`: `bins` is base64 of
+        2048 dB-scaled bytes covering 0 Hz to half the modem's DSP rate at `binHz` per bin
+        (~2.93 Hz at 12 kHz), emitted at the modem's FFT cadence (~3 lines/s, ~2.7 kB). The buffer
+        between the DSP and a slow client is drop-oldest, so the display skips rather than the
+        modem stalling. Read-scoped; EventSource clients pass the token as `?access_token=`.
+        404 for any other port kind or a port that is not running.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: "SSE stream (text/event-stream) of spectrum lines" }
+        "404": { description: not a running soundmodem port }
+
   /ports/{id}/tuning/next:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     post:
@@ -777,6 +795,7 @@ components:
         lastError: { type: [string, "null"] }
         framesIn: { type: integer }
         framesOut: { type: integer }
+        channelBusy: { type: [boolean, "null"], description: "port-level carrier sense from whichever source feeds the listener's gate (radio hardware DCD, or a channel-sensing transport such as the in-process soundmodem): true=busy, false=clear, null=no source / not running" }
 
     TransportConfig:
       oneOf:
