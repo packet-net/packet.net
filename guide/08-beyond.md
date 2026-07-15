@@ -1,7 +1,7 @@
 # 8. Beyond
 
 You can now build the whole stack — transport, frames, connected sessions, a
-node, and NET/ROM. This final chapter is a map of what's left: the engine
+node, and NET/ROM. This chapter is a map of what's left: the engine
 behaviours that ran quietly under the earlier chapters, the knobs that control
 them, how to test code built on the engine, and the `Packet.Node.Core` building
 blocks you can adopt instead of growing your own host.
@@ -164,6 +164,7 @@ through, and nothing in them is hidden from you.
 
 That's the engine, bottom to top. You started by dumping hex off a modem; you can
 now build a routed, multi-port, spec-correct packet node — and you've seen every
-seam you'd reach for in between.
+seam you'd reach for in between. One optional leg remains: the seams that let
+your station see the radio behind the modem.
 
-[← back to the guide index](index.md)
+Next: [radios & rigs — RSSI, carrier-sense, and CAT control →](09-radios-and-rigs.md)

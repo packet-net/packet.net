@@ -60,6 +60,12 @@ Two interfaces are the load-bearing seams you will design against:
   connections, dials outbound ones, and traces every frame. Almost everything
   node-shaped goes through it.
 
+One more pair of seams sits *beside* the cake rather than in it: `IRadioControl`
+(`Packet.Radio`) and `IRigControl` (`Packet.Rig`) — the **radio behind the
+modem**, for stations whose radio has a serial control channel (RSSI, hardware
+carrier-sense, CAT). They're optional and covered last, in
+[chapter 9](09-radios-and-rigs.md).
+
 ## How this guide builds up
 
 Each chapter adds one layer and a runnable tool that exercises it. Read them in
@@ -75,6 +81,7 @@ order; later chapters assume the vocabulary of earlier ones.
 | 6 | [Building a node](06-building-a-node.md) | a connectable command server | `SessionAccepted`, command loops, multi-port, aliases |
 | 7 | [NET/ROM: routing & circuits](07-netrom.md) | a NODES-aware node | `NodesBroadcast`, `NetRomRoutingTable`, `NetRomForwarding`, `CircuitManager` |
 | 8 | [Beyond](08-beyond.md) | — | segmentation, XID, quirks, observability, and where `Packet.Node.Core` takes over |
+| 9 | [Radios & rigs](09-radios-and-rigs.md) | a signal-aware monitor | `IRigControl`, `RigctldRig`, `IRadioControl`, `RssiTaggingTransport`, `RadioCarrierSense`, `RigRadioControl` |
 
 ## Installing the packages
 
@@ -97,12 +104,18 @@ dotnet add package Packet.Kiss.NinoTnc     # NinoTNC USB
 
 # Higher layers, as you reach them:
 dotnet add package Packet.Agw              # AGWPE / SV2AGW client
+
+# Radio/rig control, if your radio has a control channel (chapter 9):
+dotnet add package Packet.Radio            # the packet-medium seam + decorators
+dotnet add package Packet.Rig              # the station-control (CAT) seam
+dotnet add package Packet.Rig.Hamlib       # rigctld backend
 ```
 
 !!! note "Published packages"
     Every package this guide uses — `Packet.Core`, `Packet.Ax25`,
     `Packet.Ax25.Transport.Abstractions`, `Packet.Kiss*`, `Packet.Agw`,
-    `Packet.Axudp`, `Packet.NetRom` — is published to NuGet; see the
+    `Packet.Axudp`, `Packet.NetRom`, `Packet.Radio*`, `Packet.Rig*` — is
+    published to NuGet; see the
     [top-level README](../README.md#whats-here) for the full publication
     matrix.
 
