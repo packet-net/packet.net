@@ -53,24 +53,32 @@ Start with the row that matches what you are trying to do.
 | Flash firmware / use the CLI tools | [7. Advanced tooling](07-advanced-tooling.md) | A terminal on the node |
 | Run the modems/radios on a **separate box** from PDN | [8. Split-station RF head-end](08-split-station-head-end.md) | A spare Pi + the head-end daemon |
 
-## Two ways a Tait radio can join a port
+## Three ways a radio can join a port
 
-This trips people up, so it is worth stating up front. There are **two different**
-ways a Tait radio relates to a PDN port, and they are not the same thing:
+This trips people up, so it is worth stating up front. There are **three different**
+ways a radio can relate to a PDN port, and they are not the same thing:
 
-1. **A radio *attached to* a TNC port** (the `radio:` block). Your modem is still a
-   TNC (NinoTNC, KISS TNC); the radio sits *beside* it and the node reads it over a
-   *second* serial cable for telemetry. This is what gives you RSSI/SNR, the health
-   panel, the doctor, and hardware carrier-sense. Covered in
-   [chapter 1](01-attach-a-radio.md). (A CAT rig can back the `radio:` block too —
-   `radio: kind: rig`, no second cable; also chapter 1.)
-2. **A radio *as* the port** (the `tait-transparent` transport kind). There is **no
-   TNC at all** — AX.25 rides the radio's own built-in FFSK modem. One device, no
-   audio wiring, but no per-frame signal telemetry. Covered in
+1. **A Tait radio *attached to* a TNC port** (the `radio:` block, `kind:
+   tait-ccdi`). Your modem is still a TNC (NinoTNC, KISS TNC); the radio sits
+   *beside* it and the node reads it over a *second* serial cable for telemetry.
+   This is what gives you RSSI/SNR, the health panel, the doctor, and hardware
+   carrier-sense. Covered in [chapter 1](01-attach-a-radio.md).
+2. **A Tait radio *as* the port** (the `tait-transparent` transport kind). There is
+   **no TNC at all** — AX.25 rides the radio's own built-in FFSK modem. One device,
+   no audio wiring, but no per-frame signal telemetry. Covered in
    [chapter 6](06-tnc-less-tait-links.md).
+3. **A CAT rig re-presented as the port's radio** (a `rig:` block plus `radio:
+   kind: rig`). The port's CAT rig — anything hamlib's `rigctld` or flrig can
+   drive — doubles as its radio, with **no second cable at all**, so it works with
+   **any** transport kind (a `kiss-tcp` soundmodem included). The rig's DCD gates
+   the node's transmissions like hardware carrier-sense, and where the rig reports
+   calibrated signal strength, inbound frames get tagged with it. Covered in
+   [chapter 1](01-attach-a-radio.md#kind-rig--re-use-the-ports-cat-rig-as-its-radio).
 
-Most operators want option 1. Option 6 is a special case for people who have two
-Tait radios and no TNCs and want a working link anyway.
+Options 1 and 3 are the same idea — a radio *attached to* a TNC port, read while
+packets flow — with different control protocols, and most operators want one of
+them. Option 2 is a special case for people who have two Tait radios and no TNCs
+and want a working link anyway.
 
 ---
 

@@ -3,9 +3,11 @@
 **Goal:** tell the node about the radio behind one of your TNC ports, so it can
 read signal strength and health from the radio while packets flow.
 
-This chapter is about **option 1** from the [overview](index.md#two-ways-a-tait-radio-can-join-a-port):
+This chapter is about **option 1** from the [overview](index.md#three-ways-a-radio-can-join-a-port):
 a radio *attached to* a TNC port. Your modem stays a TNC; the radio's own serial
-control channel is a **second cable** the node reads alongside.
+control channel is a **second cable** the node reads alongside. (Its cable-free
+sibling — **option 3**, a CAT rig as the port's radio — is
+[below](#kind-rig--re-use-the-ports-cat-rig-as-its-radio).)
 
 ## Before you start
 

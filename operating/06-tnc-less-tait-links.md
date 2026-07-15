@@ -3,7 +3,7 @@
 **Goal:** run an AX.25 link between two Tait radios with **no TNC at all** — using
 each radio's own built-in FFSK modem as the bearer.
 
-This is **option 2** from the [overview](index.md#two-ways-a-tait-radio-can-join-a-port):
+This is **option 2** from the [overview](index.md#three-ways-a-radio-can-join-a-port):
 the radio *is* the port. It's the `tait-transparent` transport kind. One device per
 end, no audio cables, no NinoTNC — the AX.25 frames ride the radio's internal FFSK
 modem, framed with KISS SLIP over the serial byte pipe.

@@ -61,7 +61,8 @@ public readonly record struct Ax25InboundFrame(
 - `ReceivedAt` — the true receive instant, stamped when the frame arrived (not
   reconstructed later), so timing-sensitive code sees real latency.
 - `Radio` — optional signal metadata; `null` for every transport with no radio
-  control channel (which today is all of them).
+  control channel. [Chapter 9](09-radios-and-rigs.md) shows the decorator that
+  populates it.
 
 So the canonical receive loop is:
 
