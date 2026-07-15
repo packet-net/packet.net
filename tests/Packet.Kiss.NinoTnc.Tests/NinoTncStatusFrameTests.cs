@@ -69,7 +69,7 @@ public class NinoTncStatusFrameTests
     [Fact]
     public void Firmware_341_Mode14_Byte_0x90_Resolves_To_A_Running_Mode()
     {
-        // Firmware 3.41 reports mode 14 (300 AFSKPLL IL2P+CRC) in register
+        // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) in register
         // 06 as 0x90 (3.44 uses 0x23) — bench evidence: the 2026-07-03
         // wide-il2pc mode-survey runs. Status parsing must resolve it, not
         // report an unrecognised firmware byte.
@@ -82,7 +82,7 @@ public class NinoTncStatusFrameTests
         parsed!.FirmwareModeByte.Should().Be((byte)0x90);
         parsed.RunningMode.Should().NotBeNull();
         parsed.RunningMode!.Value.Mode.Should().Be((byte)14);
-        parsed.RunningMode.Value.Name.Should().Be("300 AFSKPLL IL2P+CRC");
+        parsed.RunningMode.Value.Name.Should().Be("300 AFSK IL2P+CRC");
     }
 
     [Fact]

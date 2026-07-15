@@ -1250,6 +1250,42 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-15 (later) — NinoTNC v44 firmware + pdn-soundmodem 0.2.0: 13 of 15 modes covered
+
+Tom pointed at NinoTNC firmware **v44** and its mode table. Three things followed.
+
+**Firmware.** The bench TNC was flashed 3.41 → 3.44 using this repo's own flasher
+(`packet-tune flash-tnc`, 184 s, clean, GETVER-verified) — the first real use of it on a
+version bump rather than a recovery, and it worked exactly as documented.
+
+**Catalog.** `NinoTncCatalog` names are reconciled against Nino's own v44 table
+([v44-op-modes.png](https://github.com/ninocarrillo/flashtnc/blob/master/v44-op-modes.png)
+plus the "MODE SWITCH MAPPING v3/4.43" block in flashtnc's `release-notes.txt`, which is
+the upstream source for the names, the RF grouping, and each mode's symbol rate/carrier/OBW).
+Two corrections, both from names that predated firmware 3/4.42: modes 1/3 are **C4FSK**
+(coherent 4-level FSK), not bare "4FSK"; modes 13/14 are plain **300 AFSK**, upstream
+having retired the "AFSKPLL" spelling once every 300 AFSK mode gained coherent
+demodulation. `WideChannelModes` {0,1,2} is now corroborated by Nino's own OBW figures
+(exactly the 20 kHz modes; mode 3 carries 9600 in 10 kHz, which is the point of C4FSK).
+The catalog test now pins all 16 DIP positions rather than a sample.
+
+**Coverage.** pdn-soundmodem 0.2.0 takes NinoTNC mode coverage from 7 of 15 to **13 of
+15**, all bench-proven bidirectionally on the wired CM108 loop: new are 4 (4800 GFSK),
+9 (600 QPSK), 10 (1200 BPSK) and 12/13/14 (300 HF AFSK). The remaining gap is **C4FSK
+(modes 1/3)** — a genuinely different modem, not a reparameterisation. `kind: soundmodem`
+ports accept all of them (`Mode` on `SoundModemTransportConfig`, validator, and the DSP
+rate dispatch which now sends every direct-FSK mode to 48 kHz, not just 9600).
+
+0.2.0 is breaking (pre-1.0): classes that had become mode families were renamed —
+`Bpsk300Modem`→`BpskModem`, `Fsk9600Modem`→`FskModem`, `Fsk9600Framing`→`FskFraming`.
+It also carries a demodulator fix worth noting here because it improves **every** AFSK
+port, not just the new modes: the discriminator's clamp was a fixed ±1, which is ~2x the
+legitimate range at Bell 202's ±500 Hz shift but 10x at the HF modes' ±100 Hz, letting
+silence-induced garbage pin the slicer's envelope trackers. Clamping to each mode's own
+full deviation took **WA8LMF Track 2 @12 kHz from 269 to 426 frames single-decoder, and
+972 → 983 for the multi bank (direwolf atest: 970)**. Full detail, including the measured
+negative results, in pdn-soundmodem's plan §Amendment log and docs/ninotnc-loop.md.
+
 ### 2026-07-15 — pdn-soundmodem 0.1.3: NinoTNC-proven (all six pairs, bidirectional, sustained)
 
 Pin bumped 0.1.2 → 0.1.3. This is the release where the soundmodem stops being

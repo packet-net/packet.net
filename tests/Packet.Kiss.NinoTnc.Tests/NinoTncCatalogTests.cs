@@ -16,19 +16,32 @@ public class NinoTncCatalogTests
 
     [Theory]
     [InlineData(0, "9600 GFSK AX.25", 9600)]
-    [InlineData(1, "19200 4FSK IL2P+CRC", 19200)]
+    [InlineData(1, "19200 C4FSK IL2P+CRC", 19200)]
     [InlineData(2, "9600 GFSK IL2P+CRC", 9600)]
-    [InlineData(3, "9600 4FSK IL2P+CRC", 9600)]
+    [InlineData(3, "9600 C4FSK IL2P+CRC", 9600)]
+    [InlineData(4, "4800 GFSK IL2P+CRC", 4800)]
+    [InlineData(5, "3600 QPSK IL2P+CRC", 3600)]
     [InlineData(6, "1200 AFSK AX.25", 1200)]
+    [InlineData(7, "1200 AFSK IL2P+CRC", 1200)]
     [InlineData(8, "300 BPSK IL2P+CRC", 300)]
-    [InlineData(14, "300 AFSKPLL IL2P+CRC", 300)]
+    [InlineData(9, "600 QPSK IL2P+CRC", 600)]
+    [InlineData(10, "1200 BPSK IL2P+CRC", 1200)]
+    [InlineData(11, "2400 QPSK IL2P+CRC", 2400)]
+    [InlineData(12, "300 AFSK AX.25", 300)]
+    [InlineData(13, "300 AFSK IL2P", 300)]
+    [InlineData(14, "300 AFSK IL2P+CRC", 300)]
     [InlineData(15, "Set from KISS", 0)]
-    public void Catalog_Matches_Kissproxy_Source_With_The_Wiki_4fsk_Correction(byte mode, string expectedName, int expectedBitRate)
+    public void Catalog_Matches_Ninos_V44_Mode_Table(byte mode, string expectedName, int expectedBitRate)
     {
-        // Modes 1 and 3 diverge from the kissproxy source deliberately:
-        // both 4FSK modes are IL2P+CRC per the OARC wiki
-        // (https://wiki.oarc.uk/packet:ninotnc) — there is no AX.25 4FSK —
-        // and the bare names wrongly excluded them from IL2P+CRC filters.
+        // Every DIP position, checked against Nino's own v44 table
+        // (flashtnc/v44-op-modes.png + the "MODE SWITCH MAPPING v3/4.43"
+        // block in release-notes.txt). Two names diverge from the
+        // kissproxy source this catalog was ported from, because kissproxy
+        // predates firmware 3/4.42: modes 1/3 are C4FSK (coherent 4-level
+        // FSK), and modes 13/14 are plain "300 AFSK" — upstream retired the
+        // "AFSKPLL" spelling once every 300 AFSK mode gained coherent
+        // demodulation. We keep "IL2P+CRC" where upstream writes "IL2Pc":
+        // same protocol, and it is what this codebase's filters match on.
         var entry = NinoTncCatalog.ByMode[mode];
         entry.Name.Should().Be(expectedName);
         entry.BitRateHz.Should().Be(expectedBitRate);
@@ -43,9 +56,9 @@ public class NinoTncCatalogTests
 
     [Theory]
     [InlineData(0x00, 0)]    // 9600 GFSK AX.25
-    [InlineData(0x41, 1)]    // 19200 4FSK IL2P+CRC
+    [InlineData(0x41, 1)]    // 19200 C4FSK IL2P+CRC
     [InlineData(0x02, 6)]    // 1200 AFSK AX.25
-    [InlineData(0x23, 14)]   // 300 AFSKPLL IL2P+CRC (3.44 byte)
+    [InlineData(0x23, 14)]   // 300 AFSK IL2P+CRC (3.44 byte)
     [InlineData(0xF3, 15)]   // Set from KISS
     public void Firmware_Byte_Lookup_Resolves_To_Correct_Mode(byte firmwareByte, byte expectedMode)
     {
@@ -57,15 +70,15 @@ public class NinoTncCatalogTests
     [Fact]
     public void Firmware_341_Mode14_Alias_0x90_Resolves_Alongside_The_344_Byte()
     {
-        // Firmware 3.41 reports mode 14 (300 AFSKPLL IL2P+CRC) as 0x90;
+        // Firmware 3.41 reports mode 14 (300 AFSK IL2P+CRC) as 0x90;
         // 3.44 reports 0x23. Bench evidence: the 2026-07-03 wide-il2pc
         // mode-survey runs — GETALL verify read "unrecognised firmware byte
-        // 0x90" while the decoding 300 AFSKPLL traffic proved mode 14 was
+        // 0x90" while the decoding 300 AFSK traffic proved mode 14 was
         // engaged. Both bytes must resolve to the same catalog entry.
         var via341 = NinoTncCatalog.TryGetByFirmwareByte(0x90);
         via341.Should().NotBeNull();
         via341!.Value.Mode.Should().Be((byte)14);
-        via341.Value.Name.Should().Be("300 AFSKPLL IL2P+CRC");
+        via341.Value.Name.Should().Be("300 AFSK IL2P+CRC");
         via341.Should().Be(NinoTncCatalog.TryGetByFirmwareByte(0x23));
     }
 

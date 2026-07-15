@@ -25,7 +25,7 @@ public class ModeSurveyTests
     [Fact]
     public void Plain_il2p_mode_13_is_not_selected()
     {
-        // "300 AFSKPLL IL2P" contains "IL2P" but not "IL2P+CRC".
+        // "300 AFSK IL2P" (mode 13) contains "IL2P" but not "IL2P+CRC".
         ModeSurvey.SelectIl2pCrcModes().Should().NotContain(m => m.Mode == 13);
     }
 

@@ -574,9 +574,11 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
 {
     private static readonly string[] KnownModes =
     [
-        "afsk1200", "afsk1200-multi", "afsk1200-fx25", "afsk1200-fx25rx",
-        "bpsk300", "bpsk300-nocrc", "qpsk2400", "qpsk3600",
-        "fsk9600", "fsk9600-il2p",
+        "afsk1200", "afsk1200-multi", "afsk1200-fx25", "afsk1200-fx25rx", "afsk1200-il2p",
+        "afsk300", "afsk300-il2p", "afsk300-il2pc",
+        "bpsk300", "bpsk300-nocrc", "bpsk1200",
+        "qpsk600", "qpsk2400", "qpsk3600",
+        "fsk4800-il2p", "fsk9600", "fsk9600-il2p",
     ];
 
     public SoundModemValidator()

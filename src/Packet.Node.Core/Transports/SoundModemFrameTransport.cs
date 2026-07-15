@@ -274,24 +274,35 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         }
     }
 
+    /// <summary>The direct-FSK baseband modes run at 48 kHz (9600 has only 5 samples per
+    /// bit even there); everything audio-band runs at 12 kHz.</summary>
     private static int DspRate(string mode) =>
-        mode.StartsWith("fsk9600", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
+        mode.StartsWith("fsk", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
 
     private static IModem CreateModem(SoundModemTransportConfig config, int dspRate, Action<byte[]> sink)
     {
         double? frequency = config.Frequency > 0 ? config.Frequency : null;
         return config.Mode.ToLowerInvariant() switch
         {
-            "afsk1200" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700),
+            // NinoTNC mode numbers in comments — the wire-compatible counterpart each
+            // mode talks to (pdn-soundmodem docs/ninotnc-loop.md § Coverage).
+            "afsk1200" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700),                       // 6
             "afsk1200-multi" => new Afsk1200MultiModem(dspRate, sink, offsetPairs: 3, centerFrequency: frequency ?? 1700),
             "afsk1200-fx25" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700, Fx25Mode.TransmitReceive),
             "afsk1200-fx25rx" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700, Fx25Mode.Receive),
-            "bpsk300" => new Bpsk300Modem(dspRate, sink, crc: true, frequency ?? 1500),
-            "bpsk300-nocrc" => new Bpsk300Modem(dspRate, sink, crc: false, frequency ?? 1500),
-            "qpsk2400" => QpskModem.Qpsk2400(dspRate, sink),
-            "qpsk3600" => QpskModem.Qpsk3600(dspRate, sink),
-            "fsk9600" => new Fsk9600Modem(dspRate, sink, Fsk9600Framing.ClassicHdlc),
-            "fsk9600-il2p" => new Fsk9600Modem(dspRate, sink, Fsk9600Framing.Il2pCrc),
+            "afsk1200-il2p" => new Afsk1200Il2pModem(dspRate, sink, crc: true, frequency ?? 1700),   // 7
+            "afsk300" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Ax25, frequency ?? 1700),    // 12
+            "afsk300-il2p" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Il2p, frequency ?? 1700),   // 13
+            "afsk300-il2pc" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Il2pCrc, frequency ?? 1700), // 14
+            "bpsk300" => new BpskModem(dspRate, sink, crc: true, frequency ?? 1500),                 // 8
+            "bpsk300-nocrc" => new BpskModem(dspRate, sink, crc: false, frequency ?? 1500),
+            "bpsk1200" => BpskModem.Bpsk1200(dspRate, sink),                                         // 10
+            "qpsk600" => QpskModem.Qpsk600(dspRate, sink),                                           // 9
+            "qpsk2400" => QpskModem.Qpsk2400(dspRate, sink),                                         // 11
+            "qpsk3600" => QpskModem.Qpsk3600(dspRate, sink),                                         // 5
+            "fsk4800-il2p" => FskModem.Fsk4800(dspRate, sink),                                       // 4
+            "fsk9600" => FskModem.Fsk9600(dspRate, sink, FskFraming.ClassicHdlc),                    // 0
+            "fsk9600-il2p" => FskModem.Fsk9600(dspRate, sink, FskFraming.Il2pCrc),                   // 2
             _ => throw new NotSupportedException($"unknown soundmodem mode '{config.Mode}'"),
         };
     }

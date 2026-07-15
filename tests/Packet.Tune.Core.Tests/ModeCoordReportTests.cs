@@ -80,7 +80,7 @@ public class ModeCoordReportTests
         var attempt = new ModeCoordAttempt
         {
             Mode = 1,
-            ModeName = "19200 4FSK IL2P+CRC",
+            ModeName = "19200 C4FSK IL2P+CRC",
             ChannelInEffect = 0,
             Outcome = ModeCoordOutcome.ProbeDead,
             CoordinatorToResponder = new ModeProbeCell(0, 5, null),
