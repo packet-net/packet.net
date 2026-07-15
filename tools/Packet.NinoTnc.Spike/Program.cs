@@ -23,6 +23,12 @@ const bool PersistToFlash = false;   // RAM-only, do not burn the flash.
 string portA = args.Length > 0 ? args[0] : "COM6";
 string portB = args.Length > 1 ? args[1] : "COM8";
 
+if (args.Length > 0 && args[0] == "txdelay-sweep")
+{
+    // txdelay-sweep <tncA> <tncB> [--frames 5] [--confirm-frames 10] [--ceiling 30] [--modes=0,2,6]
+    return await Packet.NinoTnc.Spike.TxDelaySweep.Run(
+        args.Length > 1 ? args[1] : "COM6", args.Length > 2 ? args[2] : "COM8", args[3..]);
+}
 if (args.Length > 0 && args[0] == "driver")
 {
     return await DriverSpike.Run(args.Length > 1 ? args[1] : "COM6", args.Length > 2 ? args[2] : "COM8");
