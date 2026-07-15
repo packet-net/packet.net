@@ -100,18 +100,22 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         ArgumentNullException.ThrowIfNull(config);
         int dspRate = DspRate(config.Mode);
         var capture = new AlsaCaptureSource(config.Device, config.CaptureRate);
-        AlsaAudioOutput? output = null;
+        IAudioOutput? output = null;
         IPttControl? ptt = null;
         try
         {
-            output = new AlsaAudioOutput(config.Device, dspRate);
+            // Cards commonly refuse a direct 12 kHz playback open; play at the (card-
+            // native) capture rate through the image-rejecting upsampler instead.
+            output = config.CaptureRate == dspRate
+                ? new AlsaAudioOutput(config.Device, dspRate)
+                : new UpsamplingAudioOutput(new AlsaAudioOutput(config.Device, config.CaptureRate), dspRate);
             ptt = CreatePtt(config.Ptt);
             return new SoundModemFrameTransport(config, capture, output, ptt, timeProvider);
         }
         catch
         {
             (ptt as IDisposable)?.Dispose();
-            output?.Dispose();
+            (output as IDisposable)?.Dispose();
             capture.Dispose();
             throw;
         }

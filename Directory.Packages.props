@@ -61,7 +61,7 @@
 
     <!-- Soundmodem (GPL-3.0-or-later sibling repo packet-net/pdn-soundmodem; AGPL node
          combines with it under GPLv3 §13 / AGPLv3 §13) -->
-    <PackageVersion Include="pdn-soundmodem" Version="0.1.1" />
+    <PackageVersion Include="pdn-soundmodem" Version="0.1.2" />
 
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
