@@ -981,9 +981,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Passed on the first-class, ax25-ts-parity-tracked Ax25ListenerOptions.CarrierSense
         // member (mirrors the TS carrierSense option). (The coming Nino KISS DCD extension lands
         // in the same gate.)
+        // A transport that IS its own carrier-sense source (the in-process soundmodem's
+        // native DCD; a future Nino KISS DCD extension) plugs into the same gate — probe
+        // the modem chain, not the decorators, which don't forward optional facets.
         ICarrierSense? carrierSense = radio is not null && radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense)
             ? new RadioCarrierSense(radio)
-            : null;
+            : modemTransport as ICarrierSense;
         // TX-complete→T1 (kiss.t1FromTxComplete): construction-time, like the
         // PacingKissModem wrap above — see KissParams.T1FromTxComplete.
         var options = BuildListenerOptions(

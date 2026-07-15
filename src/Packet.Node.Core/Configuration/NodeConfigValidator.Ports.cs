@@ -38,6 +38,8 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             RuleFor(p => (AxudpMultipointTransport)p.Transport).SetValidator(new AxudpMultipointValidator()));
         When(p => p.Transport is TaitTransparentTransportConfig, () =>
             RuleFor(p => (TaitTransparentTransportConfig)p.Transport).SetValidator(new TaitTransparentValidator()));
+        When(p => p.Transport is SoundModemTransportConfig, () =>
+            RuleFor(p => (SoundModemTransportConfig)p.Transport).SetValidator(new SoundModemValidator()));
 
         When(p => p.Ax25 is not null, () =>
             RuleFor(p => p.Ax25!).SetValidator(new Ax25ParamsValidator()));
@@ -560,5 +562,75 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
             .WithMessage("N1 (PACLEN) must be in 16..256 octets (the AX.25 v2.2 max info-field length).");
         RuleFor(p => p.MaxCachedPeers!.Value).GreaterThan(0).When(p => p.MaxCachedPeers.HasValue)
             .WithMessage("MaxCachedPeers must be positive.");
+    }
+}
+
+/// <summary>
+/// Validates a <see cref="SoundModemTransportConfig"/>: a known modem mode, a capture
+/// rate the modem's decimator can divide down to the mode's DSP rate, an in-passband
+/// centre frequency where one applies, and a parseable PTT spec.
+/// </summary>
+public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportConfig>
+{
+    private static readonly string[] KnownModes =
+    [
+        "afsk1200", "afsk1200-multi", "afsk1200-fx25", "afsk1200-fx25rx",
+        "bpsk300", "bpsk300-nocrc", "qpsk2400", "qpsk3600",
+        "fsk9600", "fsk9600-il2p",
+    ];
+
+    public SoundModemValidator()
+    {
+        RuleFor(t => t.Device)
+            .NotEmpty()
+            .WithMessage("soundmodem transport requires `device` (an ALSA device such as `default` or `plughw:1,0`).");
+
+        RuleFor(t => t.Mode)
+            .Must(mode => KnownModes.Contains(mode, StringComparer.OrdinalIgnoreCase))
+            .WithMessage(t =>
+                $"soundmodem `mode` '{t.Mode}' is not one of: {string.Join(", ", KnownModes)}.");
+
+        // The RX pipeline captures at CaptureRate and decimates by an integer factor to the
+        // mode's DSP rate: 48000 for the 9600 baseband modes, 12000 for everything else.
+        RuleFor(t => t)
+            .Must(t => t.CaptureRate > 0 && t.CaptureRate % DspRate(t.Mode) == 0)
+            .When(t => KnownModes.Contains(t.Mode, StringComparer.OrdinalIgnoreCase))
+            .WithMessage(t =>
+                $"soundmodem `captureRate` {t.CaptureRate} must be a positive multiple of {DspRate(t.Mode)} " +
+                $"(the DSP rate for mode '{t.Mode}'); 48000 works for every mode.");
+
+        // Centre frequency, where the mode has one: must leave room for the mode's occupied
+        // bandwidth inside the audio passband. The 9600 baseband modes have no carrier.
+        RuleFor(t => t.Frequency)
+            .Must(f => f == 0 || (f >= 300 && f <= 3300))
+            .When(t => !t.Mode.StartsWith("fsk9600", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("soundmodem `frequency` must be 0 (mode default) or 300–3300 Hz (the audio passband).");
+
+        RuleFor(t => t.Ptt)
+            .Must(ValidPttSpec)
+            .WithMessage(
+                "soundmodem `ptt` must be empty (VOX), `serial:<device>[:rts|:dtr]`, or `cm108:<hidraw>[:gpio]`.");
+    }
+
+    private static int DspRate(string mode) =>
+        mode.StartsWith("fsk9600", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
+
+    private static bool ValidPttSpec(string spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec))
+        {
+            return true;
+        }
+
+        string[] parts = spec.Split(':');
+        return parts switch
+        {
+            ["serial", var device] => !string.IsNullOrWhiteSpace(device),
+            ["serial", var device, "rts" or "dtr"] => !string.IsNullOrWhiteSpace(device),
+            ["cm108", var device] => !string.IsNullOrWhiteSpace(device),
+            ["cm108", var device, var gpio] =>
+                !string.IsNullOrWhiteSpace(device) && int.TryParse(gpio, out int pin) && pin is >= 1 and <= 8,
+            _ => false,
+        };
     }
 }

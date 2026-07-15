@@ -70,7 +70,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
         if (!fields.TryGetValue("kind", out var kind) || string.IsNullOrWhiteSpace(kind))
         {
             throw new YamlException(start, start, "a transport must declare a 'kind' (one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}).");
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}, {TransportKinds.SoundModem}).");
         }
 
         return Normalise(kind) switch
@@ -113,6 +113,14 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 LocalPort = Int(fields, "localport", 0, start),
                 Peers = peers ?? [],
             },
+            "soundmodem" => new SoundModemTransportConfig
+            {
+                Device = fields.GetValueOrDefault("device") ?? "default",
+                CaptureRate = Int(fields, "capturerate", 48000, start),
+                Mode = fields.GetValueOrDefault("mode") ?? "afsk1200",
+                Frequency = Int(fields, "frequency", 0, start),
+                Ptt = fields.GetValueOrDefault("ptt") ?? "",
+            },
             "taittransparent" => new TaitTransparentTransportConfig
             {
                 Device = fields.GetValueOrDefault("device") ?? "",
@@ -128,7 +136,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             },
             _ => throw new YamlException(start, start,
                 $"unknown transport kind '{kind}' (expected one of: " +
-                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent})."),
+                $"{TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}, {TransportKinds.NinoTncTcp}, {TransportKinds.KissTcp}, {TransportKinds.Axudp}, {TransportKinds.AxudpMultipoint}, {TransportKinds.TaitTransparent}, {TransportKinds.SoundModem})."),
         };
     }
 
@@ -222,6 +230,20 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                     emitter.Emit(new MappingEnd());
                 }
                 emitter.Emit(new SequenceEnd());
+                break;
+            case SoundModemTransportConfig sm:
+                EmitField(emitter, "kind", sm.Kind);
+                EmitField(emitter, "device", sm.Device);
+                EmitField(emitter, "captureRate", sm.CaptureRate.ToString(CultureInfo.InvariantCulture));
+                EmitField(emitter, "mode", sm.Mode);
+                if (sm.Frequency != 0)
+                {
+                    EmitField(emitter, "frequency", sm.Frequency.ToString(CultureInfo.InvariantCulture));
+                }
+                if (!string.IsNullOrWhiteSpace(sm.Ptt))
+                {
+                    EmitField(emitter, "ptt", sm.Ptt);
+                }
                 break;
             case TaitTransparentTransportConfig t:
                 EmitField(emitter, "kind", t.Kind);
