@@ -594,7 +594,7 @@ public class HardwareLoop10KBTransfer
         // persistToFlash=false applies the +16 non-persist offset so the
         // mode lives only for this power cycle — repeated theory
         // invocations don't burn flash.
-        await tnc.SetModeAsync(modeId, persistToFlash: false, ct).ConfigureAwait(false);
+        await tnc.SetModeAsync(modeId, persistToFlash: false, cancellationToken: ct).ConfigureAwait(false);
         await tnc.SetTxDelayAsync(txDelayTenMsUnits, ct).ConfigureAwait(false);
     }
 

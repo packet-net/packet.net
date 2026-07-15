@@ -77,8 +77,18 @@ internal static class ModeSurveyCommand
                 {
                     Console.WriteLine();
                     Console.WriteLine($"  ── ch {channel} / mode {mode.Mode} ({mode.Name}) ──");
-                    await SetModeWithSettleAsync(tncA, "TNC A", mode.Mode, source);
-                    await SetModeWithSettleAsync(tncB, "TNC B", mode.Mode, source);
+                    // A mode that didn't take poisons the cell: both ends score zero and the survey
+                    // reports it as "this mode doesn't work here" when the TNC was never in it
+                    // (#633). Skip the cell rather than publish a fabricated zero.
+                    bool aSet = await SetModeWithSettleAsync(tncA, "TNC A", mode.Mode, source);
+                    bool bSet = await SetModeWithSettleAsync(tncB, "TNC B", mode.Mode, source);
+                    if (!aSet || !bSet)
+                    {
+                        Console.WriteLine($"    ch {channel} / mode {mode.Mode}: SKIPPED — the mode never took on " +
+                                          (aSet ? "TNC B" : bSet ? "TNC A" : "either TNC") +
+                                          "; results for this cell would measure the wrong mode");
+                        continue;
+                    }
 
                     cells.Add(await RunDirectionAsync("A→B", tncA, tncB, radioB, mode, channel, rounds, source));
                     cells.Add(await RunDirectionAsync("B→A", tncB, tncA, radioA, mode, channel, rounds, source));
@@ -210,13 +220,30 @@ internal static class ModeSurveyCommand
     }
 
     /// <summary>
-    /// SETHW the mode (+16, RAM only), then transmit one throwaway settle
-    /// frame — the NinoTNC applies a changed setting from the SECOND frame —
-    /// and verify the running mode via GETALL.
+    /// SETHW the mode (+16, RAM only) — verified through the driver's GETALL
+    /// readback and retried until it takes (#633) — then transmit one throwaway
+    /// settle frame, the NinoTNC applying a changed setting from the SECOND
+    /// frame. Returns <c>false</c> when the mode never took, so the caller can
+    /// skip the cell instead of measuring the wrong mode.
     /// </summary>
-    private static async Task SetModeWithSettleAsync(NinoTncSerialPort tnc, string name, byte mode, Callsign source)
+    private static async Task<bool> SetModeWithSettleAsync(NinoTncSerialPort tnc, string name, byte mode, Callsign source)
     {
-        await tnc.SetModeAsync(mode, persistToFlash: false);
+        try
+        {
+            await tnc.SetModeAsync(mode, persistToFlash: false);
+            Console.WriteLine($"    {name}: SETHW {mode}+16 → GETALL confirms mode {mode} running");
+        }
+        catch (NinoTncModeNotAppliedException ex)
+        {
+            Console.WriteLine($"    {name}: SETHW {mode}+16 DID NOT TAKE — {ex.Message}");
+            return false;
+        }
+        catch (TimeoutException)
+        {
+            Console.WriteLine($"    {name}: SETHW {mode}+16 sent; GETALL verify timed out — treating the mode as unset");
+            return false;
+        }
+
         byte[] settle = ModeSurvey.BuildSettleFrame(source, mode).ToBytes();
         try
         {
@@ -226,19 +253,7 @@ internal static class ModeSurveyCommand
         {
             Console.WriteLine($"    {name}: settle frame TX-completion not echoed within {SettleTxTimeout.TotalSeconds:0} s (continuing)");
         }
-        try
-        {
-            var status = await tnc.GetAllAsync(TimeSpan.FromSeconds(3));
-            string running = status.RunningMode is { } rm
-                ? $"{rm.Mode} ({rm.Name})"
-                : $"unrecognised firmware byte 0x{status.FirmwareModeByte:X2}";
-            Console.WriteLine($"    {name}: SETHW {mode}+16 → GETALL running mode {running}" +
-                              (status.RunningMode?.Mode == mode ? string.Empty : " — MISMATCH"));
-        }
-        catch (TimeoutException)
-        {
-            Console.WriteLine($"    {name}: SETHW {mode}+16 sent; GETALL verify timed out");
-        }
+        return true;
     }
 
     /// <summary>

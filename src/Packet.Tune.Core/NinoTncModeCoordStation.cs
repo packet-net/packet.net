@@ -10,10 +10,11 @@ namespace Packet.Tune.Core;
 /// <summary>
 /// The live <see cref="IModeCoordStation"/>: a NinoTNC (mode switching + probe
 /// traffic) paired with a Tait CCDI radio (channel switching). Mode changes are
-/// SETHW +16 (RAM-only — a negotiation must never burn the flash) followed by a
-/// throwaway settle frame (the NinoTNC applies a changed setting from the SECOND
-/// frame) and a best-effort GETALL verify; channel changes are GO_TO_CHANNEL with a
-/// FUNCTION 0/5/2 verify and one retry.
+/// SETHW +16 (RAM-only — a negotiation must never burn the flash), verified through
+/// the driver's GETALL readback and retried until it takes (#633 — an ignored SETHW
+/// makes a negotiation measure the wrong mode), followed by a throwaway settle frame
+/// (the NinoTNC applies a changed setting from the SECOND frame); channel changes are
+/// GO_TO_CHANNEL with a FUNCTION 0/5/2 verify and one retry.
 /// </summary>
 public sealed class NinoTncModeCoordStation : IModeCoordStation
 {
@@ -57,7 +58,16 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
     {
         try
         {
-            await tnc.SetModeAsync(mode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
+            // Verified SETHW (#633): the driver settles, reads the running mode back via GETALL and
+            // retries. A negotiation that proceeds on an ignored SETHW measures the WRONG mode and
+            // scores zero both ways — indistinguishable from broken RF, which is what made this
+            // worth failing on rather than logging past.
+            await tnc.SetModeAsync(mode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            Log?.Invoke($"station: SETHW {mode}+16 → GETALL confirms mode {mode} running");
+        }
+        catch (NinoTncModeNotAppliedException ex)
+        {
+            throw new ModeCoordException($"SETHW {mode} did not take: {ex.Message}", ex);
         }
         catch (Exception ex) when (ex is TimeoutException or IOException or InvalidOperationException)
         {
@@ -83,21 +93,8 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
             Log?.Invoke($"station: settle frame TX-completion not echoed within {SettleTxTimeout.TotalSeconds:0} s (continuing)");
         }
 
-        // Best-effort verify — informational, never fatal (3.41 reports some
-        // modes under firmware bytes the catalog aliases handle).
-        try
-        {
-            var status = await tnc.GetAllAsync(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
-            string running = status.RunningMode is { } rm
-                ? string.Create(CultureInfo.InvariantCulture, $"{rm.Mode} ({rm.Name})")
-                : string.Create(CultureInfo.InvariantCulture, $"unrecognised firmware byte 0x{status.FirmwareModeByte:X2}");
-            Log?.Invoke($"station: SETHW {mode}+16 → GETALL running mode {running}" +
-                        (status.RunningMode?.Mode == mode ? string.Empty : " — MISMATCH"));
-        }
-        catch (TimeoutException)
-        {
-            Log?.Invoke($"station: SETHW {mode}+16 sent; GETALL verify timed out");
-        }
+        // No tail verify here any more: SetModeAsync above already proved the mode through GETALL
+        // (and retried until it took), so a second readback would only re-ask a settled question.
     }
 
     /// <inheritdoc/>

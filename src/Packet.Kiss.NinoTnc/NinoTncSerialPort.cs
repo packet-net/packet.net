@@ -55,9 +55,16 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
 
     /// <summary>
     /// The last mode this driver set via <see cref="SetModeAsync"/>, or <c>null</c> if none has
-    /// been set on this connection. KISS has no mode read-back, so this reflects what *we*
-    /// commanded — not a DIP-switch or flash-persisted mode chosen outside this connection.
+    /// been set on this connection. This is what *we* commanded — not a DIP-switch or
+    /// flash-persisted mode chosen outside this connection.
     /// </summary>
+    /// <remarks>
+    /// A verified <see cref="SetModeAsync"/> (the default) has proved this against the TNC's own
+    /// GETALL readback, and rewrites it to the observed mode — or <c>null</c> — when the mode
+    /// refused to take, so it never asserts a mode the TNC contradicted. A fire-and-forget send
+    /// (<see cref="NinoTncModeVerification.None"/>) leaves this as the commanded mode alone, which
+    /// SETHW does not guarantee (#633).
+    /// </remarks>
     public byte? CurrentMode
     {
         get
@@ -315,20 +322,141 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
     }
 
     /// <summary>
-    /// Set the NinoTNC operating mode via KISS SETHW (command 0x06).
+    /// The DIP position that means "Set from KISS" rather than naming an
+    /// operating mode — see <see cref="SetModeAsync"/> on why it is not verified.
     /// </summary>
+    private const byte SetFromKissMode = 15;
+
+    /// <summary>
+    /// Set the NinoTNC operating mode via KISS SETHW (command 0x06), and — by
+    /// default — verify the TNC actually applied it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SETHW is unacknowledged and <em>does</em> silently fail to apply (#633):
+    /// bench-observed twice on firmware 3.44 with DIP 1111, the TNC carrying on
+    /// in its previous mode while every downstream measurement scored zero in
+    /// both directions — which reads as broken RF, not an ignored command. So
+    /// this method sends the SETHW, lets the modem settle, reads the running
+    /// mode back with GETALL, retries, and throws
+    /// <see cref="NinoTncModeNotAppliedException"/> if the mode never takes.
+    /// Verification is the default precisely because the failure it catches is
+    /// invisible; pass <see cref="NinoTncModeVerification.None"/> for the old
+    /// fire-and-forget send.
+    /// </para>
+    /// <para>
+    /// The readback compares through <see cref="NinoTncCatalog"/>
+    /// (<see cref="NinoTncStatusFrame.RunningMode"/>), not raw firmware bytes,
+    /// so firmware-specific spellings of a mode — e.g. 3.41 reporting mode 14 as
+    /// <c>0x90</c> where 3.44 reports <c>0x23</c> — verify correctly rather than
+    /// reading as a mis-set.
+    /// </para>
+    /// <para>
+    /// <b>Mode 15 is never verified.</b> It is the "Set from KISS" escape — a
+    /// statement about where the mode comes from, not an operating mode to run —
+    /// so there is nothing meaningful to compare a readback against, and the
+    /// send is passed straight through.
+    /// </para>
+    /// </remarks>
     /// <param name="mode">DIP-switch-equivalent mode 0-14, or 15 ("Set from KISS").</param>
     /// <param name="persistToFlash">
     /// When <c>false</c> (default), the +16 non-persist offset is applied so
     /// the change does not touch the TNC's flash. Use <c>true</c> only when
     /// the user wants the choice to survive a reboot.
     /// </param>
-    /// <param name="cancellationToken">Cancels the underlying KISS SETHW send.</param>
-    public Task SetModeAsync(byte mode, bool persistToFlash = false, CancellationToken cancellationToken = default)
+    /// <param name="verification">
+    /// How hard to work at proving the mode took. <c>null</c> (default) uses
+    /// <see cref="NinoTncModeVerification.Default"/>: 1.5 s settle, GETALL
+    /// readback, up to 3 attempts.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the SETHW send, the settle and the readback.</param>
+    /// <exception cref="NinoTncModeNotAppliedException">
+    /// Verification was enabled and the TNC never reported running
+    /// <paramref name="mode"/>.
+    /// </exception>
+    public async Task SetModeAsync(
+        byte mode,
+        bool persistToFlash = false,
+        NinoTncModeVerification? verification = null,
+        CancellationToken cancellationToken = default)
     {
         byte payload = NinoTncSetHardware.BuildPayloadByte(mode, persistToFlash);
+        var verify = verification ?? NinoTncModeVerification.Default;
+
+        if (!verify.Enabled || mode == SetFromKissMode)
+        {
+            await SendSetHardwareAsync(mode, payload, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        NinoTncStatusFrame? lastStatus = null;
+        Exception? lastFailure = null;
+        int attempts = Math.Max(1, verify.Attempts);
+
+        for (int attempt = 1; attempt <= attempts; attempt++)
+        {
+            await SendSetHardwareAsync(mode, payload, cancellationToken).ConfigureAwait(false);
+
+            if (verify.SettleTime > TimeSpan.Zero)
+            {
+                await Task.Delay(verify.SettleTime, clock, cancellationToken).ConfigureAwait(false);
+            }
+
+            try
+            {
+                lastStatus = await GetAllAsync(verify.ReadBackTimeout, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                // A readback that never lands says nothing about the mode — re-send and re-ask.
+                lastFailure = ex;
+                lastStatus = null;
+                continue;
+            }
+
+            if (lastStatus.RunningMode?.Mode == mode)
+            {
+                return;
+            }
+        }
+
+        // Don't leave CurrentMode (and CurrentBitRateHz through it) asserting a
+        // mode the TNC just told us it isn't running — that is the same lie in a
+        // different place. Prefer what it reports; otherwise admit we don't know.
+        Volatile.Write(ref currentMode, lastStatus?.RunningMode?.Mode ?? -1);
+
+        throw new NinoTncModeNotAppliedException(
+            BuildModeNotAppliedMessage(mode, lastStatus, attempts),
+            mode,
+            lastStatus?.RunningMode,
+            lastStatus?.FirmwareModeByte,
+            attempts,
+            lastFailure);
+    }
+
+    private Task SendSetHardwareAsync(byte mode, byte payload, CancellationToken cancellationToken)
+    {
         Volatile.Write(ref currentMode, mode);
         return modem.SendKissAsync(KissCommand.SetHardware, new[] { payload }, cancellationToken);
+    }
+
+    private static string BuildModeNotAppliedMessage(byte mode, NinoTncStatusFrame? status, int attempts)
+    {
+        string requested = NinoTncCatalog.TryGetByMode(mode) is { } wanted
+            ? $"mode {mode} ({wanted.Name})"
+            : $"mode {mode}";
+
+        string observed = status switch
+        {
+            null => "no GETALL reply landed",
+            { RunningMode: { } running } => $"it is running mode {running.Mode} ({running.Name})",
+            { FirmwareModeByte: { } raw } => $"it reports firmware mode byte 0x{raw:X2}, unknown to NinoTncCatalog",
+            _ => "its GETALL reply carried no mode register",
+        };
+
+        return $"NinoTNC did not apply {requested} after {attempts} SETHW attempt(s) — {observed}. " +
+               "SETHW is unacknowledged and silently ignored on occasion; the mode is NOT set, so any " +
+               "traffic from here would run in the wrong mode (see packet-net/packet.net#633).";
     }
 
     /// <summary>Send a KISS TXDELAY (0x01) command. Units are 10 ms.</summary>

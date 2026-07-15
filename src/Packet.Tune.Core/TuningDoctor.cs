@@ -288,7 +288,7 @@ public static class TuningDoctor
             try
             {
                 var source = Callsign.Parse(opts.Callsign);
-                await tnc.SetModeAsync(opts.PinMode, persistToFlash: false, cancellationToken).ConfigureAwait(false);
+                await tnc.SetModeAsync(opts.PinMode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
                 await Task.Delay(250, cancellationToken).ConfigureAwait(false);
                 int bitRate = NinoTncCatalog.TryGetByMode(opts.PinMode) is { BitRateHz: > 0 } entry ? entry.BitRateHz : 1200;
                 var check = await TxDelayControlCheck.RunAsync(tnc, source, bitRate, log: null, cancellationToken)

@@ -1250,6 +1250,49 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-15 (later still) — SETHW is verified now: the mode change that silently didn't (#633)
+
+`NinoTncSerialPort.SetModeAsync` sent KISS SETHW and returned. The firmware never
+acknowledges it, and it **does silently fail to apply** — bench-observed twice on
+firmware 3.44 with DIP 1111: a SETHW to mode 11 didn't take and the TNC carried on
+running mode 8 (`BrdSwchMod:040F0091` where 11 would be `…00A2`). Nothing errored. The
+TNC kept transmitting, in the wrong mode, and every downstream measurement scored zero
+in both directions — which reads exactly like "this mode is broken" or "the RF/audio is
+broken", not "the command was ignored". It cost real debugging time on both occasions,
+and the retry that fixed it was indistinguishable from luck.
+
+The readback was already free: GETALL reports the running mode, and
+`NinoTncStatusFrame.RunningMode` already resolves `BrdSwchMod`'s low byte through
+`NinoTncCatalog`. The driver simply never asked. It does now — settle ~1.5 s (what the
+pdn-soundmodem bench rig settled on; the modem needs a moment and the frames right after
+a mode change are unreliable regardless), GETALL, compare **through the catalog** (so
+3.41's `0x90` → mode 14 alias verifies rather than reading as a mis-set), re-send up to
+3 times, then throw `NinoTncModeNotAppliedException` naming the mode it's actually stuck
+in. Knobs on `NinoTncModeVerification`; `None` restores fire-and-forget.
+
+Two judgement calls worth recording. **Throw, don't return false** — the whole complaint
+is that failure is silent, and a bool can be dropped with no compiler complaint,
+reproducing the bug one call site at a time; throwing also keeps the `Task` return, so
+callers stay source-compatible. **Verify by default** — an opt-in verify would leave
+every existing caller exactly as broken as before, which is the state that cost the two
+debugging sessions. Mode 15 is sent unverified: it's the "Set from KISS" escape, a
+statement about where the mode comes from, not a mode to run.
+
+Callers that changed mode and then trusted it are fixed too: `packet-tune set-mode`
+(exit 1 means NOT set, never "probably fine"), `mode-survey` (a cell whose mode didn't
+take is **skipped**, not published as a fabricated zero — the exact way this bug poisons
+results), `verify-control` (an unverified pin makes the TXDELAY arithmetic measure the
+old mode's bit rate and report a false "pot override"), `NinoTncModeCoordStation` (its
+best-effort verify logged `MISMATCH` and carried on; now a `ModeCoordException`), and
+`TransportFactory` — so a node whose configured mode didn't take now fails to open the
+port loudly instead of sitting deaf and mute all night for no visible reason.
+
+Unit-tested against a scripted fake TNC (`NinoTncSetModeVerifyTests`) that answers GETALL
+with a mode byte of the test's choosing — takes first time, takes on retry (the #633
+bench sequence exactly), never takes, the 3.41 alias, the settle, and the fire-and-forget
+opt-out. All four mutants (verification that accepts any readback / never retries /
+skips the settle / a catalog without the alias) were confirmed to turn the suite red.
+
 ### 2026-07-15 (later) — NinoTNC v44 firmware + pdn-soundmodem 0.2.0: 13 of 15 modes covered
 
 Tom pointed at NinoTNC firmware **v44** and its mode table. Three things followed.
@@ -8678,7 +8721,12 @@ a real driver sitting on top of it.
   `SetSlotTimeAsync` / `SetFullDuplexAsync`),
   `IAsyncEnumerable<KissFrame> ReadFramesAsync` plus a `FrameReceived`
   event. `SetModeAsync` defaults to non-persist (+16) — flash is not
-  burned during normal driver use.
+  burned during normal driver use — and to **verified** (#633): SETHW is
+  unacknowledged and silently fails to apply, so the driver settles
+  (1.5 s), reads the running mode back via GETALL through the catalog,
+  retries (3 attempts) and throws `NinoTncModeNotAppliedException` rather
+  than leaving the caller in a mode it never entered.
+  `NinoTncModeVerification.None` restores fire-and-forget.
 - `Packet.Kiss.KissAckMode` — framing-neutral ACKMODE helpers
   (`BuildSendFrame`, `TryParseAcknowledgement`, `TryParseDataFrame`).
   Lives in `Packet.Kiss` since ACKMODE is a generic G8BPQ extension,
