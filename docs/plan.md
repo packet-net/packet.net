@@ -1250,6 +1250,22 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-15 — pdn-soundmodem 0.1.3: NinoTNC-proven (all six pairs, bidirectional, sustained)
+
+Pin bumped 0.1.2 → 0.1.3. This is the release where the soundmodem stops being
+loopback/WAV-proven and becomes hardware-proven: the wired CM108↔NinoTNC rig
+(pdn-soundmodem `docs/ninotnc-loop.md` § Results, firmware 3.41) validated every
+supported mode pair — afsk1200, bpsk300, qpsk2400, qpsk3600, fsk9600 classic and IL2P —
+at 100% in both directions in sustained runs, with DCD assert/release lag measured
+against the audio envelope (assert within tens of ms, release always on the late/safe
+side for CSMA). 0.1.3 carries the three fixes that campaign found, all of which a
+`kind: soundmodem` port on CM108-class hardware needs: explicit ALSA capture start
+(CM108B returned EIO otherwise), re-prepare after playback drain (second transmission
+died EBADFD), continuous-time QPSK TX phase synthesis (NinoTNC missed 12–44% of our
+1800-baud bursts), plus ×2 DPLL interpolation making classic-9600 RX lossless.
+Deployment note for QPSK ports facing NinoTNCs: use ≥500 ms TXDELAY — its demod
+locking from cold sometimes misses a first 300 ms-preamble burst.
+
 ### 2026-07-15 — kind: soundmodem — the in-process soundcard modem port (draft until NuGet publish)
 
 First consumer of the sibling [`packet-net/pdn-soundmodem`](https://github.com/packet-net/pdn-soundmodem)
