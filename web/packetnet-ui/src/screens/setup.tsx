@@ -60,6 +60,9 @@ function buildPort(d: SetupData): PortConfig {
     // fit the simple first-port form), but the switch stays exhaustive over TransportKind:
     // seed an empty peers table the operator fills in later from the Ports editor.
     case "axudp-multipoint": transport = { kind: "axudp-multipoint", localPort: d.baud || 10093, peers: [] }; break;
+    // Same exhaustiveness note: the wizard doesn't offer the soundmodem (audio device,
+    // mode and PTT choices belong in the Ports editor / config), but seed a sane default.
+    case "soundmodem": transport = { kind: "soundmodem", device: d.device || "default", captureRate: 48000, mode: "afsk1200" }; break;
   }
   return { id: d.portId, enabled: true, transport, profile: null, ax25: null, kiss: null, beacon: null };
 }

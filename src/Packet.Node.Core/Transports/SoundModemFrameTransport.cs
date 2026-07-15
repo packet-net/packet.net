@@ -77,7 +77,12 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
                 $"output rate {output.SampleRate} != DSP rate {dspRate}", nameof(output));
         }
 
-        _channel = new SoundModemChannel(dspRate);
+        // The spectrum tap runs whether or not anyone is watching (a 4096-pt FFT at
+        // ~3 lines/s is sub-percent CPU); the waterfall SSE endpoint subscribes to the
+        // event. Line format: one dB-scaled byte per bin, 0 Hz .. dspRate/2.
+        _channel = new SoundModemChannel(
+            dspRate, spectrumSink: line => SpectrumLine?.Invoke(line));
+        SpectrumBinWidthHz = dspRate / 4096.0;
         _channel.AddModem(0, sink => CreateModem(config, dspRate, sink));
         _channel.FrameReceived += (_, frame) =>
             _inbound.Writer.TryWrite(new Ax25InboundFrame(frame, 0, _timeProvider.GetUtcNow()));
@@ -114,6 +119,14 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
 
     /// <inheritdoc/>
     public bool? ChannelBusy => _running ? _channel.ChannelBusy : null;
+
+    /// <summary>One waterfall line per FFT frame (~3/s): 2048 dB-scaled bytes covering
+    /// 0 Hz to half the DSP rate. The buffer is reused — copy if kept. Raised on the
+    /// receive-pump thread.</summary>
+    public event Action<ReadOnlyMemory<byte>>? SpectrumLine;
+
+    /// <summary>Width of one spectrum bin in hertz.</summary>
+    public double SpectrumBinWidthHz { get; }
 
     /// <inheritdoc/>
     public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)

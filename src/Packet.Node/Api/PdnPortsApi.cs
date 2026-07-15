@@ -255,6 +255,7 @@ public static class PdnPortsApi
             SessionCount: sessions,
             LastError: null,        // per-port last-error not surfaced yet (mirrors PdnReadApi).
             FramesIn: framesIn,
-            FramesOut: framesOut);
+            FramesOut: framesOut,
+            ChannelBusy: running is { Started: true } ? running.CarrierSense?.ChannelBusy : null);
     }
 }

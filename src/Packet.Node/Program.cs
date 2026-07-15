@@ -812,6 +812,7 @@ app.MapPdnPortDoctorApi();
 // Mutating verbs (session/next/stop) are admin-scoped + audited; the SSE event feed is read-scoped.
 // Mapped before the catch-all; specific routes win. See PdnPortTuningApi.
 app.MapPdnPortTuningApi();
+app.MapPdnPortSpectrumApi();
 
 // SDM station hail: POST /api/v1/ports/{id}/hail — query a peer's mode/modem/capabilities over the
 // side channel (admin-scoped + audited; it transmits). Mapped before the catch-all. See PdnPortHailApi.

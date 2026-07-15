@@ -117,10 +117,10 @@ export const NODE_STATUS: NodeStatus = {
 
 // 6.4 port status -------------------------------------------
 export const PORT_STATUS: Record<string, PortStatus> = {
-  "vhf-1": { id: "vhf-1", enabled: true, state: "up", sessionCount: 2, lastError: null, framesIn: 184213, framesOut: 95120 },
-  "uhf-2": { id: "uhf-2", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 52109, framesOut: 30877 },
-  "link-dn": { id: "link-dn", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 421882, framesOut: 410337 },
-  "hf-300": { id: "hf-300", enabled: false, state: "faulted", sessionCount: 0, lastError: "serial: /dev/ttyUSB1 not present", framesIn: 0, framesOut: 0 },
+  "vhf-1": { id: "vhf-1", enabled: true, state: "up", sessionCount: 2, lastError: null, framesIn: 184213, framesOut: 95120, channelBusy: false },
+  "uhf-2": { id: "uhf-2", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 52109, framesOut: 30877, channelBusy: true },
+  "link-dn": { id: "link-dn", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 421882, framesOut: 410337, channelBusy: null },
+  "hf-300": { id: "hf-300", enabled: false, state: "faulted", sessionCount: 0, lastError: "serial: /dev/ttyUSB1 not present", framesIn: 0, framesOut: 0, channelBusy: null },
 };
 
 // 6.4 sessions ----------------------------------------------
@@ -529,6 +529,36 @@ export function tuneAdvance(portId: string): void {
 
 // Drive a scripted tuning feed for a port. Returns an unsubscribe. onError is unused (the mock
 // session never self-ends — the screen ends it via Stop, which unsubscribes).
+/** Synthetic waterfall for VITE_API_MODE=mock: noise floor, a slowly drifting carrier,
+ *  and periodic packet-shaped bursts around 1700 Hz. ~3 lines/s, 2048 bins at 2.93 Hz. */
+export function driveSpectrumStream(
+  _id: string,
+  onLine: (bins: Uint8Array, binHz: number) => void,
+): () => void {
+  const bins = 2048;
+  const binHz = 12000 / 4096;
+  let t = 0;
+  const timer = window.setInterval(() => {
+    t += 1;
+    const line = new Uint8Array(bins);
+    for (let i = 0; i < bins; i++) line[i] = 30 + Math.floor(Math.random() * 25);
+    // Drifting carrier at ~2.2 kHz.
+    const carrier = Math.floor((2200 + 150 * Math.sin(t / 20)) / binHz);
+    for (let d = -2; d <= 2; d++) {
+      const k = carrier + d;
+      if (k >= 0 && k < bins) line[k] = Math.max(line[k], 220 - 40 * Math.abs(d));
+    }
+    // A packet burst around 1200–2200 Hz every few seconds.
+    if (t % 12 < 4) {
+      const lo = Math.floor(1000 / binHz);
+      const hi = Math.floor(2400 / binHz);
+      for (let k = lo; k < hi; k++) line[k] = Math.max(line[k], 150 + Math.floor(Math.random() * 60));
+    }
+    onLine(line, binHz);
+  }, 330);
+  return () => window.clearInterval(timer);
+}
+
 export function driveTuneStream(
   portId: string,
   onEvent: (e: TuningEvent) => void,

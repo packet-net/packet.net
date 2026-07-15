@@ -237,6 +237,20 @@ public static class PdnMetricsApi
             w.Sample(Ns + "port_sessions", p.SessionCount, ("port", p.Id));
         }
 
+        // Port-level carrier sense: whichever source feeds the listener's gate (radio
+        // hardware DCD or a channel-sensing transport such as the in-process soundmodem).
+        // Only emitted for ports that have a source — absence of the series means "no
+        // carrier sense here", mirroring the API's null.
+        w.Help(Ns + "port_channel_busy", "Port carrier sense: channel busy (1) / clear (0). Absent when the port has no carrier-sense source.");
+        w.Type(Ns + "port_channel_busy", "gauge");
+        foreach (var p in ports)
+        {
+            if (p.ChannelBusy is bool busy)
+            {
+                w.Sample(Ns + "port_channel_busy", busy ? 1 : 0, ("port", p.Id));
+            }
+        }
+
         // Frame totals come from the per-port frame tap directly (PortStatus), independent of
         // whether any (port,peer) link row exists.
         w.Help(Ns + "port_frames_received_total", "AX.25 frames received on the port.");

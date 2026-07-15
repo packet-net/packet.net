@@ -1101,6 +1101,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             RigDaemon = rigDaemon,
             LinkState = linkState,
             Listener = listener,
+            CarrierSense = carrierSense,
             Started = true,
         };
         lock (ports)
@@ -1405,6 +1406,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     RadioStatus = running.RadioStatus,
                     LinkState = running.LinkState,
                     Listener = running.Listener,
+                    CarrierSense = running.CarrierSense,
                     Started = running.Started,
                 };
             }

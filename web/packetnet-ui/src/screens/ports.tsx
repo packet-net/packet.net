@@ -81,6 +81,8 @@ function transportDesc(t: TransportConfig): string {
       return `${t.host}:${t.port}`;
     case "axudp-multipoint":
       return `local:${t.localPort} · ${t.peers.length} peer${t.peers.length === 1 ? "" : "s"}`;
+    case "soundmodem":
+      return `${t.device} · ${t.mode}${t.frequency ? ` @ ${t.frequency} Hz` : ""}`;
   }
 }
 
@@ -307,11 +309,30 @@ export function Ports() {
                 <div><p className="text-muted-foreground">Frames ↑</p><p className="tnum mt-0.5 font-mono font-semibold">{(st?.framesOut ?? 0).toLocaleString()}</p></div>
               </div>
 
+              {/* Port-level carrier sense (radio DCD or a channel-sensing transport such
+                  as the soundmodem); hidden when the port has no source. */}
+              {st?.channelBusy != null && (
+                <div className="mt-2 flex items-center gap-1.5 text-xs">
+                  <span className={cn(
+                    "h-2 w-2 rounded-full",
+                    st.channelBusy ? "bg-warning animate-pulse" : "bg-success",
+                  )} />
+                  <span className="text-muted-foreground">
+                    channel {st.channelBusy ? "busy" : "clear"}
+                  </span>
+                </div>
+              )}
+
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => openEdit(p)}>Edit</Button>
                 <Button variant="ghost" size="sm" title="Tune this link with a partner" onClick={() => navigate("/tools/tuner?port=" + p.id)}>
                   <Icon name="signal" size={14} /> Tune link
                 </Button>
+                {p.transport.kind === "soundmodem" && (
+                  <Button variant="ghost" size="sm" title="Live receive spectrum (set levels, centre the signal)" onClick={() => navigate("/tools/waterfall?port=" + p.id)}>
+                    <Icon name="signal" size={14} /> Waterfall
+                  </Button>
+                )}
                 <DoctorButton portId={p.id} />
                 {/* Restart drives the supervisor's serialized RestartPortAsync via
                     lifecycle(); only offered while the port is up (a 409 surfaces as a
@@ -402,6 +423,7 @@ function transportDefaults(kind: TransportConfig["kind"]): TransportConfig {
     case "nino-tnc": return { kind, device: "/dev/ttyACM0", baud: 57600, mode: 4 }; // wire baud fixed at 57600
     case "axudp": return { kind, host: "44.0.0.1", port: 10093, localPort: 10093 };
     case "axudp-multipoint": return { kind, localPort: 10093, peers: [] };
+    case "soundmodem": return { kind, device: "default", captureRate: 48000, mode: "afsk1200" };
   }
 }
 

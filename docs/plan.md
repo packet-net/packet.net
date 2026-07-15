@@ -1264,8 +1264,16 @@ completion resolves when the audio has fully left the device) and **`ICsmaChanne
 (`kiss:` channel-access params drive the modem's own p-persistent CSMA). Config subtype +
 validator + YAML round-trip arms per the closed-DU discipline; tests cover yaml/validator plus
 an end-to-end fake-audio RX→frames / frames→TX→demodulate loop and the carrier-sense trilean.
-Port-level status surface + spectrum SSE + waterfall UI are the next stage (per the research
-doc's §12.5 decision, 2026-07-15). **Blocked on**: the pdn-soundmodem 0.1.0 NuGet publish
+Stage 2 landed in the same PR (2026-07-15, per the research doc's §12.5 decision):
+**port-level status surface** — `RunningPort.CarrierSense` exposes whichever source feeds the
+listener's gate; `PortStatus.channelBusy` (API read models ×2 projections, node-api.yaml, web
+types/mock, a tri-state indicator on the Ports screen) and the `pdn_port_channel_busy` gauge —
+plus the **spectrum feed**: the transport publishes waterfall lines (always-on 4096-pt tap,
+~3/s), `GET /api/v1/ports/{id}/spectrum/events` (SSE, read-scoped, drop-oldest fan-out,
+documented in node-api.yaml) and a `/tools/waterfall` canvas screen (port picker, frequency
+grid, mock generator for UI dev). Drive-by fix: `/ports/{id}/tuning/events` was missing from
+the SSE `?access_token=` allowlist since it shipped (latent auth-on bug) — added alongside the
+spectrum path. **Blocked on**: the pdn-soundmodem 0.1.0 NuGet publish
 (pack+tests ran green on the runner; push skipped — the NUGET_API_KEY org secret needs
 granting to the new repo). Until then this PR restores only from a local dev feed.
 

@@ -30,6 +30,15 @@ public sealed class RunningPort : IAsyncDisposable
     public required Ax25Listener Listener { get; init; }
 
     /// <summary>
+    /// The carrier-sense source feeding this port's listener gate (OQ-012), when one
+    /// exists: a radio with hardware DCD (<c>RadioCarrierSense</c>) or a transport that
+    /// senses the channel itself (the in-process soundmodem; a future Nino KISS DCD
+    /// extension). Null = no source, the always-clear gate. Surfaced port-level on
+    /// <c>PortStatus.ChannelBusy</c> and the <c>pdn_port_channel_busy</c> metric.
+    /// </summary>
+    public ICarrierSense? CarrierSense { get; init; }
+
+    /// <summary>
     /// When a radio-control attachment is active (<see cref="PortConfig.Radio"/>), the
     /// modem transport underneath the RSSI-tagging wrapper — the KISS/CSMA-capable
     /// transport <see cref="Transport"/> decorates. The tagging wrapper does NOT own

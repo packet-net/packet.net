@@ -10,6 +10,7 @@
 // ============================================================
 import { useEffect, useRef, useState } from "react";
 import type {
+  SpectrumEvent,
   NodeStatus, PortStatus, PortConfig, SessionInfo, NetRomRoutingSnapshot, NodeConfig,
   LinkStats, PeerCapability, MonitorEvent, User, LogLine, ReconcileResult, ValidationProblem,
   RadioStatus, RadioScanResult, DoctorReport, HeadEndScan, HeadEndAdoptRequest, HeadEndKeyupResult,
@@ -1596,6 +1597,31 @@ export function subscribeTune(
     if (es.readyState === EventSource.CLOSED) onError?.();
   });
   return () => { es.removeEventListener("tuning", handler as EventListener); es.close(); };
+}
+
+export function subscribeSpectrum(
+  id: string,
+  onLine: (bins: Uint8Array, binHz: number) => void,
+  onError?: () => void,
+): () => void {
+  if (MODE === "mock") {
+    return mock.driveSpectrumStream(id, onLine);
+  }
+  const es = new EventSource(withTokenParam(`${BASE}/ports/${encodeURIComponent(id)}/spectrum/events`));
+  const handler = (e: MessageEvent) => {
+    try {
+      const evt = JSON.parse(e.data) as SpectrumEvent;
+      const raw = atob(evt.bins);
+      const bins = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bins[i] = raw.charCodeAt(i);
+      onLine(bins, evt.binHz);
+    } catch { /* ignore malformed */ }
+  };
+  es.addEventListener("spectrum", handler as EventListener);
+  es.addEventListener("error", () => {
+    if (es.readyState === EventSource.CLOSED) onError?.();
+  });
+  return () => { es.removeEventListener("spectrum", handler as EventListener); es.close(); };
 }
 
 // A small live frames-buffer hook for the monitor (ring buffer, newest first).
