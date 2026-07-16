@@ -309,7 +309,8 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
     /// <summary>The direct-FSK baseband modes run at 48 kHz (9600 has only 5 samples per
     /// bit even there); everything audio-band runs at 12 kHz.</summary>
     private static int DspRate(string mode) =>
-        mode.StartsWith("fsk", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
+        mode.StartsWith("fsk", StringComparison.OrdinalIgnoreCase)
+        || mode.StartsWith("c4fsk", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
 
     private static IModem CreateModem(SoundModemTransportConfig config, int dspRate, Action<byte[]> sink)
     {
@@ -333,6 +334,8 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
             "qpsk2400" => QpskModem.Qpsk2400(dspRate, sink),                                         // 11
             "qpsk3600" => QpskModem.Qpsk3600(dspRate, sink),                                         // 5
             "fsk4800-il2p" => FskModem.Fsk4800(dspRate, sink),                                       // 4
+            "c4fsk9600" => C4fskModem.C4fsk9600(dspRate, sink),                                      // 3
+            "c4fsk19200" => C4fskModem.C4fsk19200(dspRate, sink),                                    // 1
             "fsk9600" => FskModem.Fsk9600(dspRate, sink, FskFraming.ClassicHdlc),                    // 0
             "fsk9600-il2p" => FskModem.Fsk9600(dspRate, sink, FskFraming.Il2pCrc),                   // 2
             _ => throw new NotSupportedException($"unknown soundmodem mode '{config.Mode}'"),

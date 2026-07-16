@@ -578,7 +578,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
         "afsk300", "afsk300-il2p", "afsk300-il2pc",
         "bpsk300", "bpsk300-nocrc", "bpsk1200",
         "qpsk600", "qpsk2400", "qpsk3600",
-        "fsk4800-il2p", "fsk9600", "fsk9600-il2p",
+        "fsk4800-il2p", "fsk9600", "fsk9600-il2p", "c4fsk9600", "c4fsk19200",
     ];
 
     public SoundModemValidator()
