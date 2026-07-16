@@ -505,6 +505,27 @@ paths:
         "200": { description: "SSE stream (text/event-stream) of spectrum lines" }
         "404": { description: not a running soundmodem port }
 
+  /ports/{id}/quality:
+    parameters: [{ $ref: "#/components/parameters/PortId" }]
+    get:
+      tags: [tools]
+      summary: The soundmodem port's rolling per-frame receive quality (FEC/CRC diagnostics)
+      description: >
+        A JSON snapshot of a `kind: soundmodem` port's per-frame receive diagnostics (#635) — the
+        Reed-Solomon correction counts the deframers always computed. Body is camelCase
+        `{frames, cumulativeCorrectedBytes, framesWithCorrections, lastFrameCorrectedBytes, recent}`,
+        where `recent` is the last 32 frames newest-first, each
+        `{receivedAt, mode, frameBytes, correctedBytes, crcValid, frequencyOffsetHz, emphasisDb}`.
+        `cumulativeCorrectedBytes` is the early-warning number — persistently climbing means the link
+        is spending its FEC budget before frames start dropping. Deliberately NOT a bit-error rate
+        (BER is unobservable at a receiver); `correctedBytes` is an honest byte-error floor, and its
+        `null` (an unprotected HDLC framing carries no FEC count) is kept distinct from `0` (a clean
+        IL2P frame). Read-scoped. 404 for any other port kind or a port that is not running.
+      security: [{ bearerAuth: [read] }]
+      responses:
+        "200": { description: receive-quality snapshot }
+        "404": { description: not a running soundmodem port }
+
   /ports/{id}/tuning/next:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     post:

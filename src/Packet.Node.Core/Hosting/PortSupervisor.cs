@@ -819,6 +819,26 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // must target, because the tagging wrapper deliberately doesn't forward those.
         var modemTransport = transport;
 
+        // In-process soundmodem: attach the per-frame receive-quality early-warning log (#635).
+        // Cumulative FEC counters ride on the transport snapshot (pdn_port_fec_* + the /quality
+        // API); here we tap the per-frame push only to emit a structured line when a frame needed
+        // FEC repair — persistently non-zero corrections mean the link is spending its error
+        // budget before frames start dropping. Subscribed once per transport instance at bring-up:
+        // the reconcile-rebuild path (RebaselineConfig) reuses the same transport, so it does not
+        // re-subscribe. Handler runs on the receive-pump thread — the LoggerMessage call is cheap
+        // and self-gates on level.
+        if (modemTransport is SoundModemFrameTransport soundModemQuality)
+        {
+            string qualityPortId = port.Id;
+            soundModemQuality.FrameQualityDecoded += sample =>
+            {
+                if (sample.CorrectedBytes is int corrected && corrected > 0)
+                {
+                    LogSoundModemFecCorrections(qualityPortId, sample.Mode, corrected, sample.FrameBytes);
+                }
+            };
+        }
+
         // Node-managed rigctld (plug-and-play rig): a rig: block bound by device/model
         // (instead of host/port) means the NODE owns the daemon — spawn a supervised rigctld
         // on a loopback port allocated once, wait for it to listen, and point every rig dial
@@ -1607,6 +1627,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) — inbound frames carry RSSI/SNR metadata.")]
     private partial void LogRadioAttached(string id, string kind, string radioPort);
+
+    // Per-frame soundmodem FEC early-warning (#635): only emitted when a frame actually needed
+    // repair (CorrectedBytes > 0), so a clean link stays silent. Not called "BER" — it is an
+    // honest byte-error-rate floor, not a bit-error rate.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: inbound {Mode} frame needed FEC repair — {CorrectedBytes} of {FrameBytes} byte(s) corrected (early warning: persistently non-zero means the link is spending its error budget).")]
+    private partial void LogSoundModemFecCorrections(string id, string mode, int correctedBytes, int frameBytes);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads — capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
     private partial void LogRadioAttachedNoRssi(string id, string kind, string radioPort, RadioCapabilities capabilities);

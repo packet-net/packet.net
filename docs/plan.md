@@ -1250,6 +1250,47 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-16 — Per-frame FEC receive quality on the soundmodem port (#635)
+
+pdn-soundmodem **0.3.0** surfaces per-frame receive diagnostics the deframers always computed
+and used to discard — `IModem.FrameDecoded` / `SoundModemChannel.FrameReceivedWithQuality`
+carry a `FrameQuality` (mode/branch, FEC-corrected bytes, IL2P CRC state, winning multi-decoder
+offset/emphasis). The `Directory.Packages.props` pin moved 0.2.0 → 0.3.0 (a breaking bump — the
+new `IModem` event and the roll-off factory params; the node's only `IModem` construction site,
+`SoundModemFrameTransport.CreateModem`, recompiled against it with no source change, and there
+are no other `IModem` implementers in this repo).
+
+`SoundModemFrameTransport` now subscribes on the quality-carrying event (one inbound frame per
+decode, WITH its diagnostics) instead of the bare `FrameReceived`, folds each frame into a
+rolling per-port meter (`QualitySnapshot()` — cumulative FEC-corrected bytes, frames-with-
+corrections, last-frame corrected bytes, and a newest-first ring of the last 32 samples), and
+raises `FrameQualityDecoded` for the early-warning log. The quality lands on three honest
+surfaces, following the existing `pdn_port_channel_busy` / spectrum-SSE feature-detection
+pattern rather than a new parallel one:
+
+- **Metrics** (`PdnMetricsApi`): `pdn_port_fec_frames_total`, `pdn_port_fec_corrected_bytes_total`,
+  `pdn_port_fec_corrected_frames_total` (counters, from zero so `rate()` works), and the
+  `pdn_port_fec_last_frame_corrected_bytes` gauge. Soundmodem ports only — the whole bucket is
+  absent otherwise, mirroring the radio bucket.
+- **Status API**: `GET /api/v1/ports/{id}/quality` (read-scoped; 404 for non-soundmodem/not-running
+  ports) returns the snapshot for the waterfall screen to consume. The UI wiring is deliberately
+  out of scope — follow-up.
+- **Log**: an Information line per frame with corrections > 0 (`PortSupervisor.LogSoundModemFecCorrections`).
+
+Semantics preserved from the `FrameQuality` XML docs: **`CorrectedBytes` null (HDLC, no FEC
+count) is kept distinct from 0 (clean IL2P)** — never coalesced, at the meter, the gauge (sample
+omitted when null), and the API. It is deliberately **not** called BER — it is an honest
+byte-error floor, not a bit-error rate (true BER is unobservable at a receiver); the multi-decoder
+offset/emphasis is only directionally meaningful on marginal signals, noted in the doc-comment.
+This is the in-process path only; the daemon's opt-in `--quality-frames` KISS surface is untouched.
+
+No ax25-ts parity surface moved (`Ax25ParseOptions` / `Ax25SessionQuirks` / `XidParseOptions` /
+presets / `Ax25Listener` are unchanged; `Ax25InboundFrame` was deliberately **not** widened —
+FEC diagnostics are a soundmodem concern, not a shared transport-abstraction one), so no TS leg
+is required. Tests: `SoundModemFrameTransportTests` (quality attached end-to-end, null-vs-zero
+preserved, counters accumulate) + `SoundModemQualityMetricsExporterTests`; the null-vs-zero test
+was mutation-checked (coalescing null→0 turns it red).
+
 ### 2026-07-15 (later still) — SETHW is verified now: the mode change that silently didn't (#633)
 
 `NinoTncSerialPort.SetModeAsync` sent KISS SETHW and returned. The firmware never

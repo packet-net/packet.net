@@ -11,6 +11,7 @@ using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
 using Packet.Node.Core.Radios;
 using Packet.Node.Core.Telemetry;
+using Packet.Node.Core.Transports;
 
 namespace Packet.Node.Api;
 
@@ -93,6 +94,7 @@ public static class PdnMetricsApi
 
         WriteNodeHealth(w, host, config, clock, traffic);
         WritePortAndLinkStats(w, host, config);
+        WriteSoundModemQuality(w, CollectSoundModemQuality(host.Supervisor));
         WriteTransportReconnecting(w, CollectTransportLinkStates(host.Supervisor));
         WriteRadioStats(w, RadioReadModels.All(host.Supervisor, config.Current));
         WriteLinkSnr(w, host.Heard);
@@ -316,6 +318,85 @@ public static class PdnMetricsApi
         foreach (var p in ports)
         {
             w.Sample(Ns + "port_outstanding_iframes", SessionRoll(sessionRoll, p.Id).Outstanding, ("port", p.Id));
+        }
+    }
+
+    // ─── per-port in-process-soundmodem receive-quality bucket (FEC corrections; #635) ─────
+
+    // One (port, snapshot) row per running soundmodem port, read off the transport's rolling
+    // quality meter (the SAME state the /api/v1/ports/{id}/quality surface serves — no second
+    // store). ModemTransport, not Transport: an RSSI-tagging wrapper (radio-attached soundmodem
+    // port) doesn't forward the concrete type. Ordered by port for stable output.
+    private static List<(string PortId, SoundModemQualitySnapshot Snapshot)> CollectSoundModemQuality(
+        PortSupervisor? supervisor)
+    {
+        var rows = new List<(string, SoundModemQualitySnapshot)>();
+        if (supervisor is null)
+        {
+            return rows;
+        }
+        foreach (var portId in supervisor.RunningPortIds.OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (supervisor.GetPort(portId)?.ModemTransport is SoundModemFrameTransport modem)
+            {
+                rows.Add((portId, modem.QualitySnapshot()));
+            }
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// The per-port in-process-soundmodem receive-quality counters (#635): cumulative FEC-corrected
+    /// bytes, frames that needed repair, and the last frame's corrected count. These are the
+    /// Reed-Solomon correction counts the deframers always computed — an honest <em>byte</em>-error
+    /// floor, deliberately NOT a bit-error rate (BER is unobservable at a receiver). Only ports
+    /// running the in-process soundmodem contribute, so the whole bucket is <em>absent</em> on a
+    /// node with no soundmodem ports (identical output to before this bucket existed). The counters
+    /// are emitted from zero so <c>rate()</c> works from the first scrape; the last-frame gauge omits
+    /// a port whose most recent frame carried no FEC count (HDLC) or that has decoded nothing yet —
+    /// an absent sample is "no count", never a misleading 0 (which specifically means a clean FEC
+    /// frame). Exposed (internal) so a test can format synthetic snapshots without a live supervisor.
+    /// </summary>
+    internal static void WriteSoundModemQuality(
+        PrometheusTextWriter w, IReadOnlyList<(string PortId, SoundModemQualitySnapshot Snapshot)> rows)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        w.Help(Ns + "port_fec_frames_total", "Inbound frames on the port that reported receive-quality diagnostics (in-process soundmodem ports only).");
+        w.Type(Ns + "port_fec_frames_total", "counter");
+        foreach (var (portId, s) in rows)
+        {
+            w.Sample(Ns + "port_fec_frames_total", s.Frames, ("port", portId));
+        }
+
+        w.Help(Ns + "port_fec_corrected_bytes_total", "Cumulative bytes forward-error-correction repaired on inbound frames — an honest byte-error floor, NOT a bit-error rate. 0 on a clean/HDLC link.");
+        w.Type(Ns + "port_fec_corrected_bytes_total", "counter");
+        foreach (var (portId, s) in rows)
+        {
+            w.Sample(Ns + "port_fec_corrected_bytes_total", s.CumulativeCorrectedBytes, ("port", portId));
+        }
+
+        w.Help(Ns + "port_fec_corrected_frames_total", "Inbound frames that needed at least one byte of FEC repair — the link spending its error budget before frames start dropping.");
+        w.Type(Ns + "port_fec_corrected_frames_total", "counter");
+        foreach (var (portId, s) in rows)
+        {
+            w.Sample(Ns + "port_fec_corrected_frames_total", s.FramesWithCorrections, ("port", portId));
+        }
+
+        // Gauge: the most recent frame's FEC count. Omitted when the last frame carried no count
+        // (HDLC) or none has decoded — an absent sample is "unknown", never a misleading 0.
+        var withLast = rows.Where(r => r.Snapshot.LastFrameCorrectedBytes is not null).ToList();
+        if (withLast.Count > 0)
+        {
+            w.Help(Ns + "port_fec_last_frame_corrected_bytes", "Bytes FEC repaired on the most recent inbound frame. Absent when the last frame carried no FEC count (HDLC) — distinct from 0, a clean FEC frame.");
+            w.Type(Ns + "port_fec_last_frame_corrected_bytes", "gauge");
+            foreach (var (portId, s) in withLast)
+            {
+                w.Sample(Ns + "port_fec_last_frame_corrected_bytes", s.LastFrameCorrectedBytes!.Value, ("port", portId));
+            }
         }
     }
 

@@ -182,4 +182,118 @@ public class SoundModemFrameTransportTests
             new FakeCapture(DspRate), new FakeOutput(), new NullPtt());
         act.Should().Throw<ArgumentException>();
     }
+
+    // ─── per-frame FEC receive-quality (#635) ─────────────────────────────────────────────
+
+    /// <summary>Drives one modulated frame through the fake capture pump and returns the
+    /// inbound frame the transport delivered — the same recipe the end-to-end test uses.</summary>
+    private static async Task<Ax25InboundFrame> ReceiveOneAsync(
+        SoundModemFrameTransport transport, FakeCapture capture, float[] audio)
+    {
+        capture.Feed(NoiseFloor(DspRate / 2));
+        capture.Feed(audio);
+        capture.Feed(NoiseFloor(2 * DspRate));
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await foreach (Ax25InboundFrame inbound in transport.ReceiveAsync(timeout.Token))
+        {
+            return inbound;
+        }
+
+        throw new InvalidOperationException("no frame decoded");
+    }
+
+    [Fact]
+    public async Task Il2p_Frame_Attaches_Zero_Corrected_Bytes_Quality_End_To_End()
+    {
+        byte[] frame = SampleFrame();
+        var capture = new FakeCapture(DspRate);
+        await using var transport = new SoundModemFrameTransport(
+            Config() with { Mode = "qpsk2400" }, capture, new FakeOutput(), new NullPtt());
+
+        var pushed = new List<SoundModemFrameQuality>();
+        transport.FrameQualityDecoded += pushed.Add;
+
+        float[] audio = QpskModem.Qpsk2400(DspRate, _ => { }).Modulate(frame, txDelayMilliseconds: 200);
+        Ax25InboundFrame inbound = await ReceiveOneAsync(transport, capture, audio);
+        inbound.Ax25.ToArray().Should().Equal(frame);
+
+        // The snapshot is deterministic the moment the frame is delivered (the meter folds the
+        // quality in before queuing the frame).
+        SoundModemQualitySnapshot snap = transport.QualitySnapshot();
+        snap.Frames.Should().Be(1);
+        snap.CumulativeCorrectedBytes.Should().Be(0);
+        snap.FramesWithCorrections.Should().Be(0);
+        // A clean IL2P frame is 0 corrected bytes — explicitly NOT null (that is HDLC's value).
+        snap.LastFrameCorrectedBytes.Should().Be(0);
+
+        snap.Recent.Should().ContainSingle();
+        SoundModemFrameQuality sample = snap.Recent[0];
+        sample.CorrectedBytes.Should().Be(0);
+        sample.CrcValid.Should().BeTrue();
+        sample.Mode.Should().Be("qpsk2400-il2pc");
+        sample.FrameBytes.Should().Be(frame.Length);
+        sample.ReceivedAt.Should().Be(inbound.ReceivedAt);
+
+        // The push event carried the same sample the snapshot did.
+        pushed.Should().ContainSingle().Which.Should().BeEquivalentTo(sample);
+    }
+
+    [Fact]
+    public async Task Hdlc_Frame_Preserves_Null_Corrected_Bytes_Not_Zero()
+    {
+        byte[] frame = SampleFrame();
+        var capture = new FakeCapture(DspRate);
+        await using var transport = new SoundModemFrameTransport(
+            Config(), capture, new FakeOutput(), new NullPtt()); // afsk1200 = classic HDLC
+
+        float[] audio = new Afsk1200Modem(DspRate, _ => { }).Modulate(frame, txDelayMilliseconds: 200);
+        await ReceiveOneAsync(transport, capture, audio);
+
+        SoundModemQualitySnapshot snap = transport.QualitySnapshot();
+        snap.Frames.Should().Be(1);
+        // HDLC carries no FEC count: an FCS pass proves zero residual errors, not an error count.
+        // This must stay null — coalescing it to 0 would falsely read as "clean FEC frame".
+        snap.LastFrameCorrectedBytes.Should().BeNull(
+            "HDLC has no FEC count — null (no count) is a different fact from 0 (clean IL2P)");
+        snap.CumulativeCorrectedBytes.Should().Be(0);
+        snap.FramesWithCorrections.Should().Be(0);
+
+        snap.Recent.Should().ContainSingle();
+        snap.Recent[0].CorrectedBytes.Should().BeNull();
+        snap.Recent[0].CrcValid.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Quality_Counters_Accumulate_Across_Frames()
+    {
+        byte[] frame = SampleFrame();
+        var capture = new FakeCapture(DspRate);
+        await using var transport = new SoundModemFrameTransport(
+            Config() with { Mode = "qpsk2400" }, capture, new FakeOutput(), new NullPtt());
+
+        // Two clean IL2P frames: Frames climbs to 2, corrections stay 0 (clean link), and both
+        // land in the recent ring newest-first.
+        capture.Feed(NoiseFloor(DspRate / 2));
+        capture.Feed(QpskModem.Qpsk2400(DspRate, _ => { }).Modulate(frame, txDelayMilliseconds: 200));
+        capture.Feed(NoiseFloor(DspRate));
+        capture.Feed(QpskModem.Qpsk2400(DspRate, _ => { }).Modulate(frame, txDelayMilliseconds: 200));
+        capture.Feed(NoiseFloor(2 * DspRate));
+
+        int received = 0;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await foreach (Ax25InboundFrame _ in transport.ReceiveAsync(timeout.Token))
+        {
+            if (++received == 2)
+            {
+                break;
+            }
+        }
+
+        SoundModemQualitySnapshot snap = transport.QualitySnapshot();
+        snap.Frames.Should().Be(2);
+        snap.CumulativeCorrectedBytes.Should().Be(0);
+        snap.FramesWithCorrections.Should().Be(0);
+        snap.Recent.Should().HaveCount(2);
+    }
 }
