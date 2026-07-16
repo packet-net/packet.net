@@ -813,6 +813,7 @@ app.MapPdnPortDoctorApi();
 // Mapped before the catch-all; specific routes win. See PdnPortTuningApi.
 app.MapPdnPortTuningApi();
 app.MapPdnPortSpectrumApi();
+app.MapPdnPortQualityApi();
 
 // SDM station hail: POST /api/v1/ports/{id}/hail — query a peer's mode/modem/capabilities over the
 // side channel (admin-scoped + audited; it transmits). Mapped before the catch-all. See PdnPortHailApi.

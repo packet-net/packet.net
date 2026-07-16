@@ -43,7 +43,13 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
     private readonly CancellationTokenSource _stopping = new();
     private readonly Thread _rxPump;
     private readonly Task _transmitter;
+    private readonly SoundModemQualityMeter _quality = new(RecentQualityCapacity);
     private volatile bool _running;
+
+    /// <summary>How many recent per-frame quality samples the rolling
+    /// <see cref="SoundModemQualitySnapshot.Recent"/> ring keeps (the waterfall detail bound;
+    /// mirrors the heard log's last-32 pre-data-carrier window).</summary>
+    private const int RecentQualityCapacity = 32;
 
     /// <summary>Creates the transport over explicit audio endpoints (the test seam; use
     /// <see cref="Open"/> for the ALSA production path). Pumps start immediately.</summary>
@@ -84,8 +90,21 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
             dspRate, spectrumSink: line => SpectrumLine?.Invoke(line));
         SpectrumBinWidthHz = dspRate / 4096.0;
         _channel.AddModem(0, sink => CreateModem(config, dspRate, sink));
-        _channel.FrameReceived += (_, frame) =>
-            _inbound.Writer.TryWrite(new Ax25InboundFrame(frame, 0, _timeProvider.GetUtcNow()));
+        // Subscribe on the quality-carrying event rather than the bare FrameReceived: the
+        // library raises it once per decoded frame, right after (and for the same decode as)
+        // the frame sink, so one inbound frame is delivered per decode WITH its FEC/CRC/branch
+        // diagnostics attached. The quality is folded into the rolling per-port meter (metrics +
+        // the /quality API read it) and pushed to FrameQualityDecoded subscribers (the port
+        // supervisor's early-warning log line).
+        _channel.FrameReceivedWithQuality += (_, frame, quality) =>
+        {
+            DateTimeOffset receivedAt = _timeProvider.GetUtcNow();
+            // Fold the quality in BEFORE queuing the frame, so a consumer that observes the
+            // inbound frame always sees the matching quality already reflected in QualitySnapshot.
+            SoundModemFrameQuality sample = _quality.Record(quality, receivedAt);
+            _inbound.Writer.TryWrite(new Ax25InboundFrame(frame, 0, receivedAt));
+            FrameQualityDecoded?.Invoke(sample);
+        };
 
         _transmitter = _channel.RunTransmitterAsync(output, ptt, _stopping.Token);
         _rxPump = new Thread(RxPump) { IsBackground = true, Name = "soundmodem-rx" };
@@ -131,6 +150,19 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
 
     /// <summary>Width of one spectrum bin in hertz.</summary>
     public double SpectrumBinWidthHz { get; }
+
+    /// <summary>Raised once per decoded inbound frame with its receive-quality diagnostics — FEC
+    /// corrections, CRC state, winning decoder branch (see <see cref="SoundModemFrameQuality"/>).
+    /// Fired on the receive-pump thread, right as the matching <c>Ax25InboundFrame</c> is queued;
+    /// keep the handler cheap. Used by the port supervisor for the corrections early-warning log
+    /// line — the cumulative counters live on <see cref="QualitySnapshot"/> instead.</summary>
+    public event Action<SoundModemFrameQuality>? FrameQualityDecoded;
+
+    /// <summary>A point-in-time rolling summary of inbound receive quality on this port —
+    /// cumulative FEC counters plus the most recent per-frame samples. Pulled by the Prometheus
+    /// exporter (<c>pdn_port_fec_*</c>) and the port quality API; safe to call from any thread.
+    /// Returns zeroed counters and an empty ring before the first frame decodes.</summary>
+    public SoundModemQualitySnapshot QualitySnapshot() => _quality.Snapshot();
 
     /// <inheritdoc/>
     public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
