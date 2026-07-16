@@ -1250,6 +1250,15 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-16 — pdn-soundmodem 0.4.0: C4FSK lands, NinoTNC mode coverage complete (15/15)
+
+Pin 0.3.0 → 0.4.0; `kind: soundmodem` ports gain `c4fsk9600` (NinoTNC mode 3) and
+`c4fsk19200` (mode 1) — the last two uncovered modes. The wire format is MMDVM-TNC
+"Mode 2" (G4KLX), which the NinoTNC inherits: 0x77 preamble, outer-only sync 0x5D57DF7F,
+standard IL2P bytes on 4-PAM. Bench: us→NinoTNC 8/8 both modes at first live attempt;
+NinoTNC→us 6-7/8 with RX headroom tracked by pdn-soundmodem's parity suite. Full detail
+in pdn-soundmodem plan §17 + docs/ninotnc-loop.md.
+
 ### 2026-07-16 — Per-frame FEC receive quality on the soundmodem port (#635)
 
 pdn-soundmodem **0.3.0** surfaces per-frame receive diagnostics the deframers always computed
