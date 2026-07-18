@@ -6,6 +6,7 @@
 
 **As of:** 2026-07-18
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem config-UI follow-up** — the `ardop`/`paging` service blocks got a Services-tab form (were Raw-YAML only) and the per-frame `/quality` diagnostics got a FrameQuality readout on the Waterfall screen (new `api.portQuality`). Rides node-v0.33.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem 0.5.0→0.6.0 integration** — `ModemCatalog` upstreamed into the pdn-soundmodem library (one source of truth for mode→modem / DSP-rate / gating; published v0.6.0); the node caught up and exposed FreeDV datac + MS110D App-D + C4FSK modes, the `bpsk300` differential diversity bank (bpsk1200 kept legacy), `flex:` FlexRadio device support, and ARDOP + POCSAG as hosted services (ardopcf-compatible host — BPQ/Pat/Winlink drive it). Node PRs #638–#642; ships **node-v0.32.0**](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **lib-v0.23.0 downstream cascade** — axcall + packet-term-tui bumped `Packet.*` 0.22.0→0.23.0, built + tested against the published nuget.org packages, merged on green CI (axcall#20 / packet-term-tui#25), and released as **v0.2.20** each (six-platform binaries, 6 assets, verified non-draft). Tags cut via each repo's `release.yml` `workflow_dispatch` (branch-scoped credential can't push tags). Closes the lib-v0.23.0 entry's remaining Step 3; releasing.md cascade complete for 0.23.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **RELEASE lib-v0.23.0 + node-v0.31.0** — the whole rig-control arc ships: 17 NuGet packages verified indexed (DcdRead/SignalStrengthRead, RigRadioControl), and the node release carries the rig card + Tune, the scan/adopt wizard, ManagedRigDaemon and `radio: kind rig` (deb gains `Depends: libhamlib-utils`). Version-train divergence learning fixed in releasing.md (#618). Downstream axcall/packet-term-tui pin bumps outstanding](#17-amendment-log)
@@ -1250,6 +1251,25 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-18 — Soundmodem config-UI follow-up: ARDOP/POCSAG service forms + FrameQuality readout
+
+Closed the two UI gaps left by the soundmodem integration (previous entry): the `ardop`/`paging`
+service blocks were config-file/Raw-YAML only, and the per-frame `/quality` diagnostics had no UI
+consumer.
+
+- **Services forms:** `ardop`/`paging` added to the UI `NodeConfig` type + `APPLY_IMPACT` map and a
+  reusable `AudioServiceSection` in the config editor's Services tab (enabled/device/rate/bind/port/
+  ptt, + baud/invert-polarity for paging, + the flex slice sub-fields; captureRate/ptt gated for a
+  `flex:` device). Impact badge is `port-restart`; note the **server `ReconcilePlanner` does not yet
+  special-case these blocks**, so the live reconcile preview is generic for them (the hosted
+  services still self-reconcile on config-apply via `IConfigProvider.OnChange` — functional, just
+  not itemised in the preview). Small server follow-up if itemised preview is wanted.
+- **FrameQuality readout:** new `api.portQuality(id)` client + a compact readout on the Waterfall
+  screen (frames, FEC-corrected frames/bytes, last-frame mode/frequency-offset), self-gating to a
+  running soundmodem port via the endpoint's 404. `docs/node-api.yaml` schema added.
+
+Rides node-v0.33.0.
 
 ### 2026-07-18 — Soundmodem 0.5.0→0.6.0 integration: ModemCatalog, new modes, Flex, ARDOP/POCSAG
 
