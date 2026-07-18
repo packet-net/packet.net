@@ -1,3 +1,5 @@
+using Packet.SoundModem.Modems;
+
 namespace Packet.Node.Core.Configuration;
 
 /// <summary>
@@ -360,21 +362,34 @@ public sealed record SoundModemTransportConfig : TransportConfig
     /// (12000, or 48000 for the direct-FSK modes).</summary>
     public int CaptureRate { get; init; } = 48000;
 
-    /// <summary>Modem mode. Every mode below is bench-proven wire-compatible with the
-    /// NinoTNC mode in brackets (pdn-soundmodem docs/ninotnc-loop.md § Coverage):
-    /// <c>afsk1200</c> (6), <c>afsk1200-il2p</c> (7), <c>afsk300</c> (12),
-    /// <c>afsk300-il2p</c> (13), <c>afsk300-il2pc</c> (14), <c>bpsk300</c> (8),
-    /// <c>bpsk1200</c> (10), <c>qpsk600</c> (9), <c>qpsk2400</c> (11), <c>qpsk3600</c> (5),
-    /// <c>fsk4800-il2p</c> (4), <c>fsk9600</c> (0), <c>fsk9600-il2p</c> (2). Plus
-    /// <c>afsk1200-multi</c> (a multi-decoder bank — best for busy APRS channels),
-    /// <c>afsk1200-fx25</c> / <c>afsk1200-fx25rx</c> (FX.25 FEC; the NinoTNC has no FX.25)
-    /// and <c>bpsk300-nocrc</c>.</summary>
+    /// <summary>Modem mode. The accepted set is <see cref="ModemCatalog.KnownModes"/> (bar
+    /// <c>bpsk1200-multi</c>, which is not exposed): the NinoTNC-compatible AFSK/BPSK/QPSK/FSK
+    /// modes, the C4FSK modes (<c>c4fsk9600</c>/<c>c4fsk19200</c>), the FreeDV HF OFDM modes
+    /// (<c>freedv-datac0/1/3/4/13/14</c>) and the MIL-STD-188-110D App-D modes
+    /// (<c>ms110d-wn0…6/13</c>). <c>bpsk300</c> is the differential frequency-diversity bank
+    /// (tune it with <see cref="OffsetPairs"/>/<see cref="OffsetStepHz"/>); <c>bpsk1200</c>
+    /// stays the legacy single-carrier modem.</summary>
     public string Mode { get; init; } = "afsk1200";
 
     /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK —
     /// tones 1200/2200 at 1200 baud, 1600/1800 at 300; 1500 BPSK and QPSK-600/2400,
-    /// 1650 QPSK-3600; not applicable to the direct-FSK baseband modes).</summary>
+    /// 1650 QPSK-3600). Only the variable-centre families accept one
+    /// (<see cref="ModemCatalog.AcceptsCentreFrequency"/>); it is rejected for the baseband
+    /// fsk*/c4fsk* and the fixed-centre freedv-*/ms110d-* modes.</summary>
     public double Frequency { get; init; }
+
+    /// <summary>Frequency-diversity bank width for the <c>bpsk300</c> bank: <c>2·OffsetPairs+1</c>
+    /// stepped decoder branches (0 = a plain single modem). Null ⇒ 4. Ignored by non-bank
+    /// modes.</summary>
+    public int? OffsetPairs { get; init; }
+
+    /// <summary>Hz step between <c>bpsk300</c> diversity-bank branches. Null ⇒ the baud-derived
+    /// default (baud/40).</summary>
+    public double? OffsetStepHz { get; init; }
+
+    /// <summary>PSK detector for the bpsk*/qpsk* modes: <c>differential</c> or <c>coherent</c>.
+    /// Null ⇒ the per-family default (BPSK differential, QPSK coherent).</summary>
+    public string? PskDetector { get; init; }
 
     /// <summary>PTT control spec: empty for VOX, <c>serial:/dev/ttyUSB0[:rts|:dtr]</c>,
     /// or <c>cm108:/dev/hidraw0[:gpio]</c>.</summary>

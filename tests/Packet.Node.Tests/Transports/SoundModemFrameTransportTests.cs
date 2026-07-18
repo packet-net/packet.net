@@ -1,3 +1,4 @@
+using M0LTE.Radio.Audio;
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Transports;

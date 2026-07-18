@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using M0LTE.Dsp;
+using M0LTE.Radio.Audio;
 using Packet.Ax25.Transport;
 using Packet.Node.Core.Configuration;
 using Packet.SoundModem.Audio;
@@ -306,41 +308,41 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         }
     }
 
-    /// <summary>The direct-FSK baseband modes run at 48 kHz (9600 has only 5 samples per
-    /// bit even there); everything audio-band runs at 12 kHz.</summary>
-    private static int DspRate(string mode) =>
-        mode.StartsWith("fsk", StringComparison.OrdinalIgnoreCase)
-        || mode.StartsWith("c4fsk", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
+    /// <summary>The DSP rate a mode's demod/mod chain runs at, from the shared
+    /// <see cref="ModemCatalog"/> so it can never disagree with the modem the transport builds
+    /// (48 kHz for the baseband fsk*/c4fsk*/9600 and OFDM/MS110D families, 12 kHz otherwise).</summary>
+    private static int DspRate(string mode) => ModemCatalog.DspRateFor(mode.ToLowerInvariant());
 
     private static IModem CreateModem(SoundModemTransportConfig config, int dspRate, Action<byte[]> sink)
     {
+        string mode = config.Mode.ToLowerInvariant();
         double? frequency = config.Frequency > 0 ? config.Frequency : null;
-        return config.Mode.ToLowerInvariant() switch
+
+        // bpsk1200 is deliberately NOT migrated to soundmodem 0.6.0's differential
+        // frequency-diversity bank (which ModemCatalog builds for bpsk1200): we have no
+        // over-the-air evidence for the bank at 1200 baud yet. Keep the legacy single-carrier
+        // BpskModem. Revisit once validated, then drop this arm to fall through to the catalog.
+        if (mode == "bpsk1200")
         {
-            // NinoTNC mode numbers in comments — the wire-compatible counterpart each
-            // mode talks to (pdn-soundmodem docs/ninotnc-loop.md § Coverage).
-            "afsk1200" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700),                       // 6
-            "afsk1200-multi" => new Afsk1200MultiModem(dspRate, sink, offsetPairs: 3, centerFrequency: frequency ?? 1700),
-            "afsk1200-fx25" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700, Fx25Mode.TransmitReceive),
-            "afsk1200-fx25rx" => new Afsk1200Modem(dspRate, sink, frequency ?? 1700, Fx25Mode.Receive),
-            "afsk1200-il2p" => new Afsk1200Il2pModem(dspRate, sink, crc: true, frequency ?? 1700),   // 7
-            "afsk300" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Ax25, frequency ?? 1700),    // 12
-            "afsk300-il2p" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Il2p, frequency ?? 1700),   // 13
-            "afsk300-il2pc" => new Afsk300Modem(dspRate, sink, Afsk300Framing.Il2pCrc, frequency ?? 1700), // 14
-            "bpsk300" => new BpskModem(dspRate, sink, crc: true, frequency ?? 1500),                 // 8
-            "bpsk300-nocrc" => new BpskModem(dspRate, sink, crc: false, frequency ?? 1500),
-            "bpsk1200" => BpskModem.Bpsk1200(dspRate, sink),                                         // 10
-            "qpsk600" => QpskModem.Qpsk600(dspRate, sink),                                           // 9
-            "qpsk2400" => QpskModem.Qpsk2400(dspRate, sink),                                         // 11
-            "qpsk3600" => QpskModem.Qpsk3600(dspRate, sink),                                         // 5
-            "fsk4800-il2p" => FskModem.Fsk4800(dspRate, sink),                                       // 4
-            "c4fsk9600" => C4fskModem.C4fsk9600(dspRate, sink),                                      // 3
-            "c4fsk19200" => C4fskModem.C4fsk19200(dspRate, sink),                                    // 1
-            "fsk9600" => FskModem.Fsk9600(dspRate, sink, FskFraming.ClassicHdlc),                    // 0
-            "fsk9600-il2p" => FskModem.Fsk9600(dspRate, sink, FskFraming.Il2pCrc),                   // 2
-            _ => throw new NotSupportedException($"unknown soundmodem mode '{config.Mode}'"),
-        };
+            return BpskModem.Bpsk1200(dspRate, sink);
+        }
+
+        // Every other mode is built by the shared catalogue — one source of truth for the mode
+        // set, DSP rate and detector defaults, kept in sync with the daemon.
+        return ModemCatalog.Create(mode, dspRate, sink, new ModemOptions(
+            CentreFrequencyHz: frequency,
+            OffsetPairs: config.OffsetPairs,
+            OffsetStepHz: config.OffsetStepHz,
+            Detector: ParsePskDetector(config.PskDetector)));
     }
+
+    private static PskDetector? ParsePskDetector(string? spec) => spec?.ToLowerInvariant() switch
+    {
+        null or "" => null,
+        "coherent" => PskDetector.Coherent,
+        "differential" => PskDetector.Differential,
+        _ => throw new NotSupportedException($"unknown soundmodem pskDetector '{spec}'"),
+    };
 
     private static IPttControl CreatePtt(string spec)
     {
