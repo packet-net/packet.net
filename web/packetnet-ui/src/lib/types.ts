@@ -245,6 +245,36 @@ export interface NetRomConfig {
   compress: boolean;
   inp3: Inp3Config;
 }
+// ARDOP virtual-TNC service (server: Packet.Node.Core.Configuration.ArdopConfig). A NODE-LEVEL
+// soundmodem SERVICE, not a port transport: an ardopcf-compatible TCP host interface (command
+// socket + a data socket on port+1) backed by its own dedicated audio device, so external ARDOP
+// hosts (BPQ DRIVER=ARDOP, Pat, Winlink Express) can drive this node's soundcard/FlexRadio as an
+// ARDOP modem. Off by default. `captureRate` is ALSA-only (a flex: device clocks off DAX); `ptt`
+// must be empty for a flex: device (the radio keys itself); `flex` is used only for a flex: device.
+export interface ArdopConfig {
+  enabled: boolean;
+  device: string;
+  captureRate: number;
+  bind: string;
+  port: number;
+  ptt: string;
+  flex?: SoundModemFlex;
+}
+// POCSAG paging service (server: Packet.Node.Core.Configuration.PagingConfig). A NODE-LEVEL
+// soundmodem SERVICE: a TCP line server (PAGE/HEARD) that transmits + receives POCSAG pages over
+// its own dedicated audio device. Off by default. Like ArdopConfig plus a POCSAG `baud` (512, 1200
+// (DAPNET) or 2400) and a baseband polarity `invertPolarity`. Same flex: caveats as ArdopConfig.
+export interface PagingConfig {
+  enabled: boolean;
+  device: string;
+  captureRate: number;
+  bind: string;
+  port: number;
+  baud: number;
+  invertPolarity: boolean;
+  ptt: string;
+  flex?: SoundModemFlex;
+}
 export interface NodeConfig {
   schemaVersion: number;
   identity: IdentityConfig;
@@ -255,6 +285,9 @@ export interface NodeConfig {
   beacon: BeaconConfig;
   tailscale: TailscaleConfig;
   oarc: OarcConfig;
+  // Node-level soundmodem services (each runs over its own dedicated audio device; off by default).
+  ardop: ArdopConfig;
+  paging: PagingConfig;
 }
 
 // ---- system info / self-update (server: PdnSystemApi.SystemInfoResponse) ----
@@ -342,6 +375,38 @@ export interface SpectrumEvent {
   binHz: number;
   /** Base64 of dB-scaled bytes, one per bin. */
   bins: string;
+}
+
+// ---- soundmodem receive-quality snapshot (server: Packet.Node.Core.Transports.SoundModemFrameQuality) ----
+// GET /api/v1/ports/{id}/quality → SoundModemQualitySnapshot (404 for a non-soundmodem or
+// not-running port). A `kind: soundmodem` port's rolling per-frame FEC/CRC receive diagnostics
+// (#635) — the Reed-Solomon correction counts the deframers always computed. camelCase on the wire.
+// Deliberately NOT a bit-error rate (BER is unobservable at a receiver): `correctedBytes` is an
+// honest byte-error floor, and its null (an unprotected HDLC framing carries no FEC count) is kept
+// distinct from 0 (a clean IL2P frame). cumulativeCorrectedBytes climbing is the early-warning that
+// the link is spending its FEC budget before frames start dropping.
+export interface SoundModemFrameQuality {
+  receivedAt: string;
+  /** Mode (and, for a multi-decoder bank, the winning branch) that decoded the frame. */
+  mode: string;
+  frameBytes: number;
+  /** Bytes FEC repaired (IL2P/FX.25); null for an unprotected (HDLC) framing — distinct from 0. */
+  correctedBytes: number | null;
+  /** IL2P trailing-CRC state; null where the framing carries no trailer (plain IL2P, HDLC, FX.25). */
+  crcValid: boolean | null;
+  /** The decoding branch's frequency offset for a multi-decoder bank; null for single decoders. */
+  frequencyOffsetHz: number | null;
+  /** The winning branch's input pre-emphasis (dB/octave) for a multi-decoder bank; null otherwise. */
+  emphasisDb: number | null;
+}
+export interface SoundModemQualitySnapshot {
+  frames: number;
+  cumulativeCorrectedBytes: number;
+  framesWithCorrections: number;
+  /** The most recent frame's FEC count; null for an unprotected (HDLC) last frame / none yet. */
+  lastFrameCorrectedBytes: number | null;
+  /** The most recent frames' diagnostics, newest first, capped at a small bound. */
+  recent: SoundModemFrameQuality[];
 }
 export type SessionRole = "console" | "interlink" | "bridge";
 export interface SessionInfo {

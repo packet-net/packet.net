@@ -25,6 +25,7 @@ import { Login } from "@/screens/login";
 import { Setup } from "@/screens/setup";
 import { LinkTuner } from "@/screens/link-tuner";
 import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
+import { Waterfall } from "@/screens/waterfall";
 
 function mount(node: ReactElement, route = "/"): RenderResult {
   return render(
@@ -301,6 +302,26 @@ describe("screens render without crashing", () => {
     const { container } = mount(<Config />);
     expect(container.firstChild).toBeTruthy();
     await waitFor(() => expect(screen.getAllByText(/Identity/i).length).toBeGreaterThan(0));
+  });
+
+  it("Config Services tab surfaces the ARDOP + POCSAG audio-service forms", async () => {
+    // The two node-level soundmodem services (ardop / paging) are edited on the Services sub-tab —
+    // previously reachable only through the Raw YAML tab. Proves both forms + a paging-only field wire in.
+    mount(<Config />);
+    await waitFor(() => expect(screen.getAllByText(/Identity/i).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "Services" }));
+    await waitFor(() => expect(screen.getByText("ARDOP virtual TNC")).toBeInTheDocument());
+    expect(screen.getByText("POCSAG paging")).toBeInTheDocument();
+    // The POCSAG-only baud picker renders (the paging-specific fields are wired in).
+    expect(screen.getByText("Baud")).toBeInTheDocument();
+  });
+
+  it("Waterfall surfaces the FrameQuality (FEC/CRC) readout for the selected port", async () => {
+    // The soundmodem tuning waterfall polls GET /ports/{id}/quality (#635); the mock snapshot decodes
+    // frames, so the FEC-corrected counters render (not the empty "no frames yet" state).
+    mount(<Waterfall />, "/tools/waterfall");
+    await waitFor(() => expect(screen.getByText(/Frame quality/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/FEC-corrected/i)).toBeInTheDocument());
   });
 
   it("Users renders", async () => {

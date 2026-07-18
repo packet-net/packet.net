@@ -10,6 +10,7 @@ import { useSearchParams } from "react-router-dom";
 import { Page, PageHeader } from "@/components/layout/shell";
 import { Card, Field, Select } from "@/components/ui";
 import { api, useQuery, subscribeSpectrum } from "@/lib/api";
+import type { SoundModemQualitySnapshot } from "@/lib/types";
 
 // Perceptual-ish blue→yellow→white ramp, dark-background native (the classic
 // waterfall look); computed once into a 256-entry RGB LUT.
@@ -38,7 +39,24 @@ export function Waterfall() {
   const [portId, setPortId] = useState("");
   const [binHz, setBinHz] = useState(12000 / 4096);
   const [status, setStatus] = useState<"connecting" | "live" | "unavailable">("connecting");
+  const [quality, setQuality] = useState<SoundModemQualitySnapshot | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Poll the selected port's rolling receive-quality snapshot (a plain GET, unlike the spectrum SSE).
+  // A 404 — the port isn't a running soundmodem — clears it, so the FrameQuality readout hides for a
+  // non-soundmodem port exactly as the spectrum feed goes "unavailable". Cleared on unmount / port
+  // change (the RemoteAccessSection poll-while-mounted pattern). 2 s cadence: frames arrive slowly and
+  // the snapshot is cumulative, so a gentle poll keeps the FEC counters fresh without churn.
+  useEffect(() => {
+    if (!portId) { setQuality(null); return; }
+    let alive = true;
+    const tick = () => api.portQuality(portId)
+      .then((q) => { if (alive) setQuality(q); })
+      .catch(() => { if (alive) setQuality(null); });
+    tick();
+    const t = setInterval(tick, 2000);
+    return () => { alive = false; clearInterval(t); };
+  }, [portId]);
 
   useEffect(() => {
     if (portId) return;
@@ -120,6 +138,8 @@ export function Waterfall() {
           </div>
         </div>
 
+        <FrameQuality q={quality} />
+
         <div className="relative w-full overflow-hidden rounded-md border border-border">
           <canvas
             ref={canvasRef}
@@ -149,5 +169,52 @@ export function Waterfall() {
         </p>
       </Card>
     </Page>
+  );
+}
+
+// Compact per-frame receive-quality readout for a soundmodem port (GET /ports/{id}/quality, #635):
+// frames decoded, FEC-corrected frames + the cumulative corrected-byte count (the early-warning
+// number — persistently climbing means the link is spending its FEC budget before frames drop), and
+// the most-recent frame's mode / frequency offset / emphasis. Renders nothing when there's no
+// snapshot (non-soundmodem / not-running port, cleared on a 404) and a muted "no frames yet" when the
+// port is up but nothing has decoded. Frequency offset / emphasis are only shown when present (a
+// multi-decoder bank's winning branch; null for single decoders).
+function FrameQuality({ q }: { q: SoundModemQualitySnapshot | null }) {
+  if (!q) return null;
+  const last = q.recent[0] ?? null;
+  const sign = (n: number) => (n > 0 ? "+" : "");
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+      <span className="font-semibold text-foreground">Frame quality</span>
+      {q.frames === 0 ? (
+        <span className="text-muted-foreground/70">no frames yet</span>
+      ) : (
+        <>
+          <QStat label="decoded" value={q.frames.toLocaleString()} />
+          <QStat label="FEC-corrected" value={`${q.framesWithCorrections.toLocaleString()} frames · ${q.cumulativeCorrectedBytes.toLocaleString()} B`} />
+          {last && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">last</span>
+              <span className="font-mono text-foreground">{last.mode}</span>
+              {last.frequencyOffsetHz != null && (
+                <span className="font-mono text-muted-foreground">{sign(last.frequencyOffsetHz)}{last.frequencyOffsetHz.toFixed(1)} Hz</span>
+              )}
+              {last.emphasisDb != null && (
+                <span className="font-mono text-muted-foreground">{sign(last.emphasisDb)}{last.emphasisDb} dB</span>
+              )}
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function QStat({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tnum font-mono font-semibold text-foreground">{value}</span>
+    </span>
   );
 }

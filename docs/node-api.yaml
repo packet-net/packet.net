@@ -523,7 +523,7 @@ paths:
         IL2P frame). Read-scoped. 404 for any other port kind or a port that is not running.
       security: [{ bearerAuth: [read] }]
       responses:
-        "200": { description: receive-quality snapshot }
+        "200": { description: receive-quality snapshot, content: { application/json: { schema: { $ref: "#/components/schemas/SoundModemQualitySnapshot" } } } }
         "404": { description: not a running soundmodem port }
 
   /ports/{id}/tuning/next:
@@ -1007,6 +1007,32 @@ components:
           oneOf:
             - { $ref: "#/components/schemas/SoundModemFlexConfig" }
             - { type: "null" }
+
+    SoundModemFrameQuality:
+      type: object
+      # One decoded frame's receive diagnostics (#635) — the Reed-Solomon correction counts the
+      # deframers always computed. Deliberately NOT a bit-error rate (BER is unobservable at a receiver).
+      required: [receivedAt, mode, frameBytes]
+      properties:
+        receivedAt: { type: string, format: date-time, description: "capture instant of the frame these diagnostics belong to" }
+        mode: { type: string, description: "the mode — and, for a multi-decoder bank, the winning branch — that decoded the frame (e.g. qpsk2400-il2pc, afsk1200@+30Hz+6dB)" }
+        frameBytes: { type: integer, description: "decoded AX.25 frame length in bytes" }
+        correctedBytes: { type: [integer, "null"], description: "bytes FEC repaired (Reed-Solomon: IL2P/FX.25). null for an unprotected framing (HDLC) — kept distinct from 0 (a clean IL2P frame)." }
+        crcValid: { type: [boolean, "null"], description: "IL2P trailing-CRC state; null where the framing carries no trailer (plain IL2P, HDLC, FX.25)" }
+        frequencyOffsetHz: { type: [number, "null"], description: "the decoding branch's frequency offset for a multi-decoder bank; null for single decoders. Only directionally meaningful on marginal signals." }
+        emphasisDb: { type: [integer, "null"], description: "the winning branch's input pre-emphasis (dB/octave) for a multi-decoder bank; null for single decoders" }
+    SoundModemQualitySnapshot:
+      type: object
+      # Rolling per-port receive-quality summary for a kind: soundmodem port: cumulative FEC counters
+      # plus the most recent frames' diagnostics. cumulativeCorrectedBytes climbing is the early warning
+      # that the link is spending its FEC budget before frames start dropping.
+      required: [frames, cumulativeCorrectedBytes, framesWithCorrections, recent]
+      properties:
+        frames: { type: integer, format: int64, description: "frames that reported quality since the port came up (every decoded frame does)" }
+        cumulativeCorrectedBytes: { type: integer, format: int64, description: "sum of correctedBytes over frames that carried a count (FEC framings only; HDLC contributes nothing)" }
+        framesWithCorrections: { type: integer, format: int64, description: "frames whose FEC count was > 0 — the link spending its error budget" }
+        lastFrameCorrectedBytes: { type: [integer, "null"], description: "the most recent frame's FEC count; null for an unprotected (HDLC) last frame or none decoded yet — distinct from 0" }
+        recent: { type: array, items: { $ref: "#/components/schemas/SoundModemFrameQuality" }, description: "the most recent frames' diagnostics, newest first, capped at a small bound" }
 
     Inp3RouteMetric:
       type: object
