@@ -699,8 +699,26 @@ export function fmtBytes(n: number): string {
 export function hex(n: number, w?: number): string { return n.toString(16).toUpperCase().padStart(w || 2, "0"); }
 
 // operator-facing config model ------------------------------
-export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp", "axudp-multipoint": "axudp-mp" };
-export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false, "axudp-multipoint": false };
+export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp", "axudp-multipoint": "axudp-mp", "soundmodem": "soundmodem" };
+// soundmodem carries native AX.25 frames over a shared CSMA channel — the KISS TXDELAY/PERSIST/
+// SLOTTIME knobs drive the modem's own p-persistent channel access (server: ICsmaChannelParams),
+// so it uses the KISS param block like the other RF transports (true), unlike the UDP tunnels.
+export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false, "axudp-multipoint": false, "soundmodem": true };
+
+// The in-process soundmodem's accepted modem modes — mirrors the server's SoundModemValidator.
+// KnownModes (ModemCatalog.KnownModes minus bpsk1200-multi). The bpsk*/qpsk* modes expose the
+// diversity-bank + PSK-detector knobs; bpsk300 is the differential frequency-diversity bank,
+// bpsk1200 stays the legacy single-carrier modem.
+export const SOUNDMODEM_MODES: string[] = [
+  "afsk1200", "afsk1200-fx25", "afsk1200-fx25rx", "afsk1200-multi", "afsk1200-il2p", "afsk1200-il2p-nocrc",
+  "afsk300", "afsk300-il2p", "afsk300-il2pc",
+  "bpsk300", "bpsk300-multi", "bpsk300-nocrc", "bpsk1200",
+  "qpsk600", "qpsk2400", "qpsk3600",
+  "fsk9600", "fsk9600-il2p", "fsk4800-il2p",
+  "c4fsk9600", "c4fsk19200",
+  "freedv-datac0", "freedv-datac1", "freedv-datac3", "freedv-datac4", "freedv-datac13", "freedv-datac14",
+  "ms110d-wn0", "ms110d-wn1", "ms110d-wn2", "ms110d-wn3", "ms110d-wn4", "ms110d-wn5", "ms110d-wn6", "ms110d-wn13",
+];
 
 export const NINO_MODES: NinoMode[] = [
   { mode: 0, label: "300 baud · AFSK · AX.25 (HF/NBEMS)" },

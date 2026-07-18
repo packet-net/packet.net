@@ -25,11 +25,25 @@ export interface AxudpPeer { call: string; host: string; port: number; broadcast
 // Packet.Node.Core.Configuration.AxudpMultipointTransport). Replaces the point-to-point
 // `axudp` host/port with a `peers[]` partner table.
 export interface AxudpMultipointTransport { kind: "axudp-multipoint"; localPort: number; peers: AxudpPeer[] }
+// FlexRadio slice tuning for a `flex:` soundmodem device (headless slice control;
+// server: Packet.Node.Core.Configuration.SoundModemFlexConfig). Used only when
+// `device` is a `flex:` device — ignored for ALSA devices.
+export interface SoundModemFlex {
+  frequency?: string; antenna?: string; mode?: string; daxChannel?: string;
+}
 // In-process soundcard modem (the pdn-soundmodem engine) — native DCD, sample-accurate
 // TX-complete (server: Packet.Node.Core.Configuration.SoundModemTransportConfig).
+//   offsetPairs/offsetStepHz — the bpsk300 differential frequency-diversity bank knobs
+//     (2·offsetPairs+1 stepped decoder branches; ignored by non-bank modes).
+//   pskDetector — "coherent" | "differential" for the bpsk*/qpsk* modes (null = the
+//     per-family default: BPSK differential, QPSK coherent).
+//   flex — FlexRadio slice tuning, only for a `flex:` device.
 export interface SoundModemTransport {
   kind: "soundmodem"; device: string; captureRate: number; mode: string;
   frequency?: number; ptt?: string;
+  offsetPairs?: number; offsetStepHz?: number;
+  pskDetector?: "coherent" | "differential";
+  flex?: SoundModemFlex;
 }
 export type TransportConfig =
   | KissTcpTransport

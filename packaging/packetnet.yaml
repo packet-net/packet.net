@@ -55,6 +55,39 @@ ports: []
 #      device: /dev/ttyACM1
 #      baud: 57600
 #      mode: 6             # NinoTNC mode 0..15
+#  - id: sound
+#    enabled: false
+#    transport:
+#      kind: soundmodem    # the in-process pdn-soundmodem engine — the node runs the demodulator/
+#                          # modulator itself over a sound card. NO external TNC/daemon; native DCD.
+#      device: default     # ALSA capture+playback device (default, plughw:1,0), OR a
+#                          # flex:<radio>[:slice][@station] FlexRadio device (see the flex: example below).
+#      captureRate: 48000  # card-native rate; must be a positive multiple of the mode's DSP rate.
+#      mode: afsk1200      # afsk1200*/afsk300* · bpsk300*/bpsk1200 · qpsk600/2400/3600 · fsk9600*/
+#                          # fsk4800-il2p · c4fsk9600/c4fsk19200 · freedv-datac0/1/3/4/13/14 ·
+#                          # ms110d-wn0..6/13. See docs/soundmodem.md for the full mode set.
+#      # frequency: 1700   # centre Hz; 0/omit = mode convention. Only afsk/bpsk/qpsk accept one.
+#      # ptt: serial:/dev/ttyUSB0:rts   # empty=VOX · serial:<dev>[:rts|:dtr] · cm108:<hidraw>[:gpio]
+#  # bpsk300 is the differential frequency-diversity BANK (bpsk1200 stays the legacy modem):
+#  #  - id: hf-bank
+#  #    transport:
+#  #      kind: soundmodem
+#  #      device: plughw:1,0
+#  #      mode: bpsk300
+#  #      offsetPairs: 4        # bank width: 2*pairs+1 branches (0 = single modem; omit = default 4)
+#  #      offsetStepHz: 7.5     # Hz step between branches (omit = baud-derived default, baud/40)
+#  #      pskDetector: differential   # coherent | differential (omit = per-family default)
+#  # A flex: device drives a FlexRadio headless slice — key it with a flex: block and NO ptt:
+#  #  - id: flex
+#  #    transport:
+#  #      kind: soundmodem
+#  #      device: "flex:MyFlex"
+#  #      mode: freedv-datac1
+#  #      flex:
+#  #        frequency: "14.100000"   # slice frequency (MHz, six-decimal Flex form)
+#  #        antenna: ANT1
+#  #        mode: DIGU               # a data slice mode
+#  #        daxChannel: "1"          # pick one SmartSDR isn't using when sharing a box
 
 # Operator-facing text. {node}/{call} are expanded.
 services:
@@ -190,3 +223,28 @@ management:
 #   bind: 127.0.0.1
 #   port: 9000
 #   requireAuth: false   # true => `auth` validated against the node's users first
+
+# POCSAG paging service — a TCP line server (PAGE/HEARD) that transmits + receives POCSAG pages
+# over its OWN dedicated soundmodem audio device (separate from any `ports:` entry). Off by
+# default. Uses the same ALSA / flex: device model as a soundmodem port. See docs/soundmodem.md.
+# paging:
+#   enabled: true
+#   device: default         # ALSA device, or flex:<radio>[:slice][@station]
+#   captureRate: 48000      # ALSA only (a flex: device supplies its own DAX clock)
+#   bind: 127.0.0.1
+#   port: 8106              # the paging line server's TCP port
+#   baud: 1200              # POCSAG baud: 512, 1200 (DAPNET) or 2400
+#   # invertPolarity: false
+#   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX (a flex: device keys itself)
+
+# ARDOP virtual TNC — an ardopcf-compatible TCP host interface (command socket + data socket on
+# port+1) backed by a dedicated soundmodem audio device, so an external ARDOP host (BPQ
+# DRIVER=ARDOP, Pat, Winlink Express) can drive this node's sound card / FlexRadio as an ARDOP
+# modem. Off by default. See docs/soundmodem.md.
+# ardop:
+#   enabled: true
+#   device: default         # ALSA device, or flex:<radio>[:slice][@station]
+#   captureRate: 48000      # ALSA only (a flex: device supplies its own DAX clock)
+#   bind: 127.0.0.1
+#   port: 8515              # command socket; the data socket listens on port+1 (8516)
+#   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX (a flex: device keys itself)

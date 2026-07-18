@@ -19,7 +19,7 @@ import type {
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
 } from "@/lib/types";
 import {
-  NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, CHANNEL_MODES,
+  NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PORT_SETUP, PARAM_HELP, AX25_DEFAULTS, KISS_DEFAULTS,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, NINO_TEST,
 } from "@/lib/mock";
@@ -565,6 +565,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 <option value="nino-tnc">{KIND_LABEL["nino-tnc"]} — NinoTNC</option>
                 <option value="axudp">{KIND_LABEL["axudp"]} — AXUDP network link</option>
                 <option value="axudp-multipoint">{KIND_LABEL["axudp-multipoint"]} — AXUDP multipoint (BPQAXIP)</option>
+                <option value="soundmodem">{KIND_LABEL["soundmodem"]} — in-process soundcard modem</option>
               </Select>
             </Field>
           </div>
@@ -619,6 +620,73 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 <PeerTable peers={t.peers} onChange={setPeer} onAdd={addPeer} onRemove={removePeer} />
               </div>
             )}
+            {t.kind === "soundmodem" && (() => {
+              // The bank + PSK-detector knobs apply only to the bpsk*/qpsk* modes; the flex
+              // slice-tuning sub-fields only to a `flex:` device (server: SoundModemValidator).
+              const isPskFamily = t.mode.startsWith("bpsk") || t.mode.startsWith("qpsk");
+              const isFlex = t.device.startsWith("flex:");
+              const flex = t.flex ?? {};
+              return (
+                <>
+                  <Field label="Audio device" info="ALSA device for capture + playback (e.g. default, plughw:1,0), or a flex:<radio>[:slice][@station] FlexRadio device.">
+                    <Input value={t.device} onChange={(e) => setT({ device: e.target.value })} className="font-mono" placeholder="default" />
+                  </Field>
+                  <Field label="Capture rate" info="Card-native sample rate (48000 recommended; the modem decimates to the mode's DSP rate). Must be a positive multiple of the mode's DSP rate. Ignored for a flex: device (it clocks off DAX).">
+                    <Input type="number" value={t.captureRate} onChange={(e) => setT({ captureRate: +e.target.value })} className="font-mono" />
+                  </Field>
+                  <Field label="Mode" info="The soundmodem modem mode — the NinoTNC-compatible AFSK/BPSK/QPSK/FSK modes, the C4FSK modes, the FreeDV HF OFDM modes, and the MIL-STD-188-110D App-D modes." className="col-span-2">
+                    <Select value={t.mode} onChange={(e) => setT({ mode: e.target.value })}>
+                      {SOUNDMODEM_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Frequency (Hz)" info="Centre/carrier frequency; 0 = the mode's convention. Only the variable-centre AFSK/BPSK/QPSK families accept one (300–3300 Hz) — it is rejected for the baseband FSK/C4FSK and fixed-centre FreeDV/MS110D modes.">
+                    <Input type="number" value={t.frequency ?? ""} placeholder="0" onChange={(e) => setT({ frequency: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
+                  </Field>
+                  <Field label="PTT" info="PTT control spec: empty for VOX, serial:/dev/ttyUSB0[:rts|:dtr], or cm108:/dev/hidraw0[:gpio]. Leave empty for a flex: device — the radio keys itself.">
+                    <Input value={t.ptt ?? ""} onChange={(e) => setT({ ptt: e.target.value })} className="font-mono" placeholder="VOX" />
+                  </Field>
+                  {isPskFamily && (
+                    <>
+                      <Field label="Offset pairs" info="bpsk300 frequency-diversity bank width: 2·pairs+1 stepped decoder branches (0 = a plain single modem). Blank = the mode default (4). Ignored by non-bank modes.">
+                        <Input type="number" min={0} value={t.offsetPairs ?? ""} placeholder="default" onChange={(e) => setT({ offsetPairs: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
+                      </Field>
+                      <Field label="Offset step (Hz)" info="Hz step between bpsk300 diversity-bank branches. Blank = the baud-derived default (baud/40).">
+                        <Input type="number" value={t.offsetStepHz ?? ""} placeholder="default" onChange={(e) => setT({ offsetStepHz: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
+                      </Field>
+                      <Field label="PSK detector" info="Detector for the bpsk*/qpsk* modes. Blank = the per-family default (BPSK differential, QPSK coherent).">
+                        <Select
+                          value={t.pskDetector ?? ""}
+                          onChange={(e) => setT({ pskDetector: e.target.value === "" ? undefined : (e.target.value as "coherent" | "differential") })}
+                        >
+                          <option value="">default</option>
+                          <option value="coherent">coherent</option>
+                          <option value="differential">differential</option>
+                        </Select>
+                      </Field>
+                    </>
+                  )}
+                  {isFlex && (
+                    <div className="col-span-2 rounded-md border border-border/60 p-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">FlexRadio slice</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Frequency (MHz)" info="Slice frequency in six-decimal Flex form. Default 14.100000.">
+                          <Input value={flex.frequency ?? ""} placeholder="14.100000" onChange={(e) => setT({ flex: { ...flex, frequency: e.target.value } })} className="font-mono" />
+                        </Field>
+                        <Field label="Antenna" info="RX/TX antenna. Default ANT1.">
+                          <Input value={flex.antenna ?? ""} placeholder="ANT1" onChange={(e) => setT({ flex: { ...flex, antenna: e.target.value } })} className="font-mono" />
+                        </Field>
+                        <Field label="Slice mode" info="Slice demod mode. Default DIGU (a data mode).">
+                          <Input value={flex.mode ?? ""} placeholder="DIGU" onChange={(e) => setT({ flex: { ...flex, mode: e.target.value } })} className="font-mono" />
+                        </Field>
+                        <Field label="DAX channel" info="The DAX channel the headless client claims. Default 1; pick one SmartSDR is not using when sharing a box.">
+                          <Input value={flex.daxChannel ?? ""} placeholder="1" onChange={(e) => setT({ flex: { ...flex, daxChannel: e.target.value } })} className="font-mono" />
+                        </Field>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
 
