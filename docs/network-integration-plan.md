@@ -35,36 +35,52 @@ RX via `Ax25Session.DataLinkSignalEmitted` → `DataLinkDataIndication{Info,Pid}
 
 ---
 
-## 1. Phase N — Native seam (`libax25` ABI shim)
+## 1. Phase N — Native seam (`pdn-libax25`)
 
-The goal: an existing `libax25` binary (`call`, `axcall`, `ax25d`, `listen`, `mheard`, the
-BBSes) connects to a callsign **through pdn**, unmodified, with no kernel `AF_AX25`.
+The goal: an existing native app (`call`/`axcall`, `ax25_call`, `ax25d`, `xfbbd`) connects to a
+callsign **through pdn**, unmodified, with no kernel `AF_AX25`. Repo: **`pdn-libax25`**, Rust,
+**LGPL-3.0** (ADR §5, §8). N0 recon is done (ADR §8); the architecture below reflects it.
 
-- **N0 — Seam readiness (mostly done).** RHPv2 already exposes family `ax25` + `stream`,
-  outbound (`OPEN` → `Ax25Listener.ConnectAsync`) and inbound (`socket`/`bind`/`listen`/`accept`,
-  R-3). Confirm/close the gaps that matter for the shim:
-  - **Local IPC transport.** Add an `AF_UNIX` local endpoint for the shim, or reuse the
-    existing loopback RHPv2 TCP listener (:9000) — decide (Unix socket is cleaner + avoids the
-    `--i-understand-agw-is-unauthenticated`-style loopback caveats; TCP is zero new transport).
-  - **`SEQPACKET` vs `stream`.** `libax25` connected-mode is `SOCK_SEQPACKET` (record
-    boundaries); RHPv2 v1 is `stream` (`seqpkt` deferred, `rhp2-server.md` scope). Decide
-    whether to map records onto the stream (most apps treat it as a byte pipe) or land the
-    deferred `seqpkt` mode. Document the choice.
-- **N1 — The shim (`libax25`-ABI `.so`).** Implement the `libax25` API surface against the IPC
-  client: address parsing (`ax25_aton`/`ntoa`, digipeater paths), `socket`/`bind`/`connect`/
-  `send`/`recv`/`close`, and the `setsockopt` knobs (`AX25_WINDOW`, `AX25_T1`, `AX25_PACLEN`,
-  …) → RHPv2 `OPEN` flags or documented no-ops. The shim's fd is the IPC socket, so `select`/
-  `poll` loops in the apps work unchanged. Deployment: drop-in `libax25.so.*` **or**
-  `LD_PRELOAD` (support both; the drop-in `.so` is cleaner for packaging).
-  **Licence: LGPL-3.0** (ADR §5) — it links into third-party apps, so it inherits upstream
-  `libax25`'s linking-permissive licence; it reaches AGPL pdn over the socket boundary only.
-- **N2 — Coverage + conformance.** Run the actual tools unmodified against pdn; a conformance
-  matrix vs `linux_oot` (`libax25` on the pinned 6.18 kernel — the `f6fbb-on-kernel` VM is the
-  reference oracle). Loopback pdn↔pdn (two aliases via `AddLocalAlias`) as the deterministic
-  self-test. Record any app that bypasses `libax25` (raw syscalls) as "D-only, out of scope."
-- **N3 — NET/ROM idiom (follow-on).** Extend to the `AF_NETROM` idiom (connect by node alias)
-  once the RHPv2 `netrom` family lands (deferred in R-2, `rhp2-server.md`). `NetRomService`
-  circuits already exist; this is a shim + RHPv2-family increment, not new L3.
+**Architecture (two artifacts, one Rust workspace):** `libax25` has no connection code, so a
+`.so` swap alone changes nothing. `pdn-libax25` therefore ships:
+1. **`libax25.so.1`** — a drop-in for the upstream helper lib (address + `axports` parsing),
+   satisfying `-lax25` linkage. SONAME `libax25.so.1`.
+2. **`ax25-interpose.so`** — an **`LD_PRELOAD`** libc interposer wrapping `socket`/`bind`/
+   `connect`/`accept`/`getsockname`/`getpeername`/`setsockopt`/`read`/`write`/`recv`/`send`/
+   `select`/`poll`/`close`; `AF_AX25` fds → RHPv2, everything else → real libc via
+   `dlsym(RTLD_NEXT)`.
+Both share an internal **`rhp` client** (RHPv2 over loopback TCP `127.0.0.1:9000`).
+
+- **N0 — Seam readiness (done, ADR §8).** RHPv2 already serves the needed surface: outbound
+  `open`(Active) → `Ax25Listener.ConnectAsync`; inbound `socket`/`bind`/`listen`/`accept`
+  (R-3). Resolved: transport = **loopback TCP :9000** (no pdn change; AF_UNIX endpoint an
+  additive later item); **`SEQPACKET`→`stream` is safe** (targets use `read`/`write`/`select`,
+  no record boundaries).
+- **N1 — The two artifacts (walking skeleton in progress).**
+  - **`libax25.so.1`:** port `ax25_aton`/`ax25_ntoa`/`ax25_aton_entry`/`ax25_cmp`/`ax25_validate`
+    from `axutils.c` (reimplemented, not copied — GPL source); reimplement `ax25_config_*` to
+    parse `/etc/ax25/axports` **without** the `ARPHRD_AX25` netdevice check (the mandatory fix —
+    ADR §8); export the full ABI symbol set (tty/`nr_`/`rs_`/`/proc` parsers as stubs) so
+    linkage resolves.
+  - **`ax25-interpose.so`:** back each `AF_AX25` fd with a real pollable `socketpair` (so app
+    `select`/`poll`/`read` work), a reader thread pumping RHPv2 `recv` into it; `connect`→`open`,
+    `write`→`send`, `close`→`close`. `setsockopt(SOL_AX25,…)` **always returns 0**, mapping
+    WINDOW/PACLEN/T1–T3/N2/EXTSEQ into the `OPEN`, no-op the rest. `accept` returns a child fd +
+    a correct peer `sockaddr_ax25` (needed by `ax25d`); `getsockname` returns the local bound
+    callsign in the expected layout.
+- **N2 — Coverage + conformance.** Run the real tools unmodified against pdn:
+  - **v1 targets (all shimmable):** `call`/`axcall`, `ax25_call` (what `node`/BBSes exec for
+    outbound connects), `ax25d` (+ fork/`dup2`/`exec` children), `xfbbd` connected mode.
+  - **Out of the first seam:** monitoring (`listen`/`mheardd` — raw `PF_PACKET`/`ETH_P_AX25`
+    sniffers, not interposable → need a synthesized frame feed later), admin ioctls
+    (`axctl`/`axparms`), UI/datagram (`beacon`, FBB beacon).
+  - Oracle: behaviour diffed vs `linux_oot` (`libax25` on the pinned 6.18 kernel — the
+    `f6fbb-on-kernel` VM); loopback pdn↔pdn (two aliases via `AddLocalAlias`) as the
+    deterministic self-test.
+- **N3 — Follow-ons (gated on pdn RHP capabilities).** `AF_NETROM` idiom (needs RHPv2 `netrom`
+  family — deferred; `NetRomService` circuits already exist); digipeater via-paths (RHPv2 v1
+  rejects a via-path in `open.remote`); UI/datagram (needs RHPv2 `dgram`); monitoring (needs an
+  RHPv2 `trace`/raw feed); honest TX backpressure (needs a `Busy` queue-depth signal).
 
 ## 2. Phase I — IP seam (TUN host stack)
 

@@ -44,11 +44,12 @@ repo**, **AGPL-3.0** — with one flagged exception, the `libax25` shim (§5, Li
      callsign, so it can reach a station *only* via an IP address that routes over radio.
 - So the answer is **two seams for two software worlds**, both riding the AX.25 engine's
   existing PID-demuxed L2 (`Ax25Frame.Pid`, already carried end-to-end):
-  - **Native seam (primary, recommended, NO IP):** a drop-in **ABI-compatible `libax25`
-    shim** backed by pdn over local IPC → every `libax25` app (`ax25d`, the node, `axcall`,
-    `listen`, the BBSes) gets native connect-by-callsign, **unchanged**. It is a thin
-    front-end on the seam **RHPv2 already exposes** (`OPEN`/`SEND`/`RECV`/`CLOSE`/`ACCEPT`
-    for family `ax25`). No kernel, no IP.
+  - **Native seam (primary, recommended, NO IP):** `pdn-libax25` — a small **`LD_PRELOAD`
+    libc interposer + a drop-in `libax25.so.1`** (see §8: `libax25` itself has no connection
+    code, so the interposer is the real mechanism) — backed by pdn over RHPv2 → every native
+    app (`call`/`axcall`, `ax25_call`, `ax25d`+children, `xfbbd`) gets native
+    connect-by-callsign, **unchanged**. A thin front-end on the seam **RHPv2 already exposes**
+    (`OPEN`/`SEND`/`RECV`/`CLOSE`/`ACCEPT` for family `ax25`). No kernel, no IP.
   - **IP seam (secondary, opt-in, host-scoped):** a **TUN `pdn0`** netdev + a callsign↔IP
     resolver → genuinely IP-only apps work, auto-routed over AX.25 (and NET/ROM for
     multi-hop). This is a **host stack**, explicitly **not** the BPQ `IPGATEWAY` backbone
@@ -221,10 +222,51 @@ TUN seam **also v1, not parked** (Q2, Q5); **UI-datagram** default (Q3); a **sep
 (Q4, soft lean). One directive added: **AGPL-3.0 unless we literally can't** — the `libax25`
 shim is the identified exception (likely LGPL-3.0, §5).
 
-**Residual detail for the plan / a follow-up decision:**
+**Residual detail — now resolved (Tom, 2026-07-18):**
 
-- **Repo shape.** One repo with a clearly-licensed LGPL subtree for the shim, or two repos
-  (AGPL host stack + LGPL shim)? A single mixed-licence repo is workable but the split is
-  cleaner — decide when the repo is created.
-- **Ratify the shim's LGPL-3.0** (§5) — the one non-AGPL piece.
-- **`SEQPACKET`↔`stream`** mapping for the shim (see the plan, N0).
+- **Repo shape = the split** (Tom's call): two repos — `pdn-net` (AGPL-3.0, the TUN host
+  stack) and `pdn-libax25` (LGPL-3.0, the native shim). Cleaner than one mixed-licence tree.
+- **Shim licence = LGPL-3.0** — ratified (§5).
+- **`SEQPACKET`↔`stream`** — resolved by the N0 recon (§8): mapping records onto a byte stream
+  is safe for every target app; RHPv2 `stream` suffices.
+
+## 8. N0 recon findings — locked (2026-07-18)
+
+Two read-only recon spikes (against ve7fet `linuxax25` `b2d3182` v1.2.2 at
+`f6fbb-on-kernel/work/linuxax25`, and pdn's RHPv2 `Packet.Rhp2*` + `rhp2lib-net`) settled the
+open design points. These **supersede the "drop-in `.so`" shorthand** used in §0/§3–§5:
+
+- **The shim is TWO artifacts, not one.** `libax25` contains **zero connection code** — it is
+  only address/config helpers; the actual `AF_AX25` path (`socket`/`connect`/`accept`/`send`/…)
+  is raw **libc syscalls**. So `pdn-libax25` = **(1)** a drop-in `libax25.so.1` (helper reimpl,
+  SONAME `libax25.so.1`) **+ (2)** an **`LD_PRELOAD` libc interposer** that wraps the socket
+  calls, detects `AF_AX25`, and routes those fds to RHPv2 (passing all else through via
+  `dlsym(RTLD_NEXT)`). The interposer is where the work is.
+- **Language = Rust cdylib** (both artifacts). A genuine native `.so` with SONAME/version
+  control, ~1–2 MB and self-contained; `serde_json` removes the binary-safe Latin-1 `data`
+  escaping defect class; `libc` + `dlsym(RTLD_NEXT)` handles the interposer. Rejected: C#/
+  NativeAOT (drags the .NET runtime into every ham-app process; reflection-JSON is AOT-trimmed);
+  C is a viable but more defect-prone second. `rhp2lib-net`'s client is **MIT** so its logic
+  may be transliterated into the LGPL shim — the GPL/AGPL `Packet.Rhp2` codec must **not** be
+  linked.
+- **`SEQPACKET`→`stream` is safe.** Every target app drives the fd with plain `read`/`write`/
+  `select` and never inspects record boundaries (`ax25d.c` even wishes for `recvmsg`). RHPv2
+  `stream` suffices. (`AX25_PIDINCL` record mode is ROSE-only; the `SOCK_DGRAM`/UI beacon path
+  is separate and out of the first seam.)
+- **Mandatory fix:** upstream `ax25_config_load_ports()` refuses an `axports` line unless a live
+  `ARPHRD_AX25` netdevice exists — which won't, without the kernel stack. Our reimpl **must**
+  parse `axports` **without** that netdevice cross-check, or every app aborts.
+- **Transport = loopback TCP `127.0.0.1:9000`** (zero pdn changes; auth off by default on
+  loopback). An **AF_UNIX RHP endpoint** in pdn is an additive, non-blocking plan item
+  (filesystem-permission access control; the RHP framing is already transport-agnostic).
+- **First-seam app coverage:** `call`/`axcall`, `ax25_call` (what `node`/BBSes exec for
+  outbound), `ax25d` (+ its fork/`dup2`/`exec` children), and `xfbbd` connected mode — **all
+  fully shimmable**. **Out of the first seam:** monitoring (`listen`/`mheardd` — raw
+  `PF_PACKET`/`ETH_P_AX25` sniffers, not interposable; need a synthesized frame feed), admin
+  ioctls (`axctl`/`axparms`), and UI/datagram (`beacon`, FBB beacon). Digipeater via-paths are
+  rejected by RHPv2 v1 (`open.remote` is a single callsign) — a pdn plan item.
+- **`setsockopt(SOL_AX25, …)` must always return 0** (apps treat failure as fatal); map the
+  few RHPv2 understands (WINDOW/PACLEN/T1–T3/N2/EXTSEQ) into the `OPEN`, no-op the rest.
+- **Status:** both repos scaffolded 2026-07-18; `pdn-libax25` walking skeleton (Rust workspace:
+  `rhp` client + `libax25` + `ax25-interpose`) in progress. Detail in
+  [`network-integration-plan.md`](network-integration-plan.md) §1.
