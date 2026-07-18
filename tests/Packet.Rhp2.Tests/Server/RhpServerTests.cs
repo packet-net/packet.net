@@ -327,7 +327,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     [InlineData("nonsense", "stream", 0x80, "GB7RDG", RhpErrorCode.BadOrMissingFamily)]
     [InlineData("inet", "stream", 0x80, "GB7RDG", RhpErrorCode.OperationNotSupported)]     // valid family, not implemented
     [InlineData("ax25", "warble", 0x80, "GB7RDG", RhpErrorCode.BadOrMissingMode)]
-    [InlineData("ax25", "dgram", 0x80, "GB7RDG", RhpErrorCode.OperationNotSupported)]      // valid mode, not implemented
+    [InlineData("ax25", "dgram", 0x80, "GB7RDG", RhpErrorCode.Ok)]                          // dgram open = the combined socket+bind form (R-6)
     [InlineData("ax25", "stream", 0x00, "GB7RDG", RhpErrorCode.OperationNotSupported)]     // passive = R-3
     [InlineData("ax25", "stream", 0x80, null, RhpErrorCode.InvalidRemoteAddress)]
     public async Task Open_validation_ladder(string pfam, string mode, int flags, string? remote, int expected)
@@ -431,7 +431,146 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Equal(RhpErrorCode.InvalidHandle, reply.ErrCode);   // same as unknown — no oracle
     }
 
+    // ── dgram (UI): socket → bind → sendto (TX) + async recv (RX) — R-6 ───
+
+    [Fact]
+    public async Task Socket_bind_sendto_emits_a_ui_datagram_with_the_right_source_dest_pid_and_data()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindDgramAsync(client, "M0LTE-1", port: "1");
+
+        // IP-over-AX.25: bind the station, sendto pid 0xCC to the destination.
+        await client.SendAsync(new SendToMessage
+        {
+            Id = 9, Handle = handle, Remote = "GB7RDG", Data = "hi\r", Pid = 0xCC,
+        });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(9, reply.Id);
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
+        Assert.Equal((byte)0xCC, gateway.UiPid);
+        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);
+    }
+
+    [Fact]
+    public async Task Sendto_without_a_pid_defaults_to_0xF0_no_layer_3()
+    {
+        // Native beacon / APRS: bind an app callsign, sendto with no pid → 0xF0 (the pdn default).
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindDgramAsync(client, "M0LTE-9");
+
+        await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "APRS", Data = "!beacon" });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal((byte)0xF0, gateway.UiPid);
+        Assert.Equal("APRS", gateway.UiRemote);
+    }
+
+    [Fact]
+    public async Task Sendto_source_falls_back_to_the_bound_local_when_omitted()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindDgramAsync(client, "M0LTE-1");
+
+        await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "GB7RDG", Data = "x" });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal("M0LTE-1", gateway.UiLocal);   // the bound local becomes the frame source
+    }
+
+    [Fact]
+    public async Task Sendto_with_an_empty_payload_is_rejected_errCode_1()
+    {
+        // AX.25 UI, unlike UDP, carries no zero-byte datagram — errCode 1 (protocol.md).
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindDgramAsync(client, "M0LTE-1");
+
+        await client.SendAsync(new SendToMessage { Id = 4, Handle = handle, Remote = "GB7RDG", Data = "" });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Unspecified, reply.ErrCode);   // 1, distinct from 12 (absent data)
+        Assert.Equal(4, reply.Id);
+    }
+
+    [Fact]
+    public async Task Listen_on_a_dgram_socket_is_operation_not_supported_16()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+
+        await client.SendAsync(new ListenMessage { Id = 2, Handle = sock.Handle!.Value, Flags = 0 });
+
+        var listen = await client.ExpectAsync<ListenReplyMessage>();
+        Assert.Equal(RhpErrorCode.OperationNotSupported, listen.ErrCode);   // a datagram has no listening state
+    }
+
+    [Fact]
+    public async Task A_bound_dgram_handle_receives_an_inbound_ui_frame_as_a_recv_push()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindDgramAsync(client, "M0LTE-1", port: "1");
+
+        // A UI frame arrives off the air (the listener would tap it) — the gateway injects it.
+        await gateway.InjectUiAsync(new UiDatagram("2E0XYZ", "M0LTE-1", 0xCC, "ping"u8.ToArray(), "1"));
+
+        var recv = await client.ExpectAsync<RecvMessage>();
+        Assert.Equal(handle, recv.Handle);
+        Assert.Null(recv.Id);                       // a push, not a reply
+        Assert.NotNull(recv.Seqno);                 // carries a seqno, not an id
+        Assert.Equal("2E0XYZ", recv.Remote);        // the frame's true source → recv.remote
+        Assert.Equal("M0LTE-1", recv.Local);        // the frame's destination → recv.local
+        Assert.Equal("1", recv.Port);               // the arrival port label
+        Assert.Equal(0xCC, recv.Pid);               // the frame's PID surfaced
+        Assert.Equal("ping", recv.Data);
+    }
+
+    [Fact]
+    public async Task Open_dgram_creates_a_datagram_socket_that_can_sendto()
+    {
+        // The combined open form (R-6): open(dgram, local, port) = socket+bind in one step.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        {
+            Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram, Local = "M0LTE-1", Port = "1",
+        });
+        var open = await client.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, open.ErrCode);
+        Assert.True(open.Handle >= 100);
+
+        await client.SendAsync(new SendToMessage { Id = 2, Handle = open.Handle, Remote = "GB7RDG", Data = "y" });
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────
+
+    // socket(dgram) → bind(callsign[, port]) → returns the bound dgram handle.
+    private static async Task<int> BindDgramAsync(RhpTestClient client, string callsign, string? port = null)
+    {
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = callsign, Port = port });
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        return sock.Handle!.Value;
+    }
 
     private static async Task<int> OpenAsync(RhpTestClient client)
     {
@@ -462,6 +601,18 @@ public sealed class RhpServerTests : IAsyncDisposable
         public Func<INodeConnection, string, Task>? AcceptHandler;
         public int Registrations, Disposals;
 
+        // ── dgram (UI) recording ──
+        // Last sendto that reached the gateway (the UI TX recorder).
+        public string? UiPort, UiLocal, UiRemote;
+        public byte? UiPid;
+        public byte[]? UiInfo;
+        public RhpGatewayException? UiSendFail { get; set; }
+
+        // The inbound-UI injector: the server's RegisterUiListener callback + the port it scoped.
+        public Func<UiDatagram, Task>? UiListener;
+        public string? UiListenerPort;
+        public int UiRegistrations, UiDisposals;
+
         public Task<INodeConnection> OpenAx25StreamAsync(string? portLabel, string? local, string remote, CancellationToken ct = default)
         {
             (LastPort, LastLocal, LastRemote) = (portLabel, local, remote);
@@ -483,9 +634,39 @@ public sealed class RhpServerTests : IAsyncDisposable
             return new Unsub(this);
         }
 
+        public Task SendUiAsync(string? portLabel, string local, string remote, ReadOnlyMemory<byte> info, byte pid, CancellationToken ct = default)
+        {
+            if (UiSendFail is { } f)
+            {
+                throw f;
+            }
+            (UiPort, UiLocal, UiRemote, UiPid, UiInfo) = (portLabel, local, remote, pid, info.ToArray());
+            return Task.CompletedTask;
+        }
+
+        public IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived)
+        {
+            UiRegistrations++;
+            (UiListenerPort, UiListener) = (portLabel, onReceived);
+            return new UiUnsub(this);
+        }
+
+        /// <summary>Drive an inbound UI datagram to a bound dgram handle (stands in for an
+        /// over-the-air UI frame the listener would tap).</summary>
+        public Task InjectUiAsync(UiDatagram dg) => UiListener?.Invoke(dg) ?? Task.CompletedTask;
+
         private sealed class Unsub(FakeGateway owner) : IDisposable
         {
             public void Dispose() => owner.Disposals++;
+        }
+
+        private sealed class UiUnsub(FakeGateway owner) : IDisposable
+        {
+            public void Dispose()
+            {
+                owner.UiDisposals++;
+                owner.UiListener = null;
+            }
         }
     }
 

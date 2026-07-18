@@ -637,11 +637,30 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// <param name="info">The UI frame's information field.</param>
     /// <param name="pid">The Layer-3 PID (e.g. <see cref="Ax25Frame.PidNetRom"/>).</param>
     /// <param name="ct">Cancellation for the modem send.</param>
-    public async Task SendUiAsync(
+    public Task SendUiAsync(
         Callsign destination, ReadOnlyMemory<byte> info, byte pid = Ax25Frame.PidNoLayer3, CancellationToken ct = default)
+        => SendUiAsync(MyCall, destination, info, pid, ct);
+
+    /// <summary>
+    /// Send a connectionless UI (unproto) frame originating from an <b>explicit source</b>
+    /// callsign instead of <see cref="MyCall"/> — the multi-callsign origination the node's
+    /// RHPv2 server uses to emit a DGRAM datagram (the wire's <c>sendto</c>) as an application's
+    /// bound callsign (e.g. an IP-over-AX.25 UI frame, pid <c>0xCC</c>, or a native beacon / APRS
+    /// frame, pid <c>0xF0</c>). Like the <see cref="SendUiAsync(Callsign, ReadOnlyMemory{byte}, byte, CancellationToken)"/>
+    /// overload it bypasses the session layer; the frame is built via the strict
+    /// <see cref="Ax25Frame.Ui(Callsign, Callsign, ReadOnlySpan{byte}, byte, bool, bool, IEnumerable{Callsign})"/>
+    /// factory (which takes an explicit source) and traced as <see cref="FrameDirection.Transmitted"/>.
+    /// </summary>
+    /// <param name="source">The UI frame's AX.25 source (originating) callsign.</param>
+    /// <param name="destination">The UI frame's AX.25 destination.</param>
+    /// <param name="info">The UI frame's information field.</param>
+    /// <param name="pid">The Layer-3 PID.</param>
+    /// <param name="ct">Cancellation for the modem send.</param>
+    public async Task SendUiAsync(
+        Callsign source, Callsign destination, ReadOnlyMemory<byte> info, byte pid = Ax25Frame.PidNoLayer3, CancellationToken ct = default)
     {
         EnsureNotDisposed();
-        var frame = Ax25Frame.Ui(destination, MyCall, info.Span, pid, isCommand: true);
+        var frame = Ax25Frame.Ui(destination, source, info.Span, pid, isCommand: true);
         await SendAndTraceAsync(frame, ct).ConfigureAwait(false);
     }
 
@@ -669,7 +688,7 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// "axping" probe. A spec-compliant responder echoes the information field back
     /// in a TEST <em>response</em>; the caller correlates that response (via
     /// <see cref="FrameTraced"/>) to measure round-trip time. Like
-    /// <see cref="SendUiAsync"/> this bypasses the session layer entirely (no
+    /// <see cref="SendUiAsync(Callsign, ReadOnlyMemory{byte}, byte, CancellationToken)"/> this bypasses the session layer entirely (no
     /// connection needed); the source is this listener's <see cref="MyCall"/>, the
     /// frame is built via the strict <see cref="Ax25Frame.Test"/> factory, and it is
     /// traced as <see cref="FrameDirection.Transmitted"/>. <paramref name="pollFinal"/>
@@ -1068,7 +1087,7 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// <see cref="Ax25Frame.Test"/> factory (the outbound construction path stays
     /// spec-faithful). The frame is sent on the modem and traced as
     /// <see cref="FrameDirection.Transmitted"/>, mirroring
-    /// <see cref="SendUiAsync"/> / <see cref="SendTestAsync"/>.
+    /// <see cref="SendUiAsync(Callsign, ReadOnlyMemory{byte}, byte, CancellationToken)"/> / <see cref="SendTestAsync"/>.
     /// </summary>
     /// <remarks>
     /// Connectionless + observation-safe: it never touches a session's state, so a

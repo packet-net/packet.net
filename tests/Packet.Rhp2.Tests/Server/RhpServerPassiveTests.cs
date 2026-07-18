@@ -147,7 +147,8 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     [Theory]
     [InlineData("nonsense", "stream", RhpErrorCode.BadOrMissingFamily)]
     [InlineData("inet", "stream", RhpErrorCode.OperationNotSupported)]
-    [InlineData("ax25", "dgram", RhpErrorCode.OperationNotSupported)]
+    [InlineData("ax25", "warble", RhpErrorCode.BadOrMissingMode)]
+    [InlineData("ax25", "raw", RhpErrorCode.OperationNotSupported)]     // known-but-deferred mode
     public async Task Socket_validation_ladder(string pfam, string mode, int expected)
     {
         var (server, _) = await StartServerAsync();
@@ -156,6 +157,50 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = pfam, Mode = mode });
         var reply = await client.ExpectAsync<SocketReplyMessage>();
         Assert.Equal(expected, reply.ErrCode);
+    }
+
+    // ── dgram socket lifecycle (R-6): socket(dgram) → bind → sendto / recv ──
+
+    [Fact]
+    public async Task Socket_dgram_bind_succeeds_and_the_handle_takes_sendto()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        var handle = sock.Handle!.Value;
+        Assert.True(handle >= 100);
+
+        await client.SendAsync(new BindMessage { Id = 2, Handle = handle, Local = "M0LTE-7", Port = null });
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        Assert.Equal(1, gateway.UiRegistrations);      // bind started the promiscuous UI RX tap
+
+        // The bound dgram handle takes sendto (a datagram, not a stream connect).
+        await client.SendAsync(new SendToMessage { Id = 3, Handle = handle, Remote = "GB7RDG", Data = "x" });
+        var sent = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sent.ErrCode);
+        Assert.Equal("M0LTE-7", gateway.UiLocal);
+    }
+
+    [Fact]
+    public async Task Closing_a_dgram_socket_tears_down_its_ui_subscription()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7" });
+        _ = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(1, gateway.UiRegistrations);
+
+        await client.SendAsync(new CloseMessage { Id = 3, Handle = sock.Handle!.Value });
+        var closed = await client.ExpectAsync<CloseReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, closed.ErrCode);
+        Assert.Equal(1, gateway.UiDisposals);          // the UI tap is gone with the handle
     }
 
     [Fact]
