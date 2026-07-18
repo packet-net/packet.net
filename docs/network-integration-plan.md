@@ -6,9 +6,11 @@ host stack** (secondary, opt-in). This is **host/OS integration**, not a cross-r
 feature — the work is C#/.NET on the pdn side + a small native/C shim (`libax25`) + Linux OS
 glue (TUN) — so the `C# → ax25-ts → pico-node` parity discipline **does not apply** (see ADR §5).*
 
-**Status:** planning only — nothing here is built, and everything is **contingent on the ADR
-being accepted** (its §7 questions answered). Sizing: **native seam S–M, IP/TUN seam M, kernel
-module: not us**.
+**Status:** ADR **accepted** (Tom, 2026-07-18) — nothing built yet; execution to follow.
+**Native seam first, then the TUN/IP seam — both v1, not parked.** New work lives in a
+**separate repo** (soft lean), **AGPL-3.0** except the `libax25` shim (**LGPL-3.0** — it links
+into third-party apps; ADR §5). Sizing: **native seam S–M, IP/TUN seam M, kernel module: not
+us**.
 
 ---
 
@@ -20,9 +22,10 @@ Phase I  — IP seam:    TUN pdn0 host stack + resolver       (SECONDARY; opt-in
 (Phase D — out-of-tree AF_AX25 kernel module)               (EXTERNAL; not planned here)
 ```
 
-Recommended order: **N before I** — the native seam is the bigger unlock for the smaller lift
-(the RHPv2 seam already exists), and it validates the "existing software, same idiom" thesis
-before spending effort on IP encapsulation. Both are independent; either can ship alone.
+Decided order (Tom, 2026-07-18): **N before I** — the native seam is the bigger unlock for the
+smaller lift (the RHPv2 seam already exists), and it validates the "existing software, same
+idiom" thesis before spending effort on IP encapsulation. **Both are v1 scope (the TUN seam is
+not parked);** they are independent, so either can ship alone once N leads.
 
 The engine seams both phases stand on already exist and need no change to *function*:
 `Ax25Listener.ConnectAsync` / `SendData(session, data, pid)` / `SendUiAsync(dest, info, pid)`;
@@ -53,6 +56,8 @@ BBSes) connects to a callsign **through pdn**, unmodified, with no kernel `AF_AX
   …) → RHPv2 `OPEN` flags or documented no-ops. The shim's fd is the IPC socket, so `select`/
   `poll` loops in the apps work unchanged. Deployment: drop-in `libax25.so.*` **or**
   `LD_PRELOAD` (support both; the drop-in `.so` is cleaner for packaging).
+  **Licence: LGPL-3.0** (ADR §5) — it links into third-party apps, so it inherits upstream
+  `libax25`'s linking-permissive licence; it reaches AGPL pdn over the socket boundary only.
 - **N2 — Coverage + conformance.** Run the actual tools unmodified against pdn; a conformance
   matrix vs `linux_oot` (`libax25` on the pinned 6.18 kernel — the `f6fbb-on-kernel` VM is the
   reference oracle). Loopback pdn↔pdn (two aliases via `AddLocalAlias`) as the deterministic
@@ -80,9 +85,10 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
 - **I4 — Routing + sizing.** Hand far-station traffic to **NET/ROM** (`NetRomService`) for
   automatic multi-hop; the TUN interface hides it. Small MTU (~256); VJ/ROHC header
   compression a later lever, explicitly not v1.
-- **I5 — Host wiring.** A `Packet.Node` host-layer listener (peer to the AGW/RHPv2 listeners),
-  a `TransportConfig`-style config section, registered under `PortSupervisor`. Off by default;
-  opt-in per the ADR. Cross-platform TUN (Wintun/utun) is a later follow-on.
+- **I5 — Host wiring.** A daemon/service in the **separate repo** (ADR decision 6), consuming
+  packet.net's engine + RHPv2 as a dependency (the satellite pattern) rather than a
+  `Packet.Node`-internal listener; its own config; off by default, opt-in per the ADR.
+  **Licence: AGPL-3.0.** Cross-platform TUN (Wintun/utun) is a later follow-on.
 
 ## 3. Testing & interop
 

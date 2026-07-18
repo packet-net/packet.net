@@ -7,9 +7,23 @@ network. It is the mirror of [`app-extensibility.md`](app-extensibility.md) (app
 by** the node) and it builds on the socket-layer seam already shipped in
 [`rhp2-server.md`](rhp2-server.md).*
 
-**Status:** proposed — analysis complete (Tom + Claude, 2026-07-18); the **decision and
-execution are Tom's and pending**. Nothing here is built. Sizing in
-[`network-integration-plan.md`](network-integration-plan.md).
+**Status:** **accepted** (Tom, 2026-07-18) — execution to follow; nothing built yet. **Native
+seam first; the TUN/IP seam is also in scope (not parked).** New work lands in a **separate
+repo**, **AGPL-3.0** — with one flagged exception, the `libax25` shim (§5, Licence). See
+**Decisions** below. Sizing in [`network-integration-plan.md`](network-integration-plan.md).
+
+## Decisions (Tom, 2026-07-18)
+
+1. **Build the native seam.** The `libax25` ABI shim is worth building — RHPv2 serves
+   *new/ported* apps; the shim serves *existing, unmodified* ones. (ADR §7 Q1)
+2. **Native seam first — but the TUN/IP seam is not neglected or parked.** Ship the shim
+   first; deliver the TUN host stack too. **Both are v1 scope.** (Q2 + Q5)
+3. **The IP seam is UI-frame datagram by default** — end-to-end TCP owns reliability, no
+   connected-mode double-ARQ. Connected-mode IP stays a per-route opt-in. (Q3)
+4. **Home: a separate component in a separate repo** (soft lean — not `Packet.Node`-internal);
+   it consumes packet.net's engine + RHPv2 as a dependency, like the other satellites. (Q4)
+5. **Licence: AGPL-3.0 for everything, unless we literally can't.** The one identified "can't"
+   is the `libax25` shim (it links into third-party apps — likely **LGPL-3.0**); see §5.
 
 ---
 
@@ -116,11 +130,13 @@ IP over AX.25 pays for it: extra headers on a byte-starved channel, a callsign�
 maintain, and the **TCP-over-ARQ double-retransmit pathology** (§5). It is worth having, opt-in,
 for the IP-only long tail — not the default way to reach the network.
 
-## 4. Decision (proposed)
+## 4. Decision
 
-1. **Adopt two seams.** Build **B (the `libax25` shim)** as the primary, recommended path for
-   existing AX.25 software, and **C (the TUN host stack)** as a secondary, **opt-in,
-   host-scoped** capability for IP-only software.
+Accepted 2026-07-18 (Tom) — see **Decisions** at the top. In full:
+
+1. **Adopt two seams.** Build **B (the `libax25` shim)** as the primary path for existing AX.25
+   software **first**, and **C (the TUN host stack)** as a host-scoped, opt-in capability —
+   **also v1 scope, not parked.** (Both ship; native leads.)
 2. **Both ride the existing AX.25 engine** via its PID-demuxed L2 and the RHPv2/session seam —
    no new L2, no fork of the engine. The engine already carries the `pid` octet on
    `SendUiAsync`/`SendData` and surfaces it on `DataLinkUnitDataIndication`/`DataLinkDataIndication`,
@@ -132,6 +148,9 @@ for the IP-only long tail — not the default way to reach the network.
    kernel code. If the community revives `net/ax25` out-of-tree, pdn is its modem/L2.
 5. **IP-over-AX.25 defaults to UI-frame datagrams** (§5), with connected-mode IP as a
    per-route opt-in.
+6. **Home: a separate repo** (soft lean), consuming packet.net's engine + RHPv2 as a
+   dependency — the satellite pattern, not a `Packet.Node`-internal listener.
+7. **Licence: AGPL-3.0 throughout, except the `libax25` shim** (likely LGPL-3.0 — §5).
 
 ## 5. Consequences
 
@@ -154,10 +173,19 @@ for the IP-only long tail — not the default way to reach the network.
   integration** (TUN is Linux/macOS/*BSD/Windows; `libax25` is a Linux C library). The
   `C# → ax25-ts → pico-node` parity discipline **does not apply** — there is no browser or
   embedded "OS network stack" to reach. No `parity-exceptions.json` leg is owed.
-- **Licence.** Clean. The `0xCC`/`0xCD` PIDs and the §6.6 IP-datagram motivation are in the
-  AX.25 spec (`ax25spec`); the TUN device is a trivial P/Invoke (mirror pdn-soundmodem's ALSA
-  P/Invoke); a `libax25`-ABI shim is our own implementation of a published API against pdn
-  (GPL/AGPL-compatible; `libax25` itself is LGPL).
+- **Licence — AGPL-3.0 by default; one flagged exception (to ratify).** New work is
+  **AGPL-3.0** to match pdn (Tom, 2026-07-18: *"all AGPL unless we literally can't"*). The
+  `0xCC`/`0xCD` PIDs and the §6.6 IP-datagram motivation are in the AX.25 spec (`ax25spec`);
+  the TUN device is a trivial P/Invoke (mirror pdn-soundmodem's ALSA P/Invoke). The **`libax25`
+  shim is the "literally can't" case:** it is a drop-in replacement for a library **linked
+  into arbitrary third-party apps** (`ax25d`, `axcall`, BBSes — some GPL-2.0-*only*), and
+  upstream `libax25` is **LGPL** precisely to permit that linking. Shipping it AGPL would make
+  the combined app+shim non-distributable for GPLv2-only / non-GPLv3-compatible apps and defeat
+  its purpose as a true drop-in. So the shim is best **LGPL-3.0** (linking-permissive). This is
+  safe alongside AGPL pdn: the **shim↔pdn boundary is a socket** (arm's-length IPC), so pdn's
+  AGPL does not propagate through it — only the shim↔app linking boundary matters, and LGPL is
+  the right licence for that boundary. Everything else — the TUN host stack, the core, the
+  daemon — is **AGPL-3.0**.
 - **Observability is half-built.** The monitor decoders already label `0xCC`→"ARPA IP",
   `0xCD`→"ARPA Address Resolution", `0x06`/`0x07`→compressed/uncompressed TCP/IP — IP traffic
   is named correctly the moment it hits the air.
@@ -186,14 +214,17 @@ for the IP-only long tail — not the default way to reach the network.
   instead of NET/ROM routing; and the IP seam *reuses* NET/ROM for multi-hop delivery to far
   stations.
 
-## 7. Open questions for Tom
+## 7. Open questions — resolved (Tom, 2026-07-18)
 
-1. **Do we build the native (`libax25`) seam at all, or is RHPv2 "enough"?** RHPv2 covers
-   *new/ported* apps; the shim covers *existing, unmodified* `libax25` apps. Worth it?
-2. **Ship order** — native seam first (recommended: bigger unlock, smaller lift), or IP/TUN
-   first (the literal "tun/tap" request)?
-3. **UI-datagram vs connected-mode default for the IP seam** — ratify UI-datagram (§5)?
-4. **Repo/assembly home** — a new `Packet.Node` host-layer listener (like AGW/RHPv2), or a
-   separate `pdn-net`/shim component shipped alongside?
-5. **Is the TUN host seam in-scope for v1 at all, or parked** (like APRS) behind the native
-   seam until there's a concrete IP-app demand?
+All five are answered in **Decisions** (top): build the native seam (Q1); native-first with the
+TUN seam **also v1, not parked** (Q2, Q5); **UI-datagram** default (Q3); a **separate repo**
+(Q4, soft lean). One directive added: **AGPL-3.0 unless we literally can't** — the `libax25`
+shim is the identified exception (likely LGPL-3.0, §5).
+
+**Residual detail for the plan / a follow-up decision:**
+
+- **Repo shape.** One repo with a clearly-licensed LGPL subtree for the shim, or two repos
+  (AGPL host stack + LGPL shim)? A single mixed-licence repo is workable but the split is
+  cleaner — decide when the repo is created.
+- **Ratify the shim's LGPL-3.0** (§5) — the one non-AGPL piece.
+- **`SEQPACKET`↔`stream`** mapping for the shim (see the plan, N0).
