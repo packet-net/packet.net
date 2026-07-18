@@ -64,6 +64,32 @@ public class ReconcilePreviewBuilderTests
     }
 
     [Fact]
+    public void An_ardop_change_is_itemised_as_a_port_restart()
+    {
+        var baseline = Base();
+        var to = baseline with { Ardop = baseline.Ardop with { Enabled = true, Device = "flex:mock" } };
+
+        var preview = ReconcilePreviewBuilder.Build(baseline, to);
+
+        var change = preview.PortRestart.Should().ContainSingle().Subject;
+        change.Path.Should().Be("ardop");
+        change.Summary.Should().Contain("ARDOP");
+    }
+
+    [Fact]
+    public void A_paging_change_is_itemised_as_a_port_restart()
+    {
+        var baseline = Base();
+        var to = baseline with { Paging = baseline.Paging with { Enabled = true, Baud = 512 } };
+
+        var preview = ReconcilePreviewBuilder.Build(baseline, to);
+
+        var change = preview.PortRestart.Should().ContainSingle().Subject;
+        change.Path.Should().Be("paging");
+        change.Summary.Should().Contain("POCSAG");
+    }
+
+    [Fact]
     public void A_grid_change_is_a_live_change()
     {
         var baseline = Base();

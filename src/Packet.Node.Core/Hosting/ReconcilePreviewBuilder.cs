@@ -13,11 +13,12 @@ namespace Packet.Node.Core.Hosting;
 /// <remarks>
 /// The <see cref="ReconcilePlanner"/> covers what the running node reconciles
 /// <b>without a process restart</b> (ports, telnet, service text, the callsign reset).
-/// Two edited areas it does not hot-apply — the identity alias/grid (cosmetic, read
-/// live by the status API) and the whole NET/ROM block (the service is built once at
-/// start) — are diffed here directly: the cosmetic ones as <c>live</c>, and NET/ROM as
-/// <c>node-reset</c> with an honest "applies after a node restart" note rather than
-/// pretending it took effect live.
+/// A few edited areas it does not drive are diffed here directly: the identity alias/grid
+/// (cosmetic, read live by the status API) as <c>live</c>; the whole NET/ROM block (the
+/// service is built once at start) as <c>node-reset</c> with an honest "applies after a node
+/// restart" note; and the ARDOP / POCSAG services (each an independent hosted service that
+/// self-reconciles on config change) as <c>port-restart</c> — they apply without a node or
+/// AX.25-port restart, but the service itself restarts and its clients drop.
 /// </remarks>
 public static class ReconcilePreviewBuilder
 {
@@ -113,6 +114,21 @@ public static class ReconcilePreviewBuilder
         if (!from.NetRom.Equals(to.NetRom))
         {
             nodeReset.Add(new ReconcileChange("netRom", NodeReset, "NET/ROM settings changed — applies after a node restart."));
+        }
+
+        // The ARDOP and POCSAG services are not driven by the reconcile plan — each is an
+        // independent hosted service that self-reconciles on config change (it tears down and
+        // rebuilds its own audio device + TCP listener). Itemise the change honestly rather than
+        // omitting it: no node or AX.25-port restart, but the service restarts and its clients drop.
+        if (!from.Ardop.Equals(to.Ardop))
+        {
+            portRestart.Add(new ReconcileChange("ardop", PortRestart,
+                "ARDOP virtual TNC reconfigured — the service restarts (connected ARDOP hosts reconnect; the audio device is re-acquired)."));
+        }
+        if (!from.Paging.Equals(to.Paging))
+        {
+            portRestart.Add(new ReconcileChange("paging", PortRestart,
+                "POCSAG paging reconfigured — the service restarts (connected paging clients reconnect; the audio device is re-acquired)."));
         }
 
         return new ReconcilePreview(Valid: true, Live: live, PortRestart: portRestart, NodeReset: nodeReset);
