@@ -91,7 +91,11 @@ public sealed partial class RhpServer : IAsyncDisposable
 {
     private const int RecvChunk = 2048;          // session bytes per recv push (escaped JSON stays well under the frame cap)
     private const int FirstHandle = 100;         // match the reference's visible numbering
-    private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the dgram default when sendto omits `pid` (pdn extension)
+    // PID carriage for ax25/dgram is a PROVISIONAL pdn stand-in pending RHPv2
+    // standardisation — packet.net#647 (typed `pid` field vs PID-in-`data` à la
+    // AX25_PIDINCL). Convergence touches exactly 3 spots: the DTO `pid` field
+    // (RhpMessages), the TX decode in HandleSendToAsync, and the RX build (BuildRecv).
+    private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the dgram default when sendto omits `pid` (pdn extension, provisional — #647)
 
     // errCode 12 errText as the live wire spells it (XRouter answers "Missing handle" /
     // "Missing data", not the spec table's generic "Bad parameter").
