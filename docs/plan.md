@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-14
+**As of:** 2026-07-18
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem 0.5.0→0.6.0 integration** — `ModemCatalog` upstreamed into the pdn-soundmodem library (one source of truth for mode→modem / DSP-rate / gating; published v0.6.0); the node caught up and exposed FreeDV datac + MS110D App-D + C4FSK modes, the `bpsk300` differential diversity bank (bpsk1200 kept legacy), `flex:` FlexRadio device support, and ARDOP + POCSAG as hosted services (ardopcf-compatible host — BPQ/Pat/Winlink drive it). Node PRs #638–#642; ships **node-v0.32.0**](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **lib-v0.23.0 downstream cascade** — axcall + packet-term-tui bumped `Packet.*` 0.22.0→0.23.0, built + tested against the published nuget.org packages, merged on green CI (axcall#20 / packet-term-tui#25), and released as **v0.2.20** each (six-platform binaries, 6 assets, verified non-draft). Tags cut via each repo's `release.yml` `workflow_dispatch` (branch-scoped credential can't push tags). Closes the lib-v0.23.0 entry's remaining Step 3; releasing.md cascade complete for 0.23.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **RELEASE lib-v0.23.0 + node-v0.31.0** — the whole rig-control arc ships: 17 NuGet packages verified indexed (DcdRead/SignalStrengthRead, RigRadioControl), and the node release carries the rig card + Tune, the scan/adopt wizard, ManagedRigDaemon and `radio: kind rig` (deb gains `Depends: libhamlib-utils`). Version-train divergence learning fixed in releasing.md (#618). Downstream axcall/packet-term-tui pin bumps outstanding](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-08 — **Head-ends web UI + API caught up to identify/pair/name v2 + id-stability (#579)** — the Head-ends screen (PR #562) shipped before the v2 backend and was never caught up; this closes the four confirmed gaps in one UI+API PR. **UI:** a "Resolve physically (keys each modem briefly)" button on instances with a free TNC+radio — **admin-scope gated** (it transmits — the same bar as hail/tuning/doctor; disabled+titled otherwise) behind an RF-warning confirm dialog that quotes the API caveat, renders the returned pairs/unpaired/ambiguous, refreshes the scan, and pre-selects the adopt pickers with the resolved pair; a per-device **band badge** (`amateurBand`, falling back to `bandCode`); an **"unstable id" warning badge** on `idStable === false` devices (tooltip: no by-path/by-id link, binding may not survive replug); and an **"MQTT instance label"** field in the adopt Options. UI adopts now pass `amateurBand` (from the selected radio's scan row) so they get band-named ports like API adopts. **API (additive):** `HeadEndPortInfo` gains `IdSource` (string) + `IdStable` (**nullable** bool — absent from an old head-end reads as *unknown*, never assumed stable), the scan (`HeadEndDeviceScan`) carries them, the scanner populates them; `HeadEndAdoptRequest` gains `MqttInstance` (string?) honoured by `BuildCandidate` over the band default. Stale "operate-scope" doc-comment on the keyup endpoint corrected to admin. **Tests:** 6 C# (id-stability parse present/absent, scan flow-through, MqttInstance override ×3) + 8 vitest (keyup admin-gating/confirm/post/render/pre-select + band badge + unstable badge + amateurBand/mqttInstance in adopt body); UI `npm run build && npm run test` green (118), `dotnet build` + head-end Node.Tests green (the /tmp-sandbox 61-failure baseline is unrelated). No ax25-ts parity surface. Closes #579. See §17](#17-amendment-log)
@@ -1249,6 +1250,46 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-18 — Soundmodem 0.5.0→0.6.0 integration: ModemCatalog, new modes, Flex, ARDOP/POCSAG
+
+pdn-soundmodem had moved well past the node's pinned 0.4.0; caught the node up and exposed all the
+new functionality across one soundmodem release + five node PRs.
+
+- **soundmodem `ModemCatalog` (pdn-soundmodem#58 → v0.6.0):** lifted the mode-name→`IModem` factory,
+  DSP-rate derivation, centre-frequency gating and per-family PSK-detector defaults out of the
+  daemon into the **library** (`Packet.SoundModem.Modems.ModemCatalog` + `ModemOptions`). The daemon
+  and the node now build modems through one source of truth, so the accepted mode set / rate rule /
+  gating can't drift again — a future soundmodem mode is a pin-bump, not a hand-edited node switch.
+  Published to nuget.org.
+- **Node #638 (pin + delegate + modes + Phase-0 bugs):** bumped `pdn-soundmodem` 0.4.0→0.6.0,
+  deleted the node's private mode switch in favour of `ModemCatalog`, and exposed FreeDV datac ×6,
+  MIL-STD-188-110D App-D ×8, `afsk1200-il2p-nocrc`, `bpsk300-multi`. `bpsk300` now builds the 0.6.0
+  differential frequency-diversity bank (config `offsetPairs`/`offsetStepHz`/`pskDetector`);
+  **`bpsk1200` kept as the legacy single-carrier modem** (no over-the-air evidence for the bank at
+  1200 baud yet). Fixed a live DSP-rate bug (transport rated `c4fsk*`/`fsk4800` at 48k, the validator
+  at 12k → the validator accepted a `captureRate` `Open()` then threw on), the YAML `frequency`
+  int-truncation, and the drifted mode XML-doc. Crossed the 0.5.0 externalisation boundary
+  (`IAudioOutput`/`IPttControl` → `M0LTE.Radio.Audio`, `Decimator` → `M0LTE.Dsp`).
+- **Node #639 (Flex):** a `flex:<radio>[:slice][@station]` device backend on the soundmodem
+  transport (`SoundModemFrameTransport.OpenAsync` + a shared `SoundModemFlexDevice` helper) — a
+  headless/attach FlexRadio slice supplies its own DAX audio and keys itself. Multi-channel IQ RX
+  descoped (breaks one-port-one-device; its own design).
+- **Node #640/#641 (POCSAG + ARDOP):** two node-level **hosted services** — not transports, since
+  `IAx25Transport` excludes session/paging layers — templated on `RhpServerHostedService`. Both share
+  a new `SoundModemChannelHost` (device open + `SoundModemChannel` + RX pump + transmitter) and the
+  extracted `SoundModemPtt` parser. **POCSAG** (`paging` block): a `PagingTcpServer` line server
+  (PAGE/HEARD). **ARDOP** (`ardop` block): an ardopcf-compatible TCP host interface (command 8515 /
+  data 8516) — the node is the ARDOP **TNC/provider**, so BPQ (`DRIVER=ARDOP`), Pat and Winlink drive
+  it unchanged; byte-compat with ardopcf is `M0LTE.Ardop`'s job (validated there against a live
+  ardopcf + a real Pat B2F exchange). Both default-off, self-gating on `enabled`.
+- **Node #642 (UI + docs):** a soundmodem Ports editor (mode picker from `KnownModes`, the bank
+  knobs for bpsk/qpsk, the flex slice sub-fields), `docs/soundmodem.md`, `docs/node-api.yaml`
+  schemas, and worked config examples in `packaging/packetnet.yaml` + `NodeConfigTemplate.cs`. A
+  Services editor UI for the ardop/paging blocks is a follow-up (documented as config for now).
+- New config: soundmodem `offsetPairs`/`offsetStepHz`/`pskDetector`/`flex`, plus the top-level
+  `paging`/`ardop` service blocks. New deps `M0LTE.Pocsag` + `M0LTE.Ardop` (both transitive via
+  pdn-soundmodem, referenced explicitly). Ships in **node-v0.32.0**.
 
 ### 2026-07-18 — Licensing sweep: repo-wide AGPL audit (no metadata drift found, README footers fixed)
 
