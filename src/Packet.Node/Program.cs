@@ -615,6 +615,11 @@ builder.Services.AddSingleton<Packet.Rhp2.Server.IRhpGateway, Packet.Node.Rhp.Su
 builder.Services.AddSingleton<Packet.Rhp2.Server.RhpServerHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Rhp2.Server.RhpServerHostedService>());
 
+// POCSAG paging service (default-off behind paging.enabled): a TCP line server transmitting/
+// receiving pages over a dedicated soundmodem audio device. Self-gates on Enabled.
+builder.Services.AddSingleton<Packet.Node.Core.Paging.PagingHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.Paging.PagingHostedService>());
+
 // The embedded Tailscale tsnet sidecar (network-access.md § The sidecar, default-off behind
 // tailscale.enabled): INFRA, not an app. The status holder is a singleton the read API
 // (GET /api/v1/system/tailscale) projects and the web panel polls; the hosted service launches

@@ -37,6 +37,7 @@
     <!-- The soundmodem core (GPL-3.0-or-later, sibling repo packet-net/pdn-soundmodem);
          combines with this AGPL-3.0 host under GPLv3 §13 / AGPLv3 §13. -->
     <PackageReference Include="pdn-soundmodem" />
+    <PackageReference Include="M0LTE.Pocsag" />
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="YamlDotNet" />
     <!-- kissproxy-compatible MQTT frame emission (default-off; docs/research/pdn-mqtt-frame-emission.md).
