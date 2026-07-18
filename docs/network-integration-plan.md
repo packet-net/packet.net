@@ -95,6 +95,11 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
 - **I2 — Encapsulation.** **UI-frame datagram IP by default** (ADR §5 — avoid TCP/AX.25
   double-ARQ): IP packet → `SendUiAsync(nextHopCall, ipBytes, pid:0xCC)`, segmented via §6.6
   when > N1. Connected-mode IP (`SendData` on a per-peer session) as a per-route opt-in.
+  **On air this is the STANDARD IP-over-AX.25** (UI frame, PID `0xCC`, the **raw** IP datagram
+  in the info field) — interoperable with kernel `ax25_ip.c` / NOS / JNOS / BPQ *by
+  construction* (ADR §9). **Load-bearing invariant:** the IP datagram goes in the UI info **raw
+  — no pdn envelope**; verify on-air, since a wrapper would pass every unit test and still break
+  interop.
 - **I3 — Addressing.** A callsign↔IP resolver: static table / `hosts`-style file / 44-net
   (AMPRNet) allocation. Optional dynamic **AX.25-ARP** (`0xCD`) later. On RX `0xCD`, maintain
   the reverse map.
@@ -111,8 +116,12 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
 - **Native (Phase N):** the real `libax25` tools run unmodified against pdn; behaviour diffed
   against `linux_oot` `libax25` in the 6.18 VM (`f6fbb-on-kernel`); loopback pdn↔pdn.
 - **IP (Phase I):** `ping`/`ssh`/`mosh` over an in-memory / loopback modem pair
-  (`InMemoryRadio.CreatePair()`); the 6.18 kernel `ax0` + IP-over-AX.25 path as an oracle
-  *inside the VM* (the one place it still exists) for byte-level cross-check.
+  (`InMemoryRadio.CreatePair()`).
+- **IP INTEROP (required, not optional — ADR §9):** an **on-air interop test both directions
+  against a kernel-AX.25 host** — the `f6fbb-on-kernel` **6.18 LTS VM** (kernel AX.25 +
+  `net/ax25/ax25_ip.c`) is the oracle (the one place kernel IP-over-AX.25 still exists). pdn→kernel
+  and kernel→pdn `ping`/UDP must round-trip, proving our UI/`0xCC`/raw-IP frame is byte-identical
+  to what the kernel emits/expects. This is what makes the seam *interoperable*, not a pdn island.
 - Monitor decoders already label `0xCC`/`0xCD`/`0x06`/`0x07`, so on-air IP is legible in the
   existing tooling with no extra work.
 
@@ -129,6 +138,18 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
 - **Windows/macOS TUN** (Wintun/utun) — later; the `libax25` shim is Linux-only by nature.
 - **The out-of-tree kernel module (Phase D)** — external/community; pdn provides the transport
   backend, nothing more.
+- **IP-over-AX.25 interop boundaries (ADR §9)** — each a tracked follow-on, none a v1 blocker,
+  all documented rather than hand-waved:
+  - **Virtual-circuit (connected-mode) IP** — we do datagram/UI (the AMPRNet/NOS default + common
+    denominator); a VC-only peer (IP in connected I-frames) won't match our UI frames.
+  - **Dynamic AX.25-ARP (`0xCD`)** — v1 is static IP↔callsign config; until ARP lands, both ends
+    need static route entries (standard practice, a config detail not an incompatibility).
+  - **VJ header compression (`0x06`/`0x07`)** — deferred (per-link state); v1 is plain `0xCC`, so a
+    VJ-enabled peer must disable compression.
+  - **AX.25 segmentation reassembly (`0x08`)** — v1 baseline is small MTU (~256) + IP-level
+    fragmentation; reassembling a peer's segmented oversized datagram is a follow-on.
+  - **The raw-IP-in-UI-info invariant** (I2) — the single silent-break risk; the ADR §9 interop
+    test is what guards it.
 
 ## 5. Definition of done (per seam)
 
@@ -137,5 +158,6 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
   loopback self-test **and** against a real peer; conformance matrix vs `linux_oot` recorded.
 - **IP seam:** `pdn0` appears in `ifconfig`; a stock IP client (`ssh`/`mosh`) completes a
   session to a station addressed by name, over a loopback modem pair, with UI-datagram
-  encapsulation; the same exchange cross-checks byte-for-byte against the 6.18 kernel path in
-  the VM.
+  encapsulation; **AND the on-air interop test passes both directions** — pdn↔kernel-AX.25
+  (`f6fbb-on-kernel` 6.18 VM) `ping`/UDP round-trips, confirming the UI/`0xCC`/raw-IP frame is
+  byte-identical to the kernel's (ADR §9). Interop is part of "done", not a nice-to-have.

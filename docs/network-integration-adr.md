@@ -287,3 +287,36 @@ open design points. These **supersede the "drop-in `.so`" shorthand** used in §
   the TUN seam) not yet scaffolded. Next: interposer `accept()`/listener path + `connect()`
   waiting on `status(Connected)` (the `TODO(N1)` items), then `pdn-net`. Detail in
   [`network-integration-plan.md`](network-integration-plan.md) §1.
+
+## 9. On-air interoperability — standard IP-over-AX.25 (2026-07-18)
+
+Raised by Tom: *is the IP framing pdn-specific?* The answer turns on a distinction worth pinning
+down — **there are two "framings", and only one of them is ever transmitted:**
+
+- **Host-facing RHPv2 wire** (`pdn-net` ⇄ the pdn *node*, over loopback): the JSON `dgram`
+  message with the `pid` field (§8, and #647). This **is** pdn-specific — but it is a **local
+  control channel and never goes on air.** It is *not* an interop surface.
+- **On-air AX.25 framing:** the node emits a **standard AX.25 UI frame** — dest/source callsigns,
+  control = UI, **PID = `0xCC`**, info = **the raw IP datagram, unwrapped.** This is the
+  decades-old **IP-over-AX.25** spoken by the Linux kernel (`net/ax25/ax25_ip.c`), KA9Q NOS,
+  JNOS, and BPQ (`0xCC` = ARPA IP, `0xCD` = ARP; datagram/UI mode). **So on-air it is
+  interoperable *by construction*** — a kernel-AX.25 box in datagram mode exchanges IP with pdn
+  given matching callsign routes. The pdn-specific `pid` field lives one layer below the antenna.
+
+**Interop is an explicit, tested requirement** (it had been implicit — the right PID by instinct,
+no test). **Oracle:** the sibling `f6fbb-on-kernel` **6.18 LTS VM** (kernel AX.25 + `ax25_ip.c`) —
+the test is ping/UDP **both directions** between pdn and a kernel-AX.25 host. Tracked in a
+dedicated interop issue.
+
+**Load-bearing invariant (verify on-air, don't trust the code):** the node must place the IP
+datagram **raw** in the UI info field — **no pdn envelope.** This is the one thing that would
+silently break interop while all unit tests stay green.
+
+**Interop boundaries — documented, not hand-waved (each a tracked follow-on, not a v1 blocker):**
+
+| Boundary | pdn v1 | Interop note |
+|---|---|---|
+| Mode | **datagram / UI** (the common denominator) | The old stacks also had a **virtual-circuit** mode (IP in connected-mode I-frames); a VC-only peer won't match our UI frames. UI/datagram is the AMPRNet/NOS default. |
+| Addressing | **static IP↔callsign** config | Dynamic **AX.25-ARP (`0xCD`)** is a follow-on; until then both ends need static route entries (standard AMPRNet practice) — a config detail, not an incompatibility. |
+| Compression | **none — plain `0xCC`** | **VJ** TCP/IP header compression (PIDs `0x06`/`0x07`) is per-link state, deferred; a VJ-enabled peer must disable it (or we add it later). |
+| MTU / fragmentation | **small MTU (~256) + IP fragmentation**, one datagram per UI frame | Reassembling a peer's AX.25-**segmented** (PID `0x08`) oversized datagram is a follow-on. |
