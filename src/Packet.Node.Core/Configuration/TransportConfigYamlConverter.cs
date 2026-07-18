@@ -41,9 +41,10 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
         }
 
         var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        // The one nested field a transport may carry: the multipoint AXUDP peer table.
-        // All other transport fields are flat scalars.
+        // Nested fields a transport may carry: the multipoint AXUDP peer table, and the
+        // soundmodem flex-slice tuning. All other transport fields are flat scalars.
         List<AxudpPeerConfig>? peers = null;
+        SoundModemFlexConfig? flex = null;
         while (!parser.TryConsume<MappingEnd>(out _))
         {
             var key = parser.Consume<Scalar>();
@@ -54,6 +55,13 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             if (normalisedKey == "peers")
             {
                 peers = ReadPeers(parser, key);
+                continue;
+            }
+
+            // 'flex:' is a single mapping (the soundmodem FlexRadio slice tuning).
+            if (normalisedKey == "flex")
+            {
+                flex = ReadFlex(parser, key);
                 continue;
             }
 
@@ -123,6 +131,7 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 OffsetStepHz = NullableDouble(fields, "offsetstephz", start),
                 PskDetector = fields.GetValueOrDefault("pskdetector"),
                 Ptt = fields.GetValueOrDefault("ptt") ?? "",
+                Flex = flex,
             },
             "taittransparent" => new TaitTransparentTransportConfig
             {
@@ -182,6 +191,37 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             });
         }
         return peers;
+    }
+
+    // Read a 'flex:' value — a single mapping of the FlexRadio slice tuning
+    // (frequency/antenna/mode/daxChannel); any omitted field takes its default.
+    private static SoundModemFlexConfig ReadFlex(IParser parser, Scalar key)
+    {
+        if (!parser.TryConsume<MappingStart>(out _))
+        {
+            throw new YamlException(key.Start, key.End,
+                "transport field 'flex' must be a mapping (frequency, antenna, mode, daxChannel).");
+        }
+
+        var flexFields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        while (!parser.TryConsume<MappingEnd>(out _))
+        {
+            var fk = parser.Consume<Scalar>();
+            if (!parser.TryConsume<Scalar>(out var fv))
+            {
+                throw new YamlException(fk.Start, fk.End, $"flex field '{fk.Value}' must have a scalar value.");
+            }
+            flexFields[Normalise(fk.Value)] = fv.Value;
+        }
+
+        var defaults = new SoundModemFlexConfig();
+        return new SoundModemFlexConfig
+        {
+            Frequency = flexFields.GetValueOrDefault("frequency") ?? defaults.Frequency,
+            Antenna = flexFields.GetValueOrDefault("antenna") ?? defaults.Antenna,
+            Mode = flexFields.GetValueOrDefault("mode") ?? defaults.Mode,
+            DaxChannel = flexFields.GetValueOrDefault("daxchannel") ?? defaults.DaxChannel,
+        };
     }
 
     /// <inheritdoc/>
@@ -258,6 +298,16 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 if (!string.IsNullOrWhiteSpace(sm.Ptt))
                 {
                     EmitField(emitter, "ptt", sm.Ptt);
+                }
+                if (sm.Flex is { } flex)
+                {
+                    emitter.Emit(new Scalar("flex"));
+                    emitter.Emit(new MappingStart());
+                    EmitField(emitter, "frequency", flex.Frequency);
+                    EmitField(emitter, "antenna", flex.Antenna);
+                    EmitField(emitter, "mode", flex.Mode);
+                    EmitField(emitter, "daxChannel", flex.DaxChannel);
+                    emitter.Emit(new MappingEnd());
                 }
                 break;
             case TaitTransparentTransportConfig t:

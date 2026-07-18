@@ -136,8 +136,9 @@ public sealed class TransportFactory : ITransportFactory
 
             case SoundModemTransportConfig sm:
                 // In-process soundcard modem (pdn-soundmodem engine): native carrier
-                // sense, sample-accurate TX-complete, modem-side p-persistent CSMA.
-                return SoundModemFrameTransport.Open(sm, timeProvider);
+                // sense, sample-accurate TX-complete, modem-side p-persistent CSMA. OpenAsync
+                // resolves the device backend (ALSA, or a flex: FlexRadio slice).
+                return await SoundModemFrameTransport.OpenAsync(sm, timeProvider, cancellationToken);
 
             case TaitTransparentTransportConfig t:
                 {

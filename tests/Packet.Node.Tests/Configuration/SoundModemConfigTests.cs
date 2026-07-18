@@ -206,6 +206,62 @@ public class SoundModemConfigTests
     }
 
     [Fact]
+    public void A_flex_device_with_slice_tuning_round_trips_through_yaml()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: sm
+                enabled: true
+                transport:
+                  kind: soundmodem
+                  device: "flex:discover:B"
+                  mode: bpsk300
+                  flex:
+                    frequency: "10.147600"
+                    antenna: ANT2
+                    mode: DIGU
+                    daxChannel: "2"
+            """;
+
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(NodeConfigYaml.Parse(yaml)));
+
+        var transport = reparsed.Ports[0].Transport.Should().BeOfType<SoundModemTransportConfig>().Subject;
+        transport.Device.Should().Be("flex:discover:B");
+        transport.Flex.Should().NotBeNull();
+        transport.Flex!.Frequency.Should().Be("10.147600");
+        transport.Flex.Antenna.Should().Be("ANT2");
+        transport.Flex.Mode.Should().Be("DIGU");
+        transport.Flex.DaxChannel.Should().Be("2");
+    }
+
+    [Fact]
+    public void A_flex_device_rejects_a_configured_ptt()
+    {
+        // A flex: device keys itself over CAT — a PTT spec would be ignored, so it is rejected.
+        Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Device = "flex:discover",
+            Mode = "afsk1200",
+            Ptt = "cm108:/dev/hidraw0",
+        })).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_flex_device_is_exempt_from_capture_rate_divisibility()
+    {
+        // Flex supplies its own DAX clock, so captureRate is irrelevant — a value that would be
+        // rejected for an ALSA device still validates here.
+        Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Device = "flex:discover",
+            Mode = "afsk1200",
+            CaptureRate = 44100,
+        })).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
     public void Bank_knobs_and_a_fractional_frequency_round_trip_through_yaml()
     {
         var original = new SoundModemTransportConfig

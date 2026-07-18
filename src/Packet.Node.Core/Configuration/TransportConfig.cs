@@ -392,9 +392,33 @@ public sealed record SoundModemTransportConfig : TransportConfig
     public string? PskDetector { get; init; }
 
     /// <summary>PTT control spec: empty for VOX, <c>serial:/dev/ttyUSB0[:rts|:dtr]</c>,
-    /// or <c>cm108:/dev/hidraw0[:gpio]</c>.</summary>
+    /// or <c>cm108:/dev/hidraw0[:gpio]</c>. Leave empty for a <c>flex:</c> device — the radio
+    /// keys itself.</summary>
     public string Ptt { get; init; } = "";
+
+    /// <summary>FlexRadio slice tuning, used only when <see cref="Device"/> is a <c>flex:</c>
+    /// device and only for a headless slice (ignored for ALSA devices and attach-mode
+    /// <c>@station</c> flex devices). Null ⇒ the headless defaults.</summary>
+    public SoundModemFlexConfig? Flex { get; init; }
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"soundmodem:{Device}/{Mode}";
+}
+
+/// <summary>FlexRadio slice tuning for a <c>flex:</c> soundmodem device (headless slice control).
+/// Mirrors the pdn-soundmodem daemon's <c>flex</c> config block.</summary>
+public sealed record SoundModemFlexConfig
+{
+    /// <summary>Slice frequency (MHz, six-decimal Flex form). Default <c>14.100000</c>.</summary>
+    public string Frequency { get; init; } = "14.100000";
+
+    /// <summary>RX/TX antenna. Default <c>ANT1</c>.</summary>
+    public string Antenna { get; init; } = "ANT1";
+
+    /// <summary>Slice demod mode. Default <c>DIGU</c> (a data mode).</summary>
+    public string Mode { get; init; } = "DIGU";
+
+    /// <summary>The DAX channel the client claims. Default <c>1</c>; a headless client sharing a
+    /// box with a running SmartSDR must pick a channel SmartSDR is not using.</summary>
+    public string DaxChannel { get; init; } = "1";
 }

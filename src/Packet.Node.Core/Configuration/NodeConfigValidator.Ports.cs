@@ -1,6 +1,7 @@
 using FluentValidation;
 using Packet.Core;
 using Packet.Radio.Tait;
+using Packet.SoundModem.FlexRadio;
 using Packet.SoundModem.Modems;
 
 namespace Packet.Node.Core.Configuration;
@@ -583,7 +584,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
     {
         RuleFor(t => t.Device)
             .NotEmpty()
-            .WithMessage("soundmodem transport requires `device` (an ALSA device such as `default` or `plughw:1,0`).");
+            .WithMessage("soundmodem transport requires `device` (an ALSA device such as `default` or `plughw:1,0`, or a `flex:<radio>[:slice][@station]` FlexRadio device).");
 
         RuleFor(t => t.Mode)
             .Must(mode => KnownModes.Contains(mode, StringComparer.OrdinalIgnoreCase))
@@ -592,9 +593,11 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
 
         // The RX pipeline captures at CaptureRate and decimates by an integer factor to the
         // mode's DSP rate: 48000 for the 9600 baseband modes, 12000 for everything else.
+        // A flex: device supplies its own DAX sample clock, so captureRate does not apply.
         RuleFor(t => t)
             .Must(t => t.CaptureRate > 0 && t.CaptureRate % DspRate(t.Mode) == 0)
-            .When(t => KnownModes.Contains(t.Mode, StringComparer.OrdinalIgnoreCase))
+            .When(t => KnownModes.Contains(t.Mode, StringComparer.OrdinalIgnoreCase)
+                && !FlexDevice.IsFlex(t.Device))
             .WithMessage(t =>
                 $"soundmodem `captureRate` {t.CaptureRate} must be a positive multiple of {DspRate(t.Mode)} " +
                 $"(the DSP rate for mode '{t.Mode}'); 48000 works for every mode.");
@@ -635,6 +638,12 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
             .Must(ValidPttSpec)
             .WithMessage(
                 "soundmodem `ptt` must be empty (VOX), `serial:<device>[:rts|:dtr]`, or `cm108:<hidraw>[:gpio]`.");
+
+        // A flex: device keys itself over CAT — a configured PTT would be ignored, so reject it.
+        RuleFor(t => t.Ptt)
+            .Must(string.IsNullOrEmpty)
+            .When(t => FlexDevice.IsFlex(t.Device))
+            .WithMessage("soundmodem `ptt` must be empty for a `flex:` device — the radio keys itself.");
     }
 
     private static int DspRate(string mode) => ModemCatalog.DspRateFor(mode.ToLowerInvariant());

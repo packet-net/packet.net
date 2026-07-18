@@ -297,4 +297,19 @@ public class SoundModemFrameTransportTests
         snap.FramesWithCorrections.Should().Be(0);
         snap.Recent.Should().HaveCount(2);
     }
+
+    [Fact]
+    public async Task A_flex_mock_device_opens_and_tears_down_cleanly()
+    {
+        // flex:mock brings up an in-process fake FlexRadio (no hardware): proves OpenAsync
+        // resolves the flex device backend, adapts its native-float DAX Input to the S16 capture
+        // seam, starts the pumps, and disposes the owning FlexRuntime on teardown.
+        var config = new SoundModemTransportConfig { Device = "flex:mock", Mode = "afsk1200" };
+
+        await using (var transport = await SoundModemFrameTransport.OpenAsync(config))
+        {
+            // Running over the mock slice — carrier sense is live (non-null).
+            transport.ChannelBusy.Should().NotBeNull();
+        }
+    }
 }
