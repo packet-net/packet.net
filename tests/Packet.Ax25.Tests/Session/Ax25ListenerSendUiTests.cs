@@ -36,6 +36,29 @@ public sealed class Ax25ListenerSendUiTests
     }
 
     [Fact]
+    public async Task SendUiAsync_with_an_explicit_source_emits_a_UI_frame_from_that_callsign()
+    {
+        // The RHPv2 dgram sendto path: originate a UI frame AS an application's bound callsign,
+        // not the listener's own MyCall (e.g. IP-over-AX.25 pid 0xCC).
+        var modem = new LoopbackModem();
+        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions { MyCall = LocalCall });
+        await listener.StartAsync();
+
+        var appCall = new Callsign("2E0APP", 7);
+        var dest = new Callsign("GB7RDG", 0);
+        var info = "hello"u8.ToArray();
+        await listener.SendUiAsync(appCall, dest, info, pid: 0xCC);
+
+        modem.SentFrames.Count.Should().Be(1);
+        Ax25Frame.TryParse(modem.SentFrames[0].Span, out var sent).Should().BeTrue();
+        sent!.IsUi.Should().BeTrue();
+        sent.Pid.Should().Be(0xCC);
+        sent.Destination.Callsign.Should().Be(dest);
+        sent.Source.Callsign.Should().Be(appCall, "the source is the explicit callsign, not MyCall");
+        sent.Info.ToArray().Should().Equal(info);
+    }
+
+    [Fact]
     public async Task SendUiAsync_traces_the_frame_as_transmitted()
     {
         var modem = new LoopbackModem();

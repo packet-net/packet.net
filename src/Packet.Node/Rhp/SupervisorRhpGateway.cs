@@ -1,3 +1,6 @@
+using System.Globalization;
+using Packet.Ax25;
+using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
@@ -160,6 +163,135 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         {
             // Already registered / the node's own callsign — the wire's "Duplicate socket".
             throw new RhpGatewayException(RhpErrorCode.DuplicateSocket, ex.Message);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SendUiAsync(
+        string? portLabel, string local, string remote, ReadOnlyMemory<byte> info, byte pid, CancellationToken ct = default)
+    {
+        var supervisor = host.Supervisor
+            ?? throw new RhpGatewayException(RhpErrorCode.Unspecified, "Node engine is not running.");
+
+        var ports = config.Current.Ports;
+        if (ports.Count == 0)
+        {
+            throw new RhpGatewayException(RhpErrorCode.NoSuchPort, "No ports are configured on this node.");
+        }
+
+        if (!Callsign.TryParse(local.Trim().ToUpperInvariant(), out var source))
+        {
+            throw new RhpGatewayException(RhpErrorCode.InvalidLocalAddress, $"'{local}' is not a valid AX.25 callsign.");
+        }
+        if (!Callsign.TryParse(remote.Trim().ToUpperInvariant(), out var dest))
+        {
+            throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
+        }
+
+        // Port labels are XRouter-convention 1-indexed config order; null = the first port.
+        var portId = ResolvePortId(portLabel, ports);
+        var port = supervisor.GetPort(portId)
+            ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
+
+        // A UI datagram is connectionless — no session, no registration; the source-bearing
+        // overload emits it verbatim as the bound callsign.
+        await port.Listener.SendUiAsync(source, dest, info, pid, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived)
+    {
+        ArgumentNullException.ThrowIfNull(onReceived);
+        var supervisor = host.Supervisor
+            ?? throw new RhpGatewayException(RhpErrorCode.Unspecified, "Node engine is not running.");
+
+        var ports = config.Current.Ports;
+
+        // Which port(s) to tap, with each one's 1-indexed label (config order defines labels).
+        var targets = new List<(string PortId, string Label)>();
+        if (string.IsNullOrWhiteSpace(portLabel))
+        {
+            for (int i = 0; i < ports.Count; i++)
+            {
+                targets.Add((ports[i].Id, (i + 1).ToString(CultureInfo.InvariantCulture)));
+            }
+        }
+        else
+        {
+            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
+            {
+                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
+            }
+            targets.Add((ports[n - 1].Id, portLabel));
+        }
+
+        // Tap FrameTraced on each running port's listener — the same read-only, promiscuous tap
+        // NetRomService uses to hear NODES (fires before address filtering, so it hears broadcast
+        // UI like APRS regardless of the frame's destination). First-cut scope: ports running NOW
+        // are tapped; a port that (re)starts later is not retro-subscribed.
+        var subscriptions = new List<IDisposable>();
+        foreach (var (portId, label) in targets)
+        {
+            var port = supervisor.GetPort(portId);
+            if (port is null)
+            {
+                continue;   // not running now
+            }
+            var listener = port.Listener;
+
+            void Handler(object? _, Ax25FrameEventArgs e)
+            {
+                if (e.Direction != FrameDirection.Received || !e.Frame.IsUi)
+                {
+                    return;   // only inbound UI datagrams
+                }
+                var frame = e.Frame;
+                var dg = new UiDatagram(
+                    frame.Source.Callsign.ToString(),
+                    frame.Destination.Callsign.ToString(),
+                    frame.Pid ?? Ax25Frame.PidNoLayer3,
+                    frame.Info.ToArray(),
+                    label);
+                // Fire-and-forget: the recv push writes to the client asynchronously and a fault
+                // there is the server's to log; the listener pump must never block on it.
+                _ = onReceived(dg);
+            }
+
+            listener.FrameTraced += Handler;
+            subscriptions.Add(new ListenerUnsubscriber(listener, Handler));
+        }
+
+        return new CompositeUnsubscriber(subscriptions);
+    }
+
+    private static string ResolvePortId(string? portLabel, IReadOnlyList<PortConfig> ports)
+    {
+        if (string.IsNullOrWhiteSpace(portLabel))
+        {
+            return ports[0].Id;
+        }
+        if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
+        {
+            throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
+        }
+        return ports[n - 1].Id;
+    }
+
+    // Unhooks one FrameTraced handler from one listener.
+    private sealed class ListenerUnsubscriber(Ax25Listener listener, EventHandler<Ax25FrameEventArgs> handler) : IDisposable
+    {
+        public void Dispose() => listener.FrameTraced -= handler;
+    }
+
+    // Composes the per-port taps of one RegisterUiListener registration into one disposable.
+    private sealed class CompositeUnsubscriber(List<IDisposable> subscriptions) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var s in subscriptions)
+            {
+                s.Dispose();
+            }
         }
     }
 }

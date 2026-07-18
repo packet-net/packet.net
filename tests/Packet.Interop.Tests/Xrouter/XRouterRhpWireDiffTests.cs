@@ -108,6 +108,18 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
             return new Unsub(this, local);
         }
 
+        // Dgram (UI) is off the radio for these protocol-shape scenarios: TX no-ops and the RX tap
+        // never fires. (The dgram wire shapes are pinned in Packet.Rhp2.Tests, not the live diff.)
+        public Task SendUiAsync(string? portLabel, string local, string remote, ReadOnlyMemory<byte> info, byte pid, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived) => new NoopDisposable();
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public void Dispose() { }
+        }
+
         private sealed class Unsub(NullGateway owner, string local) : IDisposable
         {
             public void Dispose()
