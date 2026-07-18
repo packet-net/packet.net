@@ -118,7 +118,10 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 Device = fields.GetValueOrDefault("device") ?? "default",
                 CaptureRate = Int(fields, "capturerate", 48000, start),
                 Mode = fields.GetValueOrDefault("mode") ?? "afsk1200",
-                Frequency = Int(fields, "frequency", 0, start),
+                Frequency = Double(fields, "frequency", 0, start),
+                OffsetPairs = NullableInt(fields, "offsetpairs", start),
+                OffsetStepHz = NullableDouble(fields, "offsetstephz", start),
+                PskDetector = fields.GetValueOrDefault("pskdetector"),
                 Ptt = fields.GetValueOrDefault("ptt") ?? "",
             },
             "taittransparent" => new TaitTransparentTransportConfig
@@ -240,6 +243,18 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
                 {
                     EmitField(emitter, "frequency", sm.Frequency.ToString(CultureInfo.InvariantCulture));
                 }
+                if (sm.OffsetPairs is { } offsetPairs)
+                {
+                    EmitField(emitter, "offsetPairs", offsetPairs.ToString(CultureInfo.InvariantCulture));
+                }
+                if (sm.OffsetStepHz is { } offsetStepHz)
+                {
+                    EmitField(emitter, "offsetStepHz", offsetStepHz.ToString(CultureInfo.InvariantCulture));
+                }
+                if (!string.IsNullOrWhiteSpace(sm.PskDetector))
+                {
+                    EmitField(emitter, "pskDetector", sm.PskDetector);
+                }
                 if (!string.IsNullOrWhiteSpace(sm.Ptt))
                 {
                     EmitField(emitter, "ptt", sm.Ptt);
@@ -309,6 +324,45 @@ public sealed class TransportConfigYamlConverter : IYamlTypeConverter
             return parsed;
         }
         throw new YamlException(mark, mark, $"transport field '{key}' must be an integer (got '{v}').");
+    }
+
+    private static double Double(Dictionary<string, string?> fields, string key, double fallback, Mark mark)
+    {
+        if (!fields.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v))
+        {
+            return fallback;
+        }
+        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+        throw new YamlException(mark, mark, $"transport field '{key}' must be a number (got '{v}').");
+    }
+
+    private static int? NullableInt(Dictionary<string, string?> fields, string key, Mark mark)
+    {
+        if (!fields.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v))
+        {
+            return null;
+        }
+        if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+        throw new YamlException(mark, mark, $"transport field '{key}' must be an integer (got '{v}').");
+    }
+
+    private static double? NullableDouble(Dictionary<string, string?> fields, string key, Mark mark)
+    {
+        if (!fields.TryGetValue(key, out var v) || string.IsNullOrWhiteSpace(v))
+        {
+            return null;
+        }
+        if (double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+        throw new YamlException(mark, mark, $"transport field '{key}' must be a number (got '{v}').");
     }
 
     private static bool Bool(Dictionary<string, string?> fields, string key, bool fallback, Mark mark)

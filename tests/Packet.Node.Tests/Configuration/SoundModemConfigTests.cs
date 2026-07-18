@@ -135,4 +135,96 @@ public class SoundModemConfigTests
         Validator.Validate(Valid(new SoundModemTransportConfig { Frequency = 5000 }))
             .IsValid.Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("afsk1200-il2p-nocrc")]
+    [InlineData("bpsk300-multi")]
+    [InlineData("c4fsk9600")]
+    [InlineData("c4fsk19200")]
+    [InlineData("freedv-datac0")]
+    [InlineData("freedv-datac14")]
+    [InlineData("ms110d-wn0")]
+    [InlineData("ms110d-wn13")]
+    public void The_new_0_6_0_modes_validate(string mode)
+    {
+        // 48000 is a valid capture rate for every mode's DSP rate (12000 or 48000).
+        Validator.Validate(Valid(new SoundModemTransportConfig { Mode = mode, CaptureRate = 48000 }))
+            .IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_1200_baud_diversity_bank_is_not_exposed()
+    {
+        // bpsk1200-multi is a valid ModemCatalog mode but deliberately not surfaced by the node
+        // (no over-the-air evidence for the bank at 1200 baud yet — bpsk1200 stays the legacy modem).
+        Validator.Validate(Valid(new SoundModemTransportConfig { Mode = "bpsk1200-multi" }))
+            .IsValid.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("c4fsk9600")]
+    [InlineData("fsk4800-il2p")]
+    [InlineData("freedv-datac0")]
+    [InlineData("ms110d-wn0")]
+    public void A_frequency_on_a_fixed_centre_mode_is_rejected(string mode)
+    {
+        var result = Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Mode = mode,
+            CaptureRate = 48000,
+            Frequency = 1500,
+        }));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("frequency"));
+    }
+
+    [Fact]
+    public void The_bpsk_bank_knobs_validate()
+    {
+        Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Mode = "bpsk300",
+            OffsetPairs = 0,
+            OffsetStepHz = 8.5,
+            PskDetector = "coherent",
+        })).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-1, null, null)]
+    [InlineData(null, 0.0, null)]
+    [InlineData(null, null, "sideways")]
+    public void Bad_bpsk_bank_knobs_are_rejected(int? offsetPairs, double? offsetStepHz, string? detector)
+    {
+        Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Mode = "bpsk300",
+            OffsetPairs = offsetPairs,
+            OffsetStepHz = offsetStepHz,
+            PskDetector = detector,
+        })).IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Bank_knobs_and_a_fractional_frequency_round_trip_through_yaml()
+    {
+        var original = new SoundModemTransportConfig
+        {
+            Device = "plughw:1,0",
+            Mode = "bpsk300",
+            CaptureRate = 12000,
+            Frequency = 1500.5,           // fractional — would truncate to 1500 with the old int parse
+            OffsetPairs = 2,
+            OffsetStepHz = 12.5,
+            PskDetector = "coherent",
+        };
+
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(Valid(original)));
+
+        var transport = reparsed.Ports[0].Transport.Should().BeOfType<SoundModemTransportConfig>().Subject;
+        transport.Frequency.Should().Be(1500.5);
+        transport.OffsetPairs.Should().Be(2);
+        transport.OffsetStepHz.Should().Be(12.5);
+        transport.PskDetector.Should().Be("coherent");
+    }
 }

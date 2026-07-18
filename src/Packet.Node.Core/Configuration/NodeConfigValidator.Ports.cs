@@ -1,6 +1,7 @@
 using FluentValidation;
 using Packet.Core;
 using Packet.Radio.Tait;
+using Packet.SoundModem.Modems;
 
 namespace Packet.Node.Core.Configuration;
 
@@ -572,14 +573,11 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
 /// </summary>
 public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportConfig>
 {
+    // The exposed mode set is the shared catalogue's, minus bpsk1200-multi: the 1200-baud
+    // diversity bank is not exposed (no over-the-air evidence yet — bpsk1200 stays the legacy
+    // single-carrier modem). Sourcing this from ModemCatalog keeps it from drifting again.
     private static readonly string[] KnownModes =
-    [
-        "afsk1200", "afsk1200-multi", "afsk1200-fx25", "afsk1200-fx25rx", "afsk1200-il2p",
-        "afsk300", "afsk300-il2p", "afsk300-il2pc",
-        "bpsk300", "bpsk300-nocrc", "bpsk1200",
-        "qpsk600", "qpsk2400", "qpsk3600",
-        "fsk4800-il2p", "fsk9600", "fsk9600-il2p", "c4fsk9600", "c4fsk19200",
-    ];
+        ModemCatalog.KnownModes.Where(m => m != "bpsk1200-multi").ToArray();
 
     public SoundModemValidator()
     {
@@ -601,12 +599,37 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
                 $"soundmodem `captureRate` {t.CaptureRate} must be a positive multiple of {DspRate(t.Mode)} " +
                 $"(the DSP rate for mode '{t.Mode}'); 48000 works for every mode.");
 
-        // Centre frequency, where the mode has one: must leave room for the mode's occupied
-        // bandwidth inside the audio passband. The 9600 baseband modes have no carrier.
+        // A centre frequency is settable only on the variable-centre families (afsk/bpsk/qpsk);
+        // there it must leave room for the mode's occupied bandwidth inside the audio passband.
         RuleFor(t => t.Frequency)
             .Must(f => f == 0 || (f >= 300 && f <= 3300))
-            .When(t => !t.Mode.StartsWith("fsk9600", StringComparison.OrdinalIgnoreCase))
+            .When(t => ModemCatalog.AcceptsCentreFrequency(t.Mode.ToLowerInvariant()))
             .WithMessage("soundmodem `frequency` must be 0 (mode default) or 300–3300 Hz (the audio passband).");
+
+        // The baseband fsk*/c4fsk* and the fixed-centre freedv-*/ms110d- modes have no settable
+        // carrier — reject a non-zero frequency rather than silently ignoring it (matches the
+        // daemon and ModemCatalog.Create, which throws).
+        RuleFor(t => t.Frequency)
+            .Must(f => f == 0)
+            .When(t => KnownModes.Contains(t.Mode, StringComparer.OrdinalIgnoreCase)
+                && !ModemCatalog.AcceptsCentreFrequency(t.Mode.ToLowerInvariant()))
+            .WithMessage(t =>
+                $"soundmodem `frequency` is not settable for mode '{t.Mode}' (a fixed-centre baseband/OFDM mode) — use 0.");
+
+        // Diversity-bank knobs (bpsk300): range-checked here; ignored by non-bank modes.
+        RuleFor(t => t.OffsetPairs)
+            .Must(p => p is null or >= 0)
+            .WithMessage("soundmodem `offsetPairs` must be >= 0 (0 = a single modem; null = the mode default).");
+
+        RuleFor(t => t.OffsetStepHz)
+            .Must(s => s is null or > 0)
+            .WithMessage("soundmodem `offsetStepHz` must be > 0 Hz (null = the mode default).");
+
+        RuleFor(t => t.PskDetector)
+            .Must(d => d is null
+                || d.Equals("coherent", StringComparison.OrdinalIgnoreCase)
+                || d.Equals("differential", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("soundmodem `pskDetector` must be `coherent` or `differential` (null = the per-family default).");
 
         RuleFor(t => t.Ptt)
             .Must(ValidPttSpec)
@@ -614,8 +637,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
                 "soundmodem `ptt` must be empty (VOX), `serial:<device>[:rts|:dtr]`, or `cm108:<hidraw>[:gpio]`.");
     }
 
-    private static int DspRate(string mode) =>
-        mode.StartsWith("fsk9600", StringComparison.OrdinalIgnoreCase) ? 48000 : 12000;
+    private static int DspRate(string mode) => ModemCatalog.DspRateFor(mode.ToLowerInvariant());
 
     private static bool ValidPttSpec(string spec)
     {
