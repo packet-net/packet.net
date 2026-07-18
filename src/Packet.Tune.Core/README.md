@@ -52,3 +52,6 @@ Console.WriteLine(attempt.Outcome);   // Switched, ProbeDead, Rejected, LinkFail
 - [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) — the NinoTNC driver the meter / mode-coordination station drives
 
 Status: **experimental** — spike-born (plan §5.10 Phase 10), hardware-validated on a 2× NinoTNC + 2× Tait TM8110 bench rig, and still moving as the mode-agility workstream matures.
+
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

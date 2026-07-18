@@ -77,3 +77,6 @@ effect and save the ack airtime, but you cannot assume that on radios you don't 
 Verified on hardware: 2× TM8110 (`TMAB12-B100`, CCDI 03.02, firmware 02.18.00.00). On that firmware the CCDI-side TX-power set (FUNCTION 0/7) answers "unsupported command" — but the CCR-mode power command works, so power control lives on `TaitCcrSession`.
 
 Status: **experimental**, spike-born (plan §5.10 Phase 10). Protocol reference: Tait MMA-00038-06 "TM8100/TM8200 CCDI Protocol Manual".
+
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

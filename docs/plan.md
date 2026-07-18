@@ -1250,6 +1250,21 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-07-18 — Licensing sweep: repo-wide AGPL audit (no metadata drift found, README footers fixed)
+
+Tom asked for a full repo sweep to confirm every published NuGet package, README, and licence
+file is AGPL. Audited `LICENSE`, `Directory.Build.props` (`PackageLicenseExpression`), the root
+`README.md` §License, `docs/plan.md` §3, and every `src/Packet.*/README.md` footer against the
+2026-07-14 reconciliation (previous entry, above). Found the metadata itself (the thing that
+actually governs what NuGet publishes) was already correct everywhere — no `PackageLicenseExpression`
+drift, no stray MIT/Apache/BSD/GPL-2 self-declarations. The only gap: six published packages'
+READMEs (`Packet.Radio`, `Packet.Radio.Tait`, `Packet.Rig`, `Packet.Rig.Hamlib`, `Packet.Rig.Flrig`,
+`Packet.Tune.Core`) postdated the 2026-07-14 reconciliation PR and never picked up the
+"*AGPL-3.0-licensed*" footer the other package READMEs carry — some had no footer, some had a bare
+"Part of Packet.NET" line. Added the standard footer to all six for consistency. Docs-only change;
+no package metadata moved, so no `lib-v*` tag needed for this alone — the fix rides the packed
+README into the next regular release.
+
 ### 2026-07-16 — pdn-soundmodem 0.4.0: C4FSK lands, NinoTNC mode coverage complete (15/15)
 
 Pin 0.3.0 → 0.4.0; `kind: soundmodem` ports gain `c4fsk9600` (NinoTNC mode 3) and

@@ -49,3 +49,6 @@ With carrier-sense, frames are attributed to the transmission window that contai
 - [`Packet.Kiss.NinoTnc`](https://www.nuget.org/packages/Packet.Kiss.NinoTnc) — the NinoTNC `IAx25Transport` these decorators wrap
 
 Status: **shape confirmed** — the `IRadioControl` subset {RSSI-get, busy-get, PTT-set} survived four implementations without an interface change (plan OQ-011, resolved 2026-07-14). The reserved flags (channel, frequency, TX power) stay reserved: QSY is station control and lives on the sibling rig seam ([`Packet.Rig`](https://www.nuget.org/packages/Packet.Rig)), not here.
+
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

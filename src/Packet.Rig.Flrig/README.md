@@ -42,4 +42,5 @@ await rig.CallRawAsync("rig.cat_string", ["FA;"]);   // raw CAT passthrough
 Testing: flrig is a GUI app with no headless mode — this package's tests script an in-process
 XML-RPC fake (the established technique for flrig clients).
 
-Part of [Packet.NET](https://github.com/packet-net/packet.net).
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

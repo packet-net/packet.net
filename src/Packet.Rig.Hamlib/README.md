@@ -50,4 +50,5 @@ serves a stateful fake Kenwood-ish rig (fresh state 145 MHz / FM; deterministic 
 RFPOWER_METER 0.5, RFPOWER_METER_WATTS 50.0). This package's own integration tests do exactly
 that and skip when `rigctld` is not installed (`apt install libhamlib-utils`).
 
-Part of [Packet.NET](https://github.com/packet-net/packet.net).
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*

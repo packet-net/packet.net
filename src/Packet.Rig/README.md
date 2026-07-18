@@ -49,5 +49,7 @@ Packet.NET AX.25 stack. Backends:
   partial view (PTT + relative RF-power meter) of a Tait TM8100/TM8200 over CCDI, demonstrating
   a backend that honestly advertises only a slice of the surface.
 
-Part of [Packet.NET](https://github.com/packet-net/packet.net). Design and research notes:
-`docs/research/rig-control-spike.md` in the repo.
+Design and research notes: `docs/research/rig-control-spike.md` in the repo.
+
+---
+*AGPL-3.0-licensed. Part of the [Packet.NET](https://github.com/packet-net/packet.net) stack.*
