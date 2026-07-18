@@ -178,13 +178,15 @@ export function Config() {
             )}
 
             {tab === "services" && (
-              <section className="max-w-xl space-y-4">
+              <section className="max-w-xl space-y-5">
                 <Field label="Banner" hint="{node} and {call} are templated." impact="live">
                   <Input value={cfg.services.banner} onChange={(e) => set("services.banner", e.target.value, "live")} className="font-mono text-xs" />
                 </Field>
                 <Field label="Prompt" impact="live">
                   <Input value={cfg.services.prompt} onChange={(e) => set("services.prompt", e.target.value, "live")} className="font-mono" />
                 </Field>
+                <AudioServiceSection kind="ardop" cfg={cfg} set={set} />
+                <AudioServiceSection kind="paging" cfg={cfg} set={set} />
               </section>
             )}
 
@@ -872,6 +874,98 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
         </>
       )}
     </section>
+  );
+}
+
+// ---------- Node-level soundmodem services (ARDOP + POCSAG) --
+// Two node-level services that each run a modem over their OWN dedicated audio device (not a port
+// transport): the ARDOP virtual TNC (an ardopcf-compatible TCP host interface) and the POCSAG paging
+// line server. Both off by default. The form mirrors the Management listener cards (a bordered block
+// with Label + InfoHint + ImpactBadge over a grid of Field controls, each edit through set(...) with
+// the service's apply impact). The flex-device rules match the server validator + the soundmodem-port
+// editor: captureRate + PTT don't apply to a flex: device (it clocks off DAX and keys itself), and a
+// flex: device reveals the same FlexRadio slice sub-fields as the soundmodem port block.
+function AudioServiceSection({ kind, cfg, set }: {
+  kind: "ardop" | "paging";
+  cfg: NodeConfig;
+  set: (path: string, val: unknown, impact: ApplyImpact) => void;
+}) {
+  const svc = kind === "ardop" ? cfg.ardop : cfg.paging;
+  const paging = kind === "paging" ? cfg.paging : null; // narrows to the paging-only fields
+  const impact = APPLY_IMPACT[kind];
+  const isFlex = svc.device.startsWith("flex:");
+  const flex = svc.flex ?? {};
+  const p = (k: string) => `${kind}.${k}`; // dotted config path for this service block
+  const title = kind === "ardop" ? "ARDOP virtual TNC" : "POCSAG paging";
+  const help = kind === "ardop"
+    ? "An ardopcf-compatible ARDOP host interface over a dedicated soundmodem audio device: a command socket on this port and a data socket on port+1 (default 8515 → data 8516), so external ARDOP hosts (BPQ DRIVER=ARDOP, Pat, Winlink Express) can drive this node's soundcard / FlexRadio as an ARDOP modem. Off by default."
+    : "A POCSAG paging service over a dedicated soundmodem audio device: a TCP line server (PAGE / HEARD commands) that transmits and receives POCSAG pages. Off by default.";
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="flex items-center gap-1.5">
+          <Label className="text-foreground">{title}</Label>
+          <InfoHint text={help} />
+        </span>
+        <ImpactBadge impact={impact} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Field label="Enabled">
+          <div className="flex h-9 items-center"><Switch checked={svc.enabled} onChange={(v) => set(p("enabled"), v, impact)} /></div>
+        </Field>
+        <Field label="Audio device" info="ALSA device (e.g. default, plughw:1,0), or a flex:<radio>[:slice][@station] FlexRadio device.">
+          <Input value={svc.device} placeholder="default" onChange={(e) => set(p("device"), e.target.value, impact)} className="font-mono" />
+        </Field>
+        <Field label="Capture rate" info="Card-native sample rate; a positive multiple of the 12000 Hz DSP rate (48000 recommended). Ignored for a flex: device — it clocks off DAX.">
+          <Input type="number" value={svc.captureRate} disabled={isFlex} onChange={(e) => set(p("captureRate"), +e.target.value, impact)} className="font-mono" />
+        </Field>
+        <Field label="Bind" info="TCP bind address for the service listener.">
+          <Input value={svc.bind} onChange={(e) => set(p("bind"), e.target.value, impact)} className="font-mono" />
+        </Field>
+        <Field label="Port" info={kind === "ardop" ? "Command-socket TCP port (1..65534, since the data socket uses port+1). Default 8515." : "TCP port for the paging line server (1..65535). Default 8106."}>
+          <Input type="number" value={svc.port} onChange={(e) => set(p("port"), +e.target.value, impact)} className="font-mono" />
+        </Field>
+        {paging && (
+          <Field label="Baud" info="POCSAG baud: 512, 1200 (DAPNET) or 2400.">
+            <Select value={paging.baud} onChange={(e) => set(p("baud"), +e.target.value, impact)}>
+              <option value={512}>512</option>
+              <option value={1200}>1200</option>
+              <option value={2400}>2400</option>
+            </Select>
+          </Field>
+        )}
+        <Field label="PTT" info="PTT control spec: empty for VOX, serial:/dev/ttyUSB0[:rts|:dtr], or cm108:/dev/hidraw0[:gpio]. Must be empty for a flex: device — the radio keys itself.">
+          <Input value={svc.ptt} disabled={isFlex} placeholder={isFlex ? "auto (flex keys itself)" : "VOX"} onChange={(e) => set(p("ptt"), e.target.value, impact)} className="font-mono" />
+        </Field>
+        {paging && (
+          <Field label="Invert polarity" info="Invert the POCSAG baseband polarity.">
+            <div className="flex h-9 items-center"><Switch checked={paging.invertPolarity} onChange={(v) => set(p("invertPolarity"), v, impact)} /></div>
+          </Field>
+        )}
+      </div>
+      {isFlex && (
+        <>
+          <div className="mt-3 rounded-md border border-border/60 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">FlexRadio slice</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Frequency (MHz)" info="Slice frequency in six-decimal Flex form. Default 14.100000.">
+                <Input value={flex.frequency ?? ""} placeholder="14.100000" onChange={(e) => set(p("flex"), { ...flex, frequency: e.target.value }, impact)} className="font-mono" />
+              </Field>
+              <Field label="Antenna" info="RX/TX antenna. Default ANT1.">
+                <Input value={flex.antenna ?? ""} placeholder="ANT1" onChange={(e) => set(p("flex"), { ...flex, antenna: e.target.value }, impact)} className="font-mono" />
+              </Field>
+              <Field label="Slice mode" info="Slice demod mode. Default DIGU (a data mode).">
+                <Input value={flex.mode ?? ""} placeholder="DIGU" onChange={(e) => set(p("flex"), { ...flex, mode: e.target.value }, impact)} className="font-mono" />
+              </Field>
+              <Field label="DAX channel" info="The DAX channel the headless client claims. Default 1; pick one SmartSDR is not using when sharing a box.">
+                <Input value={flex.daxChannel ?? ""} placeholder="1" onChange={(e) => set(p("flex"), { ...flex, daxChannel: e.target.value }, impact)} className="font-mono" />
+              </Field>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">A flex: device clocks off DAX and keys itself — capture rate and PTT don&apos;t apply.</p>
+        </>
+      )}
+    </div>
   );
 }
 

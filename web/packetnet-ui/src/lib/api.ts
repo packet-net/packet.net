@@ -19,7 +19,7 @@ import type {
   TotpEnrollBeginResponse, TotpEnrollCompleteResponse, TotpEnrollState, NodeApp, AppPackage,
   AppIdentityRequest, AvailableApp, InstallOutcome, TailscaleStatus, SystemInfo,
   TuningStartRequest, TuningSessionInfo, TuningEvent,
-  RigStatus, RigScan, RigModelCatalogue,
+  RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
 } from "./types";
 import * as mock from "./mock";
 import { passkeysAvailable } from "./secureContext";
@@ -311,6 +311,11 @@ export const api = {
   // One port's radio status (GET /api/v1/ports/{id}/radio). A 404 (unknown port, or a port with no
   // radio block) surfaces the server's message as an Error.
   getPortRadio: (id: string) => getPortRadio(id),
+  // One soundmodem port's rolling per-frame receive quality (GET /api/v1/ports/{id}/quality) — the
+  // FEC/CRC diagnostics the waterfall's FrameQuality readout polls. A 404 (not a soundmodem port, or
+  // a port that is not running) surfaces the server's message as an Error, so the caller can hide the
+  // readout gracefully (mirrors getPortRadio's 404 mapping).
+  portQuality: (id: string) => portQuality(id),
   getRigs: () => get<RigStatus[]>("/rigs", () => mock.RIGS),
   getPortRig: (id: string) => getPortRig(id),
   // Retune an attached rig's current VFO (POST /api/v1/ports/{id}/rig/frequency, operate
@@ -630,6 +635,21 @@ async function getPortRadio(id: string): Promise<RadioStatus> {
   if (res.status === 404) throw new Error(await errorMessage(res, `No radio for port '${id}'.`));
   if (!res.ok) throw new Error(`/ports/${id}/radio: ${res.status} ${res.statusText}`);
   return (await res.json()) as RadioStatus;
+}
+
+// One soundmodem port's rolling receive-quality snapshot (GET /api/v1/ports/{id}/quality). Mock mode
+// resolves the SOUNDMODEM_QUALITY fixture so the readout demos with no node; live mode maps a 404
+// (not a running soundmodem port) to an Error the caller catches to hide the readout. Mirrors
+// getPortRadio.
+async function portQuality(id: string): Promise<SoundModemQualitySnapshot> {
+  if (MODE === "mock") {
+    await new Promise((r) => setTimeout(r, 60));
+    return structuredClone(mock.SOUNDMODEM_QUALITY);
+  }
+  const res = await authFetch(`/ports/${encodeURIComponent(id)}/quality`, { headers: { accept: "application/json" } });
+  if (res.status === 404) throw new Error(await errorMessage(res, `No quality feed for port '${id}' (not a running soundmodem port).`));
+  if (!res.ok) throw new Error(`/ports/${id}/quality: ${res.status} ${res.statusText}`);
+  return (await res.json()) as SoundModemQualitySnapshot;
 }
 
 // One port's rig-control (CAT) status — 404 means "no such port" (a port with no rig block

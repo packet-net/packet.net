@@ -13,7 +13,7 @@ import type {
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
-  RigStatus, RigScan, RigModelCatalogue,
+  RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
 } from "./types";
 
 // 6.1 NodeConfig tree ----------------------------------------
@@ -50,6 +50,10 @@ export const NODE_CONFIG: NodeConfig = {
     reportTraces: false, tracesRfOnly: true, publishExactPosition: false,
     statusIntervalSecs: 300, sessionStatusIntervalSecs: 60,
   },
+  // Node-level soundmodem services, both off by default (server defaults). Enabling either opens a
+  // dedicated audio device + a TCP listener — see the Services tab's ARDOP / POCSAG forms.
+  ardop: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8515, ptt: "" },
+  paging: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8106, baud: 1200, invertPolarity: false, ptt: "" },
 };
 
 // The node's version + install channel + available-update view (GET /api/v1/system/info).
@@ -85,6 +89,11 @@ export const APPLY_IMPACT: Record<string, ApplyImpact> = {
   "oarc": "live",
   "management.http": "node-reset",
   "management.telnet": "port-restart",
+  // Node-level soundmodem services: like the audio-device-owning soundmodem port transport
+  // (port.transport) and the auxiliary telnet listener, editing these opens/closes an audio device
+  // + a TCP listener — a bounded restart of that service, not a hot apply.
+  "ardop": "port-restart",
+  "paging": "port-restart",
 };
 
 // 6.2 NET/ROM routing snapshot -------------------------------
@@ -558,6 +567,24 @@ export function driveSpectrumStream(
   }, 330);
   return () => window.clearInterval(timer);
 }
+
+// Rolling soundmodem receive-quality snapshot (GET /api/v1/ports/{id}/quality) — the waterfall's
+// FrameQuality readout demos with no node. A believable IL2P link quietly spending a little of its
+// FEC budget: most frames clean, a few Reed-Solomon-corrected. `recent` is newest-first; the winning
+// branch's small +Δf / emphasis on a clean signal is first-past-the-post, NOT the peer's error. The
+// oldest seeded frame is a plain-HDLC afsk1200 frame → correctedBytes/crcValid null (kept distinct
+// from 0, a clean IL2P frame) so the null-vs-0 render is exercised too.
+export const SOUNDMODEM_QUALITY: SoundModemQualitySnapshot = {
+  frames: 1842,
+  cumulativeCorrectedBytes: 271,
+  framesWithCorrections: 63,
+  lastFrameCorrectedBytes: 2,
+  recent: [
+    { receivedAt: new Date(Date.now() - 1200).toISOString(), mode: "qpsk2400-il2pc", frameBytes: 128, correctedBytes: 2, crcValid: true, frequencyOffsetHz: 12, emphasisDb: 3 },
+    { receivedAt: new Date(Date.now() - 4800).toISOString(), mode: "qpsk2400-il2pc", frameBytes: 96, correctedBytes: 0, crcValid: true, frequencyOffsetHz: -6, emphasisDb: 0 },
+    { receivedAt: new Date(Date.now() - 9100).toISOString(), mode: "afsk1200", frameBytes: 47, correctedBytes: null, crcValid: null, frequencyOffsetHz: null, emphasisDb: null },
+  ],
+};
 
 export function driveTuneStream(
   portId: string,
