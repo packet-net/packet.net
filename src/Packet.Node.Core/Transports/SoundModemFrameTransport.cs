@@ -8,6 +8,7 @@ using Packet.Node.Core.Configuration;
 using Packet.SoundModem.Audio;
 using Packet.SoundModem.Channel;
 using Packet.SoundModem.Dsp;
+using Packet.SoundModem.FlexRadio;
 using Packet.SoundModem.Modems;
 
 namespace Packet.Node.Core.Transports;
@@ -39,6 +40,7 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
     private readonly ISoundModemCapture _capture;
     private readonly IAudioOutput _output;
     private readonly IPttControl _ptt;
+    private readonly IAsyncDisposable? _deviceOwner;
     private readonly TimeProvider _timeProvider;
     private readonly Channel<Ax25InboundFrame> _inbound =
         System.Threading.Channels.Channel.CreateUnbounded<Ax25InboundFrame>();
@@ -54,13 +56,17 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
     private const int RecentQualityCapacity = 32;
 
     /// <summary>Creates the transport over explicit audio endpoints (the test seam; use
-    /// <see cref="Open"/> for the ALSA production path). Pumps start immediately.</summary>
+    /// <see cref="Open"/>/<see cref="OpenAsync"/> for the production paths). Pumps start
+    /// immediately. <paramref name="deviceOwner"/>, when given, owns the audio endpoints (e.g. a
+    /// <c>FlexRuntime</c> owning its Input/Output/Ptt) and is disposed instead of the individual
+    /// output/ptt.</summary>
     public SoundModemFrameTransport(
         SoundModemTransportConfig config,
         ISoundModemCapture capture,
         IAudioOutput output,
         IPttControl ptt,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IAsyncDisposable? deviceOwner = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(capture);
@@ -69,6 +75,7 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         _capture = capture;
         _output = output;
         _ptt = ptt;
+        _deviceOwner = deviceOwner;
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         int dspRate = DspRate(config.Mode);
@@ -138,6 +145,43 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
             (ptt as IDisposable)?.Dispose();
             (output as IDisposable)?.Dispose();
             capture.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Opens the transport for the port configuration, resolving the device backend:
+    /// a <c>flex:</c> device string opens a FlexRadio slice (which supplies its own DAX audio
+    /// and keys itself), anything else is an ALSA device (the <see cref="Open"/> path).</summary>
+    public static async Task<SoundModemFrameTransport> OpenAsync(
+        SoundModemTransportConfig config,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        if (!SoundModemFlexDevice.IsFlex(config.Device))
+        {
+            return Open(config, timeProvider);
+        }
+
+        int dspRate = DspRate(config.Mode);
+        FlexRuntime? flex = null;
+        try
+        {
+            flex = await SoundModemFlexDevice
+                .OpenAsync(config.Device, dspRate, config.Flex, SoundModemFlexDevice.PacketBuffer, cancellationToken)
+                .ConfigureAwait(false);
+            // The Flex DAX stream is native float; adapt it to the S16 capture seam the RX pump
+            // consumes. The FlexRuntime owns Input/Output/Ptt, so it is passed as the deviceOwner.
+            var capture = new AudioInputCaptureSource(flex.Input);
+            return new SoundModemFrameTransport(config, capture, flex.Output, flex.Ptt, timeProvider, deviceOwner: flex);
+        }
+        catch
+        {
+            if (flex is not null)
+            {
+                await flex.DisposeAsync().ConfigureAwait(false);
+            }
+
             throw;
         }
     }
@@ -257,8 +301,17 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         }
 
         _capture.Dispose();
-        (_output as IDisposable)?.Dispose();
-        (_ptt as IDisposable)?.Dispose();
+        if (_deviceOwner is not null)
+        {
+            // The device owns the audio endpoints (a FlexRuntime owns its Input/Output/Ptt) —
+            // dispose it, not them (the capture adapter's Dispose is a no-op for that reason).
+            await _deviceOwner.DisposeAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            (_output as IDisposable)?.Dispose();
+            (_ptt as IDisposable)?.Dispose();
+        }
         _stopping.Dispose();
     }
 
@@ -372,5 +425,36 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         public int Read(Span<short> buffer) => _pcm.Read(buffer);
 
         public void Dispose() => _pcm.Dispose();
+    }
+
+    /// <summary>Adapts a native-float <see cref="IAudioInput"/> (e.g. a Flex DAX RX stream) to the
+    /// S16 capture seam the RX pump consumes. Non-owning: the underlying input is disposed by its
+    /// owner (the FlexRuntime), so <see cref="Dispose"/> is a no-op.</summary>
+    private sealed class AudioInputCaptureSource(IAudioInput input) : ISoundModemCapture
+    {
+        private float[] _floats = [];
+
+        public int SampleRate => input.SampleRate;
+
+        public int Read(Span<short> buffer)
+        {
+            if (_floats.Length < buffer.Length)
+            {
+                _floats = new float[buffer.Length];
+            }
+
+            int got = input.Read(_floats.AsSpan(0, buffer.Length));
+            for (int i = 0; i < got; i++)
+            {
+                buffer[i] = (short)Math.Clamp(MathF.Round(_floats[i] * 32767f), short.MinValue, short.MaxValue);
+            }
+
+            return got;
+        }
+
+        public void Dispose()
+        {
+            // The FlexRuntime owns the input; nothing to dispose here.
+        }
     }
 }
