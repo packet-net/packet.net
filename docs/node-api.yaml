@@ -825,6 +825,7 @@ components:
         - { $ref: "#/components/schemas/NinoTncTransport" }
         - { $ref: "#/components/schemas/AxudpTransport" }
         - { $ref: "#/components/schemas/TaitTransparentTransport" }
+        - { $ref: "#/components/schemas/SoundModemTransport" }
       discriminator: { propertyName: kind }
     KissTcpTransport:
       type: object
@@ -857,6 +858,35 @@ components:
         transparentBaud: { type: integer, description: "Transparent-mode terminal baud (default 28800)" }
         ffskBaud: { type: integer, description: "FFSK over-air baud for airtime estimation (default 2400)" }
         leadInMs: { type: integer, description: "modelled TX lead-in ms — key-up + FFSK preamble (default 100)" }
+    SoundModemTransport:
+      type: object
+      # The in-process pdn-soundmodem engine: the node runs the demodulator/modulator itself over an
+      # ALSA (or flex:<radio>) device — no external TNC/daemon. Native DCD feeds the AX.25 carrier-sense
+      # gate; the KISS TXDELAY/PERSIST/SLOTTIME knobs drive the modem's own p-persistent CSMA.
+      required: [kind]
+      properties:
+        kind: { const: soundmodem }
+        device: { type: string, description: "ALSA device (default, plughw:1,0) or a flex:<radio>[:slice][@station] FlexRadio device (default: default)" }
+        captureRate: { type: integer, description: "capture sample rate; a positive multiple of the mode's DSP rate (default 48000). Ignored for a flex: device." }
+        mode: { type: string, description: "modem mode — one of ModemCatalog.KnownModes minus bpsk1200-multi: the AFSK/BPSK/QPSK/FSK modes, c4fsk9600/c4fsk19200, freedv-datac0/1/3/4/13/14, ms110d-wn0..6/13 (default afsk1200)" }
+        frequency: { type: number, description: "centre/carrier Hz; 0 = mode convention. Settable only on the variable-centre afsk/bpsk/qpsk families (300..3300); rejected for the baseband fsk*/c4fsk* and fixed-centre freedv-*/ms110d-* modes." }
+        offsetPairs: { type: [integer, "null"], description: "bpsk300 diversity-bank width: 2*offsetPairs+1 stepped decoder branches (0 = single modem; null = the mode default, 4). Ignored by non-bank modes." }
+        offsetStepHz: { type: [number, "null"], description: "Hz step between bpsk300 diversity-bank branches (null = the baud-derived default, baud/40)." }
+        pskDetector: { type: [string, "null"], enum: [coherent, differential, null], description: "PSK detector for the bpsk*/qpsk* modes (null = per-family default: BPSK differential, QPSK coherent)." }
+        ptt: { type: string, description: "PTT control spec: empty for VOX, serial:<device>[:rts|:dtr], or cm108:<hidraw>[:gpio]. Must be empty for a flex: device (the radio keys itself)." }
+        flex:
+          oneOf:
+            - { $ref: "#/components/schemas/SoundModemFlexConfig" }
+            - { type: "null" }
+          description: "FlexRadio slice tuning, used only when device is a flex: device (null = the headless defaults)."
+    SoundModemFlexConfig:
+      type: object
+      # FlexRadio headless-slice tuning for a flex: soundmodem/paging/ardop device.
+      properties:
+        frequency: { type: string, description: "slice frequency (MHz, six-decimal Flex form; default 14.100000)" }
+        antenna: { type: string, description: "RX/TX antenna (default ANT1)" }
+        mode: { type: string, description: "slice demod mode (default DIGU, a data mode)" }
+        daxChannel: { type: string, description: "the DAX channel the headless client claims (default 1)" }
 
     Ax25PortParams:
       type: object
@@ -940,6 +970,43 @@ components:
             telnet: { type: object, properties: { enabled: { type: boolean }, bind: { type: string }, port: { type: integer } } }
             http: { type: object, properties: { bind: { type: string }, port: { type: integer } } }
         netRom: { $ref: "#/components/schemas/NetRomConfig" }
+        # Node-level soundmodem SERVICES (not transports) — each runs over its own dedicated audio
+        # device, off by default. See PagingConfig / ArdopConfig and docs/soundmodem.md.
+        paging: { $ref: "#/components/schemas/PagingConfig" }
+        ardop: { $ref: "#/components/schemas/ArdopConfig" }
+    PagingConfig:
+      type: object
+      # POCSAG paging service: a TCP line server (PAGE/HEARD) transmitting + receiving POCSAG pages
+      # over a dedicated soundmodem audio device. Off by default.
+      properties:
+        enabled: { type: boolean, description: "enable the POCSAG paging service (default false)" }
+        device: { type: string, description: "ALSA device, or a flex:<radio>[:slice][@station] device (default: default)" }
+        captureRate: { type: integer, description: "capture rate (ALSA only; a positive multiple of 12000). Default 48000." }
+        bind: { type: string, description: "TCP bind address for the paging line server (default 127.0.0.1)" }
+        port: { type: integer, description: "TCP port for the paging line server (default 8106)" }
+        baud: { type: integer, enum: [512, 1200, 2400], description: "POCSAG baud: 512, 1200 (DAPNET) or 2400 (default 1200)" }
+        invertPolarity: { type: boolean, description: "invert the baseband polarity (default false)" }
+        ptt: { type: string, description: "PTT control spec (ALSA only; empty = VOX). A flex: device keys itself." }
+        flex:
+          oneOf:
+            - { $ref: "#/components/schemas/SoundModemFlexConfig" }
+            - { type: "null" }
+    ArdopConfig:
+      type: object
+      # ARDOP virtual-TNC service: an ardopcf-compatible TCP host interface (command socket + a data
+      # socket on port+1) backed by a dedicated soundmodem audio device, so external ARDOP hosts (BPQ
+      # DRIVER=ARDOP, Pat, Winlink Express) can drive this node as an ARDOP modem. Off by default.
+      properties:
+        enabled: { type: boolean, description: "enable the ARDOP virtual TNC (default false)" }
+        device: { type: string, description: "ALSA device, or a flex:<radio>[:slice][@station] device (default: default)" }
+        captureRate: { type: integer, description: "capture rate (ALSA only; a positive multiple of 12000). Default 48000." }
+        bind: { type: string, description: "TCP bind address for the ARDOP host interface (default 127.0.0.1)" }
+        port: { type: integer, description: "command-socket TCP port; the data socket listens on port+1 (default 8515 → data 8516)" }
+        ptt: { type: string, description: "PTT control spec (ALSA only; empty = VOX). A flex: device keys itself." }
+        flex:
+          oneOf:
+            - { $ref: "#/components/schemas/SoundModemFlexConfig" }
+            - { type: "null" }
 
     Inp3RouteMetric:
       type: object

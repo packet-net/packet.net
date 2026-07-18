@@ -163,6 +163,43 @@ public static class NodeConfigTemplate
         #                              # Command). WARNING: if the radio is programmed "Ignore
         #                              # Escape Sequence" ON, the +++ exit fails — recovery is a
         #                              # power cycle. Program the escape sequence honoured.
+        #  - id: sound
+        #    enabled: false
+        #    transport:
+        #      kind: soundmodem    # the in-process pdn-soundmodem engine — the node runs the
+        #                          # demodulator/modulator itself over a sound card. NO external
+        #                          # TNC or daemon; native DCD gates the AX.25 stack's carrier sense.
+        #      device: default     # ALSA capture+playback device (e.g. default, plughw:1,0), OR a
+        #                          # flex:<radio>[:slice][@station] FlexRadio device (see below).
+        #      captureRate: 48000  # card-native rate; the modem decimates to the mode's DSP rate.
+        #                          # Must be a positive multiple of it (48000 works for every mode).
+        #      mode: afsk1200      # the modem mode. The full set: the NinoTNC-compatible
+        #                          #   afsk1200[-fx25|-fx25rx|-multi|-il2p|-il2p-nocrc], afsk300[-il2p|-il2pc],
+        #                          #   bpsk300[-multi|-nocrc], bpsk1200, qpsk600/2400/3600,
+        #                          #   fsk9600[-il2p], fsk4800-il2p modes; the C4FSK modes
+        #                          #   (c4fsk9600/c4fsk19200); the FreeDV HF OFDM modes
+        #                          #   (freedv-datac0/1/3/4/13/14); and the MIL-STD-188-110D App-D
+        #                          #   modes (ms110d-wn0..6/13).
+        #      # frequency: 1700   # centre/carrier Hz; 0/omitted = the mode convention. Only the
+        #                          # variable-centre afsk/bpsk/qpsk families accept one (300..3300);
+        #                          # rejected for the baseband fsk*/c4fsk* + fixed-centre freedv-*/ms110d-*.
+        #      # ptt: serial:/dev/ttyUSB0:rts  # PTT: empty=VOX, serial:<dev>[:rts|:dtr], cm108:<hidraw>[:gpio].
+        #                          # Leave empty for a flex: device — the radio keys itself.
+        #    # bpsk300 is the differential frequency-diversity BANK — tune it with the two knobs
+        #    # below (bpsk1200 stays the legacy single-carrier modem):
+        #    #  mode: bpsk300
+        #    #  offsetPairs: 4      # bank width: 2*pairs+1 stepped decoder branches (0 = single modem;
+        #    #                      # omit = the mode default, 4).
+        #    #  offsetStepHz: 7.5   # Hz step between branches (omit = the baud-derived default, baud/40).
+        #    #  pskDetector: differential  # coherent | differential (omit = per-family default:
+        #    #                             # BPSK differential, QPSK coherent).
+        #    # A flex: device drives a FlexRadio headless slice — key it with a flex: block and NO ptt:
+        #    #  device: "flex:MyFlex"
+        #    #  flex:
+        #    #    frequency: "14.100000"  # slice frequency (MHz, six-decimal Flex form)
+        #    #    antenna: ANT1
+        #    #    mode: DIGU              # a data slice mode
+        #    #    daxChannel: "1"         # pick one SmartSDR isn't using when sharing a box
 
         # Operator-facing text. {node}/{call} are expanded.
         services:
@@ -240,6 +277,31 @@ public static class NodeConfigTemplate
           # path: traffic.db              # SQLite file; omit for traffic.db beside pdn.db
           # retentionDays: 14             # prune rows older than this many days (>= 1)
           # maxMb: 512                    # hard cap on the database file size (>= 1)
+
+        # POCSAG paging service. A TCP line server (PAGE/HEARD) that transmits + receives POCSAG
+        # pages over its OWN dedicated soundmodem audio device (separate from any port above).
+        # Off by default. See docs/soundmodem.md.
+        # paging:
+        #   enabled: true
+        #   device: default         # ALSA device, or a flex:<radio>[:slice][@station] device
+        #   captureRate: 48000      # ALSA only; a flex: device supplies its own DAX clock
+        #   bind: 127.0.0.1         # TCP bind for the paging line server
+        #   port: 8106
+        #   baud: 1200              # POCSAG baud: 512, 1200 (DAPNET) or 2400
+        #   # invertPolarity: false # invert the baseband polarity if your radio needs it
+        #   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX. A flex: device keys itself.
+
+        # ARDOP virtual TNC. An ardopcf-compatible TCP host interface (command socket + data socket
+        # on port+1) backed by a dedicated soundmodem audio device, so an external ARDOP host —
+        # BPQ's DRIVER=ARDOP, Pat, Winlink Express — can drive this node's sound card / FlexRadio
+        # as an ARDOP modem. Off by default. See docs/soundmodem.md.
+        # ardop:
+        #   enabled: true
+        #   device: default         # ALSA device, or a flex:<radio>[:slice][@station] device
+        #   captureRate: 48000      # ALSA only; a flex: device supplies its own DAX clock
+        #   bind: 127.0.0.1         # TCP bind for the ARDOP host interface
+        #   port: 8515              # command socket; the data socket listens on port+1 (8516)
+        #   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX. A flex: device keys itself.
 
         """;
 }
