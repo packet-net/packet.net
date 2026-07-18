@@ -120,6 +120,11 @@ public sealed record NodeConfig
     /// nothing. See <see cref="MqttConfig"/> and <c>docs/research/pdn-mqtt-frame-emission.md</c>.</summary>
     public MqttConfig Mqtt { get; init; } = new();
 
+    /// <summary>The <b>POCSAG paging</b> service — a TCP line server transmitting/receiving pages
+    /// over a dedicated soundmodem audio device. <b>Default-OFF</b>
+    /// (<see cref="PagingConfig.Enabled"/> = <c>false</c>). See <see cref="PagingConfig"/>.</summary>
+    public PagingConfig Paging { get; init; } = new();
+
     /// <summary>The split-station <b>RF head-ends</b> this node talks to — boxes running the Go
     /// head-end daemon that bridge their serial radios/modems as raw TCP pipes (see
     /// <c>docs/research/split-station-rf-headend.md</c>). A port's <c>radio:</c> control channel or its

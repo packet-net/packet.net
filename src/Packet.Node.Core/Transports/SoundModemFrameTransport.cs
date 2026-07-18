@@ -137,7 +137,7 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
             output = config.CaptureRate == dspRate
                 ? new AlsaAudioOutput(config.Device, dspRate)
                 : new UpsamplingAudioOutput(new AlsaAudioOutput(config.Device, config.CaptureRate), dspRate);
-            ptt = CreatePtt(config.Ptt);
+            ptt = SoundModemPtt.Create(config.Ptt);
             return new SoundModemFrameTransport(config, capture, output, ptt, timeProvider);
         }
         catch
@@ -396,24 +396,6 @@ public sealed class SoundModemFrameTransport : IAx25Transport, ICarrierSense, IT
         "differential" => PskDetector.Differential,
         _ => throw new NotSupportedException($"unknown soundmodem pskDetector '{spec}'"),
     };
-
-    private static IPttControl CreatePtt(string spec)
-    {
-        if (string.IsNullOrWhiteSpace(spec))
-        {
-            return new NullPtt();
-        }
-
-        string[] parts = spec.Split(':');
-        return parts switch
-        {
-            ["serial", var device] => new SerialPtt(device),
-            ["serial", var device, var line] => new SerialPtt(device, useRts: line != "dtr", useDtr: line == "dtr"),
-            ["cm108", var device] => new Cm108Ptt(device),
-            ["cm108", var device, var gpio] => new Cm108Ptt(device, int.Parse(gpio, CultureInfo.InvariantCulture)),
-            _ => throw new NotSupportedException($"unknown ptt spec '{spec}'"),
-        };
-    }
 
     /// <summary>ALSA-backed capture source.</summary>
     private sealed class AlsaCaptureSource(string device, int sampleRate) : ISoundModemCapture
