@@ -44,3 +44,38 @@ public sealed class PagingConfigValidator : AbstractValidator<PagingConfig>
             .WithMessage(p => $"paging.bind '{p.Bind}' must be an IP address when paging is enabled.");
     }
 }
+
+/// <summary>
+/// Validates the ARDOP virtual-TNC service block. Shape constraints (port range, capture rate) are
+/// checked always; the need-a-real-value rules (bind, device) apply only when enabled.
+/// </summary>
+public sealed class ArdopConfigValidator : AbstractValidator<ArdopConfig>
+{
+    public ArdopConfigValidator()
+    {
+        // The data socket listens on Port+1, so the command port must leave room for it.
+        RuleFor(a => a.Port)
+            .InclusiveBetween(1, 65534)
+            .WithMessage("ardop.port must be in 1..65534 (the data socket uses port+1).");
+
+        RuleFor(a => a.CaptureRate)
+            .Must(r => r > 0 && r % 12000 == 0)
+            .When(a => !FlexDevice.IsFlex(a.Device))
+            .WithMessage("ardop.captureRate must be a positive multiple of 12000 (ARDOP's DSP rate).");
+
+        RuleFor(a => a.Ptt)
+            .Must(string.IsNullOrEmpty)
+            .When(a => FlexDevice.IsFlex(a.Device))
+            .WithMessage("ardop.ptt must be empty for a flex: device — the radio keys itself.");
+
+        RuleFor(a => a.Device)
+            .NotEmpty()
+            .When(a => a.Enabled)
+            .WithMessage("ardop.device is required when ardop is enabled.");
+
+        RuleFor(a => a.Bind)
+            .Must(b => System.Net.IPAddress.TryParse(b, out _))
+            .When(a => a.Enabled)
+            .WithMessage(a => $"ardop.bind '{a.Bind}' must be an IP address when ardop is enabled.");
+    }
+}

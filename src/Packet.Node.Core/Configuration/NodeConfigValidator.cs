@@ -94,6 +94,8 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 
         RuleFor(c => c.Paging).NotNull().SetValidator(new PagingConfigValidator());
 
+        RuleFor(c => c.Ardop).NotNull().SetValidator(new ArdopConfigValidator());
+
         // Empty applications is the default (a node with no apps). Each entry is validated,
         // and ids / match-verbs must be unique across the list (the launch + log keys).
         RuleForEach(c => c.Applications).SetValidator(new ApplicationConfigValidator());

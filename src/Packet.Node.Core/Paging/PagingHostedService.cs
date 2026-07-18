@@ -91,16 +91,18 @@ public sealed partial class PagingHostedService : IHostedService, IAsyncDisposab
 
     private async Task TearDownAsync()
     {
-        if (_server is not null)
-        {
-            await _server.DisposeAsync().ConfigureAwait(false);
-            _server = null;
-        }
-
+        // Host first: stopping the channel's RX pump severs the channel→decoder receive tap before
+        // the server (which owns the POCSAG decoder) is disposed, so the pump can't call into it.
         if (_host is not null)
         {
             await _host.DisposeAsync().ConfigureAwait(false);
             _host = null;
+        }
+
+        if (_server is not null)
+        {
+            await _server.DisposeAsync().ConfigureAwait(false);
+            _server = null;
         }
     }
 

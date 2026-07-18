@@ -620,6 +620,11 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Rhp2.Server
 builder.Services.AddSingleton<Packet.Node.Core.Paging.PagingHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.Paging.PagingHostedService>());
 
+// ARDOP virtual TNC service (default-off behind ardop.enabled): an ardopcf-compatible TCP host
+// interface over a dedicated soundmodem device, for external ARDOP hosts (BPQ/Pat). Self-gates.
+builder.Services.AddSingleton<Packet.Node.Core.Ardop.ArdopHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.Ardop.ArdopHostedService>());
+
 // The embedded Tailscale tsnet sidecar (network-access.md § The sidecar, default-off behind
 // tailscale.enabled): INFRA, not an app. The status holder is a singleton the read API
 // (GET /api/v1/system/tailscale) projects and the web panel polls; the hosted service launches

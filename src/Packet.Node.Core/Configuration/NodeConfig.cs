@@ -125,6 +125,12 @@ public sealed record NodeConfig
     /// (<see cref="PagingConfig.Enabled"/> = <c>false</c>). See <see cref="PagingConfig"/>.</summary>
     public PagingConfig Paging { get; init; } = new();
 
+    /// <summary>The <b>ARDOP virtual TNC</b> service — an ardopcf-compatible TCP host interface over
+    /// a dedicated soundmodem audio device, letting external ARDOP hosts (BPQ, Pat, Winlink) drive
+    /// this node as an ARDOP modem. <b>Default-OFF</b> (<see cref="ArdopConfig.Enabled"/> =
+    /// <c>false</c>). See <see cref="ArdopConfig"/>.</summary>
+    public ArdopConfig Ardop { get; init; } = new();
+
     /// <summary>The split-station <b>RF head-ends</b> this node talks to — boxes running the Go
     /// head-end daemon that bridge their serial radios/modems as raw TCP pipes (see
     /// <c>docs/research/split-station-rf-headend.md</c>). A port's <c>radio:</c> control channel or its
