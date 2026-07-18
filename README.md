@@ -50,6 +50,8 @@ The SDL state-machine tables that drive `Packet.Ax25/Session/` come from the [`P
 | [`packet-net/ax25-ts`](https://github.com/packet-net/ax25-ts) | `@packet-net/ax25` — browser-targeted TypeScript library. | public |
 | [`packet-net/packet-term-tui`](https://github.com/packet-net/packet-term-tui) | `Packet.Term` — Terminal.Gui v2 TUI. Consumes `Packet.*` from NuGet. | private |
 | [`packet-net/packet-term-web`](https://github.com/packet-net/packet-term-web) | Browser TNC2 emulator at https://packet-term.m0lte.uk. Consumes `@packet-net/ax25` from npm. | public |
+| [`packet-net/pdn-libax25`](https://github.com/packet-net/pdn-libax25) | LGPL-3.0 drop-in `libax25.so` + `LD_PRELOAD` AF_AX25 interposer: native AX.25 apps (address a callsign) run over pdn via RHPv2. The native seam. | public |
+| [`packet-net/pdn-net`](https://github.com/packet-net/pdn-net) | AGPL-3.0 TUN/IP host stack: run unmodified IP software (address an IP) over packet radio; standard IP-over-AX.25. The IP seam. | public |
 
 The `ax25sdl` repo is the longest-lived contributor surface — that's where SDL transcriptions and spec-side work happen. Tom is working with the original AX.25 authors on whether `packethacking/ax25spec` should be the canonical community home for those transcriptions; `packet-net/ax25sdl` is the prove-out venue until that's agreed.
 
