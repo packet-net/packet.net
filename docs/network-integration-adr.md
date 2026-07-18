@@ -267,6 +267,23 @@ open design points. These **supersede the "drop-in `.so`" shorthand** used in §
   rejected by RHPv2 v1 (`open.remote` is a single callsign) — a pdn plan item.
 - **`setsockopt(SOL_AX25, …)` must always return 0** (apps treat failure as fatal); map the
   few RHPv2 understands (WINDOW/PACLEN/T1–T3/N2/EXTSEQ) into the `OPEN`, no-op the rest.
-- **Status:** both repos scaffolded 2026-07-18; `pdn-libax25` walking skeleton (Rust workspace:
-  `rhp` client + `libax25` + `ax25-interpose`) in progress. Detail in
+- **Interception works *because* the kernel family is gone, not despite it** (the natural "can
+  we even catch `AF_AX25` now?" question). The interposer works at the **libc/userspace layer,
+  above the syscall**: `AF_AX25` is just the constant `3` (a glibc header value, present
+  regardless of kernel support), so the app still calls `socket(3, SOCK_SEQPACKET, 0)`; our
+  `LD_PRELOAD` `socket()` matches that integer and **fabricates a `socketpair`-backed fd
+  itself**, never forwarding `AF_AX25` to the real `socket()` (which *would* `EAFNOSUPPORT`).
+  The kernel is never consulted for AX.25 fds — no root, no module, no netdevice. Caveats
+  (all clear for the target apps, which use libc `socket()`): `LD_PRELOAD` covers only
+  **dynamically-linked, non-`setuid`** binaries (watch `axspawn` if setuid — driven by the
+  already-preloaded `ax25d`); apps issuing the **raw `syscall(SYS_socket,…)`** bypass us;
+  escalation if ever needed is **`seccomp-unotify`/`ptrace`** (syscall-layer) or the Route-D
+  kernel module.
+- **Status (2026-07-18):** locked and **proven**, not just specced. `pdn-libax25` walking
+  skeleton built (Rust workspace: `rhp` client + `libax25.so.1` + `ax25-interpose.so`),
+  **27/27 tests green, SONAME `libax25.so.1` verified**, and an **end-to-end `LD_PRELOAD` test
+  — a real C `socket(AF_AX25)`→connect→write→read app on a kernel with no AF_AX25 — produced
+  correct RHPv2 wire traffic**. Repo `packet-net/pdn-libax25` (LGPL-3.0). `pdn-net` (AGPL-3.0,
+  the TUN seam) not yet scaffolded. Next: interposer `accept()`/listener path + `connect()`
+  waiting on `status(Connected)` (the `TODO(N1)` items), then `pdn-net`. Detail in
   [`network-integration-plan.md`](network-integration-plan.md) §1.
