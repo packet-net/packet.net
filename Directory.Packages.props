@@ -65,6 +65,9 @@
     <!-- POCSAG paging codec (arrives transitively via pdn-soundmodem; referenced explicitly for
          the PagingHostedService's PocsagPolarity). -->
     <PackageVersion Include="M0LTE.Pocsag" Version="0.1.0" />
+    <!-- ARDOP virtual TNC engine (arrives transitively via pdn-soundmodem; referenced explicitly
+         for the ArdopHostedService's ArdopHostTnc/ArdopHostServer). -->
+    <PackageVersion Include="M0LTE.Ardop" Version="0.1.0" />
 
     <!-- Serial / IO -->
     <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
