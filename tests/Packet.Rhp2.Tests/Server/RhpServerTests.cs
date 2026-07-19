@@ -328,6 +328,7 @@ public sealed class RhpServerTests : IAsyncDisposable
     [InlineData("inet", "stream", 0x80, "GB7RDG", RhpErrorCode.OperationNotSupported)]     // valid family, not implemented
     [InlineData("ax25", "warble", 0x80, "GB7RDG", RhpErrorCode.BadOrMissingMode)]
     [InlineData("ax25", "dgram", 0x80, "GB7RDG", RhpErrorCode.Ok)]                          // dgram open = the combined socket+bind form (R-6)
+    [InlineData("ax25", "custom", 0x80, "GB7RDG", RhpErrorCode.Ok)]                         // custom open = the combined socket+bind form (R-7)
     [InlineData("ax25", "stream", 0x00, "GB7RDG", RhpErrorCode.OperationNotSupported)]     // passive = R-3
     [InlineData("ax25", "stream", 0x80, null, RhpErrorCode.InvalidRemoteAddress)]
     public async Task Open_validation_ladder(string pfam, string mode, int flags, string? remote, int expected)
@@ -431,27 +432,25 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Equal(RhpErrorCode.InvalidHandle, reply.ErrCode);   // same as unknown — no oracle
     }
 
-    // ── dgram (UI): socket → bind → sendto (TX) + async recv (RX) — R-6 ───
+    // ── dgram (pure UI datagram): socket → bind → sendto (TX) + async recv (RX) — R-6 ───
 
     [Fact]
-    public async Task Socket_bind_sendto_emits_a_ui_datagram_with_the_right_source_dest_pid_and_data()
+    public async Task Socket_bind_sendto_emits_a_pure_ui_datagram_with_the_right_source_dest_and_data()
     {
         var (server, gateway) = await StartServerAsync();
         var client = await ConnectAsync(server);
         var handle = await BindDgramAsync(client, "M0LTE-1", port: "1");
 
-        // IP-over-AX.25: bind the station, sendto pid 0xCC to the destination.
-        await client.SendAsync(new SendToMessage
-        {
-            Id = 9, Handle = handle, Remote = "GB7RDG", Data = "hi\r", Pid = 0xCC,
-        });
+        // Pure datagram: bind the station, sendto the whole `data` as the UI info — no PID field on
+        // the wire; a `dgram` frame's PID is the implicit no-Layer-3 0xF0.
+        await client.SendAsync(new SendToMessage { Id = 9, Handle = handle, Remote = "GB7RDG", Data = "hi\r" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
         Assert.Equal(9, reply.Id);
         Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
         Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
-        Assert.Equal((byte)0xCC, gateway.UiPid);
-        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);
+        Assert.Equal((byte)0xF0, gateway.UiPid);                 // implicit no-Layer-3 PID
+        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);        // the whole `data` is the info
     }
 
     [Fact]
@@ -532,8 +531,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Equal("2E0XYZ", recv.Remote);        // the frame's true source → recv.remote
         Assert.Equal("M0LTE-1", recv.Local);        // the frame's destination → recv.local
         Assert.Equal("1", recv.Port);               // the arrival port label
-        Assert.Equal(0xCC, recv.Pid);               // the frame's PID surfaced
-        Assert.Equal("ping", recv.Data);
+        Assert.Null(recv.Pid);                      // pure dgram carries NO pid field (PID is implicit 0xF0)
+        Assert.Equal("ping", recv.Data);            // the info verbatim (no PID prepended)
     }
 
     [Fact]
@@ -557,6 +556,122 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
     }
 
+    // ── custom (PID-in-data UI): socket → bind → sendto (TX) + async recv (RX) — R-7 ───
+    // The interoperable PID carriage (per the RHPv2 author G8PZT): the first octet of `data` is
+    // the AX.25 PID. Same message flow + gateway seams as dgram; the ONLY difference is where the
+    // PID sits — data[0] on TX, prepended to data on RX. No `pid` field anywhere.
+
+    [Fact]
+    public async Task Socket_custom_bind_sendto_takes_the_pid_from_the_first_data_octet()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindCustomAsync(client, "M0LTE-1", port: "1");
+
+        // IP-over-AX.25 the standard way: PID 0xCC is the first payload octet, the IP datagram follows.
+        await client.SendAsync(new SendToMessage
+        {
+            Id = 9, Handle = handle, Remote = "GB7RDG", Data = CustomData(0xCC, "hi\r"u8),
+        });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(9, reply.Id);
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
+        Assert.Equal((byte)0xCC, gateway.UiPid);            // data[0] → the UI frame PID
+        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);   // data[1..] → the UI info
+    }
+
+    [Fact]
+    public async Task A_custom_datagram_carrying_only_the_pid_octet_sends_empty_info()
+    {
+        // "at least the PID byte": a 1-byte `data` is a valid custom datagram — PID only, empty info.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindCustomAsync(client, "M0LTE-1");
+
+        await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "GB7RDG", Data = CustomData(0xF0, []) });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal((byte)0xF0, gateway.UiPid);
+        Assert.Empty(gateway.UiInfo!);
+    }
+
+    [Fact]
+    public async Task Sendto_on_a_custom_socket_with_empty_data_is_rejected_errCode_1()
+    {
+        // An empty `data` carries no PID octet — invalid (errCode 1), like the empty-dgram rule.
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindCustomAsync(client, "M0LTE-1");
+
+        await client.SendAsync(new SendToMessage { Id = 4, Handle = handle, Remote = "GB7RDG", Data = "" });
+
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Unspecified, reply.ErrCode);   // 1, distinct from 12 (absent data)
+        Assert.Equal(4, reply.Id);
+    }
+
+    [Fact]
+    public async Task Listen_on_a_custom_socket_is_operation_not_supported_16()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+
+        await client.SendAsync(new ListenMessage { Id = 2, Handle = sock.Handle!.Value, Flags = 0 });
+
+        var listen = await client.ExpectAsync<ListenReplyMessage>();
+        Assert.Equal(RhpErrorCode.OperationNotSupported, listen.ErrCode);   // a datagram has no listening state
+    }
+
+    [Fact]
+    public async Task A_bound_custom_handle_receives_an_inbound_ui_frame_with_the_pid_prepended_to_data()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+        var handle = await BindCustomAsync(client, "M0LTE-1", port: "1");
+
+        // Same inbound UI frame the dgram test injects — but a custom socket prepends the PID.
+        await gateway.InjectUiAsync(new UiDatagram("2E0XYZ", "M0LTE-1", 0xCC, "ping"u8.ToArray(), "1"));
+
+        var recv = await client.ExpectAsync<RecvMessage>();
+        Assert.Equal(handle, recv.Handle);
+        Assert.Null(recv.Id);                                    // a push, not a reply
+        Assert.NotNull(recv.Seqno);
+        Assert.Equal("2E0XYZ", recv.Remote);                     // the frame's true source → recv.remote
+        Assert.Equal("M0LTE-1", recv.Local);                     // the frame's destination → recv.local
+        Assert.Equal("1", recv.Port);
+        Assert.Null(recv.Pid);                                   // no pid field — the PID is in data[0]
+        Assert.Equal(CustomData(0xCC, "ping"u8), recv.Data);     // data = [frame.pid] ++ info
+    }
+
+    [Fact]
+    public async Task Open_custom_creates_a_datagram_socket_that_can_sendto()
+    {
+        // The combined open form (R-7): open(custom, local, port) = socket+bind in one step.
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        {
+            Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom, Local = "M0LTE-1", Port = "1",
+        });
+        var open = await client.ExpectAsync<OpenReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, open.ErrCode);
+        Assert.True(open.Handle >= 100);
+
+        await client.SendAsync(new SendToMessage { Id = 2, Handle = open.Handle, Remote = "GB7RDG", Data = CustomData(0xCC, "y"u8) });
+        var reply = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
+        Assert.Equal((byte)0xCC, gateway.UiPid);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────
 
     // socket(dgram) → bind(callsign[, port]) → returns the bound dgram handle.
@@ -570,6 +685,29 @@ public sealed class RhpServerTests : IAsyncDisposable
         var bind = await client.ExpectAsync<BindReplyMessage>();
         Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
         return sock.Handle!.Value;
+    }
+
+    // socket(custom) → bind(callsign[, port]) → returns the bound custom handle.
+    private static async Task<int> BindCustomAsync(RhpTestClient client, string callsign, string? port = null)
+    {
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = callsign, Port = port });
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        return sock.Handle!.Value;
+    }
+
+    // Build a custom-mode `data` wire string: PID as the first octet, then the info — the exact
+    // shape the server decodes on TX (data[0]=pid, data[1..]=info) and produces on RX.
+    private static string CustomData(byte pid, ReadOnlySpan<byte> info)
+    {
+        var payload = new byte[info.Length + 1];
+        payload[0] = pid;
+        info.CopyTo(payload.AsSpan(1));
+        return RhpDataEncoding.ToWireString(payload);
     }
 
     private static async Task<int> OpenAsync(RhpTestClient client)
