@@ -91,10 +91,13 @@ public sealed partial class RhpServer : IAsyncDisposable
 {
     private const int RecvChunk = 2048;          // session bytes per recv push (escaped JSON stays well under the frame cap)
     private const int FirstHandle = 100;         // match the reference's visible numbering
-    // PID carriage for ax25 datagrams is settled (packet.net#647, resolved) with NO pdn-specific
-    // wire field: `dgram` is a PURE datagram (the UI PID is implicit no-Layer-3 0xF0), and
-    // `custom` carries the PID as the FIRST octet of `data` (PID-in-`data`, the XRouter/G8PZT
-    // standard — data[0] = PID on TX, prepended to data on RX). See docs/rhp2-server.md (R-7).
+    // PID carriage for ax25 datagrams uses NO pdn-specific wire field (the earlier provisional
+    // `pid` field is gone; PWP-0222 never defined one). PWP-0222 §1.2 defines `dgram` as the
+    // "unreliable datagram (AX25 UI, ...)" mode and `custom` only as "user specified protocol".
+    // So: `dgram` is a PURE datagram (the UI PID is the implicit no-Layer-3 0xF0), and `custom`
+    // carries the PID as the FIRST octet of `data` (data[0] = PID on TX, prepended to data on RX)
+    // — a convention G8PZT clarified for AX.25 (the written spec leaves `custom` underspecified),
+    // resolving packet.net#647. See docs/rhp2-server.md (R-7).
     private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the implicit PID of every `dgram` (pure-datagram) UI frame
 
     // errCode 12 errText as the live wire spells it (XRouter answers "Missing handle" /
@@ -546,7 +549,8 @@ public sealed partial class RhpServer : IAsyncDisposable
     // client filters by recv.local. Carries a per-connection seqno and no id (mirrors
     // PumpHandleAsync). PID carriage differs by socket kind and adds no separate wire field: a
     // `dgram` socket delivers info as-is (its PID is implicitly 0xF0); a `custom` socket prepends
-    // the frame's PID as the first octet of `data` (data = [pid] ++ info — the G8PZT standard).
+    // the frame's PID as the first octet of `data` (data = [pid] ++ info — per G8PZT's AX.25
+    // clarification of `custom`, which PWP-0222 §1.2 defines only as "user specified protocol").
     private static async Task OnUiReceivedAsync(RhpHandle handle, UiDatagram dg)
     {
         if (handle.Closed)
@@ -859,7 +863,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     // explicit sendto.local, else the bound local; destination is sendto.remote. PID carriage
     // depends on the socket kind (no separate wire field): a `dgram` socket always emits PID 0xF0
     // (pure datagram) with info = the whole `data`; a `custom` socket takes the PID from data[0]
-    // and the info from data[1..] (the G8PZT standard, PID-in-`data`). An empty `data` is refused
+    // and the info from data[1..] (per G8PZT's AX.25 clarification of `custom`). An empty `data` is refused
     // (errCode 1) — a dgram UI frame needs an info field, and a custom datagram needs at least the
     // PID octet. TX runs through the gateway (RF or loopback).
     private async Task HandleSendToAsync(ClientState client, SendToMessage msg, CancellationToken ct)
@@ -1242,7 +1246,8 @@ public sealed partial class RhpServer : IAsyncDisposable
     // The connectionless-datagram flavour of a socket handle. None = a stream handle. Dgram and
     // Custom share the whole datagram lifecycle (sendto TX + promiscuous UI recv, no connect/listen)
     // and differ only in PID carriage: Dgram is a pure datagram (implicit no-Layer-3 0xF0), Custom
-    // carries the AX.25 PID as the first octet of the sendto/recv `data` payload (the G8PZT standard).
+    // carries the AX.25 PID as the first octet of the sendto/recv `data` payload (a convention
+    // G8PZT clarified for AX.25; PWP-0222 §1.2 defines `custom` only as "user specified protocol").
     private enum DatagramKind
     {
         None = 0,

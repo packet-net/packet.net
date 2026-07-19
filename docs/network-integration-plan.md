@@ -80,7 +80,7 @@ Both share an internal **`rhp` client** (RHPv2 over loopback TCP `127.0.0.1:9000
 - **N3 — Follow-ons (gated on pdn RHP capabilities).** `AF_NETROM` idiom (needs RHPv2 `netrom`
   family — deferred; `NetRomService` circuits already exist); digipeater via-paths (RHPv2 v1
   rejects a via-path in `open.remote`); UI/datagram (**RHPv2 `dgram` shipped R-6** for pure `0xF0`
-  beacons, **`custom` shipped R-7** for PID-carrying datagrams — the carriage is now standard and
+  beacons, **`custom` shipped R-7** for PID-carrying datagrams — spec-shaped and
   pdn-specific-field-free, so the shim's `beacon`/FBB-beacon path is unblocked); monitoring (needs
   an RHPv2 `trace`/raw feed); honest TX backpressure (needs a `Busy` queue-depth signal).
 
@@ -102,9 +102,11 @@ The goal: `ifconfig` shows `pdn0`; `ssh w1abc.ampr` / `mosh` / `ping` route over
   construction* (ADR §9). **Load-bearing invariant:** the IP datagram goes in the UI info **raw
   — no pdn envelope**; verify on-air, since a wrapper would pass every unit test and still break
   interop. **Client↔node carriage (when `pdn-net` drives the node over RHPv2 rather than the
-  in-process engine):** the RHPv2 **`custom`** UI-datagram carries the PID standard-form — `data[0]`
-  = `0xCC`, `data[1..]` = the raw IP datagram — with **no pdn-specific JSON field** (#647 resolved;
-  rhp2-server.md R-7), so the UI/IP path is portable to any RHPv2 host, not just pdn.
+  in-process engine):** the RHPv2 **`custom`** UI-datagram carries the PID as the first payload
+  octet — `data[0]` = `0xCC`, `data[1..]` = the raw IP datagram — with **no pdn-specific JSON
+  field** (PWP-0222 §1.2 defines `custom` only as "user specified protocol"; the first-octet-PID
+  convention is G8PZT's clarification, #647 resolved; rhp2-server.md R-7), so the UI/IP path is
+  portable to any RHPv2 host, not just pdn.
 - **I3 — Addressing.** A callsign↔IP resolver: static table / `hosts`-style file / 44-net
   (AMPRNet) allocation. Optional dynamic **AX.25-ARP** (`0xCD`) later. On RX `0xCD`, maintain
   the reverse map.

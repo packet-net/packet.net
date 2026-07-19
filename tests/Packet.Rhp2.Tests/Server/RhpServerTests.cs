@@ -557,9 +557,10 @@ public sealed class RhpServerTests : IAsyncDisposable
     }
 
     // ── custom (PID-in-data UI): socket → bind → sendto (TX) + async recv (RX) — R-7 ───
-    // The interoperable PID carriage (per the RHPv2 author G8PZT): the first octet of `data` is
-    // the AX.25 PID. Same message flow + gateway seams as dgram; the ONLY difference is where the
-    // PID sits — data[0] on TX, prepended to data on RX. No `pid` field anywhere.
+    // PWP-0222 §1.2 defines `custom` only as "user specified protocol"; the AX.25 convention that
+    // the first octet of `data` is the PID is per G8PZT's clarification (2026-07, resolving #647).
+    // Same message flow + gateway seams as dgram; the ONLY difference is where the PID sits —
+    // data[0] on TX, prepended to data on RX. No `pid` field anywhere.
 
     [Fact]
     public async Task Socket_custom_bind_sendto_takes_the_pid_from_the_first_data_octet()
