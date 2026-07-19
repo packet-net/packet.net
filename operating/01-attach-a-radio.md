@@ -54,6 +54,14 @@ start carrying RSSI/SNR, and the radio shows up on the dashboard
 If you edit node config directly, add a `radio:` block under the port. Here is a
 NinoTNC port with a Tait radio attached, bound by serial:
 
+> [!NOTE]
+> **Where config lives.** A node keeps its config in its `pdn.db`, not a watched
+> file ([config-in-DB](../docs/config-in-db.md), #473) — so "edit it directly" means
+> either the web UI/API, or the export-edit-import round-trip: `pdn config export
+> --out node.yaml`, edit the YAML, `pdn config import node.yaml`. (A `--config` YAML
+> is read only on *first* boot, to migrate a legacy config into the DB.) Every YAML
+> block in this guide is that same config shape, whichever way you apply it.
+
 ```yaml
 ports:
   - id: nino
