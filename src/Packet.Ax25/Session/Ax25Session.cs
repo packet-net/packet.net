@@ -45,9 +45,18 @@ public sealed class Ax25Session
     // sent data — a node's connect banner is the canonical case — in the window
     // between connect and subscribe, and the event fires it into the void. We buffer
     // inbound DL-DATA indications here (under dispatchGate, so it's consistent with
-    // emission) until the first replay-consumer attaches via AttachConsumerWithReplay,
+    // emission) until the next replay-consumer attaches via AttachConsumerWithReplay,
     // which atomically replays then subscribes and disarms. Bounded so a session that
     // is only ever tapped via the raw event (a NET/ROM interlink) can't grow it.
+    //
+    // Armed PER CONNECTION, not once per object: Ax25Listener caches and REUSES an
+    // Ax25Session per (local, remote) across connect/disconnect cycles (it evicts only
+    // on LRU overflow, never on disconnect), so a one-shot buffer would stay disarmed
+    // on every re-dial and silently drop the banner on the 2nd+ connect to a peer —
+    // packet.net#659, the bug the first-connect replay test never saw. RaiseDataLinkSignal
+    // re-arms it whenever the link (re)establishes (DL-CONNECT confirm/indication),
+    // which always precedes the peer's post-connect data, so each connection replays
+    // its own early inbound exactly as a fresh session would.
     private List<DataLinkSignal>? earlyInbound = new();
     private const int MaxEarlyInbound = 32;
 
@@ -115,7 +124,17 @@ public sealed class Ax25Session
         // directly is simply serialised, which is safe.
         lock (dispatchGate)
         {
-            if (earlyInbound is { } buffered && buffered.Count < MaxEarlyInbound && signal is DataLinkDataIndication)
+            // (Re-)arm the early-inbound buffer as the link comes up. A cached session
+            // re-dialled to the same peer arrives here with the buffer disarmed by the
+            // PREVIOUS connection's consumer; re-arming on the fresh connect confirm/
+            // indication — which the SDL emits before any post-connect I-frame — makes
+            // this connection replay its own banner just like a fresh session would
+            // (packet.net#659). A connect signal is never itself buffered inbound data.
+            if (signal is DataLinkConnectConfirm or DataLinkConnectIndication)
+            {
+                earlyInbound = new();
+            }
+            else if (earlyInbound is { } buffered && buffered.Count < MaxEarlyInbound && signal is DataLinkDataIndication)
             {
                 buffered.Add(signal);
             }
@@ -131,8 +150,10 @@ public sealed class Ax25Session
     /// loss and no duplication. Used by an outbound consumer (the node's Ax25NodeConnection)
     /// that can only wrap the session after <see cref="Ax25Listener.ConnectAsync(Packet.Core.Callsign, System.Threading.CancellationToken)"/> has already
     /// returned a connected link — closing the window in which a peer's immediate greeting
-    /// (e.g. a node's connect banner) would otherwise be dropped. The first such attach disarms
-    /// the buffer; subsequent raw <c>DataLinkSignalEmitted += </c> subscribers are unaffected.
+    /// (e.g. a node's connect banner) would otherwise be dropped. The attach disarms the buffer
+    /// (this consumer now owns the live stream); <see cref="RaiseDataLinkSignal"/> re-arms it on
+    /// the next connect confirm/indication so a re-dialled cached session replays afresh. Raw
+    /// <c>DataLinkSignalEmitted += </c> subscribers are unaffected either way.
     /// </summary>
     public void AttachConsumerWithReplay(EventHandler<DataLinkSignal> handler)
     {

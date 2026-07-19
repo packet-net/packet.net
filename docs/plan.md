@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-18
+**As of:** 2026-07-19
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-19 — **Connect banner lost on a re-dial to a cached peer (#659)** — the early-inbound replay buffer (from #653) was a one-shot per `Ax25Session`, but the listener caches+reuses sessions per `(local, remote)` across connect/disconnect, so every *re-dial* reused a disarmed buffer and dropped the peer's eager banner (L2-ACKed, zero `recv`). Fix: `RaiseDataLinkSignal` re-arms on each DL-CONNECT confirm/indication. 3 unit + 1 two-node-AXUDP E2E regression tests, all fail without the fix. Closes #659](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem config-UI follow-up** — the `ardop`/`paging` service blocks got a Services-tab form (were Raw-YAML only) and the per-frame `/quality` diagnostics got a FrameQuality readout on the Waterfall screen (new `api.portQuality`). Rides node-v0.33.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem 0.5.0→0.6.0 integration** — `ModemCatalog` upstreamed into the pdn-soundmodem library (one source of truth for mode→modem / DSP-rate / gating; published v0.6.0); the node caught up and exposed FreeDV datac + MS110D App-D + C4FSK modes, the `bpsk300` differential diversity bank (bpsk1200 kept legacy), `flex:` FlexRadio device support, and ARDOP + POCSAG as hosted services (ardopcf-compatible host — BPQ/Pat/Winlink drive it). Node PRs #638–#642; ships **node-v0.32.0**](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-14 — **lib-v0.23.0 downstream cascade** — axcall + packet-term-tui bumped `Packet.*` 0.22.0→0.23.0, built + tested against the published nuget.org packages, merged on green CI (axcall#20 / packet-term-tui#25), and released as **v0.2.20** each (six-platform binaries, 6 assets, verified non-draft). Tags cut via each repo's `release.yml` `workflow_dispatch` (branch-scoped credential can't push tags). Closes the lib-v0.23.0 entry's remaining Step 3; releasing.md cascade complete for 0.23.0](#17-amendment-log)
@@ -1251,6 +1252,33 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-19 — Connect banner lost on a re-dial to a cached peer (packet.net#659)
+
+The early-inbound replay buffer that catches a peer's eager connect banner in the
+connect→subscribe window (added for #653) was a **one-shot per `Ax25Session` object**:
+`AttachConsumerWithReplay` disarmed it permanently on the first attach. But `Ax25Listener`
+**caches and reuses** an `Ax25Session` per `(local, remote)` across connect/disconnect cycles
+(evicting only on LRU overflow, never on disconnect), so every *re-dial* to a peer reused a
+session whose buffer was already disarmed — the banner was L2-ACKed but never buffered, no
+consumer was wired yet, and the RHP pump emitted zero `recv`. The *first* connect worked (and was
+covered by a single-connect in-process harness, which is why the in-process #653 investigation
+cleared the engine); the *2nd+* connect to the same peer silently dropped the banner. Live
+two-node AXUDP testing (connect/disconnect/reconnect) always hit it.
+
+- **Fix** (`src/Packet.Ax25/Session/Ax25Session.cs`): `RaiseDataLinkSignal` now re-arms
+  `earlyInbound` on each `DataLinkConnectConfirm`/`DataLinkConnectIndication`. The SDL emits those
+  before any post-connect I-frame, so every connection — fresh or re-dialled on a cached session —
+  replays its own early inbound. Race-safe (same `dispatchGate` as emission + `AttachConsumerWithReplay`);
+  covers both outbound (confirm) and inbound (indication) reconnects. The RHP server's own ordering
+  was **not** the defect — recv-routing is wired inside `gateway.OpenAx25StreamAsync`, before the
+  `status(connected)` push.
+- **Tests:** 3 unit (`Ax25SessionReplayTests` — a re-dial replays the 2nd banner not the 1st; an
+  inbound reconnect indication re-arms; a connect boundary discards stale pre-connect data) + 1
+  end-to-end (`AxudpNodeToNodeIntegrationTests.A_redial_to_the_same_node_still_replays_the_eager_banner`
+  — two real nodes over AXUDP: connect→read banner→disconnect→reconnect→read banner without sending).
+  All four fail without the fix (the E2E hangs to its 20 s read budget and returns empty), pass with
+  it. Closes #659.
 
 ### 2026-07-18 — Soundmodem config-UI follow-up: ARDOP/POCSAG service forms + FrameQuality readout
 
