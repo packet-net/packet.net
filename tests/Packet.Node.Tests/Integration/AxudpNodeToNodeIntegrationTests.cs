@@ -120,6 +120,83 @@ public sealed class AxudpNodeToNodeIntegrationTests
             "node B's unsolicited connect banner reaches the dialer (replayed past the connect/subscribe window)");
     }
 
+    [Fact]
+    public async Task A_redial_to_the_same_node_still_replays_the_eager_banner()
+    {
+        // packet.net#659, the two-node case the first-connect banner test never saw: the
+        // Ax25Listener caches and REUSES its Ax25Session per (local, remote) across
+        // connect/disconnect cycles, and the early-inbound replay buffer used to be a
+        // one-shot per session object — disarmed forever by the FIRST connection's consumer.
+        // So on a RE-DIAL to a peer already connected once, node B's eager banner was
+        // L2-ACKed but never buffered and never replayed: the caller connected, then got
+        // zero bytes. Live two-node testing connects/disconnects/reconnects repeatedly, which
+        // is why the real rig hit this and the single-connect harness did not.
+        var (portA, portB) = (FreeUdpPort(), FreeUdpPort());
+        await using var nodeA = new PortSupervisor(
+            new TestConfigProvider(NodeConfig(NodeACall, "NODE-A", localPort: portA, remotePort: portB)),
+            TransportFactory.Instance, TimeProvider.System, NullLoggerFactory.Instance);
+        await using var nodeB = new PortSupervisor(
+            new TestConfigProvider(NodeConfig(NodeBCall, "NODE-B", localPort: portB, remotePort: portA)),
+            TransportFactory.Instance, TimeProvider.System, NullLoggerFactory.Instance);
+
+        await nodeA.StartAsync();
+        await nodeB.StartAsync();
+        await Wait.ForAsync(() => nodeA.RunningPortIds.Contains("axudp") && nodeB.RunningPortIds.Contains("axudp"),
+            "both AXUDP ports should come up");
+
+        var connector = nodeA.ResolveDefaultConnector();
+        connector.Should().NotBeNull();
+
+        // --- First connection: read the eager banner, then disconnect. This is the path that
+        // arms + disarms the reused session's early-inbound buffer.
+        using (var cts1 = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
+        {
+            var firstDial = await connector!.ConnectAsync(NodeBCall, cts1.Token);
+            var firstBanner = await ReadUntilAsync(firstDial, "NODEB-1", cts1.Token);
+            firstBanner.Should().Contain("NODEB-1", "the first connect's eager banner reaches the dialer (baseline)");
+            await firstDial.DisposeAsync();
+        }
+
+        // Let the link fully tear down on BOTH sides before re-dialling: node A's session must
+        // leave AwaitingRelease so the re-dial starts a clean SABM, and node B's session must
+        // reach Disconnected so its previous console loop ends and the reconnect SABM starts a
+        // FRESH console (which re-emits the banner) rather than being deduped away.
+        await Wait.ForAsync(() => PeerSessionInState(nodeA, NodeBCall, "Disconnected"),
+            "node A's outbound session settles to Disconnected after the first close");
+        await Wait.ForAsync(() => PeerSessionInState(nodeB, NodeACall, "Disconnected"),
+            "node B's inbound session settles to Disconnected so its console loop ends");
+
+        // --- Re-dial the SAME peer: both nodes reuse their cached Ax25Session. Read the banner
+        // again WITHOUT sending anything first. Before the fix this hung to the 20 s budget and
+        // returned empty (the reused session's buffer stayed disarmed); the re-dial's fresh
+        // DL-CONNECT-confirm now re-arms it, so the banner is replayed exactly as on connect 1.
+        using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var secondDial = await connector!.ConnectAsync(NodeBCall, cts2.Token);
+        var secondBanner = await ReadUntilAsync(secondDial, "NODEB-1", cts2.Token);
+        secondBanner.Should().Contain("NODEB-1",
+            "the re-dial's eager banner is replayed too — the reused session re-arms its early-inbound buffer on reconnect (packet.net#659)");
+    }
+
+    // True when the listener on <paramref name="node"/>'s AXUDP port holds a session with
+    // <paramref name="peer"/> in <paramref name="state"/> (SDL state name). Used to wait for a
+    // clean teardown before a re-dial without an arbitrary sleep.
+    private static bool PeerSessionInState(PortSupervisor node, Callsign peer, string state)
+    {
+        var sessions = node.GetPort("axudp")?.Listener.ActiveSessions;
+        if (sessions is null)
+        {
+            return false;
+        }
+        foreach (var session in sessions)
+        {
+            if (session.Context.Remote.ToString() == peer.ToString() && session.CurrentState == state)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static NodeConfig NodeConfig(Callsign call, string alias, int localPort, int remotePort) => new()
     {
         Identity = new Identity { Callsign = call.ToString(), Alias = alias },

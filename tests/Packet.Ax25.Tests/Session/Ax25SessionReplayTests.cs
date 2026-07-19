@@ -96,4 +96,99 @@ public sealed class Ax25SessionReplayTests
 
         seen.Should().BeEmpty("only DL-DATA indications are replayed, not connect/other signals");
     }
+
+    [Fact]
+    public void A_redial_on_a_reused_session_replays_the_second_connections_banner()
+    {
+        // packet.net#659: Ax25Listener caches and REUSES an Ax25Session per (local, remote)
+        // across connect/disconnect cycles. A one-shot buffer stays disarmed after the first
+        // connection's consumer attaches, so the SECOND connect to the same peer replays
+        // nothing and the banner is lost — even though the session L2-ACKs the I-frame. The
+        // fresh DL-CONNECT-confirm on the re-dial must re-arm the buffer.
+        var session = NewSession();
+
+        // --- First connection: link up, banner arrives, consumer attaches + replays, detaches.
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());
+        session.RaiseDataLinkSignal(Data("BANNER-1>"));
+
+        var first = new List<string>();
+        EventHandler<DataLinkSignal> firstConsumer = (_, sig) =>
+        {
+            if (sig is DataLinkDataIndication di)
+            {
+                first.Add(System.Text.Encoding.ASCII.GetString(di.Info.Span));
+            }
+        };
+        session.AttachConsumerWithReplay(firstConsumer);
+        first.Should().ContainSingle().Which.Should().Be("BANNER-1>", "the first connection's banner replays as before");
+        session.DataLinkSignalEmitted -= firstConsumer;   // the wrapping connection is disposed
+
+        // --- Second connection on the SAME cached session: re-dial, second banner pre-attach.
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());   // re-establish → must re-arm
+        session.RaiseDataLinkSignal(Data("BANNER-2>"));
+
+        var second = new List<string>();
+        session.AttachConsumerWithReplay((_, sig) =>
+        {
+            if (sig is DataLinkDataIndication di)
+            {
+                second.Add(System.Text.Encoding.ASCII.GetString(di.Info.Span));
+            }
+        });
+
+        second.Should().ContainSingle().Which.Should().Be("BANNER-2>",
+            "the re-dial re-arms the early-inbound buffer, so the second connection's banner replays too (not the first's)");
+    }
+
+    [Fact]
+    public void An_inbound_reconnect_indication_also_rearms_the_buffer()
+    {
+        // The symmetric inbound case: a peer that reconnects to us (DL-CONNECT-indication)
+        // and immediately sends data must have that data replayed to the fresh wrapping
+        // consumer, on a reused session, exactly like the outbound (confirm) path.
+        var session = NewSession();
+
+        session.RaiseDataLinkSignal(new DataLinkConnectIndication());
+        session.RaiseDataLinkSignal(Data("HELLO-1"));
+        EventHandler<DataLinkSignal> firstConsumer = (_, _) => { };
+        session.AttachConsumerWithReplay(firstConsumer);
+        session.DataLinkSignalEmitted -= firstConsumer;
+
+        session.RaiseDataLinkSignal(new DataLinkConnectIndication());   // reconnect → re-arm
+        session.RaiseDataLinkSignal(Data("HELLO-2"));
+
+        var seen = new List<string>();
+        session.AttachConsumerWithReplay((_, sig) =>
+        {
+            if (sig is DataLinkDataIndication di)
+            {
+                seen.Add(System.Text.Encoding.ASCII.GetString(di.Info.Span));
+            }
+        });
+
+        seen.Should().ContainSingle().Which.Should().Be("HELLO-2",
+            "an inbound reconnect indication re-arms the buffer just as an outbound connect confirm does");
+    }
+
+    [Fact]
+    public void A_connect_confirm_rearm_discards_stale_pre_connect_data()
+    {
+        // Re-arming on connect creates a fresh buffer, so any data that predates the
+        // connection boundary (a stray/duplicate frame from a prior lifecycle) cannot
+        // leak into the new connection's consumer.
+        var session = NewSession();
+        session.RaiseDataLinkSignal(Data("STALE"));          // buffered under the initial arm
+        session.RaiseDataLinkSignal(new DataLinkConnectConfirm());   // boundary → fresh buffer
+
+        var seen = new List<string>();
+        session.AttachConsumerWithReplay((_, sig) =>
+        {
+            if (sig is DataLinkDataIndication di)
+            {
+                seen.Add(System.Text.Encoding.ASCII.GetString(di.Info.Span));
+            }
+        });
+
+        seen.Should().BeEmpty("data emitted before the connect boundary is not replayed to the post-connect consumer");
+    }
 }
