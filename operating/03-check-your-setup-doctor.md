@@ -68,11 +68,16 @@ packet-tune doctor <tncPort> [ccdiPort] [--json] [--callsign N0CALL] [--mode 6]
 > Like the web UI's full check, the CLI doctor's TXDELAY / SDM / pairing probes
 > **transmit briefly**. It prints a reminder to that effect when it runs.
 
-## Coming later
+## Checking a TNC-less Transparent port
 
-A dedicated doctor for the [TNC-less Transparent](06-tnc-less-tait-links.md) setup
-(checking the Transparent-mode programming gotchas) is planned but **not shipped
-yet** — for now, work through that chapter's checklist by hand.
+This doctor probes a port whose modem is a TNC with a radio *beside* it. A
+[TNC-less Transparent](06-tnc-less-tait-links.md) port is different — the radio
+*is* the modem, and while it runs it's a byte pipe with no CCDI control channel to
+question — so it has its **own** dedicated check. The **Transparent-readiness
+doctor** runs that setup's programming gotchas as behavioural pass/fail/unknown
+probes, both as a CLI (`packet-tune transparent-doctor`) and, for a running port,
+at `GET/POST /api/v1/ports/{id}/doctor`. See
+[chapter 6 → Check it: the readiness doctor](06-tnc-less-tait-links.md#check-it-the-readiness-doctor).
 
 ## Next
 
