@@ -107,3 +107,17 @@ pdn's RHPv2 server carries its own copy of the wire codec (`Packet.Rhp2`), separ
 **In-repo step taken (#474):** `Packet.Rhp2` is now a **standalone publishable codec package** (`<PackageId>Packet.Rhp2</PackageId>` + a package README). This makes it the candidate shared library: once published to nuget.org (a `lib-v*` release-cascade decision), rhp2lib-net can take a dependency on `Packet.Rhp2` and delete its embedded `Protocol/*` copy, converging both onto one codec without a second copy ever drifting. The `Packet.Rhp2.ConvergenceTests` pin the package's public surface + the `RhpErrorCode` value/text parity that the convergence relies on, so a future drift on this side fails loudly.
 
 **External dependency (out of this repo's control):** the convergence is only *complete* once rhp2lib-net adopts the shared package — that is a change in `packet-net/rhp2lib-net` (add the `Packet.Rhp2` PackageReference, drop `Protocol/*`, retarget namespaces, cut a release). The alternative direction (rhp2lib-net extracts its own `RhpV2.Protocol` package and packet.net consumes it) is equally an external rhp2lib-net change. Either way, the cross-repo half cannot be done from this repo; what this repo can do — make its codec a clean, publishable, parity-pinned shared candidate — is done.
+
+## CDDL wire grammar — the language-neutral drift guard (`spec/rhp2.cddl`)
+
+The wire-fidelity and named-deviations tables above are prose; the C# DTOs are language-specific. Neither is independently machine-checkable by a second implementation. **`spec/rhp2.cddl`** closes that gap: a [CDDL](https://datatracker.ietf.org/doc/html/rfc8610) (RFC 8610) grammar that is the machine-readable, language-neutral definition of every JSON message shape pdn's RhpServer emits.
+
+**How it prevents drift:**
+
+1. **CI gate.** `CddlWireConformanceTests` (in `tests/Packet.Rhp2.Tests/`) serializes every message type the codec emits and validates each against the grammar via the `cddl` CLI. A code change that renames a field, changes casing, drops a required key, or adds an unexpected key fails the build — independently of the C# type system.
+2. **Conformance vectors.** `spec/vectors/rhp2-messages.json` is a golden corpus (one payload per wire shape, including edge cases). Any implementation — pdn, rhp2lib-net, a future TS client — replays the same corpus and validates its output against the same grammar.
+3. **Cross-implementation oracle.** The grammar + vectors live in this repo. Any RHPv2 implementation validates its wire output with `cddl validate --cddl spec/rhp2.cddl --stdin`. Divergence means either a drift bug or a new table row — never silent.
+
+**The discipline rule extends:** *"Anything found later that doesn't fit these tables goes in these tables — and in the CDDL."* A new wire behaviour = a grammar change + a table row + a vector, never code alone.
+
+**Scope today:** the DAPPS-proven subset (R-1 through R-7) — `ax25` family, `stream`/`dgram`/`custom` modes, the full request/reply/push surface. Deferred families and modes are added to the grammar as they ship.
