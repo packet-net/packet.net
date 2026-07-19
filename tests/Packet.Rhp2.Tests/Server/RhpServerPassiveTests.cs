@@ -203,6 +203,52 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         Assert.Equal(1, gateway.UiDisposals);          // the UI tap is gone with the handle
     }
 
+    // ── custom socket lifecycle (R-7): socket(custom) → bind → sendto (PID in data[0]) / recv ──
+
+    [Fact]
+    public async Task Socket_custom_bind_succeeds_and_the_handle_takes_pid_in_data_sendto()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        var handle = sock.Handle!.Value;
+        Assert.True(handle >= 100);
+
+        await client.SendAsync(new BindMessage { Id = 2, Handle = handle, Local = "M0LTE-7", Port = null });
+        var bind = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        Assert.Equal(1, gateway.UiRegistrations);      // bind started the promiscuous UI RX tap (same as dgram)
+
+        // The bound custom handle takes sendto with the PID as the first data octet.
+        await client.SendAsync(new SendToMessage { Id = 3, Handle = handle, Remote = "GB7RDG", Data = RhpDataEncoding.ToWireString([0xCC, (byte)'x']) });
+        var sent = await client.ExpectAsync<SendToReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, sent.ErrCode);
+        Assert.Equal("M0LTE-7", gateway.UiLocal);
+        Assert.Equal((byte)0xCC, gateway.UiPid);       // data[0] → the UI frame PID
+        Assert.Equal("x"u8.ToArray(), gateway.UiInfo); // data[1..] → the UI info
+    }
+
+    [Fact]
+    public async Task Closing_a_custom_socket_tears_down_its_ui_subscription()
+    {
+        var (server, gateway) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
+        var sock = await client.ExpectAsync<SocketReplyMessage>();
+        await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7" });
+        _ = await client.ExpectAsync<BindReplyMessage>();
+        Assert.Equal(1, gateway.UiRegistrations);
+
+        await client.SendAsync(new CloseMessage { Id = 3, Handle = sock.Handle!.Value });
+        var closed = await client.ExpectAsync<CloseReplyMessage>();
+        Assert.Equal(RhpErrorCode.Ok, closed.ErrCode);
+        Assert.Equal(1, gateway.UiDisposals);          // the UI tap is gone with the handle
+    }
+
     [Fact]
     public async Task Send_on_a_listening_socket_is_operation_not_supported_16()
     {

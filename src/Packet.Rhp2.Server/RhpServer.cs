@@ -91,11 +91,11 @@ public sealed partial class RhpServer : IAsyncDisposable
 {
     private const int RecvChunk = 2048;          // session bytes per recv push (escaped JSON stays well under the frame cap)
     private const int FirstHandle = 100;         // match the reference's visible numbering
-    // PID carriage for ax25/dgram is a PROVISIONAL pdn stand-in pending RHPv2
-    // standardisation — packet.net#647 (typed `pid` field vs PID-in-`data` à la
-    // AX25_PIDINCL). Convergence touches exactly 3 spots: the DTO `pid` field
-    // (RhpMessages), the TX decode in HandleSendToAsync, and the RX build (BuildRecv).
-    private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the dgram default when sendto omits `pid` (pdn extension, provisional — #647)
+    // PID carriage for ax25 datagrams is settled (packet.net#647, resolved) with NO pdn-specific
+    // wire field: `dgram` is a PURE datagram (the UI PID is implicit no-Layer-3 0xF0), and
+    // `custom` carries the PID as the FIRST octet of `data` (PID-in-`data`, the XRouter/G8PZT
+    // standard — data[0] = PID on TX, prepended to data on RX). See docs/rhp2-server.md (R-7).
+    private const byte DefaultPid = 0xF0;        // no-Layer-3 PID: the implicit PID of every `dgram` (pure-datagram) UI frame
 
     // errCode 12 errText as the live wire spells it (XRouter answers "Missing handle" /
     // "Missing data", not the spec table's generic "Bad parameter").
@@ -386,9 +386,9 @@ public sealed partial class RhpServer : IAsyncDisposable
         {
             (err, text) = (RhpErrorCode.BadOrMissingMode, RhpErrorCode.Text(RhpErrorCode.BadOrMissingMode));
         }
-        else if (open.Mode is not (SocketMode.Stream or SocketMode.Dgram))
+        else if (open.Mode is not (SocketMode.Stream or SocketMode.Dgram or SocketMode.Custom))
         {
-            (err, text) = (RhpErrorCode.OperationNotSupported, $"mode '{open.Mode}' is not implemented yet (stream/dgram only)");
+            (err, text) = (RhpErrorCode.OperationNotSupported, $"mode '{open.Mode}' is not implemented yet (stream/dgram/custom only)");
         }
         else if (open.Local is { } local && !string.IsNullOrWhiteSpace(local) && !IsValidCallsign(local))
         {
@@ -420,11 +420,13 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // Dgram open = the combined socket+bind form: create a bound datagram socket and reply Ok.
-        // (connect / send-on-connected-dgram stay deferred — docs/rhp2-server.md R-6.)
-        if (open.Mode == SocketMode.Dgram)
+        // Dgram/custom open = the combined socket+bind form: create a bound datagram socket and
+        // reply Ok. `dgram` is a pure UI datagram (implicit PID 0xF0); `custom` carries the PID as
+        // data[0]. (connect / send-on-connected-dgram stay deferred — docs/rhp2-server.md R-6/R-7.)
+        if (open.Mode is SocketMode.Dgram or SocketMode.Custom)
         {
-            await CreateBoundDgramHandleAsync(client, open.Id, open.Local, open.Port, ct).ConfigureAwait(false);
+            var kind = open.Mode == SocketMode.Custom ? DatagramKind.Custom : DatagramKind.Dgram;
+            await CreateBoundDatagramHandleAsync(client, open.Id, open.Local, open.Port, kind, ct).ConfigureAwait(false);
             return;
         }
 
@@ -486,12 +488,13 @@ public sealed partial class RhpServer : IAsyncDisposable
         }, CancellationToken.None);
     }
 
-    // Create a datagram socket bound to (local, port) in one step — the `open`(dgram) form, and
-    // the shared body the socket→bind path reaches at bind. Registers the promiscuous UI RX
+    // Create a datagram socket bound to (local, port) in one step — the `open`(dgram|custom) form,
+    // and the shared body the socket→bind path reaches at bind. Registers the promiscuous UI RX
     // subscription (torn down with the handle) and replies Ok + handle. A bad bind port lands on
-    // the openReply. `local` may be null (an unbound-source dgram socket: RX is promiscuous, and
-    // sendto names the source per datagram).
-    private async Task CreateBoundDgramHandleAsync(ClientState client, int? id, string? local, string? port, CancellationToken ct)
+    // the openReply. `local` may be null (an unbound-source datagram socket: RX is promiscuous, and
+    // sendto names the source per datagram). `kind` selects the PID carriage (Dgram = implicit
+    // 0xF0; Custom = PID in data[0]).
+    private async Task CreateBoundDatagramHandleAsync(ClientState client, int? id, string? local, string? port, DatagramKind kind, CancellationToken ct)
     {
         if (!client.TryReserveHandle(options.MaxHandlesPerClient))
         {
@@ -500,7 +503,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        var handle = new RhpHandle(Interlocked.Increment(ref nextHandle), client, connection: null) { IsDgram = true };
+        var handle = new RhpHandle(Interlocked.Increment(ref nextHandle), client, connection: null) { Kind = kind };
         var boundPort = port?.Trim();
         handle.BoundPort = string.IsNullOrEmpty(boundPort) || boundPort == "0" ? null : boundPort;
         handle.BoundLocal = string.IsNullOrWhiteSpace(local) ? null : local.Trim();
@@ -538,23 +541,40 @@ public sealed partial class RhpServer : IAsyncDisposable
         handle.UiSubscription = gateway.RegisterUiListener(handle.BoundPort, dg => OnUiReceivedAsync(handle, dg));
     }
 
-    // An inbound UI datagram on a bound dgram handle → an async recv push. Promiscuous: the frame's
-    // true source (→ remote) / destination (→ local) / pid / info are surfaced verbatim; the client
-    // filters by recv.local. Carries a per-connection seqno and no id (mirrors PumpHandleAsync).
+    // An inbound UI datagram on a bound datagram handle → an async recv push. Promiscuous: the
+    // frame's true source (→ remote) / destination (→ local) / info are surfaced verbatim; the
+    // client filters by recv.local. Carries a per-connection seqno and no id (mirrors
+    // PumpHandleAsync). PID carriage differs by socket kind and adds no separate wire field: a
+    // `dgram` socket delivers info as-is (its PID is implicitly 0xF0); a `custom` socket prepends
+    // the frame's PID as the first octet of `data` (data = [pid] ++ info — the G8PZT standard).
     private static async Task OnUiReceivedAsync(RhpHandle handle, UiDatagram dg)
     {
         if (handle.Closed)
         {
             return;
         }
+
+        string data;
+        if (handle.IsCustom)
+        {
+            var info = dg.Info.Span;
+            var payload = new byte[info.Length + 1];
+            payload[0] = dg.Pid;
+            info.CopyTo(payload.AsSpan(1));
+            data = RhpDataEncoding.ToWireString(payload);
+        }
+        else
+        {
+            data = RhpDataEncoding.ToWireString(dg.Info.Span);
+        }
+
         await WriteAsync(handle.Owner, new RecvMessage
         {
             Handle = handle.Id,
-            Data = RhpDataEncoding.ToWireString(dg.Info.Span),
+            Data = data,
             Port = dg.PortLabel,
             Local = dg.Dest,
             Remote = dg.Source,
-            Pid = dg.Pid,
             Seqno = handle.Owner.NextSeqno(),
         }, CancellationToken.None).ConfigureAwait(false);
     }
@@ -579,9 +599,9 @@ public sealed partial class RhpServer : IAsyncDisposable
         {
             (err, text) = (RhpErrorCode.BadOrMissingMode, RhpErrorCode.Text(RhpErrorCode.BadOrMissingMode));
         }
-        else if (msg.Mode is not (SocketMode.Stream or SocketMode.Dgram))
+        else if (msg.Mode is not (SocketMode.Stream or SocketMode.Dgram or SocketMode.Custom))
         {
-            (err, text) = (RhpErrorCode.OperationNotSupported, $"mode '{msg.Mode}' is not implemented yet (stream/dgram only)");
+            (err, text) = (RhpErrorCode.OperationNotSupported, $"mode '{msg.Mode}' is not implemented yet (stream/dgram/custom only)");
         }
 
         if (err != 0)
@@ -598,11 +618,17 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // A dgram socket is unbound until `bind` (which sets BoundLocal/BoundPort and starts the
-        // promiscuous UI RX subscription); a stream socket goes on to bind→listen for accepts.
+        // A datagram socket (dgram or custom) is unbound until `bind` (which sets
+        // BoundLocal/BoundPort and starts the promiscuous UI RX subscription); a stream socket goes
+        // on to bind→listen for accepts.
         var handle = new RhpHandle(Interlocked.Increment(ref nextHandle), client, connection: null)
         {
-            IsDgram = msg.Mode == SocketMode.Dgram,
+            Kind = msg.Mode switch
+            {
+                SocketMode.Dgram => DatagramKind.Dgram,
+                SocketMode.Custom => DatagramKind.Custom,
+                _ => DatagramKind.None,
+            },
         };
         handles[handle.Id] = handle;
         await WriteAsync(client, new SocketReplyMessage
@@ -645,10 +671,10 @@ public sealed partial class RhpServer : IAsyncDisposable
         handle.BoundLocal = msg.Local.Trim();
         handle.BoundPort = string.IsNullOrEmpty(boundPort) || boundPort == "0" ? null : boundPort;
 
-        // A dgram socket starts (or re-points, on a second bind) its promiscuous UI RX
-        // subscription here — there is no listen step for datagrams. A bad bind port lands on
-        // the bindReply.
-        if (handle.IsDgram)
+        // A datagram socket (dgram or custom) starts (or re-points, on a second bind) its
+        // promiscuous UI RX subscription here — there is no listen step for datagrams. A bad bind
+        // port lands on the bindReply.
+        if (handle.IsDatagram)
         {
             try
             {
@@ -676,10 +702,11 @@ public sealed partial class RhpServer : IAsyncDisposable
             await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = listenHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
             return;
         }
-        if (handle.IsDgram)
+        if (handle.IsDatagram)
         {
-            // A datagram socket has no listening state — its recv is the promiscuous UI tap,
-            // already active from bind. Listen on it is not supported (docs/rhp2-server.md R-6).
+            // A datagram socket (dgram or custom) has no listening state — its recv is the
+            // promiscuous UI tap, already active from bind. Listen on it is not supported
+            // (docs/rhp2-server.md R-6/R-7).
             await WriteAsync(client, new ListenReplyMessage { Id = msg.Id, Handle = msg.Handle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
             return;
         }
@@ -778,10 +805,10 @@ public sealed partial class RhpServer : IAsyncDisposable
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
             return;
         }
-        if (handle.IsDgram)
+        if (handle.IsDatagram)
         {
-            // A datagram socket sends via `sendto` (explicit dest per datagram); plain `send`
-            // on it is send-on-connected-dgram, which is deferred (docs/rhp2-server.md R-6).
+            // A datagram socket (dgram or custom) sends via `sendto` (explicit dest per datagram);
+            // plain `send` on it is send-on-connected-dgram, which is deferred (docs/rhp2-server.md R-6).
             await WriteAsync(client, new SendReplyMessage { Id = send.Id, Handle = sendHandle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
             return;
         }
@@ -828,10 +855,13 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
     }
 
-    // sendto: emit one connectionless AX.25 UI datagram (DGRAM mode). Source is the explicit
-    // sendto.local, else the bound local; destination is sendto.remote; pid is sendto.pid, else
-    // 0xF0 (the pdn dgram extension). An empty payload is refused (errCode 1) — AX.25 UI, unlike
-    // UDP, carries no zero-byte datagram. TX runs through the gateway (RF or loopback).
+    // sendto: emit one connectionless AX.25 UI datagram (dgram or custom mode). Source is the
+    // explicit sendto.local, else the bound local; destination is sendto.remote. PID carriage
+    // depends on the socket kind (no separate wire field): a `dgram` socket always emits PID 0xF0
+    // (pure datagram) with info = the whole `data`; a `custom` socket takes the PID from data[0]
+    // and the info from data[1..] (the G8PZT standard, PID-in-`data`). An empty `data` is refused
+    // (errCode 1) — a dgram UI frame needs an info field, and a custom datagram needs at least the
+    // PID octet. TX runs through the gateway (RF or loopback).
     private async Task HandleSendToAsync(ClientState client, SendToMessage msg, CancellationToken ct)
     {
         if (msg.Handle is not { } sendHandle)
@@ -846,7 +876,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = RhpErrorCode.InvalidHandle, ErrText = RhpErrorCode.Text(RhpErrorCode.InvalidHandle) }, ct).ConfigureAwait(false);
             return;
         }
-        if (!handle.IsDgram)
+        if (!handle.IsDatagram)
         {
             // sendto is a datagram operation; a stream/socket handle doesn't support it.
             await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = RhpErrorCode.OperationNotSupported, ErrText = RhpErrorCode.Text(RhpErrorCode.OperationNotSupported) }, ct).ConfigureAwait(false);
@@ -860,9 +890,13 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         if (msg.Data.Length == 0)
         {
-            // AX.25 dgram rejects an EMPTY payload (errCode 1) — distinct from UDP, which allows a
-            // zero-byte datagram (protocol.md). A UI frame must carry an information field.
-            await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = RhpErrorCode.Unspecified, ErrText = "AX.25 datagram payload must not be empty" }, ct).ConfigureAwait(false);
+            // An EMPTY payload is refused (errCode 1) — distinct from UDP's legal zero-byte
+            // datagram (protocol.md): a `dgram` UI frame must carry an information field, and a
+            // `custom` datagram must carry at least the PID octet (data[0]).
+            var why = handle.IsCustom
+                ? "custom datagram must carry at least the PID octet"
+                : "AX.25 datagram payload must not be empty";
+            await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = RhpErrorCode.Unspecified, ErrText = why }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -880,8 +914,6 @@ public sealed partial class RhpServer : IAsyncDisposable
             return;
         }
 
-        // Absent pid ⇒ 0xF0 (no Layer 3) — the pdn dgram extension (docs/rhp2-server.md).
-        byte pid = msg.Pid is { } p ? unchecked((byte)p) : DefaultPid;
         var portLabel = string.IsNullOrWhiteSpace(msg.Port) ? handle.BoundPort : msg.Port!.Trim();
         if (portLabel == "0")
         {
@@ -890,8 +922,23 @@ public sealed partial class RhpServer : IAsyncDisposable
 
         try
         {
-            var bytes = RhpDataEncoding.FromWireString(msg.Data);
-            await gateway.SendUiAsync(portLabel, source!, msg.Remote!.Trim(), bytes, pid, ct).ConfigureAwait(false);
+            // PID carriage (no separate wire field): a `custom` socket takes the PID from the first
+            // octet of `data` and the info from the rest; a `dgram` socket is a pure datagram — the
+            // whole `data` is info and the PID is the implicit no-Layer-3 0xF0.
+            var bytes = RhpDataEncoding.FromWireString(msg.Data);   // non-empty (checked above)
+            byte pid;
+            ReadOnlyMemory<byte> info;
+            if (handle.IsCustom)
+            {
+                pid = bytes[0];
+                info = bytes.AsMemory(1);
+            }
+            else
+            {
+                pid = DefaultPid;
+                info = bytes;
+            }
+            await gateway.SendUiAsync(portLabel, source!, msg.Remote!.Trim(), info, pid, ct).ConfigureAwait(false);
             await WriteAsync(client, new SendToReplyMessage { Id = msg.Id, Handle = sendHandle, ErrCode = RhpErrorCode.Ok, ErrText = RhpErrorCode.Text(RhpErrorCode.Ok) }, ct).ConfigureAwait(false);
         }
         catch (RhpGatewayException gex)
@@ -1192,6 +1239,17 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
     }
 
+    // The connectionless-datagram flavour of a socket handle. None = a stream handle. Dgram and
+    // Custom share the whole datagram lifecycle (sendto TX + promiscuous UI recv, no connect/listen)
+    // and differ only in PID carriage: Dgram is a pure datagram (implicit no-Layer-3 0xF0), Custom
+    // carries the AX.25 PID as the first octet of the sendto/recv `data` payload (the G8PZT standard).
+    private enum DatagramKind
+    {
+        None = 0,
+        Dgram,
+        Custom,
+    }
+
     // One handle, owned by exactly one client (deviation D3). Two shapes: a STREAM handle
     // wraps a live packet connection (from an active open, or a listener's accepted child);
     // a SOCKET handle is the BSD-style lifecycle state (socket → bind → listen) whose
@@ -1214,9 +1272,19 @@ public sealed partial class RhpServer : IAsyncDisposable
         public INodeConnection? Connection { get; }
         public Task? Pump { get; set; }
 
-        /// <summary>True for a DGRAM socket handle (connectionless UI): sendto TX + promiscuous
-        /// UI recv, no connect/listen. False for the stream socket/connection handles.</summary>
-        public bool IsDgram { get; init; }
+        /// <summary>The connectionless-datagram flavour of this socket: None for a stream handle,
+        /// Dgram for a pure UI datagram (implicit PID 0xF0), Custom for a PID-in-<c>data</c> UI
+        /// datagram (the first payload octet is the AX.25 PID). Both datagram flavours share the
+        /// sendto-TX + promiscuous-UI-recv lifecycle; they differ only in PID carriage.</summary>
+        public DatagramKind Kind { get; init; }
+
+        /// <summary>True for either datagram flavour (dgram or custom): sendto TX + promiscuous UI
+        /// recv, no connect/listen. False for the stream socket/connection handles.</summary>
+        public bool IsDatagram => Kind is DatagramKind.Dgram or DatagramKind.Custom;
+
+        /// <summary>True for a CUSTOM datagram socket: the AX.25 PID is the first octet of the
+        /// sendto/recv <c>data</c> payload rather than the implicit 0xF0 a plain dgram uses.</summary>
+        public bool IsCustom => Kind == DatagramKind.Custom;
 
         // Socket-lifecycle state (null/false on stream handles).
         public string? BoundLocal { get; set; }
@@ -1267,7 +1335,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle} opened to {Remote} for {Peer}.")]
     private partial void LogOpened(int handle, string remote, string peer);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "RHP dgram handle {Handle} bound to {Local} for {Peer}.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "RHP datagram handle {Handle} bound to {Local} for {Peer}.")]
     private partial void LogOpenedDgram(int handle, string local, string peer);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle} closed.")]

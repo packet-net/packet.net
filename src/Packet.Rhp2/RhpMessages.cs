@@ -315,15 +315,6 @@ public sealed class SendMessage : RhpMessage
     /// <summary>Destination address (DGRAM mode only).</summary>
     [JsonPropertyName("remote")]
     public string? Remote { get; set; }
-
-    /// <summary>
-    /// Layer-3 PID for the datagram (DGRAM mode). A <b>pdn extension</b> to XRouter's
-    /// dgram shape: absent on the wire (WhenWritingNull) when unset, in which case the
-    /// server defaults to <c>0xF0</c> (no Layer 3). See docs/rhp2-server.md (named-deviation
-    /// row for the <c>pid</c> field).
-    /// </summary>
-    [JsonPropertyName("pid")]
-    public int? Pid { get; set; }
 }
 
 /// <summary>Reply to <c>send</c> (<c>sendReply</c>).</summary>
@@ -384,16 +375,6 @@ public sealed class SendToMessage : RhpMessage
     /// <summary>Destination address.</summary>
     [JsonPropertyName("remote")]
     public string? Remote { get; set; }
-
-    /// <summary>
-    /// Layer-3 PID for the datagram. A <b>pdn extension</b> to XRouter's dgram shape:
-    /// absent on the wire (WhenWritingNull) when unset, in which case the server
-    /// defaults to <c>0xF0</c> (no Layer 3). See docs/rhp2-server.md (named-deviation
-    /// row for the <c>pid</c> field). IP-over-AX.25 sends <c>0xCC</c>; native beacon /
-    /// APRS sends <c>0xF0</c>.
-    /// </summary>
-    [JsonPropertyName("pid")]
-    public int? Pid { get; set; }
 
     /// <summary>Type of service.</summary>
     [JsonPropertyName("tos")]
@@ -505,9 +486,10 @@ public sealed class RecvMessage : RhpMessage
     public int? Ilen { get; set; }
 
     /// <summary>
-    /// AX.25 PID byte: the frame's PID on a DGRAM (UI) <c>recv</c> — a pdn extension
-    /// surfacing the received layer-3 protocol so an IP-over-AX.25 (0xCC) or APRS (0xF0)
-    /// datagram is distinguishable — or the I-frame PID on a TRACE <c>recv</c>.
+    /// AX.25 PID byte of a TRACE <c>recv</c> record (the traced frame's PID; XRouter-observed,
+    /// not in the published spec). Not used on plain DGRAM or CUSTOM datagram <c>recv</c>: a
+    /// <c>dgram</c> frame's PID is implicit (no-Layer-3 <c>0xF0</c>) and a <c>custom</c> frame's
+    /// PID is the first octet of <see cref="Data"/>, so neither surfaces a separate <c>pid</c>.
     /// </summary>
     [JsonPropertyName("pid")]
     public int? Pid { get; set; }

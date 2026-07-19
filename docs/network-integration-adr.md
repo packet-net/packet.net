@@ -293,9 +293,14 @@ open design points. These **supersede the "drop-in `.so`" shorthand** used in §
 Raised by Tom: *is the IP framing pdn-specific?* The answer turns on a distinction worth pinning
 down — **there are two "framings", and only one of them is ever transmitted:**
 
-- **Host-facing RHPv2 wire** (`pdn-net` ⇄ the pdn *node*, over loopback): the JSON `dgram`
-  message with the `pid` field (§8, and #647). This **is** pdn-specific — but it is a **local
-  control channel and never goes on air.** It is *not* an interop surface.
+- **Host-facing RHPv2 wire** (`pdn-net` ⇄ the pdn *node*, over loopback): a **standard RHPv2 UI
+  datagram** — IP-over-AX.25 rides **`custom` mode**, where `data[0]` = the PID (`0xCC`) and
+  `data[1..]` = the raw IP datagram (the RHPv2 author's PID-in-`data` carriage; **#647 RESOLVED**).
+  It is a **local control channel and never goes on air.** It is *not* itself an interop surface —
+  but it is **no longer pdn-specific**: the earlier provisional `pid` JSON field on `dgram` was
+  removed when `custom` shipped, so this wire carries **zero pdn-specific fields** and the whole
+  UI/IP path is portable to any RHPv2 host (rhp2lib / XRouter). (`dgram` remains the pure-`0xF0`
+  beacon/APRS datagram.)
 - **On-air AX.25 framing:** the node emits a **standard AX.25 UI frame** — dest/source callsigns,
   control = UI, **PID = `0xCC`**, info = **the raw IP datagram, unwrapped.** This is the
   decades-old **IP-over-AX.25** spoken by the Linux kernel (`net/ax25/ax25_ip.c`), KA9Q NOS,
