@@ -1,0 +1,287 @@
+; RHPv2 wire grammar — PWP-0222 / PWP-0245, as observed on the live XRouter wire.
+;
+; This CDDL (RFC 8610) file is the machine-readable, language-neutral definition
+; of the RHPv2 JSON-over-TCP message shapes. It is the conformance oracle: any
+; implementation's emitted JSON that fails to validate against this grammar has
+; drifted from the wire contract.
+;
+; Scope: the DAPPS-proven subset (R-1 through R-7) — the full message surface
+; pdn's RhpServer emits. Deferred families/modes (netrom, inet, unix, raw,
+; trace, seqpkt, semiraw) are not yet pinned here.
+;
+; Conventions (wire-fidelity rows from docs/rhp2-server.md):
+;   - `type` is always the first key emitted (row 5: unknown types get {type}Reply)
+;   - Replies carry `errCode`/`errText` with capital C/T (row 1)
+;   - Requests carry optional `id`; replies echo it (row 6)
+;   - Async pushes carry `seqno`, never `id` (row 6)
+;   - `seqno` is per-connection, starting at 0 (row 11)
+;   - `port` is string-or-number on the wire (rows 3, 4)
+;   - `data` is Latin-1 text, not base64 (row 7)
+;   - `errCode` range: 0–17 (row 8 adds 17 "Not connected")
+;
+; Framing (not in this grammar): 2-byte big-endian length prefix + UTF-8 JSON.
+; Zero-length frames are legal. The grammar defines the JSON payload only.
+;
+; Usage:
+;   cddl validate --input-format json --cddl spec/rhp2.cddl --input wire.json
+;
+; Provenance: transcribed from Packet.Rhp2 (the pdn codec, pinned against live
+; XRouter image 505c + RHPTEST v505d). Where pdn deliberately differs from
+; XRouter, the named deviation (D1–D10) is cited in a comment.
+
+; ─── Top-level message choice ─────────────────────────────────────────────────
+
+rhp-message = auth / auth-reply
+            / open / open-reply
+            / socket / socket-reply
+            / bind / bind-reply
+            / listen / listen-reply
+            / connect / connect-reply
+            / send / send-reply
+            / sendto / sendto-reply
+            / recv
+            / accept
+            / status / status-reply
+            / close / close-reply
+
+; ─── Shared fragments ─────────────────────────────────────────────────────────
+
+; Error codes 0–17 (row 8: 17 is XRouter-observed, not in the published spec)
+err-code = 0..17
+
+; Port: XRouter emits a JSON string in DGRAM mode but a JSON number in TRACE
+; mode (row 4); the spec's accept example shows a number (row 3). Readers
+; normalise both; emitters use string. The grammar accepts both.
+port-val = tstr / uint
+
+; Protocol family (open set on the wire — XRouter can grow new families)
+pfam = tstr  ; "ax25" / "inet" / "netrom" / "unix" / future
+
+; Socket mode (open set on the wire)
+mode = tstr  ; "stream" / "dgram" / "custom" / "seqpkt" / "trace" / "raw" / "semiraw"
+
+; ─── Authentication ───────────────────────────────────────────────────────────
+
+auth = {
+  type: "auth",
+  ? id: uint,
+  user: tstr,
+  pass: tstr,
+}
+
+auth-reply = {
+  type: "authReply",       ; row 1: capital R on "Reply"
+  ? id: uint,              ; echoes the request id
+  errCode: err-code,       ; row 1: capital C
+  ? errText: tstr,         ; row 1: capital T
+}
+
+; ─── Open (combined create/bind/connect-or-listen) ────────────────────────────
+
+open = {
+  type: "open",
+  ? id: uint,
+  pfam: pfam,
+  mode: mode,
+  ? port: port-val,
+  ? local: tstr,           ; D8: absent local is legal (defaults to node callsign)
+  ? remote: tstr,
+  ? flags: uint,           ; OpenFlags: 0x80 = Active
+}
+
+open-reply = {
+  type: "openReply",
+  ? id: uint,
+  ? handle: uint,          ; present on success; absent on parameter errors
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+; ─── Socket / Bind / Listen (the BSD-style passive path) ─────────────────────
+
+socket = {
+  type: "socket",
+  ? id: uint,
+  pfam: pfam,
+  mode: mode,
+}
+
+socket-reply = {
+  type: "socketReply",
+  ? id: uint,
+  ? handle: uint,          ; present on success; absent on failure
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+bind = {
+  type: "bind",
+  ? id: uint,
+  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  local: tstr,
+  ? port: port-val,        ; row 14: "0" is a synonym for null = all ports
+}
+
+bind-reply = {
+  type: "bindReply",
+  ? id: uint,
+  ? handle: uint,          ; row 12: omitted on parameter errors
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+listen = {
+  type: "listen",
+  ? id: uint,
+  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  ? flags: uint,
+}
+
+listen-reply = {
+  type: "listenReply",
+  ? id: uint,
+  ? handle: uint,          ; row 12: omitted on parameter errors
+  errCode: err-code,       ; row 9: re-listen on same socket → idempotent Ok
+  ? errText: tstr,
+}
+
+; ─── Connect (separate-step, deferred in pdn but on the wire) ─────────────────
+
+connect = {
+  type: "connect",
+  ? id: uint,
+  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  remote: tstr,
+}
+
+; row 2: pdn emits "connectReply" (camelCase); the spec's example shows
+; "ConnectReply" (a typo). Readers accept both.
+connect-reply = {
+  type: "connectReply",
+  ? id: uint,
+  ? handle: uint,
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+; ─── Send (connected stream, or DGRAM-addressed) ─────────────────────────────
+
+send = {
+  type: "send",
+  ? id: uint,
+  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  data: tstr,              ; row 13: mandatory even when empty; absent → 12
+  ? port: port-val,        ; DGRAM mode only
+  ? local: tstr,           ; DGRAM mode only (source override)
+  ? remote: tstr,          ; DGRAM mode only (destination)
+}
+
+send-reply = {
+  type: "sendReply",
+  ? id: uint,
+  ? handle: uint,
+  errCode: err-code,
+  ? errText: tstr,
+  ? status: uint,          ; StatusFlags bits (STREAM mode)
+}
+
+; ─── Sendto (explicit-destination datagram) ───────────────────────────────────
+
+; row 5 / RhpMessageType: "sendto" is all-lowercase "to" (the wire-casing trap)
+sendto = {
+  type: "sendto",
+  ? id: uint,
+  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  data: tstr,              ; row 13: mandatory; for custom mode data[0] = PID
+  ? port: port-val,
+  ? local: tstr,           ; source address override
+  ? remote: tstr,          ; destination address
+  ? tos: uint,             ; type of service (deferred in pdn)
+}
+
+sendto-reply = {
+  type: "sendtoReply",     ; all-lowercase "to"
+  ? id: uint,
+  ? handle: uint,
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+; ─── Recv (async push: data arrived) ─────────────────────────────────────────
+
+; row 6: async pushes carry seqno, never id
+recv = {
+  type: "recv",
+  seqno: uint,             ; row 11: per-connection counter starting at 0
+  handle: uint,
+  data: tstr,              ; row 7: Latin-1, not base64
+  ? port: port-val,        ; row 4: number in TRACE, string in DGRAM
+  ? local: tstr,           ; DGRAM: destination address
+  ? remote: tstr,          ; DGRAM: source address
+  ; TRACE / RAW metadata (XRouter-observed, not in published spec):
+  ? action: tstr,          ; "sent" / "rcvd"
+  ? srce: tstr,            ; source callsign of traced frame
+  ? dest: tstr,            ; destination callsign of traced frame
+  ? ctrl: uint,            ; raw AX.25 control byte
+  ? frametype: tstr,       ; "I" / "RR" / "SABM" etc.
+  ? rseq: uint,            ; N(R)
+  ? tseq: uint,            ; N(S)
+  ? cr: tstr,              ; "C" / "R"
+  ? pf: tstr,              ; "P" / "F"
+  ? ilen: uint,            ; information field length
+  ? pid: uint,             ; AX.25 PID byte (TRACE only)
+  ? ptcl: tstr,            ; decoded L3 protocol name
+}
+
+; ─── Accept (async push: inbound connection on a listener) ────────────────────
+
+; row 15: accept is followed by a status push for the child
+accept = {
+  type: "accept",
+  seqno: uint,             ; row 11: per-connection counter
+  handle: uint,            ; the listener's handle
+  child: uint,             ; the new child socket's handle
+  ? remote: tstr,          ; caller's address
+  ? local: tstr,           ; address the caller connected to
+  ? port: port-val,        ; row 3: spec shows number, XRouter sends string
+}
+
+; ─── Status (request from client, or async push from server) ──────────────────
+
+; As a client request: carries handle, no flags, optional id.
+; As a server push: carries handle + flags + seqno, no id.
+; The grammar accepts both shapes in one rule.
+status = {
+  type: "status",
+  ? id: uint,              ; present on client requests
+  ? seqno: uint,           ; present on server pushes (row 6)
+  ? handle: uint,          ; row 12: absent on request → errCode 12
+  ? flags: uint,           ; StatusFlags: 1=ConOk, 2=Connected, 4=Busy
+}
+
+status-reply = {
+  type: "statusReply",
+  ? id: uint,
+  ? handle: uint,
+  errCode: err-code,
+  ? errText: tstr,
+}
+
+; ─── Close (request from client, or async push from server) ───────────────────
+
+; As a client request: carries handle, optional id.
+; As a server push (peer disconnected): carries handle + seqno, no id.
+close = {
+  type: "close",
+  ? id: uint,              ; present on client requests
+  ? seqno: uint,           ; present on server pushes (row 6)
+  ? handle: uint,          ; row 12: absent on request → errCode 12
+}
+
+close-reply = {
+  type: "closeReply",
+  ? id: uint,
+  ? handle: uint,
+  errCode: err-code,
+  ? errText: tstr,
+}

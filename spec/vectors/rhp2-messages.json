@@ -1,0 +1,60 @@
+[
+  {"type":"auth","id":1,"user":"operator","pass":"secret"},
+  {"type":"authReply","id":1,"errCode":0,"errText":"Ok"},
+  {"type":"authReply","id":1,"errCode":14,"errText":"Unauthorised"},
+
+  {"type":"open","id":2,"pfam":"ax25","mode":"stream","local":"M0LTE","remote":"G9DUM","port":"1","flags":128},
+  {"type":"open","id":3,"pfam":"ax25","mode":"dgram"},
+  {"type":"openReply","id":2,"handle":100,"errCode":0,"errText":"Ok"},
+  {"type":"openReply","id":3,"errCode":15,"errText":"No Route"},
+
+  {"type":"socket","id":4,"pfam":"ax25","mode":"stream"},
+  {"type":"socket","id":5,"pfam":"ax25","mode":"dgram"},
+  {"type":"socket","id":6,"pfam":"ax25","mode":"custom"},
+  {"type":"socketReply","id":4,"handle":101,"errCode":0,"errText":"Ok"},
+  {"type":"socketReply","id":5,"errCode":5,"errText":"Bad or missing mode"},
+
+  {"type":"bind","id":7,"handle":101,"local":"M0LTE-7","port":"1"},
+  {"type":"bind","id":8,"handle":101,"local":"M0LTE-7"},
+  {"type":"bind","id":9,"handle":101,"local":"M0LTE-7","port":"0"},
+  {"type":"bindReply","id":7,"handle":101,"errCode":0,"errText":"Ok"},
+  {"type":"bindReply","id":8,"errCode":12,"errText":"Missing handle"},
+
+  {"type":"listen","id":10,"handle":101},
+  {"type":"listenReply","id":10,"handle":101,"errCode":0,"errText":"Ok"},
+  {"type":"listenReply","id":10,"handle":101,"errCode":9,"errText":"Duplicate socket"},
+
+  {"type":"connect","id":11,"handle":101,"remote":"G9DUM"},
+  {"type":"connectReply","id":11,"handle":101,"errCode":0,"errText":"Ok"},
+
+  {"type":"send","id":12,"handle":100,"data":"hello world"},
+  {"type":"send","id":13,"handle":100,"data":""},
+  {"type":"send","id":14,"handle":200,"data":"UI payload","port":"1","local":"M0LTE-7","remote":"G9DUM"},
+  {"type":"sendReply","id":12,"handle":100,"errCode":0,"errText":"Ok"},
+  {"type":"sendReply","id":13,"handle":100,"errCode":0,"errText":"Ok","status":2},
+  {"type":"sendReply","id":14,"errCode":17,"errText":"Not connected"},
+
+  {"type":"sendto","id":15,"handle":200,"data":"beacon text","remote":"G9DUM","local":"M0LTE-7"},
+  {"type":"sendto","id":16,"handle":201,"data":"\u00ccIP payload","remote":"G9DUM","local":"M0LTE-7","port":"1"},
+  {"type":"sendtoReply","id":15,"handle":200,"errCode":0,"errText":"Ok"},
+  {"type":"sendtoReply","id":16,"errCode":1,"errText":"Unspecified"},
+
+  {"type":"recv","seqno":0,"handle":100,"data":"hello from remote"},
+  {"type":"recv","seqno":1,"handle":200,"data":"UI frame","port":"1","local":"M0LTE-7","remote":"G9DUM"},
+  {"type":"recv","seqno":2,"handle":50,"data":"i\r","action":"sent","port":1,"srce":"G9DUM","dest":"G9DUM-1","ctrl":0,"frametype":"I","rseq":0,"tseq":0,"cr":"C","ilen":2,"pid":240,"ptcl":"DATA"},
+
+  {"type":"accept","seqno":0,"handle":103,"child":104,"remote":"G9DUM","local":"M0LTE-7","port":"1"},
+  {"type":"accept","seqno":0,"handle":103,"child":104,"remote":"G9DUM","local":"M0LTE-7","port":2},
+
+  {"type":"status","id":20,"handle":100},
+  {"type":"status","seqno":1,"handle":104,"flags":2},
+  {"type":"status","seqno":2,"handle":104,"flags":0},
+  {"type":"statusReply","id":20,"handle":100,"errCode":0,"errText":"Ok"},
+
+  {"type":"close","id":21,"handle":100},
+  {"type":"close","seqno":3,"handle":104},
+  {"type":"closeReply","id":21,"handle":100,"errCode":0,"errText":"Ok"},
+
+  {"type":"socket","pfam":"ax25","mode":"stream"},
+  {"type":"socketReply","handle":1,"errCode":0,"errText":"Ok"}
+]
