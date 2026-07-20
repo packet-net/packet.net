@@ -4,8 +4,9 @@
 >
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
-**As of:** 2026-07-19
+**As of:** 2026-07-20
 **Current phase:** Phases 0–5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete — mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 — `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) — see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces) or Phase 7 (self-contained installer + channel-aware in-app self-update — the apt repo is maintainer-owned and dropped from scope; see [`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-07-20 — **RELEASE: lib-v0.24.0 + node-v0.35.0** — rhp2 CDDL wire grammar drift guard, ax25 connect-banner replay fix, rhp custom PID-in-data mode. 17 NuGet packages + three-arch `.deb`s/tarballs published. Downstream: axcall + packet-term-tui v0.2.21. No headend/TS leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-19 — **Connect banner lost on a re-dial to a cached peer (#659)** — the early-inbound replay buffer (from #653) was a one-shot per `Ax25Session`, but the listener caches+reuses sessions per `(local, remote)` across connect/disconnect, so every *re-dial* reused a disarmed buffer and dropped the peer's eager banner (L2-ACKed, zero `recv`). Fix: `RaiseDataLinkSignal` re-arms on each DL-CONNECT confirm/indication. 3 unit + 1 two-node-AXUDP E2E regression tests, all fail without the fix. Closes #659](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem config-UI follow-up** — the `ardop`/`paging` service blocks got a Services-tab form (were Raw-YAML only) and the per-frame `/quality` diagnostics got a FrameQuality readout on the Waterfall screen (new `api.portQuality`). Rides node-v0.33.0](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-07-18 — **Soundmodem 0.5.0→0.6.0 integration** — `ModemCatalog` upstreamed into the pdn-soundmodem library (one source of truth for mode→modem / DSP-rate / gating; published v0.6.0); the node caught up and exposed FreeDV datac + MS110D App-D + C4FSK modes, the `bpsk300` differential diversity bank (bpsk1200 kept legacy), `flex:` FlexRadio device support, and ARDOP + POCSAG as hosted services (ardopcf-compatible host — BPQ/Pat/Winlink drive it). Node PRs #638–#642; ships **node-v0.32.0**](#17-amendment-log)
@@ -1252,6 +1253,25 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+
+### 2026-07-20 — RELEASE: lib-v0.24.0 + node-v0.35.0 (rhp2 CDDL grammar, ax25 banner fix, rhp custom mode)
+
+Nine commits since node-v0.34.0 released end to end. **lib-v0.24.0** (tag on 0f6ff7e):
+all 17 matrix packages pushed and verified indexed on nuget.org — headline surface:
+`Packet.Ax25` connect-banner replay fix (re-arms `earlyInbound` on each DL-CONNECT
+confirm/indication, #659/#660), `Packet.Rhp2` custom PID-in-data mode + pure-datagram
+dgram (R-7, #657). **node-v0.35.0** (tag on 0f6ff7e): three-arch `.deb`s +
+self-contained-channel tarballs + `latest.json` published, install smoke green
+(Debian-stable + Ubuntu-LTS); ships the CDDL wire-grammar drift guard for the RHPv2
+server (#661), the spec-delta annotations (#662), and the ax25/rhp fixes above.
+Docker leg (`publish-docker.yml`) runs decoupled as usual. **Step 3 (downstream):**
+axcall + packet-term-tui bumped `Packet.*` 0.23.0 → 0.24.0, built + tested locally
+(axcall 25/25 unit, TUI 14/14), merged on green CI
+([axcall#21](https://github.com/packet-net/axcall/pull/21),
+[packet-term-tui#26](https://github.com/packet-net/packet-term-tui/pull/26)),
+released as **v0.2.21** each (six-platform binaries via `release.yml`).
+**Step 2b (headend):** skipped — `headend/` unchanged this cycle.
+**Step 4 (TS leg):** skipped — ax25-ts unchanged (last commit 2026-07-12).
 
 ### 2026-07-19 — Connect banner lost on a re-dial to a cached peer (packet.net#659)
 
