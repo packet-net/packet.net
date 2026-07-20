@@ -41,6 +41,7 @@ These are places the live XRouter wire differs from the published spec; pdn matc
 | 13 | Absent `data` on `send` | "data: the data to be sent" | the field is **mandatory even when empty** (RHPTEST): absent → **`errCode 12` "Missing data"**; `"data":""` is a **legal zero-byte send** (passes parameter validation — live 505c answers 17 pre-connect, i.e. it fails on state, not shape; pdn answers Ok on a connected stream) |
 | 14 | `bind` port `"0"` | — | the string `"0"` is a **synonym for null/absent = "all ports"** (XRouter convention, field notes §12); pdn normalises it to the same all-ports registration DAPPS's null-port bind gets |
 | 15 | Accept lifecycle | `accept` announces the child | the `accept` push is followed by a **`status` push for the child** (`handle:child`, Connected set, seqno, no id) before any `recv` — the protocol primer's incoming-listener sequence; pdn pushes it (added in R-5) |
+| 16 | TRACE `recv` extra fields | spec §3.10's TRACE example shows `srce`/`dest`/`ctrl`/`frametype`/`rseq`/`cr`/`pf` | live XRouter also emits **`tseq`** (N(S)), **`ilen`** (info-field length), **`pid`** (AX.25 PID byte), and **`ptcl`** (decoded L3 protocol name) — none of which appear anywhere in PWP-0222; pdn models all four for forward-compatibility with TRACE sockets |
 
 † RHPTEST (asserted against XRouter **v505d**) says a second `listen` on the same socket returns **16** — but pdn's R-4 live wire diff against `ghcr.io/packethacking/xrouter` (image label **505c**) observed **idempotent Ok**, and pdn matches the live wire. A version skew between the author's intent and the only obtainable build; revisit if/when the container moves to 505d+ (the diff test will fail loudly).
 
@@ -69,6 +70,30 @@ Anything found later that doesn't fit these tables goes **in these tables** — 
 - **`custom`** carries the PID as the first octet of `data` — on `sendto`, `data[0]` = PID and `data[1..]` = info; on `recv`, `data` = `[frame.pid]` ++ info. **This first-octet-PID convention is NOT written in PWP-0222** (which says only "user specified protocol"); it is **G8PZT's clarification** of the underspecified mode for AX.25 (2026-07, resolving #647). IP-over-AX.25 (PID `0xCC`) rides `custom` this way.
 
 An earlier pdn draft carried a nullable `pid` field on the dgram `send`/`sendto` DTOs as a provisional stand-in; **that field was removed** when `custom` shipped (R-7) — matching the spec's message shapes exactly (no `pid` field anywhere), so the wire is portable to any RHPv2 host.
+
+## Spec omissions and permissiveness (PWP-0222 vs the live wire)
+
+A field-by-field comparison of PWP-0222 (June 2023) against the live XRouter wire and pdn's grammar (`spec/rhp2.cddl`) surfaced two further categories beyond the wire-fidelity and named-deviation tables above. These are annotated in the CDDL with IDs (SO-*, P-*) for cross-reference.
+
+**Spec omissions — fields PWP-0222 doesn't define but XRouter requires:**
+
+| ID | Message | Spec's field list | Live wire / pdn | Why |
+|---|---|---|---|---|
+| SO-1 | `bind` | `type`, `id`, `local`, `port` — **no `handle`** | `handle` is required (absent → errCode 12) | The BSD path (SOCKET→BIND→LISTEN→CONNECT) is described in §2, but the per-message definitions in §3.15–3.19 never added the handle that SOCKETREPLY returns. Without it the server can't identify the socket. XRouter clearly accepts it. |
+| SO-2 | `listen` | `type`, `id`, `flags` — **no `handle`** | `handle` is required (absent → errCode 12) | Same omission as SO-1. |
+| SO-3 | `connect` | `type`, `id`, `remote` — **no `handle`** | `handle` is required (absent → errCode 12) | Same omission as SO-1. |
+
+**Permissiveness — fields the spec says are mandatory (per §3's "all fields mandatory unless otherwise stated") but the live wire accepts as absent:**
+
+| ID | Field | Spec says | Live wire / pdn does | Why |
+|---|---|---|---|---|
+| P-1 | `open.flags` | mandatory | optional; absent = 0 (passive) | The natural default; XRouter accepts absent. |
+| P-2 | `open.port` | mandatory | optional; absent = first port (outbound) / all ports (bind) | XRouter accepts absent; the spec's own TRACE example omits `local` and `remote`, contradicting the "all mandatory" rule. |
+| P-3 | `sendto.port` | mandatory | optional when the socket is already bound to a port | XRouter accepts absent on a bound socket. |
+| P-4 | `sendto.remote` | mandatory | optional | Spec §3.21 text says "if a local address is bound, only the remote address need be supplied **and vice versa**" — implying either can be absent. The field table contradicts the prose. |
+| P-5 | `errText` (all replies) | mandatory | optional; XRouter omits it on some errCode-0 replies | The live wire doesn't always carry it; clients parse the code, not the text (spec §5: "parse the error CODE, not the error text"). |
+
+These are recorded in `spec/rhp2.cddl`'s header and inline. They are **not** pdn inventions — they reflect what the live XRouter actually accepts. The grammar encodes the permissive wire, not the stricter spec text.
 
 ## Configuration
 
