@@ -9,25 +9,63 @@
 ; pdn's RhpServer emits. Deferred families/modes (netrom, inet, unix, raw,
 ; trace, seqpkt, semiraw) are not yet pinned here.
 ;
-; Conventions (wire-fidelity rows from docs/rhp2-server.md):
-;   - `type` is always the first key emitted (row 5: unknown types get {type}Reply)
-;   - Replies carry `errCode`/`errText` with capital C/T (row 1)
-;   - Requests carry optional `id`; replies echo it (row 6)
-;   - Async pushes carry `seqno`, never `id` (row 6)
-;   - `seqno` is per-connection, starting at 0 (row 11)
-;   - `port` is string-or-number on the wire (rows 3, 4)
-;   - `data` is Latin-1 text, not base64 (row 7)
-;   - `errCode` range: 0–17 (row 8 adds 17 "Not connected")
+; ─── Spec deltas (PWP-0222 text vs live XRouter wire vs this grammar) ─────────
+;
+; This grammar encodes the LIVE WIRE (XRouter 505c + RHPTEST 505d), not the
+; spec's prose. Where they differ, the wire wins and the delta is recorded here
+; and in docs/rhp2-server.md's tables. Known deltas:
+;
+; WIRE-FIDELITY (grammar matches XRouter, spec text differs):
+;   WF-1  errCode/errText casing: spec field tables say lowercase "errcode"/
+;         "errtext"; live XRouter emits capital "errCode"/"errText" on EVERY
+;         reply. (Note: the spec's own authReply EXAMPLE uses capitals too —
+;         the field tables are the inconsistent part.)
+;   WF-2  connectReply type: spec §3.20 says "ConnectReply" (PascalCase);
+;         live XRouter emits "connectReply" (camelCase).
+;   WF-3  accept.port type: spec says integer; live XRouter sends a string.
+;   WF-4  open.port type: spec field table says string, but the spec's own
+;         OPEN example uses "port": 2 (a JSON number). Grammar accepts both.
+;   WF-8  errCode 17: not in the spec's error table (0–16); XRouter-observed.
+;   WF-16 TRACE recv fields tseq/ilen/pid/ptcl: not in the spec at all;
+;         XRouter-observed (the spec's TRACE example shows srce/dest/ctrl/
+;         frametype/rseq/cr/pf but omits these four).
+;
+; SPEC OMISSIONS (fields the spec doesn't define but XRouter requires):
+;   SO-1  bind.handle: spec §3.15 lists only type/id/local/port — no handle.
+;         XRouter's BIND requires a handle (otherwise it can't identify the
+;         socket). The BSD path (SOCKET→BIND→LISTEN→CONNECT) is described but
+;         the handle was never added to BIND/LISTEN/CONNECT definitions.
+;   SO-2  listen.handle: spec §3.17 lists only type/id/flags — no handle.
+;   SO-3  connect.handle: spec §3.19 lists only type/id/remote — no handle.
+;
+; PERMISSIVENESS (grammar is more lenient than the spec's "all fields mandatory
+; unless otherwise stated" rule):
+;   P-1  open.flags: spec says mandatory; absent = 0 (passive) is the natural
+;        default and XRouter accepts it. Grammar makes it optional.
+;   P-2  open.port: spec says mandatory; XRouter accepts absent (defaults to
+;        first port outbound / all ports for bind). Grammar makes it optional.
+;   P-3  sendto.port: spec says mandatory; XRouter accepts absent when the
+;        socket is already bound to a port. Grammar makes it optional.
+;   P-4  sendto.remote: spec says mandatory; spec text (§3.21) says "if a
+;        local address is bound, only the remote address need be supplied and
+;        vice versa" — implying either can be absent. Grammar makes it optional.
+;   P-5  errText on replies: spec says mandatory; XRouter omits it on some
+;        success replies (errCode 0). Grammar makes it optional.
+;
+; NAMED DEVIATIONS (pdn deliberately differs from XRouter — see D1–D10 in
+; docs/rhp2-server.md):
+;   D8   open.local: spec says mandatory, XRouter requires it (errCode 6
+;        without it); pdn accepts absent and defaults to the node callsign.
 ;
 ; Framing (not in this grammar): 2-byte big-endian length prefix + UTF-8 JSON.
 ; Zero-length frames are legal. The grammar defines the JSON payload only.
 ;
 ; Usage:
-;   cddl validate --input-format json --cddl spec/rhp2.cddl --input wire.json
+;   echo '{"type":"auth","id":1,"user":"x","pass":"y"}' | cddl validate --cddl spec/rhp2.cddl --stdin
 ;
-; Provenance: transcribed from Packet.Rhp2 (the pdn codec, pinned against live
-; XRouter image 505c + RHPTEST v505d). Where pdn deliberately differs from
-; XRouter, the named deviation (D1–D10) is cited in a comment.
+; Provenance: transcribed from Packet.Rhp2 (the pdn codec), pinned against live
+; XRouter image 505c + RHPTEST v505d, then compared field-by-field against
+; PWP-0222 (June 2023, Paula Dowie G8PZT). Deltas annotated inline below.
 
 ; ─── Top-level message choice ─────────────────────────────────────────────────
 
@@ -70,10 +108,10 @@ auth = {
 }
 
 auth-reply = {
-  type: "authReply",       ; row 1: capital R on "Reply"
+  type: "authReply",       ; WF-1: capital R on "Reply" (spec field table says "authReply" here, consistent)
   ? id: uint,              ; echoes the request id
-  errCode: err-code,       ; row 1: capital C
-  ? errText: tstr,         ; row 1: capital T
+  errCode: err-code,       ; WF-1: capital C (spec field tables say lowercase "errcode")
+  ? errText: tstr,         ; WF-1: capital T; P-5: spec says mandatory, XRouter omits on some errCode-0 replies
 }
 
 ; ─── Open (combined create/bind/connect-or-listen) ────────────────────────────
@@ -83,10 +121,10 @@ open = {
   ? id: uint,
   pfam: pfam,
   mode: mode,
-  ? port: port-val,
-  ? local: tstr,           ; D8: absent local is legal (defaults to node callsign)
-  ? remote: tstr,
-  ? flags: uint,           ; OpenFlags: 0x80 = Active
+  ? port: port-val,        ; P-2: spec says mandatory; XRouter accepts absent
+  ? local: tstr,           ; D8: spec says mandatory, XRouter requires it; pdn defaults to node callsign
+  ? remote: tstr,          ; spec: "active open only"
+  ? flags: uint,           ; P-1: spec says mandatory; absent = 0 (passive)
 }
 
 open-reply = {
@@ -117,7 +155,7 @@ socket-reply = {
 bind = {
   type: "bind",
   ? id: uint,
-  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  ? handle: uint,          ; SO-1: not in spec §3.15; XRouter requires it to identify the socket
   local: tstr,
   ? port: port-val,        ; row 14: "0" is a synonym for null = all ports
 }
@@ -133,7 +171,7 @@ bind-reply = {
 listen = {
   type: "listen",
   ? id: uint,
-  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  ? handle: uint,          ; SO-2: not in spec §3.17; XRouter requires it to identify the socket
   ? flags: uint,
 }
 
@@ -150,7 +188,7 @@ listen-reply = {
 connect = {
   type: "connect",
   ? id: uint,
-  ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
+  ? handle: uint,          ; SO-3: not in spec §3.19; XRouter requires it to identify the socket
   remote: tstr,
 }
 
@@ -193,10 +231,10 @@ sendto = {
   ? id: uint,
   ? handle: uint,          ; row 12: absent → errCode 12 "Missing handle"
   data: tstr,              ; row 13: mandatory; for custom mode data[0] = PID
-  ? port: port-val,
+  ? port: port-val,        ; P-3: spec says mandatory; XRouter accepts absent when socket is bound
   ? local: tstr,           ; source address override
-  ? remote: tstr,          ; destination address
-  ? tos: uint,             ; type of service (deferred in pdn)
+  ? remote: tstr,          ; P-4: spec says mandatory; spec text implies either local or remote can be absent
+  ? tos: uint,             ; type of service (INET only, deferred in pdn)
 }
 
 sendto-reply = {
@@ -218,19 +256,21 @@ recv = {
   ? port: port-val,        ; row 4: number in TRACE, string in DGRAM
   ? local: tstr,           ; DGRAM: destination address
   ? remote: tstr,          ; DGRAM: source address
-  ; TRACE / RAW metadata (XRouter-observed, not in published spec):
-  ? action: tstr,          ; "sent" / "rcvd"
-  ? srce: tstr,            ; source callsign of traced frame
-  ? dest: tstr,            ; destination callsign of traced frame
-  ? ctrl: uint,            ; raw AX.25 control byte
-  ? frametype: tstr,       ; "I" / "RR" / "SABM" etc.
-  ? rseq: uint,            ; N(R)
-  ? tseq: uint,            ; N(S)
-  ? cr: tstr,              ; "C" / "R"
-  ? pf: tstr,              ; "P" / "F"
-  ? ilen: uint,            ; information field length
-  ? pid: uint,             ; AX.25 PID byte (TRACE only)
-  ? ptcl: tstr,            ; decoded L3 protocol name
+  ; TRACE / RAW metadata. The spec's TRACE example (§3.10) shows srce/dest/
+  ; ctrl/frametype/rseq/cr/pf. The remaining four (tseq/ilen/pid/ptcl) are
+  ; WF-16: XRouter-observed, not in the published spec at all.
+  ? action: tstr,          ; "sent" / "rcvd" (spec §3.10)
+  ? srce: tstr,            ; source callsign of traced frame (spec §3.10)
+  ? dest: tstr,            ; destination callsign of traced frame (spec §3.10)
+  ? ctrl: uint,            ; raw AX.25 control byte (spec §3.10)
+  ? frametype: tstr,       ; "I" / "RR" / "SABM" etc. (spec §3.10)
+  ? rseq: uint,            ; N(R) (spec §3.10)
+  ? tseq: uint,            ; N(S) — WF-16: not in spec
+  ? cr: tstr,              ; "C" / "R" (spec §3.10)
+  ? pf: tstr,              ; "P" / "F" (spec §3.10)
+  ? ilen: uint,            ; information field length — WF-16: not in spec
+  ? pid: uint,             ; AX.25 PID byte — WF-16: not in spec
+  ? ptcl: tstr,            ; decoded L3 protocol name — WF-16: not in spec
 }
 
 ; ─── Accept (async push: inbound connection on a listener) ────────────────────
