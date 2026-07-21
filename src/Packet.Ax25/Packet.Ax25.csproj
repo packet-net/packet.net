@@ -4,7 +4,7 @@
     <!-- Event / state names mirror the AX.25 spec's vocabulary verbatim
          (e.g. IFramePopsOffQueue ← "I_frame_pops_off_queue"). The analyzer's
          "no Queue/Stack/Collection suffix" rule would mangle that lineage. -->
-    <NoWarn>$(NoWarn);CA1711</NoWarn>
+    <NoWarn>$(NoWarn);CA1711;CA1873</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Packet.Ax25.Transport.Abstractions\Packet.Ax25.Transport.Abstractions.csproj" />
     <!-- Packet.Ax25.Sdl moved to packet-net/ax25sdl on 2026-05-17 — consumed via NuGet. -->
     <PackageReference Include="Packet.Ax25.Sdl" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
   <PropertyGroup>

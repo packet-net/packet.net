@@ -1012,9 +1012,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var options = BuildListenerOptions(
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true,
-            carrierSense: carrierSense);
+            carrierSense: carrierSense,
+            portName: endpointText);
         // The transport speaks the neutral IAx25Transport seam the listener consumes directly.
-        var listener = new Ax25Listener(transport, options, timeProvider);
+        var listener = new Ax25Listener(transport, options, timeProvider, loggerFactory.CreateLogger<Ax25Listener>());
 
         // N1 (PACLEN) is carried on the live-reseed parameter record, not on the
         // parity-tracked Ax25ListenerOptions (it is node-host per-port config, not a
@@ -1435,12 +1436,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     private static Ax25ListenerOptions BuildListenerOptions(
         Ax25PortParams? ax25, PortCompatConfig? compat, Callsign myCall,
-        bool restartT1OnTxComplete = false, ICarrierSense? carrierSense = null)
+        bool restartT1OnTxComplete = false, ICarrierSense? carrierSense = null,
+        string? portName = null)
     {
         var p = MapAx25Params(ax25, compat);
         return new Ax25ListenerOptions
         {
             MyCall = myCall,
+            PortName = portName,
             T1V = p.T1V,
             T2 = p.T2,
             T3 = p.T3,

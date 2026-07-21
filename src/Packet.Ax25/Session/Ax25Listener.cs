@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Sdl;
 using Packet.Core;
 using Packet.Ax25.Transport;
@@ -43,7 +45,7 @@ namespace Packet.Ax25.Session;
 /// No session-accepted event fires for the dropped attempt.
 /// </para>
 /// </remarks>
-public sealed class Ax25Listener : IAsyncDisposable
+public sealed partial class Ax25Listener : IAsyncDisposable
 {
     // U-frame control-octet classification (§4.3.3). The P/F bit (0x10) is masked
     // out so a TEST with P=1 (a command soliciting a response) and P=0 both match.
@@ -51,6 +53,8 @@ public sealed class Ax25Listener : IAsyncDisposable
     private const byte TestControl = 0xE3;   // TEST, P/F-masked (mirrors AxPinger)
 
     private readonly IAx25Transport modem;
+    private readonly ILogger logger;
+    private readonly string portName;
 
     // The transport's optional TX-completion capability (ACKMODE), probed once at construction.
     // Non-null means "this transport CAN attempt confirmed-TX"; a runtime NotSupportedException
@@ -235,7 +239,7 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// <see cref="IAx25Transport.ReceiveAsync"/>; sends via <see cref="IAx25Transport.SendAsync"/>.</param>
     /// <param name="options">Listener options — required <see cref="Ax25ListenerOptions.MyCall"/> and optional timing / cache knobs.</param>
     public Ax25Listener(IAx25Transport modem, Ax25ListenerOptions options)
-        : this(modem, options, TimeProvider.System)
+        : this(modem, options, TimeProvider.System, null)
     {
     }
 
@@ -251,11 +255,14 @@ public sealed class Ax25Listener : IAsyncDisposable
     public Ax25Listener(
         IAx25Transport modem,
         Ax25ListenerOptions options,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ILogger? logger = null)
     {
         this.modem = modem ?? throw new ArgumentNullException(nameof(modem));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        this.logger = logger ?? NullLogger.Instance;
+        portName = options.PortName ?? "?";
         // Probe the optional confirmed-TX (ACKMODE) capability once; null ⇒ never attempt it.
         txCompletion = modem as ITxCompletionTransport;
         // The native medium-access gate, from the parity-tracked listener option.
@@ -276,6 +283,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             return Task.CompletedTask;
         }
 
+        LogStarted(portName, MyCall.ToString());
         pumpTask = Task.Run(() => InboundPumpAsync(lifecycleCts.Token), CancellationToken.None);
         // Don't await pumpStarted in production — the pump signals
         // immediately on entering the loop, so awaiting it would only
@@ -396,6 +404,8 @@ public sealed class Ax25Listener : IAsyncDisposable
         var cached = GetOrCreateSession(key);
         TouchLru(key);
 
+        LogConnecting(portName, local.ToString(), remote.ToString(), extended ? "v2.2/SABME" : "v2.0/SABM");
+
         // Drain any stale signals queued from a previous lifecycle on
         // this cached session — otherwise we might fish out a stale
         // DataLinkConnectConfirm from the dictionary's last use.
@@ -423,7 +433,11 @@ public sealed class Ax25Listener : IAsyncDisposable
         // the extended (SABME) path — that uses the figc4.6 post-UA MDL negotiation.
         if (!extended && preConnectXidNegotiatesSrej)
         {
+            LogPreConnectXid(portName, local.ToString(), remote.ToString());
             await NegotiateSrejBeforeConnectAsync(cached, ct).ConfigureAwait(false);
+            LogXidOutcome(portName, local.ToString(), remote.ToString(),
+                cached.Session.Context.SrejEnabled ? "confirmed" : "no response",
+                cached.Session.Context.SrejEnabled ? "SREJ enabled" : "go-back-N");
         }
 
         cached.Session.PostEvent(new DlConnectRequest());
@@ -447,10 +461,13 @@ public sealed class Ax25Listener : IAsyncDisposable
                 switch (sig)
                 {
                     case DataLinkConnectConfirm:
+                        LogConnected(portName, local.ToString(), remote.ToString(),
+                            cached.Session.Context.IsExtended ? "v2.2/mod-128" : "v2.0/mod-8");
                         RaiseSessionAccepted(cached.Session);
                         return cached.Session;
                     case DataLinkDisconnectIndication:
                     case DataLinkDisconnectConfirm:
+                        LogConnectRefused(portName, local.ToString(), remote.ToString());
                         throw new InvalidOperationException(
                             $"outbound connect to {remote} torn down before DL-CONNECT-confirm arrived (peer refused or link reset).");
                 }
@@ -481,6 +498,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             return lateConfirm;
         }
 
+        LogConnectTimeout(portName, local.ToString(), remote.ToString(), budget.TotalSeconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
         throw new TimeoutException(
             $"outbound connect to {remote} timed out after {budget.TotalSeconds:F1}s without DL-CONNECT-confirm.");
     }
@@ -677,9 +695,14 @@ public sealed class Ax25Listener : IAsyncDisposable
         // Native carrier-sense CSMA (OQ-012): hold the keyup while the channel is busy.
         // WaitForClearAsync completes synchronously when there is no source or the channel is
         // clear/unknown, so this connectionless path is unchanged when no radio DCD is wired.
-        await carrierSenseGate.WaitForClearAsync(ct).ConfigureAwait(false);
+        var csmaWait = await carrierSenseGate.WaitForClearAsync(ct).ConfigureAwait(false);
+        if (csmaWait.TotalMilliseconds > 50)
+        {
+            LogCsmaWait(portName, (long)csmaWait.TotalMilliseconds);
+        }
         await modem.SendAsync(frame.ToBytes(), ct).ConfigureAwait(false);
         TraceFrame(frame, FrameDirection.Transmitted);
+        LogConnectionlessTx(portName, frame.Source.Callsign.ToString(), frame.Destination.Callsign.ToString(), Ax25FrameDescriber.Describe(frame));
     }
 
     /// <summary>
@@ -712,6 +735,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             return;
         }
 
+        LogStopped(portName);
         await lifecycleCts.CancelAsync().ConfigureAwait(false);
         try
         {
@@ -836,6 +860,8 @@ public sealed class Ax25Listener : IAsyncDisposable
         {
             return;
         }
+
+        LogRx(portName, parsed.Source.Callsign.ToString(), local.ToString(), Ax25FrameDescriber.Describe(parsed));
 
         // Connectionless TEST (§4.3.4.2) is link-independent and must be handled BEFORE any
         // session routing — see TryInterceptConnectionlessTest for the full rationale.
@@ -1053,6 +1079,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             // listeners on the session's signal stream before any
             // events flow. The session's Local is the callsign the SABM
             // was addressed to (MyCall or a registered alias).
+            LogInboundAccept(portName, peer.ToString(), local.ToString(), classified is SabmeReceived ? "SABME" : "SABM");
             var built = BuildSession(local, peer, allowAccept: true);
             AddToCache(key, built);
             options.ConfigureSession?.Invoke(built.Session);
@@ -1071,6 +1098,10 @@ public sealed class Ax25Listener : IAsyncDisposable
         //
         // Build, post, dispose. No cache write, no SessionAccepted
         // event.
+        if (isSabmShaped)
+        {
+            LogInboundReject(portName, peer.ToString(), local.ToString(), classified is SabmeReceived ? "SABME" : "SABM");
+        }
         var transient = BuildSession(local, peer, allowAccept: AcceptIncoming);
         var transientEvent = isSabmShaped
             ? classified
@@ -1339,12 +1370,17 @@ public sealed class Ax25Listener : IAsyncDisposable
             if (parsedTx is not null)
             {
                 TraceFrame(parsedTx, FrameDirection.Transmitted);
+                LogTx(portName, ctx.Local.ToString(), ctx.Remote.ToString(), Ax25FrameDescriber.Describe(parsedTx));
             }
 
             // Carrier-sense-gated fire-and-forget send: await a clear channel, then key up.
             async Task SendGatedAsync(ReadOnlyMemory<byte> frame)
             {
-                await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
+                var wait = await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
+                if (wait.TotalMilliseconds > 50)
+                {
+                    LogCsmaWait(portName, (long)wait.TotalMilliseconds);
+                }
                 await modem.SendAsync(frame).ConfigureAwait(false);
             }
 
@@ -1354,7 +1390,11 @@ public sealed class Ax25Listener : IAsyncDisposable
                 {
                     // Hold the ACKMODE keyup on a busy channel too (native CSMA), then send
                     // awaiting completion.
-                    await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
+                    var wait = await carrierSenseGate.WaitForClearAsync().ConfigureAwait(false);
+                    if (wait.TotalMilliseconds > 50)
+                    {
+                        LogCsmaWait(portName, (long)wait.TotalMilliseconds);
+                    }
                     // txCompletion is non-null here (gated by the caller's probe), but the
                     // underlying transport may still NotSupport at runtime (a wrapping adapter
                     // exposes the capability even when the modem turns out not to have it).
@@ -1404,6 +1444,7 @@ public sealed class Ax25Listener : IAsyncDisposable
 
                 sig = reassembled;
             }
+            LogDlSignal(portName, ctx.Local.ToString(), ctx.Remote.ToString(), SignalName(sig));
             signals.Enqueue(sig);
             sessionRef?.RaiseDataLinkSignal(sig);
         }
@@ -1416,7 +1457,11 @@ public sealed class Ax25Listener : IAsyncDisposable
         var mdl = new Ax25ManagementDataLink(ctx, scheduler, SendBytes);
 
         var dispatcher = new ActionDispatcher(
-            onTimerExpiry: name => sessionRef!.PostEvent(TimerExpiry(name)),
+            onTimerExpiry: name =>
+            {
+                LogTimerExpiry(portName, ctx.Local.ToString(), ctx.Remote.ToString(), name, ctx.RC);
+                sessionRef!.PostEvent(TimerExpiry(name));
+            },
             sendSFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
             sendUFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
             sendUiFrame: spec => SendBytes(spec.ToAx25Frame(ctx).ToBytes()),
@@ -1517,6 +1562,10 @@ public sealed class Ax25Listener : IAsyncDisposable
             initialState: "Disconnected");
         sessionRef = session;
 
+        session.TransitionFired += (_, t) =>
+            LogTransition(portName, ctx.Local.ToString(), ctx.Remote.ToString(),
+                t.On.ToString(), t.From, t.Next);
+
         return new CachedSession
         {
             Session = session,
@@ -1565,6 +1614,7 @@ public sealed class Ax25Listener : IAsyncDisposable
             lruIndex.Remove(evicted);
             if (sessions.TryRemove(evicted, out var cs))
             {
+                LogSessionEvicted(portName, evicted.Local.ToString(), evicted.Remote.ToString());
                 cs.Scheduler.Dispose();
             }
         }
@@ -1603,6 +1653,65 @@ public sealed class Ax25Listener : IAsyncDisposable
         }
     }
 
+    // ─── Debug logging (EventId band 5200–5299: AX.25 session layer) ────
+
+    [LoggerMessage(EventId = 5200, Level = LogLevel.Information, Message = "AX.25 [{Port}] listener started as {MyCall}")]
+    private partial void LogStarted(string port, string myCall);
+
+    [LoggerMessage(EventId = 5201, Level = LogLevel.Information, Message = "AX.25 [{Port}] listener stopped")]
+    private partial void LogStopped(string port);
+
+    [LoggerMessage(EventId = 5202, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connecting {Local} → {Remote} ({Version})")]
+    private partial void LogConnecting(string port, string local, string remote, string version);
+
+    [LoggerMessage(EventId = 5203, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} → {Remote}: pre-connect XID probe (SREJ offer)")]
+    private partial void LogPreConnectXid(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5204, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} → {Remote}: XID {Outcome} — {Detail}")]
+    private partial void LogXidOutcome(string port, string local, string remote, string outcome, string detail);
+
+    [LoggerMessage(EventId = 5205, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} ↔ {Remote} ({Version})")]
+    private partial void LogConnected(string port, string local, string remote, string version);
+
+    [LoggerMessage(EventId = 5206, Level = LogLevel.Warning, Message = "AX.25 [{Port}] connect {Local} → {Remote} timed out after {Seconds}s")]
+    private partial void LogConnectTimeout(string port, string local, string remote, string seconds);
+
+    [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} → {Remote} refused (DM / link reset)")]
+    private partial void LogConnectRefused(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} → {Local}: {FrameType} received — accepting connection")]
+    private partial void LogInboundAccept(string port, string peer, string local, string frameType);
+
+    [LoggerMessage(EventId = 5211, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} → {Local}: {FrameType} received — rejecting (DM)")]
+    private partial void LogInboundReject(string port, string peer, string local, string frameType);
+
+    [LoggerMessage(EventId = 5212, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: {Event} — {FromState} → {ToState}")]
+    private partial void LogTransition(string port, string local, string remote, string @event, string fromState, string toState);
+
+    [LoggerMessage(EventId = 5213, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Local} → {Remote}: {FrameDesc}")]
+    private partial void LogTx(string port, string local, string remote, string frameDesc);
+
+    [LoggerMessage(EventId = 5214, Level = LogLevel.Debug, Message = "AX.25 [{Port}] RX {Peer} → {Local}: {FrameDesc}")]
+    private partial void LogRx(string port, string peer, string local, string frameDesc);
+
+    [LoggerMessage(EventId = 5215, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: {Timer} expired (RC={RC})")]
+    private partial void LogTimerExpiry(string port, string local, string remote, string timer, int rc);
+
+    [LoggerMessage(EventId = 5216, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: ↑ {Signal}")]
+    private partial void LogDlSignal(string port, string local, string remote, string signal);
+
+    [LoggerMessage(EventId = 5217, Level = LogLevel.Debug, Message = "AX.25 [{Port}] session cache evicted {Local} ↔ {Remote}")]
+    private partial void LogSessionEvicted(string port, string local, string remote);
+
+    [LoggerMessage(EventId = 5218, Level = LogLevel.Debug, Message = "AX.25 [{Port}] CSMA: waited {Ms}ms for clear channel")]
+    private partial void LogCsmaWait(string port, long ms);
+
+    [LoggerMessage(EventId = 5219, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Source} → {Dest}: {FrameDesc}")]
+    private partial void LogConnectionlessTx(string port, string source, string dest, string frameDesc);
+
+    [LoggerMessage(EventId = 5220, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: XID {Direction} — {Detail}")]
+    private partial void LogXid(string port, string local, string remote, string direction, string detail);
+
     private static readonly Dictionary<string, IReadOnlyList<TransitionSpec>> DefaultTransitionMap = new()
     {
         ["Disconnected"] = DataLink_Disconnected.Transitions,
@@ -1616,6 +1725,18 @@ public sealed class Ax25Listener : IAsyncDisposable
     /// <summary>The session-cache key: the (local, remote) callsign pair. Local is MyCall for
     /// ordinary sessions, or a registered alias / origination override (multi-callsign).</summary>
     private readonly record struct SessionKey(Callsign Local, Callsign Remote);
+
+    private static string SignalName(DataLinkSignal sig) => sig switch
+    {
+        DataLinkConnectConfirm => "DL-CONNECT-confirm",
+        DataLinkConnectIndication => "DL-CONNECT-indication",
+        DataLinkDisconnectConfirm => "DL-DISCONNECT-confirm",
+        DataLinkDisconnectIndication => "DL-DISCONNECT-indication",
+        DataLinkDataIndication => "DL-DATA-indication",
+        DataLinkUnitDataIndication => "DL-UNITDATA-indication",
+        DataLinkErrorIndication err => $"DL-ERROR-indication({err.Code})",
+        _ => sig.GetType().Name,
+    };
 
     private static Ax25Event TimerExpiry(string name) => name switch
     {
@@ -1634,6 +1755,14 @@ public sealed class Ax25ListenerOptions
 {
     /// <summary>Local callsign. Inbound frames not addressed here are ignored at the session layer.</summary>
     public required Callsign MyCall { get; init; }
+
+    /// <summary>
+    /// Human-readable label for the modem/port this listener is attached to
+    /// (e.g. "kiss-tcp:192.168.1.10:8001", "serial:/dev/ttyUSB0"). Included in
+    /// every debug log line so the operator can tell which modem a message
+    /// relates to. Defaults to "?" when unset.
+    /// </summary>
+    public string? PortName { get; init; }
 
     /// <summary>
     /// Override the session's initial T1V (acknowledgement timer). If
