@@ -1,4 +1,3 @@
-using System.Globalization;
 using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
@@ -17,11 +16,12 @@ namespace Packet.Node.Rhp;
 /// (PWP-0222 codes) so the wire loop stays mechanical.
 /// </summary>
 /// <remarks>
-/// Port labels are XRouter-convention: <b>1-indexed, in config order</b> (<c>"1"</c> = the
-/// first <c>ports:</c> entry). For outbound opens, null resolves a locally-registered app
-/// (loopback) or errors — it does not silently default to the first port. R-2 limitation
-/// (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the node's own callsign —
-/// originating from an arbitrary app callsign needs the R-3 multi-callsign engine work.
+/// Port labels are the operator-defined <see cref="PortConfig.Id"/> (e.g. <c>"vhf-2m"</c>,
+/// <c>"hf-40m"</c>), matched case-insensitively. For outbound opens, null resolves a
+/// locally-registered app (loopback) or errors — it does not silently default to the first
+/// port. R-2 limitation (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the
+/// node's own callsign — originating from an arbitrary app callsign needs the R-3
+/// multi-callsign engine work.
 /// </remarks>
 public sealed class SupervisorRhpGateway : IRhpGateway
 {
@@ -81,15 +81,11 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             var callerPeerId = localOverride?.ToString() ?? nodeCall;
             connector = supervisor.TryResolveLocalAppConnector(target, callerPeerId, NodeTransportKind.Ax25)
                 ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort,
-                    $"No port specified and '{target}' is not a locally registered app; an explicit port (1..{ports.Count}) is required for an outbound dial.");
+                    $"No port specified and '{target}' is not a locally registered app; an explicit port id is required ({PortList(ports)}).");
         }
         else
         {
-            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
-            {
-                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
-            }
-            var portId = ports[n - 1].Id;
+            var portId = ResolvePortId(portLabel, ports);
             connector = supervisor.ResolveConnector(portId, localOverride)
                 ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
         }
@@ -125,34 +121,16 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidLocalAddress, $"'{local}' is not a valid AX.25 callsign.");
         }
 
-        // Port scope: null = all ports (the wire's null bind port); "N" = 1-indexed config order.
+        // Port scope: null = all ports (the wire's null bind port); otherwise a port id.
         string? portId = null;
         var ports = config.Current.Ports;
         if (!string.IsNullOrWhiteSpace(portLabel))
         {
-            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
-            {
-                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
-            }
-            portId = ports[n - 1].Id;
+            portId = ResolvePortId(portLabel, ports);
         }
 
-        // The accept push wants the arrival port as its 1-indexed LABEL; the supervisor hands
-        // us the port id — translate per the live config (config order defines the labels).
         Task OnAcceptedWithLabel(INodeConnection connection, string arrivalPortId)
-        {
-            var snapshot = config.Current.Ports;
-            int idx = -1;
-            for (int i = 0; i < snapshot.Count; i++)
-            {
-                if (string.Equals(snapshot[i].Id, arrivalPortId, StringComparison.Ordinal))
-                {
-                    idx = i;
-                    break;
-                }
-            }
-            return onAccepted(connection, idx >= 0 ? (idx + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : "1");
-        }
+            => onAccepted(connection, arrivalPortId);
 
         try
         {
@@ -187,7 +165,7 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
         }
 
-        // Port labels are XRouter-convention 1-indexed config order; null = the first port.
+        // Port labels are port ids; null = the first port (connectionless UI needs a port).
         var portId = ResolvePortId(portLabel, ports);
         var port = supervisor.GetPort(portId)
             ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{portId}' is not running.");
@@ -206,22 +184,19 @@ public sealed class SupervisorRhpGateway : IRhpGateway
 
         var ports = config.Current.Ports;
 
-        // Which port(s) to tap, with each one's 1-indexed label (config order defines labels).
+        // Which port(s) to tap, with each one's id as the label surfaced on the wire.
         var targets = new List<(string PortId, string Label)>();
         if (string.IsNullOrWhiteSpace(portLabel))
         {
             for (int i = 0; i < ports.Count; i++)
             {
-                targets.Add((ports[i].Id, (i + 1).ToString(CultureInfo.InvariantCulture)));
+                targets.Add((ports[i].Id, ports[i].Id));
             }
         }
         else
         {
-            if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
-            {
-                throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
-            }
-            targets.Add((ports[n - 1].Id, portLabel));
+            var resolved = ResolvePortId(portLabel, ports);
+            targets.Add((resolved, resolved));
         }
 
         // Tap FrameTraced on each running port's listener — the same read-only, promiscuous tap
@@ -269,12 +244,18 @@ public sealed class SupervisorRhpGateway : IRhpGateway
         {
             return ports[0].Id;
         }
-        if (!int.TryParse(portLabel, out var n) || n < 1 || n > ports.Count)
+        for (int i = 0; i < ports.Count; i++)
         {
-            throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' (1..{ports.Count}).");
+            if (string.Equals(ports[i].Id, portLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return ports[i].Id;
+            }
         }
-        return ports[n - 1].Id;
+        throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"No such port '{portLabel}' ({PortList(ports)}).");
     }
+
+    private static string PortList(IReadOnlyList<PortConfig> ports) =>
+        string.Join(", ", ports.Select(p => $"'{p.Id}'"));
 
     // Unhooks one FrameTraced handler from one listener.
     private sealed class ListenerUnsubscriber(Ax25Listener listener, EventHandler<Ax25FrameEventArgs> handler) : IDisposable
