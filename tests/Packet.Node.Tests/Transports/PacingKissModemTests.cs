@@ -131,6 +131,58 @@ public sealed class PacingKissModemTests
     }
 
     [Fact]
+    public async Task Mid_flight_reconnect_retries_on_fresh_link_instead_of_dropping()
+    {
+        await using var inner = new GatedModem();
+        await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
+
+        // The first send attempt faults with ObjectDisposedException (the inner KissTcpClient
+        // was swapped by ReconnectingKissModem); IsReconnecting flips to false shortly after,
+        // and the retry on the fresh link succeeds.
+        inner.ThrowDisposedOnce = true;
+        inner.Reconnecting = true;
+
+        await modem.SendAsync(Encoding.ASCII.GetBytes("A"));
+
+        // The pump catches the ODE, waits for reconnecting=false, then retries.
+        (await inner.WaitForInFlightAsync("A")).Should().BeTrue();
+        await Task.Delay(150);
+        inner.Reconnecting = false;
+
+        // The retry enters the inner send; signal its completion.
+        (await inner.WaitForStartedCountAsync(2)).Should().BeTrue();
+        inner.SignalAck();
+        (await inner.WaitForCompletedCountAsync(1)).Should().BeTrue();
+        inner.Completed.Should().Equal("A");
+    }
+
+    [Fact]
+    public async Task Mid_flight_reconnect_retry_failure_releases_next_frame()
+    {
+        await using var inner = new GatedModem();
+        await using var modem = new PacingKissModem(inner, TimeSpan.FromSeconds(30), NullLogger.Instance);
+
+        // Both the initial send AND the retry fault — the frame is lost, but the pump
+        // must still move on to the next frame (not wedge).
+        inner.ThrowDisposedTwice = true;
+        inner.Reconnecting = true;
+
+        await modem.SendAsync(Encoding.ASCII.GetBytes("X"));   // will fail both attempts
+        await modem.SendAsync(Encoding.ASCII.GetBytes("Y"));   // must still be sent
+
+        // Wait for the first attempt to trigger, then let the pump enter the wait loop.
+        (await inner.WaitForInFlightAsync("X")).Should().BeTrue();
+        await Task.Delay(150);
+        inner.Reconnecting = false;
+
+        // After both attempts fail the pump reaches Y.
+        (await inner.WaitForInFlightAsync("Y")).Should().BeTrue();
+        inner.SignalAck();
+        (await inner.WaitForCompletedCountAsync(1)).Should().BeTrue();
+        inner.Completed.Should().Equal("Y");
+    }
+
+    [Fact]
     public async Task Read_and_param_setters_pass_through_to_inner_unchanged()
     {
         await using var inner = new GatedModem(Frame("hello"));
@@ -176,18 +228,23 @@ public sealed class PacingKissModemTests
     /// enters (and leaves) the send, proving the pump serialises. Records the order frames
     /// start and complete.
     /// </summary>
-    private sealed class GatedModem : ITxCompletionTransport, ICsmaChannelParams
+    private sealed class GatedModem : ITxCompletionTransport, ICsmaChannelParams, ITransportLinkState
     {
         private readonly Ax25InboundFrame[] frames;
         private readonly SemaphoreSlim ackGate = new(0);
         private readonly object gate = new();
         private readonly List<string> started = new();
         private readonly List<string> completed = new();
+        private int disposedThrows;
 
         public GatedModem(params Ax25InboundFrame[] frames) => this.frames = frames;
 
         public bool ThrowTimeoutOnce { get; set; }
+        public bool ThrowDisposedOnce { get; set; }
+        public bool ThrowDisposedTwice { get; set; }
         public bool Disposed { get; private set; }
+        public bool Reconnecting { get; set; }
+        public bool IsReconnecting => Reconnecting;
         public byte? TxDelay { get; private set; }
         public byte? Persistence { get; private set; }
         public byte? SlotTime { get; private set; }
@@ -230,6 +287,21 @@ public sealed class PacingKissModemTests
             return false;
         }
 
+        public async Task<bool> WaitForStartedCountAsync(int count)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < deadline)
+            {
+                lock (gate) { if (started.Count >= count)
+                    {
+                        return true;
+                    }
+                }
+                await Task.Delay(5).ConfigureAwait(false);
+            }
+            return false;
+        }
+
         public async Task<TxCompletion> SendAwaitingCompletionAsync(
             ReadOnlyMemory<byte> ax25, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
         {
@@ -238,6 +310,17 @@ public sealed class PacingKissModemTests
             {
                 started.Add(payload);
             }
+
+#pragma warning disable CA1513 // test double: unconditional throw to simulate a disposed inner client
+            if (ThrowDisposedOnce || ThrowDisposedTwice)
+            {
+                var throws = ++disposedThrows;
+                if (ThrowDisposedOnce && throws == 1 || ThrowDisposedTwice && throws <= 2)
+                {
+                    throw new ObjectDisposedException("KissTcpClient");
+                }
+            }
+#pragma warning restore CA1513
 
             if (ThrowTimeoutOnce)
             {
