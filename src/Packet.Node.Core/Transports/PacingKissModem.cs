@@ -117,9 +117,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
             {
                 try
                 {
-                    var receipt = await inner
-                        .SendAwaitingCompletionAsync(job.Frame, job.Timeout ?? pacingTimeout, ct)
-                        .ConfigureAwait(false);
+                    var receipt = await SendWithReconnectRetryAsync(job, ct).ConfigureAwait(false);
                     job.Receipt?.TrySetResult(receipt);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -158,6 +156,47 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
             {
                 leftover.Receipt?.TrySetCanceled(CancellationToken.None);
             }
+        }
+    }
+
+    // Sends a frame awaiting TX-completion, retrying once if the inner transport was
+    // swapped mid-flight by a reconnect (ObjectDisposedException from the dead client).
+    // Without this, a KISS-TCP bounce drops the in-flight frame and relies entirely on
+    // AX.25 T1 retransmit — which cannot recover during sustained flapping (#664).
+    private async Task<TxCompletion> SendWithReconnectRetryAsync(TxJob job, CancellationToken ct)
+    {
+        var timeout = job.Timeout ?? pacingTimeout;
+        try
+        {
+            return await inner.SendAwaitingCompletionAsync(job.Frame, timeout, ct).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) when (inner is ITransportLinkState { IsReconnecting: true })
+        {
+            // The inner KissTcpClient was disposed by ReconnectingKissModem mid-send.
+            // Wait for the fresh link, then re-send on it rather than dropping the frame.
+            LogPaceLinkSwapRetry();
+            await WaitForReconnectAsync(ct).ConfigureAwait(false);
+            return await inner.SendAwaitingCompletionAsync(job.Frame, timeout, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task WaitForReconnectAsync(CancellationToken ct)
+    {
+        // Poll the link-state; the reconnect backoff is at most ~30 s per attempt.
+        // Bound the wait so a permanently-down link still degrades to the old
+        // drop-and-let-T1-retransmit behaviour rather than wedging the pump forever.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(35));
+        try
+        {
+            while (inner is ITransportLinkState { IsReconnecting: true })
+            {
+                await Task.Delay(50, timeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Bounded wait elapsed — proceed with the retry attempt regardless.
         }
     }
 
@@ -237,6 +276,10 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     [LoggerMessage(EventId = 5111, Level = LogLevel.Debug,
         Message = "ACKMODE pace: TX-completion echo not seen within {TimeoutMs} ms; releasing next frame.")]
     private partial void LogPaceTimeout(int timeoutMs);
+
+    [LoggerMessage(EventId = 5113, Level = LogLevel.Debug,
+        Message = "ACKMODE pace: inner transport disposed mid-send (link reconnecting); retrying on fresh link.")]
+    private partial void LogPaceLinkSwapRetry();
 
     [LoggerMessage(EventId = 5112, Level = LogLevel.Warning,
         Message = "ACKMODE pace: paced send faulted; releasing next frame.")]
