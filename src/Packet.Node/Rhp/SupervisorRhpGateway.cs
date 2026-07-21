@@ -18,9 +18,10 @@ namespace Packet.Node.Rhp;
 /// </summary>
 /// <remarks>
 /// Port labels are XRouter-convention: <b>1-indexed, in config order</b> (<c>"1"</c> = the
-/// first <c>ports:</c> entry); null means the first port. R-2 limitation (named in
-/// <c>docs/rhp2-server.md</c>): <c>local</c> must be the node's own callsign — originating
-/// from an arbitrary app callsign needs the R-3 multi-callsign engine work.
+/// first <c>ports:</c> entry). For outbound opens, null resolves a locally-registered app
+/// (loopback) or errors — it does not silently default to the first port. R-2 limitation
+/// (named in <c>docs/rhp2-server.md</c>): <c>local</c> must be the node's own callsign —
+/// originating from an arbitrary app callsign needs the R-3 multi-callsign engine work.
 /// </remarks>
 public sealed class SupervisorRhpGateway : IRhpGateway
 {
@@ -69,20 +70,18 @@ public sealed class SupervisorRhpGateway : IRhpGateway
             throw new RhpGatewayException(RhpErrorCode.InvalidRemoteAddress, $"'{remote}' is not a valid AX.25 callsign.");
         }
 
-        // The same connect-routing the node console grew (docs/rhp2-server.md): with NO explicit
-        // port, a target the node is locally registered for (an app on its own SSID) is reached by
-        // an in-process loopback crossconnect — no RF, no second SABM — so one local app can open
-        // another, and the target app sees the originating callsign (open.local, or the node) as
-        // the caller. An EXPLICIT port is an explicit "go to RF" and always dials. Port labels are
-        // 1-indexed config order; null = the first port (XRouter convention). NET/ROM stays out of
-        // scope here (aliases come later).
+        // With NO explicit port, a target the node is locally registered for (an app on its
+        // own SSID) is reached by an in-process loopback crossconnect — no RF, no second SABM.
+        // An EXPLICIT port is an explicit "go to RF" and always dials. A null port that does
+        // NOT match a local app is an error (#665): silently defaulting to ports[0] dialled
+        // the wrong port when an upstream bug stripped the label to null (GB7RDG cutover).
         IOutboundConnector connector;
         if (string.IsNullOrWhiteSpace(portLabel))
         {
             var callerPeerId = localOverride?.ToString() ?? nodeCall;
             connector = supervisor.TryResolveLocalAppConnector(target, callerPeerId, NodeTransportKind.Ax25)
-                ?? supervisor.ResolveConnector(ports[0].Id, localOverride)
-                ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort, $"Port '{ports[0].Id}' is not running.");
+                ?? throw new RhpGatewayException(RhpErrorCode.NoSuchPort,
+                    $"No port specified and '{target}' is not a locally registered app; an explicit port (1..{ports.Count}) is required for an outbound dial.");
         }
         else
         {

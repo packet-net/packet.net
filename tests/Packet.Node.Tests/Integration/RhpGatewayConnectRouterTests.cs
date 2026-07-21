@@ -147,6 +147,22 @@ public sealed class RhpGatewayConnectRouterTests
         Assert.Contains("No such port '2' (1..1)", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_null_port_with_no_local_app_throws_NoSuchPort_not_a_silent_dial()
+    {
+        // #665: a null/blank port must NOT silently default to ports[0] for an RF dial.
+        var (host, config) = await StartedHostAsync(new SharedRadioBus());
+        using var _ = host;
+
+        var gateway = new SupervisorRhpGateway(host, config);
+
+        var ex = await Assert.ThrowsAsync<RhpGatewayException>(() =>
+            gateway.OpenAx25StreamAsync(portLabel: null, local: null, remote: "GB7RDG"));
+
+        Assert.Equal(RhpErrorCode.NoSuchPort, ex.ErrCode);
+        Assert.Contains("explicit port", ex.Message, StringComparison.Ordinal);
+    }
+
     private static async Task<string> ReadTextAsync(INodeConnection conn, TimeSpan budget)
     {
         using var cts = new CancellationTokenSource(budget);
