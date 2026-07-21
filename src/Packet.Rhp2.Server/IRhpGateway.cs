@@ -15,7 +15,8 @@ public interface IRhpGateway
     /// Open an outbound AX.25 stream (the wire's <c>open</c> with the Active flag).
     /// </summary>
     /// <param name="portLabel">The client-supplied 1-indexed port label (<c>"1"</c> = the first
-    /// configured port), or null for the first port.</param>
+    /// configured port). Null resolves a locally-registered app (loopback) or errors — it does
+    /// NOT silently default to the first port for an RF dial.</param>
     /// <param name="local">The client-requested local (originating) callsign, or null for the
     /// node's own. R-2 requires this to be the node callsign (see the named limitation).</param>
     /// <param name="remote">The destination callsign text (validated by the gateway).</param>
