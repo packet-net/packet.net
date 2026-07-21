@@ -55,7 +55,7 @@ public sealed class RhpUiDatagramIntegrationTests
 
         var gateway = new SupervisorRhpGateway(host, config);
         var info = "hello"u8.ToArray();
-        await gateway.SendUiAsync(portLabel: "1", local: AppCall.ToString(), remote: "APRS", info, pid: 0xCC);
+        await gateway.SendUiAsync(portLabel: "p1", local: AppCall.ToString(), remote: "APRS", info, pid: 0xCC);
 
         var frame = await remote.WaitForUiAsync(TimeSpan.FromSeconds(10));
         Assert.True(frame.IsUi);
@@ -77,7 +77,7 @@ public sealed class RhpUiDatagramIntegrationTests
 
         var gateway = new SupervisorRhpGateway(host, config);
         var heard = new TaskCompletionSource<UiDatagram>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var subscription = gateway.RegisterUiListener(portLabel: "1", dg =>
+        using var subscription = gateway.RegisterUiListener(portLabel: "p1", dg =>
         {
             heard.TrySetResult(dg);
             return Task.CompletedTask;
@@ -90,7 +90,7 @@ public sealed class RhpUiDatagramIntegrationTests
         Assert.Equal(RemoteCall.ToString(), dg.Source);   // the frame's true source → recv.remote
         Assert.Equal("APRS", dg.Dest);                    // the frame's destination → recv.local
         Assert.Equal((byte)0xF0, dg.Pid);
-        Assert.Equal("1", dg.PortLabel);                  // the 1-indexed arrival port
+        Assert.Equal("p1", dg.PortLabel);                 // the arrival port id
         Assert.Equal("!beacon"u8.ToArray(), dg.Info.ToArray());
     }
 

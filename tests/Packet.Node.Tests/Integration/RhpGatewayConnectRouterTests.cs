@@ -136,15 +136,15 @@ public sealed class RhpGatewayConnectRouterTests
         using var _ = host;
 
         // DAPPS-7 is registered as a local app, but an EXPLICIT port is "go to RF": the gateway
-        // dials, and port 2 doesn't exist (only p1) → NoSuchPort, never a crossconnect.
+        // dials, and "nope" doesn't match any configured port id (only p1) → NoSuchPort.
         using var registration = host.Supervisor!.RegisterAppCallsign(AppCall, portId: null, (_, _) => Task.CompletedTask);
         var gateway = new SupervisorRhpGateway(host, config);
 
         var ex = await Assert.ThrowsAsync<RhpGatewayException>(() =>
-            gateway.OpenAx25StreamAsync(portLabel: "2", local: null, remote: AppCall.ToString()));
+            gateway.OpenAx25StreamAsync(portLabel: "nope", local: null, remote: AppCall.ToString()));
 
         Assert.Equal(RhpErrorCode.NoSuchPort, ex.ErrCode);
-        Assert.Contains("No such port '2' (1..1)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("No such port 'nope'", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -14,9 +14,9 @@ public interface IRhpGateway
     /// <summary>
     /// Open an outbound AX.25 stream (the wire's <c>open</c> with the Active flag).
     /// </summary>
-    /// <param name="portLabel">The client-supplied 1-indexed port label (<c>"1"</c> = the first
-    /// configured port). Null resolves a locally-registered app (loopback) or errors — it does
-    /// NOT silently default to the first port for an RF dial.</param>
+    /// <param name="portLabel">The operator-defined port id (e.g. <c>"vhf-2m"</c>), matched
+    /// case-insensitively against the configured ports. Null resolves a locally-registered app
+    /// (loopback) or errors — it does NOT silently default to the first port for an RF dial.</param>
     /// <param name="local">The client-requested local (originating) callsign, or null for the
     /// node's own. R-2 requires this to be the node callsign (see the named limitation).</param>
     /// <param name="remote">The destination callsign text (validated by the gateway).</param>
@@ -29,10 +29,10 @@ public interface IRhpGateway
     /// Register <paramref name="local"/> as a callsign the node answers for (the wire's
     /// <c>bind</c>+<c>listen</c>): every inbound AX.25 connection addressed to it is handed to
     /// <paramref name="onAccepted"/> as an <see cref="INodeConnection"/> together with the
-    /// 1-indexed label of the port it arrived on (the <c>accept.port</c> string). Dispose the
-    /// returned registration to stop listening (live sessions are unaffected).
+    /// id of the port it arrived on (the <c>accept.port</c> string). Dispose the returned
+    /// registration to stop listening (live sessions are unaffected).
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (1-indexed label), or null for all ports —
+    /// <param name="portLabel">Restrict to one port (by id), or null for all ports —
     /// the wire's null bind port.</param>
     /// <exception cref="RhpGatewayException">6 — not a valid callsign; 9 — already
     /// listening / the node's own callsign; 10 — no such port.</exception>
@@ -45,8 +45,8 @@ public interface IRhpGateway
     /// (<paramref name="remote"/>), bypassing connected-mode entirely. This is the IP-over-AX.25
     /// (pid <c>0xCC</c>) / native beacon / APRS (pid <c>0xF0</c>) path.
     /// </summary>
-    /// <param name="portLabel">The client-supplied 1-indexed port label (<c>"1"</c> = the first
-    /// configured port), or null for the first port.</param>
+    /// <param name="portLabel">The port id to emit on (e.g. <c>"vhf-2m"</c>), matched
+    /// case-insensitively; null for the first configured port.</param>
     /// <param name="local">The UI frame's source (originating) callsign.</param>
     /// <param name="remote">The UI frame's destination callsign.</param>
     /// <param name="info">The UI frame's information field.</param>
@@ -61,12 +61,12 @@ public interface IRhpGateway
     /// Register for inbound AX.25 <b>UI datagrams</b> (the wire's DGRAM <c>recv</c> path):
     /// every received UI frame on the scoped port(s) is handed to <paramref name="onReceived"/>
     /// as a <see cref="UiDatagram"/> with the frame's true source / destination / PID / info and
-    /// the 1-indexed arrival port label. This tap is <b>promiscuous</b> — it hears broadcast UI
+    /// the arrival port id. This tap is <b>promiscuous</b> — it hears broadcast UI
     /// (APRS, IP-over-AX.25) regardless of the frame's destination, exactly how the NET/ROM
     /// service taps NODES — so a bound RHP dgram socket sees all UI on its port and the client
     /// filters by <c>recv.local</c>. Dispose the returned registration to stop hearing.
     /// </summary>
-    /// <param name="portLabel">Restrict to one port (1-indexed label), or null for all ports —
+    /// <param name="portLabel">Restrict to one port (by id), or null for all ports —
     /// the wire's null bind port.</param>
     /// <exception cref="RhpGatewayException">10 — no such port.</exception>
     IDisposable RegisterUiListener(string? portLabel, Func<UiDatagram, Task> onReceived);
@@ -75,13 +75,13 @@ public interface IRhpGateway
 /// <summary>
 /// One inbound AX.25 UI datagram surfaced to the RHP dgram <c>recv</c> path: the frame's true
 /// source / destination (surfaced verbatim — the tap is promiscuous), its Layer-3 PID, its
-/// information field, and the 1-indexed label of the port it arrived on.
+/// information field, and the id of the port it arrived on.
 /// </summary>
 /// <param name="Source">The frame's source callsign (→ <c>recv.remote</c>).</param>
 /// <param name="Dest">The frame's destination callsign (→ <c>recv.local</c>).</param>
 /// <param name="Pid">The frame's Layer-3 PID (→ <c>recv.pid</c>).</param>
 /// <param name="Info">The frame's information field (→ <c>recv.data</c>).</param>
-/// <param name="PortLabel">The 1-indexed arrival port label (→ <c>recv.port</c>).</param>
+/// <param name="PortLabel">The arrival port id (→ <c>recv.port</c>).</param>
 public sealed record UiDatagram(
     string Source, string Dest, byte Pid, ReadOnlyMemory<byte> Info, string PortLabel);
 
