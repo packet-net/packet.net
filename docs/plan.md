@@ -1258,6 +1258,16 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-08-03 — An out-of-range KISS knob is now a 422 that names the field (#672), not an opaque 400
+
+The API-side half of the panel bug fixed earlier today. `KissParams.TxDelay` / `Persistence` / `SlotTime` / `TxTail` were `byte?`, matching the KISS wire, so a value outside 0..255 failed **JSON model binding** — the request died before `NodeConfigValidator` ever ran and the caller got a bare 400 with nothing naming the field. Every *other* bad value on that endpoint is a 422 `ValidationProblem`. The panel no longer produces one, but `curl`, `axcall`, `pdn config import` and the mobile app still could.
+
+- **`KissParams` widened to `int?`**, with the reason recorded on the record itself: the wire is still a byte, and `ICsmaChannelParams` is still typed `byte` — that seam is the truth and does not move. New `KissParamsValidator` enforces 0..255 per knob with a message that **names the unit** (`kiss.txDelay must be in 0..255 (in units of 10 ms, so 30 means 300 ms and 255 (2.55 s) is the longest KISS can express) — got 300`), because thinking in milliseconds is the whole trap.
+- **`PortSupervisor.ApplyKissParamsToModemAsync` clamps rather than casts** at the byte seam. Validated config can't reach the clamp; an unchecked cast would silently wrap a bad value into a plausible one (300 → 44) if some future path ever skipped validation.
+- **Tests:** three validator cases (300 / 256 / -1 rejected by name and unit; both ends of the range accepted; all four knobs reported at once rather than just the first) plus two API-level cases proving the status code is the point — `POST /ports` with `txDelay: 300` is a 422 whose body names `kiss.txDelay`, and the same request with 30 is accepted. Node suite green (1997 passed, 7 skipped).
+- **Audit asked for in the issue:** no other `NodeConfig*` property uses a narrow numeric type — `byte`/`short`/`sbyte`/`ushort` appear nowhere else in `Configuration/`, so this was the only instance of the trap.
+- **[`docs/node-api.yaml`](node-api.yaml)** gains the ranges, the units, and a schema description. Doing that turned up that **the spec had never machine-parsed**: an unquoted `{id}` inside a flow sequence on line 24 is a YAML mapping, so any reader choked on the document. Quoted; it now loads (49 paths).
+
 ### 2026-08-03 — RELEASE: node-v0.37.0 (LAN bind + login by default, panel KISS units fix) — and the interop gate was found dark
 
 Node-train-only release off green `main` (`bbb2e57`). **No `lib-v*` this cycle:** `git diff node-v0.36.2..main -- src/` excluding `Packet.Node*` is empty — nothing in the 17 published packages moved — so Step 3's downstream `axcall` / `packet-term-tui` pin bumps are skipped too. `headend/` unchanged (Step 2b skipped); `ax25-ts` moved only for a parity exception, no library change (Step 4 skipped).

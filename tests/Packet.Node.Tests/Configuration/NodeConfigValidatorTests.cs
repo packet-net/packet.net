@@ -32,6 +32,54 @@ public class NodeConfigValidatorTests
         Validator.Validate(Valid(TcpPort("vhf"))).IsValid.Should().BeTrue();
     }
 
+    // #672: every KISS knob is a byte on the wire (0..255). They are int? on the config
+    // record so an out-of-range value is a NAMED validation failure — a 422 carrying the
+    // field and its units — instead of the bare 400 a byte? produced when JSON model
+    // binding refused it. The trap is thinking in milliseconds: 300 ms of TX delay is 30.
+    [Theory]
+    [InlineData(300)]   // the real report: milliseconds written into a 10 ms-unit byte
+    [InlineData(256)]   // one past the wire ceiling
+    [InlineData(-1)]
+    public void Rejects_a_kiss_param_outside_the_byte_the_wire_carries(int txDelay)
+    {
+        var port = TcpPort("vhf") with { Kiss = new KissParams { TxDelay = txDelay } };
+        var result = Validator.Validate(Valid(port));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle()
+            .Which.ErrorMessage.Should()
+                .Contain("kiss.txDelay").And
+                .Contain("0..255").And
+                .Contain("10 ms", "the message has to name the unit — that is the whole trap")
+                .And.Contain(txDelay.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "quoting the offending value is what makes it obvious");
+    }
+
+    [Fact]
+    public void Accepts_the_kiss_params_at_both_ends_of_the_wire_range()
+    {
+        var floor = TcpPort("a") with { Kiss = new KissParams { TxDelay = 0, Persistence = 0, SlotTime = 0, TxTail = 0 } };
+        var ceiling = TcpPort("b", port: 8002) with { Kiss = new KissParams { TxDelay = 255, Persistence = 255, SlotTime = 255, TxTail = 255 } };
+
+        Validator.Validate(Valid(floor, ceiling)).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Names_every_out_of_range_kiss_knob_not_just_the_first()
+    {
+        var port = TcpPort("vhf") with
+        {
+            Kiss = new KissParams { TxDelay = 300, Persistence = 999, SlotTime = 300, TxTail = 500 },
+        };
+        var result = Validator.Validate(Valid(port));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Select(e => e.ErrorMessage).Should().HaveCount(4);
+        string.Join(" ", result.Errors.Select(e => e.ErrorMessage))
+            .Should().Contain("kiss.txDelay").And.Contain("kiss.persistence")
+            .And.Contain("kiss.slotTime").And.Contain("kiss.txTail");
+    }
+
     [Fact]
     public void Accepts_a_valid_mdns_instance_name()
     {

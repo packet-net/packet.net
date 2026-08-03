@@ -165,6 +165,59 @@ public sealed class PortsApiTests : IDisposable
         problem!.Errors.Should().NotBeEmpty();
     }
 
+    // #672 — the shape of the failure matters as much as the failure. A KISS knob outside
+    // the byte the wire carries used to fail JSON model binding (the record typed them
+    // byte?), so the API answered a bare 400 with nothing naming the field: the operator
+    // who wrote 300 thinking in milliseconds got no clue which of ten fields was wrong.
+    // It is now an ordinary 422 ValidationProblem like every other bad value.
+    [Fact]
+    public async Task Post_an_out_of_range_kiss_param_returns_422_naming_the_field()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        var body = new
+        {
+            id = "2m-1",
+            enabled = false,
+            transport = new { kind = "kiss-tcp", host = "127.0.0.1", port = 8101 },
+            kiss = new { txDelay = 300, slotTime = 100, txTail = 50, persistence = 63 },
+        };
+
+        var resp = await client.PostAsJsonAsync("/api/v1/ports", body);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity,
+            "an out-of-range value is a validation failure, not an unparseable request");
+
+        var problem = await resp.Content.ReadFromJsonAsync<ValidationProblem>(Web);
+        problem.Should().NotBeNull();
+        problem!.Errors.Should().NotBeEmpty();
+        string.Join(" ", problem.Errors.Select(e => e.Message))
+            .Should().Contain("kiss.txDelay").And.Contain("0..255").And.Contain("10 ms");
+
+        // And the port was not created.
+        (await GetPortsAsync(client)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Post_an_in_range_kiss_param_is_accepted()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        // The same intent expressed correctly: 300 ms of TX delay is 30 wire units.
+        var body = new
+        {
+            id = "2m-1",
+            enabled = false,
+            transport = new { kind = "kiss-tcp", host = "127.0.0.1", port = 8101 },
+            kiss = new { txDelay = 30, slotTime = 10, txTail = 5, persistence = 63 },
+        };
+
+        (await client.PostAsJsonAsync("/api/v1/ports", body)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GetPortsAsync(client)).Should().ContainSingle();
+    }
+
     [Fact]
     public async Task Put_an_unknown_id_returns_404()
     {
