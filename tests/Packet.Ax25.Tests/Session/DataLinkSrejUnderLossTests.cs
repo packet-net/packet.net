@@ -178,6 +178,36 @@ public class DataLinkSrejUnderLossTests
             asResponse
                 ? "an SREJ RESPONSE selectively retransmits N(r)=1"
                 : "an SREJ COMMAND is response-only per §4.3.2.4 — Default retransmits nothing (matches direwolf/linbpq)");
+
+        // Either way the N(R) acknowledgement is honoured: SrejCommandIgnored suppresses the
+        // RETRANSMISSION, not the ack — same as linbpq, which gates only the resend on RESP.
+        rig.A.Context.VA.Should().Be((byte)1,
+            "the SREJ's N(r)=1 acks through frame 0 whichever form it arrived in");
+    }
+
+    // The other half of the SrejCommandIgnored pair (packet-net/packet.net#674). Clearing the
+    // quirk — as StrictlyFaithful does — runs the CORRECTED figc4.5 exactly as drawn, and the
+    // corrected figure gives the command paths (t24_srej_received_no_yes_*_no) a native
+    // single-frame selective retransmit: `PushOldIFrameNROnQueue | LMDataRequest | StopT3 |
+    // StartT1 | ClearAcknowledgePending`. So with the quirk off the command form DOES honour
+    // the request. Without this test the flag would be strict-rejects-with-nothing-accepting,
+    // which the repo treats as a smell — it would mean we could not say what the flag buys.
+    [Fact]
+    public void Srej_command_retransmits_when_the_ignore_quirk_is_cleared()
+    {
+        var rig = BuildPair();
+        DriveIntoTimerRecovery(rig);
+        rig.A.Context.Quirks = rig.A.Context.Quirks with { SrejCommandIgnored = false };
+
+        var iFramesFromA = CaptureAOutboundIFramesSwallowed(rig);
+        var srej = Ax25Frame.Srej(destination: rig.A.Context.Local, source: rig.A.Context.Remote, nr: 1, isCommand: true, pollFinal: true);
+        rig.A.Session.PostEvent(Ax25FrameClassifier.Classify(srej));
+        Settle(rig);
+
+        Log("after one SREJ(nr=1) COMMAND with SrejCommandIgnored cleared", rig);
+        iFramesFromA.Should().Equal(new byte[] { 1 },
+            "the corrected figc4.5 command path selectively retransmits N(r)=1 — that is what the quirk suppresses by default");
+        rig.A.Context.VA.Should().Be((byte)1, "the SREJ N(r)=1 acks through frame 0 either way");
     }
 
     // packet-net/packet.net#233 (b)+(c): the same recovery as

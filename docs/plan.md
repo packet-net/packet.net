@@ -1258,6 +1258,31 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-08-03 — The interop parity guard runs last, so bookkeeping can no longer skip test phases
+
+The hardening flagged in the release entry below. `interop.yml` ran the 3-way parity drift guard *before* the stack came up, so a guard failure skipped every test phase after it — which is how an unexcepted logging label silently disabled the ax25-ts integration suite and the whole NET/ROM phase for a fortnight. The guard now runs **after** phase C with `if: ${{ !cancelled() }}`, so it still fails the job but reports alongside the tests rather than pre-empting them; the pico-node clone (only the guard needs it) moved down with it, while the ax25-ts clone stays early because phase B uses it. Step order is now build → A → B → C → clone → guard → tear down. Verified green on `main` (`49dc0b0`, and again on `207e5cd`).
+
+*(This entry is also the fix for that push's `plan-check` red: the PR carried `[skip-plan]` in its body, but the override channel is **commit messages only** — a squash commit does not carry the PR body. The change was plan-relevant anyway, `.github/workflows/` being in the plan-relevant path set, so it earns a real entry rather than an override.)*
+
+### 2026-08-03 — The SREJ-command call: `SrejCommandIgnored` (default on), and the SDL pin comes off hold (#674)
+
+The sweep's held pin, resolved. `Packet.Ax25.Sdl` 0.10.2 carries the upstream figc4.5 correction ([ax25sdl#78](https://github.com/packet-net/ax25sdl/pull/78) ← [ax25spec#65](https://github.com/packethacking/ax25spec/pull/65)) and is now the pin.
+
+**What actually changed, read off the tables rather than inferred.** Dumping `DataLink_TimerRecovery.Transitions` from both packages:
+
+| Path | 0.10.0 (buggy figure) | 0.10.2 (corrected) |
+|---|---|---|
+| command `t24_srej_received_no_yes_yes_no` | `… │ InvokeRetransmission` — go-back-N only | `… │ PushOldIFrameNROnQueue │ LMDataRequest │ StopT3 │ StartT1 │ ClearAcknowledgePending` |
+| response `t24_srej_received_yes_yes_yes_no` | `… │ PushFrameOnQueue │ … │ InvokeRetransmission` | the same native selective retransmit |
+
+So the corrected figure now does **natively** what `Ax25Spec38SrejSelectiveRetransmit` was synthesising for the response path — and extends it to the command path, which had retransmitted nothing only because that quirk skipped its lone go-back-N verb. The no-op was an accident of a buggy figure, not a decision, and the existing test said as much and asked for a revisit.
+
+**The decision: `SrejCommandIgnored`, default `true`.** Process the N(R) acknowledgement an SREJ command carries; ignore the retransmission it requests. §4.3.2.4 makes SREJ response-only, so a peer sending one is already off-spec, and no surveyed stack acts on receiving one (direwolf omits the path outright; LinBPQ gates the resend on `MSGFLAG & RESP`) while both still process the ack. `StrictlyFaithful` clears the flag, running the corrected figure exactly as drawn. Chosen this way round because the repo's discipline is that a behaviour change is a *named* decision defaulting to what we already did — not something absorbed in a dependency bump. **If the preference is instead "follow the corrected figure", flipping the default is one line plus the paired test's expectations.**
+- **Implementation:** `ActionDispatcher` suppresses the retransmit *tail* (`Push*OnQueue`, `LMDataRequest`, `StopT3`, `StartT1`, `ClearAcknowledgePending`, `InvokeRetransmission`) on an `SrejReceived` whose frame `IsCommand`. Everything before the push is acknowledgement bookkeeping and still runs; the timer verbs are the "we just transmitted" tail that must not fire when nothing is transmitted. That reproduces the pre-correction behaviour exactly.
+- **Paired test, both directions** (`DataLinkSrejUnderLossTests`): the existing default-behaviour test passes **unchanged** under the new tables — the point of the exercise — now also asserting V(a) advances so the ack half is pinned; a new test clears the quirk and proves the command form then retransmits N(r)=1. A flag whose "off" state nothing exercises is the smell the audit doc warns about.
+- **Audit row** added to [`strict-vs-pragmatic-audit.md`](strict-vs-pragmatic-audit.md) with the direwolf/LinBPQ evidence, the known cost (a noise-flipped C/R bit on a genuine SREJ response is ignored, so that recovery waits for T1), and the note that **`Ax25Spec38SrejSelectiveRetransmit` is now inert** — it rewrites `Push*OnQueue` and skips `InvokeRetransmission`, and neither appears on any SREJ path in 0.10.2. Its own doc says to delete it once a corrected figc4.5 ships; retirement is a coordinated three-repo inventory change, so it is left for its own PR.
+- **Parity legs landed first**, so the drift guard never saw a gap: [ax25-ts#75](https://github.com/packet-net/ax25-ts/pull/75) adds `srejCommandIgnored` with the same semantics **and bumps its own `ax25sdl` pin to ^0.10.2** — without that the TS flag would have existed for inventory parity while being inert, which is not parity in any sense that matters (3 tests; 1222 pass). [pico-node#71](https://github.com/packet-net/pico-node/pull/71) maps the item to the `srej` vector set alongside its two siblings.
+
 ### 2026-08-03 — An out-of-range KISS knob is now a 422 that names the field (#672), not an opaque 400
 
 The API-side half of the panel bug fixed earlier today. `KissParams.TxDelay` / `Persistence` / `SlotTime` / `TxTail` were `byte?`, matching the KISS wire, so a value outside 0..255 failed **JSON model binding** — the request died before `NodeConfigValidator` ever ran and the caller got a bare 400 with nothing naming the field. Every *other* bad value on that endpoint is a 422 `ValidationProblem`. The panel no longer produces one, but `curl`, `axcall`, `pdn config import` and the mobile app still could.

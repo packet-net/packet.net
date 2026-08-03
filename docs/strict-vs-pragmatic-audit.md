@@ -92,6 +92,20 @@ Genuine de-facto pragmatism (a *connect-strategy* knob, not a figure defect and 
 |---|---|---|---|---|---|
 | `Ax25ListenerOptions.PreConnectXidNegotiatesSrej` | The AX.25 v2.2 figures negotiate XID **after** the connect: figc4.6 raises MDL-NEGOTIATE on the UA (what the v2.2/SABME path + direwolf do). | On a **mod-8** dial, run an XID command/response **before** the SABM, advertising SREJ + SREJ-multiframe at mod-8; the peer's XID response sets `SrejEnabled` (mutual result). If no XID response arrives, revert to go-back-N and proceed to a plain SABM — always safe. | **LinBPQ does mod-8 SREJ but only when XID *precedes* the SABM**: `L2Code.c ProcessXIDCommand` runs on the no-active-link path and sets `LINK->Ver2point2` (switching its reject scheme to SREJ); an XID on an established link is ignored (verified: BPQ never answers a post-connect XID on the netsim port). Proven on the wire (`SrejXidViaNetsim`): XID-before-SABM → BPQ SREJs a dropped I-frame; plain SABM (no XID) → BPQ REJs it (go-back-N). | `true` | the historical plain-SABM mod-8 dial (always go-back-N; no pre-connect XID). |
 
+### SREJ sent as a command — the de-facto accommodation (`SrejCommandIgnored`)
+
+A session **quirk** (`Ax25SessionQuirks`), default **on**, cleared by `StrictlyFaithful`. It suppresses the *retransmission* an SREJ **command** asks for while still honouring the N(R) acknowledgement it carries.
+
+| Knob | Spec / figure model | De-facto (default-on) behaviour | Evidence | Default | Off restores |
+|---|---|---|---|---|---|
+| `Ax25SessionQuirks.SrejCommandIgnored` | The **corrected** figc4.5 (`ax25sdl` 0.10.1+ ← `packethacking/ax25spec#65`) gives all four SREJ-received paths a native single-frame selective retransmit — including the command paths `t24_srej_received_no_yes_*_no`, which now carry `PushOldIFrameNROnQueue │ LMDataRequest │ StopT3 │ StartT1 │ ClearAcknowledgePending`. Taken literally, a received SREJ command is actionable. | Process the acknowledgement, ignore the retransmission request. | **§4.3.2.4** — "The SREJ frame is only sent as a response" — so a peer sending one is already off-spec. **direwolf** omits the path outright (`src/ax25_link.c` `srej_frame`: *"Command path has been omitted because SREJ can only be response"*). **LinBPQ** gates the resend on `if (MSGFLAG & RESP)` (`L2Code.c` SFRAME) while still processing the ack. Nobody sends one; nobody acts on one. | `true` | the corrected figure exactly as drawn — the command form selectively retransmits N(r). |
+
+**Why this needed a flag at all.** Before the correction, the command paths carried *only* the go-back-N `Invoke Retransmission`, which `Ax25Spec38SrejSelectiveRetransmit` skipped — so the command form retransmitted nothing **by accident**, as a side effect of working around a buggy figure (packet-net/packet.net#234 documented that as deliberate-and-spec-aligned, and predicted this revisit). The correction made it actionable for the first time, which is a real behaviour change and therefore a named decision rather than something absorbed in a dependency bump (#674).
+
+**Known cost.** A genuine SREJ *response* whose C/R bit is flipped by noise reads as a command and is ignored, so that recovery waits for T1 rather than getting a selective retransmit. Every surveyed stack makes the same trade.
+
+**Note on `Ax25Spec38SrejSelectiveRetransmit`.** With the corrected tables that quirk is **inert**: it rewrites `Push*OnQueue` verbs and skips `InvokeRetransmission`, and neither appears on any SREJ path in 0.10.2 (verified by dumping `DataLink_TimerRecovery.Transitions` from both packages). Its own doc says to delete it once ax25sdl ships a corrected figc4.5, which has now happened — retirement is a coordinated three-repo inventory change, tracked separately.
+
 ### XID Classes-of-Procedures ABM bit (spec worked-example defect)
 
 | Location | Choice | Why it's not a flag |

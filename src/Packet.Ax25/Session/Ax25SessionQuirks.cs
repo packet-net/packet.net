@@ -134,6 +134,43 @@ public sealed record Ax25SessionQuirks
     public bool Ax25Spec38SrejSelectiveRetransmit { get; init; } = true;
 
     /// <summary>
+    /// Ignore the retransmission request carried by a received SREJ sent as a
+    /// <b>command</b>, while still honouring the acknowledgement it carries. Default
+    /// <c>true</c> — matching every surveyed implementation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// AX.25 v2.2 §4.3.2.4 says "The SREJ frame is only sent as a response", so a peer
+    /// that sends one as a command is already off-spec, and no deployed stack acts on
+    /// receiving one: direwolf omits the path outright (<c>src/ax25_link.c</c>
+    /// <c>srej_frame</c>: "Command path has been omitted because SREJ can only be
+    /// response") and linbpq gates the resend on <c>if (MSGFLAG &amp; RESP)</c>
+    /// (<c>L2Code.c</c> SFRAME). Both still process the N(R) acknowledgement, and so do
+    /// we — this quirk suppresses only the retransmission.
+    /// </para>
+    /// <para>
+    /// <b>Why it needed a flag (packet-net/packet.net#674).</b> Until the corrected
+    /// figc4.5 landed (<c>ax25sdl</c> 0.10.1 ← <c>packethacking/ax25spec#65</c>), the
+    /// command paths carried <i>only</i> the go-back-N <c>Invoke Retransmission</c>,
+    /// which <see cref="Ax25Spec38SrejSelectiveRetransmit"/> skipped — so the command
+    /// form retransmitted nothing <b>by accident</b>, as a side effect of working around
+    /// a buggy figure. The correction gives all four SREJ paths a native single-frame
+    /// selective retransmit, which makes the command form actionable for the first time.
+    /// That is a genuine behaviour change, so it is a named decision rather than
+    /// something absorbed in a dependency bump: the default keeps what packet.net has
+    /// always done and what the de-facto stacks do; <see cref="StrictlyFaithful"/>
+    /// clears it so the corrected figure runs exactly as drawn.
+    /// </para>
+    /// <para>
+    /// The cost of the default is honest and small: a genuine SREJ <i>response</i> whose
+    /// C/R bit was flipped by noise reads as a command and is ignored, so that recovery
+    /// waits for T1 instead of a selective retransmit. Every surveyed stack makes the
+    /// same trade.
+    /// </para>
+    /// </remarks>
+    public bool SrejCommandIgnored { get; init; } = true;
+
+    /// <summary>
     /// Work around <c>packethacking/ax25spec#40</c>: figc4.4's out-of-sequence
     /// <c>I_received</c> handling has no receive-window guard. Any frame whose
     /// N(S) ≠ V(R) is treated as a future gap and gets SREJ'd (or REJ'd) —
@@ -502,6 +539,7 @@ public sealed record Ax25SessionQuirks
     {
         SegmentFirstCarriesL3Pid = false,
         Ax25Spec38SrejSelectiveRetransmit = false,
+        SrejCommandIgnored = false,
         Ax25Spec40DiscardOutOfWindowIFrames = false,
         Ax25Spec41KarnSrtSampling = false,
         Ax25Spec42SrejTargetsGap = false,

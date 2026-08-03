@@ -419,6 +419,39 @@ public sealed class ActionDispatcher : IActionDispatcher
         // The push family (push_on_I_frame_queue / push_frame_on_queue and the
         // figure word-order variants) all collapse to the same enum members; any
         // of them on an SREJ trigger redirects to the single-frame retransmit.
+        // Quirk SrejCommandIgnored (default on): an SREJ sent as a COMMAND is off-spec —
+        // §4.3.2.4 makes SREJ response-only — and no deployed stack acts on receiving one
+        // (direwolf omits the path; linbpq gates the resend on RESP). Both still apply the
+        // N(R) acknowledgement, and so do we: this suppresses the RETRANSMIT TAIL only.
+        //
+        // The tail is the run of verbs the corrected figc4.5 (ax25sdl 0.10.1+, from
+        // packethacking/ax25spec#65) gives the command paths t24_srej_received_no_yes_*_no:
+        //
+        //     … CheckIFrameAcknowledged | PushOldIFrameNROnQueue | LMDataRequest
+        //                               | StopT3 | StartT1 | ClearAcknowledgePending
+        //
+        // Everything before the push is acknowledgement bookkeeping and still runs; the push
+        // onward exists solely to send the requested frame, and StopT3/StartT1/
+        // ClearAcknowledgePending are the "we just transmitted" bookkeeping that must not
+        // fire when we transmit nothing. Suppressing the whole tail reproduces exactly what
+        // the pre-correction figure did on this path (which carried only the go-back-N verb
+        // that Ax25Spec38SrejSelectiveRetransmit already skipped). packet-net/packet.net#674.
+        if (ctx.Quirks.SrejCommandIgnored
+            && tx.Trigger is SrejReceived { Frame.IsCommand: true }
+            && verb is Ax25ActionVerb.PushOldIFrameNROnQueue
+                    or Ax25ActionVerb.PushOnIFrameQueue
+                    or Ax25ActionVerb.PushOnIFrameQueueNoteWordOrder
+                    or Ax25ActionVerb.PushFrameOnQueue
+                    or Ax25ActionVerb.PushIFrameOnIQueue
+                    or Ax25ActionVerb.LMDataRequest
+                    or Ax25ActionVerb.StopT3
+                    or Ax25ActionVerb.StartT1
+                    or Ax25ActionVerb.ClearAcknowledgePending
+                    or Ax25ActionVerb.InvokeRetransmission)
+        {
+            return;
+        }
+
         if (ctx.Quirks.Ax25Spec38SrejSelectiveRetransmit && tx.Trigger is SrejReceived)
         {
             if (verb is Ax25ActionVerb.PushOnIFrameQueue
