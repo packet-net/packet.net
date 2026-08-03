@@ -24,7 +24,7 @@ function draftWith(transport: TransportConfig, radio: PortDraft["radio"], rig: P
     enabled: true,
     transport,
     ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4 },
-    kiss: { txDelay: 300, slotTime: 100, txTail: 50, persistence: 63 },
+    kiss: { txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 },   // wire units: 10 ms each
     setup: { radio: null, channel: "shared", difficulty: "moderate", custom: true },
     beacon: null,
     compat: null,

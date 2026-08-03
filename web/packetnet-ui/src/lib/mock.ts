@@ -21,11 +21,11 @@ export const NODE_CONFIG: NodeConfig = {
   schemaVersion: 3,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
-    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 300, persistence: 63, slotTime: 100, txTail: 50 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
-    { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 400, persistence: 63, slotTime: 100, txTail: 80 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
+    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
+    { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 40, persistence: 63, slotTime: 10, txTail: 8 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
     { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
-    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 250, persistence: 32, slotTime: 100, txTail: 100 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
+    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 25, persistence: 32, slotTime: 10, txTail: 10 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
   management: {
@@ -760,10 +760,10 @@ export const NINO_MODES: NinoMode[] = [
 ];
 
 export const RADIO_PROFILES: RadioProfile[] = [
-  { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 1, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 300, slotTime: 100, txTail: 50, persistence: 63 } },
-  { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 5, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 150, slotTime: 100, txTail: 30, persistence: 63 } },
-  { id: "uhf-data-9600", name: "UHF data · 9600 GFSK IL2P", ninoMode: 4, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 150, slotTime: 100, txTail: 30, persistence: 63 } },
-  { id: "hf-robust-300", name: "HF robust · 300 AFSK", ninoMode: 0, baseline: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, txDelay: 250, slotTime: 100, txTail: 100, persistence: 32 } },
+  { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 1, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 } },
+  { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 5, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
+  { id: "uhf-data-9600", name: "UHF data · 9600 GFSK IL2P", ninoMode: 4, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
+  { id: "hf-robust-300", name: "HF robust · 300 AFSK", ninoMode: 0, baseline: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, txDelay: 25, slotTime: 10, txTail: 10, persistence: 32 } },
 ];
 export const CHANNEL_MODES: ChannelMode[] = [
   { id: "shared", name: "Shared", help: "Several stations share this RF channel. pdn listens before transmitting and backs off (CSMA) to avoid collisions." },
@@ -796,10 +796,22 @@ export const PARAM_HELP: Record<string, ParamHelp> = {
   persistence: { label: "Persistence", unit: "%", help: "When the channel is free, the chance pdn transmits in each slot. Lower is more polite on a busy shared channel; 100% is fine on a dedicated link. (Stored as a 0–255 byte.)" },
 };
 export const AX25_DEFAULTS: Record<string, number> = { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, n1: 256 };
-export const KISS_DEFAULTS: Record<string, number> = { txDelay: 300, slotTime: 100, txTail: 50, persistence: 63 };
+// KISS TXDELAY/SLOTTIME/TXTAIL are single BYTES in units of 10 ms on the wire (that is the
+// KISS protocol, and the server types them `byte?`) — so these are 300 ms, 100 ms, 50 ms.
+// They are STORED in wire units here and everywhere in the editor draft, and converted for
+// display by the ms<->units pair below, exactly as persistence is stored as a 0-255 byte and
+// shown as a percentage. Writing milliseconds into these fields is what made every panel-created
+// port POST `txDelay: 300` into a byte and get an opaque 400 back.
+export const KISS_DEFAULTS: Record<string, number> = { txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 };
 
 export function persistPct(v: number): number { return Math.round((v / 255) * 100); }
 export function pctToPersist(p: number): number { return Math.round((p / 100) * 255); }
+
+/** A KISS 10 ms-unit byte as milliseconds, for display. */
+export function tenMsToMs(units: number): number { return units * 10; }
+/** Milliseconds back to a KISS 10 ms-unit byte, clamped to the 0..255 the wire allows
+ *  (255 = 2.55 s, the longest TXDELAY/TXTAIL/SLOTTIME KISS can express). */
+export function msToTenMs(ms: number): number { return Math.min(255, Math.max(0, Math.round(ms / 10))); }
 
 export const NINO_TEST: NinoTest = {
   portId: "vhf-1", receivedAt: "just now", firmware: "NinoTNC A3 · fw 2.3.1",

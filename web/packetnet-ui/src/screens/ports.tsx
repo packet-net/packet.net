@@ -21,7 +21,7 @@ import type {
 import {
   NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PORT_SETUP, PARAM_HELP, AX25_DEFAULTS, KISS_DEFAULTS,
-  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, NINO_TEST,
+  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs, NINO_TEST,
 } from "@/lib/mock";
 import { portHealth } from "@/lib/health";
 import { api, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
@@ -778,9 +778,9 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 <div>
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Modem keying</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <ParamField k="txDelay" value={model.kiss.txDelay} base={baseline.txDelay} onChange={(v) => setKiss("txDelay", v)} />
-                    <ParamField k="txTail" value={model.kiss.txTail} base={baseline.txTail} onChange={(v) => setKiss("txTail", v)} />
-                    <ParamField k="slotTime" value={model.kiss.slotTime} base={baseline.slotTime} onChange={(v) => setKiss("slotTime", v)} />
+                    <ParamField k="txDelay" tenMs value={model.kiss.txDelay} base={baseline.txDelay} onChange={(v) => setKiss("txDelay", v)} />
+                    <ParamField k="txTail" tenMs value={model.kiss.txTail} base={baseline.txTail} onChange={(v) => setKiss("txTail", v)} />
+                    <ParamField k="slotTime" tenMs value={model.kiss.slotTime} base={baseline.slotTime} onChange={(v) => setKiss("slotTime", v)} />
                   </div>
                   <div className="mt-3">
                     <PersistenceField value={model.kiss.persistence} base={baseline.persistence} onChange={(v) => setKiss("persistence", v)} />
@@ -1405,24 +1405,34 @@ function SegMode({ options, value, onChange }: {
 }
 
 // ---- a single tuneable: friendly label + help + unit + "modified" marker ----
-function ParamField({ k, value, base, onChange }: {
+// `tenMs` marks the KISS timing knobs (TXDELAY / TXTAIL / SLOTTIME): the wire carries a byte
+// in units of 10 ms, the operator thinks in milliseconds, so the field converts on the way in
+// and out — the same split persistence already uses (0-255 byte stored, percentage shown).
+// Without it the panel wrote milliseconds straight into a byte and a stock 300 ms TX delay
+// came back as an unexplained 400 from the API.
+function ParamField({ k, value, base, onChange, tenMs = false }: {
   k: string;
   value: number | undefined;
   base: number | undefined;
   onChange: (v: number) => void;
+  tenMs?: boolean;
 }) {
   const meta = PARAM_HELP[k];
   const modified = base !== undefined && value !== base;
+  const shown = value === undefined ? "" : (tenMs ? tenMsToMs(value) : value);
+  const shownBase = base === undefined ? undefined : (tenMs ? tenMsToMs(base) : base);
   const badge: ReactNode = modified
-    ? <Tooltip text={`Default for this profile: ${base}${meta.unit ? " " + meta.unit : ""}`}><Badge variant="warning">modified</Badge></Tooltip>
+    ? <Tooltip text={`Default for this profile: ${shownBase}${meta.unit ? " " + meta.unit : ""}`}><Badge variant="warning">modified</Badge></Tooltip>
     : null;
   return (
     <Field label={meta.label} info={meta.help} badge={badge}>
       <div className="relative">
         <Input
           type="number"
-          value={value ?? ""}
-          onChange={(e) => onChange(+e.target.value)}
+          min={0}
+          {...(tenMs ? { max: 2550, step: 10 } : {})}
+          value={shown}
+          onChange={(e) => onChange(tenMs ? msToTenMs(+e.target.value) : +e.target.value)}
           className={cn("font-mono", meta.unit && "pr-12", modified && "border-warning/60")}
         />
         {meta.unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">{meta.unit}</span>}

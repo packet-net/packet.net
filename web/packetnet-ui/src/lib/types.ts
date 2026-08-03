@@ -62,6 +62,9 @@ export interface Ax25PortParams {
   n1?: number;
 }
 export interface KissParams {
+  // txDelay / slotTime / txTail are BYTES in units of 10 ms (the KISS protocol's own units,
+  // `byte?` on the server) — 30 means 300 ms. persistence is a 0-255 byte shown as a percentage.
+  // Hold wire values here; the editor converts for display (lib/mock.ts tenMsToMs / msToTenMs).
   txDelay?: number; persistence?: number; slotTime?: number; txTail?: number;
   // Pace outbound TX over the G8BPQ ACKMODE extension (kiss-tcp ports only). Default
   // false. Unlike the other knobs this is construction-time — toggling it restarts the
