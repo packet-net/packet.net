@@ -10,6 +10,11 @@ You do not need to be a programmer to use anything here. Most of it is buttons i
 the node's web control panel; the rest is a few lines of YAML in your node config,
 or a command you paste into a terminal on the node.
 
+> [!IMPORTANT]
+> **No node yet?** Start at [0. Install pdn](00-install.md) — install the node,
+> reach its control panel, and get a port on the air. Every chapter below assumes
+> you have done that.
+
 ## What "radio support" gives you
 
 Out of the box, a PDN port talks to a TNC (a NinoTNC, a KISS TNC, Dire Wolf) and
@@ -43,6 +48,7 @@ Start with the row that matches what you are trying to do.
 
 | I want to… | Go to | What it needs |
 |---|---|---|
+| Install the node in the first place | [0. Install pdn](00-install.md) | A Linux box (a Pi will do) and a callsign |
 | Point the node at my radio | [1. Attach a radio](01-attach-a-radio.md) | A control cable + a couple of config fields (or one scan-and-click) |
 | Control my rig (CAT) from the node | [1. Attach a radio](01-attach-a-radio.md#kind-rig--re-use-the-ports-cat-rig-as-its-radio) | hamlib `rigctld` or flrig — or let the node run `rigctld` for you |
 | See how good my link is | [2. See your link quality](02-see-your-link-quality.md) | A radio attached (step 1) |
