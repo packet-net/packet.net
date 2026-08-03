@@ -129,6 +129,7 @@ jobs:
       # sparse checkout of the parity artifacts is enough.
 
       - name: recreate stack (phase B — ax25-ts)
+        if: ${{ !cancelled() }}
         run: scripts/interop-recreate-stack.sh
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop
@@ -140,6 +141,7 @@ jobs:
           docker compose -f docker/compose.interop.yml logs --tail=200
 
       - name: ax25-ts integration tests
+        if: ${{ !cancelled() }}
         # `npm run test:integration` uses the integration vitest config,
         # which targets tests/integration/** and dials 127.0.0.1:8100
         # (the KISS-TCP listener the C# interop tests also use).
@@ -150,6 +152,12 @@ jobs:
           # Exclusive box-wide flock around the AFSK-stack test run (§7.2.2).
           flock -x /tmp/pdn-ci-heavy.lock npm run test:integration
 
+      # Every phase below carries `!cancelled()` for the same reason the parity guard
+      # does: one phase failing must not hide what the others would have told us. Each
+      # phase recreates its own stack, so they are genuinely independent — on 2026-08-03
+      # a single known-flaky ax25-ts case (#631) failed phase B and took the whole of
+      # phase C's NET/ROM coverage with it, reporting one problem where there may have
+      # been none or two. They all still fail the job; they just all get to run.
       # ── Phase C: NET/ROM L3/L4 scenarios (isolated, LAST) ─────────────────
       # The heavyweight group (NODES origination + bidirectional L4 circuits +
       # provoked BPQ NODES). Run against a fresh stack and LAST, so the LinBPQ
@@ -158,6 +166,7 @@ jobs:
       # (NetRomService.DisposeAsync DISCs its interlinks), so it leaves the stack
       # clean even within the group.
       - name: recreate stack (phase C — NET/ROM)
+        if: ${{ !cancelled() }}
         run: scripts/interop-recreate-stack.sh
         env:
           COMPOSE_PROJECT_NAME: packetnet-interop
@@ -169,6 +178,7 @@ jobs:
           docker compose -f docker/compose.interop.yml logs --tail=200
 
       - name: interop tests (C#) — NET/ROM (Group=NetRom)
+        if: ${{ !cancelled() }}
         # Exclusive box-wide flock (§7.2.2).
         run: flock -x /tmp/pdn-ci-heavy.lock dotnet test tests/Packet.Interop.Tests --configuration Release --no-build --filter "Category=Interop&Group=NetRom"
 
