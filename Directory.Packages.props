@@ -7,24 +7,25 @@
 
   <ItemGroup>
     <!-- Persistence -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-    <PackageVersion Include="Dapper" Version="2.1.66" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageVersion Include="Dapper" Version="2.1.79" />
 
     <!-- Auth -->
     <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
-    <PackageVersion Include="Fido2.AspNet" Version="4.0.0-beta.16" />
-    <!-- Fido2 pulls Microsoft.Bcl.Memory 9.0.0 transitively, which carries
+    <PackageVersion Include="Fido2.AspNet" Version="4.0.1" />
+    <!-- Fido2 pulls Microsoft.Bcl.Memory transitively, and the 9.x it asks for carries
          CVE-2026-26127 (GHSA-73j8-2gch-69rq — OOB read decoding malformed Base64Url).
          Pin the first patched 9.x (9.0.14) via CPM transitive pinning so the restore
-         resolves the fixed build and warnings-as-errors (NU1903) stays clean. -->
+         resolves the fixed build and warnings-as-errors (NU1903) stays clean. Still
+         load-bearing on Fido2.AspNet 4.0.1 — verified in the restored graph. -->
     <PackageVersion Include="Microsoft.Bcl.Memory" Version="9.0.14" />
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.5.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.5.0" />
-    <!-- JWT bearer validation middleware for the host (the node auth foundation,
-         default-off behind management.auth.enabled). 10.0.8 matches the .NET 10
-         shared framework; it depends on Microsoft.IdentityModel.* 8.x, aligned
-         with the JsonWebTokens/Tokens pins above. -->
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.22.0" />
+    <!-- JWT bearer validation middleware for the host (the node auth foundation, ON by
+         default since the LAN-bind flip — management.auth.enabled). 10.0.10 is the current
+         .NET 10 servicing build; it depends on Microsoft.IdentityModel.* 8.x, aligned with
+         the JsonWebTokens/Tokens pins above. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <!-- YARP's direct-forwarding primitive (IHttpForwarder) backs the app-gateway reverse
          proxy (/apps/{id}/* → an app's loopback web server). Used standalone (no config-driven
          proxy model) — just correct streaming/header/WebSocket forwarding. See docs/app-gateway.md. -->
@@ -52,12 +53,12 @@
          IHostApplicationLifetime, ILogger). The host shell (Packet.Node) pulls
          the full hosting stack via Microsoft.NET.Sdk.Web; the core library
          depends only on the abstractions. -->
-    <!-- 10.0.7 (not 10.0.0): the MCP SDK (Phase 8) floors both of these — Core needs
-         Logging.Abstractions >= 10.0.7, .AspNetCore needs Hosting.Abstractions >= 10.0.7.
-         CPM transitive pinning makes the lower pins NU1109 downgrade errors. 10.0.7 is
-         the .NET 10 servicing build, back-compatible for every other consumer. -->
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.7" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
+    <!-- Floor, not preference: the MCP SDK (Phase 8) requires Logging.Abstractions >= 10.0.7
+         (Core) and Hosting.Abstractions >= 10.0.7 (.AspNetCore), and CPM transitive pinning
+         turns anything lower into an NU1109 downgrade error. 10.0.10 is the current .NET 10
+         servicing build, above that floor and back-compatible for every other consumer. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
 
     <!-- Soundmodem (GPL-3.0-or-later sibling repo packet-net/pdn-soundmodem; AGPL node
          combines with it under GPLv3 §13 / AGPLv3 §13) -->
@@ -70,7 +71,7 @@
     <PackageVersion Include="M0LTE.Ardop" Version="0.1.0" />
 
     <!-- Serial / IO -->
-    <PackageVersion Include="System.IO.Ports" Version="10.0.0" />
+    <PackageVersion Include="System.IO.Ports" Version="10.0.10" />
 
     <!-- MQTT (SP-001 spike — LinBPQ feed ingestion; the node's kissproxy-compatible
          frame emitter uses the ManagedClient extension for auto-reconnect). -->
@@ -81,7 +82,7 @@
          cross-platform, Linux-working resolver that binds :5353 with address-reuse so it coexists
          with the avahi-daemon the node's own advertiser (avahi-publish) registers through. Used
          only behind the thin IHeadEndDiscovery seam (MdnsHeadEndDiscovery); tests use a fake. -->
-    <PackageVersion Include="Zeroconf" Version="3.6.11" />
+    <PackageVersion Include="Zeroconf" Version="3.7.16" />
 
     <!-- CommandLineParser — used by the Packet.Term TUI's CLI. (NB: Packet.Term
          itself moves to packet-net/packet-term-tui in a sibling PR; once that lands
@@ -89,7 +90,14 @@
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
 
     <!-- AX.25 SDL state machines — consumed from packet-net/ax25sdl as a NuGet
-         package. Source repo: github.com/packet-net/ax25sdl. -->
+         package. Source repo: github.com/packet-net/ax25sdl.
+         HELD at 0.10.0: 0.10.2 regenerates the timer_recovery tables off the upstream
+         figc4.5 SREJ correction (ax25sdl#78 / packethacking/ax25spec#65), which makes the
+         SREJ *command* paths do an actionable single-frame retransmit where the buggy
+         figure's go-back-N was a no-op under our selective-SREJ quirk. That flips
+         DataLinkSrejUnderLossTests.Srej_command_does_not_retransmit_under_default, which
+         pins §4.3.2.4's "SREJ is only sent as a response" reading (direwolf and linbpq both
+         ignore an SREJ command). Spec-vs-de-facto call to make before bumping — see #674. -->
     <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.0" />
 
     <!-- MCP — the official C# SDK (Anthropic + .NET). Packet.Mcp (the
@@ -100,19 +108,19 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
 
     <!-- Testing -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
-    <PackageVersion Include="FsCheck.Xunit" Version="3.1.0" />
-    <PackageVersion Include="Testcontainers" Version="4.1.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
-    <PackageVersion Include="AwesomeAssertions" Version="9.2.0" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
-    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
+    <PackageVersion Include="FsCheck.Xunit" Version="3.3.4" />
+    <PackageVersion Include="Testcontainers" Version="4.13.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.8.0" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
 
     <!-- Fuzzing (SP-004 — AX.25 / KISS wire-format fuzzer) -->
-    <PackageVersion Include="SharpFuzz" Version="2.2.0" />
+    <PackageVersion Include="SharpFuzz" Version="2.3.0" />
 
     <!-- Build housekeeping -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
