@@ -91,14 +91,13 @@
 
     <!-- AX.25 SDL state machines — consumed from packet-net/ax25sdl as a NuGet
          package. Source repo: github.com/packet-net/ax25sdl.
-         HELD at 0.10.0: 0.10.2 regenerates the timer_recovery tables off the upstream
-         figc4.5 SREJ correction (ax25sdl#78 / packethacking/ax25spec#65), which makes the
-         SREJ *command* paths do an actionable single-frame retransmit where the buggy
-         figure's go-back-N was a no-op under our selective-SREJ quirk. That flips
-         DataLinkSrejUnderLossTests.Srej_command_does_not_retransmit_under_default, which
-         pins §4.3.2.4's "SREJ is only sent as a response" reading (direwolf and linbpq both
-         ignore an SREJ command). Spec-vs-de-facto call to make before bumping — see #674. -->
-    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.0" />
+         0.10.2 carries the upstream figc4.5 SREJ correction (ax25sdl#78 ←
+         packethacking/ax25spec#65): all four SREJ paths now do a native single-frame
+         selective retransmit instead of go-back-N. That made the SREJ *command* form
+         actionable for the first time — a real behaviour change, taken as the named
+         `SrejCommandIgnored` quirk (default on: keep ignoring it, as direwolf and linbpq
+         do) rather than absorbed silently. #674. -->
+    <PackageVersion Include="Packet.Ax25.Sdl" Version="0.10.2" />
 
     <!-- MCP — the official C# SDK (Anthropic + .NET). Packet.Mcp (the
          transport-agnostic tool surface) takes .Core; the node host takes
