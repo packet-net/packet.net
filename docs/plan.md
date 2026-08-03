@@ -1258,6 +1258,15 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-08-03 — Five of the six deferred dependency majors taken; MQTTnet 5 is a port, not a bump (#673)
+
+Worked through the majors parked by the morning's sweep, one at a time with a full suite run behind each.
+
+- **Taken:** `ModelContextProtocol.Core` + `.AspNetCore` **1.4.0 → 2.0.0** (no API churn reached our surface; `Packet.Mcp.Tests` 40/40), `YamlDotNet` **16.3.0 → 18.1.0** (clean across `NodeConfigYaml`, the app-package/catalog manifests and the transport converter), `FluentValidation` **11.11.0 → 12.1.1** (every validator test passes — the surface that mattered), and `pdn-soundmodem` **0.6.0 → 0.17.0** with `M0LTE.Ardop` **0.1.0 → 0.3.0` together, as the issue advised.
+- **`MQTTnet` HELD at 4.3.7 — and the reason is structural, not caution.** `MQTTnet.Extensions.ManagedClient` **has no v5**: it stops at `4.3.7.1207`, the managed client having been dropped. `ManagedMqttPublishSink` is built on `IManagedMqttClient` / `CreateManagedMqttClient()` / `ManagedMqttClientOptionsBuilder` for exactly the auto-reconnect the emitter needs, so v5 means **porting onto v5's own reconnect story** — and the emitter's topic/payload output is byte-exact by contract (`kiss-collector` ingests it), so it needs proving against a capture, not just a green build. The pin carries that reasoning inline now.
+- **Dead entry removed:** `FluentValidation.AspNetCore` was in the CPM table but referenced by no `.csproj`, and upstream stopped at 11.3.1 (retired in favour of manual registration).
+- **Caveat recorded honestly:** the soundmodem bump passes, but our tests reach it through config and hosted-service paths, not real audio DSP. Eleven minors of a modem library want a bench check with a real sound card before anyone trusts it on the air — green here means "nothing we test broke", not "the modem is verified".
+
 ### 2026-08-03 — The interop parity guard runs last, so bookkeeping can no longer skip test phases
 
 The hardening flagged in the release entry below. `interop.yml` ran the 3-way parity drift guard *before* the stack came up, so a guard failure skipped every test phase after it — which is how an unexcepted logging label silently disabled the ax25-ts integration suite and the whole NET/ROM phase for a fortnight. The guard now runs **after** phase C with `if: ${{ !cancelled() }}`, so it still fails the job but reports alongside the tests rather than pre-empting them; the pico-node clone (only the guard needs it) moved down with it, while the ax25-ts clone stays early because phase B uses it. Step order is now build → A → B → C → clone → guard → tear down. Verified green on `main` (`49dc0b0`, and again on `207e5cd`).
