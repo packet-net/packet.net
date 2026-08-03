@@ -34,6 +34,8 @@ public sealed class EventsSseTests : IDisposable
               alias: LONDON
             ports: []
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

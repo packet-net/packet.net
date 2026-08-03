@@ -37,6 +37,8 @@ public sealed class PortTuningApiTests : IDisposable
                   host: 127.0.0.1
                   port: 8123
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

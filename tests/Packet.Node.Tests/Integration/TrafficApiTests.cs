@@ -40,6 +40,8 @@ public sealed class TrafficApiTests : IDisposable
               callsign: {Callsign}
             ports: []
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

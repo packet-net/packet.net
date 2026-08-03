@@ -37,12 +37,26 @@ public sealed record ManagementConfig
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Default-OFF, no regression.</b> <see cref="Enabled"/> defaults to
-/// <c>false</c>: the auth machinery (user store, JWT issuing/validation, the
-/// scope policies) is always wired, but <em>enforcement</em> is conditional on
-/// this flag. With it off, every endpoint that would otherwise be gated serves
-/// unauthenticated exactly as before — so turning auth on is a deliberate,
-/// reviewed step and never a silent behaviour change for an existing node.
+/// <b>Default-ON since the LAN-bind default.</b> <see cref="Enabled"/> defaults to
+/// <c>true</c>. It used to default off, which was only safe because the web listener
+/// defaulted to loopback (<see cref="HttpConfig.Bind"/>); now that a fresh node binds
+/// the LAN so an operator can actually reach its panel, the login is what stands
+/// between the network and a full admin session — one that can rewrite config, add
+/// ports, and <em>transmit</em>. The two defaults move together and must stay that way.
+/// </para>
+/// <para>
+/// A fresh node has zero users, and <c>GET /setup/state</c> + <c>POST /setup</c> are
+/// never gated, so first-run setup still works with auth on: the first visitor gets
+/// the wizard, creates the admin, and every later request needs a token. The auth
+/// machinery (user store, JWT issuing/validation, the scope policies) is always wired
+/// either way — this flag only switches <em>enforcement</em>.
+/// </para>
+/// <para>
+/// <b>No change for an existing node.</b> A stored config is a fully-explicit
+/// serialised <see cref="NodeConfig"/> in <c>pdn.db</c> (every property written, not
+/// just the non-defaults), so a node that was set up under the old defaults keeps
+/// exactly the posture it had. This default is what a <em>new</em> install is seeded
+/// with.
 /// </para>
 /// <para>
 /// The signing key and the user records live in <c>pdn.db</c> (the consolidated
@@ -54,10 +68,11 @@ public sealed record ManagementConfig
 public sealed record AuthConfig
 {
     /// <summary>Whether the web control API requires authentication. Default
-    /// <c>false</c> — the API is unauthenticated until the operator opts in. When
-    /// <c>true</c>, a JWT bearer token is required on the gated endpoints and the
-    /// <c>read</c>/<c>operate</c>/<c>admin</c> scope policies enforce.</summary>
-    public bool Enabled { get; init; }
+    /// <c>true</c> — a JWT bearer token is required on the gated endpoints and the
+    /// <c>read</c>/<c>operate</c>/<c>admin</c> scope policies enforce. Set it
+    /// <c>false</c> only for a node whose panel is not reachable from the network
+    /// (a loopback bind, or a lab box behind something else that authenticates).</summary>
+    public bool Enabled { get; init; } = true;
 
     /// <summary>Access-token lifetime in minutes. Null = the default (60 — ~1h).
     /// Short-lived: when it expires the web client silently exchanges its refresh
@@ -167,8 +182,12 @@ public sealed record TelnetConfig
 /// <summary>The web server bind. Present-but-inert in slice 1.</summary>
 public sealed record HttpConfig
 {
-    /// <summary>Bind address for Kestrel.</summary>
-    public string Bind { get; init; } = "127.0.0.1";
+    /// <summary>Bind address for Kestrel. Default <c>0.0.0.0</c> — a headless node is
+    /// no use if its own control panel is unreachable from the machine the operator is
+    /// sitting at. What keeps that safe is <see cref="AuthConfig.Enabled"/> defaulting
+    /// on; do not narrow one without considering the other. Read at process start, so a
+    /// change needs a restart, not just a config apply.</summary>
+    public string Bind { get; init; } = "0.0.0.0";
 
     /// <summary>TCP port for the web server.</summary>
     public int Port { get; init; } = 8080;

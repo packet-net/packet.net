@@ -31,6 +31,8 @@ public sealed class HostBootTests : IDisposable
               callsign: M0LTE-1
             ports: []
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

@@ -12,7 +12,9 @@ docker run -d --name pdn \
 
 Then open `http://<host>:8080/`. The web panel binds `0.0.0.0` in the container so it's reachable via `-p`.
 
-> ⚠️ **The panel is exposed** on whatever you publish the port to, and ships with **auth off**. Before putting it on anything but a trusted LAN, set `management.auth.enabled: true` (then bootstrap an admin via `/setup`) or front it with an authenticating reverse proxy.
+The first visit lands on the setup wizard — callsign, admin account, first port — and every request after that needs a login: the image ships with `management.auth.enabled: true`, because the panel binds `0.0.0.0` and is published wherever `-p` puts it.
+
+> ⚠️ `/metrics` is deliberately **not** authenticated (the Prometheus contract), and it carries heard callsigns, per-peer SNR, port/radio health, and the running version. If the published port is reachable from somewhere you would not want that, front it with a reverse proxy or keep it on a trusted network.
 
 ## Configure
 

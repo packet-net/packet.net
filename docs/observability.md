@@ -15,10 +15,10 @@ So a number on `/metrics` and the corresponding number in the JSON API can never
 
 ## Exposure / auth posture
 
-`/metrics` is mapped on the **same Kestrel listener** as the REST API (simplest; no second port to bind or firewall) and is gated by the **same `read` scope policy** (`PdnAuthPolicies.Read`) as the rest of the read surface. Concretely:
+`/metrics` is mapped on the **same Kestrel listener** as the REST API (simplest; no second port to bind or firewall) and is **always anonymous** — `.AllowAnonymous()`, regardless of `management.auth.enabled`. Concretely:
 
-- With `management.auth.enabled` **off** (the default), `/metrics` is **unauthenticated** — and the node **binds 127.0.0.1 by default**, so the out-of-the-box posture is the standard localhost-scrape one (run the Prometheus agent on the same host, or scrape across a Tailscale tailnet).
-- With auth **on**, `/metrics` requires a `read`-scoped bearer token, exactly like `/api/v1/status`.
+- A stock node (auth **on**, bind `0.0.0.0` — the defaults since 2026-08-03) is scrapeable with no credentials. That is deliberate: a Prometheus agent carries a static config, not a login, and the node's access tokens live 60 minutes, so gating the endpoint would have made scraping impossible on a default install rather than merely inconvenient. Tom's call — metrics are public.
+- The trade is exposure. The exposition carries **heard callsigns**, per-peer SNR, per-port and radio health, traffic counters, and the running version — read as public on whatever interface `management.http.bind` reaches. An operator who does not want that binds the panel to `127.0.0.1` and scrapes locally, keeps the node tailnet-only, or fronts it with a reverse proxy that authenticates.
 
 The endpoint is read-only and has no side effects. The response content type is `text/plain; version=0.0.4; charset=utf-8` (the Prometheus text exposition content type).
 

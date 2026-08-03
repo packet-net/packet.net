@@ -33,6 +33,8 @@ public sealed class HeadEndAdoptApiTests : IDisposable
               callsign: M0LTE-1
             ports: []
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

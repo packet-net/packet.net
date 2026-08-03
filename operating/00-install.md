@@ -77,22 +77,18 @@ docker run -d --name pdn \
 
 Multi-arch (amd64 + arm64). Keep the `pdn-state` volume — it holds your config, users, and keys.
 
-Unlike the package installs, the container binds its panel to `0.0.0.0` so `-p` can reach it, which means **the panel is exposed on whatever you publish it to**, with auth off by default. Read [Open it up safely](#open-it-up-safely) before publishing that port anywhere but a trusted LAN. To attach a serial TNC or radio, pass the device through: `--device /dev/ttyACM0`. More detail in [`docker/node/README.md`](../docker/node/README.md).
+The panel is published wherever you map the port, and requires a login like the package installs do. To attach a serial TNC or radio, pass the device through: `--device /dev/ttyACM0`. More detail in [`docker/node/README.md`](../docker/node/README.md).
 
 ## First contact: open the control panel
 
-Almost everything you do with pdn is in its web control panel.
+Almost everything you do with pdn is in its web control panel. Browse to it from any machine on your network:
 
-**The panel listens on `127.0.0.1:8080` by default** — loopback only, deliberately, because a fresh node has no login on it yet. On a headless box, get to it over an SSH tunnel from your laptop:
+**<http://your-node-address:8080>**
 
-```sh
-ssh -L 8080:127.0.0.1:8080 you@your-node
-```
-
-…then browse to **<http://localhost:8080>**. (Docker users: the panel is already on `http://<host>:8080`.)
+The panel binds every interface (`0.0.0.0:8080`) so a headless box is usable without a tunnel, and it requires a login — those two defaults go together, and the first-run wizard below is what creates that login.
 
 > [!TIP]
-> The tunnel is not just a workaround. Browsers only allow passkeys on a secure origin, and `http://localhost` counts as one — so setting up a passkey over the tunnel works, where `http://192.168.1.x:8080` would not.
+> Passkeys need a *secure origin*: HTTPS with a trusted certificate, or `http://localhost`. On a plain-HTTP LAN address the panel quietly hides the passkey buttons and offers a password instead. If you want a passkey on day one, reach the panel through an SSH tunnel — `ssh -L 8080:127.0.0.1:8080 you@your-node`, then <http://localhost:8080> — or turn on [Tailscale](#open-it-up-safely), which gets you a real certificate.
 
 ## The first-run wizard
 
@@ -102,36 +98,36 @@ A node with no users sends you straight to a three-step wizard:
 2. **Create admin** — the first administrator account, and a passkey if you are on a secure origin. Passwords are at least 8 characters.
 3. **First port** — optional, and covered below. Skip it if your modem is not wired up yet.
 
-Finish, and you are in the panel with a node running under your own callsign.
+Finish, and you are in the panel with a node running under your own callsign, and a login guarding it.
 
 > [!IMPORTANT]
-> Creating the admin account does **not** by itself turn authentication on. pdn ships with `management.auth.enabled` **off**, so the panel is open to anyone who can reach it. That is fine while it is loopback-only; it is not fine the moment you widen the bind. See next.
+> Between installing and finishing the wizard, whoever reaches the node first can claim it — the setup endpoint is deliberately open while zero users exist, so that a headless box can be set up at all. Do the wizard now rather than later, and do it on a network you trust.
 
-## Open it up safely
+## What is exposed, and how to change it
 
-To reach the panel from elsewhere on your network, in the panel go to **Config** and set:
+A stock node listens on two ports, and they are not equally open:
+
+| Port | What | Who can reach it |
+|---|---|---|
+| 8080 | Control panel + REST API | Any host on your network — but everything except the setup wizard, `/healthz`, and `/metrics` needs your login |
+| 8011 | Telnet node console | `127.0.0.1` only — a shell on the node itself |
+
+`/metrics` is unauthenticated on purpose (that's how Prometheus scrapes), and it carries heard callsigns, per-peer SNR, port and radio health, and your version. Nothing there lets anyone *change* anything, but it is readable — [chapter 5](05-radio-metrics.md) covers the trade and how to close it.
+
+To narrow the panel to loopback (and go back to reaching it over an SSH tunnel), set it in **Config**:
 
 ```yaml
 management:
   http:
-    bind: 0.0.0.0        # or a specific LAN address
-    port: 8080
-  auth:
-    enabled: true        # now that a bind is exposed, require the login you just made
+    bind: 127.0.0.1
 ```
 
-Turning auth on takes effect immediately — the panel will ask you to log in. Changing the **bind** does not: the web listener is bound when the process starts, so finish with
+The web listener is bound when the process starts, so a bind change needs `sudo systemctl restart packetnet` — unlike most config, saving is not enough. Auth changes *do* take effect immediately.
 
-```sh
-sudo systemctl restart packetnet
-```
+Two options worth knowing about:
 
-and reopen the panel on its new address.
-
-Two better options than opening a LAN port, depending on what you are after:
-
-- **Reaching it from anywhere, safely** — turn on the built-in [Tailscale](https://tailscale.com) sidecar (`tailscale:` in the config). The node joins your tailnet, gets a real browser-trusted certificate for `<name>.ts.net`, and passkeys work remotely with no port forwarding, no public DNS, and no certificate management. This is the blessed remote path: [`docs/network-access.md`](../docs/network-access.md).
-- **Keeping it local** — leave the bind on loopback and keep using the SSH tunnel. Nothing is exposed at all.
+- **Reaching it from anywhere, safely** — turn on the built-in [Tailscale](https://tailscale.com) sidecar (`tailscale:` in the config). The node joins your tailnet, gets a real browser-trusted certificate for `<name>.ts.net`, and passkeys work remotely with no port forwarding, no public DNS, and no certificate management. The blessed remote path: [`docs/network-access.md`](../docs/network-access.md).
+- **TLS on the LAN** — `management.https` serves the panel over TLS, self-signed by default (browsers warn until you trust it) or from your own `.pfx`. Worth it if passwords crossing your LAN in clear bothers you.
 
 There is no built-in ACME/Let's Encrypt for a public hostname; a public, VPN-free certificate is your own reverse proxy's job.
 
@@ -245,9 +241,9 @@ sudo deluser --system packetnet
 | Symptom | Look at |
 |---|---|
 | Nothing on port 8080 | `systemctl status packetnet`, then `journalctl -u packetnet -n 100`. A config the node refuses to boot on is logged loudly. |
-| Panel reachable, but "connection refused" from another machine | The bind is still `127.0.0.1`. [Open it up safely](#open-it-up-safely). |
+| Panel reachable on the node, "connection refused" from another machine | Something narrowed the bind to `127.0.0.1` — check **Config → Management → HTTP**, and remember a bind change needs a service restart. Or a firewall on the box is dropping 8080. |
 | Wizard never appears / it goes straight to a login | Setup is one-shot — a user already exists. Log in, or reset by stopping the node and removing `pdn.db` (this drops **all** config). |
-| Passkey registration refused by the browser | Not a secure origin. Use the SSH tunnel to `http://localhost:8080`, or Tailscale. |
+| Passkey buttons are missing | Not a secure origin — expected on a plain-HTTP LAN address. Password login works; for a passkey use the SSH tunnel to `http://localhost:8080`, HTTPS, or Tailscale. |
 | A serial port never opens | The `packetnet` user needs access to the device: `sudo usermod -aG dialout packetnet`, then restart. `journalctl` names the device it tried. |
 | `apt install` fails on dependencies | You used `dpkg -i`, or the box has no network for the repo. Use `apt install ./file.deb`. |
 
