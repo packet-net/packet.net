@@ -34,6 +34,8 @@ public sealed class HeardApiTests : IDisposable
                   host: 127.0.0.1
                   port: 8141
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

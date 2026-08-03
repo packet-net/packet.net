@@ -60,6 +60,8 @@ public sealed class AvailableAppsApiTests : IDisposable
               callsign: M0LTE-1
             ports: []
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

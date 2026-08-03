@@ -49,6 +49,8 @@ public sealed class RigMutationApiTests : IDisposable
                 rig:
                   kind: hamlib
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

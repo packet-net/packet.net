@@ -45,6 +45,8 @@ public class NodeConfigYamlTests
               banner: "Hi {node}"
               prompt: "{call}> "
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: true
                 bind: 127.0.0.1
@@ -330,12 +332,14 @@ public class NodeConfigYamlTests
     }
 
     [Fact]
-    public void Management_auth_defaults_off_and_round_trips_when_enabled()
+    public void Management_auth_defaults_on_and_round_trips_when_disabled()
     {
-        // Default-off: an absent management.auth block leaves auth disabled — the
-        // no-regression contract for the auth foundation.
+        // Default-ON: an absent management.auth block means a login is required. It moves
+        // with the http bind defaulting to the wildcard — a reachable panel that anyone
+        // could drive would otherwise be the out-of-the-box posture.
         var defaulted = NodeConfigYaml.Parse("identity:\n  callsign: M0LTE-1\n");
-        defaulted.Management.Auth.Enabled.Should().BeFalse();
+        defaulted.Management.Auth.Enabled.Should().BeTrue();
+        defaulted.Management.Http.Bind.Should().Be("0.0.0.0");
         defaulted.Management.Auth.AccessTokenMinutes.Should().BeNull();
 
         // And an explicit on round-trips through serialise→parse.

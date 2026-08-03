@@ -40,6 +40,8 @@ public sealed class SqliteConfigProviderTests : IDisposable
               host: 127.0.0.1
               port: 8001
         management:
+          auth:
+            enabled: false
           telnet:
             enabled: true
             bind: 127.0.0.1

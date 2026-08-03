@@ -118,10 +118,30 @@ public class NodeConfigValidatorTests
     [Fact]
     public void Https_cannot_collide_with_the_http_listener()
     {
-        // Same address:port as the default http listener (127.0.0.1:8080) → rejected.
+        // A loopback https listener on the http port collides with the default WILDCARD
+        // http bind (0.0.0.0:8080) even though the bind strings differ — 0.0.0.0 covers
+        // loopback, so Kestrel would fail to bind at startup and the node would not come
+        // up. String equality missed this; Collides() treats a wildcard as overlapping.
         Validator.Validate(Valid() with
         {
             Management = new ManagementConfig { Https = new HttpsConfig { Enabled = true, Bind = "127.0.0.1", Port = 8080 } },
+        }).IsValid.Should().BeFalse();
+        // Symmetrically: an explicit loopback http bind vs a wildcard https bind.
+        Validator.Validate(Valid() with
+        {
+            Management = new ManagementConfig
+            {
+                Http = new HttpConfig { Bind = "127.0.0.1", Port = 8080 },
+                Https = new HttpsConfig { Enabled = true, Bind = "0.0.0.0", Port = 8080 },
+            },
+        }).IsValid.Should().BeFalse();
+        // And the telnet console against a wildcard http bind on the same port.
+        Validator.Validate(Valid() with
+        {
+            Management = new ManagementConfig
+            {
+                Telnet = new TelnetConfig { Enabled = true, Bind = "127.0.0.1", Port = 8080 },
+            },
         }).IsValid.Should().BeFalse();
         // A distinct port is fine.
         Validator.Validate(Valid() with

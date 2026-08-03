@@ -42,6 +42,8 @@ public sealed class ReadApiTests : IDisposable
                   host: 127.0.0.1
                   port: 8101
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:

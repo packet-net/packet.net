@@ -15,12 +15,14 @@ GET /metrics
 
 - It's on the **same web port** as the control panel — no second port to bind or
   firewall.
-- It's gated by the **same `read` scope** as the rest of the read API. With
-  management auth **off** (the default) it's unauthenticated *and* the node binds
-  `127.0.0.1` by default — so the out-of-the-box posture is the standard
-  localhost-scrape one (run the Prometheus agent on the same host, or scrape across
-  your Tailscale tailnet). With auth **on**, `/metrics` needs a `read`-scoped bearer
-  token like everything else.
+- It is **always unauthenticated**, even when management auth is on (which it is by
+  default). That's the Prometheus contract — a scraper holds a static config, not a
+  login — and it means a stock node is scrapeable with no token wrangling. The flip
+  side: on the default `0.0.0.0` bind, anyone who can reach the node's web port can
+  read it, and it carries **heard callsigns**, per-peer SNR, port and radio health,
+  and your running version. If that matters at your site, bind the panel to
+  `127.0.0.1` and scrape locally, keep the node on a Tailscale tailnet, or put a
+  reverse proxy in front.
 - Numbers here and in the JSON API can never disagree — they're computed from one
   set of counters (the same `RadioHealth` projection `GET /api/v1/radios` serves).
 

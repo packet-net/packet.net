@@ -5,6 +5,26 @@ namespace Packet.Node.Core.Configuration;
 /// <summary>Validates the management surfaces (telnet + http binds/ports).</summary>
 public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
 {
+    /// <summary>
+    /// Whether two listeners would fight for the same socket. String equality is not
+    /// enough: a wildcard bind (<c>0.0.0.0</c> / <c>::</c> / empty) covers every local
+    /// address, so <c>0.0.0.0:8080</c> and <c>127.0.0.1:8080</c> collide even though the
+    /// strings differ — Kestrel fails to bind at startup and the node never comes up.
+    /// This mattered little while http defaulted to loopback; it matters now that the
+    /// default is the wildcard (see <see cref="HttpConfig.Bind"/>).
+    /// </summary>
+    private static bool Collides(string bindA, int portA, string bindB, int portB)
+    {
+        if (portA != portB)
+        {
+            return false;
+        }
+        static bool IsWildcard(string bind) =>
+            string.IsNullOrWhiteSpace(bind) || bind is "0.0.0.0" or "::" or "[::]" or "*" or "+";
+        return IsWildcard(bindA) || IsWildcard(bindB)
+            || string.Equals(bindA, bindB, StringComparison.OrdinalIgnoreCase);
+    }
+
     public ManagementValidator()
     {
         RuleFor(m => m.Telnet.Port).InclusiveBetween(1, 65535).WithMessage("Telnet port must be in 1..65535.");
@@ -12,7 +32,7 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
         RuleFor(m => m.Http.Port).InclusiveBetween(1, 65535).WithMessage("Http port must be in 1..65535.");
         RuleFor(m => m.Http.Bind).NotEmpty().WithMessage("Http bind address is required.");
         RuleFor(m => m)
-            .Must(m => !(m.Telnet.Enabled && m.Telnet.Bind == m.Http.Bind && m.Telnet.Port == m.Http.Port))
+            .Must(m => !(m.Telnet.Enabled && Collides(m.Telnet.Bind, m.Telnet.Port, m.Http.Bind, m.Http.Port)))
             .WithMessage("Telnet and Http cannot bind the same address:port.");
 
         // HTTPS (only validated when enabled).
@@ -23,11 +43,11 @@ public sealed class ManagementValidator : AbstractValidator<ManagementConfig>
             .When(m => m.Https.Enabled)
             .WithMessage("Https bind address is required.");
         RuleFor(m => m)
-            .Must(m => !(m.Https.Bind == m.Http.Bind && m.Https.Port == m.Http.Port))
+            .Must(m => !Collides(m.Https.Bind, m.Https.Port, m.Http.Bind, m.Http.Port))
             .When(m => m.Https.Enabled)
             .WithMessage("Http and Https cannot bind the same address:port.");
         RuleFor(m => m)
-            .Must(m => !(m.Telnet.Enabled && m.Telnet.Bind == m.Https.Bind && m.Telnet.Port == m.Https.Port))
+            .Must(m => !(m.Telnet.Enabled && Collides(m.Telnet.Bind, m.Telnet.Port, m.Https.Bind, m.Https.Port)))
             .When(m => m.Https.Enabled)
             .WithMessage("Telnet and Https cannot bind the same address:port.");
         // If self-signed generation is off, an explicit cert path is required.

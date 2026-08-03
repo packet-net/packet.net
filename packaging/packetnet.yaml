@@ -101,7 +101,10 @@ management:
     bind: 127.0.0.1        # loopback only by default
     port: 8011
   http:
-    bind: 127.0.0.1
+    bind: 0.0.0.0          # the control panel, on every interface — reachable from your
+                           # laptop without an SSH tunnel. What makes that safe is
+                           # auth.enabled below; narrow this to 127.0.0.1 if you turn
+                           # auth off. Read at process start: changing it needs a restart.
     port: 8080
   # LAN discovery: advertise this node over mDNS / DNS-SD (_pdn._tcp) so the pdn mobile app
   # (and other DNS-SD browsers) find it without typing an address. Off by default. REQUIRES
@@ -127,16 +130,23 @@ management:
   #   # certificatePath: /etc/packetnet/server.pfx
   #   # certificatePassword: null
   #   generateSelfSignedOnMissing: true
-  # Web/management authentication. Off by default; turn on to require a login on the
-  # control panel (users + scopes are created via the first-run setup / the Users screen).
-  # auth:
-  #   enabled: true
-  #   # accessTokenMinutes: 60        # short access JWT; the client silently renews it
-  #   # refreshTokenMinutes: 10080    # 7d session; rotates one-time-use (must exceed access)
-  #   # sysopElevationMinutes: 15     # how long an over-RF `SYSOP <code>` elevation lasts
-  #   # webAuthn:                     # passkeys (default rp.id localhost — set on a real domain)
-  #   #   relyingPartyId: pdn.example
-  #   #   allowedOrigins: [ "https://pdn.example:8443" ]
+  # Web/management authentication. ON by default — the panel binds the LAN above, and a
+  # session on it can rewrite config, add ports, and transmit. A fresh node has no users
+  # yet, and first-run setup is never gated, so the first visitor gets the setup wizard,
+  # creates the admin, and everything after that needs a login. Turn it off only for a
+  # node that is not reachable from the network (bind 127.0.0.1 above), or one already
+  # behind something that authenticates for it.
+  auth:
+    enabled: true
+    # accessTokenMinutes: 60        # short access JWT; the client silently renews it
+    # refreshTokenMinutes: 10080    # 7d session; rotates one-time-use (must exceed access)
+    # sysopElevationMinutes: 15     # how long an over-RF `SYSOP <code>` elevation lasts
+    # Passkeys need a secure origin — https with a trusted cert, or http://localhost. The
+    # panel hides the passkey buttons where the browser can't run the ceremony (plain-HTTP
+    # LAN), and password login carries on. Set these when you have a real hostname:
+    # webAuthn:
+    #   relyingPartyId: pdn.example
+    #   allowedOrigins: [ "https://pdn.example:8443" ]
 
 # Embedded Tailscale (the tsnet sidecar) — the blessed remote + passkey path. Off by
 # default; pdn stays HTTP-only until you opt in. When enabled, pdn joins your tailnet, gets

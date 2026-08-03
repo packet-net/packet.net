@@ -25,4 +25,7 @@ management:
     bind: 0.0.0.0           # container: reachable via -p (see the warning above)
     port: 8080
   auth:
-    enabled: false          # turn on before exposing beyond a trusted network
+    enabled: true           # the panel binds 0.0.0.0 here, so it is published wherever -p
+                            # puts it: a login is what stands between the network and a
+                            # session that can rewrite config, add ports, and transmit.
+                            # First run lands on the setup wizard (never gated at zero users).

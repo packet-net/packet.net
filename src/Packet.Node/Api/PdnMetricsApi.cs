@@ -44,10 +44,14 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Exposure posture.</b> <c>/metrics</c> is mapped on the same Kestrel listener as the REST API
-/// and is gated by the same <see cref="PdnAuthPolicies.Read"/> scope policy — so it is unauthenticated
-/// when <c>management.auth.enabled</c> is off (the node binds 127.0.0.1 by default, the standard
-/// localhost-scrape posture) and requires a <c>read</c>-scoped token once auth is turned on, exactly
-/// like the rest of the read surface. Documented in docs/observability.md.
+/// but is <b>always unauthenticated</b>, regardless of <c>management.auth.enabled</c> — the normal
+/// Prometheus contract, and a deliberate call (Tom, 2026-08-03) taken when auth started defaulting
+/// on: a scraper holds a static config, not a login, so gating it behind a 60-minute access JWT
+/// would have made a documented workflow impossible on a default install. The exposition carries
+/// operational state — heard callsigns, per-peer SNR, port/radio health, the running version — so
+/// treat it as public on whatever interface <c>management.http.bind</c> reaches, and put the node
+/// behind Tailscale or a reverse proxy if that is not acceptable at your site. Documented in
+/// docs/observability.md.
 /// </para>
 /// </remarks>
 public static class PdnMetricsApi
@@ -76,7 +80,7 @@ public static class PdnMetricsApi
                 // text/plain; version=0.0.4 is the Prometheus exposition content type a scraper expects.
                 return Results.Text(body, "text/plain; version=0.0.4; charset=utf-8");
             })
-            .RequireAuthorization(PdnAuthPolicies.Read)
+            .AllowAnonymous()
             .WithName("metrics");
     }
 

@@ -37,6 +37,8 @@ public sealed class RadiosApiTests : IDisposable
                   host: 127.0.0.1
                   port: 8199
             management:
+              auth:
+                enabled: false
               telnet:
                 enabled: false
               http:
