@@ -69,7 +69,7 @@ public class DataLinkSrejUnderLossTests
     // companion Srej_under_loss_converges_under_T1_pacing_no_storm proves the
     // storm is a Settle artifact, not a recovery defect; and
     // Srej_response_drives_single_frame_selective_retransmit_on_the_wire proves
-    // the #38 quirk does single-frame selective (not go-back-N) on the wire.
+    // the corrected figc4.5 does single-frame selective (not go-back-N) on the wire.
     [Fact]
     public void Srej_under_loss_recovers_from_TimerRecovery_with_default_quirk()
     {
@@ -120,16 +120,17 @@ public class DataLinkSrejUnderLossTests
         rig.A.Context.VA.Should().Be((byte)4, "every I-frame must end acknowledged");
     }
 
-    // packet-net/packet.net#233 (a): the SREJ-selective quirk genuinely ENGAGES
+    // packet-net/packet.net#233 (a): single-frame selective retransmit genuinely happens
     // end-to-end. Drive A into TimerRecovery, deliver EXACTLY ONE SREJ(nr=1)
     // response, and swallow A's reply before B can feed back more SREJs, so we
     // observe only the frames A puts on the wire in *direct* response to that one
-    // SREJ. With the quirk on (default) A emits the single requested frame N(s)=1
+    // SREJ. A emits the single requested frame N(s)=1
     // — NOT go-back-N (which would put 1,2,3 on the wire). This is the on-the-wire
     // proof that complements the verb-level Ax25SessionQuirksTests: the figc4.5
     // SREJ-received transition (t24_srej_received_yes_yes_*_no, the push-bearing
-    // response paths) really does route through the quirk's selective redirect in
-    // a live two-session exchange.
+    // response paths) really does drive a selective retransmit in a live two-session
+    // exchange — natively since ax25sdl 0.10.2 corrected the figure, where the retired
+    // #38 quirk used to rewrite the figure's go-back-N into it.
     [Fact]
     public void Srej_response_drives_single_frame_selective_retransmit_on_the_wire()
     {
@@ -154,12 +155,13 @@ public class DataLinkSrejUnderLossTests
     // response.") and linbpq gates resend on `if (MSGFLAG & RESP)` (L2Code.c
     // SFRAME). So nobody sends SREJ as a command and nobody acts on receiving
     // one. The figc4.5 response:No paths (t24_srej_received_no_yes_*) carry only
-    // a go-back-N "Invoke Retransmission" (no push verb); the #38 selective quirk
-    // skips that go-back-N and has nothing to redirect, so the command form is a
-    // no-op retransmit. This test PINS that documented behaviour: the response
-    // form selectively retransmits, the command form does not — matching the
-    // de-facto stacks. If a future spec revision resurrects an actionable SREJ
-    // command, revisit this together with packethacking/ax25spec#38.
+    // a go-back-N "Invoke Retransmission" (no push verb), which the then-current #38
+    // workaround skipped — so the command form was a no-op retransmit BY ACCIDENT.
+    // ax25sdl 0.10.2's corrected figc4.5 gives the command paths a real selective
+    // retransmit, so keeping the old behaviour is now the deliberate SrejCommandIgnored
+    // quirk (packet-net/packet.net#674) rather than a side effect. This test PINS it:
+    // the response form selectively retransmits, the command form does not — matching
+    // direwolf and linbpq.
     [Theory]
     [InlineData(true, new byte[] { 1 })] // response (F=1): selective retransmit of N(r)=1
     [InlineData(false, new byte[0])]      // command  (P=1): no retransmit (SREJ is response-only)

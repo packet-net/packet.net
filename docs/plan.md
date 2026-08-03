@@ -1258,6 +1258,17 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-08-03 — `Ax25Spec38SrejSelectiveRetransmit` retired: the figure is fixed, so the workaround goes
+
+Tom's call on the #674 follow-up, and the satisfying end of a long-running erratum. The quirk existed to rewrite figc4.5's generic push + go-back-N into the figc4.4 single-frame selective retransmit; its own doc said to delete it once `ax25sdl` shipped a corrected figc4.5 (tracked as #227). 0.10.2 ships exactly that, doing single-frame selective **natively** on all four SREJ paths — so neither verb the quirk acted on (`Push*OnQueue`, `InvokeRetransmission`) survives in the tables, and the rewrite is unreachable.
+
+- **Removed** from `Ax25SessionQuirks` (property + `StrictlyFaithful` entry), `ActionDispatcher` (the interception), and `Ax25SessionQuirksTests.cs` **deleted whole** — all three of its cases fed the dispatcher hand-authored verb lists the corrected tables no longer emit, so they were exercising a rewrite that can no longer fire. **No coverage lost:** the behaviour they protected is now the figure's own, and `DataLinkSrejUnderLossTests` pins it end-to-end through the real tables — strictly better evidence than synthetic verbs.
+- **`SrejCommandIgnored` stays.** It is a *deliberate divergence from a correct figure*, not a workaround for a broken one. Its docs and the surrounding comments no longer reference the retired quirk by cref.
+- **Caught by the paired test, worth recording:** the first cut of this removal sliced from the #38 comment to the #42 comment, which silently swallowed the `SrejCommandIgnored` block that sat between them. `Srej_command_does_not_retransmit_under_default(asResponse: False)` failed immediately and named it. That is the value of pinning both sides of a flag rather than only the default.
+- **Behaviour is unchanged for every real link** — an SREJ *response* selectively retransmits N(r) exactly as before; only the machinery differs. `Packet.Ax25.Tests` 963 (966 − the 3 retired synthetic cases); full suite green.
+- **Sibling legs:** [ax25-ts#76](https://github.com/packet-net/ax25-ts/pull/76) mirrors the removal, [pico-node#73](https://github.com/packet-net/pico-node/pull/73) drops the now-stale inventory entry. **Merge order matters and is the reverse of last time:** removing from C# keeps `C# ⊆ TS` true, so packet.net lands first; removing from TS first would have broken the guard.
+- **Second dark gate found and fixed while there** ([ax25-ts#76](https://github.com/packet-net/ax25-ts/pull/76)): ax25-ts's own C#-vs-TS leg cloned the pre-split *private* `m0lte/packet.net` behind a `PACKETNET_READ_TOKEN` secret, and with no secret the step **warned and skipped** — then the parity step saw no checkout and exited 0. That leg has been reporting success while never running. `packet-net/packet.net` is public, so it now clones directly with no token gate, and a missing checkout is a hard error. Same shape as the incident this morning, in a different repo.
+
 ### 2026-08-03 — Five of the six deferred dependency majors taken; MQTTnet 5 is a port, not a bump (#673)
 
 Worked through the majors parked by the morning's sweep, one at a time with a full suite run behind each.
