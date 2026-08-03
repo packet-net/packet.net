@@ -116,7 +116,7 @@ dotnet add package Packet.Rig.Hamlib       # rigctld backend
     `Packet.Ax25.Transport.Abstractions`, `Packet.Kiss*`, `Packet.Agw`,
     `Packet.Axudp`, `Packet.NetRom`, `Packet.Radio*`, `Packet.Rig*` — is
     published to NuGet; see the
-    [top-level README](../README.md#whats-here) for the full publication
+    [package inventory](../docs/packages.md) for the full publication
     matrix.
 
 !!! info "A note on strictness"
