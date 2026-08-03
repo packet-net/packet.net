@@ -93,47 +93,6 @@ public sealed record Ax25SessionQuirks
     public bool SegmentFirstCarriesL3Pid { get; init; } = true;
 
     /// <summary>
-    /// Work around <c>packethacking/ax25spec#38</c>: figc4.5 (Timer Recovery)
-    /// draws the SREJ-received retransmit path as the generic fresh-DL-DATA
-    /// "Push frame onto queue" verb followed by "Invoke Retransmission"
-    /// (go-back-N). That contradicts §4.3.2.4 / §6.4.8 ("retransmission of the
-    /// <i>single</i> I frame numbered N(R) … frames transmitted following … are
-    /// not retransmitted"), figc4.4's correct SREJ handler, and every surveyed
-    /// implementation (direwolf and linbpq do single-frame selective; linux and
-    /// rax25 don't implement SREJ-driven go-back-N at all). direwolf's author
-    /// independently flagged the exact box as a "2006 revision … cut-n-paste
-    /// from the REJ flow chart" and disabled it.
-    /// </summary>
-    /// <remarks>
-    /// When <c>true</c> (default), an SREJ-received transition does single-frame
-    /// selective retransmit — it redirects the figure's "Push frame onto queue"
-    /// to the figc4.4 "Push Old I Frame N(r) on Queue" behaviour and skips the
-    /// go-back-N "Invoke Retransmission". When <c>false</c>, the figc4.5 figure
-    /// runs as drawn (which also throws on the payload-less push — strict
-    /// conformance only). Delete this quirk once ax25sdl ships a corrected
-    /// figc4.5. Removal tracked at packet-net/packet.net#227 ← packethacking/ax25spec#38.
-    /// </remarks>
-    /// <remarks>
-    /// <para>
-    /// <b>Scope — SREJ is response-only (packet-net/packet.net#234).</b> The redirect
-    /// fires only on the figc4.5 SREJ <i>response</i> paths
-    /// (<c>t24_srej_received_yes_yes_*_no</c>), which carry the
-    /// <c>push_frame_on_queue</c> verb this quirk rewrites. The SREJ
-    /// <i>command</i> paths (<c>t24_srej_received_no_yes_*</c>) carry only the
-    /// go-back-N <c>Invoke Retransmission</c> (no push), so when this quirk skips
-    /// it nothing is retransmitted on the command form. That is intentional and
-    /// spec-aligned: AX.25 v2.2 §4.3.2.4 says "The SREJ frame is only sent as a
-    /// response", and no surveyed implementation sends SREJ as a command or acts
-    /// on receiving one (direwolf <c>src/ax25_link.c</c>: "Command path has been
-    /// omitted because SREJ can only be response"; linbpq gates resend on
-    /// <c>if (MSGFLAG &amp; RESP)</c>). The vestigial figc4.5 command-SREJ form is
-    /// itself errata flagged upstream. If a future spec revision resurrects an
-    /// actionable SREJ command, revisit here alongside #38.
-    /// </para>
-    /// </remarks>
-    public bool Ax25Spec38SrejSelectiveRetransmit { get; init; } = true;
-
-    /// <summary>
     /// Ignore the retransmission request carried by a received SREJ sent as a
     /// <b>command</b>, while still honouring the acknowledgement it carries. Default
     /// <c>true</c> — matching every surveyed implementation.
@@ -152,7 +111,7 @@ public sealed record Ax25SessionQuirks
     /// <b>Why it needed a flag (packet-net/packet.net#674).</b> Until the corrected
     /// figc4.5 landed (<c>ax25sdl</c> 0.10.1 ← <c>packethacking/ax25spec#65</c>), the
     /// command paths carried <i>only</i> the go-back-N <c>Invoke Retransmission</c>,
-    /// which <see cref="Ax25Spec38SrejSelectiveRetransmit"/> skipped — so the command
+    /// which the then-current selective-retransmit workaround skipped — so the command
     /// form retransmitted nothing <b>by accident</b>, as a side effect of working around
     /// a buggy figure. The correction gives all four SREJ paths a native single-frame
     /// selective retransmit, which makes the command form actionable for the first time.
@@ -538,7 +497,6 @@ public sealed record Ax25SessionQuirks
     public static Ax25SessionQuirks StrictlyFaithful { get; } = new()
     {
         SegmentFirstCarriesL3Pid = false,
-        Ax25Spec38SrejSelectiveRetransmit = false,
         SrejCommandIgnored = false,
         Ax25Spec40DiscardOutOfWindowIFrames = false,
         Ax25Spec41KarnSrtSampling = false,

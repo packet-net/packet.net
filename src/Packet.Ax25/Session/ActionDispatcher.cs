@@ -399,26 +399,6 @@ public sealed class ActionDispatcher : IActionDispatcher
         var ctx = tx.Session;
         var scheduler = tx.Scheduler;
 
-        // Quirk Ax25Spec38SrejSelectiveRetransmit (default on): figc4.5 draws the
-        // SREJ-received retransmit as the generic fresh-DL-DATA push + go-back-N
-        // "Invoke Retransmission", contradicting §4.3.2.4/figc4.4 and every
-        // implementation (packethacking/ax25spec#38). On an SREJ trigger we do
-        // single-frame selective retransmit instead: redirect the push to the
-        // figc4.4 "Push Old I Frame N(r) on Queue" behaviour, and skip the
-        // go-back-N. Remove once ax25sdl ships a corrected figc4.5.
-        //
-        // Note (packet-net/packet.net#234): this rewrite only has a push to redirect on
-        // the SREJ *response* paths (t24_srej_received_yes_yes_*_no). The SREJ
-        // *command* paths (t24_srej_received_no_yes_*) carry only Invoke_Retransmission,
-        // so skipping it retransmits nothing on the command form. That is
-        // deliberate and spec-aligned — §4.3.2.4 makes SREJ response-only and no
-        // deployed stack sends or acts on an SREJ command (direwolf omits the
-        // command path; linbpq gates resend on RESP). The command-SREJ form is
-        // vestigial errata; see Ax25SessionQuirks and DataLinkSrejUnderLossTests.
-        //
-        // The push family (push_on_I_frame_queue / push_frame_on_queue and the
-        // figure word-order variants) all collapse to the same enum members; any
-        // of them on an SREJ trigger redirects to the single-frame retransmit.
         // Quirk SrejCommandIgnored (default on): an SREJ sent as a COMMAND is off-spec —
         // §4.3.2.4 makes SREJ response-only — and no deployed stack acts on receiving one
         // (direwolf omits the path; linbpq gates the resend on RESP). Both still apply the
@@ -435,7 +415,7 @@ public sealed class ActionDispatcher : IActionDispatcher
         // ClearAcknowledgePending are the "we just transmitted" bookkeeping that must not
         // fire when we transmit nothing. Suppressing the whole tail reproduces exactly what
         // the pre-correction figure did on this path (which carried only the go-back-N verb
-        // that Ax25Spec38SrejSelectiveRetransmit already skipped). packet-net/packet.net#674.
+        // that the retired #38 workaround already skipped). packet-net/packet.net#674.
         if (ctx.Quirks.SrejCommandIgnored
             && tx.Trigger is SrejReceived { Frame.IsCommand: true }
             && verb is Ax25ActionVerb.PushOldIFrameNROnQueue
@@ -450,21 +430,6 @@ public sealed class ActionDispatcher : IActionDispatcher
                     or Ax25ActionVerb.InvokeRetransmission)
         {
             return;
-        }
-
-        if (ctx.Quirks.Ax25Spec38SrejSelectiveRetransmit && tx.Trigger is SrejReceived)
-        {
-            if (verb is Ax25ActionVerb.PushOnIFrameQueue
-                     or Ax25ActionVerb.PushOnIFrameQueueNoteWordOrder
-                     or Ax25ActionVerb.PushFrameOnQueue
-                     or Ax25ActionVerb.PushIFrameOnIQueue)
-            {
-                verb = Ax25ActionVerb.PushOldIFrameNROnQueue;
-            }
-            else if (verb is Ax25ActionVerb.InvokeRetransmission)
-            {
-                return;
-            }
         }
 
         // Quirk Ax25Spec42SrejTargetsGap (default on): figc4.4's out-of-sequence
