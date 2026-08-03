@@ -21,7 +21,10 @@ servers:
 x-slices:
   read-and-stream: [GET /status, GET /ports, GET /sessions, GET /netrom/routes, GET /config, GET /links, GET /log, GET /monitor/recent, GET /events, GET /traffic]
   auth: [POST /auth/login, WebAuthn register/authenticate, GET /setup/state, POST /setup, /users, TOTP]
-  write-and-actions: [port lifecycle, PUT/PATCH /config, /sessions connect/disconnect/send, /ports/{id}/tune, /ports/{id}/tuning/* (deviation tuning), /ports/{id}/hail (SDM station hail), /ping, /beacons]
+  # Quoted: a bare `{id}` inside a flow sequence is a YAML mapping, so this line made the
+  # whole document unparseable to any YAML reader (found 2026-08-03 while adding the
+  # KissParams ranges — the spec had never machine-parsed).
+  write-and-actions: ["port lifecycle", "PUT/PATCH /config", "/sessions connect/disconnect/send", "/ports/{id}/tune", "/ports/{id}/tuning/* (deviation tuning)", "/ports/{id}/hail (SDM station hail)", "/ping", "/beacons"]
 
 tags:
   - { name: status }
@@ -899,11 +902,33 @@ components:
         maxCachedPeers: { type: integer }
     KissParams:
       type: object
+      description: >-
+        Per-port KISS modem knobs. Every one is a single BYTE on the wire (0..255) — that is
+        the KISS protocol — and the three timers count 10 ms UNITS, not milliseconds: 30 is
+        300 ms, and 255 (2.55 s) is the longest any of them can express. A value outside the
+        range is a 422 naming the field, not a silent clamp. Omit a knob to leave the modem
+        at its own default (txTail is the exception: unset means an explicit 0 is sent).
       properties:
-        txDelay: { type: integer }
-        persistence: { type: integer, description: "0..255 byte" }
-        slotTime: { type: integer }
-        txTail: { type: integer }
+        txDelay:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: "TXDELAY (0x01) in units of 10 ms — 30 = 300 ms"
+        persistence:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: "PERSIST (0x02), the p-persistence byte (255 = always transmit when clear)"
+        slotTime:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: "SLOTTIME (0x03) in units of 10 ms — 10 = 100 ms"
+        txTail:
+          type: integer
+          minimum: 0
+          maximum: 255
+          description: "TXTAIL (0x04) in units of 10 ms; unset sends an explicit 0"
     PortConfig:
       type: object
       required: [id, enabled, transport]

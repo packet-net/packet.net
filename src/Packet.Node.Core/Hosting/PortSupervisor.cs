@@ -1389,22 +1389,30 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Dire Wolf — or a NinoTNC into a non-zero-latency audio path), which the node
         // can't infer, so the operator sets `kiss.txTail` per port and that explicit
         // value wins here (the `?? 0` only supplies the default when unset).
+        // The config knobs are int? (so an out-of-range value is a named 422 from
+        // KissParamsValidator rather than an opaque model-binding 400 — #672), while
+        // ICsmaChannelParams is byte, which is the wire truth. Clamp rather than cast:
+        // config reaching here has been validated to 0..255, so the clamp is unreachable
+        // for a validated path, but an unchecked cast would silently wrap a bad value
+        // into a plausible one (300 → 44) if a future path ever skipped validation.
+        static byte ToWire(int value) => (byte)Math.Clamp(value, 0, 255);
+
         if (kiss?.TxDelay is { } txd)
         {
-            await csma.SetTxDelayAsync(txd, ct).ConfigureAwait(false);
+            await csma.SetTxDelayAsync(ToWire(txd), ct).ConfigureAwait(false);
         }
 
         if (kiss?.Persistence is { } per)
         {
-            await csma.SetPersistenceAsync(per, ct).ConfigureAwait(false);
+            await csma.SetPersistenceAsync(ToWire(per), ct).ConfigureAwait(false);
         }
 
         if (kiss?.SlotTime is { } slot)
         {
-            await csma.SetSlotTimeAsync(slot, ct).ConfigureAwait(false);
+            await csma.SetSlotTimeAsync(ToWire(slot), ct).ConfigureAwait(false);
         }
 
-        await csma.SetTxTailAsync(kiss?.TxTail ?? 0, ct).ConfigureAwait(false);
+        await csma.SetTxTailAsync(ToWire(kiss?.TxTail ?? 0), ct).ConfigureAwait(false);
     }
 
     // Update the stored baseline config for a still-running port without

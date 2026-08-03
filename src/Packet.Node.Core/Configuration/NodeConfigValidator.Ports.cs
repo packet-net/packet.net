@@ -46,6 +46,9 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Ax25 is not null, () =>
             RuleFor(p => p.Ax25!).SetValidator(new Ax25ParamsValidator()));
 
+        When(p => p.Kiss is not null, () =>
+            RuleFor(p => p.Kiss!).SetValidator(new KissParamsValidator()));
+
         // Per-port NET/ROM route quality (BPQ per-port QUALITY): 0..255 — the NET/ROM
         // quality range. A typo'd value is rejected rather than silently clamped,
         // matching the per-port tuning discipline. Null = inherit the global default.
@@ -382,6 +385,43 @@ public sealed class PortCompatValidator : AbstractValidator<PortCompatConfig>
             .WithMessage(c =>
                 $"compat.quirks '{c.Quirks}' is not a known session-quirks selector " +
                 $"(expected one of: {string.Join(", ", Ax25CompatPresets.QuirksNames)} — or omit it for default).");
+    }
+}
+
+/// <summary>
+/// Validates the per-port KISS knobs. Every one is a single <b>byte on the wire</b>
+/// (0..255) — that is the KISS protocol — so an out-of-range value is rejected here,
+/// by name and with its units, rather than reaching the transport.
+/// <para>
+/// This validator is why <see cref="KissParams"/> is <c>int?</c> rather than <c>byte?</c>
+/// (#672): a <c>byte?</c> made an out-of-range value fail JSON model binding, so the API
+/// answered a bare <b>400</b> with no field name instead of the 422 every other bad value
+/// gets. The messages name the unit, because the trap is thinking in milliseconds — the
+/// panel itself made exactly that mistake and posted <c>txDelay: 300</c>.
+/// </para>
+/// </summary>
+public sealed class KissParamsValidator : AbstractValidator<KissParams>
+{
+    private const string TenMs =
+        "in units of 10 ms, so 30 means 300 ms and 255 (2.55 s) is the longest KISS can express";
+
+    public KissParamsValidator()
+    {
+        RuleFor(k => k.TxDelay!.Value).InclusiveBetween(0, 255)
+            .When(k => k.TxDelay.HasValue)
+            .WithMessage(k => $"kiss.txDelay must be in 0..255 ({TenMs}) — got {k.TxDelay}.");
+
+        RuleFor(k => k.Persistence!.Value).InclusiveBetween(0, 255)
+            .When(k => k.Persistence.HasValue)
+            .WithMessage(k => $"kiss.persistence must be in 0..255 (the KISS p-persistence byte; 255 = always transmit when the channel is clear) — got {k.Persistence}.");
+
+        RuleFor(k => k.SlotTime!.Value).InclusiveBetween(0, 255)
+            .When(k => k.SlotTime.HasValue)
+            .WithMessage(k => $"kiss.slotTime must be in 0..255 ({TenMs}) — got {k.SlotTime}.");
+
+        RuleFor(k => k.TxTail!.Value).InclusiveBetween(0, 255)
+            .When(k => k.TxTail.HasValue)
+            .WithMessage(k => $"kiss.txTail must be in 0..255 ({TenMs}) — got {k.TxTail}.");
     }
 }
 

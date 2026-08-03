@@ -213,20 +213,31 @@ public sealed record Ax25PortParams
 /// KISS modem tuning knobs, all in the units the KISS spec uses. Each is
 /// optional. Applied via the <c>ICsmaChannelParams</c> setters once the port is
 /// up, and re-applied live on a hot reconfigure (no port restart).
+/// <para>
+/// Every knob here is a single <b>byte on the wire</b> (0..255) — that is the KISS
+/// protocol, and <c>ICsmaChannelParams</c> is typed <c>byte</c> accordingly. They are
+/// <c>int?</c> on this record <em>deliberately</em>: a <c>byte?</c> made an out-of-range
+/// value fail JSON model binding, so the API answered a bare <b>400</b> with no field
+/// name instead of the 422 <c>ValidationProblem</c> every other bad value gets — and
+/// "300" looks entirely reasonable to someone thinking in milliseconds (#672). The range
+/// is enforced by <c>KissParamsValidator</c>, which can say which field and why.
+/// </para>
 /// </summary>
 public sealed record KissParams
 {
-    /// <summary>KISS TXDELAY (0x01), in units of 10 ms.</summary>
-    public byte? TxDelay { get; init; }
+    /// <summary>KISS TXDELAY (0x01), in units of 10 ms — 0..255, so 30 is 300 ms
+    /// and 255 (2.55 s) is the longest the wire can express.</summary>
+    public int? TxDelay { get; init; }
 
-    /// <summary>KISS PERSIST (0x02), 0..255.</summary>
-    public byte? Persistence { get; init; }
+    /// <summary>KISS PERSIST (0x02), 0..255 — the p-persistence byte
+    /// (255 = always transmit when the channel is clear).</summary>
+    public int? Persistence { get; init; }
 
-    /// <summary>KISS SLOTTIME (0x03), in units of 10 ms.</summary>
-    public byte? SlotTime { get; init; }
+    /// <summary>KISS SLOTTIME (0x03), in units of 10 ms — 0..255.</summary>
+    public int? SlotTime { get; init; }
 
     /// <summary>
-    /// KISS TXTAIL (0x04), in units of 10 ms. Unlike the other KISS knobs here this has
+    /// KISS TXTAIL (0x04), in units of 10 ms (0..255). Unlike the other KISS knobs here this has
     /// an <b>implicit default of 0</b> (not "leave the modem alone"): the node sends an
     /// explicit, deterministic tail to the modem on bring-up, on the regular KISS-param
     /// apply cadence, and on a hot config change — so a port whose <c>txTail</c> is
@@ -240,7 +251,7 @@ public sealed record KissParams
     /// and that explicit value wins. Set non-null to override the implicit 0.
     /// </para>
     /// </summary>
-    public byte? TxTail { get; init; }
+    public int? TxTail { get; init; }
 
     /// <summary>
     /// Whether this port's outbound transmissions are <b>paced</b> over the G8BPQ
