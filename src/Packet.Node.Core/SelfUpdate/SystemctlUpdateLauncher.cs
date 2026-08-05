@@ -9,13 +9,13 @@ namespace Packet.Node.Core.SelfUpdate;
 /// Launches an update by writing the per-channel request to a spool dir, then starting the
 /// <c>packetnet-update.service</c> systemd oneshot with <c>--no-block</c> (fire-and-return):
 /// systemd runs the unit as root, a shipped polkit rule authorizes the unprivileged
-/// <c>packetnet</c> user to start <em>only</em> that one unit, and the oneshot — detached from this
-/// service — reads the spool, dispatches the per-channel helper (apt upgrade / github-release
-/// <c>dpkg -i</c> / self-contained swap), and restarts us. We never run apt / dpkg / touch files.
+/// <c>packetnet</c> user to start <em>only</em> that one unit, and the oneshot - detached from this
+/// service - reads the spool, dispatches the per-channel helper (apt upgrade / github-release
+/// <c>dpkg -i</c>), and restarts us. We never run apt / dpkg / touch files.
 /// </summary>
 /// <remarks>
-/// The C# side owns the apt-vs-github distinction (the build stamp only encodes <c>deb</c>), so the
-/// resolved channel — and, for github, the validated download request — are written to
+/// The C# side owns the apt-vs-github distinction (only the running box can disambiguate it), so the
+/// resolved channel - and, for github, the validated download request - are written to
 /// <c>/run/packetnet/</c> for the root oneshot to read. <c>/run</c> is tmpfs the oneshot can read;
 /// the node's service user owns the spool dir (created by the package's <c>RuntimeDirectory</c>).
 /// <c>--no-block</c> is load-bearing: the unit's job restarts <c>packetnet.service</c>, so blocking
@@ -32,7 +32,7 @@ public sealed class SystemctlUpdateLauncher : ISystemUpdateLauncher
     public static string SpoolDir =>
         Environment.GetEnvironmentVariable("PDN_UPDATE_SPOOL") is { Length: > 0 } s ? s : "/run/packetnet";
 
-    /// <summary>The file naming the channel to dispatch (one line: <c>apt</c>/<c>github</c>/<c>selfcontained</c>).</summary>
+    /// <summary>The file naming the channel to dispatch (one line: <c>apt</c> or <c>github</c>).</summary>
     public static string ChannelFile => Path.Combine(SpoolDir, "update.channel");
 
     /// <summary>The github-channel request file (<c>{ targetVersion, arch, debUrl, sha256 }</c>).</summary>
@@ -101,7 +101,7 @@ public sealed class SystemctlUpdateLauncher : ISystemUpdateLauncher
     {
         Directory.CreateDirectory(SpoolDir);
 
-        // Write the github request first (so the channel file — which the oneshot keys on — only
+        // Write the github request first (so the channel file - which the oneshot keys on - only
         // appears once its request is fully on disk). Stale request from a prior run is overwritten;
         // remove it on non-github channels so a github helper can never pick up a leftover.
         if (string.Equals(request.Channel, "github", StringComparison.Ordinal) && request.GithubRequest is { } g)

@@ -1,11 +1,11 @@
 // ============================================================
-// pdn domain types — mirror the real records (docs/node-ui-design.md §6):
+// pdn domain types - mirror the real records (docs/node-ui-design.md §6):
 //   Packet.Node.Core.Configuration (NodeConfig tree),
 //   Packet.NetRom.Routing (routing model),
 //   the new Slice-3 read models (NodeStatus/PortStatus/SessionInfo/LinkStats),
 //   the MonitorEvent derived from Ax25Listener.FrameTraced.
 // Plus the operator-facing helper models introduced by the design (profiles,
-// nino modes, beacons, help copy) — these are UI-layer concepts.
+// nino modes, beacons, help copy) - these are UI-layer concepts.
 // ============================================================
 
 // ---- 6.1 NodeConfig tree -----------------------------------
@@ -15,29 +15,29 @@ export interface KissTcpTransport { kind: "kiss-tcp"; host: string; port: number
 export interface SerialKissTransport { kind: "serial-kiss"; device: string; baud: number }
 export interface NinoTncTransport { kind: "nino-tnc"; device: string; baud: number; mode: number }
 export interface AxudpTransport { kind: "axudp"; host: string; port: number; localPort: number }
-// One multipoint-AXUDP partner — a BPQ `MAP <call> <ip> UDP <port> [B]` line
+// One multipoint-AXUDP partner - a BPQ `MAP <call> <ip> UDP <port> [B]` line
 // (server: Packet.Node.Core.Configuration.AxudpPeerConfig). `call` is the routing
 // key (an outbound frame whose AX.25 destination is this callsign goes to this peer);
-// `broadcast` is the BPQ `B` suffix — fan NODES/ID/BEACON broadcasts to this peer.
+// `broadcast` is the BPQ `B` suffix - fan NODES/ID/BEACON broadcasts to this peer.
 export interface AxudpPeer { call: string; host: string; port: number; broadcast: boolean }
-// Multipoint AXUDP — the BPQ BPQAXIP analog: ONE UDP socket bound to `localPort`
+// Multipoint AXUDP - the BPQ BPQAXIP analog: ONE UDP socket bound to `localPort`
 // reaches MANY partners, each addressed by callsign (server:
 // Packet.Node.Core.Configuration.AxudpMultipointTransport). Replaces the point-to-point
 // `axudp` host/port with a `peers[]` partner table.
 export interface AxudpMultipointTransport { kind: "axudp-multipoint"; localPort: number; peers: AxudpPeer[] }
 // FlexRadio slice tuning for a `flex:` soundmodem device (headless slice control;
 // server: Packet.Node.Core.Configuration.SoundModemFlexConfig). Used only when
-// `device` is a `flex:` device — ignored for ALSA devices.
+// `device` is a `flex:` device - ignored for ALSA devices.
 export interface SoundModemFlex {
   frequency?: string; antenna?: string; mode?: string; daxChannel?: string;
 }
-// In-process soundcard modem (the pdn-soundmodem engine) — native DCD, sample-accurate
+// In-process soundcard modem (the pdn-soundmodem engine) - native DCD, sample-accurate
 // TX-complete (server: Packet.Node.Core.Configuration.SoundModemTransportConfig).
-//   offsetPairs/offsetStepHz — the bpsk300 differential frequency-diversity bank knobs
+//   offsetPairs/offsetStepHz - the bpsk300 differential frequency-diversity bank knobs
 //     (2·offsetPairs+1 stepped decoder branches; ignored by non-bank modes).
-//   pskDetector — "coherent" | "differential" for the bpsk*/qpsk* modes (null = the
+//   pskDetector - "coherent" | "differential" for the bpsk*/qpsk* modes (null = the
 //     per-family default: BPSK differential, QPSK coherent).
-//   flex — FlexRadio slice tuning, only for a `flex:` device.
+//   flex - FlexRadio slice tuning, only for a `flex:` device.
 export interface SoundModemTransport {
   kind: "soundmodem"; device: string; captureRate: number; mode: string;
   frequency?: number; ptt?: string;
@@ -63,11 +63,11 @@ export interface Ax25PortParams {
 }
 export interface KissParams {
   // txDelay / slotTime / txTail are BYTES in units of 10 ms (the KISS protocol's own units,
-  // `byte?` on the server) — 30 means 300 ms. persistence is a 0-255 byte shown as a percentage.
+  // `byte?` on the server) - 30 means 300 ms. persistence is a 0-255 byte shown as a percentage.
   // Hold wire values here; the editor converts for display (lib/mock.ts tenMsToMs / msToTenMs).
   txDelay?: number; persistence?: number; slotTime?: number; txTail?: number;
   // Pace outbound TX over the G8BPQ ACKMODE extension (kiss-tcp ports only). Default
-  // false. Unlike the other knobs this is construction-time — toggling it restarts the
+  // false. Unlike the other knobs this is construction-time - toggling it restarts the
   // port. See Packet.Node.Core.Configuration.KissParams.AckMode.
   ackMode?: boolean;
 }
@@ -75,7 +75,7 @@ export interface KissParams {
 // preset picks the Ax25ParseOptions preset (null = lenient, the historical default);
 // the nullable booleans override individual flags on top of the preset; quirks selects
 // the SDL session-quirks set (null = default, the spec-correct one). Absent/null compat
-// = lenient + default — no behavioural change.
+// = lenient + default - no behavioural change.
 export type CompatPreset = "strict" | "lenient" | "bpq" | "xrouter" | "direwolf";
 export interface PortCompatConfig {
   preset?: CompatPreset | null;
@@ -85,10 +85,10 @@ export interface PortCompatConfig {
   quirks?: "default" | "strictly-faithful" | null;
 }
 // Optional per-port radio-control attachment (server: Packet.Node.Core.Configuration.PortRadioConfig).
-// The serial control channel to the radio behind this port's modem — a SEPARATE serial device from
+// The serial control channel to the radio behind this port's modem - a SEPARATE serial device from
 // the modem's. When present, every inbound frame carries per-frame RSSI/SNR sampled from the radio's
 // control channel (the signal data KISS can't provide). Pin which radio EITHER by CCDI serial
-// (preferred/stable — survives /dev/ttyUSB* renumbering and shared-USB-serial ambiguity) OR by device
+// (preferred/stable - survives /dev/ttyUSB* renumbering and shared-USB-serial ambiguity) OR by device
 // path: exactly one of `serial`/`port`. Only valid on the serial-modem transport kinds (serial-kiss,
 // nino-tnc). Null/absent = no radio attached.
 export interface RadioConfig {
@@ -97,20 +97,20 @@ export interface RadioConfig {
   port?: string;
   baud?: number;
   // How often (seconds) the health monitor samples the radio; null/absent = driver default (10 s).
-  // Not surfaced by the editor — carried through untouched so a YAML-set value survives a save.
+  // Not surfaced by the editor - carried through untouched so a YAML-set value survives a save.
   healthIntervalSeconds?: number | null;
 }
 // Optional per-port rig-control (CAT) attachment (server: Packet.Node.Core.Configuration.PortRigConfig).
-// The station-control sibling of the radio: block — the CAT channel to the transceiver behind this
+// The station-control sibling of the radio: block - the CAT channel to the transceiver behind this
 // port's modem (dial frequency / mode / PTT / TX meters); it never touches the packet path, so unlike
 // radio: it is valid on EVERY transport kind. Two binding shapes, selected by `device` being set
 // (mirrors the server's PortRigConfig.IsNodeManaged authority):
-//   node-managed — { kind: "hamlib", device, model, serialSpeed? }: the node spawns + supervises
+//   node-managed - { kind: "hamlib", device, model, serialSpeed? }: the node spawns + supervises
 //     rigctld -m <model> -r <device> on a loopback port it allocates itself (host/port stay unset;
-//     hamlib only — flrig is a GUI app the node can't spawn). Prefer the /dev/serial/by-id device
+//     hamlib only - flrig is a GUI app the node can't spawn). Prefer the /dev/serial/by-id device
 //     path: it survives /dev/ttyUSB* renumbering across replug/reboot.
-//   BYO daemon  — { kind: "hamlib"|"flrig", host, port? }: dial a rigctld/flrig the operator already
-//     runs (model/serialSpeed stay unset; a null port means the kind default — 4532 / 12345).
+//   BYO daemon  - { kind: "hamlib"|"flrig", host, port? }: dial a rigctld/flrig the operator already
+//     runs (model/serialSpeed stay unset; a null port means the kind default - 4532 / 12345).
 export interface RigConfig {
   kind: "hamlib" | "flrig";
   host?: string;
@@ -118,7 +118,7 @@ export interface RigConfig {
   device?: string;
   model?: number;
   serialSpeed?: number;
-  // Poll cadences (idle / keyed), seconds. Not surfaced by the editor — carried through untouched
+  // Poll cadences (idle / keyed), seconds. Not surfaced by the editor - carried through untouched
   // so a YAML-set value survives a Forms save (mirrors RadioConfig.healthIntervalSeconds).
   pollIntervalSeconds?: number | null;
   meterIntervalSeconds?: number | null;
@@ -202,18 +202,18 @@ export interface Inp3Config {
   rifInterval: number; positiveDebounce: number;
 }
 // OARC network-map reporting (server: Packet.Node.Core.Configuration.OarcConfig).
-// Default-off: nothing is reported until `enabled`. All outbound — the node POSTs its
+// Default-off: nothing is reported until `enabled`. All outbound - the node POSTs its
 // own telemetry to the OARC collector; the collector never reaches in. Each category is
 // independently toggleable; traces is the high-volume per-frame firehose (opt-in).
-//   baseUrl                   — collector URL (an absolute http(s) URL).
-//   reportNodeStatus          — node up/status/down heartbeats.
-//   reportLinks               — L2 link events + stats.
-//   reportCircuits            — L4 NET/ROM circuit events + stats.
-//   reportTraces              — per-frame L2 trace firehose (high volume, most revealing).
-//   tracesRfOnly              — when traces on, only over-air (RF) frames.
-//   publishExactPosition      — publish exact lat/lon vs locator-only.
-//   statusIntervalSecs        — node-status heartbeat cadence.
-//   sessionStatusIntervalSecs — link/circuit status refresh cadence.
+//   baseUrl                   - collector URL (an absolute http(s) URL).
+//   reportNodeStatus          - node up/status/down heartbeats.
+//   reportLinks               - L2 link events + stats.
+//   reportCircuits            - L4 NET/ROM circuit events + stats.
+//   reportTraces              - per-frame L2 trace firehose (high volume, most revealing).
+//   tracesRfOnly              - when traces on, only over-air (RF) frames.
+//   publishExactPosition      - publish exact lat/lon vs locator-only.
+//   statusIntervalSecs        - node-status heartbeat cadence.
+//   sessionStatusIntervalSecs - link/circuit status refresh cadence.
 export interface OarcConfig {
   enabled: boolean;
   baseUrl: string;
@@ -227,11 +227,11 @@ export interface OarcConfig {
   sessionStatusIntervalSecs: number;
 }
 export type NetRomForwardMode = "PerFlow" | "Single";
-// The node's NET/ROM routing role — the single 3-state successor to the old
+// The node's NET/ROM routing role - the single 3-state successor to the old
 // connect+forward bools (server: Packet.Node.Core.Configuration.NetRomRouting):
-//   None     — passive: hear + maintain the table only (no interlinks, no transit).
-//   Endpoint — open interlinks for our own connect <alias>, but don't relay transit.
-//   Transit  — full router: interlinks + relay third-party transit.
+//   None     - passive: hear + maintain the table only (no interlinks, no transit).
+//   Endpoint - open interlinks for our own connect <alias>, but don't relay transit.
+//   Transit  - full router: interlinks + relay third-party transit.
 // The legacy connect/forward keys are still accepted by the server for back-compat,
 // but the UI edits only this knob.
 export type NetRomRouting = "None" | "Endpoint" | "Transit";
@@ -243,7 +243,7 @@ export interface NetRomConfig {
   obsoleteInitial?: number; obsoleteMinimum?: number; sweepIntervalSeconds?: number;
   window?: number; transportTimeoutSeconds?: number; transportRetries?: number; timeToLive?: number;
   // Offer LinBPQ-style negotiated NET/ROM L4 payload compression on circuits (BPQ L4Compress).
-  // Default false (decline) — the interop-safe path. Turn on only for links to compression-capable
+  // Default false (decline) - the interop-safe path. Turn on only for links to compression-capable
   // BPQ neighbours. See Packet.Node.Core.Configuration.NetRomConfig.Compress.
   compress: boolean;
   inp3: Inp3Config;
@@ -294,15 +294,15 @@ export interface NodeConfig {
 }
 
 // ---- system info / self-update (server: PdnSystemApi.SystemInfoResponse) ----
-// GET /api/v1/system/info — the node's running version, install channel, what an
+// GET /api/v1/system/info - the node's running version, install channel, what an
 // update would do, and whether a newer version is known (the shared API contract the
 // control panel's About panel + "update available" banner consume).
-//   channel: "apt" | "github" | "selfcontained" | "unknown" — "unknown" disables Apply
-//     (the node won't self-update; update via the package manager / reinstall).
-//   updateMechanism: what POST /system/update does here ("apt" | "github" | "selfcontained" | "none").
+//   channel: "apt" | "github" | "unknown" - "unknown" disables Apply (nothing on the host
+//     owns this install, e.g. an unpacked release archive; the operator replaces it by hand).
+//   updateMechanism: what POST /system/update does here ("apt" | "github" | "none").
 //   updateAvailable + latestVersion: the per-channel available-version check; when true,
 //     latestVersion is the version the banner offers (else null).
-export type InstallChannelName = "apt" | "github" | "selfcontained" | "unknown";
+export type InstallChannelName = "apt" | "github" | "unknown";
 export interface SystemInfo {
   version: string;
   channel: InstallChannelName;
@@ -383,7 +383,7 @@ export interface SpectrumEvent {
 // ---- soundmodem receive-quality snapshot (server: Packet.Node.Core.Transports.SoundModemFrameQuality) ----
 // GET /api/v1/ports/{id}/quality → SoundModemQualitySnapshot (404 for a non-soundmodem or
 // not-running port). A `kind: soundmodem` port's rolling per-frame FEC/CRC receive diagnostics
-// (#635) — the Reed-Solomon correction counts the deframers always computed. camelCase on the wire.
+// (#635) - the Reed-Solomon correction counts the deframers always computed. camelCase on the wire.
 // Deliberately NOT a bit-error rate (BER is unobservable at a receiver): `correctedBytes` is an
 // honest byte-error floor, and its null (an unprotected HDLC framing carries no FEC count) is kept
 // distinct from 0 (a clean IL2P frame). cumulativeCorrectedBytes climbing is the early-warning that
@@ -393,7 +393,7 @@ export interface SoundModemFrameQuality {
   /** Mode (and, for a multi-decoder bank, the winning branch) that decoded the frame. */
   mode: string;
   frameBytes: number;
-  /** Bytes FEC repaired (IL2P/FX.25); null for an unprotected (HDLC) framing — distinct from 0. */
+  /** Bytes FEC repaired (IL2P/FX.25); null for an unprotected (HDLC) framing - distinct from 0. */
   correctedBytes: number | null;
   /** IL2P trailing-CRC state; null where the framing carries no trailer (plain IL2P, HDLC, FX.25). */
   crcValid: boolean | null;
@@ -426,14 +426,14 @@ export interface LinkStats {
 // ---- radio-control status + health (server: Packet.Node.Core.Api.RadioStatus) ----
 // GET /api/v1/radios → RadioStatus[]; GET /api/v1/ports/{id}/radio → RadioStatus (404 unknown port).
 // One per port that has a `radio:` block. `attached` distinguishes a radio the node has open and is
-// polling (true) from one configured but not currently attached (false — port down, or the radio
+// polling (true) from one configured but not currently attached (false - port down, or the radio
 // failed to open and the port degraded to running without it).
 export type RadioConnectionState = "healthy" | "faulted" | "unknown";
 // A radio's self-reported identity (CCDI MODEL / versions queries).
 export interface RadioIdentity { model: string; ccdiVersion: string }
 // The latest radio-health sample, projected for the operator surface. RSSI is read only while the
 // receiver is un-muted (not transmitting); the forward/reverse figures land only on transmit samples.
-// NOTE the forward/reverse detector figures are an antenna-health TREND, NEVER VSWR — the detectors
+// NOTE the forward/reverse detector figures are an antenna-health TREND, NEVER VSWR - the detectors
 // are uncalibrated and √P-scaled; alert on a station's *change*, not the absolute value.
 export interface RadioHealth {
   rssiDbm: number | null;
@@ -458,10 +458,10 @@ export interface RadioStatus {
 // ---- rig-control (CAT) status (server: Packet.Node.Core.Api.RigStatus) ----
 // GET /api/v1/rigs → RigStatus[]; GET /api/v1/ports/{id}/rig → RigStatus (404 unknown port);
 // GET /api/v1/rigs/events → SSE, one `event: rig` per poll tick per attached rig. One per port
-// that has a `rig:` block — the station-control sibling of RadioStatus (a port can carry both).
+// that has a `rig:` block - the station-control sibling of RadioStatus (a port can carry both).
 // `capabilities` is the render contract: show exactly the slice the rig advertises.
 export type RigConnectionState = "healthy" | "faulted" | "unknown";
-// Latest TX-side meter sample — sampled only while the transmitter is keyed (idle rigs read ~0).
+// Latest TX-side meter sample - sampled only while the transmitter is keyed (idle rigs read ~0).
 export interface RigMeters {
   swr: number | null;              // dimensionless ratio, 1.0 = perfect match
   rfPowerWatts: number | null;     // calibrated backends
@@ -477,7 +477,7 @@ export interface RigStatus {
   manufacturer: string | null;
   model: string | null;            // e.g. "IC-7300"
   capabilities: string[];          // camelCased RigCapabilities flag names
-  connectionState: RigConnectionState; // "faulted" self-heals — the backends re-dial per poll
+  connectionState: RigConnectionState; // "faulted" self-heals - the backends re-dial per poll
   frequencyHz: number | null;      // current-VFO Hz
   mode: string | null;             // "USB" | "PKTUSB" | rig-native ("DATA-U", …)
   passbandHz: number | null;       // hamlib reports it; flrig can't
@@ -488,7 +488,7 @@ export interface RigStatus {
 
 // GET /api/v1/radios/scan → RadioScanResult[]. One row per radio a bus scan found. `serial` (the CCDI
 // serial number) is the STABLE primary key: device paths renumber across replug/reboot and the CP2102
-// CCDI dongles share a USB serial, so `byIdPath` may be null (ambiguous) — bind a port by `serial`.
+// CCDI dongles share a USB serial, so `byIdPath` may be null (ambiguous) - bind a port by `serial`.
 export interface RadioScanResult {
   serial: string;
   model: string;
@@ -500,12 +500,12 @@ export interface RadioScanResult {
 
 // ---- rig (CAT) discovery scan (GET /api/v1/rigs/scan) ----
 // One row per candidate serial device the node can see. `byIdPath` is the stable
-// /dev/serial/by-id symlink (preferred bind key — survives /dev/ttyUSB* renumbering); null when
+// /dev/serial/by-id symlink (preferred bind key - survives /dev/ttyUSB* renumbering); null when
 // the device exposes none. `descriptor` is the by-id name the suggestion was matched against.
 // `claimedBy` non-null = the device is already in use (a port transport / radio / rig references
-// it) — the row is not pickable, and the string says what claims it. `suggestion` is the curated
+// it) - the row is not pickable, and the string says what claims it. `suggestion` is the curated
 // descriptor-table match; its `modelNumber` may be null when the name matched the curated table
-// but not the local hamlib catalogue — the operator then picks the model explicitly.
+// but not the local hamlib catalogue - the operator then picks the model explicitly.
 export interface RigSuggestion {
   manufacturer: string;
   model: string;
@@ -527,7 +527,7 @@ export interface RigScan {
 // ---- hamlib model catalogue (GET /api/v1/rigs/models) ----
 // The node's local hamlib rig list (`rigctl -l`), for the editor's model picker.
 // available:false = hamlib is not installed on the node (models is then empty and the
-// node-managed rig shape can't run) — the picker disables with a note.
+// node-managed rig shape can't run) - the picker disables with a note.
 export interface RigModel {
   number: number;
   manufacturer: string;
@@ -552,15 +552,15 @@ export type HeadEndSource = "config" | "mdns";
 // (NinoTNC GETVER / Tait MODEL) classified it, or it was unreachable.
 export type HeadEndDeviceKind = "nino-tnc" | "tait-ccdi" | "unknown";
 // One device on a head-end as the scan saw it. A bound device (already referenced by a configured
-// port) is NOT probed (single-client-per-pipe) — its `kind` then comes from the binding and `free`
+// port) is NOT probed (single-client-per-pipe) - its `kind` then comes from the binding and `free`
 // is false. `serial`/`model` are Tait-only; `version` is the NinoTNC GETVER firmware or the Tait CCDI
 // version; `baud` is the rate the device answered at (the sweep-locked rate for a Tait).
 // `bandCode`/`amateurBand` (identify/pair/name v2, #568): the Tait band designator (e.g. "B1") and the
-// UK amateur band its split covers ("2m"/"70cm"/"4m") — null for a NinoTNC / unknown-band Tait; adopt
+// UK amateur band its split covers ("2m"/"70cm"/"4m") - null for a NinoTNC / unknown-band Tait; adopt
 // defaults the port id + MQTT {instance} label to the amateur band when known, so pass it in the adopt
 // body. `idSource`/`idStable` (id stability, #570/#575): which link the head-end derived `deviceId`
 // from ("by-path" stable | "dev" the unstable kernel-name last resort) and whether it survives a
-// reboot/replug — `idStable === false` warrants a warning (the binding may not survive a replug);
+// reboot/replug - `idStable === false` warrants a warning (the binding may not survive a replug);
 // null/absent = the head-end predates the fields (unknown, deliberately NOT assumed stable).
 export interface HeadEndDeviceScan {
   deviceId: string;
@@ -575,7 +575,7 @@ export interface HeadEndDeviceScan {
   idSource?: string | null;
   idStable?: boolean | null;
 }
-// A suggested pairing within one instance (the co-location invariant — a TNC pairs only with a radio
+// A suggested pairing within one instance (the co-location invariant - a TNC pairs only with a radio
 // on the SAME instance). `auto` is true only when the instance has exactly one free TNC and one free
 // radio (an unambiguous one-click suggestion); otherwise it is one of several candidate combinations.
 export interface HeadEndPairProposal { tncDeviceId: string; radioDeviceId: string; auto: boolean }
@@ -593,7 +593,7 @@ export interface HeadEndInstanceScan {
   proposedPairs: HeadEndPairProposal[];
   pairingAmbiguous: boolean;
 }
-// An instance id advertised at more than one address with no config address to disambiguate — mDNS
+// An instance id advertised at more than one address with no config address to disambiguate - mDNS
 // does not police its TXT payloads, so PDN surfaces the clash loudly rather than binding one blindly.
 export interface HeadEndConflict { instanceId: string; addresses: string[] }
 export interface HeadEndScan {
@@ -618,7 +618,7 @@ export interface HeadEndAdoptRequest {
 }
 // POST /api/v1/radios/headends/{instanceId}/pair-by-keyup → HeadEndKeyupResult (server:
 // Packet.Node.Core.Api.HeadEndKeyupResult). The PHYSICAL modem↔radio map discovered by briefly
-// KEYING each free NinoTNC's transmitter (RF is emitted — admin-scoped, same bar as hail/tuning/
+// KEYING each free NinoTNC's transmitter (RF is emitted - admin-scoped, same bar as hail/tuning/
 // doctor) and watching which co-located Tait reports its PTT asserting. Ground truth: replaces the
 // scan's co-location guess for the ambiguous case, verifies the unambiguous one. `caveat` is the
 // server's RF warning text, always present. Reachable:false leaves the lists empty and sets `error`.
@@ -678,7 +678,7 @@ export interface PingResult {
 // GET /api/v1/ports/{id}/doctor → PortDoctorReport (safe, non-transmitting; read scope).
 // POST /api/v1/ports/{id}/doctor?interrupt=true → the same shape, but also runs the transmitting
 // probes (admin scope, audited; briefly keys the transmitter). One `status` per capability:
-// pass = working, fail = broken (see `remedy`), unknown = not determined — e.g. a transmitting
+// pass = working, fail = broken (see `remedy`), unknown = not determined - e.g. a transmitting
 // probe skipped on the safe form ("requires a brief transmit"), or "not a NinoTNC".
 export type DoctorStatus = "pass" | "fail" | "unknown";
 export interface DoctorProbe {
@@ -695,7 +695,7 @@ export interface DoctorReport {
 
 // ---- guided deviation tuning (server: Packet.Node.Core.Api.TuningSessionInfo / TuningEvent) ----
 // A two-ended, operator-initiated, transmitting procedure coordinated over the radios' SDM side
-// channel: this port is one end (tuned — the operator turns the TX-DEV pot here; or meter — measures
+// channel: this port is one end (tuned - the operator turns the TX-DEV pot here; or meter - measures
 // a remote peer) and a peer radio is the other. POST .../tuning/session arms it (admin, audited);
 // GET .../tuning/events streams rounds + lifecycle (SSE `tuning` events, read scope).
 export type TuningRole = "tuned" | "meter";
@@ -759,7 +759,7 @@ export interface MonitorEvent {
   raw: number[];
   path: string[];
   // ---- per-frame radio metadata (additive; null when no radio attributed the frame) ----
-  // Received signal strength (dBm) of this frame, from the port's radio control channel — null on TX
+  // Received signal strength (dBm) of this frame, from the port's radio control channel - null on TX
   // frames, ports with no radio attached, or inbound frames no sample could be attributed to.
   rssiDbm?: number | null;
   // rssiDbm minus the tracked channel-idle noise floor (dB), or null when either is unavailable.
@@ -798,7 +798,7 @@ export interface User {
 }
 
 // ---- auth wire shapes (mirror Packet.Node.Api.PdnAuthApi DTOs) ----
-// A user projected for the API — no password hash. Matches UserSummary (server).
+// A user projected for the API - no password hash. Matches UserSummary (server).
 export interface UserSummary {
   username: string;
   /** The single granted scope: "read" | "operate" | "admin". */
@@ -808,9 +808,9 @@ export interface UserSummary {
 }
 // POST /auth/login + POST /auth/refresh success body. `scopes` is the single granted
 // scope string; `refreshToken` is the opaque one-time-use token the client stores and
-// presents to /auth/refresh (may be null only if the node couldn't persist one — the
+// presents to /auth/refresh (may be null only if the node couldn't persist one - the
 // access token still works until it expires).
-// `username` is the authenticated account as the server resolved it — authoritative, so
+// `username` is the authenticated account as the server resolved it - authoritative, so
 // a passwordless passkey sign-in (no typed username) shows the right identity, not a guess.
 export interface LoginResult { token: string; expiresAt: string; scopes: string; refreshToken: string | null; username: string }
 // GET /setup/state body.
@@ -819,7 +819,7 @@ export interface SetupState { needsSetup: boolean }
 export interface SetupIdentityInput { callsign: string; alias?: string | null; grid?: string | null }
 export interface SetupAdminInput { username: string; password: string }
 export interface SetupRequest { identity: SetupIdentityInput; admin: SetupAdminInput; firstPort?: PortConfig | null }
-// POST /setup success body (the created admin — no token).
+// POST /setup success body (the created admin - no token).
 export interface SetupResult { username: string; scope: string }
 
 // ---- WebAuthn / passkeys (mirror Packet.Node.Api.PdnWebAuthnApi DTOs) ----
@@ -852,15 +852,15 @@ export interface TotpEnrollState { enrolled: boolean; callsign: string | null }
 // ---- node app platform (GET /api/v1/apps) ------------------
 // One registered app that exposes a web UI. `icon` is an optional lucide-react
 // icon name (kebab-case, e.g. "message-square"); may be null/absent → the launcher
-// falls back to a generic app glyph. `url` is always "/apps/{id}/" — an absolute path
+// falls back to a generic app glyph. `url` is always "/apps/{id}/" - an absolute path
 // on the same origin that pdn reverse-proxies, NOT a client-side SPA route.
 // `state` is the live supervisor state (the same AppPackageState set the packages
 // inventory uses), or null when the app has no pdn-managed service to watch (an
 // inline app, or a package with no service: block). The left-nav uses it to warn
-// when an ENABLED app isn't running (Stopped/Backoff/Faulted) — sourced from this one
+// when an ENABLED app isn't running (Stopped/Backoff/Faulted) - sourced from this one
 // fetch so the nav needn't also hit /apps/packages. Every app the feed returns is
 // enabled (the feed lists only enabled web apps), so a non-healthy state IS the warning.
-// How the panel opens an app from its left-nav entry (the manifest `ui.mode` contract —
+// How the panel opens an app from its left-nav entry (the manifest `ui.mode` contract -
 // docs/app-packages.md § UI surface modes). `standalone` (the default) is a full browser
 // navigation to the app's own page at `url`; `embedded`/`slot` render the app in an in-panel
 // iframe inside the panel shell, `slot` additionally appending `?pdn_embed=1` to the iframe src
@@ -872,12 +872,12 @@ export interface NodeApp {
   name: string;
   icon?: string | null;
   url: string;
-  /** How the nav opens this app — standalone (full nav) vs embedded/slot (in-panel iframe). */
+  /** How the nav opens this app - standalone (full nav) vs embedded/slot (in-panel iframe). */
   uiMode: AppUiMode;
   state?: AppPackageState | null;
 }
 // ---- app packages (GET /api/v1/apps/packages) ---------------
-// One discovered app package — or inline config-authored app — with its manifest
+// One discovered app package - or inline config-authored app - with its manifest
 // summary + supervisor state (mirrors PdnAppPackagesApi.AppPackageEntry, camelCase
 // on the wire). `error` non-null = a broken package (unreadable/invalid manifest);
 // it can never be enabled. `state` is null exactly when service === "none" (there
@@ -891,15 +891,15 @@ export type AppPackageState = "Stopped" | "Starting" | "Running" | "Backoff" | "
 // have driven it to Running but it is Stopped/Backoff/Faulted instead (crashed/stopped). Used
 // by the left-nav badge and the management-row warning. Starting is transient (not a warning),
 // Running is healthy, External is owner-managed (pdn never tracks its health → never a warning),
-// and a null state means there is no service to run at all. ONLY meaningful for an enabled app —
+// and a null state means there is no service to run at all. ONLY meaningful for an enabled app -
 // a disabled app is expected to be Stopped, so callers must gate on `enabled` first.
 export function isAppNotRunning(state: AppPackageState | null | undefined): boolean {
   return state === "Stopped" || state === "Backoff" || state === "Faulted";
 }
 
 // Display-normalise a declared capability string for the trust prompt: the `network` capability
-// is shown as `packet` (transport-accurate for packet-radio network access — RF/KISS-TCP/AXUDP/
-// sim — vs the TCP/IP/LAN reading of "network"). `network` stays a back-compat alias accepted on
+// is shown as `packet` (transport-accurate for packet-radio network access - RF/KISS-TCP/AXUDP/
+// sim - vs the TCP/IP/LAN reading of "network"). `network` stays a back-compat alias accepted on
 // the wire; only the surfaced label changes. Mirrors the C# AppCapabilities.Normalize so an app
 // whose manifest still declares the old spelling shows the new one even before the server projects
 // it (and so the mock fixtures, which still say "network", render "packet").
@@ -919,7 +919,7 @@ export interface AppPackage {
   description: string | null;
   /** Optional lucide icon name (kebab-case), like NodeApp.icon. */
   icon: string | null;
-  /** Declared capabilities — shown to the owner at enable time (the trust prompt). */
+  /** Declared capabilities - shown to the owner at enable time (the trust prompt). */
   capabilities: string[];
   enabled: boolean;
   source: AppPackageSource;
@@ -928,13 +928,13 @@ export interface AppPackage {
   state: AppPackageState | null;
   pid: number | null;
   detail: string | null;
-  /** Declared tailnet port forwards — a capability shown in the enable confirm. */
+  /** Declared tailnet port forwards - a capability shown in the enable confirm. */
   forwards: AppForward[];
   // ---- packet identity (docs/app-packages.md § Application packet identity) ----
   /** The effective node-prompt command verb (owner override ?? manifest / inline). Null = the
    *  app declares no verb (reachable only by callsign / NET/ROM alias). */
   command?: string | null;
-  /** The node-resolved on-air callsign this app binds — a pin or an auto-assigned
+  /** The node-resolved on-air callsign this app binds - a pin or an auto-assigned
    *  `<node-base>-N`. Null when the app binds no callsign (a pure session app with no pin). */
   callsign?: string | null;
   /** The opt-in NET/ROM alias the node advertises → this app's callsign. Null = not advertised. */
@@ -942,7 +942,7 @@ export interface AppPackage {
   /** The quality the NET/ROM alias is advertised at (only meaningful with `netromAlias`). */
   netromQuality?: number | null;
 }
-// The PUT /apps/packages/{id}/identity body — the owner's packet-identity overrides for a
+// The PUT /apps/packages/{id}/identity body - the owner's packet-identity overrides for a
 // discovered package (mirrors PdnAppPackagesApi.AppIdentityRequest, camelCase on the wire).
 // Every field is optional: an absent/blank value CLEARS that override (a blank callsign falls
 // back to node auto-assignment; a blank alias turns the advert off).
@@ -977,7 +977,7 @@ export interface AvailableApp {
 // The result of an install / update / upload. `ok` true ⇒ the package was staged
 // (and now appears as discovered-but-disabled); `error` carries the server's message
 // on a failed attempt. The live client surfaces a failure as a thrown Error rather than
-// a returned { ok:false } — this shape mirrors the wire body either way.
+// a returned { ok:false } - this shape mirrors the wire body either way.
 export interface InstallOutcome { ok: boolean; id: string; version?: string | null; error?: string | null }
 export interface LogLine { t: string; lvl: "info" | "warn" | "error"; msg: string }
 export interface ToggleHelp { label: string; desc: string }

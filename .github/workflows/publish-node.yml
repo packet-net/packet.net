@@ -1,22 +1,22 @@
 name: publish-node
 
 # Builds the pdn node-host Debian packages (amd64 / arm64 / armhf) and attaches
-# them to a GitHub Release. Triggered by `node-v*` tags — distinct from the
+# them to a GitHub Release. Triggered by `node-v*` tags - distinct from the
 # `lib-v*` tag that drives the NuGet library publish (publish-libs.yml).
 #
-# Self-hosted x64 only (no GitHub-hosted runners — see CLAUDE.md). The arm builds
+# Self-hosted x64 only (no GitHub-hosted runners - see CLAUDE.md). The arm builds
 # cross-publish from x64 via crossgen2 (ReadyToRun), so no arch-native runners or
 # cross C-toolchain are needed; scripts/build-deb.sh does the publish + packaging.
 #
 # Single job, no Actions artifacts. The .debs are built, install-smoked, and
-# attached to the Release all from one job's local working tree — they never touch
+# attached to the Release all from one job's local working tree - they never touch
 # the Actions artifact store. This is deliberate: the cross-job artifact hand-off
 # this workflow used previously depended on the ~500 MB free-tier artifact-storage
 # quota, whose usage GitHub recalculates only every 6-12 h, so a busy day of CI
 # could leave the counter transiently over-quota and block the release upload even
-# with retention-days:1 (observed twice — 2026-06-05, 2026-06-06). Keeping the
+# with retention-days:1 (observed twice - 2026-06-05, 2026-06-06). Keeping the
 # .debs local removes that dependency entirely; the published .debs live on the
-# Release. The build is already serial (crossgen2 R2R is memory-hungry — three
+# Release. The build is already serial (crossgen2 R2R is memory-hungry - three
 # concurrent cross-publishes OOM-kill it, exit 137), so collapsing the per-arch
 # matrix into one sequential job costs no parallelism.
 
@@ -55,18 +55,20 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/node-v}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build .debs + self-contained tarballs (amd64 / arm64 / armhf)
+      - name: Build .debs + archives (amd64 / arm64 / armhf)
         env:
           VERSION: ${{ steps.v.outputs.version }}
         # Serial: crossgen2 (ReadyToRun) is memory-hungry; concurrent cross-publishes
         # OOM-kill it (arm64 is the heaviest). One arch at a time fits the shared host.
         #
-        # build-deb.sh publishes the self-contained tree to artifacts/node/<rid> and
-        # packages the .deb from it. We ALSO tar that same tree as the self-contained
-        # channel's release artifact (Phase 7; docs/node-self-update-design.md): the .deb
-        # is the apt-channel install; the tarball is what a self-contained node downloads
-        # and unpacks into /opt/packetnet/releases/<ver>/ on update. tar.gz (not zst) so
-        # any minimal target (Pi/RaspiOS) can extract with no extra tool.
+        # build-deb.sh publishes the self-contained tree to artifacts/node/<rid> and packages
+        # the .deb from it. We ALSO tar that same tree as the release's archive artifact - the
+        # two things pdn distributes (operating/00-install.md): the .deb for Debian-ish boxes,
+        # the archive for everyone else. The archive is an UNMANAGED install: nothing owns it,
+        # so the node reports channel `unknown` and never offers an in-app update; the operator
+        # unpacks the next one over it. It therefore carries the systemd unit + the annotated
+        # config template alongside the binary, so a by-hand install has everything it needs.
+        # tar.gz (not zst) so any minimal target (Pi/RaspiOS) can extract with no extra tool.
         run: |
           for rid in linux-x64 linux-arm64 linux-arm; do
             scripts/build-deb.sh "$rid" "$VERSION"
@@ -75,6 +77,8 @@ jobs:
               linux-arm64) arch=arm64 ;;
               linux-arm)   arch=armhf ;;
             esac
+            install -m 0644 packaging/packetnet.service "artifacts/node/$rid/packetnet.service.example"
+            install -m 0644 packaging/packetnet.yaml    "artifacts/node/$rid/packetnet.yaml.example"
             tar -C "artifacts/node/$rid" -czf "artifacts/packetnet_${VERSION}_${arch}.tar.gz" .
           done
 
@@ -86,77 +90,22 @@ jobs:
         # amd64 only (native, no QEMU); arm64/armhf are a later docker/setup-qemu matrix.
         run: scripts/deb-install-smoke.sh "artifacts/packetnet_${VERSION}_amd64.deb"
 
-      - name: Checksum + manifest + create GitHub Release
+      - name: Checksum + create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.v.outputs.version }}
+        # The GitHub Release is the ONLY distribution channel: three .debs, three archives,
+        # and SHA256SUMS over all six. (There is no update feed and no one-line installer -
+        # both were withdrawn; the node updates a .deb install through dpkg/apt, and an
+        # archive install is updated by hand.)
         run: |
           cd artifacts
-          # Checksums cover the .debs AND the self-contained tarballs.
           sha256sum packetnet_*.deb packetnet_*.tar.gz > SHA256SUMS
-          # latest.json — the self-contained channel's update manifest (version +
-          # per-arch tarball + digest). A self-contained node fetches this from its
-          # configured feed, compares `version`, and on a newer one downloads +
-          # sha256-verifies the tarball for its arch. Checksum-only integrity for now
-          # (cosign is a planned hardening — docs/node-self-update-design.md). Hand-rolled
-          # JSON to avoid a jq dependency on the runner.
-          {
-            printf '{\n  "version": "%s",\n  "artifacts": {\n' "$VERSION"
-            first=1
-            for arch in amd64 arm64 armhf; do
-              f="packetnet_${VERSION}_${arch}.tar.gz"
-              sum="$(sha256sum "$f" | cut -d' ' -f1)"
-              [ "$first" = 1 ] || printf ',\n'
-              first=0
-              printf '    "%s": { "file": "%s", "sha256": "%s" }' "$arch" "$f" "$sum"
-            done
-            printf '\n  }\n}\n'
-          } > latest.json
-          cat latest.json
-          ls -l packetnet_*.deb packetnet_*.tar.gz SHA256SUMS latest.json
+          ls -l packetnet_*.deb packetnet_*.tar.gz SHA256SUMS
           cd ..
           gh release create "node-v${VERSION}" \
             artifacts/packetnet_*.deb artifacts/packetnet_*.tar.gz \
-            artifacts/SHA256SUMS artifacts/latest.json \
+            artifacts/SHA256SUMS \
             --repo "${{ github.repository }}" \
             --title "pdn node-v${VERSION}" \
-            --notes "Packet.NET node host (pdn) ${VERSION}. **New here? Read [Getting started](https://github.com/${{ github.repository }}/blob/main/operating/00-install.md)** — install, reach the control panel, add a port. **apt / Debian:** install the \`.deb\` for your arch — \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (\`apt\`, not \`dpkg -i\`, so dependencies resolve; no .NET runtime required), runs as a hardened systemd unit. A fresh node serves its panel on \`0.0.0.0:8080\` and requires a login (first visit is the setup wizard); an existing node keeps whatever posture its stored config already has. Config lives in /var/lib/packetnet/pdn.db — edit it in the panel, or \`pdn config export|import\`. **Self-contained:** the \`*.tar.gz\` + \`latest.json\` are the self-contained-channel artifacts (in-app self-update); first install with \`curl -fsSL https://pdn-dist.m0lte.compute.oarc.uk/install.sh | sudo sh\`; \`SHA256SUMS\` covers everything. **Docker:** \`docker run -p 8080:8080 ghcr.io/packet-net/packet.net:${VERSION}\` (also \`:latest\`; multi-arch amd64+arm64 — published by publish-docker.yml)."
-
-      - name: Publish self-contained feed to OARC (pdn-dist)
-        # The self-contained update channel's feed host: latest.json + the per-arch tarballs +
-        # the install-time support bundle + install.sh, served from pdn-dist.m0lte.compute.oarc.uk
-        # (OARC static hosting, folder 4858). A node on this channel polls latest.json here and
-        # `curl … | sh` of install.sh first-installs from here. See docs/node-self-update-design.md
-        # + the oarc-pdn-dist-feed note. Mirrors the m0lte/packet-term-web OARC publish pattern.
-        env:
-          VERSION: ${{ steps.v.outputs.version }}
-          OARC_TOKEN: ${{ secrets.OARC_TOKEN }}
-          FOLDER: "4858"
-        run: |
-          set -euo pipefail
-          if [ -z "${OARC_TOKEN:-}" ]; then
-            echo "::warning::OARC_TOKEN secret not set — skipping the self-contained feed publish to pdn-dist. The GitHub release is published; set the OARC_TOKEN repo secret to auto-publish the feed."
-            exit 0
-          fi
-          # Install-time support bundle (units + update helper + polkit + template), single-sourced from packaging/.
-          scripts/build-selfcontained-support.sh artifacts/packetnet-selfcontained-support.tar.gz
-          # Fetch the OARC object-storage CLI fresh (not vendored) + its one dep in a venv (PEP 668 on the runner).
-          curl -fsSL https://compute.oarc.uk/static/downloads/object-storage-cli.zip -o /tmp/oarc-os.zip
-          rm -rf /tmp/oarc-os && python3 -m zipfile -e /tmp/oarc-os.zip /tmp/oarc-os/
-          cli="$(find /tmp/oarc-os -name object_storage_cli.py | head -1)"
-          [ -n "$cli" ] || { echo "OARC CLI not found in the downloaded zip" >&2; exit 1; }
-          python3 -m venv /tmp/oarc-venv && /tmp/oarc-venv/bin/pip -q install requests
-          up() {
-            out="$(/tmp/oarc-venv/bin/python "$cli" --token "$OARC_TOKEN" --upload "$1" --folder "$FOLDER" --upload-as "$2" --overwrite --json)" \
-              || { echo "OARC upload failed (exit): $2" >&2; return 1; }
-            printf '%s' "$out" | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin).get('success') else 1)" \
-              || { echo "OARC upload reported failure: $2 -> $out" >&2; return 1; }
-            echo "  uploaded $2"
-          }
-          up artifacts/latest.json latest.json
-          for arch in amd64 arm64 armhf; do
-            up "artifacts/packetnet_${VERSION}_${arch}.tar.gz" "packetnet_${VERSION}_${arch}.tar.gz"
-          done
-          up artifacts/packetnet-selfcontained-support.tar.gz packetnet-selfcontained-support.tar.gz
-          up packaging/install.sh install.sh
-          echo "Published self-contained feed for ${VERSION} → https://pdn-dist.m0lte.compute.oarc.uk/"
+            --notes "Packet.NET node host (pdn) ${VERSION}. **New here? Read [Getting started](https://github.com/${{ github.repository }}/blob/main/operating/00-install.md)** - install, reach the control panel, add a port. **Debian / Ubuntu / Raspberry Pi OS (recommended):** install the \`.deb\` for your arch - \`sudo apt install ./packetnet_${VERSION}_<arch>.deb\` (\`apt\`, not \`dpkg -i\`, so dependencies resolve; no .NET runtime required), runs as a hardened systemd unit. A fresh node serves its panel on \`0.0.0.0:8080\` and requires a login (first visit is the setup wizard); an existing node keeps whatever posture its stored config already has. Config lives in /var/lib/packetnet/pdn.db - edit it in the panel, or \`pdn config export|import\`. **Anywhere else:** the \`*.tar.gz\` for your arch is the same node as a plain archive - unpack it, run \`./packetnet\`, and wire up the bundled \`packetnet.service.example\` yourself. Nothing manages an archive install, so the panel offers no in-app update: unpack the next release over it. \`SHA256SUMS\` covers every artifact here."

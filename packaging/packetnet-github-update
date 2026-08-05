@@ -1,5 +1,5 @@
 #!/bin/sh
-# packetnet-github-update — the GITHUB channel's update helper.
+# packetnet-github-update - the GITHUB channel's update helper.
 #
 # NEVER run directly. It is dispatched (as root) by packetnet-update.service via the
 # packetnet-update dispatcher when the node triggers an update on the github channel
@@ -8,7 +8,7 @@
 # the update goes THROUGH dpkg: download the next release .deb -> sha256-verify -> dpkg -i
 # (which the package's postinst try-restarts) -> health-gate on /healthz -> roll back via
 # `dpkg -i` of the retained prior .deb on failure. dpkg stays the sole owner of the files
-# — no in-place self-mutation. docs/node-self-update-design.md § Channel = github.
+# - no in-place self-mutation. docs/node-self-update-design.md section Channel = github.
 #
 # The request is staged by the node at $REQ (targetVersion/arch/debUrl/sha256). We NEVER
 # trust it blindly: the debUrl host must be a GitHub release host, the arch must match this
@@ -39,11 +39,11 @@ want_sha="$(jval sha256)"
 [ -n "$target" ] && [ -n "$arch" ] && [ -n "$deburl" ] && [ -n "$want_sha" ] \
     || fail "malformed request (need targetVersion/arch/debUrl/sha256)"
 
-# --- VALIDATE the request — never trust the caller ---------------------------------------
+# --- VALIDATE the request - never trust the caller ---------------------------------------
 # 1. arch must be this machine's Debian arch.
 sysarch="$(dpkg --print-architecture 2>/dev/null || true)"
 [ -n "$sysarch" ] || fail "dpkg --print-architecture failed (not a dpkg host?)"
-[ "$arch" = "$sysarch" ] || fail "arch mismatch (request=$arch, system=$sysarch) — refusing"
+[ "$arch" = "$sysarch" ] || fail "arch mismatch (request=$arch, system=$sysarch) - refusing"
 
 # 2. the download URL must be HTTPS and a GitHub host (release assets live on
 #    github.com / objects.githubusercontent.com / *.github.com). Reject anything else.
@@ -62,7 +62,7 @@ esac
 
 # 4. the target must be NEWER than what's installed (no downgrade / re-install).
 prev="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
-[ -n "$prev" ] || fail "$PKG is not dpkg-installed — github channel can't apply"
+[ -n "$prev" ] || fail "$PKG is not dpkg-installed - github channel can't apply"
 # dpkg --compare-versions is the authority on Debian version ordering.
 if ! dpkg --compare-versions "$target" gt "$prev"; then
     log "requested $target is not newer than installed $prev; nothing to do"
@@ -86,7 +86,7 @@ if [ ! -f "$prev_deb" ]; then
         [ -n "$cached" ] && cp -f "$cached" "$prev_deb" 2>/dev/null || true
     fi
 fi
-[ -f "$prev_deb" ] || log "WARNING: no prior .deb retained for $prev — rollback may be unavailable"
+[ -f "$prev_deb" ] || log "WARNING: no prior .deb retained for $prev - rollback may be unavailable"
 
 # --- download + VERIFY -------------------------------------------------------------------
 work="$(mktemp -d)"
@@ -99,21 +99,21 @@ curl -fsSL --proto '=https' --tlsv1.2 --max-time 600 "$deburl" -o "$new_deb" \
 
 # --- VERIFY (checksum-only; cosign verify-blob slots in here later) ---
 calc="$(sha256sum "$new_deb" | cut -d' ' -f1)"
-[ "$calc" = "$want_sha" ] || fail "sha256 MISMATCH (want $want_sha, got $calc) — refusing to install"
+[ "$calc" = "$want_sha" ] || fail "sha256 MISMATCH (want $want_sha, got $calc) - refusing to install"
 log "sha256 verified; installing"
 
 # --- install THROUGH dpkg (the package postinst try-restarts the service) ---------------
 if ! dpkg -i "$new_deb"; then
-    log "dpkg -i FAILED — attempting to repair dependencies"
+    log "dpkg -i FAILED - attempting to repair dependencies"
     apt-get -f install -y || true
-    log "github update FAILED at install — rolling back"
+    log "github update FAILED at install - rolling back"
     rollback() {
         if [ -f "$prev_deb" ]; then
             log "rolling back to $prev via $prev_deb"
             dpkg -i "$prev_deb" && { log "rolled back to $prev"; return 0; }
-            log "ROLLBACK FAILED — manual intervention needed"
+            log "ROLLBACK FAILED - manual intervention needed"
         else
-            log "no prior .deb to roll back to — manual intervention needed"
+            log "no prior .deb to roll back to - manual intervention needed"
         fi
         return 1
     }
@@ -135,14 +135,14 @@ done
 
 if [ "$healthy" -ne 1 ]; then
     if [ -f "$prev_deb" ]; then
-        log "node unhealthy on $new — rolling back to $prev"
+        log "node unhealthy on $new - rolling back to $prev"
         if dpkg -i "$prev_deb"; then
             log "rolled back to $prev"
         else
-            log "ROLLBACK FAILED — manual intervention needed"
+            log "ROLLBACK FAILED - manual intervention needed"
         fi
     else
-        log "node unhealthy on $new and no prior .deb to roll back to — manual intervention needed"
+        log "node unhealthy on $new and no prior .deb to roll back to - manual intervention needed"
     fi
     exit 1
 fi

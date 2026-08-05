@@ -1,5 +1,5 @@
 // ============================================================
-// Config editor — the whole NodeConfig, validated before apply (README §8/§9).
+// Config editor - the whole NodeConfig, validated before apply (README §8/§9).
 // Forms vs Raw YAML; left sub-nav (Identity / Services / Management /
 // NET/ROM + INP3 / Beacons / Ports →); edits accumulate a dirty set; a
 // "Review & apply" opens the reconcile preview, which groups the pending
@@ -52,7 +52,7 @@ export function Config() {
   const [rawText, setRawText] = useState<string | null>(null);
 
   // Seed the editable draft from the loaded config. Re-seeds when `data` changes,
-  // which only happens on mount and after an apply's reload() — never mid-edit
+  // which only happens on mount and after an apply's reload() - never mid-edit
   // (the query has no other refetch trigger), so this can't clobber in-progress edits.
   useEffect(() => {
     if (data) setCfg(structuredClone(data));
@@ -102,7 +102,7 @@ export function Config() {
     }
   };
 
-  // record a changed path (impact comes from APPLY_IMPACT) — dedup by path
+  // record a changed path (impact comes from APPLY_IMPACT) - dedup by path
   const touch = (path: string, impact: ApplyImpact) =>
     setDirty((d) => (d.some((x) => x.path === path) ? d : [...d, { path, impact }]));
 
@@ -124,7 +124,7 @@ export function Config() {
     <Page>
       <PageHeader
         title="Config"
-        subtitle="Edit the whole node configuration — checked before apply, every write through the reconcile path"
+        subtitle="Edit the whole node configuration - checked before apply, every write through the reconcile path"
         actions={
           <div className="flex items-center gap-2">
             <Tabs active={mode} onChange={(m) => setMode(m as "forms" | "raw")} tabs={[{ id: "forms", label: "Forms" }, { id: "raw", label: "Raw YAML" }]} />
@@ -168,7 +168,7 @@ export function Config() {
                 <Field label="Callsign (required)" impact="node-reset" hint="Changing identity resets the node.">
                   <Input value={cfg.identity.callsign} onChange={(e) => set("identity.callsign", e.target.value, "node-reset")} className="font-mono" />
                 </Field>
-                <Field label="Alias" info="The node mnemonic (≤6 chars) — shown on the network map and advertised as the NET/ROM alias. Long friendly text belongs in the service banner." impact="node-reset">
+                <Field label="Alias" info="The node mnemonic (≤6 chars) - shown on the network map and advertised as the NET/ROM alias. Long friendly text belongs in the service banner." impact="node-reset">
                   <Input value={cfg.identity.alias ?? ""} maxLength={6} onChange={(e) => set("identity.alias", e.target.value.toUpperCase(), "node-reset")} className="font-mono" />
                 </Field>
                 <Field label="Locator (grid)" impact="live">
@@ -206,7 +206,7 @@ export function Config() {
                   <div className="mb-3 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Label className="text-foreground">HTTPS (TLS)</Label>
-                      <InfoHint text="Serve this panel over TLS so the password and token aren't sent in clear over the network. Off by default. When on, a self-signed cert is generated on first start (encrypts the channel; browsers warn until it's trusted) — or set a certificate path to a trusted .pfx. Passkeys need a trusted secure context (a trusted cert, or access via localhost)." />
+                      <InfoHint text="Serve this panel over TLS so the password and token aren't sent in clear over the network. Off by default. When on, a self-signed cert is generated on first start (encrypts the channel; browsers warn until it's trusted) - or set a certificate path to a trusted .pfx. Passkeys need a trusted secure context (a trusted cert, or access via localhost)." />
                     </span>
                     <ImpactBadge impact={APPLY_IMPACT["management.http"]} />
                   </div>
@@ -270,7 +270,7 @@ export function Config() {
 //   - running with an FQDN → "Reachable at https://<fqdn>".
 //   - fqdn set AND ≠ the current WebAuthn RP id → an admin-gated "Use <fqdn> for passkeys"
 //     button that writes relyingPartyId = fqdn + adds https://<fqdn> to allowedOrigins.
-//     Operator-initiated only — never automatic (it invalidates existing passkeys).
+//     Operator-initiated only - never automatic (it invalidates existing passkeys).
 function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; canAdmin: boolean; onAdopted: () => void }) {
   const [status, setStatus] = useState<TailscaleStatus | null>(null);
   const [adopting, setAdopting] = useState(false);
@@ -308,7 +308,7 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
       <div className="mb-3 flex items-center justify-between">
         <span className="flex items-center gap-1.5">
           <Label className="text-foreground">Remote access (Tailscale)</Label>
-          <InfoHint text="An embedded Tailscale node that joins your tailnet and gets a real Let's Encrypt cert for pdn.<tailnet>.ts.net — so passkeys work remotely with no public DNS, port-forward, or cert management. Off by default; enable it in the tailscale: config block." />
+          <InfoHint text="An embedded Tailscale node that joins your tailnet and gets a real Let's Encrypt cert for pdn.<tailnet>.ts.net - so passkeys work remotely with no public DNS, port-forward, or cert management. Off by default; enable it in the tailscale: config block." />
         </span>
         <Badge variant={status?.state === "running" ? "secondary" : "muted"}>{status?.state ?? "…"}</Badge>
       </div>
@@ -317,7 +317,7 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
         <p className="text-xs text-muted-foreground">Checking…</p>
       ) : status.state === "disabled" || !status.enabled ? (
         <p className="text-xs text-muted-foreground">
-          Disabled — pdn stays HTTP-only. Enable the embedded Tailscale node in the <span className="font-mono">tailscale:</span> config block to reach this node remotely (and use passkeys over the network).
+          Disabled - pdn stays HTTP-only. Enable the embedded Tailscale node in the <span className="font-mono">tailscale:</span> config block to reach this node remotely (and use passkeys over the network).
         </p>
       ) : (
         <div className="space-y-2">
@@ -342,7 +342,7 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
           )}
 
           {status.state === "error" && (
-            <p className="text-xs text-danger">The Tailscale sidecar reported an error — see the node log.</p>
+            <p className="text-xs text-danger">The Tailscale sidecar reported an error - see the node log.</p>
           )}
 
           {showAdopt && (
@@ -356,7 +356,7 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
               </Button>
               {adoptError && <p className="mt-1.5 text-[11px] text-danger">{adoptError}</p>}
               <p className="mt-1.5 text-[11px] text-muted-foreground">
-                Changing the passkey hostname invalidates existing passkeys — they&apos;ll need re-enrolling.
+                Changing the passkey hostname invalidates existing passkeys - they&apos;ll need re-enrolling.
               </p>
             </div>
           )}
@@ -368,32 +368,30 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
 
 // ---------- About this node + self-update (Phase 7) ---------
 // Shows the node's running version + install channel (closing the "nothing
-// distinguishes the running version" gap — docs/node-self-update-design.md), and when
+// distinguishes the running version" gap - docs/node-self-update-design.md), and when
 // the node reports an update available, an "update available · vX → vY" banner with an
 // admin-gated Apply button.
 //
 // Apply is the fire-and-acknowledge reconnect (the design's "UI reconnect, not in-band
 // result"): POST /system/update returns 202 and restarts the very process that handled
 // it, so we can't read the outcome in-band. Instead we poll GET /system/info (the
-// authoritative signal — the running version changing proves the new binary is up) plus
+// authoritative signal - the running version changing proves the new binary is up) plus
 // GET /healthz (liveness) until the version differs from the one we started on, or a
 // timeout. Apply is disabled when the channel is "unknown" (the node won't self-update).
-const UPDATE_POLL_TIMEOUT_MS = 180_000; // 3 min — an apt/dpkg upgrade + restart can be slow
+const UPDATE_POLL_TIMEOUT_MS = 180_000; // 3 min - an apt/dpkg upgrade + restart can be slow
 const UPDATE_POLL_INTERVAL_MS = 2_000;
 
 // Friendly label for the install channel + a one-liner on how this node updates.
 const CHANNEL_LABEL: Record<InstallChannelName, string> = {
   apt: "apt",
   github: "GitHub Releases",
-  selfcontained: "self-contained",
-  unknown: "unknown",
+  unknown: "unmanaged",
 };
 function channelHelp(ch: InstallChannelName): string {
   switch (ch) {
-    case "apt": return "Installed from an apt repository — Apply runs a targeted apt upgrade of this package. dpkg stays the owner of the files.";
-    case "github": return "Installed from a GitHub release .deb — Apply downloads the next release, verifies its checksum, and installs it through dpkg.";
-    case "selfcontained": return "Self-contained install — Apply downloads the next release, verifies its checksum, and atomically swaps it in (with rollback).";
-    case "unknown": return "This node's install channel can't be determined, so it won't self-update. Update it via your package manager or by reinstalling.";
+    case "apt": return "Installed from an apt repository - Apply runs a targeted apt upgrade of this package. dpkg stays the owner of the files.";
+    case "github": return "Installed from a GitHub release .deb - Apply downloads the next release, verifies its checksum, and installs it through dpkg.";
+    case "unknown": return "Nothing on this host manages this install - it isn't a dpkg-owned .deb (a release archive, a container, or a build from source). Update it by unpacking the next release over it, or install the .deb.";
   }
 }
 
@@ -405,7 +403,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
   const [error, setError] = useState<string | null>(null);
 
   // Load once on mount, and again after a confirmed restart (to show the new version).
-  const loadInfo = () => api.systemInfo().then(setInfo).catch(() => { /* transient — keep last */ });
+  const loadInfo = () => api.systemInfo().then(setInfo).catch(() => { /* transient - keep last */ });
   useEffect(() => { loadInfo(); }, []);
 
   const busy = phase === "applying" || phase === "waiting";
@@ -414,7 +412,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
 
   // The fire-and-acknowledge Apply: POST /update (202), then poll /info + /healthz until
   // the running version changes (the new binary is up) or we time out. The polling tab can
-  // close mid-flight — the loop is bounded and self-cancels on unmount via `alive`.
+  // close mid-flight - the loop is bounded and self-cancels on unmount via `alive`.
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
 
@@ -435,7 +433,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
     const deadline = Date.now() + UPDATE_POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, UPDATE_POLL_INTERVAL_MS));
-      if (!aliveRef.current) return; // panel unmounted — abandon the poll
+      if (!aliveRef.current) return; // panel unmounted - abandon the poll
       // /healthz answering is necessary-but-not-sufficient: it can be up on the OLD
       // version mid-restart. The authoritative signal is /info reporting a NEW version.
       if (!(await api.nodeHealthy())) continue;
@@ -456,7 +454,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
       <div className="mb-3 flex items-center justify-between">
         <span className="flex items-center gap-1.5">
           <Label className="text-foreground">About this node</Label>
-          <InfoHint text="The version of pdn this node is running and how it was installed. When a newer version is available, an admin can apply it here — the node updates and restarts, then this panel reconnects on the new version." />
+          <InfoHint text="The version of pdn this node is running and how it was installed. When a newer version is available, an admin can apply it here - the node updates and restarts, then this panel reconnects on the new version." />
         </span>
         <Badge variant={ch === "unknown" ? "muted" : "secondary"}>{CHANNEL_LABEL[ch]}</Badge>
       </div>
@@ -484,7 +482,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
                 <Icon name="download" size={15} className="mt-0.5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground">
-                    Update available — v{info.version} → v{info.latestVersion}
+                    Update available - v{info.version} → v{info.latestVersion}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     {channelHelp(ch)}
@@ -505,18 +503,18 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
                     {phase === "applying"
                       ? "Starting update…"
                       : phase === "waiting"
-                        ? "Updating — reconnecting…"
+                        ? "Updating - reconnecting…"
                         : <><Icon name="download" size={14} /> Apply update</>}
                   </Button>
                   {busy && (
                     <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                      The node is updating and will restart. This page reconnects automatically when it&apos;s back — please don&apos;t close it.
+                      The node is updating and will restart. This page reconnects automatically when it&apos;s back - please don&apos;t close it.
                     </p>
                   )}
                   {phase === "timeout" && (
                     <p className="mt-2 text-[11px] text-warning">
-                      The node hasn&apos;t come back on a new version yet. It may still be updating — refresh in a moment to check, or see the node log if it doesn&apos;t recover.
+                      The node hasn&apos;t come back on a new version yet. It may still be updating - refresh in a moment to check, or see the node log if it doesn&apos;t recover.
                     </p>
                   )}
                   {phase === "error" && error && (
@@ -530,7 +528,7 @@ function SystemPanel({ canAdmin }: { canAdmin: boolean }) {
           {phase === "done" && (
             <div className="rounded-md border border-success/30 bg-success/5 p-3" data-testid="update-done">
               <p className="flex items-center gap-1.5 text-sm font-medium text-success">
-                <Icon name="check" size={15} /> Updated — now running v{info.version}.
+                <Icon name="check" size={15} /> Updated - now running v{info.version}.
               </p>
             </div>
           )}
@@ -560,7 +558,7 @@ function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val:
   return (
     <section className="space-y-5">
       <p className="max-w-2xl text-sm text-muted-foreground">
-        NET/ROM is the layer that turns your node from a single radio link into part of a routed network — it learns which stations are reachable and relays traffic between them. The switches below decide how much your node takes part.
+        NET/ROM is the layer that turns your node from a single radio link into part of a routed network - it learns which stations are reachable and relays traffic between them. The switches below decide how much your node takes part.
       </p>
 
       <div className="space-y-2">
@@ -594,7 +592,7 @@ function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val:
       </div>
 
       <AdvancedDetails title="Advanced routing tuning">
-        <p className="mb-3 text-xs text-muted-foreground">Most nodes never touch these — the defaults are sensible. Adjust only if you understand the trade-off.</p>
+        <p className="mb-3 text-xs text-muted-foreground">Most nodes never touch these - the defaults are sensible. Adjust only if you understand the trade-off.</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {numKeys.map((k) => (
             <GuidedNum key={k} meta={NETROM_FIELD_HELP[k]} value={nrRec[k] ?? 0} onChange={(v) => set("netRom." + k, v, "live")} />
@@ -650,7 +648,7 @@ function ToggleRow({ label, desc, checked, onChange }: { label: string; desc?: s
 
 // numeric field driven by a {label, unit, help} descriptor (tooltip + unit suffix)
 function GuidedNum({ meta, value, onChange }: { meta: FieldHelp; value: number; onChange: (v: number) => void }) {
-  const suffix = meta.unit && !meta.unit.includes("–") ? meta.unit : null;
+  const suffix = meta.unit && !meta.unit.includes("-") ? meta.unit : null;
   return (
     <Field label={meta.label} info={meta.help}>
       <div className="relative">
@@ -679,7 +677,7 @@ function AdvancedDetails({ title, children }: { title: string; children: ReactNo
 // Wired to the live NodeConfig: the system default is cfg.beacon and per-port
 // overrides are cfg.ports[i].beacon (null = inherit the default wholesale). All
 // edits go through the same dirty-set/save path the other tabs use (impact "live"
-// — a beacon edit re-arms the timers without restarting a port).
+// - a beacon edit re-arms the timers without restarting a port).
 function BeaconsSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: unknown, impact: ApplyImpact) => void }) {
   const def = cfg.beacon;
 
@@ -752,7 +750,7 @@ function BeaconsSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val
                       </Field>
                     ) : (
                       <div className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-2 text-xs">
-                        <span className="text-muted-foreground">Uses default — <span className="font-mono text-foreground/70">{def.text}</span></span>
+                        <span className="text-muted-foreground">Uses default - <span className="font-mono text-foreground/70">{def.text}</span></span>
                         <button onClick={() => setPortBeacon(i, { enabled: def.enabled, intervalMinutes: def.intervalMinutes, text: def.text })} className="shrink-0 font-medium text-primary hover:underline">Override</button>
                       </div>
                     )}
@@ -768,7 +766,7 @@ function BeaconsSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val
 }
 
 // ---------- OARC network map (outbound telemetry) -----------
-// Reports this node's telemetry to the OARC packet-network map. Outbound only — the
+// Reports this node's telemetry to the OARC packet-network map. Outbound only - the
 // node POSTs to the collector; nothing reaches in. Default-off: with `enabled` off
 // nothing is sent. Every write is hot-applied (the node re-reads the reporter config
 // without restarting), so all edits go through set(..., "live"). The collector only
@@ -788,7 +786,7 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
           <div className="min-w-0">
             <Label className="text-foreground">Report to the OARC network map</Label>
             <p className="mt-1.5 max-w-2xl text-xs leading-snug text-muted-foreground">
-              Reports this node&apos;s telemetry to the OARC packet-network map — outbound only, and off by default. Traces are the highest-volume and most revealing category.
+              Reports this node&apos;s telemetry to the OARC packet-network map - outbound only, and off by default. Traces are the highest-volume and most revealing category.
             </p>
           </div>
           <div className="shrink-0 pt-0.5"><Switch checked={o.enabled} onChange={(v) => set("oarc.enabled", v, "live")} /></div>
@@ -800,7 +798,7 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
           {gridMissing && (
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-warning">
               <p className="flex items-center gap-2 text-sm font-medium"><Icon name="alert" size={14} /> No valid locator</p>
-              <p className="mt-1 text-xs leading-snug opacity-90">Set a valid Maidenhead grid in Identity — the node can&apos;t appear on the map without one.</p>
+              <p className="mt-1 text-xs leading-snug opacity-90">Set a valid Maidenhead grid in Identity - the node can&apos;t appear on the map without one.</p>
             </div>
           )}
 
@@ -827,14 +825,14 @@ function OarcSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val: u
               />
               <ToggleRow
                 label="Traces (per-frame L2)"
-                desc="The per-frame trace firehose — the highest-volume and most revealing category. Off by default."
+                desc="The per-frame trace firehose - the highest-volume and most revealing category. Off by default."
                 checked={o.reportTraces}
                 onChange={(v) => set("oarc.reportTraces", v, "live")}
               />
               {o.reportTraces && (
                 <ToggleRow
                   label="Over-air frames only"
-                  desc="When tracing, only report frames seen over the air (RF) — not loopback or sim traffic."
+                  desc="When tracing, only report frames seen over the air (RF) - not loopback or sim traffic."
                   checked={o.tracesRfOnly}
                   onChange={(v) => set("oarc.tracesRfOnly", v, "live")}
                 />
@@ -916,7 +914,7 @@ function AudioServiceSection({ kind, cfg, set }: {
         <Field label="Audio device" info="ALSA device (e.g. default, plughw:1,0), or a flex:<radio>[:slice][@station] FlexRadio device.">
           <Input value={svc.device} placeholder="default" onChange={(e) => set(p("device"), e.target.value, impact)} className="font-mono" />
         </Field>
-        <Field label="Capture rate" info="Card-native sample rate; a positive multiple of the 12000 Hz DSP rate (48000 recommended). Ignored for a flex: device — it clocks off DAX.">
+        <Field label="Capture rate" info="Card-native sample rate; a positive multiple of the 12000 Hz DSP rate (48000 recommended). Ignored for a flex: device - it clocks off DAX.">
           <Input type="number" value={svc.captureRate} disabled={isFlex} onChange={(e) => set(p("captureRate"), +e.target.value, impact)} className="font-mono" />
         </Field>
         <Field label="Bind" info="TCP bind address for the service listener.">
@@ -934,7 +932,7 @@ function AudioServiceSection({ kind, cfg, set }: {
             </Select>
           </Field>
         )}
-        <Field label="PTT" info="PTT control spec: empty for VOX, serial:/dev/ttyUSB0[:rts|:dtr], or cm108:/dev/hidraw0[:gpio]. Must be empty for a flex: device — the radio keys itself.">
+        <Field label="PTT" info="PTT control spec: empty for VOX, serial:/dev/ttyUSB0[:rts|:dtr], or cm108:/dev/hidraw0[:gpio]. Must be empty for a flex: device - the radio keys itself.">
           <Input value={svc.ptt} disabled={isFlex} placeholder={isFlex ? "auto (flex keys itself)" : "VOX"} onChange={(e) => set(p("ptt"), e.target.value, impact)} className="font-mono" />
         </Field>
         {paging && (
@@ -962,7 +960,7 @@ function AudioServiceSection({ kind, cfg, set }: {
               </Field>
             </div>
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">A flex: device clocks off DAX and keys itself — capture rate and PTT don&apos;t apply.</p>
+          <p className="mt-2 text-[11px] text-muted-foreground">A flex: device clocks off DAX and keys itself - capture rate and PTT don&apos;t apply.</p>
         </>
       )}
     </div>
@@ -971,7 +969,7 @@ function AudioServiceSection({ kind, cfg, set }: {
 
 // ---------- Raw YAML view -----------------------------------
 // Controlled, seeded from GET /config/raw (the live node's serialised config) and
-// applied through PUT /config/raw — the server is the source of truth, not a
+// applied through PUT /config/raw - the server is the source of truth, not a
 // client-side approximation.
 function RawYaml({ text, onChange, onValidate }: { text: string | null; onChange: (t: string) => void; onValidate: () => void }) {
   return (
@@ -993,7 +991,7 @@ function RawYaml({ text, onChange, onValidate }: { text: string | null; onChange
 // ---------- Reconcile preview: the safety story -------------
 // Server-authoritative: the grouping + plain-language summaries come from the
 // node's reconcile planner (dry-run), and a rejected edit surfaces the node's own
-// per-field validation problems — a bad edit never reaches the running node.
+// per-field validation problems - a bad edit never reaches the running node.
 function ReconcilePreview({ open, result, problem, busy, onClose, onApply }: {
   open: boolean;
   result: ReconcileResult | null;
@@ -1015,7 +1013,7 @@ function ReconcilePreview({ open, result, problem, busy, onClose, onApply }: {
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onApply} disabled={!canApply} className={hasReset ? "bg-danger text-danger-foreground hover:bg-danger/90" : undefined}>
-            {busy ? "Working…" : hasReset ? <><Icon name="alert" size={14} /> Apply — resets the node</> : <><Icon name="check" size={14} /> Apply all at once</>}
+            {busy ? "Working…" : hasReset ? <><Icon name="alert" size={14} /> Apply - resets the node</> : <><Icon name="check" size={14} /> Apply all at once</>}
           </Button>
         </>
       }
@@ -1023,22 +1021,22 @@ function ReconcilePreview({ open, result, problem, busy, onClose, onApply }: {
       <div className="space-y-3">
         {problem ? (
           <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-danger">
-            <p className="flex items-center gap-2 text-sm font-semibold"><Icon name="alert" size={14} /> {problem.errors.length} problem{problem.errors.length === 1 ? "" : "s"} — not applied</p>
+            <p className="flex items-center gap-2 text-sm font-semibold"><Icon name="alert" size={14} /> {problem.errors.length} problem{problem.errors.length === 1 ? "" : "s"} - not applied</p>
             <ul className="mt-2 space-y-1">
               {problem.errors.map((e, i) => (
-                <li key={i} className="text-[11px] text-foreground/80"><span className="font-mono text-danger/90">{e.path}</span> — {e.message}</li>
+                <li key={i} className="text-[11px] text-foreground/80"><span className="font-mono text-danger/90">{e.path}</span> - {e.message}</li>
               ))}
             </ul>
           </div>
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Your changes are checked before anything is applied — a bad edit never reaches the running node. Valid changes are then applied all at once.
+              Your changes are checked before anything is applied - a bad edit never reaches the running node. Valid changes are then applied all at once.
             </p>
             {busy && result == null && <p className="text-sm text-muted-foreground">Checking…</p>}
-            <ReconcileGroup variant="success" icon="check" title={`${result?.live.length ?? 0} apply live`} items={result?.live ?? []} desc="hot-applied while the node keeps running — nothing drops." />
+            <ReconcileGroup variant="success" icon="check" title={`${result?.live.length ?? 0} apply live`} items={result?.live ?? []} desc="hot-applied while the node keeps running - nothing drops." />
             <ReconcileGroup variant="warning" icon="restart" title={`${result?.portRestart.length ?? 0} restart a port`} items={result?.portRestart ?? []} desc="the affected port bounces; sessions on it drop." />
-            <ReconcileGroup variant="danger" icon="alert" title={`${reset.length} reset the node`} items={reset} desc="applies on a node restart — every session on every port drops." />
+            <ReconcileGroup variant="danger" icon="alert" title={`${reset.length} reset the node`} items={reset} desc="applies on a node restart - every session on every port drops." />
             {result != null && result.live.length + result.portRestart.length + reset.length === 0 && (
               <p className="text-sm text-muted-foreground">No effective changes.</p>
             )}

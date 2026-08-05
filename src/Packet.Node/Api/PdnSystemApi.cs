@@ -16,8 +16,8 @@ namespace Packet.Node.Api;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One owner per file.</b> The endpoint never touches the filesystem itself — what it
-/// does is decided by the build-stamped <see cref="IInstallChannelProvider"/>. On the
+/// <b>One owner per file.</b> The endpoint never touches the filesystem itself - what it
+/// does is decided by the runtime-resolved <see cref="IInstallChannelProvider"/>. On the
 /// <see cref="InstallChannel.Apt"/> channel it asks <see cref="ISystemUpdateLauncher"/> to
 /// dispatch the privileged, detached <c>packetnet-update.service</c> oneshot (a targeted
 /// <c>apt</c> upgrade), so dpkg stays the sole owner of the installed files. See
@@ -27,15 +27,16 @@ namespace Packet.Node.Api;
 /// <b>Fire-and-acknowledge.</b> A successful launch returns <c>202 Accepted</c>, not a
 /// result: the update job restarts this very process, so the outcome can't come back
 /// in-band. The web UI polls <c>GET /api/v1/system/info</c> until the version changes.
-/// Both <c>apt</c> and <c>self-contained</c> dispatch the same oneshot (its helper body
-/// differs per install); only an <c>unknown</c> channel declines (<c>409</c>).
+/// Both <c>apt</c> and <c>github</c> dispatch the same oneshot (its helper body differs
+/// per channel); an <c>unknown</c> channel declines (<c>409</c>) - nothing here owns the
+/// files, so the operator replaces them.
 /// </para>
 /// </remarks>
 public static class PdnSystemApi
 {
     private const string AuditCategory = "Packet.Node.System";
 
-    /// <summary>The running version — resolved from the assembly informational version, build
+    /// <summary>The running version - resolved from the assembly informational version, build
     /// metadata stripped. Exposed so the composition root seeds <see cref="ISystemVersionService"/>
     /// with the same string the API reports.</summary>
     public static string NodeVersion { get; } = ResolveVersion();
@@ -48,8 +49,8 @@ public static class PdnSystemApi
         var system = app.MapGroup("/api/v1/system");
 
         // Version + channel + what an update would do + whether one's available. Read scope.
-        // updateAvailable/latestVersion come from ISystemVersionService — a cached, TTL-refreshed
-        // snapshot of the per-channel check (apt-cache policy / GitHub Releases API / latest.json),
+        // updateAvailable/latestVersion come from ISystemVersionService - a cached, TTL-refreshed
+        // snapshot of the per-channel check (apt-cache policy / the GitHub Releases API),
         // so /info stays an in-memory read and never blocks on the network. The check is total:
         // offline / missing tool / API error → the safe default (updateAvailable:false).
         system.MapGet("/info", (IInstallChannelProvider channel, ISystemVersionService versions) =>
@@ -80,7 +81,7 @@ public static class PdnSystemApi
                 Funnel: s.Funnel));
         }).RequireAuthorization(PdnAuthPolicies.Read);
 
-        // Trigger an update — channel-aware. Admin scope, audited.
+        // Trigger an update - channel-aware. Admin scope, audited.
         system.MapPost("/update", async (
             HttpContext http,
             IInstallChannelProvider channel,
@@ -95,13 +96,13 @@ public static class PdnSystemApi
             var user = UserName(http);
             var ch = channel.Channel;
             SystemLog.UpdateRequested(audit, ChannelName(ch), user, ip);
-            // Also persist to the node-wide audit log (pdn.db) — a self-update restarts the
+            // Also persist to the node-wide audit log (pdn.db) - a self-update restarts the
             // whole node, so it belongs in the durable §6 record, not just the structured log.
             auditLog.RecordRest(http, clock, "system_update", ChannelName(ch), "requested", "");
 
-            // apt + github + self-contained all dispatch the same packetnet-update.service
-            // oneshot (its helper body differs per install); only an unknown channel declines.
-            if (ch is InstallChannel.Apt or InstallChannel.Github or InstallChannel.SelfContained)
+            // apt + github both dispatch the same packetnet-update.service oneshot (its helper
+            // body differs per channel); only an unknown channel declines.
+            if (ch is InstallChannel.Apt or InstallChannel.Github)
             {
                 var via = ChannelName(ch);
 
@@ -135,7 +136,7 @@ public static class PdnSystemApi
 
             return Declined(audit, "unknown", "unknown-channel", user, ip,
                 StatusCodes.Status409Conflict,
-                "This node's install channel is unknown, so it won't self-update. Update via your package manager or reinstall.");
+                "Nothing on this host manages this install (it is not a dpkg-owned .deb), so the node won't replace its own files. Update by unpacking the newer release archive over it, or install the .deb.");
         }).RequireAuthorization(PdnAuthPolicies.Admin);
 
         // Runtime log-level control (restart-free). The node's appsettings.json is read-only
@@ -143,14 +144,14 @@ public static class PdnSystemApi
         // Debug/Trace on a category live can't get it by editing config + restarting. These
         // endpoints mutate the DynamicLogLevelOverrides singleton, which fires the MEL
         // filter-options change token and re-applies the rebuilt rules to every already-created
-        // logger — so the new level takes effect immediately. See DynamicLogLevelOverrides.
+        // logger - so the new level takes effect immediately. See DynamicLogLevelOverrides.
 
         // The current effective default level + the active runtime overrides. Read scope.
         system.MapGet("/loglevel", (
             DynamicLogLevelOverrides dyn,
             IOptionsMonitor<LoggerFilterOptions> filterOptions) =>
         {
-            // The configured floor (appsettings "Default") — MEL's LoggerFilterOptions.MinLevel.
+            // The configured floor (appsettings "Default") - MEL's LoggerFilterOptions.MinLevel.
             // Overrides above this take effect via the appended rules; the override map is the
             // live, restart-free delta the operator has applied on top.
             var effectiveDefault = filterOptions.CurrentValue.MinLevel.ToString();
@@ -217,8 +218,7 @@ public static class PdnSystemApi
         var what = via switch
         {
             "apt" => "A targeted apt upgrade is running",
-            "github" => "A GitHub-release update is downloading",
-            _ => "A self-contained update is downloading",
+            _ => "A GitHub-release update is downloading",
         };
         return Results.Json(
             new UpdateStartedResponse("started", via,
@@ -238,21 +238,19 @@ public static class PdnSystemApi
         return Results.Problem($"Could not start the update: {detail}", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
-    // The wire channel name — the shared API contract: "apt" | "github" | "selfcontained" | "unknown".
+    // The wire channel name - the shared API contract: "apt" | "github" | "unknown".
     private static string ChannelName(InstallChannel c) => c switch
     {
         InstallChannel.Apt => "apt",
         InstallChannel.Github => "github",
-        InstallChannel.SelfContained => "selfcontained",
         _ => "unknown",
     };
 
-    // What POST /update will actually do on this channel — for the web UI to label the button.
+    // What POST /update will actually do on this channel - for the web UI to label the button.
     private static string MechanismName(InstallChannel c) => c switch
     {
         InstallChannel.Apt => "apt",
         InstallChannel.Github => "github",
-        InstallChannel.SelfContained => "selfcontained",
         _ => "none",
     };
 
@@ -280,8 +278,8 @@ public static class PdnSystemApi
 /// <summary>The node's version, install channel, and what an update would do (the shared
 /// <c>GET /api/v1/system/info</c> contract the web UI consumes).</summary>
 /// <param name="Version">The running node version (assembly informational version, build-metadata stripped).</param>
-/// <param name="Channel">The install channel: <c>apt</c> / <c>github</c> / <c>selfcontained</c> / <c>unknown</c>.</param>
-/// <param name="UpdateMechanism">What <c>POST /system/update</c> does here: <c>apt</c> / <c>github</c> / <c>selfcontained</c> / <c>none</c>.</param>
+/// <param name="Channel">The install channel: <c>apt</c> / <c>github</c> / <c>unknown</c>.</param>
+/// <param name="UpdateMechanism">What <c>POST /system/update</c> does here: <c>apt</c> / <c>github</c> / <c>none</c>.</param>
 /// <param name="UpdateAvailable">Whether a newer version is known to be available (the per-channel
 /// available-version check; reports <c>false</c> until that check ships).</param>
 /// <param name="LatestVersion">The latest known version when <paramref name="UpdateAvailable"/>, else <c>null</c>.</param>
@@ -305,7 +303,7 @@ public sealed record TailscaleStatusResponse(bool Enabled, string State, string?
 /// <summary>The current runtime logging state: the effective default minimum level and the
 /// active restart-free overrides (<c>GET /api/v1/system/loglevel</c>).</summary>
 /// <param name="EffectiveDefault">The configured default minimum level (MEL <c>LoggerFilterOptions.MinLevel</c>,
-/// i.e. the <c>appsettings.json</c> "Default") — the floor overrides are layered on top of.</param>
+/// i.e. the <c>appsettings.json</c> "Default") - the floor overrides are layered on top of.</param>
 /// <param name="Overrides">The active runtime overrides (category prefix → level), longest-prefix-wins
 /// like MEL's own filter rules; empty when none have been set.</param>
 public sealed record LogLevelResponse(string EffectiveDefault, IReadOnlyList<LogLevelOverride> Overrides);

@@ -6,10 +6,10 @@ namespace Packet.Node.Tests.SelfUpdate;
 /// <summary>
 /// <see cref="ChannelUpdateAvailabilityProbe"/>: the per-channel "is a newer version available?"
 /// check that feeds <c>GET /api/v1/system/info</c>. Every external probe (apt-cache via
-/// <see cref="IProcessRunner"/>; the GitHub Releases API via <see cref="IGitHubReleaseClient"/>; the
-/// feed via <see cref="ISelfContainedFeedClient"/>) is mocked — NO real network/process — so these
-/// tests assert the per-channel logic AND the load-bearing guarantee: offline / missing-tool /
-/// API-error → no update, never an exception, never a downgrade (incl. the dev-above-release case).
+/// <see cref="IProcessRunner"/>; the GitHub Releases API via <see cref="IGitHubReleaseClient"/>)
+/// is mocked - NO real network/process - so these tests assert the per-channel logic AND the
+/// load-bearing guarantee: offline / missing-tool / API-error → no update, never an exception,
+/// never a downgrade (incl. the dev-above-release case).
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class UpdateAvailabilityProbeTests
@@ -30,7 +30,7 @@ public sealed class UpdateAvailabilityProbeTests
         // The dev-above-release case end-to-end: a 0.1.0+dev… node, latest release node-v0.1.0.
         var probe = Probe(InstallChannel.Github, github: new FakeGithub(new GitHubRelease("node-v0.1.0", Empty())));
         var result = await probe.CheckAsync("0.1.0+dev20260614190517.deadbeef");
-        result.UpdateAvailable.Should().BeFalse("a dev build sorts above the matching release — no downgrade");
+        result.UpdateAvailable.Should().BeFalse("a dev build sorts above the matching release - no downgrade");
         result.LatestVersion.Should().BeNull();
     }
 
@@ -85,28 +85,13 @@ public sealed class UpdateAvailabilityProbeTests
         (await probe.CheckAsync("0.9.0")).Should().Be(SystemUpdateAvailability.None);
     }
 
-    // --- selfcontained: the feed's latest.json version --------------------------------
-    [Fact]
-    public async Task SelfContained_offers_the_feed_version_when_newer()
-    {
-        var probe = Probe(InstallChannel.SelfContained, feed: new FakeFeed("0.9.0"));
-        var result = await probe.CheckAsync("0.8.0");
-        result.UpdateAvailable.Should().BeTrue();
-        result.LatestVersion.Should().Be("0.9.0");
-    }
-
-    [Fact]
-    public async Task SelfContained_reports_no_update_when_no_feed_is_configured()
-    {
-        var probe = Probe(InstallChannel.SelfContained, feed: new FakeFeed(null));
-        (await probe.CheckAsync("0.8.0")).Should().Be(SystemUpdateAvailability.None);
-    }
-
     // --- unknown never offers an update -----------------------------------------------
     [Fact]
     public async Task Unknown_channel_never_offers_an_update()
     {
-        var probe = Probe(InstallChannel.Unknown);
+        // An unpacked release archive / container / source build: nothing owns the files, so
+        // the node must not even look, let alone offer. Both probes would throw if consulted.
+        var probe = Probe(InstallChannel.Unknown, github: new ThrowingGithub());
         (await probe.CheckAsync("0.8.0")).Should().Be(SystemUpdateAvailability.None);
     }
 
@@ -135,13 +120,11 @@ public sealed class UpdateAvailabilityProbeTests
     private static ChannelUpdateAvailabilityProbe Probe(
         InstallChannel channel,
         IProcessRunner? runner = null,
-        IGitHubReleaseClient? github = null,
-        ISelfContainedFeedClient? feed = null) =>
+        IGitHubReleaseClient? github = null) =>
         new(
             new StubChannel(channel),
             runner ?? new FakeRunner(),
             github ?? new FakeGithub(release: null),
-            feed ?? new FakeFeed(null),
             NullLoggerFactory.Instance);
 
     private static Dictionary<string, Uri> Empty() => new(StringComparer.Ordinal);
@@ -171,9 +154,13 @@ public sealed class UpdateAvailabilityProbeTests
             Task.FromResult<string?>(null);
     }
 
-    private sealed class FakeFeed(string? version) : ISelfContainedFeedClient
+    /// <summary>Fails the test if the probe reaches the network on a channel that must not.</summary>
+    private sealed class ThrowingGithub : IGitHubReleaseClient
     {
-        public Task<string?> GetLatestVersionAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(version);
+        public Task<GitHubRelease?> GetLatestNodeReleaseAsync(CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("the unknown channel must not consult GitHub");
+
+        public Task<string?> GetTextAssetAsync(Uri url, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("the unknown channel must not consult GitHub");
     }
 }

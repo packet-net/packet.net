@@ -13,15 +13,15 @@ Packet.NET is built on top of [ax25sdl](https://github.com/packet-net/ax25sdl) -
 
 Most visitors will probably just be interested in running a packet radio node of their own.
 
-The quickest route, on any Debian-ish Linux box (a Raspberry Pi is ideal):
+pdn is distributed two ways, both from [Releases](https://github.com/packet-net/packet.net/releases): a **`.deb`** for Debian, Ubuntu and Raspberry Pi OS, and a **`.tar.gz`** archive of the same node for anything else. On a Debian-ish box (a Raspberry Pi is ideal), grab the `.deb` for your architecture and:
 
 ```sh
-curl -fsSL https://pdn-dist.m0lte.compute.oarc.uk/install.sh | sudo sh
+sudo apt install ./packetnet_<version>_<arch>.deb
 ```
 
-Then tunnel to the control panel — `ssh -L 8080:127.0.0.1:8080 you@your-node` — and open <http://localhost:8080>, where a three-step wizard asks for your callsign, an admin login, and your first port.
+Then tunnel to the control panel - `ssh -L 8080:127.0.0.1:8080 you@your-node` - and open <http://localhost:8080>, where a three-step wizard asks for your callsign, an admin login, and your first port.
 
-Prefer a `.deb` from [Releases](https://github.com/packet-net/packet.net/releases), or Docker? Both are in **[Getting started](operating/00-install.md)**, along with what to do next and what to do if you run into problems.
+**[Getting started](operating/00-install.md)** has both routes in full, along with what to do next and what to do if you run into problems.
 
 ## Build software on it
 
@@ -39,7 +39,7 @@ await listener.StartAsync();
 var session = await listener.ConnectAsync(Callsign.Parse("GB7RDG-1"));
 ```
 
-The **[developer guide](guide/index.md)** builds that up properly — a raw frame dumper, then a beacon sender, a channel monitor, a connect client, a node of your own, and NET/ROM.
+The **[developer guide](guide/index.md)** builds that up properly - a raw frame dumper, then a beacon sender, a channel monitor, a connect client, a node of your own, and NET/ROM.
 
 ## Documentation
 
@@ -50,7 +50,7 @@ The **[developer guide](guide/index.md)** builds that up properly — a raw fram
 | [Developer guide](guide/index.md) | Build packet-radio software on the libraries, layer by layer |
 | [Packages](docs/packages.md) | What each `Packet.*` library does and where it publishes |
 | [About](docs/about.md) | Scope, provenance, sibling repos, licence |
-| [Plan](docs/plan.md) | The living roadmap and amendment log — the source of truth for direction and status |
+| [Plan](docs/plan.md) | The living roadmap and amendment log - the source of truth for direction and status |
 | [Contributing](CONTRIBUTING.md) · [Releasing](docs/releasing.md) | House rules; how a change reaches the world |
 
 ## Build from source
@@ -60,11 +60,13 @@ dotnet build
 dotnet test --filter "Category!=HardwareLoop&Category!=Interop"
 ```
 
-Requires the .NET 10 SDK (see `global.json`). The full interop matrix — LinBPQ, XRouter, rax25 and a net-sim in docker, plus the TypeScript library's suite run against the same stack — lives in [`.github/workflows/interop.yml`](.github/workflows/interop.yml).
+Requires the .NET 10 SDK (see `global.json`). The full interop matrix - LinBPQ, XRouter, rax25 and a net-sim in docker, plus the TypeScript library's suite run against the same stack - lives in [`.github/workflows/interop.yml`](.github/workflows/interop.yml).
+
+There is also a container image of the node, `ghcr.io/packet-net/packet.net` ([`docker/node/README.md`](docker/node/README.md)). Treat it as a **development tool** - a disposable node for testing against, and what the interop stack builds on. It is not a supported way to run a station: use the `.deb`.
 
 ## Licence
 
-[AGPL-3.0](LICENSE) — the whole repo and every published `Packet.*` NuGet package. 
+[AGPL-3.0](LICENSE) - the whole repo and every published `Packet.*` NuGet package. 
 
 In short: if you distribute software built on this code, or let users reach it over a network, you must publish your own source under the same licence. This being networking software, that second clause will apply to you.
 

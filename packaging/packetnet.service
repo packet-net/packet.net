@@ -17,7 +17,7 @@ RestartSec=5
 
 # systemd creates + chowns /var/lib/packetnet (0750, packetnet:packetnet).
 StateDirectory=packetnet
-# /run/packetnet — where the bundled LOBBY package's daemon binds its Unix socket
+# /run/packetnet - where the bundled LOBBY package's daemon binds its Unix socket
 # (session.socketPath in its pdn-app.yaml) and the conventional home for other app
 # sockets. systemd creates it at start (packetnet:packetnet) and keeps it writable
 # under ProtectSystem=strict; pdn-supervised app daemons inherit the sandbox, so
@@ -25,26 +25,26 @@ StateDirectory=packetnet
 RuntimeDirectory=packetnet
 # Keep /run/packetnet across a restart. The in-app self-update (Phase 7) stages its request
 # here (update.channel + github-update.json) for the privileged packetnet-update.service
-# oneshot to read, and the update RESTARTS this very service — without preserve, systemd would
+# oneshot to read, and the update RESTARTS this very service - without preserve, systemd would
 # remove /run/packetnet on stop and the oneshot could lose the spool mid-update.
 RuntimeDirectoryPreserve=yes
 
 # The single-file self-contained binary extracts native libs at startup, and
 # .NET puts HOME-based state (data-protection keys etc.) under HOME. Both must
 # land somewhere writable, since ProtectSystem=strict makes the rest of the FS
-# read-only — point them at the StateDirectory. gcServer=0 keeps memory modest
+# read-only - point them at the StateDirectory. gcServer=0 keeps memory modest
 # on small/Pi targets.
 Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/lib/packetnet
 Environment=HOME=/var/lib/packetnet
 Environment=DOTNET_gcServer=0
 
 # Bind privileged ports (<1024) as the non-root service user. A pdn-supervised app
-# (the BBS) serves IMAP on 993 and SMTP submission on 465/587 — the standard ports
+# (the BBS) serves IMAP on 993 and SMTP submission on 465/587 - the standard ports
 # iPhone Mail's port-less account setup auto-discovers. Ambient caps are inherited by
 # the supervised app daemons and survive NoNewPrivileges (systemd grants them at exec,
 # not via setuid). Nothing uses it unless an app is configured on a privileged port.
 # CapabilityBoundingSet pins the ceiling to exactly that one capability: the service
-# (and its inherited app daemons) can hold CAP_NET_BIND_SERVICE and nothing else —
+# (and its inherited app daemons) can hold CAP_NET_BIND_SERVICE and nothing else -
 # every other capability is dropped from the bounding set, so even a compromised app
 # cannot raise (e.g.) CAP_NET_ADMIN. Ambient ⊆ bounding, so both must list the cap.
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -55,18 +55,18 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-# /var/lib/packetnet: the StateDirectory — pdn.db (which now also holds the live config:
+# /var/lib/packetnet: the StateDirectory - pdn.db (which now also holds the live config:
 # config-in-DB, #473), bundle extract, HOME state. /etc/packetnet is deliberately NOT
 # writable any more: the node no longer rewrites a YAML conffile (config-write, port
 # management, /setup all persist to pdn.db in StateDirectory now). The --config arg below
-# is read-only — the legacy YAML is imported into the DB once on first boot, then vestigial.
+# is read-only - the legacy YAML is imported into the DB once on first boot, then vestigial.
 ReadWritePaths=/var/lib/packetnet
 ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 # AF_NETLINK is required by the embedded Tailscale sidecar (sidecar/tsnet, launched
 # as a child so it inherits this sandbox): tsnet's userspace network monitor opens a
-# netlink socket to watch interface/route changes — without it the sidecar exits at
+# netlink socket to watch interface/route changes - without it the sidecar exits at
 # startup. (Tailscale's own systemd unit allows AF_NETLINK for the same reason.)
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 

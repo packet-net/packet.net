@@ -4,16 +4,15 @@ namespace Packet.Node.Core.SelfUpdate;
 
 /// <summary>
 /// The single <see cref="IUpdateAvailabilityProbe"/>: dispatches the "is a newer version
-/// available?" check on the resolved <see cref="InstallChannel"/> —
+/// available?" check on the resolved <see cref="InstallChannel"/> -
 /// <list type="bullet">
-/// <item><b>apt</b>: <c>apt-cache policy packetnet</c> — Candidate &gt; Installed (via
+/// <item><b>apt</b>: <c>apt-cache policy packetnet</c> - Candidate &gt; Installed (via
 /// <see cref="IProcessRunner"/>, the same guarded seam channel detection uses).</item>
 /// <item><b>github</b>: the latest <c>node-v*</c> Releases tag vs the running version (via
 /// <see cref="IGitHubReleaseClient"/>). A <c>0.1.0+dev…</c> build sorts <em>above</em> the
 /// matching release, so it reports up-to-date, never a downgrade (<see cref="NodeVersion"/>).</item>
-/// <item><b>selfcontained</b>: the configured feed's <c>latest.json</c> version (via
-/// <see cref="ISelfContainedFeedClient"/>).</item>
-/// <item><b>unknown</b>: never offers an update.</item>
+/// <item><b>unknown</b>: never offers an update - nothing here owns the files (an unpacked
+/// release tarball updates by hand).</item>
 /// </list>
 /// Every branch is total: a missing tool, an offline host, or a parse failure yields
 /// <see cref="SystemUpdateAvailability.None"/>. It never throws and never reports a downgrade.
@@ -25,25 +24,21 @@ public sealed partial class ChannelUpdateAvailabilityProbe : IUpdateAvailability
     private readonly IInstallChannelProvider channel;
     private readonly IProcessRunner runner;
     private readonly IGitHubReleaseClient github;
-    private readonly ISelfContainedFeedClient feed;
     private readonly ILogger<ChannelUpdateAvailabilityProbe> log;
 
     public ChannelUpdateAvailabilityProbe(
         IInstallChannelProvider channel,
         IProcessRunner runner,
         IGitHubReleaseClient github,
-        ISelfContainedFeedClient feed,
         ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(runner);
         ArgumentNullException.ThrowIfNull(github);
-        ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(loggerFactory);
         this.channel = channel;
         this.runner = runner;
         this.github = github;
-        this.feed = feed;
         log = loggerFactory.CreateLogger<ChannelUpdateAvailabilityProbe>();
     }
 
@@ -56,7 +51,6 @@ public sealed partial class ChannelUpdateAvailabilityProbe : IUpdateAvailability
             {
                 InstallChannel.Apt => CheckApt(runningVersion),
                 InstallChannel.Github => await CheckGithubAsync(runningVersion, cancellationToken).ConfigureAwait(false),
-                InstallChannel.SelfContained => await CheckSelfContainedAsync(runningVersion, cancellationToken).ConfigureAwait(false),
                 _ => SystemUpdateAvailability.None,
             };
         }
@@ -102,7 +96,7 @@ public sealed partial class ChannelUpdateAvailabilityProbe : IUpdateAvailability
             return SystemUpdateAvailability.None;
         }
 
-        // The baseline is the newer of {apt's Installed, the running build} — whichever is ahead.
+        // The baseline is the newer of {apt's Installed, the running build} - whichever is ahead.
         var baseline = RunningOrInstalled(runningVersion, installed);
         return cand.IsUpdateOver(baseline)
             ? SystemUpdateAvailability.Available(cand.ToString())
@@ -136,23 +130,6 @@ public sealed partial class ChannelUpdateAvailabilityProbe : IUpdateAvailability
 
         // The dev-above-release rule lives in IsUpdateOver: a 0.1.0+dev… running build has the same
         // numeric base as a 0.1.0 release, so latest.IsUpdateOver(running) is false → up to date.
-        return latest.IsUpdateOver(running)
-            ? SystemUpdateAvailability.Available(latest.ToString())
-            : SystemUpdateAvailability.None;
-    }
-
-    // --- selfcontained: the feed's latest.json version ---------------------------------
-    private async Task<SystemUpdateAvailability> CheckSelfContainedAsync(string runningVersion, CancellationToken cancellationToken)
-    {
-        var latestStr = await feed.GetLatestVersionAsync(cancellationToken).ConfigureAwait(false);
-        if (latestStr is null || !NodeVersion.TryParse(latestStr, out var latest))
-        {
-            return SystemUpdateAvailability.None;
-        }
-        if (!NodeVersion.TryParse(runningVersion, out var running))
-        {
-            return SystemUpdateAvailability.None;
-        }
         return latest.IsUpdateOver(running)
             ? SystemUpdateAvailability.Available(latest.ToString())
             : SystemUpdateAvailability.None;

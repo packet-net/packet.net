@@ -17,13 +17,14 @@ This is the page to start on if you have never run pdn before. It assumes nothin
 
 ## Pick an install route
 
+pdn is distributed as exactly two things, both attached to every [release](https://github.com/packet-net/packet.net/releases): a `.deb` and a `.tar.gz`. There is no installer script and no package repository to add.
+
 | Route | Use it when | Updates |
 |---|---|---|
-| **A. Debian package** | You are on Debian / Ubuntu / Raspberry Pi OS and want ordinary distro packaging. The common case. | Install a newer `.deb`, or the panel's **Apply** button |
-| **B. One-line installer** | You want the simplest possible first install and hands-off updates. | The panel's **Apply** button, over the release feed |
-| **C. Docker** | You already run containers, or you want pdn isolated from the host. | `docker pull` + recreate |
+| **A. Debian package** | You are on Debian / Ubuntu / Raspberry Pi OS. The common case, and the supported one. | Install a newer `.deb`, or the panel's **Apply** button |
+| **B. Archive** | You are on a Linux box that is not Debian-ish, or you want the node somewhere of your own choosing. | Unpack the next release over it, by hand |
 
-All three install the same node. Pick one.
+Both carry the same node. Pick one.
 
 ## Route A - the Debian package
 
@@ -55,29 +56,26 @@ curl -fsS http://127.0.0.1:8080/healthz     # -> {"status":"ok"}
 
 If the node is not running, `journalctl -u packetnet -n 50` will say why.
 
-## Route B - the one-line installer
+## Route B - the archive
+
+The `.tar.gz` for your architecture is the same node as the `.deb`, minus the packaging: the binary, its bundled runtime, the web panel, an example systemd unit, and the annotated config template. Nothing in it is managed by anything, so everything the package does for you is yours to do.
 
 ```sh
-curl -fsSL https://pdn-dist.m0lte.compute.oarc.uk/install.sh | sudo sh
+sudo install -d /opt/packetnet/app
+sudo tar -C /opt/packetnet/app -xzf packetnet_<version>_<arch>.tar.gz
+sudo adduser --system --group --no-create-home --home /var/lib/packetnet \
+     --shell /usr/sbin/nologin packetnet
+sudo install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet
+sudo install -m 0644 /opt/packetnet/app/packetnet.service.example \
+     /etc/systemd/system/packetnet.service
+sudo systemctl daemon-reload && sudo systemctl enable --now packetnet
 ```
 
-The script detects your architecture, pulls the current release from the distribution feed, verifies it against the feed's published SHA-256, lays it out under `/opt/packetnet/releases/<version>` with a `current` symlink, installs the systemd units, and starts the node. It is a plain POSIX shell script - read it first if you would rather ([`packaging/install.sh`](../packaging/install.sh) is the source).
+Check the checksum against the release's `SHA256SUMS` before you unpack it (`sha256sum -c --ignore-missing SHA256SUMS`).
 
-What this buys over Route A: the node is on the **self-contained update channel**, so future upgrades are an **Apply** button in the control panel - no shell, no `apt`. The symlink flip is what the in-app updater drives. See [`docs/node-self-update-design.md`](../docs/node-self-update-design.md).
+The example unit assumes `/opt/packetnet/app`; edit `ExecStart` if you put the node elsewhere. `packetnet.yaml.example` in the archive is the same annotated template the package installs to `/usr/share/packetnet` - the node seeds its database from its built-in copy on first boot either way, so the file is documentation rather than a required input.
 
-## Route C - Docker
-
-```sh
-docker run -d --name pdn \
-  -p 8080:8080 \
-  -v pdn-config:/etc/packetnet \
-  -v pdn-state:/var/lib/packetnet \
-  ghcr.io/packet-net/packet.net:latest
-```
-
-Multi-arch (amd64 + arm64). Keep the `pdn-state` volume - it holds your config, users, and keys.
-
-The panel is published wherever you map the port, and requires a login like the package installs do. To attach a serial TNC or radio, pass the device through: `--device /dev/ttyACM0`. More detail in [`docker/node/README.md`](../docker/node/README.md).
+Because nothing owns an archive install, the control panel reports its install channel as **unmanaged** and offers no **Apply** button. To upgrade, stop the node, unpack the newer archive over `/opt/packetnet/app`, and start it again; `/var/lib/packetnet` carries your config and users across untouched.
 
 ## First contact: open the control panel
 
@@ -170,8 +168,6 @@ curl -fsS http://127.0.0.1:8080/metrics | head     # Prometheus surface
 telnet 127.0.0.1 8011                              # the node's own console
 ```
 
-(The container image ships with the telnet console off - enable `management.telnet` if you want it there.)
-
 The telnet console answers with your banner and prompt - that is the same command surface a station reaching you over RF gets:
 
 ```
@@ -206,12 +202,14 @@ An import validates before it applies, and rejects the file whole if anything in
 
 ## Updating
 
-The panel's **Config** screen shows the running version and how this node updates - and offers **Apply** when a newer release exists. Both package routes support it: a `.deb` from Releases updates through dpkg, a one-line install swaps the release symlink atomically and rolls back if the new version does not come up healthy. The node restarts itself and the panel reconnects.
+The panel's **Config** screen shows the running version and how this node updates - and, on a package install, offers **Apply** when a newer release exists. The node downloads the next release `.deb`, verifies its checksum, installs it through dpkg, and rolls back if the new version does not come up healthy; it restarts itself and the panel reconnects. dpkg stays the owner of every file it installed - the node never overwrites them itself.
+
+An archive install has no owner to defer to, so the panel reports it as **unmanaged** and shows no **Apply**.
 
 By hand instead:
 
 - **Package install** - install the newer `.deb` exactly as you installed the first one. Config and users live in `/var/lib/packetnet` and are untouched.
-- **Docker** - `docker pull ghcr.io/packet-net/packet.net:latest`, then recreate the container with the same volumes.
+- **Archive install** - `sudo systemctl stop packetnet`, unpack the newer `.tar.gz` over `/opt/packetnet/app`, `sudo systemctl start packetnet`. Same state directory, same config.
 
 ## Uninstalling
 
@@ -224,13 +222,12 @@ sudo apt purge  packetnet     # also deletes /var/lib/packetnet and the packetne
 
 Purge takes your config, users, routing table, and history with it - there is nothing left to reinstall onto. Copy `/var/lib/packetnet/pdn.db` somewhere first if you might want it back.
 
-From a one-line install there is no package to remove; stop it and delete what the installer laid down:
+From an archive install there is no package to remove; stop it and delete what you laid down:
 
 ```sh
 sudo systemctl disable --now packetnet.service
-sudo rm -rf /opt/packetnet /usr/lib/packetnet /usr/share/packetnet
-sudo rm -f /lib/systemd/system/packetnet*.service /usr/share/polkit-1/rules.d/49-packetnet-update.rules
-sudo rm -rf /etc/packetnet /etc/systemd/system/packetnet.service.d
+sudo rm -f /etc/systemd/system/packetnet.service
+sudo rm -rf /opt/packetnet
 sudo rm -rf /var/lib/packetnet    # the state - only if you want it gone
 sudo systemctl daemon-reload
 sudo deluser --system packetnet
@@ -245,7 +242,7 @@ sudo deluser --system packetnet
 | Wizard never appears / it goes straight to a login | Setup is one-shot - a user already exists. Log in, or reset by stopping the node and removing `pdn.db` (this drops **all** config). |
 | Passkey buttons are missing | Not a secure origin - expected on a plain-HTTP LAN address. Password login works; for a passkey use the SSH tunnel to `http://localhost:8080`, HTTPS, or Tailscale. |
 | A serial port never opens | The `packetnet` user needs access to the device: `sudo usermod -aG dialout packetnet`, then restart. `journalctl` names the device it tried. |
-| `apt install` fails on dependencies | You used `dpkg -i`, or the box has no network for the repo. Use `apt install ./file.deb`. |
+| `apt install` fails on dependencies | You used `dpkg -i`, or the box has no network to fetch the dependencies from its own distro mirrors. Use `apt install ./file.deb`. |
 
 ## Where next
 
