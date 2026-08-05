@@ -19,7 +19,7 @@ pdn is distributed two ways, both from [Releases](https://github.com/packet-net/
 sudo apt install ./packetnet_<version>_<arch>.deb
 ```
 
-Then tunnel to the control panel - `ssh -L 8080:127.0.0.1:8080 you@your-node` - and open <http://localhost:8080>, where a three-step wizard asks for your callsign, an admin login, and your first port.
+The install finishes by printing your node's control panel address - `http://your-node:8080`, reachable from any machine on your network. Open it in a browser, and a three-step wizard asks for your callsign, an admin login, and your first port.
 
 **[Getting started](operating/00-install.md)** has both routes in full, along with what to do next and what to do if you run into problems.
 

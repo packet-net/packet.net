@@ -51,6 +51,33 @@ if [ -d /run/systemd/system ]; then
   if [ -n "${2:-}" ]; then
     systemctl try-restart packetnet.service || true
   fi
+
+  # Fresh install only ($1 = configure with no old version): say where the control
+  # panel is, with addresses a person can click, because the next step happens in a
+  # browser on a DIFFERENT machine and nothing else in the install ever names a URL.
+  # A fresh install serves the default bind (0.0.0.0:8080); on an upgrade the
+  # operator may have changed it (and already knows the way in), so stay quiet then.
+  # The node logs the same URLs to its journal at every start (grep "Control panel:").
+  if [ "$1" = "configure" ] && [ -z "${2:-}" ]; then
+    echo ""
+    echo "packetnet is running. To set up your node, open the control panel"
+    echo "in a browser on any machine on your network:"
+    echo ""
+    for panel_addr in $(hostname -I 2>/dev/null || true); do
+      case "$panel_addr" in
+        *:*) ;;                # IPv6 - the v4 line is the one people type
+        169.254.*) ;;          # link-local resolves nowhere useful off-box
+        *) echo "  http://$panel_addr:8080" ;;
+      esac
+    done
+    if systemctl is-active --quiet avahi-daemon 2>/dev/null; then
+      echo "  http://$(hostname).local:8080"
+    fi
+    echo ""
+    echo "The first visit starts the setup wizard. Do it soon: until the admin"
+    echo "login exists, anyone on your network can claim the node."
+    echo ""
+  fi
 fi
 
 exit 0

@@ -213,7 +213,10 @@ public static class NodeConfigTemplate
             bind: 127.0.0.1        # loopback only by default
             port: 8011
           http:
-            bind: 127.0.0.1
+            bind: 0.0.0.0          # the control panel, on every interface - reachable from your
+                                   # laptop without an SSH tunnel. What makes that safe is auth,
+                                   # which is on by default; narrow this to 127.0.0.1 if you turn
+                                   # auth off. Read at process start: changing it needs a restart.
             port: 8080
 
         # NET/ROM. By default the node only HEARS NODES routing broadcasts on the

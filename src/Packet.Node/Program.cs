@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Packet.Node;
 using Packet.Node.Api;
 using Packet.Node.Cli;
 using Packet.Node.Core.Auth;
@@ -918,6 +919,45 @@ app.MapFallbackToFile("index.html", new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
         ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate",
+});
+
+// Name the panel's concrete URLs once the listener is up, and flag first-run setup while
+// zero users exist. journalctl -u packetnet is the operator's first stop on a headless
+// install (Kestrel's own "Now listening on" is filtered to Warning), and "0.0.0.0:8080"
+// is not an address anyone can browse to. The wildcard-to-address expansion is pure
+// (PanelUrls, unit-tested); only the NIC enumeration happens here. The bind is read at
+// process start (a change needs a restart), so logging the captured value is accurate.
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    var logger = app.Logger;
+    if (logger.IsEnabled(LogLevel.Information))
+    {
+        var urls = string.Join(" ", PanelUrls.For(http.Bind, http.Port, MachineAddresses()));   // local (CA1873)
+        PanelLog.PanelUp(logger, urls);
+        if (app.Services.GetRequiredService<IUserStore>().Count() == 0)
+        {
+            PanelLog.SetupPending(logger);
+        }
+    }
+
+    static IReadOnlyList<IPAddress> MachineAddresses()
+    {
+        try
+        {
+            return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up
+                            && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Select(u => u.Address)
+                .ToList();
+        }
+        catch (System.Net.NetworkInformation.NetworkInformationException)
+        {
+            // No NIC enumeration (containers, odd platforms): PanelUrls falls back to
+            // loopback for a wildcard bind, which is at least always true.
+            return [];
+        }
+    }
 });
 
 app.Run();
