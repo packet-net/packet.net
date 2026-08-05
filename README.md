@@ -1,13 +1,17 @@
 # Packet.NET
 
-A modern AX.25 v2.2 stack and packet-radio node, written in .NET 10. Connected-mode sessions over KISS modems (USB/serial or TCP), a sound card, or AXUDP — with continuous interop tests against LinBPQ, XRouter, rax25, direwolf, and a NinoTNC pair.
+A modern, open, cross-platform AX.25 v2.2+ stack and packet radio node, written in .NET 10. Connected-mode sessions over KISS modems (USB/serial or TCP), a sound card, or AXUDP - with continuous interop tests against LinBPQ, XRouter, rax25, direwolf, and a NinoTNC pair.
 
-Two things live here, and either is usable on its own:
+Two things live in this repo, and either is usable on its own:
 
-- **pdn** — a packet-radio node you install on a Pi or any Debian-ish box: ports, NET/ROM, a web control panel, radio and rig control, an app platform.
-- **The `Packet.*` libraries** — the engine underneath, on NuGet, for building your own packet software.
+- **Packet.NET** - or **pdn** - a packet-radio node you install on a Pi or any Debian-ish box: ports, NET/ROM, a web control panel, radio and rig control, an app platform.
+- **The `Packet.*` libraries** - the engine underneath and various accessories, on NuGet, for building your own .NET packet software.
+
+Packet.NET is built on top of [ax25sdl](https://github.com/packet-net/ax25sdl) - which is an effort to codify the state machines documented in the [AX.25 specification](https://github.com/packethacking/ax25spec/) in a formal, provable manner, whose output is a suite of codegenned libraries in various languages including C# .NET.
 
 ## Run a node
+
+Most visitors will probably just be interested in running a packet radio node of their own.
 
 The quickest route, on any Debian-ish Linux box (a Raspberry Pi is ideal):
 
@@ -17,9 +21,11 @@ curl -fsSL https://pdn-dist.m0lte.compute.oarc.uk/install.sh | sudo sh
 
 Then tunnel to the control panel — `ssh -L 8080:127.0.0.1:8080 you@your-node` — and open <http://localhost:8080>, where a three-step wizard asks for your callsign, an admin login, and your first port.
 
-Prefer a `.deb` from [Releases](https://github.com/packet-net/packet.net/releases), or Docker? Both are in **[Getting started](operating/00-install.md)**, along with what to do next and what to do when it does not work.
+Prefer a `.deb` from [Releases](https://github.com/packet-net/packet.net/releases), or Docker? Both are in **[Getting started](operating/00-install.md)**, along with what to do next and what to do if you run into problems.
 
 ## Build software on it
+
+This section is for .NET developers.
 
 ```sh
 dotnet add package Packet.Ax25
@@ -58,4 +64,10 @@ Requires the .NET 10 SDK (see `global.json`). The full interop matrix — LinBPQ
 
 ## Licence
 
-[AGPL-3.0](LICENSE) — the whole repo and every published `Packet.*` NuGet package.
+[AGPL-3.0](LICENSE) — the whole repo and every published `Packet.*` NuGet package. 
+
+In short: if you distribute software built on this code, or let users reach it over a network, you must publish your own source under the same licence. This being networking software, that second clause will apply to you.
+
+That's deliberate. This is amateur radio software with no commercial value, and for the good of the hobby, code running on our airwaves should be open.
+
+If this isn't for you, please spin the dial.
