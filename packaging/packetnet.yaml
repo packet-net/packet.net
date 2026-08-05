@@ -1,7 +1,7 @@
 # Packet.NET node configuration.
 #
 # This file is the node's config blob. It is watched for changes and
-# hot-applied — most edits take effect without a restart. An invalid
+# hot-applied - most edits take effect without a restart. An invalid
 # edit is rejected whole and the running config is kept (see the logs).
 #
 # Edit the callsign below, then add one or more ports under `ports:`.
@@ -10,7 +10,7 @@ schemaVersion: 1
 
 identity:
   callsign: N0CALL        # <-- your station callsign, e.g. M0LTE-1
-  # alias: LONDON         # optional node mnemonic, <=6 chars — shown on the network map AND
+  # alias: LONDON         # optional node mnemonic, <=6 chars - shown on the network map AND
                           # advertised as the NET/ROM alias. Long friendly text -> services.banner.
   # grid: IO91wm          # optional Maidenhead locator (required to appear on the OARC map)
 
@@ -24,24 +24,24 @@ ports: []
 #      kind: kiss-tcp      # serial-kiss | nino-tnc | kiss-tcp
 #      host: 127.0.0.1
 #      port: 8001
-#    ax25:                 # optional — omit for spec defaults
+#    ax25:                 # optional - omit for spec defaults
 #      t1Ms: 3000
 #      n2: 10
 #      windowSize: 4
-#    kiss:                 # optional — applied live, no restart
+#    kiss:                 # optional - applied live, no restart
 #      txDelay: 30         # units of 10 ms
 #      persistence: 63
 #      slotTime: 10
 #      # txTail (units of 10 ms) defaults to an IMPLICIT 0 and is ALWAYS sent to the
 #      # modem (on bring-up + on every config change), so you only set it to OVERRIDE.
-#      # 0 is correct for MOST configs — e.g. a NinoTNC into a fully analogue audio path,
+#      # 0 is correct for MOST configs - e.g. a NinoTNC into a fully analogue audio path,
 #      # even on a slow AFSK1200 channel. Set a NON-ZERO tail ONLY for:
 #      #   - a software modem (samoyed / Dire Wolf), or
 #      #   - a NinoTNC driving a radio with a non-zero-latency audio path
-#      #     (NinoTNC re-added TXTAIL for a specific radio — see its release notes).
+#      #     (NinoTNC re-added TXTAIL for a specific radio - see its release notes).
 #      # The need is a MODEM + radio-audio-path-latency property, NOT a channel/baud one,
-#      # which the node can't infer — so you set it per port when your path needs it.
-#      # txTail: 5         # 50 ms — software-modem / latency-audio-path override
+#      # which the node can't infer - so you set it per port when your path needs it.
+#      # txTail: 5         # 50 ms - software-modem / latency-audio-path override
 #  - id: hf
 #    enabled: false
 #    transport:
@@ -58,16 +58,16 @@ ports: []
 #  - id: sound
 #    enabled: false
 #    transport:
-#      kind: soundmodem    # the in-process pdn-soundmodem engine — the node runs the demodulator/
+#      kind: soundmodem    # the in-process pdn-soundmodem engine - the node runs the demodulator/
 #                          # modulator itself over a sound card. NO external TNC/daemon; native DCD.
 #      device: default     # ALSA capture+playback device (default, plughw:1,0), OR a
 #                          # flex:<radio>[:slice][@station] FlexRadio device (see the flex: example below).
 #      captureRate: 48000  # card-native rate; must be a positive multiple of the mode's DSP rate.
-#      mode: afsk1200      # afsk1200*/afsk300* · bpsk300*/bpsk1200 · qpsk600/2400/3600 · fsk9600*/
-#                          # fsk4800-il2p · c4fsk9600/c4fsk19200 · freedv-datac0/1/3/4/13/14 ·
+#      mode: afsk1200      # afsk1200*/afsk300* , bpsk300*/bpsk1200 , qpsk600/2400/3600 , fsk9600*/
+#                          # fsk4800-il2p , c4fsk9600/c4fsk19200 , freedv-datac0/1/3/4/13/14 ,
 #                          # ms110d-wn0..6/13. See docs/soundmodem.md for the full mode set.
 #      # frequency: 1700   # centre Hz; 0/omit = mode convention. Only afsk/bpsk/qpsk accept one.
-#      # ptt: serial:/dev/ttyUSB0:rts   # empty=VOX · serial:<dev>[:rts|:dtr] · cm108:<hidraw>[:gpio]
+#      # ptt: serial:/dev/ttyUSB0:rts   # empty=VOX , serial:<dev>[:rts|:dtr] , cm108:<hidraw>[:gpio]
 #  # bpsk300 is the differential frequency-diversity BANK (bpsk1200 stays the legacy modem):
 #  #  - id: hf-bank
 #  #    transport:
@@ -77,7 +77,7 @@ ports: []
 #  #      offsetPairs: 4        # bank width: 2*pairs+1 branches (0 = single modem; omit = default 4)
 #  #      offsetStepHz: 7.5     # Hz step between branches (omit = baud-derived default, baud/40)
 #  #      pskDetector: differential   # coherent | differential (omit = per-family default)
-#  # A flex: device drives a FlexRadio headless slice — key it with a flex: block and NO ptt:
+#  # A flex: device drives a FlexRadio headless slice - key it with a flex: block and NO ptt:
 #  #  - id: flex
 #  #    transport:
 #  #      kind: soundmodem
@@ -101,14 +101,14 @@ management:
     bind: 127.0.0.1        # loopback only by default
     port: 8011
   http:
-    bind: 0.0.0.0          # the control panel, on every interface — reachable from your
+    bind: 0.0.0.0          # the control panel, on every interface - reachable from your
                            # laptop without an SSH tunnel. What makes that safe is
                            # auth.enabled below; narrow this to 127.0.0.1 if you turn
                            # auth off. Read at process start: changing it needs a restart.
     port: 8080
   # LAN discovery: advertise this node over mDNS / DNS-SD (_pdn._tcp) so the pdn mobile app
   # (and other DNS-SD browsers) find it without typing an address. Off by default. REQUIRES
-  # http.bind above to be a LAN address (e.g. 0.0.0.0) — with the loopback default the advert
+  # http.bind above to be a LAN address (e.g. 0.0.0.0) - with the loopback default the advert
   # would point at an unreachable endpoint, so it stays dormant (a startup log line says so).
   # Needs the avahi daemon + tools (a Recommends of the .deb). The node callsign rides a `cs`
   # TXT record and is the default service instance name, so multiple nodes on one LAN stay
@@ -118,10 +118,10 @@ management:
   #   # instanceName: Hilltop
   # Optional HTTPS listener. Off by default; pdn is HTTP-first (TLS is the edge's job).
   # The blessed remote / passkey path is Tailscale (see the `tailscale:` block below and
-  # docs/network-access.md) — it gives a real, browser-trusted cert with no public DNS,
+  # docs/network-access.md) - it gives a real, browser-trusted cert with no public DNS,
   # port-forward, or cert management. This built-in listener is for the LAN / DIY operator:
   # when enabled, a self-signed cert is generated on first start (encrypts the channel;
-  # browsers warn until trusted) — or point certificatePath at your own trusted PKCS#12
+  # browsers warn until trusted) - or point certificatePath at your own trusted PKCS#12
   # (.pfx). There is NO built-in ACME / DNS-01: a public, no-VPN cert is your own edge's job.
   # https:
   #   enabled: true
@@ -130,7 +130,7 @@ management:
   #   # certificatePath: /etc/packetnet/server.pfx
   #   # certificatePassword: null
   #   generateSelfSignedOnMissing: true
-  # Web/management authentication. ON by default — the panel binds the LAN above, and a
+  # Web/management authentication. ON by default - the panel binds the LAN above, and a
   # session on it can rewrite config, add ports, and transmit. A fresh node has no users
   # yet, and first-run setup is never gated, so the first visitor gets the setup wizard,
   # creates the admin, and everything after that needs a login. Turn it off only for a
@@ -141,45 +141,45 @@ management:
     # accessTokenMinutes: 60        # short access JWT; the client silently renews it
     # refreshTokenMinutes: 10080    # 7d session; rotates one-time-use (must exceed access)
     # sysopElevationMinutes: 15     # how long an over-RF `SYSOP <code>` elevation lasts
-    # Passkeys need a secure origin — https with a trusted cert, or http://localhost. The
+    # Passkeys need a secure origin - https with a trusted cert, or http://localhost. The
     # panel hides the passkey buttons where the browser can't run the ceremony (plain-HTTP
     # LAN), and password login carries on. Set these when you have a real hostname:
     # webAuthn:
     #   relyingPartyId: pdn.example
     #   allowedOrigins: [ "https://pdn.example:8443" ]
 
-# Embedded Tailscale (the tsnet sidecar) — the blessed remote + passkey path. Off by
+# Embedded Tailscale (the tsnet sidecar) - the blessed remote + passkey path. Off by
 # default; pdn stays HTTP-only until you opt in. When enabled, pdn joins your tailnet, gets
 # a real Let's Encrypt cert for pdn.<tailnet>.ts.net, terminates TLS, and reverse-proxies to
-# its own loopback HTTP — so passkeys work remotely with no public DNS, port-forward, or
+# its own loopback HTTP - so passkeys work remotely with no public DNS, port-forward, or
 # cert management. See docs/network-access.md. (Inert until a later release wires the
 # sidecar; this block is parsed + validated now.)
 # tailscale:
 #   enabled: true
 #   # authKeyFile: /etc/packetnet/tailscale.authkey  # 0600, packetnet-owned (preferred);
-#   # authKey: tskey-...                             # or inline (first-join only) — not both;
+#   # authKey: tskey-...                             # or inline (first-join only) - not both;
 #   #                                                # omit both to log in interactively (a
 #   #                                                # login.tailscale.com URL is surfaced).
 #   # hostname:                                      # omit to derive <callsign>-pdn (e.g. gb7rdg-pdn) so
 #   #                                                # multiple nodes don't collide; set to override.
 #   tags: [ "tag:server" ]                           # a tailnet-owned, always-on node
-#   stateDir: /var/lib/packetnet/tsnet               # PERSISTENT — stable node/cert/passkeys
+#   stateDir: /var/lib/packetnet/tsnet               # PERSISTENT - stable node/cert/passkeys
 #   target: 127.0.0.1:8080                           # pdn's loopback HTTP (the http: bind above)
 #   funnel: false                                    # opt-in public exposure (vs tailnet-only)
 
-# Apps — the app-extensibility platform: out-of-process programs in any language; the node
+# Apps - the app-extensibility platform: out-of-process programs in any language; the node
 # shares no code with them (docs/app-packages.md). pdn discovers pdn-app.yaml manifests
 # under /usr/share/packetnet/apps and /var/lib/packetnet/apps (later root wins on id
 # collision). This package ships WALL (a Python message wall; needs python3, a Recommends)
-# and LOBBY (a live multi-user lobby daemon) under /usr/share/packetnet/apps — they are
+# and LOBBY (a live multi-user lobby daemon) under /usr/share/packetnet/apps - they are
 # discovered automatically. Discovered is NOT enabled: a package stays off until you grant
 # trust with an `apps:` entry here (or the control panel toggle, which writes the same
-# entry). Only the on/off switch and small overrides live here — everything else (the
+# entry). Only the on/off switch and small overrides live here - everything else (the
 # console verb, the supervised daemon, the web tile) comes from the package's own manifest,
 # authored by the app.
 # The packet-identity fields (callsign / netrom.alias / command) are the NODE's to set, never
-# the app manifest's (docs/app-packages.md § Application packet identity): the node resolves
-# each enabled packet app's callsign — your `callsign:` pin, else <node-base>-<free SSID> — and
+# the app manifest's (docs/app-packages.md section Application packet identity): the node resolves
+# each enabled packet app's callsign - your `callsign:` pin, else <node-base>-<free SSID> - and
 # injects it as PDN_APP_CALLSIGN. The NET/ROM alias is opt-in: set `netrom.alias` to advertise
 # the app on the mesh, omit it for nothing extra (the default).
 # apps:
@@ -189,23 +189,23 @@ management:
 #     enabled: true
 #   - id: dapps
 #     enabled: true
-#     callsign: M0LTE-7      # the node binds this for the app (omit → auto <node-base>-N)
-#     netrom:                # OPT-IN: advertise this app's alias on the mesh (omit → off)
+#     callsign: M0LTE-7      # the node binds this for the app (omit -> auto <node-base>-N)
+#     netrom:                # OPT-IN: advertise this app's alias on the mesh (omit -> off)
 #       alias: RDGDAPPS
 #       quality: 255
 #     # command: DAPPS       # optional override of the manifest's packet.command verb
 #     environment:           # merged over the manifest's service environment (owner wins)
 #       EXAMPLE_FLAG: "1"
 
-# Inline applications — the other supported path: declare an app directly here instead of
+# Inline applications - the other supported path: declare an app directly here instead of
 # via a package (handy for something of your own that has no pdn-app.yaml). This is the exact
 # analog of a BPQ `APPLICATION n,CMD,Call,Alias,Quality` line. Inline entries are owner-authored,
 # so they default to enabled. Don't reuse the id or command verb of a discovered package (that's
-# a validation error — enable the package via `apps:` instead). The session is bridged over the
+# a validation error - enable the package via `apps:` instead). The session is bridged over the
 # pdn-app/1 wire (docs/app-local-session-wire.md):
 # applications:
 #   - id: myapp
-#     command: MYAPP              # the node-prompt verb — users type MYAPP to enter it
+#     command: MYAPP              # the node-prompt verb - users type MYAPP to enter it
 #     enabled: true
 #     kind: process               # process = spawn per connect (stdio wire);
 #                                 # socket = connect per session to a daemon you run
@@ -224,9 +224,9 @@ management:
 #     #   name: MYAPP
 #     #   icon: message-square
 
-# RHPv2 server — the app platform's NETWORK plane (PWP-0222/0245, XRouter-compatible).
+# RHPv2 server - the app platform's NETWORK plane (PWP-0222/0245, XRouter-compatible).
 # Lets an external application (e.g. DAPPS) open packet connections through this node over
-# JSON-over-TCP. Default-off; loopback-bound (RHP has no TLS — never expose it publicly).
+# JSON-over-TCP. Default-off; loopback-bound (RHP has no TLS - never expose it publicly).
 # See docs/rhp2-server.md.
 # rhp:
 #   enabled: true
@@ -234,7 +234,7 @@ management:
 #   port: 9000
 #   requireAuth: false   # true => `auth` validated against the node's users first
 
-# POCSAG paging service — a TCP line server (PAGE/HEARD) that transmits + receives POCSAG pages
+# POCSAG paging service - a TCP line server (PAGE/HEARD) that transmits + receives POCSAG pages
 # over its OWN dedicated soundmodem audio device (separate from any `ports:` entry). Off by
 # default. Uses the same ALSA / flex: device model as a soundmodem port. See docs/soundmodem.md.
 # paging:
@@ -247,7 +247,7 @@ management:
 #   # invertPolarity: false
 #   # ptt: serial:/dev/ttyUSB0:rts   # ALSA only; empty = VOX (a flex: device keys itself)
 
-# ARDOP virtual TNC — an ardopcf-compatible TCP host interface (command socket + data socket on
+# ARDOP virtual TNC - an ardopcf-compatible TCP host interface (command socket + data socket on
 # port+1) backed by a dedicated soundmodem audio device, so an external ARDOP host (BPQ
 # DRIVER=ARDOP, Pat, Winlink Express) can drive this node's sound card / FlexRadio as an ARDOP
 # modem. Off by default. See docs/soundmodem.md.

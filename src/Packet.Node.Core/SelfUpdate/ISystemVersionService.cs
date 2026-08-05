@@ -5,8 +5,8 @@ namespace Packet.Node.Core.SelfUpdate;
 /// <summary>
 /// The cheap, cached read the <c>GET /api/v1/system/info</c> handler consumes: the running node
 /// version plus the last-known <see cref="SystemUpdateAvailability"/>. The actual per-channel probe
-/// (apt-cache / GitHub API / latest.json) is potentially slow + networked, so <c>/info</c> must
-/// never block on it — this service serves a cached snapshot and refreshes it out of band on a TTL.
+/// (apt-cache / the GitHub API) is potentially slow + networked, so <c>/info</c> must
+/// never block on it - this service serves a cached snapshot and refreshes it out of band on a TTL.
 /// </summary>
 public interface ISystemVersionService
 {
@@ -14,7 +14,7 @@ public interface ISystemVersionService
     string Version { get; }
 
     /// <summary>The last-resolved update availability. Returns the cached snapshot immediately
-    /// (the safe default — <see cref="SystemUpdateAvailability.None"/> — before the first refresh
+    /// (the safe default - <see cref="SystemUpdateAvailability.None"/> - before the first refresh
     /// completes) and, if the cache is older than the TTL, kicks off a non-blocking background
     /// refresh for the next caller. NEVER blocks on the network.</summary>
     SystemUpdateAvailability GetAvailabilitySnapshot();
@@ -39,7 +39,7 @@ public sealed partial class SystemVersionService : ISystemVersionService
     private readonly TimeSpan ttl;
 
     // The snapshot is published via a reference field (a struct can't be `volatile`); readers see a
-    // fully-constructed value-or the safe default. Boxed once per refresh — refreshes are infrequent.
+    // fully-constructed value-or the safe default. Boxed once per refresh - refreshes are infrequent.
     private volatile object snapshotBox = SystemUpdateAvailability.None;
     private long lastRefreshTicks = long.MinValue; // DateTimeOffset.UtcTicks of the last refresh START.
     private int refreshing; // 0 = idle, 1 = a background refresh is in flight (single-flight).
@@ -84,7 +84,7 @@ public sealed partial class SystemVersionService : ISystemVersionService
         return Snapshot;
     }
 
-    /// <summary>Run a refresh and await it — for tests + an optional eager warm-up at boot. Updates
+    /// <summary>Run a refresh and await it - for tests + an optional eager warm-up at boot. Updates
     /// the snapshot in place. Single-flight with the background refresh.</summary>
     public async Task<SystemUpdateAvailability> RefreshAsync(CancellationToken cancellationToken = default)
     {

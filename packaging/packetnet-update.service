@@ -1,20 +1,19 @@
-# packetnet-update.service — the privileged, detached in-app update job for a
+# packetnet-update.service - the privileged, detached in-app update job for a
 # dpkg-installed pdn node (Phase 7; docs/node-self-update-design.md).
 #
 # Started ON DEMAND by the node via `systemctl start --no-block
-# packetnet-update.service` — a shipped polkit rule (49-packetnet-update.rules)
+# packetnet-update.service` - a shipped polkit rule (49-packetnet-update.rules)
 # authorizes the unprivileged `packetnet` service user to start THIS unit only.
 # Deliberately NOT enabled and with no [Install]: it never runs at boot, only when
 # the operator clicks Apply. It is its own unit (not a child of packetnet.service)
 # so it survives the service restart the upgrade triggers.
 #
-# A SINGLE oneshot serves every deb-side channel. The build stamp only encodes
-# deb-vs-selfcontained; the apt-vs-github split is a RUNTIME decision the node makes
-# (dpkg ownership + apt-cache repo origin), so the node writes the resolved channel
-# (and, for github, the validated download request) to /run/packetnet, and the
-# packetnet-update dispatcher execs the matching helper (apt / github / selfcontained).
+# A SINGLE oneshot serves both channels. The apt-vs-github split is a RUNTIME decision
+# the node makes (dpkg ownership + apt-cache repo origin), so the node writes the resolved
+# channel (and, for github, the validated download request) to /run/packetnet, and the
+# packetnet-update dispatcher execs the matching helper (apt / github).
 [Unit]
-Description=Packet.NET node — apply an in-app update (apt / github / self-contained)
+Description=Packet.NET node - apply an in-app update (apt / github)
 Documentation=https://github.com/packet-net/packet.net
 # apt / a release download needs the network; only meaningful in boot ordering.
 After=network-online.target
@@ -24,7 +23,7 @@ RefuseManualStop=true
 
 [Service]
 Type=oneshot
-# Runs as root (the default) — the dispatched helper drives apt / dpkg, which the
+# Runs as root (the default) - the dispatched helper drives apt / dpkg, which the
 # package's postinst (try-restart) uses to replace the binary and bounce packetnet.service.
 ExecStart=/usr/lib/packetnet/packetnet-update
 # A run is a one-off; don't leave the unit "active" after it exits.

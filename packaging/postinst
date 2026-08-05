@@ -11,26 +11,26 @@ case "$1" in
               --home /var/lib/packetnet --shell /usr/sbin/nologin packetnet
     fi
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet
-    # Where a generated self-signed TLS cert (management.https) is persisted — owned
+    # Where a generated self-signed TLS cert (management.https) is persisted - owned
     # by the service user so it can write the .pfx on first start (HTTPS is opt-in;
     # this just makes the dir ready). 0750 keeps the private key non-world-readable.
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet/certs
     # Writable per-app state under /var/lib/packetnet/apps (the app platform). pdn creates
-    # per-app state dirs at runtime now (docs/app-packages.md — packetnet-owned, 0750); the
+    # per-app state dirs at runtime now (docs/app-packages.md - packetnet-owned, 0750); the
     # root is made ready here, and the bundled apps' dirs are kept for upgrade compatibility
     # (older installs were told to point workingDirectory at apps/wall). Apps are opt-in +
     # default-off, so an empty dir costs nothing.
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet/apps
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet/apps/wall
     install -d -o packetnet -g packetnet -m 0750 /var/lib/packetnet/apps/lobby
-    # config-in-DB (#473): the node no longer rewrites a YAML conffile — config lives in
+    # config-in-DB (#473): the node no longer rewrites a YAML conffile - config lives in
     # pdn.db under /var/lib/packetnet now. We KEEP these chown/chmod-if-exists lines for ONE
     # release cycle ONLY: an existing pre-0.17 install's /etc YAML must stay READABLE by the
     # packetnet user so the one-time first-boot importer can absorb it into pdn.db. We do NOT
     # create the dir or file (no `install -d`): a fresh install seeds the DB from the bundled
     # template, never from /etc. Once a cycle has passed these lines can be dropped. chmod the
     # dir 0750 so it's not world-listable; the file 0640 so the token-free YAML isn't world-
-    # readable. (The dir is no longer in the unit's ReadWritePaths — it is read-only to the node.)
+    # readable. (The dir is no longer in the unit's ReadWritePaths - it is read-only to the node.)
     if [ -d /etc/packetnet ]; then
       chown packetnet:packetnet /etc/packetnet 2>/dev/null || true
       chmod 0750 /etc/packetnet 2>/dev/null || true

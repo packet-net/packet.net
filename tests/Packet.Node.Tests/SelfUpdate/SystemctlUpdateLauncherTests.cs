@@ -6,9 +6,9 @@ namespace Packet.Node.Tests.SelfUpdate;
 /// <summary>
 /// <see cref="SystemctlUpdateLauncher"/> stages the per-channel request to the spool dir
 /// (<c>/run/packetnet</c>, overridden here via <c>PDN_UPDATE_SPOOL</c>) BEFORE triggering the
-/// privileged oneshot — so the root <c>packetnet-update</c> dispatcher can read the runtime-resolved
-/// channel (and, for github, the validated download request) the build stamp can't disambiguate.
-/// We don't run real <c>systemctl</c> here (the host has none → NotSupported); the assertion is on
+/// privileged oneshot - so the root <c>packetnet-update</c> dispatcher can read the runtime-resolved
+/// channel (and, for github, the validated download request) that only the running box can determine.
+/// We don't run real <c>systemctl</c> here (the host has none, so NotSupported); the assertion is on
 /// the spool the launcher writes, which is the load-bearing handoff to the helper.
 /// </summary>
 [Trait("Category", "Node")]

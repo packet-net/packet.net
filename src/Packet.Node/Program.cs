@@ -19,25 +19,25 @@ using Packet.Node.Mcp;
 
 // The composition root for the Packet.NET node. This IS a Generic Host (the
 // WebApplication builder gives us DI, config, hosted services, and logging),
-// but slice 1 maps ZERO authenticated endpoints — only GET /healthz. The web
+// but slice 1 maps ZERO authenticated endpoints - only GET /healthz. The web
 // server is present-but-inert: Kestrel binds from config, and the API / auth /
 // UI arrive in later slices.
 
-// `pdn mcp` — the stdio MCP server subcommand (Phase 8). A separate, short process
+// `pdn mcp` - the stdio MCP server subcommand (Phase 8). A separate, short process
 // that bridges to the running node's loopback REST API and speaks MCP over stdio to a
 // local client (Claude Code, etc.). It must short-circuit BEFORE the web host is built
-// — it is not the node, it talks to the node. See McpStdioEntry + docs/mcp-design.md.
+// - it is not the node, it talks to the node. See McpStdioEntry + docs/mcp-design.md.
 if (args.Length > 0 && args[0] == "mcp")
 {
     await McpStdioEntry.RunAsync(args);
     return 0;
 }
 
-// `pdn config export [--out <path>]` / `pdn config import <path>` — the headless
+// `pdn config export [--out <path>]` / `pdn config import <path>` - the headless
 // inspect/diff/restore CLI for config-in-DB (#473). Like `pdn mcp` they short-circuit
 // BEFORE the web host is built: they boot ONLY the SqliteConfigProvider over pdn.db
 // (no Kestrel, no hosted services), so an operator with shell access can export the
-// live config to YAML, diff it, edit it, and import it back — preserving the
+// live config to YAML, diff it, edit it, and import it back - preserving the
 // edit-as-text ergonomic now that config lives in the DB, not a watched file.
 if (args.Length > 0 && args[0] == "config")
 {
@@ -54,7 +54,7 @@ var templatePath = ResolveBootstrapTemplatePath();
 // of the writable StateDirectory (/var/lib/packetnet) while the binary + wwwroot
 // live in /opt/packetnet/app, so defaulting ContentRoot to the CWD would make
 // UseStaticFiles look in the wrong place. (Config/DB paths still resolve against
-// the CWD by design — see ResolveConfigPath/ResolveDbPath.)
+// the CWD by design - see ResolveConfigPath/ResolveDbPath.)
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
@@ -70,7 +70,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 //
 // Config-in-DB (#473): config now lives in the same pdn.db as routing/auth/heard, as a
 // single versioned JSON blob, NOT in a watched /etc YAML. A config write (PUT /config,
-// port CRUD) persists to the DB and raises the SAME OnChange the file watcher used to —
+// port CRUD) persists to the DB and raises the SAME OnChange the file watcher used to -
 // so the reconcile path is unchanged. The --config YAML is read ONLY on first boot (to
 // migrate a hand-tuned config across the 0.17 upgrade) and is vestigial thereafter; edit
 // config via the web UI / API / `pdn config import`. See docs/config-in-db.md.
@@ -97,22 +97,22 @@ builder.Services.AddSingleton<IWritableConfigProvider>(configProvider);
 // union (a PUT /config body needs the `kind`-discriminated read; this is transparent
 // for the existing GET serialisation). Web defaults (camelCase) are otherwise intact.
 // This is the SAME converter SqliteConfigStore persists the blob with (NodeConfigJson),
-// so the structured PUT /config body and the on-disk DB bytes are byte-identical — one
+// so the structured PUT /config body and the on-disk DB bytes are byte-identical - one
 // canonical serialisation, no second JSON dialect to drift.
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new TransportConfigJsonConverter()));
 
 // The routing-table persistence store (pdn.db). Created eagerly so it can hydrate
 // NetRomService at start; registered as the singleton INetRomRoutingStore the hosted
-// service injects. A store fault degrades to in-memory — it never fails the node.
+// service injects. A store fault degrades to in-memory - it never fails the node.
 var routingStore = new SqliteNetRomRoutingStore(
     dbPath,
     bootstrapLoggers.CreateLogger<SqliteNetRomRoutingStore>());
 builder.Services.AddSingleton<INetRomRoutingStore>(routingStore);
 
 // The per-peer AX.25 capability cache (same pdn.db, same resilient discipline). Program.cs
-// composes services manually (it does not call AddPacketNode), so — like BeaconService and the
-// other stores — both the durable store AND the cache service are registered eagerly here; the
+// composes services manually (it does not call AddPacketNode), so - like BeaconService and the
+// other stores - both the durable store AND the cache service are registered eagerly here; the
 // deployed node thus gets the pdn.db-backed variant.
 var peerCapabilityStore = new SqlitePeerCapabilityStore(
     dbPath,
@@ -139,7 +139,7 @@ builder.Services.AddSingleton(sp => new Packet.Node.Core.Heard.HeardLog(
 builder.Services.AddSingleton<Packet.Node.Core.Radios.IRadioScanner>(new Packet.Node.Core.Radios.TaitRadioScanner());
 
 // Rig plug-and-play scan (GET /api/v1/rigs/scan) + the hamlib model catalogue behind it
-// (GET /api/v1/rigs/models). Passive — unlike the radio scanner nothing is ever written to a
+// (GET /api/v1/rigs/models). Passive - unlike the radio scanner nothing is ever written to a
 // serial device: the scan enumerates /dev/ttyUSB* + /dev/ttyACM*, marks devices claimed by the
 // current config, and suggests a model from the by-id descriptor. The catalogue shells
 // `rigctl -l` once via the guarded IProcessRunner seam and caches for the process lifetime; a
@@ -177,7 +177,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.H
 
 // Keyup pairing (POST /api/v1/radios/headends/{instanceId}/pair-by-keyup, operate-scope): the
 // operator-initiated RF action that discovers the PHYSICAL modem↔radio map by briefly keying each free
-// NinoTNC and watching which co-located Tait reports its PTT — ground truth for the co-location pair.
+// NinoTNC and watching which co-located Tait reports its PTT - ground truth for the co-location pair.
 builder.Services.AddSingleton<Packet.Node.Core.Radios.IHeadEndKeyupPairer>(sp =>
     new Packet.Node.Core.Radios.HeadEndKeyupPairer(
         sp.GetRequiredService<Packet.Node.Core.Radios.IHeadEndRadioScanner>(),
@@ -196,8 +196,8 @@ builder.Services.AddSingleton<Packet.Node.Core.Diagnostics.PortDoctorRunner>();
 builder.Services.AddSingleton<Packet.Node.Core.Tuning.PortTuningService>();
 
 // SDM station hail (POST /api/v1/ports/{id}/hail): query a peer's mode/modem/capabilities over the
-// radios' SDM side channel — works across a mode mismatch that blocks the packet path. Also the
-// opt-in resident hail responder (PortRadioConfig.hailResponder) — a hosted loop reconciles it
+// radios' SDM side channel - works across a mode mismatch that blocks the packet path. Also the
+// opt-in resident hail responder (PortRadioConfig.hailResponder) - a hosted loop reconciles it
 // against the running ports. See PdnPortHailApi.
 builder.Services.AddSingleton<Packet.Node.Core.Hail.PortHailService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.Hail.PortHailService>());
@@ -207,12 +207,12 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.H
 // The machinery is ALWAYS wired (user store, JWT issuing/validation, the scope
 // policies + handler, the authentication/authorization middleware); only ENFORCEMENT
 // is conditional on the flag (ScopeRequirementHandler passes through when off). So a
-// node with auth off serves every endpoint exactly as before — turning auth on is a
+// node with auth off serves every endpoint exactly as before - turning auth on is a
 // deliberate config change, never a silent behaviour shift.
 //
 // The user store + JWT signing key live in the same pdn.db as the routing table. The
 // key is generated by a CSPRNG on first start and persisted (tokens survive a restart);
-// it is never logged. If the store can't produce a key, JwtTokenService is left null —
+// it is never logged. If the store can't produce a key, JwtTokenService is left null -
 // auth then cannot be enabled (login returns 503), but the node still boots.
 var userStore = new SqliteUserStore(dbPath, bootstrapLoggers.CreateLogger<SqliteUserStore>());
 builder.Services.AddSingleton<IUserStore>(userStore);
@@ -225,7 +225,7 @@ var auditLog = new Packet.Node.Core.Audit.SqliteAuditLog(
     dbPath, bootstrapLoggers.CreateLogger<Packet.Node.Core.Audit.SqliteAuditLog>());
 builder.Services.AddSingleton<Packet.Node.Core.Audit.IAuditLog>(auditLog);
 
-// MCP OAuth 2.1 stores (the hosted claude.ai connector — docs/mcp-oauth-design.md). Registered
+// MCP OAuth 2.1 stores (the hosted claude.ai connector - docs/mcp-oauth-design.md). Registered
 // unconditionally (same resilient pdn.db pattern); the endpoints are inert unless
 // mcp.oauth.enabled. Persist registered clients + single-use authorization codes.
 builder.Services.AddSingleton<Packet.Node.Core.Auth.Oauth.IOauthClientStore>(
@@ -244,18 +244,18 @@ JwtTokenService? tokenService =
 // `[FromServices] JwtTokenService?` parameter resolves to null → login returns 503,
 // while the node still boots and serves everything else. (The parameter MUST carry
 // [FromServices]: without it, minimal-API inference can't classify an unregistered
-// complex-type parameter and FAILS AT STARTUP — "Failure to infer … tokens | UNKNOWN"
-// — aborting the whole host instead of degrading.)
+// complex-type parameter and FAILS AT STARTUP - "Failure to infer … tokens | UNKNOWN"
+// - aborting the whole host instead of degrading.)
 if (tokenService is not null)
 {
     builder.Services.AddSingleton(tokenService);
 }
 
 // Refresh-token rotation (auth part 2). The store lives in the same pdn.db (by hash
-// only — the opaque token is never persisted in clear); the service wraps it with the
+// only - the opaque token is never persisted in clear); the service wraps it with the
 // one-time-use rotation + reuse-detection (theft-response) logic. Gated on the signing
 // key exactly like JwtTokenService: with no key, login can't issue an access token, so
-// a refresh token would be useless — leave the service unregistered (the handlers'
+// a refresh token would be useless - leave the service unregistered (the handlers'
 // `[FromServices] RefreshTokenService?` resolves to null → 503), node still boots.
 var refreshTokenStore = new SqliteRefreshTokenStore(dbPath, bootstrapLoggers.CreateLogger<SqliteRefreshTokenStore>());
 builder.Services.AddSingleton<IRefreshTokenStore>(refreshTokenStore);
@@ -273,9 +273,9 @@ builder.Services.AddSingleton(new LoginThrottle(TimeProvider.System));
 
 // WebAuthn / passkeys (auth part 3, default-off behind management.auth.enabled). The
 // credential STORE (public keys, sign counters, transports) lives in the same pdn.db as
-// the users — a fault degrades to "no passkeys", never crashing the node. The challenge
+// the users - a fault degrades to "no passkeys", never crashing the node. The challenge
 // cache holds pending ceremonies in-memory (server-generated, single-use, expiring,
-// user/session-bound — the anti-replay core). The per-request IFido2 verifier is built
+// user/session-bound - the anti-replay core). The per-request IFido2 verifier is built
 // in the endpoints (WebAuthnFido2Builder) from the live config + the actual serving
 // origin, so the RP-id/origin split (localhost-first) is handled there, not baked at
 // startup. Registered as the SAME nullable-service contract as the JWT/refresh services:
@@ -287,27 +287,27 @@ builder.Services.AddSingleton(new WebAuthnChallengeCache(TimeProvider.System));
 
 // Over-RF sysop-code (TOTP) enrolment (auth part 4, enrolment half, default-off behind
 // management.auth.enabled). The per-user secret + callsign + replay counter live on the
-// existing user store (pdn.db) — added additively, degrade-safe like the rest. The
+// existing user store (pdn.db) - added additively, degrade-safe like the rest. The
 // pending-enrolment cache holds in-flight enrolments in-memory (server-minted secret,
-// single-use, expiring — never persisted until the user confirms a code), mirroring the
+// single-use, expiring - never persisted until the user confirms a code), mirroring the
 // WebAuthn challenge cache. Always registered (pure in-memory + the clock); the endpoint's
 // `TotpEnrollmentCache?` stays optional so an unregistered-service path can never abort
 // startup. The console SYSOP gate that VERIFIES a presented code over a packet session is a
-// separate piece — it consumes IUserStore.FindByCallsign + TotpService, which this readies.
+// separate piece - it consumes IUserStore.FindByCallsign + TotpService, which this readies.
 builder.Services.AddSingleton(new TotpEnrollmentCache(TimeProvider.System));
 
-// The RFC-6238 verifier (stateless over the clock — the single-use replay guard rides the
+// The RFC-6238 verifier (stateless over the clock - the single-use replay guard rides the
 // persisted per-user counter, not in-memory state). Registered so the host injects it into
 // NodeHostedService for the over-RF SYSOP gate; the enrolment endpoints construct their own
 // over the request clock. With it registered (and IUserStore above), an auth-enabled node's
-// console gains the SYSOP elevation command — inert until a user enrols a TOTP credential.
+// console gains the SYSOP elevation command - inert until a user enrols a TOTP credential.
 builder.Services.AddSingleton(new TotpService(TimeProvider.System));
 
 // Authentication: JWT bearer validated against THIS node's signing key/issuer/audience
 // (HS256 only). Always registered so a token presented when auth is on is validated;
 // when the key is unavailable the validator gets a throwaway parameters object that
 // fails every token (auth simply can't be used). The middleware never CHALLENGES on its
-// own — the per-endpoint scope policy decides, and that passes through when auth is off.
+// own - the per-endpoint scope policy decides, and that passes through when auth is off.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -332,7 +332,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // SSE token-by-query: a browser EventSource can't set an Authorization
         // header, so the live feeds accept the JWT as a `?access_token=` query
         // param. Restricted to the SSE paths only (so we don't normalise
-        // tokens-in-URLs across the API — they can leak into logs/referrers) and
+        // tokens-in-URLs across the API - they can leak into logs/referrers) and
         // only when no bearer header was supplied. The token is still fully
         // validated by the same pipeline; the query is just where it's read from.
         options.Events = new JwtBearerEvents
@@ -372,20 +372,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             // MCP OAuth discovery hint (RFC 9728): when OAuth is enabled, a 401 on the MCP
             // endpoint carries WWW-Authenticate pointing at the protected-resource metadata, so
             // an unconfigured MCP client (claude.ai) can discover how to get a token. Only for
-            // /mcp + only when mcp.oauth.enabled — every other 401 keeps the default challenge.
+            // /mcp + only when mcp.oauth.enabled - every other 401 keeps the default challenge.
             //
             // App-gateway human-plane recovery: a browser navigation / slot iframe to a gated
             // /apps/{id}/* path can't carry an Authorization header (it relies on the pdn_at
             // cookie), and when that cookie's token is expired/absent the bare Bearer 401 is
-            // UNRENDERABLE in a browser frame — iOS Safari saves the empty body as a file. So
+            // UNRENDERABLE in a browser frame - iOS Safari saves the empty body as a file. So
             // for a /apps/* request that is a real browser navigation (not an XHR/API call) we
             // swap the bare 401 for a login redirect on the human plane: a top-level navigation
             // gets a 302 to the SPA login; a sub-frame (iframe/frame) can't 302 its parent, so
             // it gets a tiny 200 HTML page that breaks the SLOT out to the top-level login. This
-            // does NOT weaken auth — the request is still rejected and re-login is still
+            // does NOT weaken auth - the request is still rejected and re-login is still
             // required; it only replaces an undownloadable 401 with a renderable re-auth on
             // navigations a human (not a fetch) made. XHR/API 401s (Accept: application/json,
-            // empty/fetch Sec-Fetch-Dest) are left EXACTLY as before — the SPA's on401 handler
+            // empty/fetch Sec-Fetch-Dest) are left EXACTLY as before - the SPA's on401 handler
             // owns those (silent refresh, else logout).
             OnChallenge = context =>
             {
@@ -433,7 +433,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 // ProtectSystem=strict and a restart drops every session, so an operator who needs to raise a
 // category to Debug/Trace live can't do it by editing config. This singleton holds the live
 // override map; registering it ALSO as an IConfigureOptions<LoggerFilterOptions> +
-// IOptionsChangeTokenSource<LoggerFilterOptions> wires it into MEL's filter pipeline — a mutation
+// IOptionsChangeTokenSource<LoggerFilterOptions> wires it into MEL's filter pipeline - a mutation
 // fires the change token and the LoggerFactory re-applies the rebuilt rules to every cached
 // logger, so the new level takes effect immediately. Empty by default (logging exactly as
 // configured). Mutated by PUT /api/v1/system/loglevel (admin); read by GET (read). See
@@ -443,23 +443,23 @@ builder.Services.AddSingleton<Microsoft.Extensions.Options.IConfigureOptions<Mic
     sp => sp.GetRequiredService<DynamicLogLevelOverrides>());
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptionsChangeTokenSource<Microsoft.Extensions.Logging.LoggerFilterOptions>>(
     sp => sp.GetRequiredService<DynamicLogLevelOverrides>());
-// Phase 7 self-update (docs/node-self-update-design.md): the install channel is resolved
-// at boot — the build stamp gives deb-vs-selfcontained, and apt-vs-github is decided live
-// (dpkg ownership of the running binary + apt-cache repo origin, every probe guarded). The
-// launcher triggers the privileged, detached packetnet-update.service oneshot (the node
-// never runs apt / touches files itself).
+// Phase 7 self-update (docs/node-self-update-design.md): the install channel is resolved at
+// boot from what's actually on the box - dpkg ownership of the running binary, then apt-cache
+// repo origin to split apt-vs-github, every probe guarded. Not dpkg-owned (a release tarball,
+// a container, a source build) -> unknown, and the node offers no update at all. The launcher
+// triggers the privileged, detached packetnet-update.service oneshot (the node never runs apt
+// / touches files itself).
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IInstallChannelProvider>(
     new Packet.Node.Core.SelfUpdate.RuntimeInstallChannelProvider());
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemUpdateLauncher,
     Packet.Node.Core.SelfUpdate.SystemctlUpdateLauncher>();
 // The available-version check (docs/node-self-update-design.md § Channel = github / Available-
 // version check), surfaced on GET /api/v1/system/info as { updateAvailable, latestVersion }. One
-// dispatching probe per channel — apt: `apt-cache policy` (the same guarded IProcessRunner seam
-// channel detection uses); github: the GitHub Releases API (rate-limited, cached); selfcontained:
-// the configured latest.json feed. Every external call is guarded → offline/missing-tool/API-error
-// reports no-update, never throws. ISystemVersionService caches the result behind a TTL so /info
-// stays an in-memory read; the github request builder resolves the per-arch .deb URL + sha256 for
-// the Apply path.
+// dispatching probe per channel - apt: `apt-cache policy` (the same guarded IProcessRunner seam
+// channel detection uses); github: the GitHub Releases API (rate-limited, cached). Every external
+// call is guarded → offline/missing-tool/API-error reports no-update, never throws.
+// ISystemVersionService caches the result behind a TTL so /info stays an in-memory read; the
+// github request builder resolves the per-arch .deb URL + sha256 for the Apply path.
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IProcessRunner>(
     Packet.Node.Core.SelfUpdate.SystemProcessRunner.Instance);
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(sp =>
@@ -467,23 +467,11 @@ builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetRequiredService<ILoggerFactory>()));
-builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISelfContainedFeedClient>(sp =>
-    new Packet.Node.Core.SelfUpdate.SelfContainedFeedClient(
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
-        sp.GetRequiredService<TimeProvider>(),
-        sp.GetRequiredService<ILoggerFactory>(),
-        // The self-contained feed URL is configuration (slice 2c surfaces it in node config; until
-        // then it's the PDN_UPDATE_FEED_URL env seam). No feed configured → the check is a no-op
-        // (the client short-circuits to null with zero network calls), which is the correct default
-        // for the deb channels that don't consume the feed at all.
-        feedUrl: Environment.GetEnvironmentVariable("PDN_UPDATE_FEED_URL") is { Length: > 0 } f
-                 && Uri.TryCreate(f.EndsWith('/') ? f : f + "/", UriKind.Absolute, out var fu) ? fu : null));
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.IUpdateAvailabilityProbe>(sp =>
     new Packet.Node.Core.SelfUpdate.ChannelUpdateAvailabilityProbe(
         sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IInstallChannelProvider>(),
         sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IProcessRunner>(),
         sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(),
-        sp.GetRequiredService<Packet.Node.Core.SelfUpdate.ISelfContainedFeedClient>(),
         sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemVersionService>(sp =>
     new Packet.Node.Core.SelfUpdate.SystemVersionService(
@@ -497,11 +485,11 @@ builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.GithubUpdateRequestBui
         sp.GetRequiredService<ILoggerFactory>()));
 // The app-package catalog (docs/app-packages.md): discovers pdn-app.yaml packages under the
 // package roots and merges the owner's apps: overrides. A pure, cheap, side-effect-free scan
-// per call — the gateway, the packages API, and the hosted service consume it directly.
+// per call - the gateway, the packages API, and the hosted service consume it directly.
 builder.Services.AddSingleton<Packet.Node.Core.Applications.Packages.IAppPackageCatalog,
     Packet.Node.Core.Applications.Packages.AppPackageCatalog>();
 // The app-service supervisor (docs/app-packages.md § Lifecycle): owns the daemon of every
-// enabled package whose manifest declares a pdn-managed service: block — start/stop/backoff/
+// enabled package whose manifest declares a pdn-managed service: block - start/stop/backoff/
 // crash-loop breaker. NodeHostedService picks both of these up via its optional ctor params
 // and reconciles at startup + on every config apply; the packages API drives RestartAsync.
 // An explicit factory (the ctor's trailing TimeSpan? tuning knobs are test-only).
@@ -514,7 +502,7 @@ builder.Services.AddSingleton<Packet.Node.Core.Applications.Packages.IAppService
 // The app catalog (docs/app-catalog.md): the curated index of AVAILABLE apps
 // (/usr/share/packetnet/catalog/apps.yaml) and the installer that fetches + sha256-verifies a
 // pinned artifact and lays down a discoverable package the supervisor then picks up unchanged.
-// Slice 6a is plumbing only — no API/UI surface yet (6b adds that). IHttpClientFactory backs
+// Slice 6a is plumbing only - no API/UI surface yet (6b adds that). IHttpClientFactory backs
 // the production fetcher; the deb extractor shells dpkg-deb -x.
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IAppCatalog>(sp =>
@@ -538,7 +526,7 @@ builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IAppInstalle
 // shutdown (IAsyncDisposable) → each adopted connection gets a clean DISC.
 builder.Services.AddSingleton<SysopConsoleManager>();
 // The ID-beacon service: a singleton over the live config + clock. The hosted service
-// injects it (and passes it to the supervisor, which attaches it per port) — it is
+// injects it (and passes it to the supervisor, which attaches it per port) - it is
 // inert until a port whose effective beacon is enabled comes up (default-off).
 builder.Services.AddSingleton<BeaconService>();
 // Register the hosted service as a singleton AND as the hosted service, so the
@@ -549,11 +537,11 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NodeHostedService>
 
 // The persistent traffic log (default-ON behind traffic.enabled): every traced AX.25
 // frame, on every port, written to a SEPARATE SQLite db (default traffic.db beside
-// pdn.db — never pdn.db itself, so a huge/corrupt frame log can never threaten node
+// pdn.db - never pdn.db itself, so a huge/corrupt frame log can never threaten node
 // state). The writer subscribes to the same NodeTelemetry stream the SSE monitor
 // rides (no second decode path) through a bounded queue, so a slow disk drops log
 // rows (counted, surfaced in /status) rather than ever back-pressuring the radio
-// path. enabled/path apply at startup (restart-applies — see the config template);
+// path. enabled/path apply at startup (restart-applies - see the config template);
 // retentionDays/maxMb are re-read live at each prune. The store degrades internally
 // on fault, like every other store: the node always boots.
 if (configProvider.Current.Traffic.Enabled)
@@ -574,7 +562,7 @@ if (configProvider.Current.Traffic.Enabled)
 // OARC network-map reporting (#459, default-off behind oarc.enabled): a background reporter that
 // pushes this node's telemetry (node up/status/down, L2 links, L4 circuits, opt-in per-frame traces)
 // to the OARC collector so the node appears on the packet-network map. Outbound only; open ingest (no
-// secret). Registered UNCONDITIONALLY — it self-gates on oarc.enabled + the per-category toggles and
+// secret). Registered UNCONDITIONALLY - it self-gates on oarc.enabled + the per-category toggles and
 // handles a master edge, so a hot-enable needs no restart. The state source reads the live
 // Supervisor/NetRom/Telemetry off NodeHostedService; the ingest client is a thin HttpClient layer.
 // See docs/oarc-reporting-design.md.
@@ -599,7 +587,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<OarcReporter>());
 // kissproxy-compatible MQTT frame emission (default-off behind mqtt.enabled): a background emitter
 // that publishes every AX.25 frame the node sends/receives to an MQTT broker in kissproxy's native
 // topic/payload format, so pdn can replace a kissproxy instance at a site without losing the
-// downstream kiss-collector capture. Registered UNCONDITIONALLY — it self-gates on mqtt.enabled and
+// downstream kiss-collector capture. Registered UNCONDITIONALLY - it self-gates on mqtt.enabled and
 // rides the same NodeTelemetry frame stream the SSE monitor + traffic log + OARC reporter consume
 // (no second decode path), through a bounded drop-oldest subscription so a slow broker can never
 // back-pressure the radio path. Outbound only. See docs/research/pdn-mqtt-frame-emission.md.
@@ -631,7 +619,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Packet.Node.Core.A
 // + supervises the packetnet-tsnet child when enabled (same spawn/teardown/backoff discipline
 // as the app-service supervisor), parses its JSON status lines into the holder, and reconciles
 // on every config change. A default node enables nothing, so the child never runs (and a host
-// without the binary is fine — the default config is disabled). The binary path comes from
+// without the binary is fine - the default config is disabled). The binary path comes from
 // PDN_TSNET_BIN or the packaged default; tuning knobs (backoff/grace) keep production defaults.
 builder.Services.AddSingleton<Packet.Node.Core.Tailscale.ITailscaleStatus,
     Packet.Node.Core.Tailscale.TailscaleStatusHolder>();
@@ -675,7 +663,7 @@ var http = management.Http;
 var https = management.Https;
 
 // Resolve the HTTPS cert ONCE, before binding. A null result (TLS off, or a cert that
-// couldn't be loaded/generated — logged by the provider) just means we skip the HTTPS
+// couldn't be loaded/generated - logged by the provider) just means we skip the HTTPS
 // endpoint; HTTP still serves, so a TLS misconfig never takes the node down.
 System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCert = null;
 if (https.Enabled)
@@ -713,7 +701,7 @@ builder.WebHost.ConfigureKestrel(options =>
     }
 });
 
-// Forwarded headers — for the loopback TLS edge (the embedded Tailscale tsnet sidecar,
+// Forwarded headers - for the loopback TLS edge (the embedded Tailscale tsnet sidecar,
 // network-access.md). The sidecar terminates HTTPS and reverse-proxies to pdn's loopback
 // HTTP; honouring X-Forwarded-Proto/Host/For makes Request.IsHttps/Scheme/Host reflect the
 // PUBLIC https origin, so PdnAppGateway's pdn_at cookie Secure flag and any request-derived
@@ -734,7 +722,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 
 var app = builder.Build();
 
-// UseForwardedHeaders runs FIRST — before auth, static files, and every endpoint — so the
+// UseForwardedHeaders runs FIRST - before auth, static files, and every endpoint - so the
 // rewritten scheme/host is in place for the whole pipeline. Trusted from loopback only
 // (configured above); a no-op when no proxy sends the headers.
 app.UseForwardedHeaders();
@@ -745,20 +733,20 @@ app.UseForwardedHeaders();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Unauthenticated liveness probe. ALWAYS open — never gated.
+// Unauthenticated liveness probe. ALWAYS open - never gated.
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 
 // Auth foundation endpoints. /setup/state, /auth/login, /setup are ALWAYS open (the
-// bootstrap path — you can't present a token before you have an account); the /users
+// bootstrap path - you can't present a token before you have an account); the /users
 // group is returned so we can gate it `admin` (the gate is a no-op when auth is off).
 var usersGroup = app.MapPdnAuthApi();
 usersGroup.RequireAuthorization(PdnAuthPolicies.Admin);
 
 // WebAuthn / passkeys (auth part 3). The assert (passwordless-login) endpoints are
-// ALWAYS open — a login can't carry a bearer token. The register + credential-management
+// ALWAYS open - a login can't carry a bearer token. The register + credential-management
 // group is gated `read`: a logged-in user enrols/manages a passkey for THEMSELVES (the
 // username comes from the authenticated principal, never the body), and read is the floor
-// a self-service "manage my own login" action sits at — any authenticated user may add a
+// a self-service "manage my own login" action sits at - any authenticated user may add a
 // passkey. The gate is a no-op when auth is off (and register/complete then 409s, since
 // there is no authenticated "self" to enrol for). Mapped before the catch-all so the
 // specific /api/v1/* routes win.
@@ -767,7 +755,7 @@ webAuthnGroup.RequireAuthorization(PdnAuthPolicies.Read);
 
 // Over-RF sysop-code (TOTP) enrolment (auth part 4). Self-service: a logged-in user enrols
 // / inspects / removes the rolling code for THEMSELVES (the username comes from the
-// authenticated principal, never the body), so the group is gated `read` — the same floor
+// authenticated principal, never the body), so the group is gated `read` - the same floor
 // as the passkey register group. The gate is a no-op when auth is off (and enroll then 409s,
 // since there is no authenticated "self" to enrol for). Mapped before the catch-all so the
 // specific /api/v1/* routes win.
@@ -776,13 +764,13 @@ totpGroup.RequireAuthorization(PdnAuthPolicies.Read);
 
 // Slice 3 control API (read endpoints). Mapped BEFORE the SPA fallback so /api/*
 // and /healthz win; everything else falls through to index.html for the React
-// client router. (Auth is a later step — these are read-only and the node binds
+// client router. (Auth is a later step - these are read-only and the node binds
 // 127.0.0.1 by default. The live SSE feed for the monitor is step 1b.)
 app.MapPdnReadApi();
 
 // Prometheus exporter (GET /metrics, #457): the same listener, the same Read scope
 // gate as the REST read surface (so unauthenticated when management.auth.enabled is
-// off — localhost-scrape posture — and read-scoped once on). Hand-rolled exposition
+// off - localhost-scrape posture - and read-scoped once on). Hand-rolled exposition
 // text derived from the SAME live counters /api/v1/links projects; bounded label
 // cardinality (per-port only). See docs/observability.md.
 app.MapPdnMetrics();
@@ -795,14 +783,14 @@ app.MapPdnEvents();
 // Slice 3 step 2: the write-side config API (PUT /config + /config/raw + the
 // raw-YAML GET) the web editor persists edits through. Mapped after the read API
 // and before the catch-all; the specific routes win over /api/{**rest} regardless
-// of order. (Auth is a later step — unauthenticated, node binds 127.0.0.1.)
+// of order. (Auth is a later step - unauthenticated, node binds 127.0.0.1.)
 app.MapPdnConfigApi();
 
 // Slice 3 step 3: the port-management API (POST/PUT/DELETE /ports + the
 // /ports/{id}/lifecycle up/down) the web Ports screen mutates ports through. Every
 // change is a config edit persisted through the same write seam as PUT /config.
 // Mapped after the config API and before the catch-all; the specific routes win over
-// /api/{**rest} regardless of order. (Auth is a later step — unauthenticated, node
+// /api/{**rest} regardless of order. (Auth is a later step - unauthenticated, node
 // binds 127.0.0.1.)
 app.MapPdnPortsApi();
 
@@ -825,16 +813,16 @@ app.MapPdnPortTuningApi();
 app.MapPdnPortSpectrumApi();
 app.MapPdnPortQualityApi();
 
-// SDM station hail: POST /api/v1/ports/{id}/hail — query a peer's mode/modem/capabilities over the
+// SDM station hail: POST /api/v1/ports/{id}/hail - query a peer's mode/modem/capabilities over the
 // side channel (admin-scoped + audited; it transmits). Mapped before the catch-all. See PdnPortHailApi.
 app.MapPdnPortHailApi();
 
-// Slice 3 step 4: the direct-supervisor session actions + ping — connect-out
+// Slice 3 step 4: the direct-supervisor session actions + ping - connect-out
 // (POST /sessions), disconnect (DELETE /sessions/{id}), send-line
 // (POST /sessions/{id}/send), and the connectionless TEST /ping (deferred 501).
 // These run under the host's exclusive gate so a web action never races a config
 // reconcile. Mapped after the port API and before the catch-all; the specific routes
-// win over /api/{**rest} regardless of order. (Auth is a later step — unauthenticated,
+// win over /api/{**rest} regardless of order. (Auth is a later step - unauthenticated,
 // node binds 127.0.0.1.)
 app.MapPdnSessionsApi();
 
@@ -867,13 +855,13 @@ app.MapPdnAppPackagesApi();
 
 // "Available apps" (app catalog Slice 6b): the vetted catalog left-joined with installed state
 // (GET /api/v1/apps/available) + one-click install (POST /api/v1/apps/available/{id}/install,
-// admin, audited). The sibling of the package manager above — the menu you install FROM, while
+// admin, audited). The sibling of the package manager above - the menu you install FROM, while
 // uninstall/upload live on the packages group. Mapped before the catch-all. See
 // PdnAvailableAppsApi + docs/app-catalog.md.
 app.MapPdnAvailableAppsApi();
 
-// Phase 7 self-update: GET /api/v1/system/info (read — version + install channel) and
-// POST /api/v1/system/update (admin, audited — channel-aware: a targeted apt upgrade via
+// Phase 7 self-update: GET /api/v1/system/info (read - version + install channel) and
+// POST /api/v1/system/update (admin, audited - channel-aware: a targeted apt upgrade via
 // the privileged packetnet-update.service on the apt channel). See PdnSystemApi +
 // docs/node-self-update-design.md. Mapped before the catch-all; specific routes win.
 app.MapPdnSystemApi();
@@ -889,7 +877,7 @@ app.MapPdnAuditApi();
 app.MapPdnMcpApi();
 
 // MCP OAuth 2.1 authorization server (the hosted claude.ai connector path). Every route
-// is inert (404) unless mcp.oauth.enabled — default-off. Discovery + DCR + authorize/consent
+// is inert (404) unless mcp.oauth.enabled - default-off. Discovery + DCR + authorize/consent
 // + token + revoke. Security-critical; review before enabling. See PdnOauthApi + docs/mcp-oauth-design.md.
 app.MapPdnOauthApi();
 
@@ -898,7 +886,7 @@ app.MapPdnOauthApi();
 // `read`. A no-op when MCP/SSE is off (the default). See McpRegistration + docs/mcp-design.md.
 app.MapPdnMcp();
 
-// An unknown /api/* path returns 404 — it must NOT fall through to the SPA
+// An unknown /api/* path returns 404 - it must NOT fall through to the SPA
 // index.html below (the catch-all is less specific than the real /api/v1/*
 // routes, so those still win).
 app.Map("/api/{**rest}", () => Results.NotFound());
@@ -908,7 +896,7 @@ app.Map("/api/{**rest}", () => Results.NotFound());
 // can handle it (deep links like /monitor, /ports).
 app.UseDefaultFiles();
 // SPA caching: index.html must always be revalidated so a deploy's new asset hashes are picked
-// up immediately (the recurring "updated but UI unchanged until a hard-refresh" trap — a stale
+// up immediately (the recurring "updated but UI unchanged until a hard-refresh" trap - a stale
 // cached index.html keeps pointing at the previous hashed bundle). The hashed /assets/* are
 // content-addressed, so they're safe to cache immutably forever.
 app.UseStaticFiles(new StaticFileOptions
@@ -925,7 +913,7 @@ app.UseStaticFiles(new StaticFileOptions
         }
     },
 });
-// Deep-link fallback (e.g. /monitor, /apps) also returns index.html — keep it no-cache too.
+// Deep-link fallback (e.g. /monitor, /apps) also returns index.html - keep it no-cache too.
 app.MapFallbackToFile("index.html", new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
@@ -952,7 +940,7 @@ static string ResolveConfigPath(string[] args)
 
 static string ResolveDbPath(string[] args)
 {
-    // --db <path> wins, then PACKETNET_DB, then pdn.db in the working directory —
+    // --db <path> wins, then PACKETNET_DB, then pdn.db in the working directory -
     // which on the packaged node is the writable StateDirectory (/var/lib/packetnet).
     for (int i = 0; i < args.Length - 1; i++)
     {
@@ -968,7 +956,7 @@ static string ResolveDbPath(string[] args)
 static string? ResolveSeedPath()
 {
     // PACKETNET_CONFIG_SEED: an explicit seed-file path consulted ONLY on first boot
-    // when neither a DB row nor the --config YAML exists — so a headless image can seed
+    // when neither a DB row nor the --config YAML exists - so a headless image can seed
     // a full config without touching /etc. Null when unset (the common case).
     var env = Environment.GetEnvironmentVariable("PACKETNET_CONFIG_SEED");
     return string.IsNullOrWhiteSpace(env) ? null : env;
@@ -988,7 +976,7 @@ static string ResolveBootstrapTemplatePath()
 static string ResolveTrafficDbPath(Packet.Node.Core.Configuration.TrafficConfig traffic, string dbPath)
 {
     // traffic.path wins when set (resolved against the CWD like every other path);
-    // default = traffic.db beside pdn.db — the same writable StateDirectory
+    // default = traffic.db beside pdn.db - the same writable StateDirectory
     // (/var/lib/packetnet) on the packaged node, which packaging/postinst already
     // creates. Never pdn.db itself: the log is a separate database by design.
     if (!string.IsNullOrWhiteSpace(traffic.Path))

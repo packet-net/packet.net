@@ -12,9 +12,9 @@ namespace Packet.Node.Tests.Integration;
 /// <summary>
 /// The Phase-7 system/self-update API: <c>GET /api/v1/system/info</c> (version + install
 /// channel + the cached update-availability snapshot) and the channel-aware
-/// <c>POST /api/v1/system/update</c> — apt / github / self-contained all launch the privileged
-/// helper and 202 (with the right <c>via</c> + a per-channel <see cref="SystemUpdateRequest"/>);
-/// an unknown channel 409s; a launch fault 503s; the trigger is admin-gated when auth is on. The
+/// <c>POST /api/v1/system/update</c> - apt and github both launch the privileged helper and 202
+/// (with the right <c>via</c> + a per-channel <see cref="SystemUpdateRequest"/>); an unknown
+/// channel 409s; a launch fault 503s; the trigger is admin-gated when auth is on. The
 /// seams (<see cref="IInstallChannelProvider"/> / <see cref="ISystemUpdateLauncher"/> /
 /// <see cref="IGitHubReleaseClient"/> / <see cref="IUpdateAvailabilityProbe"/>) so the real
 /// systemd / apt / GitHub-API mechanisms are never touched here.
@@ -54,7 +54,7 @@ public sealed class SystemUpdateApiTests : IDisposable
         body.GetProperty("channel").GetString().Should().Be("apt");
         body.GetProperty("updateMechanism").GetString().Should().Be("apt");
         // The shared API contract also carries the update-availability fields the web UI's banner
-        // consumes. The availability service serves a cached snapshot — by default (no update
+        // consumes. The availability service serves a cached snapshot - by default (no update
         // probed yet) the safe default (no update known).
         body.GetProperty("updateAvailable").GetBoolean().Should().BeFalse();
         body.GetProperty("latestVersion").ValueKind.Should().Be(JsonValueKind.Null);
@@ -106,23 +106,6 @@ public sealed class SystemUpdateApiTests : IDisposable
 
         var resp = await client.PostAsync("/api/v1/system/update", content: null);
         resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
-    }
-
-    [Fact]
-    public async Task Update_on_the_self_contained_channel_launches_and_returns_202()
-    {
-        WriteConfig(authEnabled: false);
-        await using var factory = Factory(InstallChannel.SelfContained);
-        using var client = factory.CreateClient();
-
-        var resp = await client.PostAsync("/api/v1/system/update", content: null);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        factory.Launcher.Calls.Should().Be(1, "the self-contained channel must trigger the update helper too");
-        factory.Launcher.LastRequest!.Channel.Should().Be("selfcontained");
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Web);
-        body.GetProperty("status").GetString().Should().Be("started");
-        body.GetProperty("via").GetString().Should().Be("selfcontained");
     }
 
     [Fact]
@@ -224,7 +207,7 @@ public sealed class SystemUpdateApiTests : IDisposable
     {
         public FakeLauncher Launcher { get; } = new();
 
-        // Optional overrides — when null, the real DI registration is used.
+        // Optional overrides - when null, the real DI registration is used.
         public ISystemVersionService? Availability { get; set; }
         public IGitHubReleaseClient? Github { get; set; }
 

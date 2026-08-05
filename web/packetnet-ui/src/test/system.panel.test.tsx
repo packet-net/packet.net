@@ -79,7 +79,7 @@ describe("Config — About this node (self-update) panel", () => {
   it("banners the version delta and offers Apply when an update is available", async () => {
     await mountSystem(APT_UPDATE);
     await waitFor(() => expect(within(panel()).getByTestId("update-banner")).toBeInTheDocument());
-    expect(within(panel()).getByText("Update available — v0.7.0 → v0.8.0")).toBeInTheDocument();
+    expect(within(panel()).getByText("Update available - v0.7.0 → v0.8.0")).toBeInTheDocument();
     expect(within(panel()).getByRole("button", { name: /Apply update/ })).toBeEnabled();
   });
 
