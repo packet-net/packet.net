@@ -45,7 +45,8 @@ That is the whole install. The package:
 
 - creates an unprivileged `packetnet` system user,
 - installs the node at `/opt/packetnet/app/packetnet` and a hardened systemd unit,
-- enables and starts `packetnet.service` immediately.
+- enables and starts `packetnet.service` immediately,
+- and finishes by printing the control panel's address - the next step happens there, in a browser on another machine.
 
 Check it came up:
 
@@ -77,16 +78,18 @@ The example unit assumes `/opt/packetnet/app`; edit `ExecStart` if you put the n
 
 Because nothing owns an archive install, the control panel reports its install channel as **unmanaged** and offers no **Apply** button. To upgrade, stop the node, unpack the newer archive over `/opt/packetnet/app`, and start it again; `/var/lib/packetnet` carries your config and users across untouched.
 
+There is no package here to print the panel's address, but the node names it in its journal at every start: `journalctl -u packetnet | grep "Control panel"`.
+
 ## First contact: open the control panel
 
 Almost everything you do with pdn is in its web control panel. Browse to it from any machine on your network:
 
 **<http://your-node-address:8080>**
 
-The panel binds every interface (`0.0.0.0:8080`) so a headless box is usable without a tunnel, and it requires a login - those two defaults go together, and the first-run wizard below is what creates that login.
+The install prints the exact addresses (and the node repeats them in its journal at every start - `journalctl -u packetnet | grep "Control panel"`). The panel binds every interface (`0.0.0.0:8080`) so a headless box is usable without a tunnel, and it requires a login - those two defaults go together, and the first-run wizard below is what creates that login.
 
 > [!TIP]
-> Passkeys need a *secure origin*: HTTPS with a trusted certificate, or `http://localhost`. On a plain-HTTP LAN address the panel quietly hides the passkey buttons and offers a password instead. If you want a passkey on day one, reach the panel through an SSH tunnel - `ssh -L 8080:127.0.0.1:8080 you@your-node`, then <http://localhost:8080> - or turn on [Tailscale](#open-it-up-safely), which gets you a real certificate.
+> Passkeys need a *secure origin*: HTTPS with a trusted certificate, or `http://localhost`. On a plain-HTTP LAN address the panel offers a password login and simply doesn't show the passkey buttons - nothing is broken, and you can add a passkey later from **Users**. If you want one on day one, turn on [Tailscale](#what-is-exposed-and-how-to-change-it), which gets you a real certificate, or reach the panel through an SSH tunnel - `ssh -L 8080:127.0.0.1:8080 you@your-node`, then <http://localhost:8080>.
 
 ## The first-run wizard
 

@@ -75,9 +75,21 @@ while [ $i -lt 60 ]; do
   if curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then ok=1; break; fi
   i=$((i+1)); sleep 1
 done
+urls_ok=0
+if [ "$ok" = 1 ]; then
+  # The startup log must NAME the panel (the headless operator's only signpost) and flag
+  # first-run setup on a fresh node. Logged on ApplicationStarted, so it may trail the
+  # first healthz answer by a beat - allow a few seconds for the console logger to flush.
+  i=0
+  while [ $i -lt 10 ]; do
+    if grep -q "Control panel: http" /tmp/pn.log && grep -q "First-run setup pending" /tmp/pn.log; then urls_ok=1; break; fi
+    i=$((i+1)); sleep 1
+  done
+fi
 kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true
 [ "$ok" = 1 ] || { echo "  --- startup log ---"; sed "s/^/    /" /tmp/pn.log; fail "healthz never answered on :$PORT within 60s"; }
-echo "  ok: process stayed up and /healthz answered on :$PORT"
+[ "$urls_ok" = 1 ] || { echo "  --- startup log ---"; sed "s/^/    /" /tmp/pn.log; fail "startup log never named the control panel URL / first-run setup"; }
+echo "  ok: process stayed up, /healthz answered on :$PORT, startup log names the panel URL + pending setup"
 
 echo "== 4. purge cleans up =="
 apt-get purge -y packetnet >/dev/null 2>&1   || fail "apt purge (non-zero)"
