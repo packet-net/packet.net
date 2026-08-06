@@ -77,9 +77,10 @@ while [ $i -lt 60 ]; do
 done
 urls_ok=0
 if [ "$ok" = 1 ]; then
-  # The startup log must NAME the panel (the headless operator's only signpost) and flag
-  # first-run setup on a fresh node. Logged on ApplicationStarted, so it may trail the
-  # first healthz answer by a beat - allow a few seconds for the console logger to flush.
+  # The startup log must NAME the panel (the only signpost a headless operator gets)
+  # and flag first-run setup on a fresh node. Logged on ApplicationStarted, so it may
+  # trail the first healthz answer by a beat - allow a few seconds for the logger to
+  # flush. NOTE: this whole INNER block is one single-quoted string - no apostrophes.
   i=0
   while [ $i -lt 10 ]; do
     if grep -q "Control panel: http" /tmp/pn.log && grep -q "First-run setup pending" /tmp/pn.log; then urls_ok=1; break; fi
