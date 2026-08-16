@@ -83,7 +83,10 @@ public static class PdnPortTuningApi
 
         // Live event feed: read-scoped, pure observation.
         var read = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
-        read.MapGet("/ports/{id}/tuning/events", TuningEventsAsync);
+        // The marker is what lets the browser's EventSource present its JWT as
+        // ?access_token= (no header API); without it this feed 401s on an auth-on node.
+        read.MapGet("/ports/{id}/tuning/events", TuningEventsAsync)
+            .WithMetadata(AcceptsQueryAccessToken.Instance);
 
         // Mutating verbs: admin-scoped + audited (a session transmits and pauses the port).
         var admin = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Admin);

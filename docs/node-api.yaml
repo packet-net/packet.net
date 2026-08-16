@@ -141,8 +141,11 @@ paths:
       description: >
         One SSE stream (`text/event-stream`) of a managed connect-out's terminal output — what
         the web console drawer reads to watch a session live. On subscribe the recent backlog
-        (the banner/prompt the browser missed) is replayed first as a single `output` event,
-        then each new output chunk arrives as its own `output` event. Every `output` event's
+        (the banner/prompt the browser missed) is replayed first as a single `backlog` event,
+        then each new output chunk arrives as its own `output` event. The replay is sent on
+        EVERY subscription, including a browser's silent EventSource auto-reconnect, which is
+        why it is named apart: a client resets its buffer on `backlog` and appends on `output`,
+        so a reconnect re-renders the history instead of duplicating it. Every event's
         `data:` line is the chunk JSON-encoded as a string (`JsonSerializer.Serialize(chunk)` —
         e.g. `"GB7RDG:RDG} \r"`); JSON-encoding is required so embedded CR/LF survive SSE's
         line framing. A periodic `: ping` comment heartbeats the stream. The stream ends when
@@ -155,7 +158,7 @@ paths:
           description: an output event stream
           content:
             text/event-stream:
-              schema: { type: string, description: "SSE frames; each `output` event's data is a JSON-encoded text chunk" }
+              schema: { type: string, description: "SSE frames; each `backlog`/`output` event's data is a JSON-encoded text chunk" }
         "404": { description: no managed session with this id }
 
   /netrom/routes:
@@ -189,7 +192,8 @@ paths:
       description: >
         A bounded snapshot of the most recent decoded frames from the node's telemetry
         ring. The web monitor fetches this on open to seed its table, then live-streams
-        from `/events` and dedupes the overlap by `seq`.
+        from `/events` and dedupes the overlap by `seq` within a `bootId` (see MonitorEvent -
+        `seq` restarts at 1 on every node boot, so it is only unique within one).
       security: [{ bearerAuth: [read] }]
       parameters:
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 250, default: 250 } }
@@ -224,7 +228,8 @@ paths:
         the client subscribes/filters. Types: `frame` (a MonitorEvent per AX.25 frame,
         high-rate — the monitor keeps a ring buffer), `session` (add/remove/state-change),
         `port` (state transition), `route` (routing-table update), `config` (a config
-        reload happened). The server may coalesce high-rate `frame` events.
+        reload happened). The server may coalesce high-rate `frame` events. EventSource
+        clients may pass the bearer token as `?access_token=`.
       security: [{ bearerAuth: [read] }]
       responses:
         "200":
@@ -1167,6 +1172,7 @@ components:
         rssiDbm: { type: [number, "null"], description: "per-frame RSSI in dBm (received frames on a radio-attached port); null otherwise" }
         snrDb: { type: [number, "null"], description: "RSSI over the tracked noise floor, in dB; null when unavailable" }
         noiseFloorDbm: { type: [number, "null"], description: "tracked channel-idle noise floor, in dBm; null when unavailable" }
+        bootId: { type: string, description: "identifies the node process that numbered this frame; `seq` restarts at 1 each boot, so (bootId, seq) is the stable identity a client dedupes on" }
 
     TrafficFrame:
       type: object

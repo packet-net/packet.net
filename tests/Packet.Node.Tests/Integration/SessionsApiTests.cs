@@ -188,14 +188,18 @@ public sealed class SessionsApiTests : IDisposable
             await using var stream = await resp.Content.ReadAsStreamAsync();
             using var reader = new StreamReader(stream);
 
-            // Bounded so a regression fails fast instead of hanging CI. The backlog event +
-            // the live chunk both arrive as `output` events; we drain until we see the data:
-            // line carrying the JSON-encoded chunk (it appears in either the backlog replay
-            // or the subsequent live event — both serialize the same chunk text).
+            // Bounded so a regression fails fast instead of hanging CI. The FIRST named event of
+            // ANY subscription is the replayed history - a distinct `backlog` event (even when
+            // empty), which is what lets a reconnecting client reset instead of appending a
+            // second copy of the history (review item C045, #689). Live chunks follow as
+            // `output`. WHICH of the two carries this chunk is a race here (the scripted
+            // connection may drain into the backlog before the subscription lands), so the two
+            // things are asserted separately; the backlog-then-output ordering itself is pinned
+            // deterministically by ConsoleApiTests, which drives the identical stream shape.
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var expectedData = "data: " + JsonSerializer.Serialize(Chunk);
 
-            bool sawOutputEvent = false;
+            string? firstEventName = null;
             bool sawChunkData = false;
             while (!cts.IsCancellationRequested && !sawChunkData)
             {
@@ -204,9 +208,10 @@ public sealed class SessionsApiTests : IDisposable
                 {
                     break;
                 }
-                if (line == "event: output")
+                const string EventPrefix = "event: ";
+                if (line.StartsWith(EventPrefix, StringComparison.Ordinal))
                 {
-                    sawOutputEvent = true;
+                    firstEventName ??= line[EventPrefix.Length..];
                 }
                 else if (line == expectedData)
                 {
@@ -214,7 +219,7 @@ public sealed class SessionsApiTests : IDisposable
                 }
             }
 
-            sawOutputEvent.Should().BeTrue("output chunks arrive as named 'output' SSE events");
+            firstEventName.Should().Be("backlog", "a subscription opens with the replayed history under its own event name");
             sawChunkData.Should().BeTrue(
                 "the chunk should arrive JSON-encoded so its embedded CR survives SSE line framing");
         }

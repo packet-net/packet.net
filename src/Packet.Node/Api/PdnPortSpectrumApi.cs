@@ -22,7 +22,10 @@ public static class PdnPortSpectrumApi
     {
         ArgumentNullException.ThrowIfNull(app);
         var read = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Read);
-        read.MapGet("/ports/{id}/spectrum/events", SpectrumEventsAsync);
+        // The marker is what lets the browser's EventSource present its JWT as
+        // ?access_token= (no header API); without it this feed 401s on an auth-on node.
+        read.MapGet("/ports/{id}/spectrum/events", SpectrumEventsAsync)
+            .WithMetadata(AcceptsQueryAccessToken.Instance);
     }
 
     private sealed record SpectrumEvent(long Seq, double BinHz, string Bins);
