@@ -99,9 +99,11 @@ export function LinkTroubleshoot() {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  // Configured T1/T3 (ms) for a port, defaulting to the engine defaults the node
-  // applies when the config leaves them null (T1 3000ms, T3 180000ms here mirror
-  // the node's Ax25 defaults so the view never shows a misleading blank).
+  // Configured T1/T3 (ms) for a port, or null when the port leaves them unset - in which case the
+  // node runs the engine's own defaults (T1 6000 ms, T3 30000 ms; see ENGINE_AX25_DEFAULTS in
+  // screens/ports.tsx) and the cells render a dash. Reporting null rather than substituting a
+  // number is the honest reading: a number here would claim the port had been tuned when it has
+  // not. (This comment used to describe a 3000/180000 substitution the code never did - #690 C005.)
   const timers = (portId: string): { t1: number | null; t3: number | null } => {
     const ax25 = config?.ports.find((p) => p.id === portId)?.ax25;
     return { t1: ax25?.t1Ms ?? null, t3: ax25?.t3Ms ?? null };
