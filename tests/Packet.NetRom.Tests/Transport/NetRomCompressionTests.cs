@@ -95,11 +95,12 @@ public sealed class NetRomCompressionTests
     }
 
     [Fact]
-    public void Declined_circuit_sends_a_canonical_empty_connect_ack()
+    public void Declined_circuit_sends_the_vanilla_window_only_connect_ack()
     {
         // Capture the Connect Acknowledge bytes B emits when compression is NOT agreed:
-        // it must be the vanilla empty-info ack (no extension) — byte-for-byte what a
-        // non-compressing peer expects.
+        // it must be the vanilla one-octet ack: the base NET/ROM accepted-window octet
+        // and no BPQ TTL/compress extension, byte-for-byte what a non-compressing peer
+        // expects (LinBPQ's 21-byte SendConACK, L4Code.c:1768,1824).
         NetRomPacket? ack = null;
         var bManager = new CircuitManager(NodeB, Off, new Microsoft.Extensions.Time.Testing.FakeTimeProvider());
         bManager.SendPacket = p =>
@@ -116,7 +117,8 @@ public sealed class NetRomCompressionTests
         bManager.OnPacket(creq);
 
         ack.Should().NotBeNull();
-        ack!.Payload.Length.Should().Be(0, "a non-agreeing Connect Acknowledge carries no extension");
+        ack!.Payload.Length.Should().Be(ConnectAckInfo.VanillaLength, "a non-agreeing Connect Acknowledge carries the window octet and no extension");
+        ConnectAckInfo.AgreesCompression(ack.Payload.Span).Should().BeFalse();
     }
 
     // ─── Wire codec ─────────────────────────────────────────────────────────
@@ -159,8 +161,10 @@ public sealed class NetRomCompressionTests
         (agree[1] & 0x7F).Should().Be((byte)25, "masking the agree bit off leaves the TTL (BPQ L4DATA[1] &= 0x7f)");
 
         var decline = ConnectAckInfo.Build(4, 25, agreeCompression: false);
-        decline.Should().BeEmpty("a declining ack is the vanilla empty-info form");
+        decline.Should().Equal([(byte)4], "a declining ack is the vanilla form: the accepted window alone");
         ConnectAckInfo.AgreesCompression(decline).Should().BeFalse();
+        ConnectAckInfo.TryReadAcceptedWindow(decline, out var win).Should().BeTrue();
+        win.Should().Be((byte)4);
     }
 
     // ─── zlib payload round-trip + BPQ-format interop ────────────────────────

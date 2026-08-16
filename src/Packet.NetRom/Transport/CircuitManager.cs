@@ -21,12 +21,16 @@ namespace Packet.NetRom.Transport;
 /// it is fully unit-testable and the same instance can sit behind any transport.
 /// </para>
 /// <para>
-/// <b>Demultiplexing.</b> A datagram's transport header names <em>our</em> circuit
-/// (the index/id we handed the peer at connect time), so inbound routing is a
-/// table lookup on <c>(index,id)</c>. A Connect Request, by contrast, names the
-/// <em>peer's</em> circuit in those fields (we don't have one yet) — so a Connect
-/// Request that doesn't match an existing circuit mints a fresh inbound circuit and
-/// raises <see cref="IncomingCircuit"/> for the host to accept or refuse.
+/// <b>Demultiplexing is opcode-first.</b> A datagram's transport header names
+/// <em>our</em> circuit (the index/id we handed the peer at connect time), so
+/// inbound routing is a table lookup on <c>(index,id)</c>, for every opcode
+/// <em>except</em> a Connect Request, which names the <em>peer's</em> circuit in
+/// those fields (we don't have one yet). Connect Requests are therefore keyed on
+/// the peer's identity <c>(origin node, index, id)</c>: a repeat of one we already
+/// know re-acks that circuit, and a new one mints a fresh inbound circuit and raises
+/// <see cref="IncomingCircuit"/> for the host to accept or refuse. Keying a connect
+/// on <c>(index,id)</c> alone would misroute it: circuit keys are per-node and both
+/// ends allocate from <c>(0,0)</c>.
 /// </para>
 /// </remarks>
 public sealed class CircuitManager : IDisposable
@@ -142,6 +146,36 @@ public sealed class CircuitManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(packet);
         var t = packet.Transport;
+
+        // OPCODE FIRST. A Connect Request's index/id name the PEER's circuit, not ours
+        // (we have none yet), so it must never be demuxed through byLocalKey: keys are
+        // per-node and both ends allocate from (0,0), so a fresh peer's first connect
+        // collides with our own first circuit and would be swallowed by it (ignored
+        // while Connecting, or re-acked to the WRONG node once Connected; the circuit
+        // never checks Network.Origin). Route it by the peer's identity instead:
+        // (origin node, its index, its id).
+        if (t.Opcode == NetRomOpcode.ConnectRequest)
+        {
+            // Dedup a retransmitted Connect Request: if we already minted a circuit for
+            // this peer-circuit identity, hand the retransmit to it (it re-acks) rather
+            // than minting a duplicate.
+            var peerKey = (packet.Network.Origin, t.CircuitIndex, t.CircuitId);
+            NetRomCircuit? existing;
+            lock (gate)
+            {
+                byPeerKey.TryGetValue(peerKey, out existing);
+            }
+            if (existing is not null)
+            {
+                existing.OnPacket(packet);
+                return;
+            }
+            MintInbound(packet);
+            return;
+        }
+
+        // Every other opcode is addressed to a circuit of OURS: demux on the (index,id)
+        // we handed the peer at connect time.
         var key = (t.CircuitIndex, t.CircuitId);
 
         NetRomCircuit? circuit;
@@ -156,30 +190,10 @@ public sealed class CircuitManager : IDisposable
             return;
         }
 
-        // No existing circuit. Only a Connect Request creates one; everything else
-        // is for a circuit we don't have (a late/duplicate datagram) — drop it,
-        // except a Disconnect Request, which we courteously disconnect-ack so the
-        // peer stops retransmitting.
-        if (t.Opcode == NetRomOpcode.ConnectRequest)
-        {
-            // Dedup a retransmitted Connect Request (its header names the peer's
-            // circuit, so it never matches byLocalKey): if we already minted a circuit
-            // for this peer-circuit identity, hand the retransmit to it (it re-acks)
-            // rather than minting a duplicate.
-            var peerKey = (packet.Network.Origin, t.CircuitIndex, t.CircuitId);
-            NetRomCircuit? existing;
-            lock (gate)
-            {
-                byPeerKey.TryGetValue(peerKey, out existing);
-            }
-            if (existing is not null)
-            {
-                existing.OnPacket(packet);
-                return;
-            }
-            MintInbound(packet);
-        }
-        else if (t.Opcode == NetRomOpcode.DisconnectRequest)
+        // Nothing matched: the datagram is for a circuit we don't have (a late or
+        // duplicate one): drop it, except a Disconnect Request, which we courteously
+        // disconnect-ack so the peer stops retransmitting.
+        if (t.Opcode == NetRomOpcode.DisconnectRequest)
         {
             // Reflect a Disconnect Acknowledge addressed to the peer's circuit
             // (carried in this request's index/id) so a half-open peer settles.

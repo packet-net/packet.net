@@ -8,6 +8,7 @@
 - **Both peers do implement INP3** (LinBPQ via `PREFERINP3ROUTES`; XRouter via its own author-labelled-experimental L3RTT/INP3). That is not the blocker.
 - **A deterministic CI INP3 interop test is NOT feasible against the current docker stack** — and the reason is **structural, not timing**: ① neither `docker/linbpq/bpq32.cfg` nor `docker/xrouter/XROUTER.CFG` enables INP3, and ② the NET/ROM tests that talk to these peers over net-sim only observe **connectionless NODES broadcasts** — there is no **connected-mode PID-0xCF interlink** between pdn and the peer, and **L3RTT / RIF frames ride exactly that interlink**. No interlink ⇒ no INP3 traffic to observe.
 - **One concretely-feasible path exists**, gated behind a named config delta: enable INP3 on the BPQ fixture (`PREFERINP3ROUTES=1` + interval pins) **and** reuse the existing `NetRomL4CircuitViaAxudp` interlink seam (pdn opens a real interlink to BPQ via `ConnectCircuitAsync`). With INP3 on at both ends and pdn's `L3RttInterval` shortened, pdn would observe BPQ's **L3RTT probe** on that interlink and reflect it — an observable, bounded, single-frame check.
+- **One wire divergence is now recorded and deliberately not fixed** (§6, added 2026-08-16): pdn adds a link's measured cost on **receive**, BPQ adds it on **send**, so at a mixed boundary pdn double-counts the first link and BPQ sees pdn as a free zero-hop node. Harmless within our fleet (all three stacks agree) and dead while INP3 is off, but it must be flipped cross-stack *before* the BPQ tiers below mean anything.
 - **Recommendation:** ship a `[SkippableFact]` skeleton **gated on both stack reachability AND the INP3-config-present precondition** (so it stays inert/green-skipped until the delta lands), and leave the BPQ config delta + an XRouter follow-up named in the plan. Do **not** modify `interop.yml` or the docker configs as part of I-5 — the deltas are spelled out below for a deliberate follow-up PR. **Do not block I-5 closure on a live external green.**
 
 ---
@@ -135,7 +136,45 @@ The body drives **Tier A** (pdn-INP3-on, observe BPQ's reflection → finite SNT
 
 ---
 
-## 6. References
+## 6. Known divergence: where the per-hop cost is added (C099, 2026-08-16)
+
+*Found by the 2026-08-16 code review ([#697](https://github.com/packet-net/packet.net/issues/697) item C099, umbrella #703). Recorded here rather than fixed; the decision and its reasoning are below.*
+
+### 6.1 The two models
+
+Both models produce **identical routing tables when both ends use the same one**; they differ only in *which* end adds a link's cost, and therefore in what a RIP's metric means on the wire.
+
+| | pdn (all three stacks) | LinBPQ |
+|---|---|---|
+| Own-node RIP | `hop 0`, `target time 0` (`NetRomRoutingTable.BuildRif`) | `hop 1`, `target time = RTTIncrement`, the cost of the link it is sending on (`BPQINP3.c:1155,1757`) |
+| Relayed RIP | our stored local metric, unchanged (`BuildRif`) | `sendHops = Hops + 1`, `sendTT = STT + RTTIncrement` (`BPQINP3.c:1408,1541`) |
+| On receipt | `localTargetTimeMs = rip.TargetTimeMs + neighbourSnttMs + 10`, `localHopCount = rip.HopCount + 1` (`IngestRif`, locked in `netrom-inp3-i3-design.md` §2.3) | stored verbatim; explicitly does **not** add the link RTT (`BPQINP3.c:456`: *"Don't do this - other end has added linkrtt"*) |
+| A RIP therefore means | cost from the **sender** to D, excluding the link you heard it on | cost from the **receiver** to D, including that link |
+
+**At a mixed boundary both directions are wrong:** pdn adds a link cost BPQ already added (double-counting the first link, and one extra hop), while BPQ stores pdn's own-node RIP verbatim as `hop 0 / 0 ms`: a free, zero-hop route to us that outranks everything it holds.
+
+### 6.2 Decision: keep the receiver-adds model for now; flip it as part of I-5, cross-stack
+
+**Not changed in the WP10 review PR.** Reasons, in order of weight:
+
+1. **The our-fleet bar is what a unilateral flip would break.** `Packet.NetRom` (C#), `@packet-net/ax25` (`src/netrom/routing-table.ts`) and pico-node (`crates/ax25-node-core/src/netrom/routing/table.rs`) all implement receiver-adds identically and byte-for-byte, and §TL;DR makes the 3-stack harness the acceptance criterion. Changing one stack reproduces the *exact* BPQ-boundary pathology **inside our own fleet** for as long as a fleet is mixed: an upgraded node advertises itself at hop 1 with the cost pre-added, a not-yet-upgraded neighbour adds it again, and the upgraded node stores its neighbours at `0 ms / 0 hops`.
+2. **Nothing is broken today.** INP3 is opt-in (`netrom.inp3` defaults Disabled) and enabled in no fixture (§2.1), so this is future-interop drift, not a live defect. Severity was corrected to *low* on that basis.
+3. **The spec side is unverified.** The BPQ behaviour above is read from source. The INP3 PDF line usually quoted for this ("the hop-counter has to be 1") is **not** in this repo, and `netrom-inp3-i1-wire-spec.md` records the octet only as a *"hop count"*, *"hops to the destination"*, which does not settle whose perspective it is. Re-reading the Gal PDF is step 1 of the flip, not an afterthought: this repo does not take BPQ as the spec (CLAUDE.md).
+4. **It is an API change, not a constant change.** `BuildRif` would need the per-neighbour SNTT it does not currently take (to add the outgoing link's cost per RIF), and `IngestRif` would stop needing the `neighbourSnttMs` it does take. That ripples through `NetRomService.Inp3.cs`, the I-3/I-4 design docs' locked math, invariants (M) and (Source) and their property tests, and the equivalents in two sibling repos.
+
+**No named flag was added.** A `NetRomInp3Options` toggle between the two models is not the fix: the models must agree network-wide, so a per-node knob just moves the mixed-boundary problem behind config. When the flip happens it is a straight change of the wire semantics in all three stacks at once.
+
+### 6.3 What the flip entails (for the I-5 follow-up)
+
+1. Re-read the Gal INP3 PDF on the own-node RIP's hop counter and the metric's perspective; record the quote here.
+2. `BuildRif(myCall, toTargetNeighbour, snttToThatNeighbour, recentlyWithdrawn)`: emit the own node at `hop 1 / quantise(sntt + PerHopIncrementMs)`, and every relayed RIP at `hop + 1 / quantise(stored + sntt + PerHopIncrementMs)`, horizon-clamped on the way out.
+3. `IngestRif`: store `rip.HopCount` / `rip.TargetTimeMs` verbatim; the `neighbourSnttMs` parameter and its `linkMeasured` gate go (an unmeasured link no longer blocks learning, which also removes the "un-probed link learns nothing" skip).
+4. Update `netrom-inp3-i3-design.md` §2.3, `netrom-inp3-i4-design.md` §1.1/§2 (invariants (M) and (Source): the own node becomes `1 / link cost`, never `0/0`), and the property tests that pin them.
+5. Land it in `packet.net`, `ax25-ts` and `pico-node` together, and re-run the 3-stack harness before any BPQ tier runs.
+
+---
+
+## 7. References
 
 - `docs/netrom-inp3-plan.md` §2 (interop targets ranked), §9 (I-5), §10 (testing tiers), §12 (risks).
 - `docs/netrom-inp3-i1-wire-spec.md` (L3RTT + RIF/RIP wire formats); `…-i2-design.md` (L3RTT engine, reflection, capability `$N`); `…-i4-design.md` (RIF emission, AMBIGUITY-I4-1 alias-TLV locked off).

@@ -142,6 +142,27 @@ public class NetRomRoutingTableTests
     }
 
     [Fact]
+    public void An_advertisement_of_us_via_a_third_node_is_not_learned_or_re_advertised()
+    {
+        var table = NewTable(out _);
+        // RDG advertises US (M0LTE) as a destination reachable via XYZ, a third node,
+        // so the best-neighbour loop guard (which only catches "via us") does not fire.
+        // We must still never learn a route to ourselves, or our own callsign ends up in
+        // our own NODES broadcast (LinBPQ L3Code.c:456 skips destination == MYCALL).
+        table.Ingest(NbrA, Me, "vhf", Broadcast("RDGBPQ",
+            (Me, "MYNODE", NbrB, 200),
+            (DestSot, "SOT", NbrB, 200)));
+
+        table.Snapshot().Destinations.Should().NotContain(d => d.Destination == Me,
+            "a route to ourselves is never learned");
+        table.BuildAdvertisement(obsoleteMinimum: 0).Should().NotContain(e => e.Destination == Me,
+            "and so never re-advertised");
+
+        // The rest of the broadcast is unaffected.
+        table.BuildAdvertisement(obsoleteMinimum: 0).Should().Contain(e => e.Destination == DestSot);
+    }
+
+    [Fact]
     public void Keeps_only_the_three_best_routes_per_destination()
     {
         var table = NewTable(out _);

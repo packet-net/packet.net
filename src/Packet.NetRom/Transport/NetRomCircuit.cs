@@ -476,11 +476,16 @@ public sealed class NetRomCircuit
             return;
         }
 
-        // Window negotiation: our Connect Request proposed options.WindowSize and we
-        // keep that as our send ceiling. (The far end has independently accepted a
-        // window ≤ its own proposal; vanilla NET/ROM does not require us to shrink
-        // ours below what we proposed, and our send window is bounded by `window`
-        // either way.)
+        // Window negotiation: our Connect Request proposed options.WindowSize; the far
+        // end replies with the window it ACCEPTED in info[0] (base NET/ROM: LinBPQ
+        // L4Code.c:2287 assigns L4WINDOW = L4DATA[0] unconditionally, Linux reads
+        // skb->data[20]). Clamp our send ceiling down to it: sending more than the peer
+        // agreed to hold overruns its receive queue. A terse peer that sends no info
+        // field (or an out-of-range octet) leaves our proposal standing.
+        if (ConnectAckInfo.TryReadAcceptedWindow(info.Span, out var acceptedWindow))
+        {
+            window = Math.Min(window, acceptedWindow);
+        }
 
         // Compression negotiation: enable only if WE offered (options.CompressionEnabled)
         // AND the peer's Connect Acknowledge mirrored the agreement back. A peer that
@@ -682,13 +687,20 @@ public sealed class NetRomCircuit
             Flags = refused ? NetRomTransportFlags.Choke : NetRomTransportFlags.None,
         };
 
-        // Mirror the compression agreement back to the originator (LinBPQ extended
-        // Connect Acknowledge). Only emits a non-empty info field when compression was
-        // actually agreed; otherwise the canonical empty-info Connect Acknowledge is
-        // sent, so a non-compressing circuit is byte-for-byte vanilla NET/ROM.
-        var info = (!refused && compressionEnabled)
-            ? ConnectAckInfo.Build((byte)window, options.TimeToLive, agreeCompression: true)
-            : [];
+        // The ACCEPTED WINDOW is base NET/ROM and rides every acknowledgement, not just
+        // a compressed one: LinBPQ writes L4DATA[0] = L4WINDOW and sends
+        // LENGTH = MSGHDDRLEN + 22, a 21-byte vanilla Connect Acknowledge
+        // (L4Code.c:1768,1824), and reads it back unconditionally (:2287); Linux
+        // af_netrom emits nr->window with NR_CONNACK_LEN 1. A peer that never sees the
+        // octet reads buffer residue for our window (BPQ then chokes forever at 0, or
+        // overruns us on a large one), so we always tell it. The second (TTL) octet
+        // stays the BPQ extension, emitted only when compression was actually agreed.
+        // A REFUSAL accepts nothing, so it carries no info field, matching Linux's
+        // nr_transmit_refusal (bare 20-byte frame); the originator closes on the choke
+        // bit before any window is read either way.
+        byte[] info = refused
+            ? []
+            : ConnectAckInfo.Build((byte)window, options.TimeToLive, agreeCompression: compressionEnabled);
         Emit(t, info);
     }
 
