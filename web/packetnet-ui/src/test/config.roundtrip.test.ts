@@ -197,3 +197,47 @@ describe("rig (CAT) block survives the PortEditor save (saveDraft reconstruction
     expect(NODE_CONFIG.ports.some((x) => x.rig)).toBe(true);
   });
 });
+
+// The NET/ROM block's JSON wire dialect (#688). Two shapes are decided on the server
+// and mirrored here: an enum crosses as its member NAME and a duration crosses as a
+// number of SECONDS. A regression either way is a save the node rejects with a 400.
+describe("the netRom block round-trips in the server's config dialect", () => {
+  const netRom = NODE_CONFIG.netRom;
+
+  it("routing + forwardMode are enum member names, not integers", () => {
+    const out = wireRoundTrip(netRom);
+
+    expect(typeof out.routing).toBe("string");
+    expect(["None", "Endpoint", "Transit"]).toContain(out.routing);
+    // The real C# enum is BestRoute | PerFlow - "Single" never existed on the server.
+    expect(["BestRoute", "PerFlow"]).toContain(out.forwardMode);
+    expect(out.routing).toBe(netRom.routing);
+    expect(out.forwardMode).toBe(netRom.forwardMode);
+  });
+
+  it("the four INP3 timers are numbers of seconds, never duration strings", () => {
+    const out = wireRoundTrip(netRom.inp3);
+
+    for (const v of [out.l3RttInterval, out.l3RttResetWindow, out.rifInterval, out.positiveDebounce]) {
+      expect(typeof v).toBe("number");
+      expect(Number.isFinite(v)).toBe(true);
+      expect(v).toBeGreaterThan(0);
+    }
+    // The server's own guard: a reset window shorter than one probe interval would
+    // tear a live neighbour down before it could answer (422 on save).
+    expect(out.l3RttResetWindow).toBeGreaterThan(out.l3RttInterval);
+    expect(out.positiveDebounce).toBeLessThan(out.rifInterval);
+    expect(out).toEqual(netRom.inp3);
+  });
+
+  it("an edited routing role + INP3 timer survive the save serialisation", () => {
+    // What the Forms editor hands api.putConfig: the draft with two fields replaced.
+    const edited = { ...netRom, routing: "Endpoint" as const, inp3: { ...netRom.inp3, l3RttInterval: 120 } };
+    const out = wireRoundTrip(edited);
+
+    expect(out.routing).toBe("Endpoint");
+    expect(out.inp3.l3RttInterval).toBe(120);
+    expect(JSON.stringify(out)).toContain('"routing":"Endpoint"');
+    expect(JSON.stringify(out)).toContain('"l3RttInterval":120');
+  });
+});

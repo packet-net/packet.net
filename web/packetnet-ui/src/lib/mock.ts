@@ -40,7 +40,8 @@ export const NODE_CONFIG: NodeConfig = {
     obsoleteInitial: 6, obsoleteMinimum: 4, sweepIntervalSeconds: 300,
     window: 4, transportTimeoutSeconds: 60, transportRetries: 3, timeToLive: 25,
     compress: false,
-    inp3: { enabled: true, preferInp3Routes: true, l3RttInterval: 3600, l3RttResetWindow: 5, rifInterval: 60, positiveDebounce: 3 },
+    // The four timing knobs are seconds on the wire; these are the server defaults.
+    inp3: { enabled: true, preferInp3Routes: true, l3RttInterval: 60, l3RttResetWindow: 180, rifInterval: 300, positiveDebounce: 5 },
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
   tailscale: { enabled: false, authKey: null, authKeyFile: null, hostname: "pdn", tags: [], stateDir: "/var/lib/packetnet/tsnet", target: "127.0.0.1:8080", funnel: false },
@@ -845,7 +846,7 @@ export const NETROM_FIELD_HELP: Record<string, FieldHelp> = {
 };
 export const INP3_FIELD_HELP: Record<string, FieldHelp> = {
   l3RttInterval: { label: "Time-probe interval", unit: "seconds", help: "How often the node measures the real round-trip time to its neighbours." },
-  l3RttResetWindow: { label: "Probe reset window", unit: "probes", help: "How many missed time-probes before a neighbour's measured time is treated as unknown again." },
+  l3RttResetWindow: { label: "Probe reset window", unit: "seconds", help: "How long a neighbour may go without answering a time-probe before its measured time is treated as unknown again. Must be longer than the probe interval." },
   rifInterval: { label: "Share-timing interval", unit: "seconds", help: "How often your node passes its measured route timings on to neighbours, so the whole network's time map stays current." },
-  positiveDebounce: { label: "Switch-route patience", unit: "probes", help: "How many consistent 'this route is faster' measurements are needed before the node actually switches to it — stops it flapping between routes on momentary blips." },
+  positiveDebounce: { label: "Switch-route patience", unit: "seconds", help: "How long good news ('this route got faster') is batched up before the node passes it on, so a burst of improvements becomes one update instead of several, which stops it flapping on momentary blips. Bad news is always passed on straight away." },
 };

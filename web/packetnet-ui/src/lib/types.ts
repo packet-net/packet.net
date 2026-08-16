@@ -196,6 +196,9 @@ export interface TailscaleConfig {
   target: string;
   funnel: boolean;
 }
+// The INP3 time-routing overlay (server: Packet.NetRom.Wire.NetRomInp3Options). The four
+// timing knobs are TimeSpan on the server and cross the config wire as whole SECONDS
+// (SecondsTimeSpanJsonConverter) - never as "hh:mm:ss" duration strings.
 export interface Inp3Config {
   enabled: boolean; preferInp3Routes: boolean;
   l3RttInterval: number; l3RttResetWindow: number;
@@ -226,7 +229,12 @@ export interface OarcConfig {
   statusIntervalSecs: number;
   sessionStatusIntervalSecs: number;
 }
-export type NetRomForwardMode = "PerFlow" | "Single";
+// How a transit node picks among several kept routes to one destination
+// (server: Packet.NetRom.NetRomForwardMode):
+//   BestRoute - always the single best route; every datagram takes the same path.
+//   PerFlow   - quality-weighted spread; one circuit always hashes to one route,
+//               distinct circuits spread across the kept routes. The default.
+export type NetRomForwardMode = "BestRoute" | "PerFlow";
 // The node's NET/ROM routing role - the single 3-state successor to the old
 // connect+forward bools (server: Packet.Node.Core.Configuration.NetRomRouting):
 //   None     - passive: hear + maintain the table only (no interlinks, no transit).

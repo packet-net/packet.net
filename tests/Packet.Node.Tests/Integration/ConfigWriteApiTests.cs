@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
@@ -23,17 +24,11 @@ public sealed class ConfigWriteApiTests : IDisposable
     private const string Callsign = "M0LTE-1";
     private readonly string configPath;
 
-    // The WAF HttpClient's default JSON has no TransportConfig converter, so a GET
-    // /config response we want to deserialise to NodeConfig (to tweak + PUT back)
-    // needs the converter added, exactly as Program.cs registers it for the binder.
-    private static readonly JsonSerializerOptions Web = BuildOptions();
-
-    private static JsonSerializerOptions BuildOptions()
-    {
-        var opts = new JsonSerializerOptions(JsonSerializerOptions.Web);
-        opts.Converters.Add(new TransportConfigJsonConverter());
-        return opts;
-    }
+    // The WAF HttpClient's default JSON knows none of the config dialect (the
+    // polymorphic TransportConfig union, string enums, second-valued durations), so a
+    // GET /config response we want to deserialise to NodeConfig (to tweak + PUT back)
+    // uses the canonical option set - the very same one Program.cs hands the binder.
+    private static readonly JsonSerializerOptions Web = NodeConfigJson.CreateOptions();
 
     public ConfigWriteApiTests()
     {
@@ -137,6 +132,58 @@ public sealed class ConfigWriteApiTests : IDisposable
         var problem = await resp.Content.ReadFromJsonAsync<ValidationProblem>(Web);
         problem.Should().NotBeNull();
         problem!.Errors.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Get_config_serialises_netrom_enums_as_strings_and_inp3_durations_as_seconds()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        // Read the raw text, not a typed model: the point of the test is the wire shape
+        // the control panel and docs/node-api.yaml are written against.
+        using var doc = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config"));
+        var netRom = doc.RootElement.GetProperty("netRom");
+
+        netRom.GetProperty("forwardMode").ValueKind.Should().Be(JsonValueKind.String);
+        netRom.GetProperty("forwardMode").GetString().Should().Be("PerFlow");
+        netRom.GetProperty("effectiveRouting").ValueKind.Should().Be(JsonValueKind.String);
+
+        var inp3 = netRom.GetProperty("inp3");
+        inp3.GetProperty("l3RttInterval").ValueKind.Should().Be(JsonValueKind.Number);
+        inp3.GetProperty("l3RttInterval").GetInt32().Should().Be(60);
+        inp3.GetProperty("l3RttResetWindow").GetInt32().Should().Be(180);
+        inp3.GetProperty("rifInterval").GetInt32().Should().Be(300);
+        inp3.GetProperty("positiveDebounce").GetInt32().Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Put_config_accepts_the_documented_string_enum_and_seconds_duration_and_round_trips_them()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        // Edit the live config as TEXT, in the dialect docs/node-api.yaml documents and
+        // the panel's config screen posts: routing as a name, an INP3 timer as seconds.
+        var node = JsonNode.Parse(await client.GetStringAsync("/api/v1/config"))!.AsObject();
+        var netRom = node["netRom"]!.AsObject();
+        netRom["routing"] = "Transit";
+        netRom["inp3"]!["l3RttInterval"] = 120;
+
+        var resp = await client.PutAsync("/api/v1/config",
+            new StringContent(node.ToJsonString(), Encoding.UTF8, "application/json"));
+
+        // The regression this guards: an int-only enum binder threw a JsonException in
+        // body binding, so the documented body came back as an empty 400.
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await resp.Content.ReadFromJsonAsync<ReconcileResult>(Web);
+        result.Should().NotBeNull();
+        result!.Applied.Should().BeTrue();
+
+        using var after = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config"));
+        var savedNetRom = after.RootElement.GetProperty("netRom");
+        savedNetRom.GetProperty("routing").GetString().Should().Be("Transit");
+        savedNetRom.GetProperty("inp3").GetProperty("l3RttInterval").GetInt32().Should().Be(120);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Packet.Node.Core.Configuration;
 
@@ -10,13 +11,21 @@ namespace Packet.Node.Core.Configuration;
 /// <para>
 /// The management API serialises <see cref="NodeConfig"/> over the web JSON layer
 /// (<c>ConfigureHttpJsonOptions</c> — <see cref="JsonSerializerDefaults.Web"/>:
-/// camelCase, case-insensitive read) with the
-/// <see cref="TransportConfigJsonConverter"/> registered for the polymorphic
-/// <c>transport</c> union (see <c>Program.cs</c>). The
+/// camelCase, case-insensitive read) with <em>this type's</em> converter set applied
+/// by <see cref="ApplyTo"/> (see <c>Program.cs</c>): the polymorphic <c>transport</c>
+/// union, enums as their member names, and durations as integer seconds. The
 /// <see cref="SqliteConfigProvider"/> persists the config as a JSON blob using
 /// <em>these exact options</em>, so the structured <c>PUT /config</c> body and the
 /// persisted blob are byte-identical — there is a single canonical serialisation and
 /// no second JSON dialect to drift.
+/// </para>
+/// <para>
+/// The two shapes that are <em>not</em> the .NET defaults are deliberate, and are what
+/// <c>docs/node-api.yaml</c> and the control panel's <c>src/lib/types.ts</c> have always
+/// documented: an enum is its member name (<c>"routing": "Transit"</c>, not <c>2</c>) and
+/// a <see cref="TimeSpan"/> is a number of seconds (<c>"l3RttInterval": 60</c>, not
+/// <c>"00:01:00"</c>). Both converters still <b>read</b> the older form, so config blobs
+/// persisted by an earlier build load unchanged and no DB migration is needed.
 /// </para>
 /// <para>
 /// JSON, not YAML, is the on-disk DB form deliberately: it dodges YAML
@@ -29,17 +38,37 @@ namespace Packet.Node.Core.Configuration;
 public static class NodeConfigJson
 {
     /// <summary>The canonical options: web defaults (camelCase, case-insensitive
-    /// reads) plus the polymorphic transport-union converter. This static is
-    /// immutable after construction and safe to share (the converter is stateless).</summary>
+    /// reads) plus the converters <see cref="ApplyTo"/> registers. This static is
+    /// immutable after construction and safe to share (every converter is stateless).</summary>
     public static readonly JsonSerializerOptions Options = CreateOptions();
 
-    /// <summary>Build the canonical option set. Exposed so the composition root can
-    /// hand the very same converter to <c>ConfigureHttpJsonOptions</c> (one canonical
-    /// serialisation across the API and the store).</summary>
+    /// <summary>Register the canonical converter set on an existing
+    /// <see cref="JsonSerializerOptions"/>. This is the single definition of the config
+    /// JSON dialect: the composition root hands the very same set to
+    /// <c>ConfigureHttpJsonOptions</c>, so the HTTP dialect and the DB dialect cannot
+    /// drift apart.</summary>
+    /// <param name="options">The (still mutable) options to add the converters to.</param>
+    public static void ApplyTo(JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        // The polymorphic `transport` union: a `kind`-discriminated read/write.
+        options.Converters.Add(new TransportConfigJsonConverter());
+        // Enums by member name ("Transit", "PerFlow", "BestRoute"), matching
+        // docs/node-api.yaml and web/packetnet-ui/src/lib/types.ts. Integer values are
+        // still accepted on read, so blobs persisted before this converter load as-is.
+        options.Converters.Add(new JsonStringEnumConverter());
+        // Durations as integer seconds; the legacy "hh:mm:ss" string still reads.
+        options.Converters.Add(new SecondsTimeSpanJsonConverter());
+    }
+
+    /// <summary>Build the canonical option set. Exposed so a caller that needs its own
+    /// mutable instance (rather than the shared <see cref="Options"/>) gets exactly the
+    /// same dialect.</summary>
     public static JsonSerializerOptions CreateOptions()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        options.Converters.Add(new TransportConfigJsonConverter());
+        ApplyTo(options);
         return options;
     }
 

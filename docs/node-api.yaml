@@ -942,13 +942,18 @@ components:
 
     Inp3Config:
       type: object
+      # The four timing knobs are TimeSpan on the server and cross this JSON wire as a
+      # NUMBER OF SECONDS (SecondsTimeSpanJsonConverter), never as an "hh:mm:ss" duration
+      # string. A legacy "hh:mm:ss" body is still accepted on read so pre-existing config
+      # blobs load, but every response writes seconds. The YAML form (GET/PUT /config/raw,
+      # `pdn config export`) is unchanged and still carries duration scalars.
       properties:
         enabled: { type: boolean }
         preferInp3Routes: { type: boolean }
-        l3RttInterval: { type: integer }
-        l3RttResetWindow: { type: integer }
-        rifInterval: { type: integer }
-        positiveDebounce: { type: integer }
+        l3RttInterval: { type: integer, description: "L3RTT probe cadence, seconds (default 60)" }
+        l3RttResetWindow: { type: integer, description: "Reflection-timeout reset window, seconds (default 180); must exceed l3RttInterval" }
+        rifInterval: { type: integer, description: "Periodic full-RIF cadence, seconds (default 300)" }
+        positiveDebounce: { type: integer, description: "Positive-update debounce, seconds (default 5); must be less than rifInterval" }
     NetRomConfig:
       type: object
       properties:
@@ -964,7 +969,10 @@ components:
         # config-load warning) when `routing` is also set. Nullable: absent = unset.
         connect: { type: [boolean, "null"], deprecated: true }
         forward: { type: [boolean, "null"], deprecated: true }
-        forwardMode: { type: string, enum: [PerFlow, Single] }
+        # How a transit node picks among several kept routes to one destination
+        # (BestRoute = always the single best; PerFlow = quality-weighted spread with
+        # one circuit pinned to one route). Default PerFlow.
+        forwardMode: { type: string, enum: [BestRoute, PerFlow] }
         alias: { type: [string, "null"] }
         defaultNeighbourQuality: { type: integer }
         minQuality: { type: integer }
@@ -976,6 +984,11 @@ components:
         transportRetries: { type: integer }
         timeToLive: { type: integer }
         inp3: { $ref: "#/components/schemas/Inp3Config" }
+    # The config JSON dialect (one canonical serialisation, shared by this API and the
+    # pdn.db blob - Packet.Node.Core.Configuration.NodeConfigJson): camelCase, the
+    # `kind`-discriminated transport union, every ENUM as its member name ("Transit",
+    # "PerFlow") and every duration as a number of SECONDS. Legacy integer enums and
+    # "hh:mm:ss" durations are still accepted on read; responses only ever use the above.
     NodeConfig:
       type: object
       required: [schemaVersion, identity, ports]
