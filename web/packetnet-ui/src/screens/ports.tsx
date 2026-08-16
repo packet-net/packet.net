@@ -639,7 +639,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                       {SOUNDMODEM_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
                     </Select>
                   </Field>
-                  <Field label="Frequency (Hz)" info="Centre/carrier frequency; 0 = the mode's convention. Only the variable-centre AFSK/BPSK/QPSK families accept one (300–3300 Hz) — it is rejected for the baseband FSK/C4FSK and fixed-centre FreeDV/MS110D modes.">
+                  <Field label="Frequency (Hz)" info="Centre/carrier frequency; 0 = the mode's convention. The AFSK/BPSK/QPSK families take one natively and the FreeDV/MS110D modes take one by shifting the audio (300-3300 Hz); it is rejected only for the baseband FSK/C4FSK modes.">
                     <Input type="number" value={t.frequency ?? ""} placeholder="0" onChange={(e) => setT({ frequency: e.target.value === "" ? undefined : +e.target.value })} className="font-mono" />
                   </Field>
                   <Field label="PTT" info="PTT control spec: empty for VOX, serial:/dev/ttyUSB0[:rts|:dtr], or cm108:/dev/hidraw0[:gpio]. Leave empty for a flex: device — the radio keys itself.">

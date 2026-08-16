@@ -32,8 +32,9 @@ ports:
                             # rate. Must be a positive multiple of it (48000 fits every
                             # mode). Ignored for a flex: device (it clocks off DAX).
       mode: afsk1200        # the modem mode — see the catalogue below.
-      # frequency: 1700     # centre/carrier Hz; 0/omit = the mode convention. Only the
-                            # variable-centre afsk/bpsk/qpsk families accept one (300–3300).
+      # frequency: 1700     # centre/carrier Hz; 0/omit = the mode convention. Accepted by
+                            # afsk/bpsk/qpsk natively and freedv-*/ms110d-* by audio shift
+                            # (300-3300); rejected for the baseband fsk*/c4fsk* modes.
       # ptt: serial:/dev/ttyUSB0:rts   # empty = VOX · serial:<dev>[:rts|:dtr] · cm108:<hidraw>[:gpio]
 ```
 
@@ -67,10 +68,14 @@ set:
 - **MS110D App-D** (`ms110d-wn0..6/13`) — MIL-STD-188-110D Appendix D
   narrowband waveforms (`wn` = walsh/narrowband variants).
 
-The baseband `fsk*` / `c4fsk*` modes and the fixed-centre `freedv-*` / `ms110d-*`
-modes have **no settable centre frequency** — a non-zero `frequency` is rejected
-rather than silently ignored. Only the variable-centre `afsk` / `bpsk` / `qpsk`
-families accept one (0 = the mode convention, otherwise 300–3300 Hz).
+Only the baseband `fsk*` / `c4fsk*` modes have **no settable centre frequency**:
+they run DC-to-Nyquist, so a non-zero `frequency` is rejected rather than
+silently ignored. The `afsk` / `bpsk` / `qpsk` families take a centre natively,
+and since pdn-soundmodem 0.37 the spec-fixed `freedv-*` / `ms110d-*` families
+take one too, by shifting the audio either side of the waveform's native centre
+so a band plan can place them anywhere in the passband. Nothing changes on air:
+the RF centre still sets interop. In every accepting case, 0 = the mode
+convention, otherwise 300-3300 Hz.
 
 ### The bpsk300 differential frequency-diversity bank
 

@@ -872,7 +872,7 @@ components:
         device: { type: string, description: "ALSA device (default, plughw:1,0) or a flex:<radio>[:slice][@station] FlexRadio device (default: default)" }
         captureRate: { type: integer, description: "capture sample rate; a positive multiple of the mode's DSP rate (default 48000). Ignored for a flex: device." }
         mode: { type: string, description: "modem mode — one of ModemCatalog.KnownModes minus bpsk1200-multi: the AFSK/BPSK/QPSK/FSK modes, c4fsk9600/c4fsk19200, freedv-datac0/1/3/4/13/14, ms110d-wn0..6/13 (default afsk1200)" }
-        frequency: { type: number, description: "centre/carrier Hz; 0 = mode convention. Settable only on the variable-centre afsk/bpsk/qpsk families (300..3300); rejected for the baseband fsk*/c4fsk* and fixed-centre freedv-*/ms110d-* modes." }
+        frequency: { type: number, description: "centre/carrier Hz; 0 = mode convention. Taken natively by the afsk/bpsk/qpsk families and by audio shift on the spec-fixed freedv-*/ms110d-* families (300..3300); rejected for the baseband fsk*/c4fsk* modes." }
         offsetPairs: { type: [integer, "null"], description: "bpsk300 diversity-bank width: 2*offsetPairs+1 stepped decoder branches (0 = single modem; null = the mode default, 4). Ignored by non-bank modes." }
         offsetStepHz: { type: [number, "null"], description: "Hz step between bpsk300 diversity-bank branches (null = the baud-derived default, baud/40)." }
         pskDetector: { type: [string, "null"], enum: [coherent, differential, null], description: "PSK detector for the bpsk*/qpsk* modes (null = per-family default: BPSK differential, QPSK coherent)." }

@@ -642,22 +642,24 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
                 $"soundmodem `captureRate` {t.CaptureRate} must be a positive multiple of {DspRate(t.Mode)} " +
                 $"(the DSP rate for mode '{t.Mode}'); 48000 works for every mode.");
 
-        // A centre frequency is settable only on the variable-centre families (afsk/bpsk/qpsk);
-        // there it must leave room for the mode's occupied bandwidth inside the audio passband.
+        // A centre frequency is settable on the variable-centre families (afsk/bpsk/qpsk), which
+        // take it natively, and on the spec-fixed freedv-*/ms110d-* families, which take it by
+        // audio shift (CentreSemantics.Shifted, pdn-soundmodem 0.37+). Either way it must leave
+        // room for the mode's occupied bandwidth inside the audio passband.
         RuleFor(t => t.Frequency)
             .Must(f => f == 0 || (f >= 300 && f <= 3300))
             .When(t => ModemCatalog.AcceptsCentreFrequency(t.Mode.ToLowerInvariant()))
             .WithMessage("soundmodem `frequency` must be 0 (mode default) or 300–3300 Hz (the audio passband).");
 
-        // The baseband fsk*/c4fsk* and the fixed-centre freedv-*/ms110d- modes have no settable
-        // carrier — reject a non-zero frequency rather than silently ignoring it (matches the
-        // daemon and ModemCatalog.Create, which throws).
+        // The baseband fsk*/c4fsk* modes run DC-to-Nyquist and have no settable carrier; reject
+        // a non-zero frequency rather than silently ignoring it (matches the daemon and
+        // ModemCatalog.Create, which throws).
         RuleFor(t => t.Frequency)
             .Must(f => f == 0)
             .When(t => KnownModes.Contains(t.Mode, StringComparer.OrdinalIgnoreCase)
                 && !ModemCatalog.AcceptsCentreFrequency(t.Mode.ToLowerInvariant()))
             .WithMessage(t =>
-                $"soundmodem `frequency` is not settable for mode '{t.Mode}' (a fixed-centre baseband/OFDM mode) — use 0.");
+                $"soundmodem `frequency` is not settable for mode '{t.Mode}' (a DC-to-Nyquist baseband mode) - use 0.");
 
         // Diversity-bank knobs (bpsk300): range-checked here; ignored by non-bank modes.
         RuleFor(t => t.OffsetPairs)

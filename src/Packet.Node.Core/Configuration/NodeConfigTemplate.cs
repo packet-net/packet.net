@@ -180,9 +180,9 @@ public static class NodeConfigTemplate
         #                          #   (c4fsk9600/c4fsk19200); the FreeDV HF OFDM modes
         #                          #   (freedv-datac0/1/3/4/13/14); and the MIL-STD-188-110D App-D
         #                          #   modes (ms110d-wn0..6/13).
-        #      # frequency: 1700   # centre/carrier Hz; 0/omitted = the mode convention. Only the
-        #                          # variable-centre afsk/bpsk/qpsk families accept one (300..3300);
-        #                          # rejected for the baseband fsk*/c4fsk* + fixed-centre freedv-*/ms110d-*.
+        #      # frequency: 1700   # centre/carrier Hz; 0/omitted = the mode convention. The afsk/bpsk/qpsk
+        #                          # families take one natively and freedv-*/ms110d-* by audio shift
+        #                          # (300..3300); rejected only for the baseband fsk*/c4fsk* modes.
         #      # ptt: serial:/dev/ttyUSB0:rts  # PTT: empty=VOX, serial:<dev>[:rts|:dtr], cm108:<hidraw>[:gpio].
         #                          # Leave empty for a flex: device — the radio keys itself.
         #    # bpsk300 is the differential frequency-diversity BANK — tune it with the two knobs

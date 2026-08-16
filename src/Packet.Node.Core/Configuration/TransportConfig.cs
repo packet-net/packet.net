@@ -373,9 +373,10 @@ public sealed record SoundModemTransportConfig : TransportConfig
 
     /// <summary>Centre/carrier frequency in Hz; 0 = the mode's convention (1700 AFSK —
     /// tones 1200/2200 at 1200 baud, 1600/1800 at 300; 1500 BPSK and QPSK-600/2400,
-    /// 1650 QPSK-3600). Only the variable-centre families accept one
-    /// (<see cref="ModemCatalog.AcceptsCentreFrequency"/>); it is rejected for the baseband
-    /// fsk*/c4fsk* and the fixed-centre freedv-*/ms110d-* modes.</summary>
+    /// 1650 QPSK-3600). The variable-centre families take one natively and the spec-fixed
+    /// freedv-*/ms110d-* families take one by frequency-shifting the audio
+    /// (<see cref="ModemCatalog.AcceptsCentreFrequency"/>); it is rejected only for the
+    /// baseband fsk*/c4fsk* modes, which have no centre to move.</summary>
     public double Frequency { get; init; }
 
     /// <summary>Frequency-diversity bank width for the <c>bpsk300</c> bank: <c>2·OffsetPairs+1</c>

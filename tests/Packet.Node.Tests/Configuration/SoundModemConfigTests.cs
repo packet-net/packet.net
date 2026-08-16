@@ -164,10 +164,10 @@ public class SoundModemConfigTests
     [Theory]
     [InlineData("c4fsk9600")]
     [InlineData("fsk4800-il2p")]
-    [InlineData("freedv-datac0")]
-    [InlineData("ms110d-wn0")]
-    public void A_frequency_on_a_fixed_centre_mode_is_rejected(string mode)
+    public void A_frequency_on_a_baseband_mode_is_rejected(string mode)
     {
+        // Baseband fsk*/c4fsk* run DC-to-Nyquist: there is no centre to move, and
+        // ModemCatalog.Create throws on an override rather than ignoring it.
         var result = Validator.Validate(Valid(new SoundModemTransportConfig
         {
             Mode = mode,
@@ -176,6 +176,26 @@ public class SoundModemConfigTests
         }));
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.ErrorMessage.Contains("frequency"));
+    }
+
+    [Theory]
+    [InlineData("freedv-datac0")]
+    [InlineData("freedv-datac14")]
+    [InlineData("ms110d-wn0")]
+    [InlineData("ms110d-wn13")]
+    public void A_frequency_on_a_spec_fixed_mode_is_accepted(string mode)
+    {
+        // pdn-soundmodem 0.37.x gave the spec-fixed OFDM families a centre "by decoration"
+        // (CentreSemantics.Shifted): the validated DSP stays on its native centre and
+        // FrequencyShiftedModem translates the audio either side, so a band plan can place
+        // them anywhere in the passband. On air nothing changes; the RF centre still sets
+        // interop. Before 0.37 these refused an override alongside the baseband modes.
+        Validator.Validate(Valid(new SoundModemTransportConfig
+        {
+            Mode = mode,
+            CaptureRate = 48000,
+            Frequency = 1500,
+        })).IsValid.Should().BeTrue();
     }
 
     [Fact]
