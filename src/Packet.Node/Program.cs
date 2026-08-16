@@ -94,14 +94,14 @@ builder.Services.AddSingleton<IConfigProvider>(configProvider);
 // IConfigProvider; only this provider can persist an edit.
 builder.Services.AddSingleton<IWritableConfigProvider>(configProvider);
 
-// Teach the minimal-API JSON layer to (de)serialise the polymorphic TransportConfig
-// union (a PUT /config body needs the `kind`-discriminated read; this is transparent
-// for the existing GET serialisation). Web defaults (camelCase) are otherwise intact.
-// This is the SAME converter SqliteConfigStore persists the blob with (NodeConfigJson),
-// so the structured PUT /config body and the on-disk DB bytes are byte-identical - one
-// canonical serialisation, no second JSON dialect to drift.
-builder.Services.ConfigureHttpJsonOptions(o =>
-    o.SerializerOptions.Converters.Add(new TransportConfigJsonConverter()));
+// Teach the minimal-API JSON layer the canonical config dialect: the polymorphic
+// TransportConfig union (a PUT /config body needs the `kind`-discriminated read),
+// enums by member name, and durations as integer seconds. Web defaults (camelCase)
+// are otherwise intact. These are the SAME converters SqliteConfigStore persists the
+// blob with, handed over by NodeConfigJson.ApplyTo - so the structured PUT /config
+// body and the on-disk DB bytes are byte-identical, one canonical serialisation, and
+// the HTTP dialect cannot drift from the store's.
+builder.Services.ConfigureHttpJsonOptions(o => NodeConfigJson.ApplyTo(o.SerializerOptions));
 
 // The routing-table persistence store (pdn.db). Created eagerly so it can hydrate
 // NetRomService at start; registered as the singleton INetRomRoutingStore the hosted
