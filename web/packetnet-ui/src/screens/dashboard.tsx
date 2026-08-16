@@ -42,9 +42,12 @@ export function Dashboard() {
   // feed the monitor consumes; mock mode supplies a timer-driven stream). We keep
   // a 3-second window of arrival times and recompute the rate each second.
   const [fps, setFps] = useState(0);
+  // Whether the frame feed is actually connected - the tile's "live" dot used to be a
+  // hard-coded decoration, so a stream killed by an expired token still read as live.
+  const [framesLive, setFramesLive] = useState(false);
   useEffect(() => {
     const arrivals: number[] = [];
-    const unsub = subscribeFrames(() => arrivals.push(Date.now()));
+    const unsub = subscribeFrames(() => arrivals.push(Date.now()), { onStatus: setFramesLive });
     const t = setInterval(() => {
       const cutoff = Date.now() - 3000;
       while (arrivals.length > 0 && arrivals[0] < cutoff) arrivals.shift();
@@ -92,7 +95,9 @@ export function Dashboard() {
         <Metric
           label="Frames/sec"
           value={<span className="tnum">{fps}</span>}
-          sub={<span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-success live-dot" /> live</span>}
+          sub={framesLive
+            ? <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-success live-dot" /> live</span>
+            : <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-warning" /> reconnecting</span>}
           to="/monitor"
         />
       </div>

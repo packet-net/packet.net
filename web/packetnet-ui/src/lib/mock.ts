@@ -150,6 +150,9 @@ export const PIDS: Record<string, string> = { "0xF0": "No layer 3", "0xCF": "NET
 export function randItem<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
 
 let _frameSeq = 9000;
+// The mock stands in for one node process, so every frame it makes carries one boot id (the
+// live node stamps a real one per process - see MonitorEvent.bootId).
+const _bootId = "mock-boot";
 export function makeFrame(now: Date): MonitorEvent {
   const type = randItem(FRAME_TYPES);
   const dir: "in" | "out" = Math.random() > 0.5 ? "in" : "out";
@@ -199,7 +202,7 @@ export function makeFrame(now: Date): MonitorEvent {
     pid: pidKey, pidName: pidKey ? PIDS[pidKey] : null,
     ns, nr, pf, command: dir === "out", length, summary, raw,
     path: Math.random() > 0.7 ? [randItem(["GB7BNS", "GB7CIP", "MB7UWS"])] : [],
-    rssiDbm, snrDb, noiseFloorDbm,
+    rssiDbm, snrDb, noiseFloorDbm, bootId: _bootId,
   };
 }
 export function seedFrames(n: number): MonitorEvent[] {

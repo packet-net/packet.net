@@ -132,10 +132,17 @@ export function Console() {
         // Stream the console's output (banner/prompt/responses) into the terminal. The
         // node JSON-encodes each chunk so embedded CR/LF survive — subscribeConsoleOutput
         // hands us the decoded text; write it verbatim (xterm renders the CR-LF).
+        //
+        // The node replays the console's whole backlog on EVERY subscription, including the
+        // silent reconnect the stream helper performs after a token rotation or a node
+        // restart. It arrives as a `backlog` event, and onReset fires just before it is
+        // written: reset the terminal so the replay REPLACES the history instead of
+        // appending a second copy of it (review item C045, #689).
         unsubscribe = subscribeConsoleOutput(
           id,
           (chunk) => term.write(chunk),
           () => { if (!disposed) setPhase("closed"); },
+          { onReset: () => term.reset() },
         );
 
         // Forward every keystroke to the node verbatim (its LineAssembler splits on the CR
