@@ -35,9 +35,12 @@ jobs:
       # the per-runner flock below coordinates across runner processes via /tmp —
       # the exclusive heavy workflows (interop / fuzz / deb-smoke) hold an
       # EXCLUSIVE flock that starves the real-time AX.25 pumps in
-      # Packet.Node.Tests if they overlap. 17 matrix legs × max-parallel 4
+      # Packet.Node.Tests if they overlap. 19 matrix legs × max-parallel 4
       # naturally saturates all four runners, so throughput is unchanged.
       max-parallel: 4
+      # KEEP IN SYNC WITH tests/: the `test-matrix-guard` job below fails the build
+      # if a tests/*/*.csproj is missing here (or listed here but gone from disk).
+      # Packet.Interop.Tests is deliberately absent; see that job's exclusion list.
       matrix:
         project:
           - Packet.Agw.Tests
@@ -46,7 +49,6 @@ jobs:
           - Packet.Ax25.Tests
           - Packet.Axudp.Tests
           - Packet.Core.Tests
-          - Packet.Interop.Tests
           - Packet.Kiss.NinoTnc.Tests
           - Packet.Kiss.Serial.Tests
           - Packet.Kiss.Tests
@@ -56,6 +58,9 @@ jobs:
           - Packet.Radio.Tait.Tests
           - Packet.Radio.Tests
           - Packet.Rhp2.Tests
+          - Packet.Rig.Flrig.Tests
+          - Packet.Rig.Hamlib.Tests
+          - Packet.Rig.Tests
           - Packet.Tune.Core.Tests
     steps:
       - uses: actions/checkout@v6
@@ -90,6 +95,36 @@ jobs:
           # triage; long retention just accumulates against the ~500 MB Actions
           # artifact quota (the same one that bit publish-node — see its header).
           retention-days: 1
+
+  guards:
+    name: guards
+    runs-on: [self-hosted, Linux, X64]
+    # Cheap repo-invariant checks that keep review findings from recurring. Seconds, no
+    # build, no flock needed, but a real gate: each one here is a bug that already
+    # happened once (packet.net#699).
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: ci.yml test matrix covers every test project
+        # C017: three Packet.Rig* test projects (103 tests) were never run by any workflow
+        # because the matrix is hand-listed and nobody updated it.
+        run: scripts/check-ci-test-matrix.sh
+
+      - name: packaging update-helper URL guards
+        # C075: the github self-update helper's "GitHub only" gate globbed the whole URL, so
+        # https://evil.example/x.github.com/p.deb passed it, and that helper runs as root.
+        run: scripts/github-update-url-test.sh
+
+      - name: no node_modules is git-tracked
+        # C102: web/ax25/node_modules (3058 files, 19 MB) stayed tracked long after the
+        # directory it belonged to was extracted to packet-net/ax25-ts.
+        run: |
+          if git ls-files | grep -qE '(^|/)node_modules/'; then
+            echo "::error::node_modules is git-tracked; see .gitignore"
+            git ls-files | grep -E '(^|/)node_modules/' | head -20
+            exit 1
+          fi
+          echo "ok: nothing under node_modules/ is tracked"
 
   web-ui:
     name: web-ui
