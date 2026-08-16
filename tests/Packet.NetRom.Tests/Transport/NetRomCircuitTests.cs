@@ -1,6 +1,8 @@
 using System.Text;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Core;
 using Packet.NetRom.Transport;
+using Packet.NetRom.Wire;
 
 namespace Packet.NetRom.Tests.Transport;
 
@@ -50,6 +52,69 @@ public sealed class NetRomCircuitTests
 
         accepted.Should().ContainSingle();
         accepted[0].Circuit.Window.Should().Be(2, "B accepts at most its own ceiling, below A's proposed 8");
+    }
+
+    [Fact]
+    public void The_originator_clamps_its_send_window_to_the_accepted_window()
+    {
+        // The other half of the negotiation: B's Connect Acknowledge reports the window
+        // it ACCEPTED (info[0]) and the originator must come down to it: sending more
+        // frames than the far end agreed to hold overruns its receive queue. LinBPQ does
+        // exactly this on receipt: L4->L4WINDOW = L3MSG->L4DATA[0] (L4Code.c:2287).
+        var h = new CircuitPairHarness(
+            options: new NetRomCircuitOptions { WindowSize = 8 },
+            optionsB: new NetRomCircuitOptions { WindowSize = 2 });
+        h.AutoAcceptOnB();
+
+        var a = h.OpenFromA();
+        a.Circuit.Connect(User);
+        h.Pump();
+
+        a.Connected.Should().BeTrue();
+        a.Circuit.Window.Should().Be(2, "the acknowledgement's window octet caps our proposed 8");
+    }
+
+    [Fact]
+    public void A_vanilla_connect_acknowledge_is_21_bytes_carrying_the_accepted_window()
+    {
+        // The accepted-window octet is base NET/ROM, not a compression extension:
+        // LinBPQ's SendConACK writes L4DATA[0] = L4WINDOW and sends
+        // LENGTH = MSGHDDRLEN + 22, a 21-byte vanilla ack (L4Code.c:1768,1824), and
+        // Linux emits nr->window with NR_CONNACK_LEN 1. Without it the peer reads buffer
+        // residue for our window.
+        NetRomPacket? ack = null;
+        var manager = new CircuitManager(
+            new Callsign("GB7BBB", 0),
+            new NetRomCircuitOptions { WindowSize = 4 },
+            new FakeTimeProvider());
+        manager.SendPacket = p =>
+        {
+            if (p.Transport.Opcode == NetRomOpcode.ConnectAcknowledge)
+            {
+                ack = p;
+            }
+        };
+        manager.IncomingCircuit += (_, e) => CircuitManager.AcceptIncoming(e);
+
+        manager.OnPacket(new NetRomPacket
+        {
+            Network = new NetRomNetworkHeader { Origin = new Callsign("GB7AAA", 0), Destination = new Callsign("GB7BBB", 0), TimeToLive = 25 },
+            Transport = new NetRomTransportHeader
+            {
+                CircuitIndex = 7,
+                CircuitId = 3,
+                TxSequence = 0,
+                RxSequence = 0,
+                Opcode = NetRomOpcode.ConnectRequest,
+                Flags = NetRomTransportFlags.None,
+            },
+            Payload = ConnectRequestInfo.Build(proposedWindow: 7, User, new Callsign("GB7AAA", 0)),
+        });
+
+        ack.Should().NotBeNull();
+        ack!.Payload.Length.Should().Be(ConnectAckInfo.VanillaLength, "the vanilla ack carries the window octet and nothing else");
+        ack.Payload.Span[0].Should().Be((byte)4, "the accepted window: our ceiling, below the proposed 7");
+        ack.ToBytes().Length.Should().Be(21, "20-byte NET/ROM header + the accepted-window octet");
     }
 
     [Fact]
