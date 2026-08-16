@@ -40,7 +40,8 @@ public sealed record UpdateLaunchResult(UpdateLaunchOutcome Outcome, string? Det
 /// <param name="Channel">The resolved install channel the oneshot dispatches on
 /// (<c>apt</c> or <c>github</c>).</param>
 /// <param name="GithubRequest">For the github channel: the validated download request the helper
-/// applies (<c>targetVersion</c> / <c>arch</c> / <c>debUrl</c> / <c>sha256</c>). Null otherwise.</param>
+/// applies (<c>targetVersion</c> / <c>arch</c> / <c>debUrl</c> / <c>sha256</c> / <c>healthUrl</c>).
+/// Null otherwise.</param>
 public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? GithubRequest = null);
 
 /// <summary>
@@ -51,8 +52,18 @@ public sealed record SystemUpdateRequest(string Channel, GithubUpdateRequest? Gi
 /// <param name="TargetVersion">The release version being applied (e.g. <c>0.9.0</c>).</param>
 /// <param name="Arch">The Debian arch of the <c>.deb</c> to fetch (<c>amd64</c>/<c>arm64</c>/<c>armhf</c>).</param>
 /// <param name="DebUrl">The HTTPS GitHub-release download URL of <c>packetnet_&lt;ver&gt;_&lt;arch&gt;.deb</c>.</param>
-/// <param name="Sha256">The expected SHA-256 (lowercase hex) the helper verifies the download against.</param>
-public sealed record GithubUpdateRequest(string TargetVersion, string Arch, string DebUrl, string Sha256);
+/// <param name="Sha256">The expected SHA-256 (lowercase hex) the helper cross-checks against the
+/// release's own <c>SHA256SUMS</c> (which it fetches itself) before verifying the download.</param>
+/// <param name="HealthUrl">The node's effective loopback health URL (<c>http://127.0.0.1:&lt;port&gt;/healthz</c>
+/// or the <c>[::1]</c> form), so the helper's post-install health gate follows this node's configured
+/// bind/port instead of a hard-coded <c>:8080</c>. The helper re-validates it and falls back to
+/// <c>systemctl is-active</c>, so a null here only costs the sharper gate.</param>
+public sealed record GithubUpdateRequest(
+    string TargetVersion,
+    string Arch,
+    string DebUrl,
+    string Sha256,
+    string? HealthUrl = null);
 
 /// <summary>
 /// Triggers the privileged, out-of-process update job - never does the privileged work
