@@ -46,7 +46,8 @@ public sealed class SystemctlUpdateLauncherTests : IDisposable
         var launcher = new SystemctlUpdateLauncher();
         var req = new GithubUpdateRequest("0.9.0", "amd64",
             "https://github.com/packet-net/packet.net/releases/download/node-v0.9.0/packetnet_0.9.0_amd64.deb",
-            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "http://127.0.0.1:9090/healthz");
 
         await launcher.StartUpdateAsync(new SystemUpdateRequest("github", req));
 
@@ -59,6 +60,27 @@ public sealed class SystemctlUpdateLauncherTests : IDisposable
         root.GetProperty("arch").GetString().Should().Be("amd64");
         root.GetProperty("debUrl").GetString().Should().Contain("packetnet_0.9.0_amd64.deb");
         root.GetProperty("sha256").GetString().Should().HaveLength(64);
+        // The health URL rides the spool so the root helper gates on the port this node actually
+        // serves, instead of the hard-coded :8080 that rolled back good installs (#699 / C101).
+        root.GetProperty("healthUrl").GetString().Should().Be("http://127.0.0.1:9090/healthz");
+    }
+
+    [Fact]
+    public async Task Writes_a_null_health_url_rather_than_omitting_the_field()
+    {
+        // An older request (or one the node could not resolve a bind for) must still produce the
+        // key: the helper reads the spool with sed, and a missing key is what its fallback to
+        // http://127.0.0.1:8080/healthz + `systemctl is-active` exists for.
+        var launcher = new SystemctlUpdateLauncher();
+        var req = new GithubUpdateRequest("0.9.0", "amd64",
+            "https://github.com/packet-net/packet.net/releases/download/node-v0.9.0/packetnet_0.9.0_amd64.deb",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+
+        await launcher.StartUpdateAsync(new SystemUpdateRequest("github", req));
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(SystemctlUpdateLauncher.GithubRequestFile));
+        doc.RootElement.TryGetProperty("healthUrl", out var health).Should().BeTrue();
+        health.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

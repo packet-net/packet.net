@@ -14,6 +14,7 @@ on:
     paths:
       - 'scripts/build-deb.sh'
       - 'scripts/deb-install-smoke.sh'
+      - 'scripts/github-update-url-test.sh'
       - 'packaging/**'
       - '.github/workflows/deb-smoke.yml'
   workflow_dispatch:
@@ -29,6 +30,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+      - name: Update-helper URL guards
+        # Cheap and packaging-shaped, so it runs here too (and in ci.yml's `guards` job):
+        # the root-run github self-update helper must reject the C075 bypass URLs and accept
+        # the real release-asset forms. Pure validation - no network, no docker.
+        run: scripts/github-update-url-test.sh
       - name: Build amd64 .deb (throwaway version)
         # Exclusive box-wide flock around the CPU-heavy self-contained/crossgen
         # publish, so it doesn't oversubscribe a concurrent `ci` (§7.2.2).

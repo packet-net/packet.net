@@ -42,8 +42,12 @@ node-data/
 *.db-wal
 
 # Frontend
-web/packetnet-ui/node_modules/
-web/packetnet-ui/dist/
+# Generic, deliberately: web/ax25/node_modules stayed tracked for months (3058 files, 19 MB)
+# after the library moved to packet-net/ax25-ts, because the only rules were per-directory
+# (packet.net#699 / C102). ci.yml's `guards` job fails if anything under node_modules/ is
+# tracked again.
+node_modules/
+web/*/dist/
 web/packetnet-ui/.vite/
 web/packetnet-ui/.turbo/
 web/packetnet-ui/pnpm-lock.yaml.bak
@@ -71,10 +75,6 @@ appsettings.*.user.json
 # OS
 Thumbs.db
 ehthumbs.db
-
-# TypeScript build artefacts for the ax25 web library
-web/ax25/dist/
-
 
 # Generated: the web UI build copied in for the host to serve
 src/Packet.Node/wwwroot/

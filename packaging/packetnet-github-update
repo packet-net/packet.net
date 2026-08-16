@@ -10,23 +10,101 @@
 # `dpkg -i` of the retained prior .deb on failure. dpkg stays the sole owner of the files
 # - no in-place self-mutation. docs/node-self-update-design.md section Channel = github.
 #
-# The request is staged by the node at $REQ (targetVersion/arch/debUrl/sha256). We NEVER
-# trust it blindly: the debUrl host must be a GitHub release host, the arch must match this
-# box, the version must be NEWER than installed, and the sha256 is re-verified against the
-# actual download before any dpkg -i. Integrity is checksum-only for now (the sha256 the
-# node read from the release SHA256SUMS over HTTPS); cosign verification slots in at VERIFY.
+# The request is staged by the node at $REQ (targetVersion/arch/debUrl/sha256/healthUrl).
+# We NEVER trust it blindly. The spool is writable by the unprivileged `packetnet` user, so
+# treat every field as attacker-controlled: the debUrl HOST must be a GitHub release host
+# (parsed, not glob-matched - see github_url_ok), the arch must match this box, the version
+# must be NEWER than installed, the health URL must be a loopback /healthz, and the expected
+# sha256 is fetched by THIS script from the release's own SHA256SUMS (the spool's copy is only
+# cross-checked) before being re-verified against the actual download. Integrity is
+# checksum-only for now; cosign verification slots in at VERIFY.
 set -eu
 
 PKG=packetnet
 TAG=packetnet-update
 REQ="${PDN_GITHUB_REQUEST:-/run/packetnet/github-update.json}"
-HEALTH_URL="${PDN_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+# Where the release (and therefore the authoritative SHA256SUMS) lives. Not taken from the
+# spool - deriving it here is what stops a forged request pointing us at someone else's
+# release. Overridable only via the environment, which is root-owned (the systemd unit).
+REPO="${PDN_GITHUB_REPO:-packet-net/packet.net}"
+TAG_PREFIX="${PDN_GITHUB_TAG_PREFIX:-node-v}"
+# Fallback health gate when the request carries no usable healthUrl (older node, or a bind
+# the node could not loopback-normalise). The node normally spools its effective URL.
+HEALTH_URL_DEFAULT="http://127.0.0.1:8080/healthz"
 # The dir we retain the prior .deb in for rollback. apt's archive cache is the natural home;
 # overridable for testing.
 CACHE_DIR="${PDN_DEB_CACHE:-/var/cache/packetnet}"
 
 log() { logger -t "$TAG" -- "$*" 2>/dev/null || true; echo "$TAG: $*"; }
 fail() { log "$*"; exit 1; }
+
+# --- URL guards --------------------------------------------------------------------------
+# github_url_ok <url> - true iff <url> is https and its HOST is a GitHub release host.
+#
+# Parse the host; do NOT glob the whole URL. `case` globs match `/`, so a pattern like
+# `https://*.github.com/*` is satisfied by the PATH alone and
+# `https://evil.example/x.github.com/p.deb` passes (packet.net#699 / C075). Here: require the
+# literal https:// prefix, take everything up to the first `/`, `?` or `#` as the authority,
+# refuse any authority that is not a bare hostname (an `@` userinfo or a `:` port would let
+# the allow-listed text sit in a part curl does not resolve), then match the host itself.
+github_url_ok() {
+    _url="$1"
+    case "$_url" in
+        https://*) _rest="${_url#https://}" ;;
+        *) return 1 ;;
+    esac
+    _host="${_rest%%/*}"
+    _host="${_host%%\?*}"
+    _host="${_host%%#*}"
+    # Bare hostname only: letters, digits, dot, hyphen. Rejects userinfo (@), a port (:), and
+    # anything else that would make the resolved host differ from the text we match below.
+    case "$_host" in
+        '' | .* | -* | *[!A-Za-z0-9.-]*) return 1 ;;
+    esac
+    # Hostnames are case-insensitive; fold so GitHub.com is not a false reject.
+    _host="$(printf '%s' "$_host" | tr '[:upper:]' '[:lower:]')"
+    case "$_host" in
+        github.com | *.github.com | *.githubusercontent.com) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# health_url_ok <url> - true iff <url> is exactly a loopback http /healthz on a valid port.
+# The node spools its effective health URL (C101); this keeps a forged spool from turning the
+# root health gate into a fetch of an arbitrary URL (or an always-200 endpoint that would
+# defeat the rollback gate).
+health_url_ok() {
+    _h="$1"
+    case "$_h" in
+        # The prefixes are quoted in the strip too: unquoted, `[::1]` is a glob bracket
+        # expression and the strip silently no-ops.
+        "http://127.0.0.1:"*"/healthz") _port="${_h#"http://127.0.0.1:"}" ;;
+        "http://[::1]:"*"/healthz") _port="${_h#"http://[::1]:"}" ;;
+        *) return 1 ;;
+    esac
+    _port="${_port%/healthz}"
+    case "$_port" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ "$_port" -ge 1 ] && [ "$_port" -le 65535 ]
+}
+
+# Validate-only modes. Side-effect free (no network, no dpkg, no root needed) so the guards
+# above are testable on their own - scripts/github-update-url-test.sh drives these.
+case "${1:-}" in
+    --check-url)
+        [ $# -eq 2 ] || { echo "usage: $0 --check-url <url>" >&2; exit 2; }
+        if github_url_ok "$2"; then echo "accept: $2"; exit 0; fi
+        echo "reject: $2" >&2; exit 1
+        ;;
+    --check-health-url)
+        [ $# -eq 2 ] || { echo "usage: $0 --check-health-url <url>" >&2; exit 2; }
+        if health_url_ok "$2"; then echo "accept: $2"; exit 0; fi
+        echo "reject: $2" >&2; exit 1
+        ;;
+    '') : ;;
+    *) echo "usage: $0 [--check-url <url> | --check-health-url <url>]" >&2; exit 2 ;;
+esac
 
 # --- parse the request file (no jq dependency; the node writes compact JSON) -------------
 [ -r "$REQ" ] || fail "no github update request at $REQ"
@@ -36,8 +114,23 @@ target="$(jval targetVersion)"
 arch="$(jval arch)"
 deburl="$(jval debUrl)"
 want_sha="$(jval sha256)"
+healthurl="$(jval healthUrl)"
 [ -n "$target" ] && [ -n "$arch" ] && [ -n "$deburl" ] && [ -n "$want_sha" ] \
     || fail "malformed request (need targetVersion/arch/debUrl/sha256)"
+
+# The health gate URL: the node's effective loopback /healthz (it knows its own bind/port -
+# the old hard-coded :8080 failed the gate after a perfectly good install on any other port).
+# An absent or non-loopback value falls back to the default and, ultimately, to the
+# `systemctl is-active` gate the apt helper uses.
+HEALTH_URL="${PDN_HEALTH_URL:-}"
+if [ -z "$HEALTH_URL" ]; then
+    if [ -n "$healthurl" ] && health_url_ok "$healthurl"; then
+        HEALTH_URL="$healthurl"
+    else
+        [ -z "$healthurl" ] || log "ignoring non-loopback healthUrl in the request: $healthurl"
+        HEALTH_URL="$HEALTH_URL_DEFAULT"
+    fi
+fi
 
 # --- VALIDATE the request - never trust the caller ---------------------------------------
 # 1. arch must be this machine's Debian arch.
@@ -45,22 +138,26 @@ sysarch="$(dpkg --print-architecture 2>/dev/null || true)"
 [ -n "$sysarch" ] || fail "dpkg --print-architecture failed (not a dpkg host?)"
 [ "$arch" = "$sysarch" ] || fail "arch mismatch (request=$arch, system=$sysarch) - refusing"
 
-# 2. the download URL must be HTTPS and a GitHub host (release assets live on
-#    github.com / objects.githubusercontent.com / *.github.com). Reject anything else.
-case "$deburl" in
-    https://github.com/*) : ;;
-    https://*.githubusercontent.com/*) : ;;
-    https://*.github.com/*) : ;;
-    *) fail "refusing non-GitHub or non-HTTPS download URL: $deburl" ;;
-esac
+# 2. the download URL must be HTTPS and its HOST a GitHub release host (release assets live
+#    on github.com / objects.githubusercontent.com / release-assets.githubusercontent.com).
+github_url_ok "$deburl" || fail "refusing non-GitHub or non-HTTPS download URL: $deburl"
 
-# 3. the sha256 must look like a sha256 (64 hex).
+# 3. the sha256 must look like a sha256 (64 hex). Folded to lowercase so the comparison
+#    against the release's SHA256SUMS (always lowercase) is a plain string equality.
 case "$want_sha" in
     *[!0-9a-fA-F]*) fail "sha256 is not hex: $want_sha" ;;
 esac
 [ "${#want_sha}" -eq 64 ] || fail "sha256 wrong length: $want_sha"
+want_sha="$(printf '%s' "$want_sha" | tr 'A-F' 'a-f')"
 
-# 4. the target must be NEWER than what's installed (no downgrade / re-install).
+# 4. the target version must be a plain Debian version token. It is interpolated into the
+#    SHA256SUMS URL below, so anything with a `/` (or a `..` traversal) could aim that fetch
+#    at a different repo's release and make the forged sha256 authoritative. Charset-gate it.
+case "$target" in
+    '' | -* | *..* | *[!0-9A-Za-z.+~-]*) fail "refusing suspicious targetVersion: $target" ;;
+esac
+
+# 5. the target must be NEWER than what's installed (no downgrade / re-install).
 prev="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
 [ -n "$prev" ] || fail "$PKG is not dpkg-installed - github channel can't apply"
 # dpkg --compare-versions is the authority on Debian version ordering.
@@ -93,14 +190,37 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 new_deb="$work/${PKG}_${target}_${arch}.deb"
 
+# The AUTHORITATIVE checksum is the release's own SHA256SUMS, fetched here from a URL this
+# script derives from $REPO + the target version - never from the (attacker-writable) spool.
+# Without this the sha256 in the request vouches for nothing: whoever forged the request also
+# chose the hash. With it, the download must hash to what the real release published, so a
+# .deb hosted on some other GitHub account cannot install even though its host is allow-listed.
+# No fallback to the request's sha256 on failure: a release we cannot get SHA256SUMS for is a
+# release we will not install (a genuine update always has one - publish-node.yml attaches it).
+deb_name="${PKG}_${target}_${arch}.deb"
+sums_url="https://github.com/$REPO/releases/download/${TAG_PREFIX}${target}/SHA256SUMS"
+github_url_ok "$sums_url" || fail "derived SHA256SUMS URL is not a GitHub URL: $sums_url"
+log "fetching the release checksums: $sums_url"
+curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 120 "$sums_url" \
+    -o "$work/SHA256SUMS" || fail "could not fetch $sums_url - refusing to install"
+rel_sha="$(awk -v f="$deb_name" '$2 == f || $2 == "*" f { print $1; exit }' "$work/SHA256SUMS")"
+case "$rel_sha" in
+    *[!0-9a-fA-F]*) fail "SHA256SUMS entry for $deb_name is not hex - refusing" ;;
+esac
+[ "${#rel_sha}" -eq 64 ] || fail "no SHA256SUMS entry for $deb_name - refusing to install"
+rel_sha="$(printf '%s' "$rel_sha" | tr 'A-F' 'a-f')"
+if [ "$rel_sha" != "$want_sha" ]; then
+    fail "request sha256 ($want_sha) disagrees with the release SHA256SUMS ($rel_sha) - refusing"
+fi
+
 log "downloading $deburl"
-curl -fsSL --proto '=https' --tlsv1.2 --max-time 600 "$deburl" -o "$new_deb" \
+curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 600 "$deburl" -o "$new_deb" \
     || fail "download failed"
 
 # --- VERIFY (checksum-only; cosign verify-blob slots in here later) ---
 calc="$(sha256sum "$new_deb" | cut -d' ' -f1)"
-[ "$calc" = "$want_sha" ] || fail "sha256 MISMATCH (want $want_sha, got $calc) - refusing to install"
-log "sha256 verified; installing"
+[ "$calc" = "$rel_sha" ] || fail "sha256 MISMATCH (want $rel_sha, got $calc) - refusing to install"
+log "sha256 verified against the release SHA256SUMS; installing"
 
 # --- install THROUGH dpkg (the package postinst try-restarts the service) ---------------
 if ! dpkg -i "$new_deb"; then
@@ -125,6 +245,7 @@ new="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"
 log "installed ($prev -> $new); health-gating the node"
 
 # --- health-gate on /healthz; roll back on failure --------------------------------------
+log "health gate: $HEALTH_URL"
 healthy=0
 i=0
 while [ "$i" -lt 30 ]; do
@@ -132,6 +253,15 @@ while [ "$i" -lt 30 ]; do
     i=$((i + 1))
     sleep 2
 done
+
+# Second opinion before we roll a good install back. The probe can miss for reasons that are
+# not the node being broken - a bind we could not normalise to loopback (a single LAN address),
+# a firewall, no curl - so fall back to the weaker gate the apt helper uses: the unit being
+# active. Only if BOTH say no do we treat the new version as bad.
+if [ "$healthy" -ne 1 ] && systemctl is-active --quiet "$PKG.service" 2>/dev/null; then
+    log "no answer from $HEALTH_URL, but $PKG.service is active - accepting the install"
+    healthy=1
+fi
 
 if [ "$healthy" -ne 1 ]; then
     if [ -f "$prev_deb" ]; then

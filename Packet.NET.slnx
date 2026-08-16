@@ -12,7 +12,6 @@
     <Project Path="src/Packet.Mcp/Packet.Mcp.csproj" />
     <Project Path="src/Packet.NetRom/Packet.NetRom.csproj" />
     <Project Path="src/Packet.Node.Core/Packet.Node.Core.csproj" />
-    <Project Path="src/Packet.Node.Extensions/Packet.Node.Extensions.csproj" />
     <Project Path="src/Packet.Node/Packet.Node.csproj" />
     <Project Path="src/Packet.Radio.Tait/Packet.Radio.Tait.csproj" />
     <Project Path="src/Packet.Radio/Packet.Radio.csproj" />

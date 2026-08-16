@@ -40,9 +40,13 @@ fail() { echo "SMOKE_FAIL: $1"; exit 1; }
 cd /work
 
 echo "== 1. apt install (resolves Depends from the repo) =="
+# NOTHING is installed here first. The base images ship no curl, and step 3 probes /healthz
+# with it, so the smoke only gets that far if the .deb DECLARED curl - which it must, because
+# the github self-update helper (/usr/lib/packetnet/packetnet-github-update) shells out to it
+# with no wget fallback. Pre-installing curl as a "test rig" step is what hid the missing
+# Depends (packet.net#699 / C100).
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq                                  || fail "apt-get update"
-apt-get install -y -qq curl >/dev/null 2>&1         || fail "install curl (test rig)"
 apt-get install -y "./$DEB"                          || fail "apt install ./$DEB (non-zero)"
 
 echo "== 2. dpkg state + payload =="
@@ -61,7 +65,12 @@ grep -q "^CapabilityBoundingSet=CAP_NET_BIND_SERVICE\b"   /lib/systemd/system/pa
 # (and its upgrade prompt) is gone by design.
 [ -f /usr/share/packetnet/packetnet.yaml.example ] || fail "config template missing (config-in-DB bootstrap, #473)"
 id packetnet >/dev/null 2>&1                        || fail "postinst did not create the packetnet user"
-echo "  ok: installed; binary+unit+config-template present; user created; systemctl correctly skipped"
+# The declared Depends must cover what the shipped maintainer/helper scripts actually run.
+# curl is the one with teeth: packetnet-github-update downloads the release .deb and the
+# release SHA256SUMS with it, so a node whose Depends omits it cannot self-update at all
+# (packet.net#699 / C100). Nothing installed it here - only the .deb could have.
+command -v curl >/dev/null 2>&1                     || fail "curl absent: the declared Depends do not cover the github self-update helper"
+echo "  ok: installed; binary+unit+config-template present; user created; curl pulled in by Depends; systemctl correctly skipped"
 
 echo "== 3. binary boots + serves /healthz on a bare base =="
 export DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/pnx HOME=/root

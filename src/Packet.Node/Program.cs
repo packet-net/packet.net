@@ -483,6 +483,9 @@ builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.ISystemVersionService>
 builder.Services.AddSingleton<Packet.Node.Core.SelfUpdate.GithubUpdateRequestBuilder>(sp =>
     new Packet.Node.Core.SelfUpdate.GithubUpdateRequestBuilder(
         sp.GetRequiredService<Packet.Node.Core.SelfUpdate.IGitHubReleaseClient>(),
+        // The config provider is what lets the request carry this node's effective health URL,
+        // so the privileged helper gates the install on the port we actually serve.
+        sp.GetRequiredService<IConfigProvider>(),
         sp.GetRequiredService<ILoggerFactory>()));
 // The app-package catalog (docs/app-packages.md): discovers pdn-app.yaml packages under the
 // package roots and merges the owner's apps: overrides. A pure, cheap, side-effect-free scan
