@@ -110,7 +110,10 @@ public sealed class NetRomRoutingTable
     /// maintenance — never transmits.
     /// </summary>
     /// <param name="originator">The AX.25 source callsign of the UI frame (the broadcasting neighbour).</param>
-    /// <param name="myCall">Our own node callsign — an advertised best-neighbour matching this is loop-guarded to quality 0.</param>
+    /// <param name="myCall">Our own node callsign. An advertised entry whose <em>destination</em>
+    /// is us is skipped outright (we never learn, and so never re-advertise, a route to ourselves:
+    /// LinBPQ <c>L3Code.c:456</c>, and the same guard <see cref="IngestRif"/> applies), and an
+    /// advertised best-neighbour matching this is loop-guarded to quality 0.</param>
     /// <param name="portId">The node-host port id the broadcast was heard on.</param>
     /// <param name="broadcast">The parsed broadcast content.</param>
     /// <param name="neighbourQuality">
@@ -178,6 +181,18 @@ public sealed class NetRomRoutingTable
             // this neighbour at the combined quality, loop-guarded against us.
             foreach (var entry in broadcast.Entries)
             {
+                if (entry.Destination.Equals(myCall))
+                {
+                    // Trivial-loop guard: never learn (and so never re-advertise) a
+                    // route to OURSELVES. The best-neighbour guard below only catches
+                    // the direct case (a neighbour advertising us back with our own
+                    // call as its next hop); an advertisement of us via a THIRD node
+                    // slips past it and puts our own callsign into our own NODES
+                    // broadcast. LinBPQ skips destination == MYCALL outright
+                    // (L3Code.c:456), and IngestRif has the same guard.
+                    continue;
+                }
+
                 byte quality = entry.BestNeighbour.Equals(myCall)
                     ? (byte)NetRomQuality.Min                    // trivial-loop guard
                     : NetRomQuality.Combine(entry.BestQuality, originatorPathQuality);
