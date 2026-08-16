@@ -100,10 +100,16 @@ public static class XidNegotiator
         // response's k); take the min of the two so neither side overruns the
         // other's buffer. If neither side advertised k, leave the context's
         // current value (which Set_Version_2_x seeded to 4/32 by modulo).
+        // Bounded by the sequence space as well as by the peer: at most Modulus-1
+        // I-frames can be outstanding (§4.2.4 / §6.4.4.1 - the window is measured
+        // as (V(S) - V(A)) mod Modulus, which never reaches Modulus), so a peer
+        // advertising k >= Modulus (e.g. 32 on a mod-8 link) is taken at the bound,
+        // not verbatim. Ax25SessionContext.EffectiveWindow enforces the same bound
+        // live; this keeps the stored, operator-visible k honest too.
         int? agreedK = MinPresent(offered.WindowSizeRx, response.WindowSizeRx);
         if (agreedK is { } k)
         {
-            context.K = k;
+            context.K = Math.Min(k, context.Modulus - 1);
         }
 
         // ─── I-Field Length Receive N1 (PI=6): notification / min ────────────

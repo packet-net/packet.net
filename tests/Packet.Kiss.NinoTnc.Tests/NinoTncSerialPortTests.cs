@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
 
@@ -265,6 +266,96 @@ public class NinoTncSerialPortTests
         await WaitUntil(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(
             KissEncoder.Encode(0, KissCommand.Data, NinoTncCqBeep.BuildArmingFrame(source).ToBytes()));
+    }
+
+    /// <summary>
+    /// Every instant the driver reports comes from its injected
+    /// <see cref="TimeProvider"/>. The ACKMODE queued/completed pair used to read
+    /// <c>DateTimeOffset.UtcNow</c> despite the injected clock, so it could not be
+    /// driven from a test and was inconsistent with the driver's other timestamps
+    /// (packet-net/packet.net#696; plan §2.7 requires TimeProvider for current time).
+    /// </summary>
+    [Fact]
+    public async Task SendFrameWithAckAsync_times_the_completion_on_the_injected_clock()
+    {
+        var clock = new FakeTimeProvider();
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem, clock);
+
+        var queuedAt = clock.GetUtcNow();
+        var send = nino.SendFrameWithAckAsync(new byte[] { 0xAA, 0xBB }, Timeout, sequenceTag: 0x1234);
+        await WaitUntil(() => io.Writes.Length >= 1);
+
+        // Only virtual time passes between the submit and the TX-completion echo.
+        clock.Advance(TimeSpan.FromSeconds(7));
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.AckMode, [0x12, 0x34]));
+
+        var completion = await send;
+        completion.Queued.Should().Be(queuedAt);
+        completion.Completed.Should().Be(queuedAt + TimeSpan.FromSeconds(7));
+        completion.Elapsed.Should().Be(TimeSpan.FromSeconds(7));
+    }
+
+    /// <summary>
+    /// Same for the typed inbound event's arrival stamp: the classifier is a pure
+    /// static with no clock, so the dispatch loop stamps it from the driver's
+    /// TimeProvider instead of letting the property default read the wall clock.
+    /// </summary>
+    [Fact]
+    public async Task An_inbound_events_arrival_stamp_comes_from_the_injected_clock()
+    {
+        var clock = new FakeTimeProvider();
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem, clock);
+
+        var typed = new TaskCompletionSource<KissInboundEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        nino.InboundEvent += (_, e) => typed.TrySetResult(e);
+
+        clock.Advance(TimeSpan.FromMinutes(3));
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data, [0x01, 0x02, 0x03]));
+
+        var evt = await typed.Task.WaitAsync(Timeout);
+        evt.ReceivedAt.Should().Be(clock.GetUtcNow(),
+            "the read pump stamps arrival from the driver's clock, not the ambient wall clock");
+    }
+
+    /// <summary>
+    /// A throwing subscriber must not kill the dispatch loop. The event invocations
+    /// sit inside the loop's try, whose generic catch completes the inbound channel
+    /// and faults every pending ACKMODE waiter - so one buggy consumer took the port
+    /// and its in-flight sends down with it (packet-net/packet.net#696).
+    /// </summary>
+    [Fact]
+    public async Task A_throwing_subscriber_leaves_the_dispatch_loop_alive()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+        await using var nino = NinoTncSerialPort.OpenForTest(modem);
+
+        var seen = new List<byte[]>();
+        var gate = new object();
+        nino.FrameReceived += (_, _) => throw new InvalidOperationException("buggy raw consumer");
+        nino.InboundEvent += (_, _) => throw new InvalidOperationException("buggy typed consumer");
+        nino.InboundEvent += (_, e) =>
+        {
+            lock (gate)
+            {
+                seen.Add(e.Raw.Payload.ToArray());
+            }
+        };
+
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data, [0x01]));
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data, [0x02]));
+
+        await WaitUntil(() => { lock (gate) { return seen.Count == 2; } });
+
+        // ...and ACKMODE still works afterwards: the loop was never torn down.
+        var send = nino.SendFrameWithAckAsync(new byte[] { 0xAA }, Timeout, sequenceTag: 0x0999);
+        await WaitUntil(() => io.Writes.Length >= 1);
+        io.FeedBytes(KissEncoder.Encode(0, KissCommand.AckMode, [0x09, 0x99]));
+        await send;
     }
 
     private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)

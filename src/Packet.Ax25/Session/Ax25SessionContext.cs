@@ -140,14 +140,35 @@ public sealed class Ax25SessionContext
     /// that cap, two in-flight frames could share an N(S) and SREJ recovery can
     /// silently deliver a stale stored frame (packet-net/packet.net#393). Gated by
     /// <see cref="Ax25SessionQuirks.Ax25Spec13ClampSrejWindowToHalfModulus"/>
-    /// (default on); with the quirk off it is just <see cref="K"/>, reproducing the
-    /// unbounded figure-literal behaviour. Go-back-N links (SREJ off) are never
-    /// capped — they tolerate <c>k</c> up to <c>Modulus−1</c>.
+    /// (default on); with the quirk off the SREJ half-modulus cap does not apply.
+    /// Go-back-N links (SREJ off) are not half-capped: they tolerate <c>k</c> up to
+    /// <c>Modulus-1</c>.
+    /// <para>
+    /// On top of that, and unconditionally (this is arithmetic, not a figure
+    /// interpretation, so no quirk gates it), the window is bounded by the sequence
+    /// space itself: at most <c>Modulus-1</c> I-frames may be outstanding. §4.2.4
+    /// sizes the send state variable V(S) modulo <see cref="Modulus"/> and §6.4.4.1
+    /// stops transmission once <c>V(S) = V(A) + k</c>; both transmit gates measure the
+    /// outstanding count as <c>(V(S) - V(A)) mod Modulus</c>, which can never reach
+    /// <see cref="Modulus"/>, so a <c>k</c> at or above the modulus means "never full".
+    /// The retransmit store is keyed by the bare N(S), so the (k = Modulus)th frame
+    /// overwrites the oldest unacknowledged one and a REJ then retransmits the wrong
+    /// payload under the right sequence number - silent data corruption
+    /// (packet-net/packet.net#696). An operator-configured <c>WindowSize</c> of 8..127
+    /// on a mod-8 port is the reachable vector, so the bound lives here, at the single
+    /// point every gate reads.
+    /// </para>
     /// </summary>
-    public int EffectiveWindow =>
-        Quirks.Ax25Spec13ClampSrejWindowToHalfModulus && SrejEnabled
-            ? Math.Min(K, Modulus / 2)
-            : K;
+    public int EffectiveWindow
+    {
+        get
+        {
+            int window = Quirks.Ax25Spec13ClampSrejWindowToHalfModulus && SrejEnabled
+                ? Math.Min(K, Modulus / 2)
+                : K;
+            return Math.Min(window, Modulus - 1);
+        }
+    }
 
     /// <summary>True for mod-128 (SABME / extended); false for mod-8 (SABM).</summary>
     public bool IsExtended { get; set; }

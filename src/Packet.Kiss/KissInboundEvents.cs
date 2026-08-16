@@ -18,9 +18,17 @@ namespace Packet.Kiss;
 public abstract record KissInboundEvent(KissFrame Raw)
 {
     /// <summary>
-    /// When the event was constructed by the read pump (UTC). Useful for
-    /// adaptive estimators and latency measurements.
+    /// When the frame arrived (UTC). Useful for adaptive estimators and latency
+    /// measurements.
     /// </summary>
+    /// <remarks>
+    /// A driver that owns a clock stamps this from its injected
+    /// <see cref="TimeProvider"/> as it dispatches (see
+    /// <c>NinoTncSerialPort.DispatchFrame</c>), so a test clock drives it like
+    /// every other instant. The initialiser here is only the fallback for an event
+    /// built outside a driver - e.g. classifying a captured frame by hand - where
+    /// there is no injected clock to read.
+    /// </remarks>
     public DateTimeOffset ReceivedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 

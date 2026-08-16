@@ -187,6 +187,36 @@ public class KissSerialModemPumpTests
         io.DisposeCount.Should().Be(1, "the serial handle is disposed exactly once");
     }
 
+    /// <summary>
+    /// A throwing <c>FrameReceived</c> subscriber must not make the port deaf. The
+    /// invocation sits inside the read pump's try, whose generic catch completes the
+    /// inbound channel with the exception, so one buggy consumer used to end the
+    /// stream permanently (packet-net/packet.net#696).
+    /// </summary>
+    [Fact]
+    public async Task A_throwing_FrameReceived_subscriber_leaves_the_pump_alive()
+    {
+        var io = new FakeSerialPortIo();
+        await using var modem = KissSerialModem.OpenForTest(io);
+
+        var second = new TaskCompletionSource<KissFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
+        modem.FrameReceived += (_, _) => throw new InvalidOperationException("buggy consumer");
+        modem.FrameReceived += (_, f) => second.TrySetResult(f);
+
+        io.FeedBytes(DataFrame(0xAB));
+        // The other subscriber still runs.
+        (await second.Task.WaitAsync(Timeout)).Payload.Should().Equal(0xAB);
+
+        // The stream is still live: a later frame arrives normally.
+        io.FeedBytes(DataFrame(0xCD));
+        // The channel buffered both frames, and the pump survived the fault.
+        var frame = await FirstFrameAsync(modem);
+        frame.Payload.Should().Equal(0xAB);
+
+        var next = await FirstFrameAsync(modem);
+        next.Payload.Should().Equal(0xCD);
+    }
+
     private static async Task<KissFrame> FirstFrameAsync(KissSerialModem modem)
     {
         using var cts = new CancellationTokenSource(Timeout);
