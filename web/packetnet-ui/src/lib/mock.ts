@@ -7,7 +7,7 @@
 import type {
   NodeConfig, NetRomRoutingSnapshot, NodeStatus, PortStatus, SessionInfo,
   LinkStats, PeerCapability, MonitorEvent, FrameType, ApplyImpact, NinoMode, RadioProfile,
-  ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
+  ChannelMode, LinkDifficulty, ParamHelp, NinoTest,
   User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
   TailscaleStatus, SystemInfo, NetRomRouting,
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
@@ -21,11 +21,11 @@ export const NODE_CONFIG: NodeConfig = {
   schemaVersion: 3,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
-    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
+    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: null, ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
     { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 40, persistence: 63, slotTime: 10, txTail: 8 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
     { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
-    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 25, persistence: 32, slotTime: 10, txTail: 10 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
+    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "slow-afsk1200", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 25, persistence: 32, slotTime: 10, txTail: 10 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
   management: {
@@ -727,11 +727,23 @@ export function fmtBytes(n: number): string {
 export function hex(n: number, w?: number): string { return n.toString(16).toUpperCase().padStart(w || 2, "0"); }
 
 // operator-facing config model ------------------------------
-export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp", "axudp-multipoint": "axudp-mp", "soundmodem": "soundmodem" };
+// One label per server transport kind (TransportKinds - all eight). nino-tnc-tcp and
+// tait-transparent are authored elsewhere (head-end adopt / the config file) but reach the
+// Ports screen like any other port, so they need a badge and a descriptor of their own.
+export const KIND_LABEL: Record<string, string> = {
+  "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "nino-tnc-tcp": "ninotnc-tcp",
+  "axudp": "axudp", "axudp-multipoint": "axudp-mp", "tait-transparent": "tait-transparent", "soundmodem": "soundmodem",
+};
 // soundmodem carries native AX.25 frames over a shared CSMA channel — the KISS TXDELAY/PERSIST/
 // SLOTTIME knobs drive the modem's own p-persistent channel access (server: ICsmaChannelParams),
 // so it uses the KISS param block like the other RF transports (true), unlike the UDP tunnels.
-export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false, "axudp-multipoint": false, "soundmodem": true };
+// nino-tnc-tcp is a NinoTNC like any other (NinoTncSerialPort implements ICsmaChannelParams over
+// the head-end pipe); tait-transparent is NOT - TaitTransparentTransport exposes no CSMA params,
+// so the modem-keying knobs would be silently inert there.
+export const KIND_USES_KISS: Record<string, boolean> = {
+  "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "nino-tnc-tcp": true,
+  "axudp": false, "axudp-multipoint": false, "tait-transparent": false, "soundmodem": true,
+};
 
 // The in-process soundmodem's accepted modem modes — mirrors the server's SoundModemValidator.
 // KnownModes (ModemCatalog.KnownModes minus bpsk1200-multi). The bpsk*/qpsk* modes expose the
@@ -760,6 +772,10 @@ export const NINO_MODES: NinoMode[] = [
   { mode: 8, label: "38400 baud · GFSK · IL2P" },
 ];
 
+// The radio-preset catalogue is a UI-ONLY starting-point table: picking one writes its
+// baseline into the port's ax25:/kiss: blocks client-side. These ids are NOT server channel
+// profiles (server: ChannelProfiles.Names) and never travel to the API as `profile` - sending
+// one 422s the port (#690 C002). The server profile is carried verbatim on PortDraft.profile.
 export const RADIO_PROFILES: RadioProfile[] = [
   { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 1, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 } },
   { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 5, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
@@ -775,12 +791,10 @@ export const LINK_DIFFICULTY: LinkDifficulty[] = [
   { id: "moderate", name: "Moderate", help: "Occasional loss. Balanced retries and timers." },
   { id: "hard", name: "Marginal", help: "Weak or noisy path. More retries, longer timers, smaller window to ride out fades." },
 ];
-export const PORT_SETUP: Record<string, PortSetup> = {
-  "vhf-1": { radio: "uhf-data-9600", channel: "shared", difficulty: "moderate", custom: false },
-  "uhf-2": { radio: "vhf-fm-1200", channel: "shared", difficulty: "moderate", custom: true },
-  "link-dn": { radio: null, channel: "dedicated", difficulty: "easy", custom: false },
-  "hf-300": { radio: "hf-robust-300", channel: "shared", difficulty: "hard", custom: false },
-};
+// (PORT_SETUP removed with #690 C002: it was a demo table of preset choices keyed by port id,
+// and the editor indexed it by LIVE port id - so a real port whose id happened to match a
+// fixture id was opened with the fixture's preset and saved with the fixture's profile. The
+// editor now derives the summary + the preset state from the port's own fields.)
 export const PARAM_HELP: Record<string, ParamHelp> = {
   t1Ms: { label: "Ack timeout", unit: "ms", help: "How long pdn waits for the other station to acknowledge a frame before sending it again. Too short wastes airtime on needless resends; too long is slow to recover from a lost frame. (Protocol name: T1.)" },
   t2Ms: { label: "Reply delay", unit: "ms", help: "A short pause before replying, so several received frames can be acknowledged together rather than one at a time. (Protocol name: T2.)" },
@@ -796,14 +810,18 @@ export const PARAM_HELP: Record<string, ParamHelp> = {
   slotTime: { label: "Slot time", unit: "ms", help: "The back-off slot length used when sharing the channel — how long pdn waits between 'is the channel free?' checks." },
   persistence: { label: "Persistence", unit: "%", help: "When the channel is free, the chance pdn transmits in each slot. Lower is more polite on a busy shared channel; 100% is fine on a dedicated link. (Stored as a 0–255 byte.)" },
 };
-export const AX25_DEFAULTS: Record<string, number> = { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, n1: 256 };
+// (AX25_DEFAULTS / KISS_DEFAULTS removed with #690 C005. They were UI invention - they did not
+// match the ENGINE's null-block defaults (T1 6000 / T2 3000 / T3 30000 / N2 10 / txTail 0 /
+// modem-own CSMA) - and the port editor spread them over a port whose ax25:/kiss: were null, so
+// ANY save silently persisted and applied a different set of timings than the port had been
+// running. The editor now keeps null blocks null and shows the engine defaults as placeholders:
+// see ENGINE_AX25_DEFAULTS / ENGINE_KISS_DEFAULTS in screens/ports.tsx.)
+//
 // KISS TXDELAY/SLOTTIME/TXTAIL are single BYTES in units of 10 ms on the wire (that is the
-// KISS protocol, and the server types them `byte?`) — so these are 300 ms, 100 ms, 50 ms.
-// They are STORED in wire units here and everywhere in the editor draft, and converted for
-// display by the ms<->units pair below, exactly as persistence is stored as a 0-255 byte and
-// shown as a percentage. Writing milliseconds into these fields is what made every panel-created
-// port POST `txDelay: 300` into a byte and get an opaque 400 back.
-export const KISS_DEFAULTS: Record<string, number> = { txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 };
+// KISS protocol, and the server types them `byte?`) - 30 means 300 ms. They are STORED in wire
+// units in the editor draft and converted for display by the ms<->units pair below, exactly as
+// persistence is stored as a 0-255 byte and shown as a percentage. Writing milliseconds into
+// these fields is what made every panel-created port POST `txDelay: 300` into a byte.
 
 export function persistPct(v: number): number { return Math.round((v / 255) * 100); }
 export function pctToPersist(p: number): number { return Math.round((p / 100) * 255); }

@@ -14,32 +14,56 @@ import { cn } from "@/lib/utils";
 import { PingButton } from "@/components/ping";
 import { DoctorButton } from "@/components/doctor";
 import type {
-  PortConfig, PortStatus, TransportConfig, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
-  PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult,
+  PortConfig, PortStatus, TransportConfig, TransportKind, AuthorableTransportKind, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
+  PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
 } from "@/lib/types";
 import {
   NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
-  LINK_DIFFICULTY, PORT_SETUP, PARAM_HELP, AX25_DEFAULTS, KISS_DEFAULTS,
+  LINK_DIFFICULTY, PARAM_HELP,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs, NINO_TEST,
 } from "@/lib/mock";
 import { portHealth } from "@/lib/health";
-import { api, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
+import { api, apiMode, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 
-// Transport kinds that can carry a radio-control attachment — the serial-modem kinds, where a physical
-// radio sits beside the modem this node could cable to (server: PortRadioConfig validation). A
-// kiss-tcp / AXUDP port has no such radio, so the editor hides the section AND drops any stale radio
-// block if the transport is switched away from these.
-const RADIO_CAPABLE_KINDS = new Set<TransportConfig["kind"]>(["serial-kiss", "nino-tnc"]);
+// Transport kinds that can carry a LOCALLY-CABLED radio-control attachment - the serial-modem
+// kinds, where a physical radio sits beside the modem this node could cable to (server:
+// PortConfigValidator's pairing rules). A head-end-bound radio pairs with nino-tnc-tcp instead,
+// and a `rig`-kind radio (the port's CAT daemon re-presented) pairs with anything - see
+// radioPairsWith below, which mirrors all three rules.
+const RADIO_CAPABLE_KINDS = new Set<TransportKind>(["serial-kiss", "nino-tnc"]);
+
+// The transport kinds this editor AUTHORS. The other two server kinds (nino-tnc-tcp,
+// tait-transparent) are created elsewhere - head-end adopt writes a nino-tnc-tcp port bound to a
+// head-end modem + radio, tait-transparent is config-file authored - and are shown read-only here:
+// the editor has no picker for a head-end device inventory, and re-typing such a port from this
+// screen would strand its radio. They still round-trip byte-for-byte through a save.
+const READ_ONLY_KINDS = new Set<TransportKind>(["nino-tnc-tcp", "tait-transparent"]);
+
+// What the ENGINE does with an unset (null) block - shown as placeholders so an operator can see
+// what a blank field means without the editor having to write a value to say it. AX.25:
+// Ax25SessionParameters' own null semantics (T1V 6 s, T2 3 s, T3 30 s, N2 10, k 4, N1 256), fed by
+// PortSupervisor.MapAx25Params. KISS: TXDELAY/PERSIST/SLOTTIME are opt-in - unset leaves the modem
+// on its own firmware default - while TXTAIL has an implicit 0 sent on every apply (#465), see
+// PortSupervisor.ApplyKissParamsToModemAsync.
+export const ENGINE_AX25_DEFAULTS: Record<string, number> = { t1Ms: 6000, t2Ms: 3000, t3Ms: 30000, n2: 10, windowSize: 4, n1: 256 };
+export const ENGINE_KISS_DEFAULTS: Record<string, string> = { txDelay: "modem default", slotTime: "modem default", persistence: "modem default", txTail: "0" };
 
 // ---- the editor draft: a PortConfig plus the operator-facing setup choices ----
 export interface PortDraft {
   id: string;
   enabled: boolean;
   transport: TransportConfig;
-  ax25: Ax25PortParams;
-  kiss: KissParams;
+  // The SERVER channel profile (ChannelProfiles.Names), carried verbatim from the loaded port.
+  // Never a RADIO_PROFILES id - that catalogue is a UI-only baseline picker (#690 C002).
+  profile: string | null;
+  // The AX.25 / KISS blocks EXACTLY as the server holds them: null stays null (the engine's own
+  // defaults apply, and the editor shows them as placeholders), a partial block stays partial.
+  // Editing one field of a null block creates a block with just that field - the server fills
+  // the rest, so a save never materialises timings the operator did not ask for (#690 C005).
+  ax25: Ax25PortParams | null;
+  kiss: KissParams | null;
   setup: PortSetup;
   // The per-port beacon override is edited on the Config → Beacons tab, not here;
   // carried through untouched so a transport/timing edit never clobbers it.
@@ -64,6 +88,11 @@ export interface PortDraft {
   // The id the draft was opened against (the reconcile key for an edit) — set on edit,
   // unset on add. Lets a rename in the editor edit the original entry rather than 404.
   _origId?: string;
+  // The PortConfig this draft was opened against, verbatim. The save body is built by SPREADING
+  // it and overriding only the blocks the editor owns, so every server field the editor does not
+  // model (mqttInstance today; whatever lands next) survives a Forms save (#690 C003/C004).
+  // Unset on add - a brand-new port has no server state to preserve.
+  _orig?: PortConfig;
 }
 
 // ---- transport descriptor line (e.g. "/dev/ttyACM0 · 9600 baud · GFSK · IL2P") ----
@@ -83,46 +112,128 @@ function transportDesc(t: TransportConfig): string {
       return `local:${t.localPort} · ${t.peers.length} peer${t.peers.length === 1 ? "" : "s"}`;
     case "soundmodem":
       return `${t.device} · ${t.mode}${t.frequency ? ` @ ${t.frequency} Hz` : ""}`;
+    case "nino-tnc-tcp":
+      return `${t.headEndId}/${t.deviceId} · mode ${t.mode}`;
+    case "tait-transparent": {
+      const bind = t.headEndId && t.deviceId ? `${t.headEndId}/${t.deviceId}`
+        : t.serial ? `s/n ${t.serial}`
+        : t.device ?? "(unbound)";
+      return `${bind}${t.baud ? ` @ ${t.baud}` : ""}`;
+    }
   }
 }
 
-// ---- setup summary line (profile · channel · difficulty, or "Custom parameters") ----
-function setupSummary(id: string): string {
-  const s = PORT_SETUP[id];
-  if (!s) return "Custom";
-  if (s.custom) return "Custom parameters";
-  const r = RADIO_PROFILES.find((x) => x.id === s.radio);
-  const ch = CHANNEL_MODES.find((x) => x.id === s.channel);
-  const d = LINK_DIFFICULTY.find((x) => x.id === s.difficulty);
-  return [r?.name, ch?.name, d?.name].filter(Boolean).join(" · ");
+// True when the port carries any explicitly-set AX.25 / KISS parameter - i.e. it is tuned away
+// from the engine defaults. Drives the card's setup line and whether the editor opens with the
+// advanced section expanded. An empty ({}) block counts as untuned: it says nothing.
+function hasTunedParams(p: { ax25?: Ax25PortParams | null; kiss?: KissParams | null }): boolean {
+  return Object.keys(p.ax25 ?? {}).length > 0 || Object.keys(p.kiss ?? {}).length > 0;
 }
 
-// Reconstruct the wire PortConfig from an editor draft. Field-by-field (the server's structured PUT
-// binds the exact shape), so EVERY round-tripping block must be listed here or it is silently dropped
-// on a Forms save — the bug that dropped the radio: block. Exported so the config round-trip test can
-// prove the reconstruction preserves each block (radio, beacon, compat, per-port NET/ROM knobs).
+// ---- setup summary line, derived from the PORT'S OWN fields ----
+// (It used to index a demo table by live port id, so a real port could be described - and then
+// saved - as some fixture's setup: #690 C002.) Server channel profile + whether the operator has
+// tuned anything on top of it.
+function setupSummary(p: PortConfig): string {
+  const profile = p.profile ? `profile ${p.profile}` : "no channel profile";
+  return `${profile} · ${hasTunedParams(p) ? "tuned parameters" : "engine defaults"}`;
+}
+
+// Mirror of the server's radio<->transport pairing rules (PortConfigValidator): a `rig`-kind radio
+// re-presents the port's CAT daemon and pairs with ANY transport; a head-end-bound radio pairs with
+// the co-located nino-tnc-tcp modem; a locally-cabled radio (port/serial) needs a serial-modem
+// transport. Used when the operator RE-TYPES the transport - the only moment a radio may be
+// dropped, and only because the new transport cannot carry it.
+export function radioPairsWith(radio: RadioConfig | null | undefined, kind: TransportKind): boolean {
+  if (!radio) return true;
+  if (radio.kind === "rig") return true;
+  if (radio.headEndId?.trim() && radio.deviceId?.trim()) return kind === "nino-tnc-tcp";
+  return RADIO_CAPABLE_KINDS.has(kind);
+}
+
+// Reconstruct the wire PortConfig from an editor draft: SPREAD the port as the server sent it, then
+// override only what this editor owns. The spread is the point - a PUT replaces the entry wholesale,
+// so any server field the editor doesn't model (mqttInstance, and whatever the server grows next)
+// would otherwise be nulled on every Forms save (#690 C003). Nothing is dropped by kind here either:
+// a radio/kiss block is only ever removed by the operator removing it (or by re-typing the transport
+// to one that cannot carry the radio - handled in the editor's setKind, #690 C004).
 export function portDraftToConfig(d: PortDraft): PortConfig {
+  const base = (d._orig ?? {}) as Partial<PortConfig>;
   return {
+    ...base,
     id: d.id,
     enabled: d.enabled,
     transport: d.transport,
-    profile: d.setup.custom ? null : d.setup.radio,
+    // The server channel profile, verbatim. A new port has none (null = spec defaults).
+    profile: d.profile,
+    // Exactly what was loaded plus what the operator edited - null stays null.
     ax25: d.ax25,
-    kiss: KIND_USES_KISS[d.transport.kind] ? d.kiss : null,
+    kiss: d.kiss,
     // Preserve any existing per-port beacon override (edited on the Config → Beacons tab);
     // a brand-new port inherits the system default.
     beacon: d.beacon ?? null,
     compat: d.compat,
-    // The radio-control attachment (RSSI/health). Only the serial-modem kinds can carry one, so a
-    // transport switched to kiss-tcp / AXUDP drops it; otherwise it round-trips intact.
-    radio: RADIO_CAPABLE_KINDS.has(d.transport.kind) ? (d.radio ?? null) : null,
-    // The rig-control (CAT) attachment. Valid on every transport kind (the rig never touches the
-    // packet path — server: PortRigConfig), so it round-trips regardless of the transport.
+    // The radio-control attachment (RSSI/health) and the rig-control (CAT) attachment, both
+    // round-tripped intact - including the head-end binding the adopt flow writes, which no
+    // control on this screen authors.
+    radio: d.radio ?? null,
     rig: d.rig ?? null,
     netRomQuality: d.netRomQuality,
     netRomMinQuality: d.netRomMinQuality,
     nodesPaclen: d.nodesPaclen,
   };
+}
+
+// What the node actually did, from the ReconcileResult the write returned - the save used to
+// discard it, so the operator never learned whether the port restarted (#690 C038). Grouped
+// exactly as the server groups it: node reset > port restart > live.
+export function reconcileNotice(portId: string, r: ReconcileResult): { tone: "danger" | "warning" | "success"; text: string } {
+  const summarise = (changes: { summary: string }[]) => changes.map((c) => c.summary).join("; ");
+  if (r.nodeReset.length > 0) {
+    return { tone: "danger", text: `Saved ${portId}. The node reset: ${summarise(r.nodeReset)}` };
+  }
+  if (r.portRestart.length > 0) {
+    return { tone: "warning", text: `Saved ${portId}. Port restarted: ${summarise(r.portRestart)}` };
+  }
+  return {
+    tone: "success",
+    text: r.live.length > 0
+      ? `Saved ${portId}. Applied live, no session dropped: ${summarise(r.live)}`
+      : `Saved ${portId}. Nothing about the running node changed.`,
+  };
+}
+
+// The node's dry-run answer, worded for the confirm dialog. Same grouping as reconcileNotice,
+// future tense.
+export function previewDisruption(r: ReconcileResult, portId: string, sessionText: string): Disruption {
+  const summarise = (changes: { summary: string }[]) => changes.map((c) => c.summary).join("; ");
+  if (r.nodeReset.length > 0) {
+    return { tone: "danger", text: `The node will reset - every session on every port drops: ${summarise(r.nodeReset)}` };
+  }
+  if (r.portRestart.length > 0) {
+    return { tone: "warning", text: `Port ${portId} will restart.${sessionText} (${summarise(r.portRestart)})` };
+  }
+  if (r.live.length > 0) {
+    return { tone: "success", text: `Applied live to ${portId}, no sessions drop: ${summarise(r.live)}` };
+  }
+  return { tone: "success", text: `No change to the running node.` };
+}
+
+// Match a server validation path onto an editor field. The server reports per-port errors as
+// `Ports[3].Kiss.TxDelay` (FluentValidation's RuleForEach chain), so a field claims an error when
+// the path ends with its own key, case-insensitively.
+function problemsFor(problem: ValidationProblem | null, key: string): string[] {
+  if (!problem) return [];
+  const want = key.toLowerCase();
+  return problem.errors
+    .filter((e) => (e.path ?? "").toLowerCase().replace(/^ports\[\d+]\./, "").replace(/^port\./, "") === want)
+    .map((e) => e.message);
+}
+
+// A short, field-relative label for an error path, so the banner reads
+// "Profile: 'vhf-fm-1200' is not a known channel profile" rather than repeating the array index.
+function problemLabel(path: string): string {
+  return (path ?? "").replace(/^ports\[\d+]\./i, "").replace(/^port\./i, "") || "config";
 }
 
 export function Ports() {
@@ -134,10 +245,16 @@ export function Ports() {
   const { data: links } = useQuery(api.linkStats, []);
 
   const [edit, setEdit] = useState<PortDraft | null>(null);
+  // Bumped on every open. It keys the PortEditor, so each open REMOUNTS it against the draft the
+  // parent just built - the old "re-seed when id+_new changes" test never fired for two adds in a
+  // row (both keyed "true") or two edits of the same port, leaving the previous scribbles in the
+  // form (#690 C036).
+  const [editSeq, setEditSeq] = useState(0);
   const [testDismissed, setTestDismissed] = useState(false);
-  // A banner-style notice for a rejected/failed mutation or a deferred action
-  // (mirrors the config screen's `problem` surface — there is no toast primitive).
-  const [notice, setNotice] = useState<{ tone: "danger" | "warning"; text: string } | null>(null);
+  // A banner-style notice for a rejected/failed mutation, a deferred action, or the reconcile
+  // the node reported after an apply (mirrors the config screen's `problem` surface - there is
+  // no toast primitive).
+  const [notice, setNotice] = useState<{ tone: "danger" | "warning" | "success"; text: string } | null>(null);
 
   // Refetch /config + /ports after a successful mutation so the screen reflects the
   // applied state (no local mock list — the server is the source of truth in live mode).
@@ -158,13 +275,21 @@ export function Ports() {
     }
   };
 
+  // Open the editor (add or edit) - always through here, so the seq bump that re-seeds the form
+  // can never be forgotten at a call site.
+  const open = (d: PortDraft) => { setEdit(d); setEditSeq((n) => n + 1); };
+
+  // A stock new port: no channel profile, no AX.25/KISS block. Both null means "engine defaults",
+  // which is exactly what an untuned port should be - and what the server validator accepts
+  // (a RADIO_PROFILES id in `profile` was a guaranteed 422, #690 C002).
   const newPort = (): PortDraft => ({
     id: "",
     enabled: true,
     transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
-    ax25: { ...AX25_DEFAULTS },
-    kiss: { ...KISS_DEFAULTS },
-    setup: { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: false },
+    profile: null,
+    ax25: null,
+    kiss: null,
+    setup: { radio: null, channel: "shared", difficulty: "moderate", custom: false },
     beacon: null,
     compat: null,
     radio: null,
@@ -175,14 +300,18 @@ export function Ports() {
     _new: true,
   });
 
+  // Seed the draft from the port EXACTLY as the server holds it: no default spread over a null
+  // ax25:/kiss: block, no fixture lookup for the profile. `setup` is the UI-only baseline picker,
+  // so it starts unpicked; `custom` only decides whether the advanced section opens.
   const openEdit = (p: PortConfig) => {
-    setEdit({
+    open({
       id: p.id,
       enabled: p.enabled,
       transport: p.transport,
-      ax25: { ...AX25_DEFAULTS, ...(p.ax25 ?? {}) },
-      kiss: { ...KISS_DEFAULTS, ...(p.kiss ?? {}) },
-      setup: PORT_SETUP[p.id] ?? { radio: RADIO_PROFILES[0].id, channel: "shared", difficulty: "moderate", custom: true },
+      profile: p.profile ?? null,
+      ax25: p.ax25 ?? null,
+      kiss: p.kiss ?? null,
+      setup: { radio: null, channel: "shared", difficulty: "moderate", custom: hasTunedParams(p) },
       beacon: p.beacon,
       compat: p.compat ?? null,
       radio: p.radio ?? null,
@@ -191,22 +320,43 @@ export function Ports() {
       netRomMinQuality: p.netRomMinQuality ?? null,
       nodesPaclen: p.nodesPaclen ?? null,
       _origId: p.id,
+      _orig: p,
     });
   };
 
-  // Add (POST) or edit (PUT) the port through the config-write reconcile path, then
-  // reload so the applied state shows. The _new flag decides add vs edit; an edit keys
-  // on the *original* id (renaming the id edits the original entry).
-  const saveDraft = async (d: PortDraft) => {
+  // Add (POST) or edit (PUT) the port through the config-write reconcile path, then reload so the
+  // applied state shows. The _new flag decides add vs edit; an edit keys on the *original* id
+  // (renaming the id edits the original entry). A 422 is handed BACK to the editor so it can be
+  // rendered inside the drawer against the offending field (#690 C040) - the old code banner'd it
+  // on the page behind the still-open modal overlay, where it could not even be dismissed.
+  const saveDraft = async (d: PortDraft): Promise<ValidationProblem | null> => {
     const saved = portDraftToConfig(d);
     try {
-      if (d._new) await api.addPort(saved);
-      else await api.editPort(d._origId ?? saved.id, saved);
+      const result = d._new
+        ? await api.addPort(saved)
+        : await api.editPort(d._origId ?? saved.id, saved);
       setEdit(null);
       reloadAll();
+      setNotice(reconcileNotice(saved.id, result));
+      return null;
     } catch (e) {
-      showError(e, d._new ? "Could not add the port." : "Could not save the port.");
+      // Every save failure goes back INSIDE the drawer: a page banner would be dimmed behind the
+      // editor's own modal overlay, which is what made the 422 unreachable (#690 C040). A
+      // transport-level failure has no field path, so it renders as a bare message.
+      if (e instanceof ConfigRejected) return e.problem;
+      const fallback = d._new ? "Could not add the port." : "Could not save the port.";
+      return { errors: [{ path: "", message: String((e as Error)?.message ?? e) || fallback }] };
     }
+  };
+
+  // Ask the node what a save WOULD do, without applying it (POST/PUT ?dryRun=true - the same
+  // validate + ReconcilePreview the apply runs). The editor's confirmation summary is rendered
+  // from the answer, so it can't drift from ReconcilePlanner's actual restart classes (#690 C038).
+  const previewDraft = async (d: PortDraft): Promise<ReconcileResult> => {
+    const candidate = portDraftToConfig(d);
+    return d._new
+      ? api.addPort(candidate, { dryRun: true })
+      : api.editPort(d._origId ?? candidate.id, candidate, { dryRun: true });
   };
 
   const removePort = async (id: string) => {
@@ -231,7 +381,7 @@ export function Ports() {
         actions={
           <div className="flex items-center gap-2">
             <PingButton station={NODE_CONFIG.identity.callsign} label="AX.25 ping" variant="outline" size="sm" />
-            <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Adding a port requires the operate scope"} onClick={() => setEdit(newPort())}><Icon name="plus" size={14} /> Add port</Button>
+            <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Adding a port requires the operate scope"} onClick={() => open(newPort())}><Icon name="plus" size={14} /> Add port</Button>
           </div>
         }
       />
@@ -239,9 +389,11 @@ export function Ports() {
       {notice && (
         <div className={cn(
           "mb-4 flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
-          notice.tone === "danger" ? "border-danger/30 bg-danger/5 text-danger" : "border-warning/30 bg-warning/5 text-warning",
+          notice.tone === "danger" ? "border-danger/30 bg-danger/5 text-danger"
+            : notice.tone === "warning" ? "border-warning/30 bg-warning/5 text-warning"
+            : "border-success/30 bg-success/5 text-success",
         )}>
-          <Icon name="alert" size={15} className="mt-0.5 shrink-0" />
+          <Icon name={notice.tone === "success" ? "check" : "alert"} size={15} className="mt-0.5 shrink-0" />
           <span className="flex-1">{notice.text}</span>
           <button onClick={() => setNotice(null)} className="shrink-0 opacity-70 hover:opacity-100"><Icon name="x" size={14} /></button>
         </div>
@@ -300,7 +452,7 @@ export function Ports() {
 
               <div className="mt-3 rounded-md bg-muted/40 px-2.5 py-2 text-xs">
                 <span className="text-muted-foreground">Setup </span>
-                <span className="font-medium text-foreground">{setupSummary(p.id)}</span>
+                <span className="font-medium text-foreground">{setupSummary(p)}</span>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-xs">
@@ -354,7 +506,15 @@ export function Ports() {
         })}
       </div>
 
-      <PortEditor draft={edit} onClose={() => setEdit(null)} onSave={saveDraft} statusById={statusById} />
+      {/* keyed on the open sequence: every open remounts the editor against the fresh draft */}
+      <PortEditor
+        key={editSeq}
+        draft={edit}
+        onClose={() => setEdit(null)}
+        onSave={saveDraft}
+        onPreview={previewDraft}
+        statusById={statusById}
+      />
     </Page>
   );
 }
@@ -416,7 +576,8 @@ const COMPAT_HELP =
   "spec-strict regardless. Applied live: parsing changes on the next received frame; existing sessions are untouched.";
 
 // ---- transport defaults per kind (used when switching the Type select) ----
-function transportDefaults(kind: TransportConfig["kind"]): TransportConfig {
+// Only the kinds the editor authors - the head-end / config-file kinds are never switched TO.
+function transportDefaults(kind: AuthorableTransportKind): TransportConfig {
   switch (kind) {
     case "kiss-tcp": return { kind, host: "127.0.0.1", port: 8001 };
     case "serial-kiss": return { kind, device: "/dev/ttyUSB0", baud: 38400 };
@@ -427,130 +588,239 @@ function transportDefaults(kind: TransportConfig["kind"]): TransportConfig {
   }
 }
 
-interface Disruption { tone: "success" | "warning" | "danger"; text: string }
+export interface Disruption { tone: "success" | "warning" | "danger"; text: string }
 
 // ---- transport + parameter editor: profile-first, with a custom escape hatch ----
-function PortEditor({ draft, onClose, onSave, statusById }: {
+// The parent keys this component on its open sequence, so every open remounts it and the local
+// model is seeded from the fresh draft (#690 C036).
+function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
   draft: PortDraft | null;
   onClose: () => void;
-  onSave: (d: PortDraft) => void;
+  onSave: (d: PortDraft) => Promise<ValidationProblem | null>;
+  onPreview: (d: PortDraft) => Promise<ReconcileResult>;
   statusById: Record<string, PortStatus>;
 }) {
   const [model, setModel] = useState<PortDraft | null>(draft);
-  const [srcKey, setSrcKey] = useState<string | undefined>(draft ? draft.id + String(draft._new) : undefined);
   const [confirm, setConfirm] = useState(false);
-
-  // re-seed the local draft when the parent opens a different port
-  if (draft) {
-    const key = draft.id + String(draft._new);
-    if (key !== srcKey) { setSrcKey(key); setModel(draft); }
-  }
+  // The node's answer to "what would this save do?" (a dry-run write), and the save's own 422.
+  const [preview, setPreview] = useState<ReconcileResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [problem, setProblem] = useState<ValidationProblem | null>(null);
+  const [saving, setSaving] = useState(false);
 
   if (!draft || !model) return null;
 
   const t = model.transport;
   const setup = model.setup;
   const usesKiss = KIND_USES_KISS[t.kind];
+  const kindLocked = READ_ONLY_KINDS.has(t.kind);
+
+  // Edit the draft, clearing any stale validation complaint - the operator is answering it.
+  const edit = (f: (d: PortDraft) => PortDraft) => {
+    setProblem(null);
+    setModel((d) => (d ? f(d) : d));
+  };
 
   const setT = (patch: Partial<TransportConfig>) =>
-    setModel((d) => (d ? { ...d, transport: { ...d.transport, ...patch } as TransportConfig } : d));
-  const setKind = (kind: TransportConfig["kind"]) =>
-    setModel((d) => (d ? { ...d, transport: transportDefaults(kind) } : d));
+    edit((d) => ({ ...d, transport: { ...d.transport, ...patch } as TransportConfig }));
+  // Re-typing the transport is the ONE place a radio block may be dropped, and only when the new
+  // kind cannot carry it (server: PortConfigValidator's pairing rules) - a save never drops one
+  // behind the operator's back (#690 C004). The KISS block always rides through: an inert block on
+  // a UDP tunnel is harmless, and silently deleting the operator's keying is not.
+  const setKind = (kind: AuthorableTransportKind) =>
+    edit((d) => ({
+      ...d,
+      transport: transportDefaults(kind),
+      radio: radioPairsWith(d.radio, kind) ? d.radio : null,
+    }));
   // Multipoint-AXUDP peer table edits. Each operation rebuilds the peers list on the
   // (already narrowed) axudp-multipoint transport; a no-op on any other kind.
   const setPeer = (i: number, patch: Partial<AxudpPeer>) =>
-    setModel((d) => {
-      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+    edit((d) => {
+      if (d.transport.kind !== "axudp-multipoint") return d;
       const peers = d.transport.peers.map((p, j) => (j === i ? { ...p, ...patch } : p));
       return { ...d, transport: { ...d.transport, peers } };
     });
   const addPeer = () =>
-    setModel((d) => {
-      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+    edit((d) => {
+      if (d.transport.kind !== "axudp-multipoint") return d;
       const peers = [...d.transport.peers, { call: "", host: "", port: 10093, broadcast: false }];
       return { ...d, transport: { ...d.transport, peers } };
     });
   const removePeer = (i: number) =>
-    setModel((d) => {
-      if (!d || d.transport.kind !== "axudp-multipoint") return d;
+    edit((d) => {
+      if (d.transport.kind !== "axudp-multipoint") return d;
       const peers = d.transport.peers.filter((_, j) => j !== i);
       return { ...d, transport: { ...d.transport, peers } };
     });
   const setSetup = (patch: Partial<PortSetup>) =>
     setModel((d) => (d ? { ...d, setup: { ...d.setup, ...patch } } : d));
+  // Editing ONE field of a null block sends a block with just that field - the server fills the
+  // rest from the engine defaults. The editor never materialises a whole block the operator did
+  // not ask for (#690 C005).
   const setAx = (k: keyof Ax25PortParams, v: number) =>
-    setModel((d) => (d ? { ...d, ax25: { ...d.ax25, [k]: v } } : d));
+    edit((d) => ({ ...d, ax25: { ...(d.ax25 ?? {}), [k]: v } }));
   const setKiss = (k: keyof KissParams, v: number) =>
-    setModel((d) => (d ? { ...d, kiss: { ...d.kiss, [k]: v } } : d));
+    edit((d) => ({ ...d, kiss: { ...(d.kiss ?? {}), [k]: v } }));
   // The dropdown drives only the preset; YAML-set per-flag overrides / quirks are
   // preserved. A compat that says nothing beyond the default collapses back to
   // null so the stored config stays minimal (absent = lenient + default quirks).
   const setCompatPreset = (preset: CompatPreset) =>
-    setModel((d) => {
-      if (!d) return d;
+    edit((d) => {
       const next: PortCompatConfig = { ...(d.compat ?? {}), preset: preset === "lenient" ? null : preset };
       const isDefault = !next.preset && next.allowEmptyCallsignBase == null &&
         next.allowInfoOnSupervisoryFrames == null && next.allowCommandFrameAsResponse == null && !next.quirks;
       return { ...d, compat: isDefault ? null : next };
     });
-  const setRadio = (radio: RadioConfig | null) => setModel((d) => (d ? { ...d, radio } : d));
-  const setRig = (rig: RigConfig | null) => setModel((d) => (d ? { ...d, rig } : d));
+  const setRadio = (radio: RadioConfig | null) => edit((d) => ({ ...d, radio }));
+  const setRig = (rig: RigConfig | null) => edit((d) => ({ ...d, rig }));
 
-  const profile = RADIO_PROFILES.find((r) => r.id === setup.radio);
-  const baseline: Record<string, number> = profile ? profile.baseline : { ...AX25_DEFAULTS, ...KISS_DEFAULTS };
+  // The radio-PRESET baseline (a UI catalogue, not a server profile): the reference the "modified"
+  // badges compare against. With no preset picked, the reference is what the engine itself does
+  // with an unset block.
+  const presetBaseline: Record<string, number> | null =
+    RADIO_PROFILES.find((r) => r.id === setup.radio)?.baseline ?? null;
+  const baselineFor = (k: string): number | undefined => presetBaseline?.[k];
 
-  const applyProfile = (radioId: string) => {
-    const r = RADIO_PROFILES.find((x) => x.id === radioId);
-    setModel((d) => {
-      if (!d) return d;
-      const next: PortDraft = { ...d, setup: { ...d.setup, radio: radioId, custom: false } };
+  // Picking a preset WRITES its baseline into ax25:/kiss: - an explicit operator action, and the
+  // only path in this editor that materialises a whole block. It does not touch `profile`: the
+  // server channel profile is its own (config-file) knob.
+  const applyPreset = (presetId: string) => {
+    const r = RADIO_PROFILES.find((x) => x.id === presetId);
+    edit((d) => {
+      const next: PortDraft = { ...d, setup: { ...d.setup, radio: presetId, custom: false } };
       if (r) {
-        next.ax25 = { ...d.ax25, t1Ms: r.baseline.t1Ms, t2Ms: r.baseline.t2Ms, t3Ms: r.baseline.t3Ms, n2: r.baseline.n2, windowSize: r.baseline.windowSize };
-        next.kiss = { ...d.kiss, txDelay: r.baseline.txDelay, slotTime: r.baseline.slotTime, txTail: r.baseline.txTail, persistence: r.baseline.persistence };
+        next.ax25 = { ...(d.ax25 ?? {}), t1Ms: r.baseline.t1Ms, t2Ms: r.baseline.t2Ms, t3Ms: r.baseline.t3Ms, n2: r.baseline.n2, windowSize: r.baseline.windowSize };
+        next.kiss = { ...(d.kiss ?? {}), txDelay: r.baseline.txDelay, slotTime: r.baseline.slotTime, txTail: r.baseline.txTail, persistence: r.baseline.persistence };
         if (next.transport.kind === "nino-tnc") next.transport = { ...next.transport, mode: r.ninoMode };
       }
       return next;
     });
   };
-  const resetToProfile = () => { if (setup.radio) applyProfile(setup.radio); };
+  const resetToPreset = () => { if (setup.radio) applyPreset(setup.radio); };
 
-  // disruption summary for the save confirmation (plain language)
+  // ---- what this save would do ----
+  // The LOCAL estimate mirrors ReconcilePlanner's restart classes exactly (transport / profile /
+  // radio / rig / kiss.ackMode restart the one port; ax25 / kiss / compat / NET/ROM knobs go live;
+  // a rename is a teardown + bring-up of THAT port, never a node reset - that is callsign-only).
+  // In live mode a dry-run write replaces it with the node's own verdict (#690 C038).
   const orig = draft;
-  const transportChanged = JSON.stringify(model.transport) !== JSON.stringify(orig.transport);
-  const idChanged = !orig._new && model.id !== orig.id;
-  const enabledChanged = !orig._new && model.enabled !== orig.enabled;
-  const sessions = statusById[orig.id]?.sessionCount ?? 0;
+  const before = orig._orig ?? null;
+  const saved = portDraftToConfig(model);
+  const sessions = statusById[orig._origId ?? orig.id]?.sessionCount ?? 0;
+  const sessionText = sessions > 0
+    ? ` ${sessions} session${sessions > 1 ? "s" : ""} on this port will drop.`
+    : " No sessions are connected.";
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   let disrupt: Disruption;
-  if (orig._new) {
-    disrupt = { tone: "success", text: `Port ${model.id || "(new)"} will be created and brought up.` };
-  } else if (idChanged) {
-    disrupt = { tone: "danger", text: `Renaming a port restarts the node — every session on every port drops.` };
-  } else if (transportChanged || enabledChanged) {
-    disrupt = { tone: "warning", text: `Port ${orig.id} will restart.${sessions > 0 ? ` ${sessions} session${sessions > 1 ? "s" : ""} on this port will drop.` : " No sessions are connected."}` };
+  if (orig._new || !before) {
+    disrupt = model.enabled
+      ? { tone: "success", text: `Port ${model.id || "(new)"} will be created and brought up.` }
+      : { tone: "success", text: `Port ${model.id || "(new)"} will be created, disabled - it stays down until you bring it up.` };
+  } else if (model.id !== before.id) {
+    disrupt = { tone: "warning", text: `Port ${before.id} will be torn down and brought back up as ${model.id || "(blank)"}.${sessionText} Other ports are untouched.` };
+  } else if (model.enabled !== before.enabled) {
+    disrupt = model.enabled
+      ? { tone: "warning", text: `Port ${before.id} will be brought up.` }
+      : { tone: "warning", text: `Port ${before.id} will be taken down.${sessionText}` };
+  } else if (
+    !same(saved.transport, before.transport) ||
+    !same(saved.profile, before.profile) ||
+    !same(saved.radio, before.radio) ||
+    !same(saved.rig, before.rig) ||
+    (saved.kiss?.ackMode ?? false) !== (before.kiss?.ackMode ?? false)
+  ) {
+    disrupt = { tone: "warning", text: `Port ${before.id} will restart.${sessionText}` };
+  } else if (
+    !same(saved.ax25, before.ax25) || !same(saved.kiss, before.kiss) || !same(saved.compat, before.compat) ||
+    !same(saved.netRomQuality, before.netRomQuality) || !same(saved.netRomMinQuality, before.netRomMinQuality) ||
+    !same(saved.nodesPaclen, before.nodesPaclen)
+  ) {
+    disrupt = { tone: "success", text: `Parameter changes apply live to ${before.id}. No sessions drop.` };
   } else {
-    disrupt = { tone: "success", text: `Parameter changes apply live to ${orig.id}. No sessions drop.` };
+    // Nothing the editor can change differs. (Fields it carries through but never edits -
+    // mqttInstance, the per-port beacon - cannot have moved, so this really is a no-op.)
+    disrupt = { tone: "success", text: `No changes to apply to ${before.id}.` };
   }
+  // The node's own verdict wins when the dry run answered.
+  if (preview) {
+    disrupt = previewDisruption(preview, model.id || orig.id, sessionText);
+  }
+
+  // Open the confirmation and (in live mode) ask the node what the save would do. A dry-run 422 is
+  // the same validation the apply would hit, so it goes straight to the inline error surface
+  // instead of the operator pressing Apply to discover it.
+  const askToApply = async () => {
+    setPreview(null);
+    setConfirm(true);
+    if (apiMode !== "live") return;   // mock mode: no node to ask, keep the local estimate
+    setPreviewing(true);
+    try {
+      setPreview(await onPreview(model));
+    } catch (e) {
+      if (e instanceof ConfigRejected) { setConfirm(false); setProblem(e.problem); }
+      // any other failure (offline, 404): fall back to the local estimate silently
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const apply = async () => {
+    setSaving(true);
+    try {
+      setProblem(await onSave(model));
+    } finally {
+      setSaving(false);
+      setConfirm(false);
+    }
+  };
 
   return (
     <Sheet
       open={!!draft}
       onClose={onClose}
       title={orig._new ? "Add port" : `Edit port — ${orig.id}`}
-      subtitle="Pick a profile, or open the parameters to fine-tune"
+      subtitle="Pick a preset, or open the parameters to fine-tune"
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={() => setConfirm(true)}><Icon name="check" size={14} /> Save changes</Button>
+          <Button size="sm" disabled={saving} onClick={askToApply}><Icon name="check" size={14} /> Save changes</Button>
         </>
       }
     >
       <div className="space-y-5">
+        {/* The node's rejection, INSIDE the drawer (it used to render as a page banner behind the
+            modal overlay, dimmed and un-dismissable - #690 C040). Each error is also shown against
+            its own field below where the path matches. */}
+        {problem && (
+          <div data-testid="port-save-error" className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            <Icon name="alert" size={15} className="mt-0.5 shrink-0" />
+            <div className="flex-1 space-y-1">
+              <p className="font-medium">The node rejected this port.</p>
+              <ul className="space-y-0.5 text-xs">
+                {problem.errors.map((e, i) => (
+                  <li key={i}>
+                    {e.path ? <><span className="font-mono">{problemLabel(e.path)}</span>: </> : null}{e.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <button onClick={() => setProblem(null)} title="Dismiss" className="shrink-0 opacity-70 hover:opacity-100"><Icon name="x" size={14} /></button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Port id" info="A short name you choose for this port (e.g. vhf-1). Used in logs, sessions, and the monitor.">
-            <Input value={model.id} onChange={(e) => setModel((d) => (d ? { ...d, id: e.target.value } : d))} className="font-mono" placeholder="vhf-1" />
+            <Input
+              value={model.id}
+              onChange={(e) => edit((d) => ({ ...d, id: e.target.value }))}
+              className={cn("font-mono", problemsFor(problem, "id").length > 0 && "border-danger/60")}
+              placeholder="vhf-1"
+            />
+            <FieldProblems messages={problemsFor(problem, "id")} />
           </Field>
           <Field label="Enabled" info="Whether pdn brings this port up. Disabling it takes the port down.">
-            <div className="flex h-9 items-center"><Switch checked={model.enabled} onChange={(v) => setModel((d) => (d ? { ...d, enabled: v } : d))} /></div>
+            <div className="flex h-9 items-center"><Switch checked={model.enabled} onChange={(v) => edit((d) => ({ ...d, enabled: v }))} /></div>
           </Field>
         </div>
 
@@ -559,15 +829,32 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           <Label className="text-foreground">Connection</Label>
           <div className="mt-3">
             <Field label="Type" info="How pdn reaches the modem: a KISS TNC over TCP or serial, a NinoTNC, or an AXUDP network link.">
-              <Select value={t.kind} onChange={(e) => setKind(e.target.value as TransportConfig["kind"])}>
-                <option value="kiss-tcp">{KIND_LABEL["kiss-tcp"]} — KISS TNC over TCP</option>
-                <option value="serial-kiss">{KIND_LABEL["serial-kiss"]} — KISS TNC over serial</option>
-                <option value="nino-tnc">{KIND_LABEL["nino-tnc"]} — NinoTNC</option>
-                <option value="axudp">{KIND_LABEL["axudp"]} — AXUDP network link</option>
-                <option value="axudp-multipoint">{KIND_LABEL["axudp-multipoint"]} — AXUDP multipoint (BPQAXIP)</option>
-                <option value="soundmodem">{KIND_LABEL["soundmodem"]} — in-process soundcard modem</option>
-              </Select>
+              {kindLocked ? (
+                // A head-end / config-file transport: shown, not editable. Re-typing it here would
+                // strand the head-end binding (and the radio pinned to it), and the editor has no
+                // device-inventory picker to re-bind with. It round-trips untouched on save.
+                <div data-testid="transport-locked" className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm">
+                  <span className="font-mono">{KIND_LABEL[t.kind]}</span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">{transportDesc(t)}</span>
+                </div>
+              ) : (
+                <Select value={t.kind} onChange={(e) => setKind(e.target.value as AuthorableTransportKind)}>
+                  <option value="kiss-tcp">{KIND_LABEL["kiss-tcp"]} — KISS TNC over TCP</option>
+                  <option value="serial-kiss">{KIND_LABEL["serial-kiss"]} — KISS TNC over serial</option>
+                  <option value="nino-tnc">{KIND_LABEL["nino-tnc"]} — NinoTNC</option>
+                  <option value="axudp">{KIND_LABEL["axudp"]} — AXUDP network link</option>
+                  <option value="axudp-multipoint">{KIND_LABEL["axudp-multipoint"]} — AXUDP multipoint (BPQAXIP)</option>
+                  <option value="soundmodem">{KIND_LABEL["soundmodem"]} — in-process soundcard modem</option>
+                </Select>
+              )}
             </Field>
+            {kindLocked && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {t.kind === "nino-tnc-tcp"
+                  ? "This modem lives on a head-end - adopt or release it from the Head-ends screen. Its binding, radio and MQTT label are kept exactly as they are when you save."
+                  : "This transport is set in the node's config file. Its binding and timing are kept exactly as they are when you save."}
+              </p>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             {t.kind === "kiss-tcp" && (
@@ -690,15 +977,23 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           </div>
         </div>
 
-        {/* profile-first setup */}
+        {/* preset-first setup: the preset FILLS IN the parameters below; it is not the server's
+            channel profile (that is `profile:`, a config-file knob, shown read-only beside it) */}
         <div className="rounded-lg border border-border p-3">
           <div className="mb-3 flex items-center justify-between">
-            <Label className="text-foreground">Profile</Label>
+            <Label className="text-foreground">Starting point</Label>
             {setup.custom && <Badge variant="warning">customised</Badge>}
           </div>
           <div className="space-y-3">
-            <Field label="Radio profile" info="A starting point for this kind of radio and speed. pdn fills in sensible timing and modem parameters; you can fine-tune below.">
-              <Select value={setup.radio ?? ""} onChange={(e) => applyProfile(e.target.value)}>
+            <Field
+              label="Radio preset"
+              info="A starting point for this kind of radio and speed: picking one fills in the timing and modem parameters below, which you can then fine-tune. It is a shortcut in this panel, not a setting stored on the port."
+              badge={model.profile
+                ? <Tooltip text="The node's channel profile for this port (config-file setting). It fills in whatever you leave unset; the editor keeps it exactly as it is."><Badge variant="secondary">profile {model.profile}</Badge></Tooltip>
+                : null}
+            >
+              <Select value={setup.radio ?? ""} onChange={(e) => { if (e.target.value) applyPreset(e.target.value); }}>
+                <option value="">Leave the parameters as they are</option>
                 {RADIO_PROFILES.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </Select>
             </Field>
@@ -734,13 +1029,15 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           </Field>
         </div>
 
-        {/* radio-control attachment (RSSI / link-quality / health) — serial-modem kinds only */}
-        {RADIO_CAPABLE_KINDS.has(t.kind) && (
-          <RadioControlSection key={srcKey} radio={model.radio} onChange={setRadio} />
-        )}
+        {/* radio-control attachment (RSSI / link-quality / health). The editor authors the locally
+            cabled shape only; a head-end-bound or rig-backed radio (which the Head-ends screen and
+            the config file author) is shown read-only and rides through the save untouched. */}
+        {RADIO_CAPABLE_KINDS.has(t.kind) && !isManagedRadio(model.radio)
+          ? <RadioControlSection radio={model.radio} onChange={setRadio} />
+          : model.radio && <ManagedRadioSection radio={model.radio} />}
 
         {/* rig-control (CAT) attachment — every transport kind (the rig never touches the packet path) */}
-        <RigControlSection key={srcKey ? srcKey + ":rig" : undefined} rig={model.rig} onChange={setRig} />
+        <RigControlSection rig={model.rig} onChange={setRig} />
 
         {/* advanced parameters */}
         <details className="rounded-lg border border-border" open={setup.custom}>
@@ -750,12 +1047,12 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           >
             <span className="flex items-center gap-2"><Icon name="config" size={14} className="text-muted-foreground" /> Advanced parameters</span>
             <span className="flex items-center gap-2">
-              {setup.custom && (
+              {setup.custom && setup.radio && (
                 <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); resetToProfile(); }}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); resetToPreset(); }}
                   className="text-xs font-normal text-muted-foreground hover:text-primary"
                 >
-                  Reset to profile
+                  Reset to preset
                 </button>
               )}
               <Icon name="chevDown" size={15} className={cn("text-muted-foreground transition-transform", setup.custom && "rotate-180")} />
@@ -765,25 +1062,43 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
             <div className="space-y-4 border-t border-border p-3">
               <div>
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Link timing</p>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  A blank field is not set on this port: the greyed value is what the node uses, and leaving it blank keeps
+                  following the node rather than pinning a number here.
+                </p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <ParamField k="t1Ms" value={model.ax25.t1Ms} base={baseline.t1Ms} onChange={(v) => setAx("t1Ms", v)} />
-                  <ParamField k="t2Ms" value={model.ax25.t2Ms} base={baseline.t2Ms} onChange={(v) => setAx("t2Ms", v)} />
-                  <ParamField k="t3Ms" value={model.ax25.t3Ms} base={baseline.t3Ms} onChange={(v) => setAx("t3Ms", v)} />
-                  <ParamField k="n2" value={model.ax25.n2} base={baseline.n2} onChange={(v) => setAx("n2", v)} />
-                  <ParamField k="windowSize" value={model.ax25.windowSize} base={baseline.windowSize} onChange={(v) => setAx("windowSize", v)} />
-                  <ParamField k="n1" value={model.ax25.n1} base={baseline.n1} onChange={(v) => setAx("n1", v)} />
+                  {(["t1Ms", "t2Ms", "t3Ms", "n2", "windowSize", "n1"] as (keyof Ax25PortParams)[]).map((k) => (
+                    <ParamField
+                      key={k}
+                      k={k}
+                      value={model.ax25?.[k]}
+                      base={baselineFor(k)}
+                      placeholder={String(ENGINE_AX25_DEFAULTS[k])}
+                      problems={problemsFor(problem, `ax25.${k}`)}
+                      onChange={(v) => setAx(k, v)}
+                    />
+                  ))}
                 </div>
               </div>
               {usesKiss && (
                 <div>
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Modem keying</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <ParamField k="txDelay" tenMs value={model.kiss.txDelay} base={baseline.txDelay} onChange={(v) => setKiss("txDelay", v)} />
-                    <ParamField k="txTail" tenMs value={model.kiss.txTail} base={baseline.txTail} onChange={(v) => setKiss("txTail", v)} />
-                    <ParamField k="slotTime" tenMs value={model.kiss.slotTime} base={baseline.slotTime} onChange={(v) => setKiss("slotTime", v)} />
+                    {(["txDelay", "txTail", "slotTime"] as (keyof KissParams)[]).map((k) => (
+                      <ParamField
+                        key={k}
+                        k={k}
+                        tenMs
+                        value={model.kiss?.[k] as number | undefined}
+                        base={baselineFor(k)}
+                        placeholder={ENGINE_KISS_DEFAULTS[k]}
+                        problems={problemsFor(problem, `kiss.${k}`)}
+                        onChange={(v) => setKiss(k, v)}
+                      />
+                    ))}
                   </div>
                   <div className="mt-3">
-                    <PersistenceField value={model.kiss.persistence} base={baseline.persistence} onChange={(v) => setKiss("persistence", v)} />
+                    <PersistenceField value={model.kiss?.persistence} base={baselineFor("persistence")} onChange={(v) => setKiss("persistence", v)} />
                   </div>
                 </div>
               )}
@@ -801,11 +1116,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 max={255}
                 value={model.netRomQuality ?? ""}
                 placeholder="inherit"
-                onChange={(e) =>
-                  setModel((d) =>
-                    d ? { ...d, netRomQuality: e.target.value === "" ? null : +e.target.value } : d,
-                  )
-                }
+                onChange={(e) => edit((d) => ({ ...d, netRomQuality: e.target.value === "" ? null : +e.target.value }))}
                 className="font-mono"
               />
             </Field>
@@ -816,11 +1127,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 max={255}
                 value={model.netRomMinQuality ?? ""}
                 placeholder="inherit"
-                onChange={(e) =>
-                  setModel((d) =>
-                    d ? { ...d, netRomMinQuality: e.target.value === "" ? null : +e.target.value } : d,
-                  )
-                }
+                onChange={(e) => edit((d) => ({ ...d, netRomMinQuality: e.target.value === "" ? null : +e.target.value }))}
                 className="font-mono"
               />
             </Field>
@@ -831,11 +1138,7 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
                 max={256}
                 value={model.nodesPaclen ?? ""}
                 placeholder="no cap"
-                onChange={(e) =>
-                  setModel((d) =>
-                    d ? { ...d, nodesPaclen: e.target.value === "" ? null : +e.target.value } : d,
-                  )
-                }
+                onChange={(e) => edit((d) => ({ ...d, nodesPaclen: e.target.value === "" ? null : +e.target.value }))}
                 className="font-mono"
               />
             </Field>
@@ -853,8 +1156,9 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
             <Button variant="outline" size="sm" onClick={() => setConfirm(false)}>Cancel</Button>
             <Button
               size="sm"
+              disabled={saving || previewing}
               className={disrupt.tone === "danger" ? "bg-danger hover:bg-danger/90 text-danger-foreground" : disrupt.tone === "warning" ? "bg-warning hover:bg-warning/90 text-warning-foreground" : ""}
-              onClick={() => { setConfirm(false); onSave(model); }}
+              onClick={apply}
             >
               {disrupt.tone === "success" ? <><Icon name="check" size={14} /> Apply</> : <><Icon name="alert" size={14} /> Apply anyway</>}
             </Button>
@@ -868,8 +1172,40 @@ function PortEditor({ draft, onClose, onSave, statusById }: {
           <Icon name={disrupt.tone === "success" ? "check" : "alert"} size={16} className="mt-0.5 shrink-0" />
           <span>{disrupt.text}</span>
         </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {previewing ? "Checking with the node…" : preview ? "Checked with the node." : "Estimated from the node's reconcile rules."}
+        </p>
       </Modal>
     </Sheet>
+  );
+}
+
+// A radio this screen must not author: bound to a head-end device (the Head-ends screen adopts and
+// releases those, pairing the radio with its co-located nino-tnc-tcp modem) or a `rig`-kind radio
+// (the port's CAT daemon re-presented as the packet medium). Shown read-only; carried through a
+// save byte-for-byte.
+function isManagedRadio(radio: RadioConfig | null | undefined): boolean {
+  if (!radio) return false;
+  return radio.kind === "rig" || (!!radio.headEndId?.trim() && !!radio.deviceId?.trim());
+}
+
+function ManagedRadioSection({ radio }: { radio: RadioConfig }) {
+  const headEnd = !!radio.headEndId?.trim();
+  return (
+    <div data-testid="radio-managed" className="rounded-lg border border-border p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <Label className="text-foreground">Radio control</Label>
+        <Badge variant="success">attached</Badge>
+      </div>
+      <p className="font-mono text-xs text-foreground/80">
+        {headEnd ? `${radio.kind} · ${radio.headEndId}/${radio.deviceId}` : `${radio.kind} · this port's rig`}
+      </p>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        {headEnd
+          ? "This radio is bound to a head-end device - adopt or release it from the Head-ends screen. Saving this port keeps the binding exactly as it is."
+          : "This radio is the port's rig-control (CAT) daemon re-presented as the packet medium. Edit it in the Rig control section below; saving keeps it as it is."}
+      </p>
+    </div>
   );
 }
 
@@ -1404,25 +1740,45 @@ function SegMode({ options, value, onChange }: {
   );
 }
 
+// ---- per-field validation messages from the node's 422 ----
+function FieldProblems({ messages }: { messages: string[] }) {
+  if (messages.length === 0) return null;
+  return (
+    <div className="space-y-0.5">
+      {messages.map((m, i) => <p key={i} className="text-[11px] text-danger">{m}</p>)}
+    </div>
+  );
+}
+
 // ---- a single tuneable: friendly label + help + unit + "modified" marker ----
 // `tenMs` marks the KISS timing knobs (TXDELAY / TXTAIL / SLOTTIME): the wire carries a byte
 // in units of 10 ms, the operator thinks in milliseconds, so the field converts on the way in
 // and out — the same split persistence already uses (0-255 byte stored, percentage shown).
 // Without it the panel wrote milliseconds straight into a byte and a stock 300 ms TX delay
 // came back as an unexplained 400 from the API.
-function ParamField({ k, value, base, onChange, tenMs = false }: {
+//
+// While a tenMs field is FOCUSED it shows the raw text the operator typed and only re-renders the
+// canonical value on blur. Round-tripping every keystroke through ms→units→ms rewrote the box
+// under the operator's fingers: typing 1, 5, 0 into TX delay showed 0, then 10, then 100, and left
+// the port on 100 ms rather than 150 (#690 C037). The draft still takes each keystroke's parsed
+// value, so a save without blurring is the value on screen.
+function ParamField({ k, value, base, placeholder, problems = [], onChange, tenMs = false }: {
   k: string;
   value: number | undefined;
   base: number | undefined;
+  placeholder?: string;
+  problems?: string[];
   onChange: (v: number) => void;
   tenMs?: boolean;
 }) {
   const meta = PARAM_HELP[k];
+  const [raw, setRaw] = useState<string | null>(null);
   const modified = base !== undefined && value !== base;
-  const shown = value === undefined ? "" : (tenMs ? tenMsToMs(value) : value);
+  const canonical = value === undefined ? "" : (tenMs ? tenMsToMs(value) : value);
+  const shown = raw ?? canonical;
   const shownBase = base === undefined ? undefined : (tenMs ? tenMsToMs(base) : base);
   const badge: ReactNode = modified
-    ? <Tooltip text={`Default for this profile: ${shownBase}${meta.unit ? " " + meta.unit : ""}`}><Badge variant="warning">modified</Badge></Tooltip>
+    ? <Tooltip text={`This preset's value: ${shownBase}${meta.unit ? " " + meta.unit : ""}`}><Badge variant="warning">modified</Badge></Tooltip>
     : null;
   return (
     <Field label={meta.label} info={meta.help} badge={badge}>
@@ -1432,11 +1788,18 @@ function ParamField({ k, value, base, onChange, tenMs = false }: {
           min={0}
           {...(tenMs ? { max: 2550, step: 10 } : {})}
           value={shown}
-          onChange={(e) => onChange(tenMs ? msToTenMs(+e.target.value) : +e.target.value)}
-          className={cn("font-mono", meta.unit && "pr-12", modified && "border-warning/60")}
+          placeholder={placeholder}
+          onChange={(e) => {
+            if (tenMs) setRaw(e.target.value);
+            onChange(tenMs ? msToTenMs(+e.target.value) : +e.target.value);
+          }}
+          onBlur={() => setRaw(null)}
+          onKeyDown={(e) => { if (e.key === "Enter") setRaw(null); }}
+          className={cn("font-mono", meta.unit && "pr-12", problems.length > 0 ? "border-danger/60" : modified && "border-warning/60")}
         />
         {meta.unit && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">{meta.unit}</span>}
       </div>
+      <FieldProblems messages={problems} />
     </Field>
   );
 }
@@ -1452,14 +1815,18 @@ function PersistenceField({ value, base, onChange }: {
   const pct = persistPct(v);
   const modified = base !== undefined && value !== base;
   const badge: ReactNode = modified
-    ? <Tooltip text={`Default for this profile: ${persistPct(base)}%`}><Badge variant="warning">modified</Badge></Tooltip>
+    ? <Tooltip text={`This preset's value: ${persistPct(base)}%`}><Badge variant="warning">modified</Badge></Tooltip>
     : null;
   return (
     <Field label={meta.label} info={meta.help} badge={badge}>
       <div className="flex items-center gap-3">
         <Slider value={pct} min={0} max={100} onChange={(p) => onChange(pctToPersist(p))} />
-        <span className="tnum w-20 shrink-0 text-right font-mono text-xs text-muted-foreground">
-          {pct}% <span className="text-muted-foreground/50">({v})</span>
+        {/* Unset is NOT 0% (which would mean "never transmit"): the modem keeps its own default
+            until the operator moves the slider. Say so rather than showing a value that isn't set. */}
+        <span className="tnum w-28 shrink-0 text-right font-mono text-xs text-muted-foreground">
+          {value === undefined
+            ? <span className="text-muted-foreground/70">modem default</span>
+            : <>{pct}% <span className="text-muted-foreground/50">({v})</span></>}
         </span>
       </div>
     </Field>

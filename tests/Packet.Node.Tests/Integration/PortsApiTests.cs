@@ -219,6 +219,68 @@ public sealed class PortsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Post_dry_run_previews_without_adding_the_port()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/api/v1/ports?dryRun=true", KissTcpPort("vhf", "127.0.0.1", 8101));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await resp.Content.ReadFromJsonAsync<ReconcileResult>(Web);
+        result.Should().NotBeNull();
+        result!.Valid.Should().BeTrue();
+        result.Applied.Should().BeFalse();
+
+        // Nothing was persisted - the preview is what the web port editor asks for before the
+        // operator commits, so it must not touch the node.
+        (await GetPortsAsync(client)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Put_dry_run_previews_the_restart_class_without_applying_the_edit()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        // An ENABLED port, so a transport change is classified rather than subsumed by the
+        // enabled-toggle arm. kiss-tcp to a closed local port stays down; that is fine here.
+        (await client.PostAsJsonAsync("/api/v1/ports", KissTcpPort("vhf", "127.0.0.1", 8101, enabled: true)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resp = await client.PutAsJsonAsync("/api/v1/ports/vhf?dryRun=true", KissTcpPort("vhf", "127.0.0.1", 8102, enabled: true));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await resp.Content.ReadFromJsonAsync<ReconcileResult>(Web);
+        result!.Applied.Should().BeFalse();
+        // A transport change is a single-port restart (ReconcilePlanner) - the classification the
+        // editor's confirmation prompt is written from.
+        result.PortRestart.Should().NotBeEmpty();
+
+        // The live config still carries the ORIGINAL transport port.
+        using var doc = JsonDocument.Parse(await client.GetStringAsync("/api/v1/config"));
+        var vhf = doc.RootElement.GetProperty("ports").EnumerateArray()
+            .Single(p => p.GetProperty("id").GetString() == "vhf");
+        vhf.GetProperty("transport").GetProperty("port").GetInt32().Should().Be(8101);
+    }
+
+    [Fact]
+    public async Task Dry_run_of_an_invalid_port_returns_422_without_touching_the_node()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        // An unknown channel profile - the rule that rejected every port the web editor created
+        // while it sent a UI catalogue id as `profile` (#690 C002).
+        var resp = await client.PostAsJsonAsync(
+            "/api/v1/ports?dryRun=true",
+            new { id = "vhf", enabled = false, profile = "vhf-fm-1200", transport = new { kind = "kiss-tcp", host = "127.0.0.1", port = 8101 } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await GetPortsAsync(client)).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Put_an_unknown_id_returns_404()
     {
         await using var factory = new NodeAppFactory();

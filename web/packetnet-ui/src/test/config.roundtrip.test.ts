@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { NODE_CONFIG } from "@/lib/mock";
 import type { AxudpMultipointTransport, NodeConfig, PortConfig, TransportConfig } from "@/lib/types";
-import { portDraftToConfig, type PortDraft } from "@/screens/ports";
+import { portDraftToConfig, radioPairsWith, type PortDraft } from "@/screens/ports";
 
 // The PUT /config wire path is JSON; this is the same shape the server deserialises.
 function wireRoundTrip<T>(value: T): T {
@@ -23,6 +23,7 @@ function draftWith(transport: TransportConfig, radio: PortDraft["radio"], rig: P
     id: "vhf-x",
     enabled: true,
     transport,
+    profile: null,
     ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4 },
     kiss: { txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 },   // wire units: 10 ms each
     setup: { radio: null, channel: "shared", difficulty: "moderate", custom: true },
@@ -115,15 +116,37 @@ describe("radio-control block survives the PortEditor save (saveDraft reconstruc
     expect(out.radio).toEqual({ kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800, healthIntervalSeconds: 5 });
   });
 
-  it("switching a radio-attached port to a non-serial transport drops the radio block", () => {
-    // kiss-tcp / AXUDP ports have no radio beside the modem (server validation), so the reconstruction
-    // must NOT emit a stale radio block if the transport was switched away from a serial-modem kind.
+  it("the reconstruction never drops a radio the operator did not remove (#690 C004)", () => {
+    // The save path carries every block through verbatim. Dropping a radio by transport KIND here
+    // silently detached an adopted head-end port's radio (the editor cannot even show that kind's
+    // radio section); the drop now happens only when the operator RE-TYPES the transport to one
+    // that cannot carry the radio, which is the setKind path guarded by radioPairsWith below.
     const draft = draftWith(
       { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
       { kind: "tait-ccdi", serial: "19925328", baud: 28800 },
     );
     const out = portDraftToConfig(draft);
-    expect(out.radio).toBeNull();
+    expect(out.radio).toEqual({ kind: "tait-ccdi", serial: "19925328", baud: 28800 });
+  });
+
+  it("radioPairsWith mirrors the server's radio<->transport pairing rules", () => {
+    const local = { kind: "tait-ccdi" as const, serial: "19925328", baud: 28800 };
+    const headEnd = { kind: "tait-ccdi" as const, headEndId: "shack-pi", deviceId: "tait-0" };
+    const rigBacked = { kind: "rig" as const };
+
+    // A locally-cabled radio needs a local serial-modem transport.
+    expect(radioPairsWith(local, "serial-kiss")).toBe(true);
+    expect(radioPairsWith(local, "nino-tnc")).toBe(true);
+    expect(radioPairsWith(local, "kiss-tcp")).toBe(false);
+    expect(radioPairsWith(local, "nino-tnc-tcp")).toBe(false);
+    // A head-end-bound radio pairs with the co-located full-control NinoTNC, and nothing else.
+    expect(radioPairsWith(headEnd, "nino-tnc-tcp")).toBe(true);
+    expect(radioPairsWith(headEnd, "serial-kiss")).toBe(false);
+    // A rig-backed radio has no cable at all: any transport.
+    expect(radioPairsWith(rigBacked, "kiss-tcp")).toBe(true);
+    expect(radioPairsWith(rigBacked, "soundmodem")).toBe(true);
+    // No radio pairs with everything.
+    expect(radioPairsWith(null, "axudp")).toBe(true);
   });
 
   it("a port with no radio reconstructs radio as null (not undefined-dropped)", () => {
@@ -239,5 +262,107 @@ describe("the netRom block round-trips in the server's config dialect", () => {
     expect(out.inp3.l3RttInterval).toBe(120);
     expect(JSON.stringify(out)).toContain('"routing":"Endpoint"');
     expect(JSON.stringify(out)).toContain('"l3RttInterval":120');
+  });
+});
+
+// #690 C003/C004/C005: a PUT replaces the port entry WHOLESALE, so the save body must be the port
+// the server sent plus what the operator changed - not a field-by-field re-build that quietly drops
+// whatever the editor does not model. The draft carries the loaded PortConfig (_orig) and the
+// reconstruction spreads it.
+describe("the save body is the loaded port plus the operator's edits", () => {
+  // An adopted split-station port exactly as HeadEndAdoption writes it: a nino-tnc-tcp transport
+  // bound to a head-end device, the co-located head-end radio, and the MQTT {instance} label.
+  const ADOPTED: PortConfig = {
+    id: "2m",
+    enabled: true,
+    transport: { kind: "nino-tnc-tcp", headEndId: "shack-pi", deviceId: "nino-0", mode: 4 },
+    profile: null,
+    ax25: null,
+    kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 0, ackMode: true },
+    beacon: null,
+    radio: { kind: "tait-ccdi", headEndId: "shack-pi", deviceId: "tait-0" },
+    mqttInstance: "2m",
+  };
+
+  // What the Ports screen's openEdit builds from a loaded port (see screens/ports.tsx).
+  function draftOf(p: PortConfig): PortDraft {
+    return {
+      id: p.id,
+      enabled: p.enabled,
+      transport: p.transport,
+      profile: p.profile ?? null,
+      ax25: p.ax25 ?? null,
+      kiss: p.kiss ?? null,
+      setup: { radio: null, channel: "shared", difficulty: "moderate", custom: false },
+      beacon: p.beacon,
+      compat: p.compat ?? null,
+      radio: p.radio ?? null,
+      rig: p.rig ?? null,
+      netRomQuality: p.netRomQuality ?? null,
+      netRomMinQuality: p.netRomMinQuality ?? null,
+      nodesPaclen: p.nodesPaclen ?? null,
+      _origId: p.id,
+      _orig: p,
+    };
+  }
+
+  it("an adopted head-end port round-trips through open -> save unchanged", () => {
+    const out = wireRoundTrip(portDraftToConfig(draftOf(ADOPTED)));
+    // Every field the server sent comes back with the same value (the editor may additionally
+    // spell an absent optional field as an explicit null - the server reads them the same).
+    expect(out).toMatchObject(ADOPTED);
+    // Spelled out, because each of these was individually dropped before:
+    expect(out.transport).toEqual({ kind: "nino-tnc-tcp", headEndId: "shack-pi", deviceId: "nino-0", mode: 4 });
+    expect(out.radio).toEqual({ kind: "tait-ccdi", headEndId: "shack-pi", deviceId: "tait-0" });
+    expect(out.kiss).toEqual({ txDelay: 30, persistence: 63, slotTime: 10, txTail: 0, ackMode: true });
+    expect(out.mqttInstance).toBe("2m");
+  });
+
+  it("mqttInstance survives an ordinary edit of an ordinary port", () => {
+    const port: PortConfig = {
+      id: "70cm", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
+      profile: null, ax25: null, kiss: null, beacon: null, mqttInstance: "70cm",
+    };
+    const draft = draftOf(port);
+    const out = wireRoundTrip(portDraftToConfig({ ...draft, enabled: false }));
+    expect(out.mqttInstance).toBe("70cm");
+    expect(out.enabled).toBe(false);
+  });
+
+  it("an untouched edit of a port with ax25/kiss null PUTs those blocks back as null", () => {
+    const port: PortConfig = {
+      id: "sim", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
+      profile: "slow-afsk1200", ax25: null, kiss: null, beacon: null,
+    };
+    const out = wireRoundTrip(portDraftToConfig(draftOf(port)));
+    expect(out.ax25).toBeNull();
+    expect(out.kiss).toBeNull();
+    // ... and the server channel profile is carried verbatim, never re-derived from a UI preset.
+    expect(out.profile).toBe("slow-afsk1200");
+    expect(out).toMatchObject(port);
+  });
+
+  it("editing ONE parameter of a null block sends only that parameter", () => {
+    const port: PortConfig = {
+      id: "sim", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
+      profile: null, ax25: null, kiss: null, beacon: null,
+    };
+    // The editor's setAx/setKiss shape: spread the (null) block, set the one key.
+    const draft = draftOf(port);
+    const out = wireRoundTrip(portDraftToConfig({ ...draft, ax25: { ...(draft.ax25 ?? {}), t1Ms: 4000 } }));
+    expect(out.ax25).toEqual({ t1Ms: 4000 });
+    expect(out.kiss).toBeNull();
+  });
+
+  it("a server field the editor has never heard of still rides through a save", () => {
+    // The forward-compatibility contract: the reconstruction spreads the loaded port, so a field
+    // added to PortConfig server-side is preserved by a Forms save before the UI models it.
+    const port = {
+      id: "future", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 },
+      profile: null, ax25: null, kiss: null, beacon: null,
+      somethingTheUiDoesNotKnow: { nested: [1, 2, 3] },
+    } as unknown as PortConfig;
+    const out = wireRoundTrip(portDraftToConfig(draftOf(port))) as unknown as Record<string, unknown>;
+    expect(out.somethingTheUiDoesNotKnow).toEqual({ nested: [1, 2, 3] });
   });
 });

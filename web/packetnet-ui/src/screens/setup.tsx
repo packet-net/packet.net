@@ -13,7 +13,7 @@ import { Logo, ThemeToggle } from "@/components/layout/shell";
 import { cn } from "@/lib/utils";
 import { api, ConfigRejected } from "@/lib/api";
 import { passkeysAvailable } from "@/lib/secureContext";
-import type { PortConfig, SetupRequest, TransportConfig, TransportKind } from "@/lib/types";
+import type { PortConfig, SetupRequest, TransportConfig, AuthorableTransportKind } from "@/lib/types";
 
 function AuthFrame({ children }: { children: ReactNode }) {
   return (
@@ -39,7 +39,7 @@ function AuthFrame({ children }: { children: ReactNode }) {
 interface SetupData {
   callsign: string; alias: string; grid: string;
   username: string; password: string; confirm: string;
-  addPort: boolean; portId: string; portKind: TransportKind; device: string; baud: number;
+  addPort: boolean; portId: string; portKind: AuthorableTransportKind; device: string; baud: number;
 }
 
 const STEPS = ["Station identity", "Create admin", "First port"];
@@ -57,7 +57,8 @@ function buildPort(d: SetupData): PortConfig {
     case "kiss-tcp": transport = { kind: "kiss-tcp", host: d.device || "127.0.0.1", port: d.baud || 8001 }; break;
     case "axudp": transport = { kind: "axudp", host: d.device || "127.0.0.1", port: d.baud || 10093, localPort: d.baud || 10093 }; break;
     // The wizard's port-kind picker doesn't offer multipoint (its partner table doesn't
-    // fit the simple first-port form), but the switch stays exhaustive over TransportKind:
+    // fit the simple first-port form), but the switch stays exhaustive over the kinds a form
+    // can author (AuthorableTransportKind):
     // seed an empty peers table the operator fills in later from the Ports editor.
     case "axudp-multipoint": transport = { kind: "axudp-multipoint", localPort: d.baud || 10093, peers: [] }; break;
     // Same exhaustiveness note: the wizard doesn't offer the soundmodem (audio device,
@@ -172,7 +173,7 @@ export function Setup() {
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Port id"><Input value={data.portId} onChange={(e) => set("portId", e.target.value)} className="font-mono" /></Field>
                     <Field label="Transport">
-                      <Select value={data.portKind} onChange={(e) => set("portKind", e.target.value as TransportKind)}>
+                      <Select value={data.portKind} onChange={(e) => set("portKind", e.target.value as AuthorableTransportKind)}>
                         <option value="nino-tnc">nino-tnc</option>
                         <option value="kiss-tcp">kiss-tcp</option>
                         <option value="serial-kiss">serial-kiss</option>

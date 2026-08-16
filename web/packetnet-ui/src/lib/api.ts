@@ -448,10 +448,13 @@ export const api = {
 
   // ---- port management (Slice-3 step 3) ----
   // Each mutation flows through the same config-write reconcile path as putConfig:
-  // a 422 throws ConfigRejected; success returns the ReconcileResult.
-  addPort: (p: PortConfig) => writePort("/ports", "POST", JSON.stringify(p)),
-  editPort: (id: string, p: PortConfig) =>
-    writePort(`/ports/${encodeURIComponent(id)}`, "PUT", JSON.stringify(p)),
+  // a 422 throws ConfigRejected; success returns the ReconcileResult. dryRun validates +
+  // previews the reconcile WITHOUT applying it (the same flag PUT /config takes) - how the
+  // port editor asks the node what a save would disrupt before the operator commits.
+  addPort: (p: PortConfig, opts: { dryRun?: boolean } = {}) =>
+    writePort("/ports", "POST", JSON.stringify(p), opts.dryRun ?? false),
+  editPort: (id: string, p: PortConfig, opts: { dryRun?: boolean } = {}) =>
+    writePort(`/ports/${encodeURIComponent(id)}`, "PUT", JSON.stringify(p), opts.dryRun ?? false),
   removePort: (id: string) =>
     writePort(`/ports/${encodeURIComponent(id)}`, "DELETE"),
   // Bring a port up/down/restart (persisted via the config seam for up/down; restart
@@ -1135,13 +1138,13 @@ export class PortLifecycleUnavailable extends Error {
 
 // Add/edit/remove a port through the config-write reconcile path. 404 (unknown id) and
 // 422 (rejected candidate) map to ConfigRejected/Error; success returns the
-// ReconcileResult. Mirrors writeConfig — the server reuses the same seam.
-async function writePort(path: string, method: string, body?: string): Promise<ReconcileResult> {
+// ReconcileResult. Mirrors writeConfig - the server reuses the same seam, dryRun included.
+async function writePort(path: string, method: string, body?: string, dryRun = false): Promise<ReconcileResult> {
   if (MODE === "mock") {
     await new Promise((r) => setTimeout(r, 80));
-    return mockReconcile(true);
+    return mockReconcile(!dryRun);
   }
-  const res = await authFetch(path, {
+  const res = await authFetch(`${path}${dryRun ? "?dryRun=true" : ""}`, {
     method,
     headers: body
       ? { "content-type": "application/json", accept: "application/json" }
