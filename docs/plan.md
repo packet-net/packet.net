@@ -1262,6 +1262,16 @@ What changed, why, where to look for details.
 ```
 
 
+### 2026-08-16 - RELEASE: node-v0.40.0 (the dependency sweep; node train only)
+
+The sweep below shipped as **node-v0.40.0**, tagged on `a9020d1` after `ci`, `interop` and `plan-check` all went green on that merge commit. Two things reach users: the `freedv-*`/`ms110d-*` modes now accept a `frequency` (pdn-soundmodem 0.37's `CentreSemantics.Shifted`), and the node picks up the .NET 10.0.11 servicing builds.
+
+**The interop green is the notable one.** `interop` had been red on the nightly schedule since 2026-08-14, dying at ~1m54s in *restore* on the `SSH.NET` NU1903 advisory - not a code regression, an advisory published against an unchanged dependency. This is the first run since to get past restore and actually stand the docker stack up (21m). Anyone bisecting that window should know the reds were environmental in origin, not a bug in the tree.
+
+**Published and verified:** `publish-node` green; release `node-v0.40.0` non-draft with the full 7 assets (three `.deb`s + three `.tar.gz`s + `SHA256SUMS`). `publish-docker` green; `ghcr.io/packet-net/packet.net:0.40.0` + `:latest` manifest confirmed multi-arch (amd64 + arm64).
+
+**No other legs, deliberately.** No `lib-v*`: no library *code* moved, and the only published-package delta is a dependency floor on three of the seventeen (`Packet.Kiss.Serial` + `Packet.Radio.Tait` on `System.IO.Ports`, `Packet.Ax25` on `Microsoft.Extensions.Logging.Abstractions`, all 10.0.10 -> 10.0.11) - too thin to justify republishing the set and obliging the axcall / packet-term-tui pin-bump releases that [`docs/releasing.md`](releasing.md) Step 3 hangs off a lib tag. Those two consumers therefore stay on `lib-v0.25.0`, and the next `lib-v*` carries these floors along with whatever moves the surface. No headend change; no TS leg (no parity-affecting surface). Cascade complete per [`docs/releasing.md`](releasing.md).
+
 ### 2026-08-16 - Dependency sweep: the OFDM modes gained a settable centre, and Testcontainers cleared an SSH.NET advisory
 
 A `dotnet outdated -u` sweep across `Directory.Packages.props`. Fourteen pins moved; two of them mattered for behaviour, and one of them un-broke `main`.
