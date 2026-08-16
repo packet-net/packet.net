@@ -7,8 +7,8 @@ namespace Packet.Node.Tests.Configuration;
 /// <summary>
 /// The config JSON <em>dialect</em>: what <see cref="NodeConfigJson"/> writes, and what it
 /// still accepts. Two shapes are load-bearing because <c>docs/node-api.yaml</c> and the
-/// control panel both assume them — an enum is its member name (<c>"Transit"</c>) and a
-/// duration is a number of seconds (<c>60</c>) — and both must be <b>readable</b> in their
+/// control panel both assume them - an enum is its member name (<c>"Transit"</c>) and a
+/// duration is a number of seconds (<c>60</c>) - and both must be <b>readable</b> in their
 /// pre-converter form as well, because every deployed node's <c>pdn.db</c> holds a config
 /// blob written before these converters existed (integer enums, <c>"hh:mm:ss"</c>
 /// durations) and there is no migration.
@@ -174,5 +174,18 @@ public class NodeConfigJsonDialectTests
         var config = NodeConfigJson.Deserialize(LegacyBlob);
 
         JsonSerializer.Serialize(config, httpLike).Should().Be(NodeConfigJson.Serialize(config));
+    }
+
+    [Fact]
+    public void A_duration_given_as_a_quoted_number_reads_as_seconds_not_days()
+    {
+        // The invariant TimeSpan grammar parses a lone number as days ("60" -> 60 days).
+        // The converter must try the numeric-seconds reading first.
+        var json = LegacyBlob.Replace("\"l3RttInterval\": \"00:01:00\"", "\"l3RttInterval\": \"60\"",
+            StringComparison.Ordinal);
+
+        var inp3 = NodeConfigJson.Deserialize(json).NetRom.Inp3;
+
+        inp3.L3RttInterval.Should().Be(TimeSpan.FromSeconds(60));
     }
 }

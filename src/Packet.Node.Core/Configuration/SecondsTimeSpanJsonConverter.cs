@@ -15,21 +15,21 @@ namespace Packet.Node.Core.Configuration;
 /// <c>GET</c>/<c>PUT /api/v1/config</c> bodies. Today the only <see cref="TimeSpan"/>
 /// knobs that reach that wire are the four INP3 timers
 /// (<c>netRom.inp3.l3RttInterval</c> / <c>l3RttResetWindow</c> / <c>rifInterval</c> /
-/// <c>positiveDebounce</c> — see <see cref="Packet.NetRom.Wire.NetRomInp3Options"/>),
+/// <c>positiveDebounce</c> - see <see cref="Packet.NetRom.Wire.NetRomInp3Options"/>),
 /// which the control panel edits as plain numeric seconds.
 /// </para>
 /// <para>
 /// <b>Write:</b> a whole number of seconds as a JSON integer
 /// (<c>"l3RttInterval": 60</c>). A value carrying sub-second precision (nothing
 /// defaults to one, but an operator could hand-write <c>00:00:00.5</c> in YAML)
-/// writes as a fractional number rather than being truncated to zero — the write is
+/// writes as a fractional number rather than being truncated to zero - the write is
 /// lossless in both directions.
 /// </para>
 /// <para>
 /// <b>Read:</b> either form. A number is seconds. A string is parsed as an invariant
-/// <see cref="TimeSpan"/> first — that is the <em>legacy</em> shape, the one already
+/// <see cref="TimeSpan"/> first - that is the <em>legacy</em> shape, the one already
 /// sitting in every deployed node's <c>pdn.db</c> config blob from before this
-/// converter existed — and falls back to a numeric string (the web JSON defaults
+/// converter existed - and falls back to a numeric string (the web JSON defaults
 /// allow numbers quoted as strings elsewhere, so accepting <c>"60"</c> here keeps
 /// the dialect consistent). So no blob migration is needed: an existing node reads
 /// its stored <c>"00:01:00"</c> and rewrites it as <c>60</c> on the next config
@@ -59,14 +59,19 @@ public sealed class SecondsTimeSpanJsonConverter : JsonConverter<TimeSpan>
                 {
                     throw new JsonException("a duration must be a number of seconds, not an empty string.");
                 }
-                // Legacy first: the "hh:mm:ss" blobs written before this converter existed.
-                if (TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var span))
-                {
-                    return span;
-                }
+                // A bare numeric string ("60", "0.5") is seconds. It MUST be tried before
+                // TimeSpan.TryParse: the invariant TimeSpan grammar reads a lone number as
+                // DAYS ("60" -> 60.00:00:00), which would silently turn a quoted 60 s into
+                // two months.
                 if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds))
                 {
                     return FromSeconds(seconds);
+                }
+                // Otherwise the legacy "hh:mm:ss" duration blobs written before this
+                // converter existed.
+                if (TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var span))
+                {
+                    return span;
                 }
                 throw new JsonException(
                     $"'{text}' is not a duration: expected a number of seconds (60) or an invariant TimeSpan (00:01:00).");
