@@ -241,8 +241,15 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
     // bare CR (BPQ does), and some send CRLF — but the pre-wrap pane only breaks on
     // LF, so without this every CR-terminated line collapses onto one row. Fold both
     // CRLF and lone CR to LF; the wire stream itself stays untouched.
-    const unsubscribe = subscribeSessionOutput(session.id, (chunk) =>
-      setBuffer((b) => b + chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n")),
+    //
+    // The node replays the session's whole backlog on EVERY subscription (including the
+    // stream helper's silent reconnect after a token rotation or a node restart), as a
+    // `backlog` event. onReset fires just before it is written: empty the buffer so the
+    // replay REPLACES the history rather than appending a second copy (C045, #689).
+    const unsubscribe = subscribeSessionOutput(
+      session.id,
+      (chunk) => setBuffer((b) => b + chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n")),
+      { onReset: () => setBuffer("") },
     );
     return unsubscribe;
   }, [session]);

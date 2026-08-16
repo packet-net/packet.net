@@ -101,7 +101,10 @@ public static class PdnEventsApi
                 // The client went away (RequestAborted). Normal SSE teardown — the
                 // using-scoped subscription unsubscribes + completes the channel.
             }
-        }).RequireAuthorization(PdnAuthPolicies.Read);
+        }).RequireAuthorization(PdnAuthPolicies.Read)
+          // A browser EventSource can't set an Authorization header - this marker is what
+          // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
+          .WithMetadata(AcceptsQueryAccessToken.Instance);
     }
 
     /// <summary>

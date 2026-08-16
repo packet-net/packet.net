@@ -304,6 +304,14 @@ builder.Services.AddSingleton(new TotpEnrollmentCache(TimeProvider.System));
 // console gains the SYSOP elevation command - inert until a user enrols a TOTP credential.
 builder.Services.AddSingleton(new TotpService(TimeProvider.System));
 
+// Fallback shape rule for the query-token predicate below, used only when no endpoint has
+// been resolved for the request: under /api/v1, an SSE feed is a path ending in /events or
+// /stream. The metadata marker is the primary rule (see the comment on the handler).
+static bool IsSseFeedPath(PathString path) =>
+    path.StartsWithSegments("/api/v1")
+    && (path.Value?.EndsWith("/events", StringComparison.Ordinal) == true
+        || path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true);
+
 // Authentication: JWT bearer validated against THIS node's signing key/issuer/audience
 // (HS256 only). Always registered so a token presented when auth is on is validated;
 // when the key is unavailable the validator gets a throwaway parameters object that
@@ -332,10 +340,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         // SSE token-by-query: a browser EventSource can't set an Authorization
         // header, so the live feeds accept the JWT as a `?access_token=` query
-        // param. Restricted to the SSE paths only (so we don't normalise
+        // param. Restricted to the SSE feeds only (so we don't normalise
         // tokens-in-URLs across the API - they can leak into logs/referrers) and
         // only when no bearer header was supplied. The token is still fully
         // validated by the same pipeline; the query is just where it's read from.
+        //
+        // WHICH routes qualify is ENDPOINT METADATA, not a path list kept here.
+        // Routing runs BEFORE authentication in this pipeline (WebApplication inserts
+        // UseRouting ahead of the user middleware), so by the time this handler runs the
+        // matched endpoint is resolved and we can simply ask it whether it accepts a
+        // query token - the AcceptsQueryAccessToken marker each SSE route carries where
+        // it is mapped. The hand-kept list this replaced had silently fallen out of step
+        // with the routes: /ports/{id}/tuning/events and /ports/{id}/spectrum/events were
+        // never added, so the Link Tuner and Waterfall feeds 401'd on every auth-on node
+        // (review item C001, #689). Marking the route at its MapGet keeps the permission
+        // next to the endpoint. IsSseFeedPath is a belt-and-braces fallback for the case
+        // where no endpoint is resolved (a host that authenticates before routing).
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -343,10 +363,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (string.IsNullOrEmpty(context.Token))
                 {
                     var path = context.HttpContext.Request.Path;
-                    bool isSse = path.StartsWithSegments("/api/v1/events")
-                        || path.StartsWithSegments("/api/v1/rigs/events")
-                        || (path.StartsWithSegments("/api/v1/sessions") && path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true)
-                        || (path.StartsWithSegments("/api/v1/console") && path.Value?.EndsWith("/stream", StringComparison.Ordinal) == true);
+                    var endpoint = context.HttpContext.GetEndpoint();
+                    bool isSse = endpoint is not null
+                        ? endpoint.Metadata.GetMetadata<AcceptsQueryAccessToken>() is not null
+                        : IsSseFeedPath(path);
                     if (isSse)
                     {
                         var queryToken = context.Request.Query["access_token"];

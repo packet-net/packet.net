@@ -15,7 +15,7 @@ import { FRAME_TYPES, PORTS_LIST, hex } from "@/lib/mock";
 import type { LinkStats, MonitorEvent } from "@/lib/types";
 
 export function Monitor() {
-  const { frames, paused, setPaused, clear } = useFrameStream(500);
+  const { frames, paused, setPaused, clear, connected } = useFrameStream(500);
   const { data: links } = useQuery(api.linkStats, []);
   const { data: config } = useQuery(api.config, []);
   // Port-filter options come from the live config; fall back to the mock list.
@@ -153,9 +153,14 @@ export function Monitor() {
           {FRAME_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </Select>
         <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+          {/* The dot tells the truth about the FEED, not just the pause button: a dropped
+              stream (expired token, node restart) now reads "reconnecting" while the client
+              backs off and re-subscribes, instead of claiming to stream into a dead socket. */}
           {paused
             ? <Badge variant="warning">paused</Badge>
-            : <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-success live-dot" />streaming</span>}
+            : connected
+              ? <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-success live-dot" />streaming</span>
+              : <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-warning" />reconnecting</span>}
           <span className="tnum">{filtered.length} frames</span>
         </div>
       </div>

@@ -84,8 +84,8 @@ public static class PdnConsoleApi
 
         // Interactive output stream (Server-Sent Events) — mirrors /sessions/{id}/stream exactly:
         // subscribe (and thus 404-check) BEFORE writing any bytes; replay the backlog as one
-        // `output` event; then stream live chunks (each JSON-encoded as a string so embedded CR/LF
-        // survive SSE's line framing); a `: ping` heartbeat keeps it warm; no-store.
+        // `backlog` event; then stream live chunks as `output` (each JSON-encoded as a string so
+        // embedded CR/LF survive SSE's line framing); a `: ping` heartbeat keeps it warm; no-store.
         v1.MapGet("/console/{id}/stream", async (string id, HttpContext ctx, SysopConsoleManager console, TimeProvider clock) =>
         {
             var ct = ctx.RequestAborted;
@@ -102,10 +102,13 @@ public static class PdnConsoleApi
             ctx.Response.Headers["X-Accel-Buffering"] = "no";
             ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
-            // Replay the backlog first (the banner/prompt the browser missed) as one `output`
-            // event, then stream live chunks. Even an empty backlog is sent so the client's
-            // onopen-driven render has a deterministic first event and the headers flush.
-            await WriteOutputAsync(ctx, backlog, ct).ConfigureAwait(false);
+            // Replay the backlog first (the banner/prompt the browser missed) as one `backlog`
+            // event, NOT `output`: the replay is sent on every subscription, so a client that
+            // appended it as live output duplicated the whole history on each silent EventSource
+            // reconnect (C045). The distinct name lets the client reset its terminal first.
+            // Even an empty backlog is sent so the client's onopen-driven render has a
+            // deterministic first event and the headers flush.
+            await WriteBacklogAsync(ctx, backlog, ct).ConfigureAwait(false);
 
             try
             {
@@ -139,7 +142,10 @@ public static class PdnConsoleApi
                 // The client went away (RequestAborted). Normal SSE teardown — the using-scoped
                 // subscription unsubscribes + completes its channel.
             }
-        });
+        })
+          // A browser EventSource can't set an Authorization header - this marker is what
+          // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
+          .WithMetadata(AcceptsQueryAccessToken.Instance);
 
         // Feed input to the console. The body's `data` is forwarded verbatim (UTF-8) into the
         // loopback's user-end via the manager's write path; the console's LineAssembler does the
@@ -183,9 +189,19 @@ public static class PdnConsoleApi
     // CR/LF survive SSE's line framing (a raw \n in a data: line would terminate the event early).
     // Identical to PdnSessionsApi's encoding so the frontend's one decoder serves both streams.
     private static Task WriteOutputAsync(HttpContext ctx, string chunk, CancellationToken ct)
+        => WriteChunkAsync(ctx, "output", chunk, ct);
+
+    // The replayed history, as a DISTINCT `backlog` event. Every subscription (including the
+    // browser's silent EventSource auto-reconnect) starts with the whole snapshot, so a client
+    // that appended it as `output` rewrote its history on each reconnect (review item C045,
+    // #689). Naming the replay lets the client reset its terminal before writing it.
+    private static Task WriteBacklogAsync(HttpContext ctx, string chunk, CancellationToken ct)
+        => WriteChunkAsync(ctx, "backlog", chunk, ct);
+
+    private static Task WriteChunkAsync(HttpContext ctx, string eventName, string chunk, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(chunk);
-        return WriteRawAsync(ctx, $"event: output\ndata: {json}\n\n", ct);
+        return WriteRawAsync(ctx, $"event: {eventName}\ndata: {json}\n\n", ct);
     }
 
     // Write a UTF-8 SSE chunk and flush it immediately. A mid-write cancellation or IOException

@@ -814,6 +814,9 @@ export interface MonitorEvent {
   snrDb?: number | null;
   // The channel-idle noise floor (dBm) the radio was tracking when this frame arrived, or null.
   noiseFloorDbm?: number | null;
+  // Identifies the node PROCESS that numbered this frame. `seq` restarts at 1 on every node
+  // boot, so (bootId, seq) is the stable identity a client dedupes on - see mergeLiveFrame.
+  bootId?: string;
 }
 
 // ---- operator-facing helper models (UI layer) --------------

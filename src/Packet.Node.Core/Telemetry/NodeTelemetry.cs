@@ -55,6 +55,13 @@ public sealed partial class NodeTelemetry
     // Monotonic frame sequence across the whole node (matches the UI's seq semantics).
     private long seq;
 
+    // Identifies THIS telemetry instance (one per node process) on every event it stamps.
+    // `seq` restarts at 1 on each boot, so seq alone is not a stable frame identity: a web
+    // monitor left open across a node restart saw the new boot's frames as already-buffered
+    // duplicates and silently dropped them (review item C046, #689). The pair (bootId, seq)
+    // is stable, so a client can tell "the node restarted" from "I already have this frame".
+    private readonly string bootId = Guid.NewGuid().ToString("N");
+
     // A bounded ring of the most recent decoded frames so a freshly-opened web
     // monitor bootstraps with recent history (GET /api/v1/monitor/recent) instead of
     // an empty table that only fills as new frames arrive. Guarded by its own lock
@@ -138,7 +145,7 @@ public sealed partial class NodeTelemetry
             var radio = rx ? radioSource?.LatestInboundRadio : null;
 
             long s = Interlocked.Increment(ref seq);
-            var evt = MonitorEventFactory.From(s, portId, e, radio);
+            var evt = MonitorEventFactory.From(s, portId, e, radio) with { BootId = bootId };
 
             int payload = e.Frame.Info.Length;
             long nowTicks = e.Timestamp.UtcTicks;

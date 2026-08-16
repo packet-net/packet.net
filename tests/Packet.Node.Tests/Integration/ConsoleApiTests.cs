@@ -140,6 +140,65 @@ public sealed class ConsoleApiTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task The_replayed_backlog_is_a_backlog_event_and_live_output_is_an_output_event()
+    {
+        // The replay is sent on EVERY subscription - including the browser's silent EventSource
+        // auto-reconnect - so it cannot share the `output` name with live chunks: a client that
+        // appended both rewrote the whole history on each reconnect (review item C045, #689).
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        using var openResp = await client.PostAsync("/api/v1/console", content: null);
+        openResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = (await openResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+
+        try
+        {
+            using var streamResp = await client.GetAsync($"/api/v1/console/{id}/stream",
+                HttpCompletionOption.ResponseHeadersRead);
+            streamResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            await using var stream = await streamResp.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(stream);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // The FIRST named event of the subscription is the replay, and it is `backlog`.
+            (await NextEventNameAsync(reader, cts.Token)).Should().Be("backlog");
+
+            // Everything after it is live: type the help command and read the next event name.
+            using var inputResp = await client.PostAsJsonAsync($"/api/v1/console/{id}/input", new { data = "?\r" });
+            inputResp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+            (await NextEventNameAsync(reader, cts.Token)).Should().Be("output");
+        }
+        finally
+        {
+            using var delResp = await client.DeleteAsync($"/api/v1/console/{id}");
+            delResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+    }
+
+    // The name of the next named SSE event on the stream (`event: <name>`), skipping heartbeat
+    // comments and blank framing lines. Null if the stream ends or the token trips first.
+    private static async Task<string?> NextEventNameAsync(StreamReader reader, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (line is null)
+            {
+                return null;
+            }
+            const string EventPrefix = "event: ";
+            if (line.StartsWith(EventPrefix, StringComparison.Ordinal))
+            {
+                return line[EventPrefix.Length..];
+            }
+        }
+        return null;
+    }
+
     // Read SSE `data:` lines until one (after JSON-decoding the chunk) contains the needle, or the
     // token trips. Each `output` event's data is a JSON-encoded string; we substring-match on the
     // decoded text so embedded CR/LF don't matter. Bounded so a regression fails fast, not hangs.

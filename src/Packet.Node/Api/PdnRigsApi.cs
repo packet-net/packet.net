@@ -187,7 +187,10 @@ public static class PdnRigsApi
             {
                 // Client went away (RequestAborted) — normal SSE teardown.
             }
-        });
+        })
+          // A browser EventSource can't set an Authorization header - this marker is what
+          // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
+          .WithMetadata(AcceptsQueryAccessToken.Instance);
     }
 
     /// <summary>The shared rig-mutation shape: resolve the port (404) and its attached rig
