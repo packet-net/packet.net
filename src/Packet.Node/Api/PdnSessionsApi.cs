@@ -45,7 +45,8 @@ namespace Packet.Node.Api;
 /// <em>direct</em> dial on that port. Naming a port resolves
 /// <c>Supervisor.ResolveConnector(portId)</c> (a plain same-port AX.25 dial, never NET/ROM
 /// wrapped) and 404s when the port is not running; omitting it resolves
-/// <c>ResolveDefaultConnector()</c>, which is the deterministic first port by id order,
+/// <c>ResolveDefaultConnector()</c>, which is the first enabled port that is serving in the
+/// node's canonical (configuration) order - the same port the console numbers 1 -
 /// NET/ROM-wrapped when NET/ROM connect is enabled so an alias routes across the network.
 /// Until #694 (review item C060) <c>portId</c> was only validated and then ignored, so on a
 /// two-port node the SABM left on the ordinal-first port whatever the operator picked.
@@ -173,8 +174,9 @@ public static class PdnSessionsApi
                     var named = host.Supervisor.ResolveConnector(body.PortId!);
                     return Task.FromResult<(IOutboundConnector?, bool)>((named, named is null));
                 }
-                // No port named: the deterministic default (first port by id order),
-                // NET/ROM-wrapped when NET/ROM connect is on so an alias routes.
+                // No port named: the deterministic default (the first serving port in
+                // configuration order), NET/ROM-wrapped when NET/ROM connect is on so an
+                // alias routes.
                 return Task.FromResult((host.Supervisor.ResolveDefaultConnector(), false));
             }, ct).ConfigureAwait(false);
 
@@ -405,47 +407,47 @@ public static class PdnSessionsApi
     /// probe count (default 5, clamped to <c>1..20</c>).</summary>
     public sealed record PingRequest(string Station, string PortId, int Count = 5);
 
-    /// <summary>A live session matched from a <c>{portId}:{peer}</c> id, with its owning listener.</summary>
+    /// <summary>A live session matched from a <see cref="SessionIds"/> id, with its owning listener.</summary>
     private readonly record struct SessionMatch(string PortId, Ax25Listener Listener, Ax25Session Session);
 
     /// <summary>
-    /// Split a session id at the FIRST ':' into (portId, peer) — the convention
-    /// <c>PdnReadApi.BuildSessions</c> mints (<c>$"{portId}:{peer}"</c>). The peer (a
-    /// callsign with an SSID, e.g. <c>M0LTE-1</c>) itself contains no ':', so a single
-    /// split on the first ':' is unambiguous. Returns false if there is no ':' .
+    /// Parse a session id into (portId, peer), discarding the local half - kept for the callers
+    /// that key on <c>(port, peer)</c> alone (the per-peer capability cache). Delegates to
+    /// <see cref="SessionIds.TryParse"/>, which is the single definition of the id convention.
     /// </summary>
     internal static bool TrySplitSessionId(string id, out string portId, out string peer)
-    {
-        portId = string.Empty;
-        peer = string.Empty;
-        if (string.IsNullOrEmpty(id))
-        {
-            return false;
-        }
-        int colon = id.IndexOf(':', StringComparison.Ordinal);
-        if (colon <= 0 || colon >= id.Length - 1)
-        {
-            return false;
-        }
-        portId = id[..colon];
-        peer = id[(colon + 1)..];
-        return true;
-    }
+        => SessionIds.TryParse(id, out portId, out peer, out _);
 
-    // Resolve a {portId:peer} id to the live session on that port (matched on the peer's
-    // canonical text), or null if the port isn't running / the peer has no live session /
-    // the id is malformed. Caller holds the gate.
+    /// <summary>
+    /// Parse a session id into its full engine key: the port, the remote, and the LOCAL callsign
+    /// when the id names one (null means "the node's own callsign on that port").
+    /// </summary>
+    internal static bool TrySplitSessionId(string id, out string portId, out string peer, out string? local)
+        => SessionIds.TryParse(id, out portId, out peer, out local);
+
+    // Resolve an id to the live session on that port, matched on the engine's FULL key - the
+    // remote AND the local callsign the circuit is answered as. Matching on the remote alone (a
+    // FirstOrDefault) picked whichever of a station's two simultaneous links enumerated first, so
+    // a DELETE aimed at the console could drop that station's BBS session instead (#723 item 5).
+    // The short id form means "the session to this port's own callsign", so it matches MyCall
+    // rather than "any local". Null if the port isn't running / nothing matches / the id is
+    // malformed. Caller holds the gate.
     private static SessionMatch? FindSession(NodeHostedService host, string id)
     {
-        if (!TrySplitSessionId(id, out var portId, out var peer))
+        if (!SessionIds.TryParse(id, out var portId, out var peer, out var local))
         {
             return null;
         }
         var listener = host.Supervisor?.GetPort(portId)?.Listener;
-        var session = listener?.ActiveSessions.FirstOrDefault(s => s.Context.Remote.ToString() == peer);
-        return listener is not null && session is not null
-            ? new SessionMatch(portId, listener, session)
-            : null;
+        if (listener is null)
+        {
+            return null;
+        }
+        var wanted = local ?? listener.MyCall.ToString();
+        var session = listener.ActiveSessions.FirstOrDefault(s =>
+            s.Context.Remote.ToString() == peer
+            && string.Equals(s.Context.Local.ToString(), wanted, StringComparison.OrdinalIgnoreCase));
+        return session is not null ? new SessionMatch(portId, listener, session) : null;
     }
 
     // Project the SessionInfo for a freshly-opened connect-out. Prefer the AX.25 session
@@ -475,10 +477,14 @@ public static class PdnSessionsApi
         }
 
         var who = string.IsNullOrEmpty(peer) ? target.ToString() : peer;
+        // A NET/ROM circuit has no AX.25 local callsign of its own: it is the NODE that
+        // originated it, so the id keeps the short form and Local reports the node's callsign.
+        var nodeCall = PdnReadApi.NodeCallOn(host, portId) ?? string.Empty;
         return new SessionInfo(
-            Id: $"{portId}:{who}",
+            Id: SessionIds.Format(portId, who, nodeCall, nodeCall),
             PortId: portId,
             Peer: who,
+            Local: nodeCall,
             Role: neighbours.Contains(who) ? "interlink" : "console",
             State: "Connected",
             Vs: 0,

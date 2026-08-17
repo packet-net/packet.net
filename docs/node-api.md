@@ -95,7 +95,17 @@ shapes are read from the types that define them.
   connector, which is NET/ROM-wrapped when NET/ROM connect routing is on, so an alias or a
   distant destination goes over the network. Send `portId` only when a direct dial on that
   specific port is what you want; a client that always sends one cannot reach a NET/ROM
-  alias at all.
+  alias at all. With no `portId` the dial leaves on the first ENABLED and SERVING port in
+  **configuration order** - the same order the console's `PORTS` numbers and `C <n> <call>`
+  addresses, and the order `/ports` and `/sessions` are returned in. There is one port
+  ordering on the node and this is it (packet-net/packet.net#723).
+- **Session ids are opaque, and carry the full session key**: `{portId}:{peer}` for a circuit
+  to the node's own callsign, `{portId}:{peer}>{local}` for one to an application callsign the
+  node binds. The AX.25 engine keys a session on `(local, remote)` - one station can hold a
+  link to the node console and another to a bound application at the same moment - so the id
+  has to carry both halves for `DELETE /sessions/{id}`, `/send` and `/stream` to address the
+  right one. **Pass the id back verbatim; do not parse it.** `SessionInfo.local` is the field
+  to render if you want to show which identity a caller reached.
 
 ## The route inventory
 

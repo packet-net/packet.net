@@ -21,9 +21,10 @@ public sealed record McpPortStatus(
 
 /// <summary>One live AX.25 session (the <c>list_sessions</c> projection).</summary>
 public sealed record McpSessionInfo(
-    [property: Description("Session id, formatted port:peer.")] string Id,
+    [property: Description("Opaque session id: port:peer, or port:peer>local for a session to an application callsign. Pass it back verbatim; do not parse it.")] string Id,
     [property: Description("Port the session lives on.")] string PortId,
     [property: Description("Remote callsign (with SSID).")] string Peer,
+    [property: Description("Local callsign this circuit is answered as: the node's own, or an application callsign the node binds.")] string Local,
     [property: Description("Classification: console | interlink.")] string Role,
     [property: Description("AX.25 data-link state name.")] string State,
     [property: Description("V(s) — send state variable.")] int Vs,

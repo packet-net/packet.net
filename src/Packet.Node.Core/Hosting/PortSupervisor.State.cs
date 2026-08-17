@@ -133,6 +133,61 @@ public sealed partial class PortSupervisor : IPortHealthView
         return result;
     }
 
+    // ── the ONE canonical port ordering (#723 item 3) ────────────────────────────────
+    //
+    // Configuration order. Not id order, not dictionary order: the order the operator wrote the
+    // ports in, which is the order Snapshot() yields, the order the console's PORTS listing
+    // numbers, and the order `C <n> <call>` addresses. Every "which port" answer in the node -
+    // the default connector, RunningPortIds (and so /ports' running set, /sessions and the
+    // metrics), and the NET/ROM egress fallback - resolves through one of these two helpers, so
+    // the surfaces can no longer disagree the way they did before (a bare `C` and `C 1` could
+    // dial different radios on a node configured [vhf, hf]).
+
+    /// <summary>
+    /// The ids of the ports that are <b>serving</b> right now (up or degraded), in canonical
+    /// configuration order. A port in the config but not serving is absent; a serving port with
+    /// no config line (a removal racing this read) is appended, by id, rather than vanishing.
+    /// </summary>
+    private List<string> CanonicalServingPortIds()
+    {
+        var configured = config.Current.Ports;
+        var result = new List<string>(configured.Count);
+        lock (ports)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var port in configured)
+            {
+                seen.Add(port.Id);
+                if (ports.TryGetValue(port.Id, out var entry) && entry.Running is not null)
+                {
+                    result.Add(entry.Id);
+                }
+            }
+
+            foreach (var entry in ports.Values
+                         .Where(e => e.Running is not null && !seen.Contains(e.Id))
+                         .OrderBy(e => e.Id, StringComparer.Ordinal))
+            {
+                result.Add(entry.Id);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Every CONFIGURED port id → its 0-based position in canonical order, for callers
+    /// that must sort an arbitrary set of port ids (not just the serving ones) the same way.</summary>
+    private Dictionary<string, int> CanonicalPortOrdinals()
+    {
+        var configured = config.Current.Ports;
+        var map = new Dictionary<string, int>(configured.Count, StringComparer.Ordinal);
+        for (int i = 0; i < configured.Count; i++)
+        {
+            map[configured[i].Id] = i;
+        }
+        return map;
+    }
+
     private PortHealth Unattempted(PortConfig port) => new()
     {
         Id = port.Id,

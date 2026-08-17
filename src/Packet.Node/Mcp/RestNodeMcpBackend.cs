@@ -69,7 +69,7 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
     {
         var s = await GetAsync<List<RestSession>>("api/v1/sessions", ct).ConfigureAwait(false) ?? [];
         return s.Select(x => new McpSessionInfo(
-            x.Id, x.PortId, x.Peer, x.Role ?? "?", x.State ?? "?", x.Vs, x.Vr, x.Window,
+            x.Id, x.PortId, x.Peer, x.Local ?? "?", x.Role ?? "?", x.State ?? "?", x.Vs, x.Vr, x.Window,
             x.UptimeSeconds, x.BytesIn, x.BytesOut, x.LastActivity ?? "-")).ToList();
     }
 
@@ -303,7 +303,7 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
         string? LastError = null, IReadOnlyList<string>? Degraded = null);
 
     private sealed record RestSession(
-        string Id, string PortId, string Peer, string? Role, string? State,
+        string Id, string PortId, string Peer, string? Local, string? Role, string? State,
         int Vs, int Vr, int Window, long UptimeSeconds, long BytesIn, long BytesOut, string? LastActivity);
 
     private sealed record RestMonitor(

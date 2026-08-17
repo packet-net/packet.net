@@ -71,10 +71,22 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     private readonly PeerCapabilityCache? capabilityCache;
     private readonly HeadEnd.IHeadEndDiscovery? headEndDiscovery;
     // App callsigns the node answers for on behalf of an external program (the RHPv2 server's
-    // `bind`): callsign → registration. Applied to running listeners as local aliases, re-applied
-    // when a port (re)starts, and routed in OnSessionAccepted (an inbound session whose Local is
-    // an app callsign goes to the registration's handler, never to the node console).
-    private readonly Dictionary<Callsign, AppCallsignRegistration> appCallsigns = new();
+    // `bind`): (callsign, port scope) → registration. Applied to running listeners as local
+    // aliases, re-applied when a port (re)starts, and routed in OnSessionAccepted (an inbound
+    // session whose Local is an app callsign goes to the registration's handler, never to the
+    // node console).
+    //
+    // The key carries the PORT SCOPE (#723 item 2), so the same callsign may be bound on two
+    // different ports by two different apps - a local BBS on VHF and a gateway BBS on HF is
+    // ordinary multi-port practice, and the old callsign-only key made it impossible. The rule,
+    // enforced in RegisterAppCallsign and documented on it:
+    //   * a per-port registration claims exactly that port;
+    //   * a WILDCARD registration (portId null - the RHP wire's `bind` with no port label)
+    //     claims EVERY port, so it conflicts with any other registration of that callsign,
+    //     wildcard or per-port, in either order;
+    //   * two per-port registrations of one callsign conflict only when they name the same port.
+    // Resolution is (Local, arrival port) first, the wildcard as fallback - see OnAppSessionAccepted.
+    private readonly Dictionary<AppCallsignKey, AppCallsignRegistration> appCallsigns = new();
     private readonly object appCallsignGate = new();
     // One entry per CONFIGURED port (running or not) - the port owner: its state, its config
     // baseline, its degraded set, its armed retry, and (while serving) the RunningPort that is
@@ -86,11 +98,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // watchdog), which would otherwise race a reconcile touching the same port set.
     private readonly SemaphoreSlim mutationGate = new(1, 1);
     private readonly ConcurrentDictionary<Ax25Session, byte> consoleSessions = new();
-    // Remotes a console connect-OUT is dialling right now (with a refcount, since
-    // two console sessions could dial the same call). SessionAccepted for a remote
-    // in here is the outbound session we just opened — NOT an inbound caller — so
+    // Remotes a connect-OUT is dialling right now, keyed by (PORT, remote) with a refcount
+    // (two console sessions could dial the same call on the same port). SessionAccepted for a
+    // claimed (port, remote) is the outbound session we just opened - NOT an inbound caller - so
     // we must not start a node console against it.
-    private readonly Dictionary<Callsign, int> outboundInProgress = new();
+    //
+    // The port is IN THE KEY (#723 item 1): the claim used to be node-wide by callsign, so while
+    // port A dialled G8XYZ an inbound SABM from G8XYZ on port B was accepted by the engine (UA
+    // sent, link up) and then silently dropped on the floor by this guard - the caller got a
+    // connected link and dead air until T3/DISC, with no log line. A dial holds its claim for up
+    // to (N2+1)×T1V, so the window is wide.
+    private readonly Dictionary<(string PortId, Callsign Remote), int> outboundInProgress = new();
     private readonly object outboundGate = new();
     private readonly CancellationTokenSource lifecycle = new();
     private int disposed;
@@ -165,6 +183,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             // The port's declared link policy, so an interlink dial honours a `dial: v22` port
             // (auto and v20 both keep the conservative mod-8 interlink default).
             this.netRom.PortLinkPolicy = LinkPolicyOf;
+            // The node's ONE canonical port order (config order, serving ports only) so the
+            // interlink egress fallback and the NODES broadcast walk are deterministic rather
+            // than dependent on a ConcurrentDictionary's enumeration order (#723 items 3 + 4).
+            this.netRom.PortOrder = CanonicalServingPortIds;
         }
 
         // Every configured port gets an entry up front, so a read (the API, PORTS, metrics)
@@ -191,7 +213,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         var listener = port?.Listener
             ?? throw new InvalidOperationException($"NET/ROM interlink: port '{portId}' is not running.");
 
-        using var ticket = ClaimOutbound(neighbour);
+        // The claim carries THIS port (#723 item 1): an interlink dial on the backbone port must
+        // not suppress the node console for the same neighbour calling in on a user port.
+        using var ticket = ClaimOutbound(portId, neighbour);
         return await listener
             .ConnectAsync(neighbour, listener.MyCall, plan.Extended, plan.PreConnectXid, ct)
             .ConfigureAwait(false);
@@ -224,17 +248,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return ax25Connector;
     }
 
-    /// <summary>The ids of the ports currently serving (up or degraded), for tests + the
-    /// Nodes command cross-check. Snapshot; ordering not guaranteed - <see cref="Snapshot"/>
-    /// is the canonical (config-order) view of every configured port.</summary>
-    public IReadOnlyCollection<string> RunningPortIds
-    {
-        get { lock (ports)
-            {
-                return ports.Values.Where(e => e.Running is not null).Select(e => e.Id).ToArray();
-            }
-        }
-    }
+    /// <summary>
+    /// The ids of the ports currently serving, in the node's <b>canonical port order</b>:
+    /// configuration order, the same order <see cref="Snapshot"/> yields, the console's
+    /// <c>PORTS</c> listing numbers and <c>C &lt;n&gt; &lt;call&gt;</c> addresses (#723 item 3).
+    /// Feeds <c>/ports</c>'s running set, <c>/sessions</c>, the metrics and the hail service, so
+    /// every read surface answers "which port" the same way. A snapshot, not a live view.
+    /// </summary>
+    public IReadOnlyCollection<string> RunningPortIds => CanonicalServingPortIds();
 
     /// <summary>
     /// Look up the <b>runtime half</b> of a serving port: its listener, transport, radio and
@@ -281,22 +302,6 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return new HeadEndDeviceResolver(headEnds, addressResolver: addressResolver, loggerFactory: loggerFactory);
     }
 
-    // Reverse-resolve a listener to the id of the running port that owns it (for logging).
-    // "?" when no running port matches — e.g. a SessionAccepted racing a teardown.
-    private string PortIdFor(Ax25Listener listener)
-    {
-        lock (ports)
-        {
-            return ports.Values.FirstOrDefault(e => e.Running is { } r && ReferenceEquals(r.Listener, listener))?.Id ?? "?";
-        }
-    }
-
-    /// <summary>
-    /// An outbound connector for the first running port (by id order), or null if
-    /// no port is up. The telnet console uses this so a <c>Connect</c> from a
-    /// local dial-in dials out on a real AX.25 port — slice-1 same-port-only in
-    /// the sense that there is exactly one deterministic dial-out port.
-    /// </summary>
     /// <summary>
     /// Resolve a same-port AX.25 connector for a <b>specific</b> running port (the RHPv2
     /// server's outbound <c>open</c> dials on the port the client named). Null when the port
@@ -312,7 +317,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return port is null
             ? null
             : new Ax25OutboundConnector(
-                port.Id, port.Listener, r => ClaimOutbound(r), localOverride, capabilityCache, LinkPolicyFor(port.Id));
+                port.Id, port.Listener, r => ClaimOutbound(port.Id, r), localOverride, capabilityCache, LinkPolicyFor(port.Id));
     }
 
     /// <summary>
@@ -326,14 +331,50 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     public IConnectRouter CreateConnectRouter(IOutboundConnector? defaultConnector) =>
         new ConnectRouter(this, defaultConnector);
 
-    // Look up a live app-callsign registration (the loopback-crossconnect target). Null when the
-    // callsign isn't registered as a local app right now.
-    private AppCallsignRegistration? FindAppRegistration(Callsign target)
+    // Look up the live app-callsign registration that owns an inbound session for `target`
+    // ARRIVING ON `arrivalPortId`: the port-scoped registration first, the wildcard ("*", every
+    // port) as the fallback. Null when nothing is registered for that callsign on that port -
+    // which, since #723 item 2, is a real answer rather than a lookup miss: an app bound to
+    // port A must NOT answer a caller who arrived on port B.
+    private AppCallsignRegistration? FindAppRegistration(Callsign target, string arrivalPortId)
     {
         lock (appCallsignGate)
         {
-            return appCallsigns.TryGetValue(target, out var reg) ? reg : null;
+            if (appCallsigns.TryGetValue(new AppCallsignKey(target, arrivalPortId), out var scoped))
+            {
+                return scoped;
+            }
+            return appCallsigns.TryGetValue(new AppCallsignKey(target, null), out var wildcard) ? wildcard : null;
         }
+    }
+
+    // Any live registration for `target`, whatever its port scope - the loopback-crossconnect
+    // target, which is in-process and so has no arrival port of its own. The wildcard wins;
+    // otherwise the port-scoped registration whose port sorts first in canonical (config) order,
+    // so a callsign bound on two ports still bridges deterministically.
+    private AppCallsignRegistration? FindAnyAppRegistration(Callsign target)
+    {
+        List<AppCallsignRegistration> candidates;
+        lock (appCallsignGate)
+        {
+            if (appCallsigns.TryGetValue(new AppCallsignKey(target, null), out var wildcard))
+            {
+                return wildcard;
+            }
+            candidates = appCallsigns
+                .Where(kv => kv.Key.Local.Equals(target))
+                .Select(kv => kv.Value)
+                .ToList();
+        }
+        if (candidates.Count <= 1)
+        {
+            return candidates.FirstOrDefault();
+        }
+        var order = CanonicalPortOrdinals();
+        return candidates
+            .OrderBy(r => order.TryGetValue(r.PortId!, out int i) ? i : int.MaxValue)
+            .ThenBy(r => r.PortId, StringComparer.Ordinal)
+            .First();
     }
 
     // ── ILocalAppRegistry — the live key set, for the bare-verb resolver (packet.net#476) ──
@@ -345,7 +386,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         lock (appCallsignGate)
         {
-            return appCallsigns.ContainsKey(callsign);
+            // Registered ANYWHERE (any port scope): the verb resolver asks "is this callsign a
+            // local app", not "on which port".
+            return appCallsigns.Keys.Any(k => k.Local.Equals(callsign));
         }
     }
 
@@ -354,7 +397,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         lock (appCallsignGate)
         {
-            return appCallsigns.Keys.ToArray();
+            // Distinct callsigns - one callsign bound on two ports is still one local app
+            // identity as far as the bare-verb resolver is concerned.
+            return appCallsigns.Keys.Select(k => k.Local).Distinct().ToArray();
         }
     }
 
@@ -368,7 +413,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     /// </summary>
     public IOutboundConnector? TryResolveLocalAppConnector(Callsign target, string callerPeerId, NodeTransportKind callerKind)
     {
-        var registration = FindAppRegistration(target);
+        var registration = FindAnyAppRegistration(target);
         if (registration is null)
         {
             return null;
@@ -385,8 +430,20 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     /// (wrapped as an <see cref="INodeConnection"/>, with the arrival port id) instead of the
     /// node console. Dispose the returned registration to stop answering.
     /// </summary>
-    /// <exception cref="InvalidOperationException">The callsign is already registered (one
-    /// listener per callsign — the wire's "Duplicate socket"), or is the node's own.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>The registration is scoped to a port</b> (#723 item 2). <paramref name="portId"/> null
+    /// is the WILDCARD scope - the RHP wire's <c>bind</c> with no port label - and claims the
+    /// callsign on <em>every</em> port, present and future. A named port claims that port only.
+    /// So the same callsign may be bound by two different apps on two different ports (a local
+    /// BBS on VHF, a gateway BBS on HF), while a wildcard bind conflicts with any other
+    /// registration of that callsign in either order, and two per-port binds conflict only when
+    /// they name the same port. A caller arriving on a port with no registration for the callsign
+    /// it dialled is disconnected, never handed to the wrong app or to the node console.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The callsign is already registered on a
+    /// conflicting scope (the wire's "Duplicate socket"), or is the node's own.</exception>
     public IDisposable RegisterAppCallsign(Callsign local, string? portId, Func<INodeConnection, string, Task> onAccepted)
     {
         ArgumentNullException.ThrowIfNull(onAccepted);
@@ -396,13 +453,16 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             throw new InvalidOperationException("the node's own callsign is already in use (the node console listens on it).");
         }
 
+        var key = new AppCallsignKey(local, portId);
         lock (appCallsignGate)
         {
-            if (appCallsigns.ContainsKey(local))
+            if (ConflictingScope(key) is { } clash)
             {
-                throw new InvalidOperationException($"callsign {local} is already registered.");
+                throw new InvalidOperationException(
+                    $"callsign {local} is already registered on {DescribeScope(clash.PortId)}"
+                    + $" (this bind asked for {DescribeScope(portId)}).");
             }
-            appCallsigns[local] = new AppCallsignRegistration { Local = local, PortId = portId, OnAccepted = onAccepted };
+            appCallsigns[key] = new AppCallsignRegistration { Local = local, PortId = portId, OnAccepted = onAccepted };
         }
 
         // Alias the running listener(s) now; ports that come up later get it in BringUpAsync.
@@ -411,23 +471,77 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             port.Listener.AddLocalAlias(local);
         }
         LogAppCallsignRegistered(local, portId ?? "*");
-        return new AppCallsignUnsubscriber(this, local, portId);
+        return new AppCallsignUnsubscriber(this, key);
     }
 
-    private void UnregisterAppCallsign(Callsign local, string? portId)
+    // The live registration whose scope collides with `key`, or null when the bind is free.
+    // Caller holds appCallsignGate. A wildcard collides with every scope of that callsign; a
+    // per-port scope collides with the same port and with a wildcard.
+    private AppCallsignRegistration? ConflictingScope(AppCallsignKey key)
+    {
+        foreach (var (existing, registration) in appCallsigns)
+        {
+            if (!existing.Local.Equals(key.Local))
+            {
+                continue;
+            }
+            if (existing.PortId is null || key.PortId is null
+                || string.Equals(existing.PortId, key.PortId, StringComparison.Ordinal))
+            {
+                return registration;
+            }
+        }
+        return null;
+    }
+
+    private static string DescribeScope(string? portId) =>
+        portId is null ? "every port (a wildcard bind)" : $"port '{portId}'";
+
+    private void UnregisterAppCallsign(AppCallsignKey key)
     {
         lock (appCallsignGate)
         {
-            if (!appCallsigns.Remove(local))
+            if (!appCallsigns.Remove(key))
             {
                 return;
             }
         }
-        foreach (var port in MatchingPorts(portId))
+        foreach (var port in MatchingPorts(key.PortId))
         {
-            port.Listener.RemoveLocalAlias(local);
+            port.Listener.RemoveLocalAlias(key.Local);
         }
-        LogAppCallsignUnregistered(local);
+        LogAppCallsignUnregistered(key.Local);
+    }
+
+    /// <summary>
+    /// Re-scope every app-callsign registration bound to <paramref name="oldPortId"/> onto
+    /// <paramref name="newPortId"/>. A port RENAME plans as remove-then-add (the id is the
+    /// reconcile key), so without this an app bound to the old id is silently orphaned - it
+    /// keeps a registration naming a port that no longer exists and stops answering, with no
+    /// error anywhere (#723 item 2). The alias itself rides the bring-up, which re-applies every
+    /// live registration to the fresh listener.
+    /// </summary>
+    private void RescopeAppCallsigns(string oldPortId, string newPortId)
+    {
+        List<AppCallsignRegistration> moved = [];
+        lock (appCallsignGate)
+        {
+            foreach (var (key, registration) in appCallsigns.ToArray())
+            {
+                if (key.PortId is null || !string.Equals(key.PortId, oldPortId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                appCallsigns.Remove(key);
+                var rescoped = registration with { PortId = newPortId };
+                appCallsigns[new AppCallsignKey(key.Local, newPortId)] = rescoped;
+                moved.Add(rescoped);
+            }
+        }
+        foreach (var r in moved)
+        {
+            LogAppCallsignRescoped(r.Local, oldPortId, newPortId);
+        }
     }
 
     private List<RunningPort> MatchingPorts(string? portId)
@@ -458,7 +572,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    private sealed class AppCallsignRegistration
+    /// <summary>The app-callsign registry key: the bound callsign and its port scope (null = the
+    /// wildcard "every port" bind). Ordinal on the port id, like every other port-id compare.</summary>
+    private readonly record struct AppCallsignKey(Callsign Local, string? PortId);
+
+    private sealed record AppCallsignRegistration
     {
         public required Callsign Local { get; init; }
         public required string? PortId { get; init; }
@@ -503,33 +621,38 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    private sealed class AppCallsignUnsubscriber(PortSupervisor owner, Callsign local, string? portId) : IDisposable
+    private sealed class AppCallsignUnsubscriber(PortSupervisor owner, AppCallsignKey key) : IDisposable
     {
         private int gone;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref gone, 1) == 0)
             {
-                owner.UnregisterAppCallsign(local, portId);
+                owner.UnregisterAppCallsign(key);
             }
         }
     }
 
+    /// <summary>
+    /// The node's default outbound connector: the <b>first enabled port that is serving, in
+    /// canonical (configuration) order</b> - the very port the console's <c>PORTS</c> listing
+    /// numbers 1 (or the first one after it that is actually up). Null when no port is serving.
+    /// </summary>
+    /// <remarks>
+    /// This used to sort the serving ports by id STRING, which is a different order from the
+    /// 1-indexed config order <c>C &lt;n&gt; &lt;call&gt;</c> and <c>PORTS</c> use: on a node
+    /// configured <c>[vhf, hf]</c> a bare <c>C G8XYZ</c> left on <c>hf</c> while <c>C 1 G8XYZ</c>
+    /// left on <c>vhf</c>, so operator-visible port numbering could not be trusted. One canonical
+    /// order now serves all of them (#723 item 3).
+    /// </remarks>
     public IOutboundConnector? ResolveDefaultConnector()
     {
-        RunningPort? first;
-        lock (ports)
-        {
-            first = ports.Values
-                .Where(e => e.Running is not null)
-                .OrderBy(e => e.Id, StringComparer.Ordinal)
-                .Select(e => e.Running)
-                .FirstOrDefault();
-        }
+        var serving = CanonicalServingPortIds();
+        var first = serving.Count == 0 ? null : TryGetRunning(serving[0]);
         var ax25 = first is null
             ? null
             : new Ax25OutboundConnector(
-                first.Id, first.Listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache,
+                first.Id, first.Listener, r => ClaimOutbound(first.Id, r), localOverride: null, cache: capabilityCache,
                 linkPolicy: LinkPolicyFor(first.Id));
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
@@ -543,53 +666,55 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         return ax25;
     }
 
-    // Mark a remote as an in-flight outbound connect (refcounted); the returned
-    // ticket decrements on dispose. OnSessionAccepted skips remotes that are
-    // claimed, so dialling OUT never starts a node console against the dialled
-    // station.
-    private OutboundTicket ClaimOutbound(Callsign remote)
+    // Mark (port, remote) as an in-flight outbound connect (refcounted); the returned ticket
+    // decrements on dispose. OnSessionAccepted skips a session whose ARRIVAL PORT and remote are
+    // both claimed, so dialling OUT never starts a node console against the dialled station -
+    // and a caller of the same callsign arriving on a DIFFERENT port still gets its console.
+    private OutboundTicket ClaimOutbound(string portId, Callsign remote)
     {
+        var key = (portId, remote);
         lock (outboundGate)
         {
-            outboundInProgress[remote] = outboundInProgress.TryGetValue(remote, out var n) ? n + 1 : 1;
+            outboundInProgress[key] = outboundInProgress.TryGetValue(key, out var n) ? n + 1 : 1;
         }
-        return new OutboundTicket(this, remote);
+        return new OutboundTicket(this, portId, remote);
     }
 
-    private void ReleaseOutbound(Callsign remote)
+    private void ReleaseOutbound(string portId, Callsign remote)
     {
+        var key = (portId, remote);
         lock (outboundGate)
         {
-            if (outboundInProgress.TryGetValue(remote, out var n))
+            if (outboundInProgress.TryGetValue(key, out var n))
             {
                 if (n <= 1)
                 {
-                    outboundInProgress.Remove(remote);
+                    outboundInProgress.Remove(key);
                 }
                 else
                 {
-                    outboundInProgress[remote] = n - 1;
+                    outboundInProgress[key] = n - 1;
                 }
             }
         }
     }
 
-    private bool IsOutbound(Callsign remote)
+    private bool IsOutbound(string portId, Callsign remote)
     {
         lock (outboundGate)
         {
-            return outboundInProgress.ContainsKey(remote);
+            return outboundInProgress.ContainsKey((portId, remote));
         }
     }
 
-    private sealed class OutboundTicket(PortSupervisor owner, Callsign remote) : IDisposable
+    private sealed class OutboundTicket(PortSupervisor owner, string portId, Callsign remote) : IDisposable
     {
         private int released;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref released, 1) == 0)
             {
-                owner.ReleaseOutbound(remote);
+                owner.ReleaseOutbound(portId, remote);
             }
         }
     }
@@ -650,7 +775,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     /// <see cref="NodeHostedService"/> serialises calls so two reconciles never
     /// overlap. Touches only the ports the plan names.
     /// </summary>
-    public async Task ApplyAsync(ReconcilePlan plan, NodeConfig newConfig, CancellationToken cancellationToken = default)
+    public async Task<PortApplyOutcome> ApplyAsync(ReconcilePlan plan, NodeConfig newConfig, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(newConfig);
@@ -658,7 +783,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await ApplyCoreAsync(plan, newConfig, cancellationToken).ConfigureAwait(false);
+            return await ApplyCoreAsync(plan, newConfig, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -666,8 +791,65 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
-    private async Task ApplyCoreAsync(ReconcilePlan plan, NodeConfig newConfig, CancellationToken cancellationToken)
+    /// <summary>
+    /// The reasons this supervisor would <b>refuse</b> to apply <paramref name="candidate"/>
+    /// against its LIVE state, or an empty list when it is applicable. Today there is exactly one:
+    /// a new <c>identity.callsign</c> that a live app registration has already bound
+    /// (#723 item 2). Pure and side-effect-free, so the config-write API can ask BEFORE it
+    /// persists and answer the operator with a 422 instead of letting the apply fail later.
+    /// </summary>
+    /// <remarks>
+    /// The bind-time guard in <see cref="RegisterAppCallsign"/> only ever covered one direction.
+    /// Coming the other way - renaming the node onto an SSID a BBS had already bound - the
+    /// node-wide reset rebuilt every listener under the new <c>MyCall</c>, and
+    /// <c>OnSessionAccepted</c>'s split is <c>Local != listener.MyCall</c>, so every connect for
+    /// that app fell into the node-console branch instead. Silent: no error, no log, the app just
+    /// stopped receiving callers. The rule is symmetric now - the node's callsign and an app
+    /// binding are mutually exclusive whichever one moves.
+    /// </remarks>
+    public IReadOnlyList<string> LiveApplyConflicts(NodeConfig candidate)
     {
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (!Callsign.TryParse(candidate.Identity.Callsign, out var newCall))
+        {
+            return [];   // an unparsable callsign is the validator's business, not ours.
+        }
+
+        List<AppCallsignKey> clashes;
+        lock (appCallsignGate)
+        {
+            clashes = appCallsigns.Keys.Where(k => k.Local.Equals(newCall)).ToList();
+        }
+        return clashes.Count == 0
+            ? []
+            : [.. clashes.Select(k =>
+                $"identity.callsign '{candidate.Identity.Callsign}' is already bound as an application callsign on "
+                + $"{DescribeScope(k.PortId)}. Unbind that application first, or give the node a different callsign - "
+                + "the node console and an application cannot answer for the same callsign.")];
+    }
+
+    private async Task<PortApplyOutcome> ApplyCoreAsync(ReconcilePlan plan, NodeConfig newConfig, CancellationToken cancellationToken)
+    {
+        // Refuse BEFORE anything moves (#723 item 2). The config store has already accepted this
+        // config - a file-provider hot reload never passes through the API's pre-check - so the
+        // supervisor is the last line: it keeps the live identity and every app binding, logs
+        // why at Error, and reports the refusal to the reconcile worker, which leaves its applied
+        // baseline where it was so the next edit re-plans from the truth rather than from a
+        // config that never took effect. Nothing is half-applied: no alias moves, no port resets.
+        if (LiveApplyConflicts(newConfig) is { Count: > 0 } refusals)
+        {
+            foreach (var reason in refusals)
+            {
+                LogApplyRefused(reason);
+            }
+            return PortApplyOutcome.Refused(refusals);
+        }
+
+        // A RENAME plans as remove-then-add, so any app bound to the old id would be orphaned.
+        // Re-scope those registrations first, while the entries still carry the OLD config, so
+        // the fresh listener's bring-up re-applies them under the new id.
+        RescopeRenamedPorts(plan);
+
         // Every configured port has an entry before anything moves, and each entry's config
         // baseline advances to the new config (the ports the plan doesn't touch included).
         SyncEntries(newConfig);
@@ -680,7 +862,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 await BringUpAsync(port, newConfig.Identity, cancellationToken).ConfigureAwait(false);
             }
-            return;
+            return PortApplyOutcome.Applied;
         }
 
         // ── PHASE 1: every teardown, before any bring-up ─────────────────────────────
@@ -791,6 +973,43 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             RebaselineConfig(port);
             LogMqttInstanceApplied(port.Id);
+        }
+
+        return PortApplyOutcome.Applied;
+    }
+
+    // A port RENAME is invisible to the reconcile planner - the id IS the key, so it plans as
+    // ToTearDown(old) + ToBringUp(new) - but it is very visible to an app bound to the old id,
+    // which would keep a registration naming a port that no longer exists and quietly stop
+    // answering. Pair the two by the transport ENDPOINT: exactly one port leaving and exactly
+    // one arriving on the same device is a rename by any operator's definition. Anything more
+    // ambiguous (two ports swapping devices, a genuine add + a genuine remove) is left alone -
+    // guessing there would move a binding to a port the operator never meant.
+    private void RescopeRenamedPorts(ReconcilePlan plan)
+    {
+        if (plan.ToTearDown.Count == 0 || plan.ToBringUp.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, PortConfig> leaving;
+        lock (ports)
+        {
+            leaving = plan.ToTearDown
+                .Where(id => ports.ContainsKey(id))
+                .ToDictionary(id => id, id => ports[id].Config, StringComparer.Ordinal);
+        }
+
+        foreach (var arriving in plan.ToBringUp)
+        {
+            var matches = leaving
+                .Where(kv => string.Equals(
+                    kv.Value.Transport.EndpointKey, arriving.Transport.EndpointKey, StringComparison.Ordinal))
+                .ToList();
+            if (matches.Count == 1)
+            {
+                RescopeAppCallsigns(matches[0].Key, arriving.Id);
+            }
         }
     }
 
@@ -1142,9 +1361,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // null N1 leaves the context default (256) — byte-for-byte today's behaviour.
         listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         var connector = new Ax25OutboundConnector(
-            port.Id, listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache,
+            port.Id, listener, r => ClaimOutbound(port.Id, r), localOverride: null, cache: capabilityCache,
             linkPolicy: LinkPolicyFor(port.Id));
-        listener.SessionAccepted += (_, e) => OnSessionAccepted(listener, connector, e.Session);
+        // The arrival port id is captured here rather than reverse-looked-up from the listener:
+        // it is now load-bearing (the outbound claim and the app-registration lookup are both
+        // keyed on it), and a SessionAccepted racing a teardown must not resolve to "?".
+        listener.SessionAccepted += (_, e) => OnSessionAccepted(port.Id, listener, connector, e.Session);
 
         try
         {
@@ -1650,14 +1872,15 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         PreConnectXidNegotiatesSrej = PortLinkConfig.Resolve(link).PreConnectXidNegotiatesSrej,
     };
 
-    private void OnSessionAccepted(Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
+    private void OnSessionAccepted(string portId, Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
     {
         // A session we are dialling OUT to (the console's Connect command) also
         // raises SessionAccepted on this listener — but it is NOT an inbound
         // caller, so we must not start a node console against it (that would spew
         // our prompt at the station we connected to). The connector claims the
-        // remote for the duration of the connect.
-        if (IsOutbound(session.Context.Remote))
+        // (port, remote) for the duration of the connect; comparing THIS port is what
+        // keeps a same-callsign caller arriving on another port from being swallowed.
+        if (IsOutbound(portId, session.Context.Remote))
         {
             return;
         }
@@ -1665,11 +1888,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Cutover observability: a genuine inbound caller (the outbound guard above ruled out
         // our own connect-out). Logged once here, before the console/app split, so every
         // accepted inbound circuit is positively visible — not just faults. Guarded so the
-        // ToString()/port reverse-lookup are skipped when Information is off (CA1873).
+        // ToString() is skipped when Information is off (CA1873).
         if (logger.IsEnabled(LogLevel.Information))
         {
             var peer = session.Context.Remote.ToString();
-            var portId = PortIdFor(listener);
             LogInboundSessionAccepted(peer, portId);
         }
 
@@ -1678,7 +1900,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // the RHPv2 server's accept path — never to the node console.
         if (!session.Context.Local.Equals(listener.MyCall))
         {
-            OnAppSessionAccepted(listener, session);
+            OnAppSessionAccepted(portId, listener, session);
             return;
         }
 
@@ -1726,20 +1948,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // console path; the entry clears when the connection completes so a genuine reconnect
     // dispatches a fresh accept. No registration (a just-removed bind racing an accept) →
     // dispose the wrapper, which posts DISC.
-    private void OnAppSessionAccepted(Ax25Listener listener, Ax25Session session)
+    private void OnAppSessionAccepted(string portId, Ax25Listener listener, Ax25Session session)
     {
         if (!consoleSessions.TryAdd(session, 0))
         {
             return;
         }
 
-        AppCallsignRegistration? registration;
-        lock (appCallsignGate)
-        {
-            appCallsigns.TryGetValue(session.Context.Local, out registration);
-        }
-
-        string portId = PortIdFor(listener);
+        // Resolved by (Local, ARRIVAL PORT), wildcard as fallback (#723 item 2). An app bound to
+        // port A must not answer a caller who reached us on port B: no registration for this
+        // (callsign, port) is a disconnect, not a hand-off to whoever bound it elsewhere.
+        AppCallsignRegistration? registration = FindAppRegistration(session.Context.Local, portId);
 
         _ = Task.Run(async () =>
         {
@@ -1748,7 +1967,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             {
                 if (registration is null)
                 {
-                    LogAppSessionUnclaimed(session.Context.Local.ToString(), session.Context.Remote.ToString());
+                    LogAppSessionUnclaimed(session.Context.Local.ToString(), session.Context.Remote.ToString(), portId);
                     await connection.DisposeAsync().ConfigureAwait(false);   // posts DISC
                     consoleSessions.TryRemove(session, out byte _);
                     return;
@@ -1871,8 +2090,14 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} unregistered.")]
     private partial void LogAppCallsignUnregistered(Callsign callsign);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Inbound session to app callsign {Local} from {Remote} had no live registration; disconnected.")]
-    private partial void LogAppSessionUnclaimed(string local, string remote);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Inbound session to app callsign {Local} from {Remote} on port {Port} had no live registration for that port; disconnected.")]
+    private partial void LogAppSessionUnclaimed(string local, string remote, string port);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} re-scoped from renamed port {OldPort} to {NewPort} - it keeps answering there.")]
+    private partial void LogAppCallsignRescoped(Callsign callsign, string oldPort, string newPort);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Config apply REFUSED: {Reason} The node keeps its current identity and every app binding; fix the config (or unbind the app) and apply again.")]
+    private partial void LogApplyRefused(string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "App-session handler for {Local} faulted.")]
     private partial void LogAppSessionFaulted(Exception ex, string local);

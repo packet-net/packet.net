@@ -146,8 +146,11 @@ public sealed class ClientContractFixtureTests
         },
         ["SessionInfo.json"] = new[]
         {
-            new SessionInfo("vhf-1:M0LTE", "vhf-1", "M0LTE", "console", "Connected", 12, 11, 4, 842, 4821, 19_233, "0:00:02"),
-            new SessionInfo("link-dn:G8PZT-7", "link-dn", "G8PZT-7", "interlink", "TimerRecovery", 401, 398, 7, 91_244, 2_104_882, 1_988_401, "0:00:00"),
+            new SessionInfo("vhf-1:M0LTE", "vhf-1", "M0LTE", "GB7RDG-1", "console", "Connected", 12, 11, 4, 842, 4821, 19_233, "0:00:02"),
+            new SessionInfo("link-dn:G8PZT-7", "link-dn", "G8PZT-7", "GB7RDG-1", "interlink", "TimerRecovery", 401, 398, 7, 91_244, 2_104_882, 1_988_401, "0:00:00"),
+            // The same station, at the same moment, on an APPLICATION callsign: a distinct
+            // circuit with a distinct id, which is what the long form of the id exists for (#723).
+            new SessionInfo("vhf-1:M0LTE>GB7RDG-4", "vhf-1", "M0LTE", "GB7RDG-4", "console", "Connected", 3, 2, 4, 96, 512, 2_048, "0:00:01"),
         },
         ["LinkStats.json"] = new[]
         {

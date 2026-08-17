@@ -127,6 +127,10 @@ public sealed partial class NodeHostedService : BackgroundService
     /// <summary>The port supervisor — exposed for component tests.</summary>
     public PortSupervisor? Supervisor => supervisor;
 
+    /// <summary>The live config the host runs on. Read-only access for projections that need the
+    /// node identity without taking their own <c>IConfigProvider</c> dependency.</summary>
+    public IConfigProvider Config => config;
+
     /// <summary>The NET/ROM read-only routing service — exposed for component tests
     /// (and any future read surface). Null until <see cref="ExecuteAsync"/> runs.</summary>
     public NetRomService? NetRom => netRom;
@@ -352,14 +356,15 @@ public sealed partial class NodeHostedService : BackgroundService
         // (port restart / session connect-disconnect-send) can't touch the port
         // set mid-reconcile.
         await supervisorGate.WaitAsync(ct).ConfigureAwait(false);
+        PortApplyOutcome outcome = PortApplyOutcome.Applied;
         try
         {
             if (supervisor is not null)
             {
-                await supervisor.ApplyAsync(plan, to, ct).ConfigureAwait(false);
+                outcome = await supervisor.ApplyAsync(plan, to, ct).ConfigureAwait(false);
             }
 
-            if (plan.TelnetChanged)
+            if (!outcome.WasRefused && plan.TelnetChanged)
             {
                 await RestartTelnetAsync(to.Management.Telnet, ct).ConfigureAwait(false);
             }
@@ -367,6 +372,18 @@ public sealed partial class NodeHostedService : BackgroundService
         finally
         {
             supervisorGate.Release();
+        }
+
+        // The supervisor refused the whole plan against live state it can see and the config
+        // store cannot (packet-net/packet.net#723 item 2). Nothing was touched, so the applied
+        // baseline must NOT advance: leaving it where it is means the next config change re-plans
+        // from what is actually running, and re-offers this one, instead of the node quietly
+        // running on an identity it never adopted. The supervisor already logged each reason at
+        // Error with the fix.
+        if (outcome.WasRefused)
+        {
+            LogReconcileRefused(string.Join(" ", outcome.Refusals));
+            return;
         }
 
         // Services changes need no action — the console reads ServicesConfig live
@@ -644,6 +661,9 @@ public sealed partial class NodeHostedService : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Reconciling config change: {Summary}.")]
     private partial void LogReconciling(string summary);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Reconcile REFUSED and NOT applied: {Reasons} The node keeps running the config it had; the reconcile baseline is unchanged, so the next config change re-plans from live state.")]
+    private partial void LogReconcileRefused(string reasons);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Telnet console disabled by config.")]
     private partial void LogTelnetDisabled();

@@ -66,7 +66,7 @@ public static class PdnConfigApi
 
         // Structured edit: a NodeConfig JSON body. ?dryRun=true validates +
         // previews without persisting.
-        v1.MapPut("/config", (NodeConfig candidate, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
+        v1.MapPut("/config", (NodeConfig candidate, HttpContext ctx, IWritableConfigProvider cfg, NodeHostedService host, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
             // Capture the live config BEFORE applying — the preview is from→to.
             var before = cfg.Current;
@@ -88,6 +88,11 @@ public static class PdnConfigApi
             if (errors.Count > 0)
             {
                 return Results.UnprocessableEntity(new ValidationProblem(errors));
+            }
+
+            if (LiveConflicts(host, candidate) is { Count: > 0 } live)
+            {
+                return Results.UnprocessableEntity(new ValidationProblem(live));
             }
 
             var preview = ReconcilePreviewBuilder.Build(before, candidate);
@@ -121,7 +126,7 @@ public static class PdnConfigApi
 
         // Raw-YAML edit: the request body IS the YAML. A parse failure is a 422 with
         // a single (yaml)-path error; otherwise the same validate→preview→apply flow.
-        v1.MapPut("/config/raw", async (HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
+        v1.MapPut("/config/raw", async (HttpContext ctx, IWritableConfigProvider cfg, NodeHostedService host, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var yaml = await reader.ReadToEndAsync();
@@ -153,6 +158,11 @@ public static class PdnConfigApi
             if (errors.Count > 0)
             {
                 return Results.UnprocessableEntity(new ValidationProblem(errors));
+            }
+
+            if (LiveConflicts(host, candidate) is { Count: > 0 } live)
+            {
+                return Results.UnprocessableEntity(new ValidationProblem(live));
             }
 
             var preview = ReconcilePreviewBuilder.Build(before, candidate);
@@ -210,6 +220,21 @@ public static class PdnConfigApi
         Results.Problem(
             "Changing management.auth requires the admin scope.",
             statusCode: StatusCodes.Status403Forbidden);
+
+    // --- the LIVE-state gate ----------------------------------------------------
+    //
+    // The validator is pure: it reads a candidate config and nothing else. Some conflicts only
+    // exist against RUNNING state - today, an identity.callsign that an application has already
+    // bound over RHP (#723 item 2). The supervisor refuses such an apply outright, and it will
+    // still refuse a config written round the back (a hand-edited conffile), but an operator
+    // driving the panel deserves the answer BEFORE the write is persisted rather than an Error in
+    // the journal afterwards. So the same check runs here, ahead of persistence, and comes back
+    // as the 422 ValidationProblem the editor already knows how to render against a field.
+    private static IReadOnlyList<ConfigValidationError> LiveConflicts(NodeHostedService host, NodeConfig candidate)
+        => host.Supervisor is null
+            ? []
+            : [.. host.Supervisor.LiveApplyConflicts(candidate)
+                .Select(reason => new ConfigValidationError("identity.callsign", reason))];
 
     /// <summary>Project a <see cref="ReconcilePreview"/> to the PUT result, carrying
     /// the four change buckets through and tagging whether it was actually applied.</summary>

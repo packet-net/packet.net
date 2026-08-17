@@ -194,6 +194,31 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// </remarks>
     public Func<string, PortLinkConfig?>? PortLinkPolicy { get; set; }
 
+    /// <summary>
+    /// The node's <b>canonical port order</b> (configuration order, serving ports only) - set by
+    /// the <c>PortSupervisor</c>. Null on a bare service (unit tests, an embedder with no
+    /// supervisor), in which case attached ports are ordered by id, which is at least stable.
+    /// Used wherever this service has to pick "a port" rather than "the port": the interlink
+    /// egress fallback and the NODES broadcast walk (packet-net/packet.net#723 items 3 + 4).
+    /// </summary>
+    public Func<IReadOnlyList<string>>? PortOrder { get; set; }
+
+    // The attached port ids in canonical order. Falls back to id order when no supervisor wired
+    // the seam; a port that is attached but absent from the canonical list (a read racing a
+    // detach) is appended by id rather than dropped.
+    private List<string> AttachedPortIdsInOrder()
+    {
+        var attached = attachments.Keys.ToHashSet(StringComparer.Ordinal);
+        var canonical = PortOrder?.Invoke();
+        if (canonical is null)
+        {
+            return [.. attached.OrderBy(id => id, StringComparer.Ordinal)];
+        }
+        var ordered = canonical.Where(attached.Contains).ToList();
+        ordered.AddRange(attached.Except(ordered, StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal));
+        return ordered;
+    }
+
     /// <summary>The circuit manager (null when NET/ROM connect is disabled). Exposed
     /// for the outbound connector + tests.</summary>
     public CircuitManager? Circuits => circuits;
@@ -723,8 +748,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // NODES table stays robust on a slow/shared channel. A port with no cap (the default)
         // uses the canonical structural limit (11 entries/frame) — byte-for-byte today's
         // behaviour. Build once per port so the cap is honoured per port.
-        foreach (var (portId, attachment) in attachments)
+        foreach (var portId in AttachedPortIdsInOrder())
         {
+            if (!attachments.TryGetValue(portId, out var attachment))
+            {
+                continue;   // detached between the ordering read and here.
+            }
             var frames = NodesBroadcastBuilder.Build(alias, entries, attachment.NodesPaclen);
             foreach (var info in frames)
             {
@@ -1166,18 +1195,35 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             return;   // already up
         }
 
-        // Dial the neighbour on the port we last heard it on (else the first port).
+        // Which port this interlink leaves on, deterministically (#723 item 4): the port we last
+        // HEARD this neighbour on, else the first attached port in the node's canonical
+        // (configuration) order. It used to be `attachments.Values.FirstOrDefault()` over a
+        // ConcurrentDictionary, so a connect-out to a neighbour we have not yet heard NODES from
+        // picked an arbitrary port - the SABM could go out on the wrong band, and it poisoned the
+        // per-(port, peer) capability cache with an entry for a port the link will not use. The
+        // choice and its REASON are logged, because "which port did that interlink leave on" is
+        // otherwise only recoverable from a frame trace.
         var nbr = table.Snapshot().NeighbourFor(neighbour);
         Attachment? attachment = null;
+        string reason;
         if (nbr is not null && attachments.TryGetValue(nbr.PortId, out var a))
         {
             attachment = a;
+            reason = "last heard there";
         }
-        attachment ??= attachments.Values.FirstOrDefault();
+        else
+        {
+            var ordered = AttachedPortIdsInOrder();
+            attachment = ordered.Count == 0 ? null : attachments.GetValueOrDefault(ordered[0]);
+            reason = nbr is null
+                ? "never heard from this neighbour - first attached port in configuration order"
+                : $"last heard on port '{nbr.PortId}', which is not attached - first attached port in configuration order";
+        }
         if (attachment is null)
         {
             throw new InvalidOperationException("no NET/ROM port available to open an interlink.");
         }
+        LogInterlinkEgress(neighbour, attachment.PortId, reason);
 
         // Consult the port's declared link policy, then the per-peer capability cache, for this
         // dial. The default (all-auto, no cache) preserves today's behaviour exactly:
@@ -1375,6 +1421,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: stopped listening on port {PortId}.")]
     private partial void LogDetached(string portId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: opening interlink to {Neighbour} on port {PortId} ({Reason}).")]
+    private partial void LogInterlinkEgress(Callsign neighbour, string portId, string reason);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: heard NODES from {Originator} (alias {Alias}) on {PortId} with {EntryCount} entr(ies).")]
     private partial void LogHeard(string portId, string originator, string alias, int entryCount);

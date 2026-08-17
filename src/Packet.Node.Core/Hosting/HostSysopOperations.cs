@@ -49,7 +49,14 @@ internal sealed class HostSysopOperations : ISysopOperations
                     }
                     foreach (var session in port.Listener.ActiveSessions)
                     {
-                        lines.Add($"{portId}:{session.Context.Remote} {session.CurrentState}");
+                        // The same id the web API mints, so a sysop can KICK what SESSIONS shows
+                        // even when a station holds two circuits here at once (#723 item 5).
+                        var id = Api.SessionIds.Format(
+                            portId,
+                            session.Context.Remote.ToString(),
+                            session.Context.Local.ToString(),
+                            port.Listener.MyCall.ToString());
+                        lines.Add($"{id} {session.CurrentState}");
                     }
                 }
             }
@@ -60,14 +67,17 @@ internal sealed class HostSysopOperations : ISysopOperations
     public Task<SysopActionResult> KickAsync(string sessionId, CancellationToken ct = default) =>
         host.RunExclusiveAsync(() =>
         {
-            if (!TrySplitSessionId(sessionId, out var portId, out var peer))
+            if (!Api.SessionIds.TryParse(sessionId, out var portId, out var peer, out var local))
             {
                 return Task.FromResult(SysopActionResult.Failure(
-                    $"Bad session id '{sessionId}'. Use portId:peer (see SESSIONS)."));
+                    $"Bad session id '{sessionId}'. Use the id SESSIONS prints."));
             }
             var listener = host.Supervisor?.GetPort(portId)?.Listener;
+            // Match the engine's FULL key: the short form means this port's own callsign.
+            var wantedLocal = local ?? listener?.MyCall.ToString();
             var session = listener?.ActiveSessions
-                .FirstOrDefault(s => s.Context.Remote.ToString() == peer);
+                .FirstOrDefault(s => s.Context.Remote.ToString() == peer
+                    && string.Equals(s.Context.Local.ToString(), wantedLocal, StringComparison.OrdinalIgnoreCase));
             if (session is null)
             {
                 return Task.FromResult(SysopActionResult.Failure($"No active session {sessionId}."));
@@ -126,23 +136,4 @@ internal sealed class HostSysopOperations : ISysopOperations
             "Nothing to reload: config lives in pdn.db and applies as soon as it is written."));
     }
 
-    // Split "portId:peer" at the first ':' — the id SESSIONS renders. The peer (a callsign
-    // with optional SSID, e.g. M0LTE-1) has no ':', so a single split is unambiguous.
-    private static bool TrySplitSessionId(string id, out string portId, out string peer)
-    {
-        portId = string.Empty;
-        peer = string.Empty;
-        if (string.IsNullOrEmpty(id))
-        {
-            return false;
-        }
-        int colon = id.IndexOf(':', StringComparison.Ordinal);
-        if (colon <= 0 || colon >= id.Length - 1)
-        {
-            return false;
-        }
-        portId = id[..colon];
-        peer = id[(colon + 1)..];
-        return true;
-    }
 }

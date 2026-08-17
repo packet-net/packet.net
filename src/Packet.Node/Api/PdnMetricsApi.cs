@@ -373,7 +373,10 @@ public static class PdnMetricsApi
         {
             return rows;
         }
-        foreach (var portId in supervisor.RunningPortIds.OrderBy(id => id, StringComparer.Ordinal))
+        // RunningPortIds is already the node's ONE canonical order (configuration order,
+        // packet.net#723) - a second sort here would be a second ordering, which is exactly the
+        // class of drift PC2 removed. Determinism is what the re-sort was for; it still holds.
+        foreach (var portId in supervisor.RunningPortIds)
         {
             if (supervisor.GetPort(portId)?.ModemTransport is SoundModemFrameTransport modem)
             {
@@ -449,7 +452,10 @@ public static class PdnMetricsApi
         {
             return rows;
         }
-        foreach (var portId in supervisor.RunningPortIds.OrderBy(id => id, StringComparer.Ordinal))
+        // RunningPortIds is already the node's ONE canonical order (configuration order,
+        // packet.net#723) - a second sort here would be a second ordering, which is exactly the
+        // class of drift PC2 removed. Determinism is what the re-sort was for; it still holds.
+        foreach (var portId in supervisor.RunningPortIds)
         {
             if (supervisor.GetPort(portId)?.LinkState is { } linkState)
             {

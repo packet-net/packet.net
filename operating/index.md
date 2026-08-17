@@ -60,6 +60,7 @@ Start with the row that matches what you are trying to do.
 | Run the modems/radios on a **separate box** from PDN | [8. Split-station RF head-end](08-split-station-head-end.md) | A spare Pi + the head-end daemon |
 | Run **existing software** (native AX.25 apps, or IP tools) over the node | [9. Running existing software](09-running-existing-software.md) | A node with an `ax25` port + its RHPv2 server on |
 | Fix connects to a **BPQ / LinBPQ** node that just time out | [9. Running existing software](09-running-existing-software.md#talking-to-a-bpq-or-linbpq-node-on-air) | One line of port config, or one field in the panel |
+| Work out which radio "port 1" (or a bare `C`) means | [10. Your ports, in order](10-your-ports-in-order.md) | Two or more ports |
 
 ## Three ways a radio can join a port
 
