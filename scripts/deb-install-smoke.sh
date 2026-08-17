@@ -75,6 +75,14 @@ echo "  ok: installed; binary+unit+config-template present; user created; curl p
 echo "== 3. binary boots + serves /healthz on a bare base =="
 export DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/pnx HOME=/root
 mkdir -p /tmp/pnx
+# Boot from a WRITABLE state dir, the way the unit does (WorkingDirectory=StateDirectory):
+# pdn.db, the config blob and the first-run marker live in the cwd. /work is the read-only
+# .deb mount; booting there used to pass only because an unreadable user store failed
+# OPEN and printed First-run setup pending regardless. It now fails closed (packet.net#693,
+# C026), so the smoke must give the node a real state dir, which also makes the first-run
+# detection it asserts on a genuine one.
+mkdir -p /tmp/pnstate
+cd /tmp/pnstate
 /opt/packetnet/app/packetnet --config /etc/packetnet/packetnet.yaml >/tmp/pn.log 2>&1 &
 PID=$!
 ok=0
