@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Rigs;
 using Packet.Node.Tests.Support;
@@ -74,6 +75,73 @@ public sealed class ManagedRigDaemonTests : IDisposable
                 UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
         }
         return path;
+    }
+
+    /// <summary>
+    /// #727 item 12: the "respawning in {Seconds}s" line states the delay the daemon actually
+    /// awaits, not the one it held a moment earlier.
+    /// </summary>
+    /// <remarks>
+    /// WP8 added the healthy-run backoff reset AFTER the log call, so a rigctld that had been
+    /// flapping (backoff doubled to 8 s or more), then ran healthily for an hour and died,
+    /// logged "respawning in 8s" and respawned in 1. An operator timing a device recovery from
+    /// the log drew the wrong conclusion. The whole run rides a FakeTimeProvider, so the
+    /// backoff growth and the healthy uptime are both exact.
+    /// </remarks>
+    [SkippableFact]
+    public async Task After_a_healthy_run_the_log_states_the_delay_it_actually_awaits()
+    {
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake rigctld is a POSIX shell script");
+
+        var clock = new FakeTimeProvider();
+        var logs = new CapturingLoggerFactory();
+        var binary = Path.Combine(dir, "late-rigctld");
+        var marker = Path.Combine(dir, "stop.marker");
+
+        await using var daemon = ManagedRigDaemon.Start(
+            "hf", DummyRig(), logs, clock, binary,
+            backoffBase: TimeSpan.FromSeconds(1), stopGrace: TimeSpan.FromSeconds(2));
+
+        // 1. The binary is not there yet, so every attempt is a spawn FAILURE and the backoff
+        //    doubles (1 -> 2 -> 4 -> 8 s). A failed spawn is never a "healthy run", so nothing
+        //    resets it. Each poll advances the injected clock past the pending backoff.
+        await Wait.ForAsync(
+            () => { clock.Advance(TimeSpan.FromSeconds(30)); return Count(logs, "failed to launch") >= 4; },
+            "four failed launches, which is enough doubling to tell 1s from the accumulated delay");
+
+        // 2. Now the binary appears: a child that idles until the test tells it to die.
+        WriteFakeScript(binary, $"while [ ! -f \"{marker}\" ]; do sleep 0.05; done\nexit 3\n");
+        await Wait.ForAsync(
+            () => { clock.Advance(TimeSpan.FromSeconds(30)); return daemon.ChildPid is not null; },
+            "the child launches once the binary exists");
+
+        // 3. It runs healthily (well past ProcessSupervision.HealthyRunThreshold) and then dies
+        //    on its own - the exit path, not the stop path.
+        clock.Advance(TimeSpan.FromMinutes(5));
+        File.WriteAllText(marker, "go");
+
+        await Wait.ForAsync(() => Count(logs, "respawning in") >= 1, "the unexpected exit is logged");
+
+        var exitLine = logs.Lines.First(l => l.Contains("respawning in", StringComparison.Ordinal));
+        exitLine.Should().Contain("respawning in 1s",
+            "the healthy run resets the backoff to its base, and that is what the daemon then awaits");
+    }
+
+    private static int Count(CapturingLoggerFactory logs, string fragment) =>
+        logs.Lines.Count(l => l.Contains(fragment, StringComparison.Ordinal));
+
+    // An executable /bin/sh script at an arbitrary path (WriteFakeRigctld builds the standard
+    // shapes; this one takes a body, and deliberately writes it AFTER the daemon has started).
+    private static void WriteFakeScript(string path, string body)
+    {
+        File.WriteAllText(path, "#!/bin/sh\n" + body);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
     }
 
     private static bool ProcessIsGone(int pid)

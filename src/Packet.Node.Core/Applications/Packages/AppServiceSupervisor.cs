@@ -440,9 +440,15 @@ public sealed partial class AppServiceSupervisor(
                     SetState(entry, AppServiceState.Running, process.Id, detail: null);
                     LogServiceStarted(entry.Id, entry.Spec.Command, process.Id);
 
-                    // The pumps are cancellable and tied to this entry's stop (C076): a stop
-                    // must be able to end log capture, not wait on a pipe nobody will close.
-                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    // The pumps are DELIBERATELY NOT linked to the run token (#727 item 6).
+                    // On the stop path that token is ALREADY cancelled - it is what made
+                    // WaitForExitAsync throw - so linking it cancelled the pumps before SIGTERM
+                    // was even sent and the child's entire shutdown output (the whole stop
+                    // grace: "flushing N messages", a shutdown stack trace, the reason a stop
+                    // went wrong) was discarded. A standalone source lets the pumps keep reading
+                    // through GracefulStopAsync; DrainPumpsAsync is what cancels it, after its
+                    // own bounded grace, which is exactly what the drain was designed to do.
+                    using var pumpStop = new CancellationTokenSource();
                     var pumps = Task.WhenAll(
                         ProcessSupervision.PumpAsync(process.StandardOutput, line => AppLog.Stdout(appLogger, line), pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => AppLog.Stderr(appLogger, line), pumpStop.Token));

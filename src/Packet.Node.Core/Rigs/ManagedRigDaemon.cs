@@ -251,8 +251,10 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                 {
                     LogStarted(portId, binaryPath, process.Id, Port);
                     PublishChildPid(process.Id);
-                    // Cancellable pumps tied to this run's stop (C076).
-                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    // NOT linked to the run token (#727 item 6): on the stop path it is already
+                    // cancelled, so linking it dropped the child's whole SIGTERM-to-exit output.
+                    // DrainPumpsAsync cancels this after its own bounded grace (C076).
+                    using var pumpStop = new CancellationTokenSource();
                     var pumps = Task.WhenAll(
                         ProcessSupervision.PumpAsync(process.StandardOutput, line => DaemonLog.Stdout(childLogger, line), pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => DaemonLog.Stderr(childLogger, line), pumpStop.Token));
@@ -282,19 +284,23 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                     var exitedPid = SafePid(process);
                     ClearChildPid(exitedPid);
                     var exitCode = process.ExitCode;
-                    // The child exited on its own (a crash, or the USB device vanished from under
-                    // it). Respawn after the backoff — same port, so the re-dialling clients
-                    // recover without reconfiguration when the device comes back. The drain is
-                    // BOUNDED (C076): a grandchild holding the pipes must not wedge this loop.
-                    LogExited(portId, exitCode, delay.TotalSeconds);
-                    await CleanupChildAsync(process, pumps, pumpStop, exitedPid).ConfigureAwait(false);
 
                     // A run that lasted counts as healthy: reset the backoff so one failure
-                    // after hours of uptime is not punished at the crash-loop rate.
+                    // after hours of uptime is not punished at the crash-loop rate. This runs
+                    // BEFORE the log line (#727 item 12) so "respawning in {Seconds}s" states
+                    // the delay actually awaited below; logging first reported the pre-reset
+                    // value, e.g. "respawning in 32s" ahead of a 1 s respawn.
                     if (ProcessSupervision.WasHealthyRun(clock.GetUtcNow() - startedAt))
                     {
                         delay = backoffBase;
                     }
+
+                    // The child exited on its own (a crash, or the USB device vanished from under
+                    // it). Respawn after the backoff on the same port, so the re-dialling clients
+                    // recover without reconfiguration when the device comes back. The drain is
+                    // BOUNDED (C076): a grandchild holding the pipes must not wedge this loop.
+                    LogExited(portId, exitCode, delay.TotalSeconds);
+                    await CleanupChildAsync(process, pumps, pumpStop, exitedPid).ConfigureAwait(false);
                 }
 
                 // Backoff before the next attempt (spawn failure or unexpected exit both retry).

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Heard;
 using Packet.Node.Tests.Support;
@@ -237,12 +238,115 @@ public sealed class HeardLogTests : IDisposable
             .Which.Callsign.Should().Be("M0LTE-1");
     }
 
+    // --- #727 item 10: Clear/Forget order behind the queue; Dispose is bounded ---------------
+
+    /// <summary>
+    /// An operator's MH clear must not be undone by the writer's backlog.
+    /// </summary>
+    /// <remarks>
+    /// C077 moved persistence to a channel drained asynchronously, but <c>Clear</c> deleted
+    /// straight from the store and the hot dictionary without touching the queue. Snapshots
+    /// enqueued before the clear were upserted after it, so the panel showed an empty log, the
+    /// writer flushed the backlog behind it, and the cleared stations came back out of
+    /// <c>pdn.db</c> at the next restart. <c>Clear</c> now discards the pending queue under the
+    /// drain gate and mutates the store under the store gate, ordered behind any in-flight
+    /// batch.
+    /// </remarks>
+    [Fact]
+    public async Task Clear_is_not_undone_by_snapshots_the_writer_had_not_drained_yet()
+    {
+        using var store = new BlockingHeardStore();
+        using var log = new HeardLog(store, clock);
+
+        // Park the writer inside its first store call, so everything after it queues up behind
+        // a writer that cannot make progress until this test says so.
+        log.Record("vhf", "M0LTE-1", T0);
+        store.EnteredWrite.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the writer should have reached the store");
+        for (var i = 0; i < 20; i++)
+        {
+            log.Record("vhf", $"G{i}ABC", T0.AddSeconds(i));
+        }
+
+        // The sysop clears the log with all twenty still queued. Clear runs on another thread
+        // because its store mutation waits for the wedged writer to let go.
+        var clearing = Task.Run(() => log.Clear());
+
+        // The hot dictionary empties only AFTER the pending queue has been taken, so this is
+        // the observable proof that the twenty can no longer reach the store - and it happens
+        // before the writer is unblocked, which is what makes the assertion below deterministic.
+        await Wait.ForAsync(() => log.All().Count == 0, "the operator's view clears");
+
+        store.Release();
+        (await clearing).Should().BeGreaterThan(0);
+        store.Cleared.Should().Be(1, "the store was told to forget everything");
+
+        log.Flush();
+        store.RowsAfterClear.Should().Be(0,
+            "a snapshot from before the reset must never resurrect a row the operator deleted");
+    }
+
+    /// <summary>The same ordering for a single-station Forget.</summary>
+    [Fact]
+    public async Task Forget_is_not_undone_by_a_queued_snapshot_of_that_station()
+    {
+        using var store = new BlockingHeardStore();
+        using var log = new HeardLog(store, clock);
+
+        log.Record("vhf", "M0LTE-1", T0);
+        store.EnteredWrite.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the writer should have reached the store");
+        log.Record("vhf", "G0ABC", T0.AddSeconds(1));
+
+        var forgetting = Task.Run(() => log.Forget("vhf", "G0ABC"));
+        await Wait.ForAsync(() => log.ForPort("vhf").All(e => e.Callsign != "G0ABC"),
+            "the station leaves the operator's view");
+
+        store.Release();
+        (await forgetting).Should().BeTrue();
+
+        log.Flush();
+        store.RowsAfterClear.Should().Be(0,
+            "the queued snapshot of the forgotten station is dropped, not written after the delete");
+    }
+
+    /// <summary>
+    /// Disposing the log must not hold host shutdown behind a wedged database.
+    /// </summary>
+    /// <remarks>
+    /// The store I/O used to run INSIDE the drain gate, and Dispose has to take that gate - so
+    /// "a bounded Monitor wait" was bounded only by however long the in-flight SQLite call took,
+    /// which with Microsoft.Data.Sqlite's 30 s default command timeout could push past systemd's
+    /// TimeoutStopSec and turn a clean stop into a SIGKILL. The I/O is outside the gate now and
+    /// both acquisitions carry <see cref="HeardLog.DisposeDrainBudget"/>.
+    /// </remarks>
+    [Fact]
+    public void Dispose_returns_promptly_even_with_the_store_wedged()
+    {
+        using var store = new BlockingHeardStore();
+        var log = new HeardLog(store, clock);
+
+        // Park the writer inside the store and leave it there for the whole test.
+        log.Record("vhf", "M0LTE-1", T0);
+        store.EnteredWrite.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the writer should have reached the store");
+        log.Record("vhf", "G0ABC", T0.AddSeconds(1));
+
+        var started = Stopwatch.StartNew();
+        log.Dispose();
+        started.Stop();
+
+        // Generously above the budget (a saturated runner still has to schedule the wait) and
+        // far below the 30 s the wedged store would otherwise have cost.
+        started.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(15),
+            "Dispose abandons the write tail rather than holding the host's shutdown path");
+    }
+
     /// <summary>A store whose writes park until released, counting the rows that get through:
     /// the wedged-writer case, and the coalescing evidence.</summary>
     private sealed class BlockingHeardStore : IHeardStore, IDisposable
     {
         private readonly ManualResetEventSlim gate = new(false);
         private int rows;
+        private int rowsAfterClear;
+        private int cleared;
 
         public ManualResetEventSlim EnteredWrite { get; } = new(false);
 
@@ -251,11 +355,21 @@ public sealed class HeardLogTests : IDisposable
 
         public HeardEntry? Last { get; private set; }
 
+        /// <summary>Rows written after the most recent Clear/ClearAll - the resurrect evidence.</summary>
+        public int RowsAfterClear => Volatile.Read(ref rowsAfterClear);
+
+        /// <summary>How many times the store was told to forget everything.</summary>
+        public int Cleared => Volatile.Read(ref cleared);
+
         public void Upsert(HeardEntry entry)
         {
             EnteredWrite.Set();
             gate.Wait(TimeSpan.FromSeconds(30));
             Interlocked.Increment(ref rows);
+            if (Volatile.Read(ref cleared) > 0)
+            {
+                Interlocked.Increment(ref rowsAfterClear);
+            }
             Last = entry;
         }
 
@@ -263,9 +377,17 @@ public sealed class HeardLogTests : IDisposable
 
         public IReadOnlyList<HeardEntry> All() => [];
 
-        public bool Clear(string portId, string callsign) => false;
+        public bool Clear(string portId, string callsign)
+        {
+            Interlocked.Increment(ref cleared);
+            return true;
+        }
 
-        public int ClearAll() => 0;
+        public int ClearAll()
+        {
+            Interlocked.Increment(ref cleared);
+            return 1;
+        }
 
         public int Prune(DateTimeOffset olderThan, int maxPerPort) => 0;
 

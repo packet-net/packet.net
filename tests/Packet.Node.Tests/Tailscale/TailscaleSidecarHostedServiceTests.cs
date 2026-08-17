@@ -510,6 +510,62 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StopAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// #727 item 11: a forwards-only reconcile never signals a pid the runtime has already
+    /// reaped - it falls back to a restart instead.
+    /// </summary>
+    /// <remarks>
+    /// <c>TryReloadForwardsLocked</c> used to snapshot the pid under <c>childSignalGate</c>,
+    /// RELEASE it, do the forwards.json disk I/O, and only then <c>kill(-pid, SIGHUP)</c> with
+    /// no liveness re-check. If the sidecar exited during that rewrite the kernel was free to
+    /// hand its pid to anything, and SIGHUP's default disposition is terminate - so on a busy
+    /// box an unrelated process group could be killed. That is the invariant
+    /// <c>ProcessSupervision</c> states outright: every signal goes to a child established to
+    /// be alive. The whole read-write-signal sequence is under the gate now, with a
+    /// <c>HasExited</c> re-check immediately before the kill.
+    /// </remarks>
+    [SkippableFact]
+    public async Task A_forwards_change_with_no_live_child_restarts_instead_of_signalling()
+    {
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
+
+        var argsLog = Path.Combine(dir, "args.txt");
+        var hupLog = Path.Combine(dir, "hup.txt");
+        // A sidecar that reports itself up and then EXITS on its own, so by the time the
+        // forwards change arrives there is no live child to signal. The supervisor respawns it
+        // on its backoff, which is why the launch count climbs.
+        var bin = WriteFakeSidecar("ts-fwd-dead", [
+            "{\"state\":\"running\",\"fqdn\":\"pdn.test.ts.net\"}",
+        ], exitCode: 0, argsLog: argsLog, hupLog: hupLog);
+        var appRoot = Path.Combine(dir, "apps");
+        Directory.CreateDirectory(appRoot);
+        WritePackageWithForward(appRoot, "mail", 993, "127.0.0.1:1430");
+
+        var status = new TailscaleStatusHolder();
+        var stateDir = Path.Combine(dir, "state");
+        var catalog = new AppPackageCatalog(NullLoggerFactory.Instance);
+        var config = new TestConfigProvider(NodeWithApps(Enabled(stateDir), appRoot));
+        await using var svc = NewService(config, status, bin, packages: catalog);
+
+        await svc.StartAsync(CancellationToken.None);
+        await Wait.ForAsync(
+            () => File.Exists(argsLog) && File.ReadAllLines(argsLog).Length >= 2,
+            "the sidecar has launched and exited at least twice, so the respawn loop is running");
+
+        // A forwards-only change while no child is alive to receive it.
+        config.Apply(NodeWithApps(
+            Enabled(stateDir), appRoot, new AppOverrideConfig { Id = "mail", Enabled = true }));
+
+        // The new forwards still take effect - via a relaunch carrying the flag, not a signal.
+        await Wait.ForAsync(
+            () => File.Exists(argsLog) && File.ReadAllLines(argsLog).Any(l => l.Contains("--forwards-file", StringComparison.Ordinal)),
+            "the reload falls back to a restart, which is how the new forwards reach the sidecar");
+
+        File.Exists(hupLog).Should().BeFalse("nothing may be signalled when there is no child established to be alive");
+
+        await svc.StopAsync(CancellationToken.None);
+    }
+
     [SkippableFact]
     public async Task Changing_a_forward_target_live_reloads_via_sighup_without_restarting()
     {
