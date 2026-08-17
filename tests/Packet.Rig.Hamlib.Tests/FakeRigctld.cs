@@ -65,6 +65,11 @@ internal sealed class FakeRigctld : IAsyncDisposable
     /// the client should surface a connection fault and redial on the following call.</summary>
     internal volatile bool DropBeforeNextReply;
 
+    /// <summary>When set, the next rig command is acted on and only then is its reply swallowed:
+    /// the state change really happened, but the client only ever sees a timeout. The hazard
+    /// shape that matters for PTT, where the rig ends up keyed with nobody sure of it.</summary>
+    internal volatile bool ActOnNextCommandThenSwallowReply;
+
     /// <summary>Replaces the canned <c>dump_caps</c> payload — capability-shaping tests.</summary>
     internal string[]? DumpCapsOverride;
 
@@ -203,7 +208,7 @@ internal sealed class FakeRigctld : IAsyncDisposable
             return Error(extended, cmd, args, failCode);
         }
 
-        return cmd switch
+        var reply = cmd switch
         {
             "f" => Reply(extended, "get_freq", args,
                 $"Frequency: {FrequencyHz.ToString(CultureInfo.InvariantCulture)}"),
@@ -232,6 +237,14 @@ internal sealed class FakeRigctld : IAsyncDisposable
             "q" => "RPRT 0\n",
             _ => Error(extended, cmd, args, 1),
         };
+
+        if (ActOnNextCommandThenSwallowReply)
+        {
+            ActOnNextCommandThenSwallowReply = false;
+            return null; // state already mutated above; the client is left to time out
+        }
+
+        return reply;
 
         static int DefaultPassband(string mode) => mode switch
         {

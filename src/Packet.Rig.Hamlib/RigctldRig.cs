@@ -29,13 +29,21 @@ namespace Packet.Rig.Hamlib;
 /// never obtained.
 /// </para>
 /// <para>
-/// <b>Unkey on dispose.</b> If the last PTT command this client sent keyed the transmitter,
-/// <see cref="DisposeAsync"/> makes a best-effort <c>T 0</c> before closing — a rig latched in
-/// TX is a station incident (same contract as <c>Packet.Radio.IRadioControl</c>).
+/// <b>Unkey on dispose.</b> If the last PTT command this client sent keyed the transmitter, or
+/// failed on the way to finding out, <see cref="DisposeAsync"/> makes a best-effort <c>T 0</c>
+/// before closing; a rig latched in TX is a station incident (same contract as
+/// <c>Packet.Radio.IRadioControl</c>). Because a key that timed out has already dropped the
+/// connection (see the connection model above), that unkey redials once, on a bounded budget,
+/// when the socket has gone.
 /// </para>
 /// </remarks>
 public sealed class RigctldRig : IRigControl
 {
+    /// <summary>Wall-clock budget for the whole dispose-time unkey, redial included. Short
+    /// enough that a dead daemon cannot stall a shutdown, long enough for a loopback (or LAN)
+    /// connect plus one write.</summary>
+    private static readonly TimeSpan DisposeUnkeyBudget = TimeSpan.FromSeconds(2);
+
     private readonly RigctldRigOptions options;
     private readonly TimeProvider time;
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -155,11 +163,25 @@ public sealed class RigctldRig : IRigControl
     }
 
     /// <inheritdoc />
+    /// <remarks>The dispose-unkey latch is raised <em>before</em> the key goes on the wire and
+    /// lowered only after an unkey rigctld confirmed with <c>RPRT 0</c>. The key bytes are
+    /// written before any timeout or IO fault can be observed, and rigctld keys the rig the
+    /// moment it reads them, so a failed command leaves the transmitter's real state unknown;
+    /// unknown must resolve toward sending the unkey rather than skipping it.</remarks>
     public async ValueTask SetPttAsync(bool transmit, CancellationToken cancellationToken = default)
     {
         Require(RigCapabilities.PttSet);
+        if (transmit)
+        {
+            keyedByUs = true;
+        }
+
         await TransactAsync(transmit ? "T 1" : "T 0", cancellationToken).ConfigureAwait(false);
-        keyedByUs = transmit;
+
+        if (!transmit)
+        {
+            keyedByUs = false;
+        }
     }
 
     /// <inheritdoc />
@@ -253,25 +275,57 @@ public sealed class RigctldRig : IRigControl
 
         disposed = true;
 
-        if (keyedByUs && stream is not null)
+        if (keyedByUs)
         {
-            try
-            {
-                // Direct write, bypassing the gate: dispose must not queue behind a stuck
-                // command, and a torn reply no longer matters — the socket closes next.
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2), time);
-                var unkey = Encoding.UTF8.GetBytes(vfoMode ? "+T currVFO 0\n" : "+T 0\n");
-                await stream.WriteAsync(unkey, cts.Token).ConfigureAwait(false);
-                await stream.FlushAsync(cts.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
-            {
-                // Best effort only — the link may already be gone.
-            }
+            await UnkeyForDisposeAsync().ConfigureAwait(false);
         }
 
         DropConnection();
         gate.Dispose();
+    }
+
+    /// <summary>
+    /// Best-effort dispose-time unkey. Never throws and never waits longer than
+    /// <see cref="DisposeUnkeyBudget"/>: a dispose that hangs is a station incident of its own.
+    /// </summary>
+    /// <remarks>
+    /// The latch is raised before the key is written, so this can run with the socket already
+    /// dropped by the very fault that made the key's outcome unknown (a timeout or IO error goes
+    /// through <c>Fault</c>, which drops the connection). That is precisely the case where the
+    /// rig is most likely still transmitting, so a null stream redials once rather than giving
+    /// up: connect, write the unkey, close. No <c>\chk_vfo</c> / <c>\dump_caps</c> re-probe on
+    /// that path, because <c>vfoMode</c> is already known from the session that just ended and
+    /// the extra round trips would spend the budget that the unkey needs.
+    /// </remarks>
+    private async Task UnkeyForDisposeAsync()
+    {
+        TcpClient? redial = null;
+        try
+        {
+            using var cts = new CancellationTokenSource(DisposeUnkeyBudget, time);
+            var target = stream;
+            if (target is null)
+            {
+                redial = new TcpClient { NoDelay = true };
+                await redial.ConnectAsync(options.Host, options.Port, cts.Token).ConfigureAwait(false);
+                target = redial.GetStream();
+            }
+
+            // Direct write, bypassing the gate: dispose must not queue behind a stuck command.
+            // The reply is never read, because rigctld acts on a command line as soon as it has
+            // read it and the socket closes next.
+            var unkey = Encoding.UTF8.GetBytes(vfoMode ? "+T currVFO 0\n" : "+T 0\n");
+            await target.WriteAsync(unkey, cts.Token).ConfigureAwait(false);
+            await target.FlushAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
+        {
+            // Best effort only; the link (or the daemon) may already be gone.
+        }
+        finally
+        {
+            redial?.Dispose();
+        }
     }
 
     private void Require(RigCapabilities capability)

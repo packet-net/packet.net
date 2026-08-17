@@ -75,6 +75,12 @@ public interface IRigControl : IAsyncDisposable
     /// Read the RF power-output meter as a fraction of full scale (0.0–1.0). Meaningful while
     /// transmitting. Prefer <see cref="ReadRfPowerWattsAsync"/> when
     /// <see cref="RigCapabilities.RfPowerMeterWatts"/> is available.
+    /// <para>
+    /// Implementations clamp to the stated range, so a rig whose meter's full scale is above
+    /// 100 W still reads at most 1.0 here; that headroom belongs to
+    /// <see cref="ReadRfPowerWattsAsync"/>, which is why the two can diverge (flrig on a 200 W
+    /// meter reads 1.0 and 200 W for the same needle).
+    /// </para>
     /// </summary>
     ValueTask<double> ReadRfPowerAsync(CancellationToken cancellationToken = default);
 

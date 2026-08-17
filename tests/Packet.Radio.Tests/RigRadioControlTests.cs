@@ -234,6 +234,21 @@ public sealed class RigRadioControlTests
     }
 
     [Fact]
+    public async Task Dispose_Unkeys_After_A_Key_That_Faulted_Once_The_Rig_Had_Acted_On_It()
+    {
+        var rig = new KeyFaultsAfterActingRig();
+        var radio = new RigRadioControl(rig, timeProvider: new FakeTimeProvider());
+
+        var act = async () => await radio.SetTransmitterAsync(true);
+        await act.Should().ThrowAsync<RigTimeoutException>();
+        rig.Ptt.Should().BeTrue("the key reached the rig before the reply was lost");
+
+        await radio.DisposeAsync();
+
+        rig.Ptt.Should().BeFalse("an unconfirmed key must still be unkeyed at dispose");
+    }
+
+    [Fact]
     public async Task Dispose_Skips_The_Unkey_When_The_Adapter_Left_The_Rig_Unkeyed()
     {
         var rig = new FakeRig();
@@ -300,5 +315,63 @@ public sealed class RigRadioControlTests
 
         rig.DcdReads.Should().Be(0, "there is no DCD to poll");
         radio.ChannelBusy.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A PTT-only <see cref="IRigControl"/> whose first key reaches the rig and only then throws:
+    /// the shape of a CAT command the backend acted on but whose reply was lost (timeout, daemon
+    /// bounce). Everything the bridge never touches throws <see cref="NotSupportedException"/>,
+    /// like <c>FakeRig</c>.
+    /// </summary>
+    private sealed class KeyFaultsAfterActingRig : IRigControl
+    {
+        private int pttSets;
+
+        public RigCapabilities Capabilities => RigCapabilities.PttSet;
+
+        public RigInfo Info => new("Fake rig", "Acme", "Fault-1000");
+
+        /// <summary>The transmitter's real state, whatever the caller was told.</summary>
+        public bool Ptt { get; private set; }
+
+        public ValueTask SetPttAsync(bool transmit, CancellationToken cancellationToken = default)
+        {
+            Ptt = transmit;
+            return Interlocked.Increment(ref pttSets) == 1
+                ? throw new RigTimeoutException("no reply to the key command")
+                : ValueTask.CompletedTask;
+        }
+
+        public ValueTask<long> GetFrequencyAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask SetFrequencyAsync(long frequencyHz, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<RigModeState> GetModeAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask SetModeAsync(RigMode mode, int? passbandHz = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<bool> GetPttAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<double> ReadSwrAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<double> ReadRfPowerAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<double> ReadRfPowerWattsAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<bool> ReadDcdAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<double> ReadSignalStrengthDbmAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

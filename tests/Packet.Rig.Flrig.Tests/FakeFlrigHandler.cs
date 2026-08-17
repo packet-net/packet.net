@@ -27,6 +27,11 @@ internal sealed class FakeFlrigHandler : HttpMessageHandler
     /// <summary>Method names that fault with (code, message) on next call.</summary>
     internal readonly ConcurrentDictionary<string, (int Code, string Message)> Faults = new();
 
+    /// <summary>Method names whose next call is acted on and only then answered with a fault:
+    /// flrig really did what it was told, but the client is told the command failed. The hazard
+    /// shape that matters for PTT, where the rig ends up keyed with nobody sure of it.</summary>
+    internal readonly ConcurrentDictionary<string, (int Code, string Message)> FaultsAfterActing = new();
+
     /// <summary>Method invocation log: (method, rawArgsXml).</summary>
     internal readonly ConcurrentQueue<(string Method, string Body)> Calls = new();
 
@@ -74,7 +79,9 @@ internal sealed class FakeFlrigHandler : HttpMessageHandler
         HttpResponseMessage Apply(Action mutate)
         {
             mutate();
-            return Respond("<?xml version=\"1.0\"?><methodResponse><params/></methodResponse>");
+            return FaultsAfterActing.TryRemove(method, out var late)
+                ? Respond(FaultXml(late.Code, late.Message))
+                : Respond("<?xml version=\"1.0\"?><methodResponse><params/></methodResponse>");
         }
     }
 
