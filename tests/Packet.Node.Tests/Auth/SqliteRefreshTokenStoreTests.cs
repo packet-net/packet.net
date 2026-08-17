@@ -148,6 +148,32 @@ public sealed class SqliteRefreshTokenStoreTests : IDisposable
     }
 
     [Fact]
+    public void Revoke_all_for_user_burns_every_family_that_user_owns()
+    {
+        var store = Open();
+        // Two live families for one user (two devices), plus another user's family.
+        store.Insert(NewToken("h-a", "famA")).Should().BeTrue();
+        store.Insert(NewToken("h-b", "famB")).Should().BeTrue();
+        store.Insert(new RefreshTokenRecord(
+            "h-c", "someone-else", "famC", DateTimeOffset.UnixEpoch,
+            new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero), Revoked: false)).Should().BeTrue();
+
+        // The account-lifecycle kill: deleting a user must leave no live chain behind for a
+        // recreated same-name account to inherit (C055).
+        store.RevokeAllForUser("m0lte").Should().Be(2);
+
+        store.HasLiveToken("famA").Should().BeFalse();
+        store.HasLiveToken("famB").Should().BeFalse();
+        store.HasLiveToken("famC").Should().BeTrue();   // untouched
+
+        // A hard kill, so no leeway stamp - the burned family can never be resurrected
+        // through the reuse-leeway grace path.
+        store.FindByHash("h-a")!.RevokedUtc.Should().BeNull();
+
+        store.RevokeAllForUser("m0lte").Should().Be(0);   // idempotent
+    }
+
+    [Fact]
     public void A_broken_store_degrades_and_never_throws()
     {
         // A db path under a non-existent directory can't be opened → the schema init
@@ -158,6 +184,7 @@ public sealed class SqliteRefreshTokenStoreTests : IDisposable
         broken.FindByHash("h").Should().BeNull();
         broken.Revoke("h", null).Should().BeFalse();
         broken.RevokeFamily("f").Should().Be(0);
+        broken.RevokeAllForUser("m0lte").Should().Be(0);
         broken.HasLiveToken("f").Should().BeFalse();
         broken.PruneExpired(DateTimeOffset.UnixEpoch).Should().Be(0);
     }

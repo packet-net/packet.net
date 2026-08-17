@@ -316,10 +316,11 @@ public static class PdnOauthApi
             {
                 return Results.NotFound();
             }
-            // The MCP access token is a stateless JWT — it cannot be individually revoked
-            // (it expires on its own; rotate the signing key to invalidate all). Per RFC 7009
-            // we still answer 200 for any token. Per-token revocation rides the refresh-token
-            // follow-up. The request is audited for transparency.
+            // The MCP access token is a stateless JWT - it cannot be individually revoked (it
+            // expires on its own; `pdn auth rotate-signing-key` + a restart invalidates ALL
+            // tokens, which is the only revocation a stateless token has - see PdnAuthCli).
+            // Per RFC 7009 we still answer 200 for any token. Per-token revocation rides the
+            // refresh-token follow-up. The request is audited for transparency.
             await ctx.Request.ReadFormAsync();
             audit.RecordRest(ctx, clock, "oauth_revoke", "", "ok", "");
             return Results.Ok();

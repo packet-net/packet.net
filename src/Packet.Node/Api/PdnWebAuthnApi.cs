@@ -4,6 +4,7 @@ using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 
@@ -316,6 +317,7 @@ public static class PdnWebAuthnApi
             WebAuthnChallengeCache? challenges,
             IConfigProvider config,
             ILoggerFactory logs,
+            IAuditLog auditLog,
             TimeProvider clock,
             CancellationToken ct) =>
         {
@@ -396,6 +398,9 @@ public static class PdnWebAuthnApi
             }
 
             AuthLog.PasskeyRegistered(audit, username, ip);
+            // A new credential that can sign in as this user belongs in the owner-visible
+            // record, not only the journal (C058).
+            AuthAudit.Record(auditLog, http, clock, "passkey_enrolled", username, "ok", "");
             return Results.Ok(new RegisterCompleteResponse(true, Base64Url.Encode(made.Id)));
         });
 
@@ -425,7 +430,9 @@ public static class PdnWebAuthnApi
             string id,
             HttpContext http,
             IWebAuthnCredentialStore? credentials,
-            ILoggerFactory logs) =>
+            ILoggerFactory logs,
+            IAuditLog auditLog,
+            TimeProvider clock) =>
         {
             if (credentials is null)
             {
@@ -448,6 +455,7 @@ public static class PdnWebAuthnApi
             var audit = logs.CreateLogger("Packet.Node.Auth");
             var ip = ClientIp(http);   // precompute (a method call inline in a log arg trips CA1873)
             AuthLog.PasskeyDeleted(audit, username, ip);
+            AuthAudit.Record(auditLog, http, clock, "passkey_deleted", username, "ok", "");
             return Results.NoContent();
         });
 
@@ -524,18 +532,7 @@ public static class PdnWebAuthnApi
     // The JWT carries the username in the `sub` claim (JwtTokenService.Issue); depending
     // on inbound-claim mapping that can surface as Identity.Name, the raw `sub` claim, or
     // the mapped NameIdentifier — read whichever is present.
-    private static string? PrincipalUsername(HttpContext http)
-    {
-        var user = http.User;
-        if (user?.Identity?.IsAuthenticated != true)
-        {
-            return null;
-        }
-        var name = user.Identity!.Name
-            ?? user.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
-            ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        return string.IsNullOrWhiteSpace(name) ? null : name;
-    }
+    private static string? PrincipalUsername(HttpContext http) => PrincipalName.Resolve(http.User);
 
     private static string NewSessionId() =>
         Base64Url.Encode(RandomNumberGenerator.GetBytes(32));

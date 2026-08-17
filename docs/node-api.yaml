@@ -64,7 +64,7 @@ paths:
       description: >
         A port edit is a read-modify-write of the whole config document, so it accepts the same
         optional If-Match compare-and-swap as PUT /config (packet.net#694, C065).
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
       responses:
@@ -81,7 +81,7 @@ paths:
     put:
       tags: [ports]
       summary: Edit a port — full-object replace (returns the reconcile result)
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
       responses:
@@ -92,7 +92,7 @@ paths:
     delete:
       tags: [ports]
       summary: Remove a port
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       responses:
         "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
@@ -691,6 +691,8 @@ paths:
       description: >
         The response carries an ETag: the config document's version token. Send it back as
         If-Match on any config-writing request for compare-and-swap (packet.net#694, C065).
+        Secret-bearing fields (tailscale.authKey, mqtt.password,
+        management.https.certificatePassword) are masked as "***" when set and null when not.
       security: [{ bearerAuth: [read] }]
       responses:
         "200":
@@ -705,14 +707,18 @@ paths:
         Optional If-Match compare-and-swap: the version is compared inside the provider's write
         lock, so an edit built on a document another writer has since replaced is refused with
         412 rather than silently overwriting it. No If-Match = last-writer-wins, as before.
-      security: [{ bearerAuth: [admin] }]
+        Secret-bearing fields (tailscale.authKey, mqtt.password,
+        management.https.certificatePassword) read back as "***" from GET /config; sending
+        "***" keeps the stored value, so a read-modify-write round trip preserves them.
+        Changing the management.auth block requires the admin scope.
+      security: [{ bearerAuth: [operate] }]
       parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } } }
       responses: { "200": { description: applied, headers: { ETag: { description: the new config version, schema: { type: string } } }, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "412": { description: "If-Match did not match the live config version; nothing was changed" }, "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
     patch:
       tags: [config]
       summary: Patch a config section (form-driven edits)
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
       responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } } }
   /config/schema:
@@ -725,7 +731,8 @@ paths:
     get:
       tags: [config]
       summary: The raw YAML config text (advanced editor)
-      security: [{ bearerAuth: [admin] }]
+      description: Secret-bearing fields are masked as "***" (see PUT /config).
+      security: [{ bearerAuth: [read] }]
       responses:
         "200":
           description: ok
@@ -735,7 +742,7 @@ paths:
     put:
       tags: [config]
       summary: Replace the raw YAML (validate-before-apply)
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { text/plain: { schema: { type: string } } } }
       responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "412": { description: "If-Match did not match the live config version; nothing was changed" }, "422": { description: invalid, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
@@ -743,7 +750,7 @@ paths:
     post:
       tags: [config]
       summary: Validate a candidate config + return the reconcile preview (no apply)
-      security: [{ bearerAuth: [admin] }]
+      security: [{ bearerAuth: [operate] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } }, text/plain: { schema: { type: string } } } }
       responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcilePreview" } } } } }
 

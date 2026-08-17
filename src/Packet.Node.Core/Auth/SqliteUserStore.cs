@@ -154,7 +154,7 @@ public sealed partial class SqliteUserStore : IUserStore
     }
 
     /// <inheritdoc/>
-    public int Count()
+    public int? TryCount()
     {
         try
         {
@@ -163,11 +163,12 @@ public sealed partial class SqliteUserStore : IUserStore
         }
         catch (SqliteException ex)
         {
-            // A broken store reads as zero users → "needs setup". That is the safe
-            // failure mode: it can't silently authenticate anyone, and the operator
-            // sees the setup probe rather than a locked-out node.
+            // A fault is NOT zero. Zero is the open gate for the unauthenticated
+            // POST /setup bootstrap, so reading a broken store as "no users" handed an
+            // unauthenticated caller the node-claim on a node that already had an owner
+            // (C026). Null says "unknown" and the callers fail closed.
             LogReadFailed(ex, connectionString);
-            return 0;
+            return null;
         }
     }
 
@@ -232,6 +233,45 @@ public sealed partial class SqliteUserStore : IUserStore
         {
             LogReadFailed(ex, connectionString);
             return [];
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool CreateFirst(UserRecord user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        try
+        {
+            using var conn = Open();
+            // The one-shot IS the SQL: the row only lands while the table is empty, so a
+            // second setup (or one racing the first) inserts nothing and gets false back.
+            int rows = conn.Execute(
+                "INSERT INTO user (username, password_hash, scopes, created_utc, last_login_utc, " +
+                "callsign, totp_secret, last_totp_counter) " +
+                "SELECT @u, @h, @s, @c, @l, @call, @secret, @counter " +
+                "WHERE NOT EXISTS (SELECT 1 FROM user);",
+                new
+                {
+                    u = user.Username,
+                    h = user.PasswordHash,
+                    s = user.Scope,
+                    c = SqliteStamps.Stamp(user.CreatedUtc),
+                    l = user.LastLoginUtc is { } when ? SqliteStamps.Stamp(when) : null,
+                    call = user.Callsign,
+                    secret = user.TotpSecret,
+                    counter = user.LastTotpCounter,
+                });
+            return rows > 0;
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+        {
+            // SQLITE_CONSTRAINT - a duplicate username, the ordinary "taken" outcome.
+            return false;
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return false;
         }
     }
 
@@ -414,6 +454,28 @@ public sealed partial class SqliteUserStore : IUserStore
         {
             // The key can neither be read nor persisted → auth cannot be enabled safely.
             // (Never log the key itself — only the db path.)
+            LogKeyFailed(ex, connectionString);
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public byte[]? RotateSigningKey()
+    {
+        try
+        {
+            using var conn = Open();
+            var fresh = RandomNumberGenerator.GetBytes(SigningKeyBytes);
+            conn.Execute(
+                "INSERT INTO auth_meta (key, value) VALUES (@k, @v) " +
+                "ON CONFLICT(key) DO UPDATE SET value = @v;",
+                new { k = SigningKeyKey, v = Convert.ToBase64String(fresh) });
+            return fresh;
+        }
+        catch (SqliteException ex)
+        {
+            // Rotation could not be persisted - the old key is still in force. (Never log
+            // either key value; only the db path.)
             LogKeyFailed(ex, connectionString);
             return null;
         }

@@ -66,6 +66,52 @@ public sealed class AppGatewayTransformerTests
         Assert.Equal("1", Single(proxyRequest, "X-Pdn-Gateway"));
     }
 
+    [Fact]
+    public async Task TransformRequest_strips_the_authorization_header_and_the_pdn_at_cookie()
+    {
+        // YARP's default copy forwards every non-hop-by-hop header, so an app upstream was
+        // handed the viewer's bearer token AND the pdn_at cookie carrying the same access JWT -
+        // replayable against /api/v1 with the viewer's scope (C054). The app is told who is
+        // viewing; it is never given the credential.
+        var transformer = new PdnAppGateway.AppGatewayTransformer();
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = "/apps/wall/page";
+        ctx.Request.RouteValues["rest"] = "page";
+        ctx.Request.RouteValues["id"] = "wall";
+        ctx.Request.Headers.Authorization = "Bearer header.payload.signature";
+        ctx.Request.Headers.Cookie = "pdn_at=header.payload.signature; wall_session=keep-me";
+        ctx.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(JwtRegisteredClaimNames.Sub, "tom"), new Claim("scope", "read")], "test"));
+
+        using var proxyRequest = new HttpRequestMessage(HttpMethod.Get, "http://placeholder/");
+        await transformer.TransformRequestAsync(ctx, proxyRequest, "http://127.0.0.1:9090", default);
+
+        Single(proxyRequest, "Authorization").Should().BeNull();
+        // The app keeps its OWN cookies - only pdn's session cookie is dropped.
+        Single(proxyRequest, "Cookie").Should().Be("wall_session=keep-me");
+        Single(proxyRequest, "X-Pdn-User").Should().Be("tom");   // identity still injected
+    }
+
+    [Fact]
+    public async Task TransformRequest_drops_the_cookie_header_entirely_when_pdn_at_was_the_only_cookie()
+    {
+        var transformer = new PdnAppGateway.AppGatewayTransformer();
+
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = "/apps/wall/";
+        ctx.Request.RouteValues["rest"] = "";
+        ctx.Request.RouteValues["id"] = "wall";
+        ctx.Request.Headers.Cookie = "pdn_at=header.payload.signature";
+
+        using var proxyRequest = new HttpRequestMessage(HttpMethod.Get, "http://placeholder/");
+        await transformer.TransformRequestAsync(ctx, proxyRequest, "http://127.0.0.1:9090", default);
+
+        Single(proxyRequest, "Cookie").Should().BeNull();
+    }
+
     private static string? Single(HttpRequestMessage req, string header) =>
         req.Headers.TryGetValues(header, out var values) ? string.Concat(values) : null;
 }

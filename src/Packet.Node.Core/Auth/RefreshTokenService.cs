@@ -216,6 +216,16 @@ public sealed class RefreshTokenService
         store.RevokeFamily(family);
     }
 
+    /// <summary>Revoke every family belonging to <paramref name="username"/> - the
+    /// account-lifecycle kill the user-delete handler runs, so a deleted account leaves no
+    /// live refresh chain behind for a recreated same-name account to inherit (C055).
+    /// Returns the number of tokens revoked. Best-effort (0 on a store fault).</summary>
+    public int RevokeAllForUser(string username)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
+        return store.RevokeAllForUser(username);
+    }
+
     /// <summary>Best-effort prune of tokens already expired as of now. Safe to call
     /// opportunistically (e.g. on each login); a fault is swallowed by the store.</summary>
     public void PruneExpired() => store.PruneExpired(clock.GetUtcNow());

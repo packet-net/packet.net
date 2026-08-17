@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Audit;
+using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 
@@ -38,9 +39,15 @@ namespace Packet.Node.Api;
 /// A successful apply answers with the new version's <c>ETag</c>. See <see cref="ConfigCas"/>.
 /// </para>
 /// <para>
-/// Auth is a later step — like the read API and SSE feed, these are unauthenticated
-/// and the node binds 127.0.0.1 by default. No wall-clock here (repo rule §2.7):
-/// the config path needs no clock at all.
+/// <b>Scope.</b> A config write is <c>operate</c> (the shipped model - plan.md §5.4) and
+/// reading the raw YAML is <c>read</c>, with one exception: a write that changes the
+/// <c>management.auth</c> block needs <c>admin</c>, because that block IS the gate and an
+/// operate user who can disable it is an admin in all but name (review item C020).
+/// </para>
+/// <para>
+/// <b>Secrets.</b> The read projections mask <c>tailscale.authKey</c>, <c>mqtt.password</c>
+/// and <c>management.https.certificatePassword</c>; a write that echoes the mask back keeps
+/// the stored value. See <see cref="ConfigRedaction"/>.
 /// </para>
 /// </remarks>
 public static class PdnConfigApi
@@ -63,6 +70,16 @@ public static class PdnConfigApi
         {
             // Capture the live config BEFORE applying — the preview is from→to.
             var before = cfg.Current;
+
+            // A round-tripped edit carries "***" wherever the read projection masked a secret;
+            // restore the stored value so an edit elsewhere in the file can't wipe the tailnet
+            // key / broker password / PKCS#12 password (C010).
+            candidate = ConfigRedaction.Unredact(candidate, before);
+
+            if (AuthBlockChanged(before, candidate) && !IsAdmin(ctx, before))
+            {
+                return AuthChangeForbidden();
+            }
 
             var errors = cfg.Validate(candidate);
             if (errors.Count > 0)
@@ -91,11 +108,12 @@ public static class PdnConfigApi
         }).RequireAuthorization(PdnAuthPolicies.Operate);   // a config write is `operate`
 
         // The advanced editor reads the live config as raw YAML to edit by hand. The ETag is
-        // the document version to send back as If-Match on the PUT (C065).
+        // the document version to send back as If-Match on the PUT (C065); secrets are masked
+        // exactly as on GET /config (C010).
         v1.MapGet("/config/raw", (HttpContext ctx, IWritableConfigProvider cfg) =>
         {
             ConfigCas.SetETag(ctx, cfg);
-            return Results.Text(NodeConfigYaml.Serialize(cfg.Current), "text/plain");
+            return Results.Text(NodeConfigYaml.Serialize(ConfigRedaction.Redact(cfg.Current)), "text/plain");
         }).RequireAuthorization(PdnAuthPolicies.Read);    // reading config is `read`
 
         // Raw-YAML edit: the request body IS the YAML. A parse failure is a 422 with
@@ -117,6 +135,15 @@ public static class PdnConfigApi
             }
 
             var before = cfg.Current;
+
+            // Same placeholder contract as the structured PUT: the advanced editor reads
+            // masked YAML, so "***" means keep-current (C010).
+            candidate = ConfigRedaction.Unredact(candidate, before);
+
+            if (AuthBlockChanged(before, candidate) && !IsAdmin(ctx, before))
+            {
+                return AuthChangeForbidden();
+            }
 
             var errors = cfg.Validate(candidate);
             if (errors.Count > 0)
@@ -140,6 +167,42 @@ public static class PdnConfigApi
             return Results.Ok(ToResult(preview, applied: true));
         }).RequireAuthorization(PdnAuthPolicies.Operate);   // a raw-YAML config write is `operate`
     }
+
+    // --- the management.auth guard (C020) ---------------------------------------
+    //
+    // A config write is `operate` (the shipped model, plan.md §5.4) - but the auth block is
+    // the gate itself: an operate user could PUT management.auth.enabled=false and turn the
+    // whole node open, which makes operate silently equal to admin. So a write that CHANGES
+    // the auth block needs `admin`, while every other config write stays `operate`.
+    //
+    // Compared field by field on purpose: AuthConfig/WebAuthnConfig are records holding a
+    // list, and record equality on IReadOnlyList<string> is reference equality - two equal
+    // configs deserialized separately would never compare equal, so an == check here would
+    // 403 every operate write.
+    private static bool AuthBlockChanged(NodeConfig before, NodeConfig after)
+    {
+        var a = before.Management.Auth;
+        var b = after.Management.Auth;
+        return a.Enabled != b.Enabled
+            || a.AccessTokenMinutes != b.AccessTokenMinutes
+            || a.RefreshTokenMinutes != b.RefreshTokenMinutes
+            || a.SysopElevationMinutes != b.SysopElevationMinutes
+            || !string.Equals(a.WebAuthn.RelyingPartyId, b.WebAuthn.RelyingPartyId, StringComparison.Ordinal)
+            || !string.Equals(a.WebAuthn.RelyingPartyName, b.WebAuthn.RelyingPartyName, StringComparison.Ordinal)
+            || !a.WebAuthn.AllowedOrigins.SequenceEqual(b.WebAuthn.AllowedOrigins, StringComparer.Ordinal);
+    }
+
+    // Admin for the purposes of that guard. With auth OFF there is no principal and no gate to
+    // protect (the whole API is open), so the guard passes through exactly like every other
+    // scope check does - it must not block the first-run "turn auth on" write.
+    private static bool IsAdmin(HttpContext ctx, NodeConfig before) =>
+        !before.Management.Auth.Enabled
+        || AuthScopes.Satisfies(ctx.User.FindFirst(AuthScopes.ScopeClaim)?.Value, AuthScopes.Admin);
+
+    private static IResult AuthChangeForbidden() =>
+        Results.Problem(
+            "Changing management.auth requires the admin scope.",
+            statusCode: StatusCodes.Status403Forbidden);
 
     /// <summary>Project a <see cref="ReconcilePreview"/> to the PUT result, carrying
     /// the four change buckets through and tagging whether it was actually applied.</summary>

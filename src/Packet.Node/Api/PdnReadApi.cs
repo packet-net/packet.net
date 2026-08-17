@@ -85,11 +85,14 @@ public static class PdnReadApi
 
         // The ETag is the config document's version token: echo it back as If-Match on a
         // PUT /config (or any port edit) to get compare-and-swap instead of last-writer-wins
-        // (review item C065, #694 - see ConfigCas).
+        // (review item C065, #694 - see ConfigCas). Read-scoped, so the secret-bearing fields
+        // (tailscale.authKey, mqtt.password, the PKCS#12 password) are masked to "***": a
+        // reader learns whether one is set, never its value; a PUT that echoes the placeholder
+        // back keeps the stored secret (see ConfigRedaction, C010).
         v1.MapGet("/config", (HttpContext ctx, IConfigProvider config, IWritableConfigProvider writable) =>
         {
             ConfigCas.SetETag(ctx, writable);
-            return Results.Json(config.Current);
+            return Results.Json(ConfigRedaction.Redact(config.Current));
         });
 
         // Per-link rollup (frame/byte/REJ/SREJ counters) from the telemetry tap.

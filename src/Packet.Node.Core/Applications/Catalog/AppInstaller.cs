@@ -149,6 +149,16 @@ public sealed partial class AppInstaller : IAppInstaller
                 return InstallOutcome.Failure("(unknown)",
                     "the uploaded .pdnapp has no pdn-app.yaml at its root, or it has no id.");
             }
+            // The id becomes a directory name under appsRoot, and an UPLOAD's manifest is
+            // operator-supplied bytes that no catalog vetted: `id: ..` or a rooted id escaped
+            // the apps root entirely and could overwrite pdn.db (review item C078). The
+            // catalog's own [a-z0-9-] rule is the whole defence, applied before anything is
+            // committed; Commit re-checks containment as the belt to this brace.
+            if (!IsValidPackageId(id))
+            {
+                return InstallOutcome.Failure(id,
+                    $"manifest id '{id}' must be lowercase [a-z0-9-].");
+            }
 
             var version = ReadManifestVersion(manifestPath);
             var payload = RelativePaths(staging);
@@ -187,7 +197,13 @@ public sealed partial class AppInstaller : IAppInstaller
 
         try
         {
-            var dir = Path.Combine(appsRoot, id);
+            var dir = PackageDir(id);
+            if (dir is null)
+            {
+                return Task.FromResult(InstallOutcome.Failure(id,
+                    $"package id '{id}' does not resolve to a package directory."));
+            }
+
             var markerPath = Path.Combine(dir, MarkerFileName);
             if (!File.Exists(markerPath))
             {
@@ -224,11 +240,71 @@ public sealed partial class AppInstaller : IAppInstaller
             return null;
         }
 
-        var markerPath = Path.Combine(appsRoot, id, MarkerFileName);
-        var marker = ReadMarker(markerPath);
+        var dir = PackageDir(id);
+        if (dir is null)
+        {
+            return null;
+        }
+
+        var marker = ReadMarker(Path.Combine(dir, MarkerFileName));
         return marker is null
             ? null
             : new InstalledApp(marker.Id, marker.Version, marker.Source, marker.Kind);
+    }
+
+    // ---- package-dir resolution (the appsRoot containment guard) ---------------------------
+
+    /// <summary>The absolute directory a package id maps to, or null when the id does not
+    /// resolve to a DIRECT child of the apps root.</summary>
+    /// <remarks>
+    /// Path.Combine(appsRoot, id) is only safe for an id that is a plain name: a relative
+    /// `..` walks out of the root and a rooted id (`/tmp/x`, `C:\x`) discards appsRoot
+    /// altogether, so an unvalidated id let an install/uninstall touch files anywhere the
+    /// service user can write (C078). Every path built from an id goes through here, so the
+    /// containment check cannot be forgotten at one of the three call sites.
+    /// </remarks>
+    private string? PackageDir(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return null;
+        }
+
+        var root = Path.GetFullPath(appsRoot);
+        string full;
+        try
+        {
+            full = Path.GetFullPath(Path.Combine(root, id));
+        }
+        catch (ArgumentException)
+        {
+            return null;   // invalid path characters
+        }
+
+        // A DIRECT child: the parent must be the root itself (so `a/b` is refused too, not
+        // only `..`), and the root itself is not a package dir.
+        var parent = Path.GetDirectoryName(full);
+        return parent is not null && string.Equals(
+            parent.TrimEnd(Path.DirectorySeparatorChar),
+            root.TrimEnd(Path.DirectorySeparatorChar),
+            StringComparison.Ordinal)
+            ? full
+            : null;
+    }
+
+    /// <summary>The catalog's id rule (lowercase <c>[a-z0-9-]</c>), applied to an uploaded
+    /// manifest id before it is ever used as a directory name.</summary>
+    private static bool IsValidPackageId(string id)
+    {
+        foreach (var c in id)
+        {
+            bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+            if (!ok)
+            {
+                return false;
+            }
+        }
+        return id.Length > 0;
     }
 
     // ---- per-kind assembly into the staging dir --------------------------------------------
@@ -377,7 +453,8 @@ public sealed partial class AppInstaller : IAppInstaller
     private void Commit(string id, string staging, InstallMarker marker)
     {
         Directory.CreateDirectory(appsRoot);
-        var dir = Path.Combine(appsRoot, id);
+        var dir = PackageDir(id)
+            ?? throw new InvalidOperationException($"package id '{id}' does not resolve inside the apps root.");
         Directory.CreateDirectory(dir);
 
         var existing = ReadMarker(Path.Combine(dir, MarkerFileName));

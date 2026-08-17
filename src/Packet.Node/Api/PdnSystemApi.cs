@@ -258,9 +258,7 @@ public static class PdnSystemApi
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     private static string UserName(HttpContext http) =>
-        http.User.Identity?.Name
-        ?? http.User.FindFirst("sub")?.Value
-        ?? "anonymous";
+        PrincipalName.Or(http.User, "anonymous");
 
     private static string ResolveVersion()
     {

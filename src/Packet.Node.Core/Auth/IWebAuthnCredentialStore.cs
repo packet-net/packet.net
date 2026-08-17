@@ -50,4 +50,11 @@ public interface IWebAuthnCredentialStore
     /// (so a caller can only remove their OWN passkeys). Returns <c>true</c> if a row
     /// was removed, <c>false</c> if absent / not theirs / on fault.</summary>
     bool Delete(byte[] credentialId, string username);
+
+    /// <summary>Delete every credential enrolled by <paramref name="username"/> - the
+    /// account-lifecycle drop that runs when the user is deleted. Credentials are keyed by
+    /// username with no foreign key, so without this they outlived the account and a
+    /// recreated same-name user inherited the old passkeys (review item C055). Returns the
+    /// number of rows removed (0 if none / on fault).</summary>
+    int DeleteByUser(string username);
 }

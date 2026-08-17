@@ -25,9 +25,9 @@ public sealed class HttpContextMcpCallerAccessor(IHttpContextAccessor http, ICon
         get
         {
             var user = http.HttpContext?.User;
-            string actor = user?.Identity?.Name
-                ?? user?.FindFirstValue("sub")
-                ?? "anonymous";
+            // One resolver for every identity read (C011) - the audit trail of an MCP tool
+            // call names the bearer, not "anonymous".
+            string actor = Api.PrincipalName.Or(user, "anonymous");
 
             var scopes = new HashSet<string>(StringComparer.Ordinal);
             if (!config.Current.Management.Auth.Enabled)

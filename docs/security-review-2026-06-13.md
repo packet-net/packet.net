@@ -11,7 +11,7 @@ ledger).
 |---|---|---|
 | RHPv2 TCP server | `RhpServer` connection/handle/frame lifecycle, auth gate | **Hardened** — 4 changes |
 | Wire parsers | APRS, AGW, NET/ROM (the un-fuzzed untrusted-byte parsers) | **Fuzzed** — 1 real bug found + fixed |
-| Web auth core | JWT, refresh tokens, TOTP, password hashing, scope handler, login flow | **Reviewed — no exploitable findings** |
+| Web auth core | JWT, refresh tokens, TOTP, password hashing, scope handler, login flow | **Reviewed - no exploitable findings**; superseded in part on 2026-08-17 (see §3) |
 | CI | supply-chain / dependency scanning | **Added** a vulnerability-scan gate |
 
 The AX.25 / KISS / XID / segment / node-command parsers were already well-fuzzed
@@ -60,6 +60,21 @@ APRS and NET/ROM were clean across a 50k-iteration sweep.
 
 ## 3. Web auth core review (no findings)
 
+> **2026-08-17 remediation.** This section read the auth *components* and found them sound -
+> and they were. The 2026-08-16 in-depth review then found the defects at their **wiring**,
+> which a component read cannot see ([#693](https://github.com/packet-net/packet.net/issues/693),
+> umbrella [#703](https://github.com/packet-net/packet.net/issues/703)):
+> `JwtBearerOptions.MapInboundClaims` renamed `sub` before the identity was built, so the audit
+> actor praised below was `owner` for every authenticated write (C011); deleting a user left
+> their refresh families and passkeys in `pdn.db` for a recreated same-name account to inherit
+> (C055); the read-scoped `GET /config` served `tailscale.authKey`, `mqtt.password` and the
+> PKCS#12 password verbatim (C010); `SqliteUserStore.Count()` read a store fault as zero users
+> and re-opened the unauthenticated `/setup` bootstrap (C026); the app gateway forwarded the
+> viewer's bearer + `pdn_at` cookie to every app upstream (C054); an uploaded app manifest id
+> was used as a path unvalidated (C078); and the `aud` segregation called sound below had no
+> test at any level (C057). All fixed with tests; the ledger entry is in
+> [`plan.md`](plan.md) §17 (2026-08-17).
+
 Read the security-critical auth components end to end. **No exploitable issues
 found** — the surface is well-built and defensively coded:
 
@@ -84,6 +99,9 @@ found** — the surface is well-built and defensively coded:
   and a locked account doesn't burn CPU); an unknown username still pays the full
   Argon2 cost via a decoy hash (no user-enumeration timing oracle); generic 401 on
   any failure; throttle reset on success; audit logging without secrets. Textbook.
+  (2026-08-17: those login/lockout/refresh-reuse events reached the *journal* only - they are
+  mirrored into the persisted `IAuditLog` now, and `POST /setup`, which emitted nothing at all,
+  is audited with the claimant's IP. C058.)
 
 ### Observations (not bugs, for future consideration)
 
