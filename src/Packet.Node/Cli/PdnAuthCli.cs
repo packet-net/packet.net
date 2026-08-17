@@ -31,6 +31,15 @@ namespace Packet.Node.Cli;
 /// the web host is built and honours the same <c>--db</c> / <c>PACKETNET_DB</c> resolution, so
 /// it operates on exactly the store the host uses.
 /// </para>
+/// <para>
+/// <b>It never creates a database.</b> The resolution falls back to
+/// <c>/var/lib/packetnet/pdn.db</c> (see <see cref="NodeStatePaths"/>) before the working
+/// directory, and refuses outright when the resolved file is not there, because
+/// <c>SqliteUserStore</c> would otherwise build an empty store and rotate its brand-new key
+/// with a success banner while the real node's key went untouched - a revocation the operator
+/// believed in and did not get (#727 item 3). The banner names the resolved path for the same
+/// reason.
+/// </para>
 /// </remarks>
 public static class PdnAuthCli
 {
@@ -64,37 +73,54 @@ public static class PdnAuthCli
         using var loggers = LoggerFactory.Create(b =>
             b.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace));
 
-        var dbPath = ResolveDbPath(args);
-        var users = new SqliteUserStore(dbPath, loggers.CreateLogger<SqliteUserStore>());
-
-        if (users.RotateSigningKey() is null)
+        if (ResolveDbPath(args) is not { } dbPath)
         {
-            Console.Error.WriteLine($"pdn auth rotate-signing-key: could not write a new key to {dbPath}.");
+            Console.Error.WriteLine("pdn auth rotate-signing-key: no node database found. Looked at:");
+            foreach (var candidate in NodeStatePaths.DefaultCandidates())
+            {
+                Console.Error.WriteLine($"  - {candidate}");
+            }
+            Console.Error.WriteLine("Name the database with --db <path> (or PACKETNET_DB) and run it again.");
             return 1;
         }
 
-        // Never print the key. The operator needs to know what happened, not what it is.
-        Console.Error.WriteLine("Signing key rotated.");
+        // NEVER create the database (#727 item 3). SqliteUserStore's constructor runs
+        // EnsureSchema, which happily builds a fresh store on a path that does not exist, and a
+        // brand-new store rotates its brand-new key successfully - so the verb used to report a
+        // revocation it had not performed. Existence is checked before the store is opened.
+        if (!File.Exists(dbPath))
+        {
+            Console.Error.WriteLine($"pdn auth rotate-signing-key: '{Path.GetFullPath(dbPath)}' does not exist.");
+            Console.Error.WriteLine("Refusing to create one: rotating a key in an empty database revokes nothing.");
+            Console.Error.WriteLine($"The packaged node keeps its store at {NodeStatePaths.DefaultStateDirectory}/{NodeStatePaths.DbFileName}.");
+            return 1;
+        }
+
+        var resolved = Path.GetFullPath(dbPath);
+        var users = new SqliteUserStore(resolved, loggers.CreateLogger<SqliteUserStore>());
+
+        if (users.RotateSigningKey() is null)
+        {
+            Console.Error.WriteLine($"pdn auth rotate-signing-key: could not write a new key to {resolved}.");
+            return 1;
+        }
+
+        // Never print the key. The operator needs to know what happened, not what it is - and
+        // WHICH database it happened to, so "I rotated the wrong file" is visible at a glance.
+        Console.Error.WriteLine($"Signing key rotated in {resolved}.");
         Console.Error.WriteLine("  - every MCP token and panel access token this node issued is now invalid");
         Console.Error.WriteLine("  - refresh-token sessions are unaffected (they re-mint on their next refresh)");
         Console.Error.WriteLine("  - RESTART the node for the new key to take effect (systemctl restart packetnet)");
         return 0;
     }
 
-    // Same resolution as Program.cs / PdnConfigCli, so all three read one store.
-    private static string ResolveDbPath(string[] args)
-    {
-        for (int i = 0; i < args.Length - 1; i++)
-        {
-            if (args[i] == "--db" && args[i + 1].Length > 0)
-            {
-                return args[i + 1];
-            }
-        }
-
-        var env = Environment.GetEnvironmentVariable("PACKETNET_DB");
-        return string.IsNullOrWhiteSpace(env)
-            ? Path.Combine(Directory.GetCurrentDirectory(), "pdn.db")
-            : env;
-    }
+    /// <summary>
+    /// The database this verb operates on: an explicit <c>--db</c> / <c>PACKETNET_DB</c>, else
+    /// the packaged state directory's <c>pdn.db</c>, else the working directory's when it
+    /// already exists. Null when there is no candidate at all. Exposed to the test suite so the
+    /// resolution is pinned rather than inferred.
+    /// </summary>
+    internal static string? ResolveDbPath(
+        string[] args, string? stateDirectory = null, string? workingDirectory = null) =>
+        NodeStatePaths.ResolveExistingDbPath(args, stateDirectory, workingDirectory);
 }

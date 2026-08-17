@@ -1050,15 +1050,9 @@ static string ResolveDbPath(string[] args)
 {
     // --db <path> wins, then PACKETNET_DB, then pdn.db in the working directory -
     // which on the packaged node is the writable StateDirectory (/var/lib/packetnet).
-    for (int i = 0; i < args.Length - 1; i++)
-    {
-        if (args[i] is "--db")
-        {
-            return args[i + 1];
-        }
-    }
-    var env = Environment.GetEnvironmentVariable("PACKETNET_DB");
-    return !string.IsNullOrWhiteSpace(env) ? env : Path.Combine(Directory.GetCurrentDirectory(), "pdn.db");
+    // One shared implementation with the offline CLI verbs (#727 item 3): there were
+    // three private copies of this and they disagreed where it mattered.
+    return NodeStatePaths.ResolveDbPath(args);
 }
 
 static string? ResolveSeedPath()

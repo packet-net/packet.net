@@ -152,6 +152,36 @@ public sealed class NetRomL3L4IntegrationTests
             "the next broadcast must carry the edited alias, with no node restart", generous);
     }
 
+    /// <summary>
+    /// #727 item 7: CLEARING identity.alias reaches the air too. C070's fix read the live
+    /// source as <c>NodeAliasSource?.Invoke() ?? nodeAlias</c>, which applies the coalesce to
+    /// the RESULT rather than to the presence of the delegate - so a wired source returning
+    /// null (the operator deleted the alias, expecting the callsign base) silently reinstated
+    /// the value captured at construction, and every later NODES broadcast still advertised
+    /// the old name until the process restarted, while the reconcile preview claimed the edit
+    /// had applied live.
+    /// </summary>
+    [Fact]
+    public async Task Clearing_the_alias_falls_back_to_the_callsign_base_in_the_next_broadcast()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+        var generous = TimeSpan.FromSeconds(60);
+
+        a.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("ANODE") is not null,
+            "node B should learn node A under its original name", generous);
+
+        // The config edit: identity.alias is emptied. A wired source is authoritative,
+        // including when it says "no alias".
+        a.NetRom.NodeAliasSource = () => null;
+
+        a.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination(ANodeCall.Base) is not null,
+            "the next broadcast must advertise the callsign base once the alias is cleared", generous);
+    }
+
     [Fact]
     public async Task Two_nodes_exchange_NODES_and_a_user_routes_across_an_L4_circuit_to_the_distant_node()
     {

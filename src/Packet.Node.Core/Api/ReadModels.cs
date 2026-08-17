@@ -59,9 +59,10 @@ public sealed record PortStatus(
     bool? ChannelBusy = null);
 
 /// <summary>
-/// One <b>live</b> connected-mode circuit: the <c>/sessions</c> family projects only sessions in
-/// an established state (<c>Connected</c> / <c>TimerRecovery</c>), never the listener's cached
-/// Disconnected peers (see <see cref="SessionLiveness"/>).
+/// One <b>live</b> circuit: the <c>/sessions</c> family projects every session the engine holds
+/// in a state other than <c>Disconnected</c> (established, handshaking or releasing), never the
+/// listener's cached Disconnected peers (see <see cref="SessionLiveness"/>). Read
+/// <see cref="State"/> to tell an established circuit from one still coming up or going down.
 /// </summary>
 /// <remarks>
 /// <para>
