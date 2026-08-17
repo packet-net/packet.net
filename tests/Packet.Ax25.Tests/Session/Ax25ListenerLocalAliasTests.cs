@@ -22,6 +22,37 @@ public class Ax25ListenerLocalAliasTests
 
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Payload marking the "barrier" frame the ignored-SABM tests inject behind the
+    /// frame that must be ignored. A UI addressed to the node itself: it is parsed,
+    /// traced and dispatched, but with P=0 it draws no reply (figc4.1 t11 UI_Check,
+    /// DM only on P=1), so it proves the pump ran on without adding anything to the
+    /// wire. See <see cref="Sabm_To_An_Unregistered_Callsign_Is_Ignored"/>.
+    /// </summary>
+    private static readonly byte[] BarrierPayload = "barrier"u8.ToArray();
+
+    /// <summary>
+    /// Subscribe a <c>FrameTraced</c> handler that completes when the barrier frame
+    /// is traced. The pump reads the transport strictly in order, one frame at a
+    /// time, and it only asks for the next once the previous frame's trace and
+    /// dispatch have returned (<c>InboundPumpAsync</c>), so the barrier's trace
+    /// proves every frame injected before it has already been fully processed.
+    /// That is what makes the "and nothing happened" assertions that follow real
+    /// rather than merely early.
+    /// </summary>
+    private static Task BarrierTraced(Ax25Listener listener)
+    {
+        var traced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.FrameTraced += (_, e) =>
+        {
+            if (e.Frame.Info.Span.SequenceEqual(BarrierPayload))
+            {
+                traced.TrySetResult();
+            }
+        };
+        return traced.Task;
+    }
+
     [Fact]
     public async Task Sabm_To_A_Registered_Alias_Is_Accepted_With_Local_Set_To_The_Alias()
     {
@@ -49,12 +80,15 @@ public class Ax25ListenerLocalAliasTests
 
         bool any = false;
         listener.SessionAccepted += (_, _) => any = true;
+        var barrier = BarrierTraced(listener);
         await listener.StartAsync();
 
         modem.InjectInbound(Ax25Frame.Sabm(new Callsign("G0XXX", 3), Peer));
+        modem.InjectInbound(Ax25Frame.Ui(NodeCall, Peer, BarrierPayload));
+
+        await barrier.WithTimeout(Budget);
 
         // Deaf: no session, no UA/DM transmitted (frames not addressed to us are monitor-only).
-        await Task.Delay(300);
         any.Should().BeFalse();
         modem.SentFrames.Count.Should().Be(0);
     }
@@ -104,10 +138,17 @@ public class Ax25ListenerLocalAliasTests
         await ListenerTestSupport.WaitFor(() => modem.SentFrames.Count > before, Budget,
             "the live session must answer a P-bit RR (its key still routes)");
 
-        // But a NEW station SABMing the deregistered alias is ignored.
+        // But a NEW station SABMing the deregistered alias is ignored. The barrier
+        // behind it (see BarrierTraced) is what makes that a finding and not just an
+        // early look: its trace can only fire once the SABM ahead of it has been
+        // read, traced and dispatched.
+        var barrier = BarrierTraced(listener);
         int sentBefore = modem.SentFrames.Count;
         modem.InjectInbound(Ax25Frame.Sabm(AppCall, new Callsign("G7BBB", 0)));
-        await Task.Delay(300);
+        modem.InjectInbound(Ax25Frame.Ui(NodeCall, new Callsign("G7BBB", 0), BarrierPayload));
+
+        await barrier.WithTimeout(Budget);
+
         accepted.Count.Should().Be(1, "no new session for a deregistered alias");
         modem.SentFrames.Count.Should().Be(sentBefore, "deaf to the new SABM — no UA, no DM");
     }

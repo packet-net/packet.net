@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AwesomeAssertions;
 using Packet.Ax25.Session;
 using Packet.Core;
@@ -18,6 +19,15 @@ public class Ax25ListenerCompatTests
     private static readonly Callsign LocalCall = new("M0LTE", 0);
     private static readonly Callsign PeerCallA = new("G7XYZ", 7);
     private static readonly Callsign PeerCallB = new("M5ABC", 3);
+    private static readonly Callsign PeerCallC = new("VK2DEF", 1);
+
+    /// <summary>
+    /// Payload marking the "barrier" frame these tests inject behind a frame that
+    /// must be dropped. See <see cref="Strict_Port_Drops_Response_Sabm_Entirely"/>
+    /// for why a barrier replaces the wait-and-see the negative assertions used to
+    /// rest on.
+    /// </summary>
+    private static readonly byte[] BarrierPayload = "barrier"u8.ToArray();
 
     /// <summary>
     /// Build the wire bytes of a SABM whose address C-bits mark it a
@@ -42,6 +52,21 @@ public class Ax25ListenerCompatTests
     /// so no session opens, no UA/DM goes out, and the frame never even
     /// reaches the monitor trace — exactly as if it had failed CRC.
     /// </summary>
+    /// <remarks>
+    /// The negative is anchored on a <em>barrier</em> frame, not on a wait. The
+    /// pump (<c>InboundPumpAsync</c>) consumes the transport in a single
+    /// <c>await foreach</c> and only asks for the next frame once the previous
+    /// one's parse, trace and dispatch have returned. So observing the barrier,
+    /// injected immediately after the response-SABM, proves the response-SABM has
+    /// already been read and finished with: the assertions below describe a frame
+    /// the listener is done with, not one it has yet to see. The barrier is a
+    /// third-party UI frame, which Strict parses and the pump traces but
+    /// <c>DispatchInbound</c> drops as monitor-only, so it adds nothing to the
+    /// wire and the "nothing was transmitted" assertion stays exact. Asserting
+    /// exactly one trace rather than none is the point: the barrier proves the
+    /// trace path works on this port, so the missing trace for the response-SABM
+    /// is evidence rather than silence.
+    /// </remarks>
     [Fact]
     public async Task Strict_Port_Drops_Response_Sabm_Entirely()
     {
@@ -53,16 +78,27 @@ public class Ax25ListenerCompatTests
         });
 
         var accepted = 0;
-        var traced = 0;
+        var traced = new ConcurrentQueue<Ax25Frame>();
+        var barrierTraced = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, _) => Interlocked.Increment(ref accepted);
-        listener.FrameTraced += (_, _) => Interlocked.Increment(ref traced);
+        listener.FrameTraced += (_, e) =>
+        {
+            traced.Enqueue(e.Frame);
+            if (e.Frame.Info.Span.SequenceEqual(BarrierPayload))
+            {
+                barrierTraced.TrySetResult();
+            }
+        };
 
         await listener.StartAsync();
         InjectRaw(modem, ResponseSabmBytes(LocalCall, PeerCallA));
+        modem.InjectInbound(Ax25Frame.Ui(PeerCallB, PeerCallA, BarrierPayload));
 
-        await Task.Delay(500);
+        await barrierTraced.Task.WithTimeout(TimeSpan.FromSeconds(2));
+
         accepted.Should().Be(0, "Strict drops a response-SABM at decode — it can never open a session");
-        traced.Should().Be(0, "the drop happens before the monitor trace — the port is deaf to the frame");
+        traced.Should().ContainSingle("the drop happens before the monitor trace; the port is deaf to the frame")
+            .Which.Info.ToArray().Should().Equal(BarrierPayload, "the only frame traced is the barrier behind it");
         modem.SentFrames.Count.Should().Be(0, "no session machinery ran, so nothing (UA or DM) went out");
         listener.IsRunning.Should().BeTrue();
     }
@@ -171,6 +207,7 @@ public class Ax25ListenerCompatTests
 
         var acceptedPeers = new List<Callsign>();
         var firstAccept = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var barrierAccept = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.SessionAccepted += (_, e) =>
         {
             lock (acceptedPeers)
@@ -179,6 +216,10 @@ public class Ax25ListenerCompatTests
             }
 
             firstAccept.TrySetResult(true);
+            if (e.Session.Context.Remote.Equals(PeerCallC))
+            {
+                barrierAccept.TrySetResult();
+            }
         };
 
         await listener.StartAsync();
@@ -193,12 +234,19 @@ public class Ax25ListenerCompatTests
 
         // Peer B's identical response-SABM is now dropped at decode.
         InjectRaw(modem, ResponseSabmBytes(LocalCall, PeerCallB));
-        await Task.Delay(500);
+
+        // Barrier: peer C's spec-valid SABM, which a Strict port does accept. The
+        // pump reads the transport strictly in order (one frame at a time, next read
+        // only after the previous frame's dispatch returned), so C's accept proves
+        // B's frame was already read and dropped; the accept list is final here,
+        // rather than merely not-yet-populated.
+        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallC));
+        await barrierAccept.Task.WithTimeout(TimeSpan.FromSeconds(2));
 
         lock (acceptedPeers)
         {
-            acceptedPeers.Should().Equal([PeerCallA],
-                "the reseed gates inbound parsing from the next frame; peer A's session is untouched");
+            acceptedPeers.Should().Equal([PeerCallA, PeerCallC],
+                "the reseed gates inbound parsing from the next frame; peer B never got in, and peer A's session is untouched");
         }
         listener.IsRunning.Should().BeTrue();
     }
