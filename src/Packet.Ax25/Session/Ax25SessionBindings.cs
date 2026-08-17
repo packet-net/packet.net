@@ -230,10 +230,19 @@ public static class Ax25SessionBindings
         // RR(V(r)) only if P=1) ahead of the srej_enabled split, covering both
         // REJ and SREJ modes. Scoped to IFrameReceived, so inert on every other
         // trigger. See Ax25SessionQuirks.
-        if (context.Quirks.Ax25Spec40DiscardOutOfWindowIFrames)
+        // The wrapper is installed unconditionally and reads the quirk per dispatch,
+        // like every other quirk: Ax25SessionContext.Quirks is a settable property and
+        // the listener runs its ConfigureSession hook AFTER building the bindings, so a
+        // hook that selects StrictlyFaithful used to leave this one (and the #43 wrapper
+        // below) stuck at their construction-time value (packet-net/packet.net#696).
         {
             bool IFrameOutOfWindow()
             {
+                if (!context.Quirks.Ax25Spec40DiscardOutOfWindowIFrames)
+                {
+                    return false;
+                }
+
                 if (currentTrigger?.Invoke() is not IFrameReceived)
                 {
                     return false;
@@ -261,11 +270,11 @@ public static class Ax25SessionBindings
         // only, so not-busy takes the action branch and already-busy no-ops.
         // Trigger-scoped: only the FLOW-OFF decision reads own_receiver_busy
         // during that dispatch, so it's inert elsewhere.
-        if (context.Quirks.Ax25Spec43DlFlowOffEntersBusy)
+        // Installed unconditionally and read per dispatch, for the same reason as #40.
         {
             var baseOwnReceiverBusy = bindings[Ax25Guard.OwnReceiverBusy];
             bindings[Ax25Guard.OwnReceiverBusy] = () =>
-                currentTrigger?.Invoke() is DlFlowOffRequest
+                context.Quirks.Ax25Spec43DlFlowOffEntersBusy && currentTrigger?.Invoke() is DlFlowOffRequest
                     ? !baseOwnReceiverBusy()
                     : baseOwnReceiverBusy();
         }

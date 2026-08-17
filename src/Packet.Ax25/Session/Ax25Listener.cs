@@ -112,7 +112,64 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     {
         public required Ax25Session Session { get; init; }
         public required SystemTimerScheduler Scheduler { get; init; }
+        /// <summary>
+        /// Rendezvous queue for an <b>in-flight outbound dial only</b>:
+        /// <see cref="Ax25Listener.ConnectAsync(Callsign, CancellationToken)"/> arms it
+        /// before posting DL-CONNECT-request and drains it looking for
+        /// DL-CONNECT-confirm (or a teardown). It is <em>not</em> the delivery bus -
+        /// that is <see cref="Ax25Session.DataLinkSignalEmitted"/>, which every
+        /// consumer subscribes to. Nothing is enqueued while no dial is waiting, and
+        /// DL-DATA indications are never enqueued at all: unarmed, an
+        /// inbound-accepted session used to accumulate one entry (and its payload
+        /// array) per received I-frame for the whole lifetime of the cache entry,
+        /// which nothing ever drained (packet-net/packet.net#696).
+        /// </summary>
         public required ConcurrentQueue<DataLinkSignal> Signals { get; init; }
+
+        // How many dials are waiting on this session. A count, not a flag: two
+        // concurrent ConnectAsync calls for the same peer must not have the first to
+        // finish stop the queue under the other (they already share the queue, as
+        // they always did).
+        private int connectWaiters;
+
+        /// <summary>Start queueing lifecycle signals for a dial. The first waiter also
+        /// discards anything left from a previous dial (a stale DL-CONNECT-confirm must
+        /// not resolve this one).</summary>
+        public void ArmConnectWait()
+        {
+            if (Interlocked.Increment(ref connectWaiters) == 1)
+            {
+                DrainSignals();
+            }
+        }
+
+        /// <summary>Stop queueing once the last dial is done, dropping whatever it did
+        /// not consume.</summary>
+        public void DisarmConnectWait()
+        {
+            if (Interlocked.Decrement(ref connectWaiters) == 0)
+            {
+                DrainSignals();
+            }
+        }
+
+        /// <summary>
+        /// Offer an upward signal to a waiting dial. A no-op unless a dial is armed;
+        /// DL-DATA indications are never queued (ConnectAsync only looks for the
+        /// connect confirm / teardown, and retaining payloads here would be a leak).
+        /// </summary>
+        public void OfferConnectSignal(DataLinkSignal signal)
+        {
+            if (Volatile.Read(ref connectWaiters) > 0 && signal is not DataLinkDataIndication)
+            {
+                Signals.Enqueue(signal);
+            }
+        }
+
+        private void DrainSignals()
+        {
+            while (Signals.TryDequeue(out _)) { }
+        }
 
         /// <summary>
         /// The session's management data-link (MDL) driver — runs the XID
@@ -406,11 +463,30 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         LogConnecting(portName, local.ToString(), remote.ToString(), extended ? "v2.2/SABME" : "v2.0/SABM");
 
-        // Drain any stale signals queued from a previous lifecycle on
-        // this cached session — otherwise we might fish out a stale
-        // DataLinkConnectConfirm from the dictionary's last use.
-        while (cached.Signals.TryDequeue(out _)) { }
+        // Arm the dial rendezvous: from here until this call returns, lifecycle
+        // signals for this session are queued for us to drain. Arming also discards
+        // anything left from a previous lifecycle, otherwise we might fish out a
+        // stale DataLinkConnectConfirm from the dictionary's last use.
+        cached.ArmConnectWait();
+        try
+        {
+            return await ConnectCoreAsync(cached, remote, local, extended, preConnectXidNegotiatesSrej, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            // Whatever the outcome (confirm, refusal, timeout, cancel), stop queueing
+            // and drop anything unconsumed. Nothing accumulates on an idle session.
+            cached.DisarmConnectWait();
+        }
+    }
 
+    // The dial itself, split out so the caller can hold the signal rendezvous open
+    // for exactly its duration (arm before, disarm in a finally after).
+    private async Task<Ax25Session> ConnectCoreAsync(
+        CachedSession cached, Callsign remote, Callsign local, bool extended,
+        bool preConnectXidNegotiatesSrej, CancellationToken ct)
+    {
         // Choose the version this dial initiates BEFORE posting DL-CONNECT-request:
         // IsExtended drives the figc4.7 Establish_Data_Link modulo branch (SABME vs
         // SABM) and, via Ax25Spec44, routes the connect through AwaitingV22Connection
@@ -745,6 +821,14 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) { /* normal shutdown */ }
+        catch (Exception ex)
+        {
+            // A pump that faulted for any other reason must not turn Stop into a
+            // throw: the caller asked us to stop, and we have. It is already logged
+            // by the pump's own catch; log it here too for the case where the fault
+            // escaped some future path that does not.
+            LogPumpFaulted(portName, ex.GetType().Name, ex.Message);
+        }
     }
 
     /// <inheritdoc/>
@@ -755,17 +839,27 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             return;
         }
 
-        await StopAsync().ConfigureAwait(false);
-        lifecycleCts.Dispose();
-        lock (cacheGate)
+        try
         {
-            foreach (var cs in sessions.Values)
+            await StopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            // In a finally: `disposed` is already latched, so a throw out of
+            // StopAsync would leave the lifecycle CTS and every session scheduler
+            // undisposed with no second chance at cleanup (a re-entrant
+            // DisposeAsync returns early) - packet-net/packet.net#696.
+            lifecycleCts.Dispose();
+            lock (cacheGate)
             {
-                cs.Scheduler.Dispose();
+                foreach (var cs in sessions.Values)
+                {
+                    cs.Scheduler.Dispose();
+                }
+                sessions.Clear();
+                lruOrder.Clear();
+                lruIndex.Clear();
             }
-            sessions.Clear();
-            lruOrder.Clear();
-            lruIndex.Clear();
         }
     }
 
@@ -819,7 +913,8 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 // Strict port is deaf to it end-to-end (no session can open
                 // from it, and the monitor/NET-ROM taps don't see it either).
                 var parseOptions = Volatile.Read(ref sessionParameters).ParseOptions ?? Ax25ParseOptions.Lenient;
-                if (!Ax25Frame.TryParse(frame.Ax25.Span, parseOptions, out var parsed))
+                if (!Ax25Frame.TryParse(frame.Ax25.Span, parseOptions, out var parsed)
+                    && !TryParseAtExtendedModuloForLiveSession(frame.Ax25.Span, parseOptions, out parsed))
                 {
                     continue;
                 }
@@ -839,6 +934,19 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         {
             // Normal shutdown.
         }
+        catch (Exception ex)
+        {
+            // The transport's inbound enumerator faulted: the serial pump and the
+            // NinoTNC dispatch loop both complete their channel with the terminal
+            // exception, and it rethrows here. Per-frame handlers are isolated, but
+            // this is not one of them - the port is gone. Record it, and mark the
+            // listener not-running so IsRunning stops lying and StopAsync / a
+            // supervisor sees a stopped port (packet-net/packet.net#696). The fault
+            // is not rethrown: it would otherwise surface from whatever happened to
+            // await pumpTask (StopAsync, and through it DisposeAsync).
+            LogPumpFaulted(portName, ex.GetType().Name, ex.Message);
+            Interlocked.Exchange(ref running, 0);
+        }
         // Note on event-handler exceptions:
         // The Listener is a long-running infrastructure component —
         // a buggy SessionAccepted / FrameTraced subscriber must not
@@ -846,6 +954,52 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // DisposeAsync. We swallow synchronously here; future work
         // could surface them on a dedicated ListenerExceptionRaised
         // event so consumers that DO care can observe.
+    }
+
+    /// <summary>
+    /// Second-chance routing parse at modulo-128 for a frame the modulo-8 routing
+    /// parse rejected, accepted only when the address pair already has a live
+    /// <em>extended</em> session.
+    /// </summary>
+    /// <remarks>
+    /// The pump has to parse before it can route (the addresses precede the control
+    /// field), and it cannot know the session modulo until it has routed - so it
+    /// parses at modulo-8. That reads an extended I frame acceptably (its second
+    /// control octet lands on the PID), but an extended supervisory frame's second
+    /// control octet looks like an information field on an S frame, which §3.5 does
+    /// not permit: <c>Ax25Frame.TryParse</c> rejects it whenever
+    /// <see cref="Ax25ParseOptions.AllowInfoOnSupervisoryFrames"/> is off. Under the
+    /// <c>Strict</c> preset (and <c>Xrouter</c>, which is Strict) that dropped every
+    /// RR / RNR / REJ / SREJ on a mod-128 link before trace and dispatch, so a SABME
+    /// link came up (U frames are one octet in both modes) and then never acked
+    /// (packet-net/packet.net#696).
+    /// <para>
+    /// This is not a widening of the port's options: the retry is honoured only for
+    /// an address pair whose cached session has already negotiated
+    /// <see cref="Ax25SessionContext.IsExtended"/>, i.e. exactly the frames whose
+    /// second control octet is genuinely a control octet. A mod-8 link's frames are
+    /// unaffected (they parse at modulo-8 or not at all), and a strict port stays
+    /// deaf to a malformed S frame from any peer it has no extended link with.
+    /// </para>
+    /// </remarks>
+    private bool TryParseAtExtendedModuloForLiveSession(
+        ReadOnlySpan<byte> bytes, Ax25ParseOptions parseOptions,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Ax25Frame? parsed)
+    {
+        parsed = null;
+        if (!Ax25Frame.TryParse(bytes, parseOptions, extended: true, out var extended))
+        {
+            return false;
+        }
+
+        var key = new SessionKey(extended.Destination.Callsign, extended.Source.Callsign);
+        if (!sessions.TryGetValue(key, out var cached) || !cached.Session.Context.IsExtended)
+        {
+            return false;
+        }
+
+        parsed = extended;
+        return true;
     }
 
     private void DispatchInbound(Ax25Frame parsed, ReadOnlyMemory<byte> payload, Ax25ParseOptions parseOptions)
@@ -857,6 +1011,20 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         var local = parsed.Destination.Callsign;
         var key = new SessionKey(local, parsed.Source.Callsign);
         if (!local.Equals(MyCall) && !localAliases.ContainsKey(local) && !sessions.ContainsKey(key))
+        {
+            return;
+        }
+
+        // §3.12.4 / §4.2.2: the has-been-repeated (H) bit on a repeater slot says the
+        // frame has already passed through that digipeater. A frame whose LAST
+        // repeater slot still has H=0 is in transit TO a digipeater, not at its
+        // destination: we are only overhearing it. Acting on it answers a frame that
+        // has not been delivered yet, and the digi's repeat (H=1) is then processed a
+        // second time - one SABM drew two UAs (packet-net/packet.net#696). Monitor-only
+        // here: the trace has already fired in the pump, so a promiscuous consumer
+        // still sees it, exactly like LinBPQ / direwolf, which discard a
+        // not-fully-repeated frame at this point.
+        if (parsed.Digipeaters.Count > 0 && !parsed.Digipeaters[^1].CrhBit)
         {
             return;
         }
@@ -1247,10 +1415,19 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             sessions[key] = built;
             options.ConfigureSession?.Invoke(built.Session);
             UpdateLruLocked(key);
-            EvictExcessLocked();
+            // GetOrCreateSession is the outbound-dial path: the caller is about to use
+            // this session, so it is never the eviction victim. A live session evicted
+            // here is signalled by AddToCache's counterpart; this path holds the gate
+            // for its whole body, so it takes the (rare) eviction silently rather than
+            // running consumer handlers under the lock.
+            EvictExcessLocked(justAdded: key);
             return built;
         }
     }
+
+    // Largest send window any AX.25 link can run: mod-128's Modulus - 1. A mod-8
+    // session is narrowed to 7 live by Ax25SessionContext.EffectiveWindow.
+    private const int MaxSequenceSpaceWindow = 127;
 
     // Build the per-session context, seeding the port's configured parameters. Pure and
     // side-effect-free (no closures, no scheduler) — the build-time seed of N1/N2/K/T1V/T2
@@ -1279,7 +1456,13 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
         if (sp.K is { } k)
         {
-            ctx.K = k;
+            // Bound the configured seed to the sequence space (§4.2.4 / §6.4.4.1):
+            // 127 is the most a mod-128 link can have outstanding, and a mod-8
+            // session narrows it further live through
+            // Ax25SessionContext.EffectiveWindow (packet-net/packet.net#696). The
+            // node's config validator rejects an out-of-range WindowSize up front;
+            // this is the library-level backstop for a direct API caller.
+            ctx.K = Math.Clamp(k, 1, MaxSequenceSpaceWindow);
         }
 
         if (sp.N1 is { } n1)
@@ -1322,6 +1505,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         var segmentation = new SegmentationLayer(ctx);
 
         Ax25Session? sessionRef = null;
+        // Set at the end of this method, like sessionRef: SendUpward needs the cache
+        // entry to know whether a dial is waiting on this session.
+        CachedSession? cachedRef = null;
         void SendBytes(ReadOnlyMemory<byte> bytes)
         {
             // Parse first (needed both for the monitor trace and the T1-arming
@@ -1445,7 +1631,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
                 sig = reassembled;
             }
             LogDlSignal(portName, ctx.Local.ToString(), ctx.Remote.ToString(), SignalName(sig));
-            signals.Enqueue(sig);
+            // Offer it to a dial that is waiting on this session (no-op otherwise);
+            // the delivery bus for every consumer is the session event below.
+            cachedRef?.OfferConnectSignal(sig);
             sessionRef?.RaiseDataLinkSignal(sig);
         }
 
@@ -1547,7 +1735,11 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             // every establishment-init verb consistent and forecloses a re-introduced
             // clobber if an upstream SDL revision puts Set_Version back on the path.
             InitialT2 = sp.T2 ?? ActionDispatcher.DefaultInitialT2,
-            InitialK = sp.K ?? ActionDispatcher.DefaultInitialK,
+            // Bounded like the ctx.K seed above: a configured WindowSize cannot put
+            // more than the sequence space allows into the establishment verb. The
+            // unconfigured default stays the figure's literal `k := 8`, which
+            // Ax25SessionContext.EffectiveWindow bounds live per modulus.
+            InitialK = sp.K is { } seedK ? Math.Clamp(seedK, 1, MaxSequenceSpaceWindow) : ActionDispatcher.DefaultInitialK,
             T3Duration = sp.T3 ?? ActionDispatcher.DefaultT3,
             T2Duration = sp.T2 ?? ActionDispatcher.DefaultT2,
         };
@@ -1566,7 +1758,7 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             LogTransition(portName, ctx.Local.ToString(), ctx.Remote.ToString(),
                 t.On.ToString(), t.From, t.Next);
 
-        return new CachedSession
+        cachedRef = new CachedSession
         {
             Session = session,
             Scheduler = scheduler,
@@ -1574,15 +1766,33 @@ public sealed partial class Ax25Listener : IAsyncDisposable
             Mdl = mdl,
             Segmentation = segmentation,
         };
+        return cachedRef;
     }
 
     private void AddToCache(SessionKey key, CachedSession built)
     {
+        List<Ax25Session>? evictedLive;
         lock (cacheGate)
         {
             sessions[key] = built;
             UpdateLruLocked(key);
-            EvictExcessLocked();
+            evictedLive = EvictExcessLocked(justAdded: key);
+        }
+
+        // Outside the cache gate: the indication runs consumer handlers, which may
+        // call back into the listener.
+        if (evictedLive is null)
+        {
+            return;
+        }
+
+        foreach (var session in evictedLive)
+        {
+            // The cache is the only thing holding this link's timers; with the
+            // scheduler disposed the session is dead, so tell the consumer rather
+            // than leaving it holding a link that will never speak again
+            // (packet-net/packet.net#696).
+            session.RaiseDataLinkSignal(new DataLinkDisconnectIndication());
         }
     }
 
@@ -1604,20 +1814,66 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         lruIndex[key] = added;
     }
 
-    private void EvictExcessLocked()
+    /// <summary>
+    /// Trim the session cache to <c>MaxCachedPeers</c>, least-recently-used first but
+    /// <b>preferring a session that is not on a live link</b>. Returns the sessions
+    /// evicted while still connected, for the caller to signal outside the cache gate
+    /// (null when none were).
+    /// </summary>
+    /// <remarks>
+    /// LRU position is refreshed only by frame activity, so the plain LRU victim is a
+    /// quiet established link - which a flood of first-contact frames from distinct
+    /// (or spoofed) callsigns would evict, each of which claims a slot of its own
+    /// (the pre-SABM XID responder path builds and caches a session too). Those
+    /// staged sessions sit in Disconnected, so preferring a Disconnected victim makes
+    /// such a flood evict its own entries instead of an established QSO. When every
+    /// cached session is live there is nothing better to drop than the LRU one, and
+    /// the caller then raises DL-DISCONNECT-indication for it
+    /// (packet-net/packet.net#696).
+    /// </remarks>
+    private List<Ax25Session>? EvictExcessLocked(SessionKey justAdded)
     {
         var maxCachedPeers = Volatile.Read(ref sessionParameters).MaxCachedPeers;
-        while (lruOrder.Count > maxCachedPeers && lruOrder.First is { } oldest)
+        List<Ax25Session>? evictedLive = null;
+        while (lruOrder.Count > maxCachedPeers && NextEvictionCandidateLocked(justAdded) is { } victim)
         {
-            var evicted = oldest.Value;
-            lruOrder.RemoveFirst();
-            lruIndex.Remove(evicted);
-            if (sessions.TryRemove(evicted, out var cs))
+            lruOrder.Remove(victim);
+            lruIndex.Remove(victim.Value);
+            if (sessions.TryRemove(victim.Value, out var cs))
             {
-                LogSessionEvicted(portName, evicted.Local.ToString(), evicted.Remote.ToString());
+                LogSessionEvicted(portName, victim.Value.Local.ToString(), victim.Value.Remote.ToString());
+                if (cs.Session.CurrentState != "Disconnected")
+                {
+                    (evictedLive ??= []).Add(cs.Session);
+                }
                 cs.Scheduler.Dispose();
             }
         }
+        return evictedLive;
+    }
+
+    // The least-recently-used Disconnected session if there is one, else the
+    // least-recently-used session of any state. Never the entry just inserted -
+    // evicting that would hand the caller a session the cache no longer knows, so a
+    // full cache would drop every new peer instead of making room for it.
+    private LinkedListNode<SessionKey>? NextEvictionCandidateLocked(SessionKey justAdded)
+    {
+        LinkedListNode<SessionKey>? fallback = null;
+        for (var node = lruOrder.First; node is not null; node = node.Next)
+        {
+            if (node.Value.Equals(justAdded))
+            {
+                continue;
+            }
+
+            if (!sessions.TryGetValue(node.Value, out var cs) || cs.Session.CurrentState == "Disconnected")
+            {
+                return node;
+            }
+
+            fallback ??= node;
+        }
+        return fallback;
     }
 
     private void TraceFrame(Ax25Frame frame, FrameDirection direction)
@@ -1711,6 +1967,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
 
     [LoggerMessage(EventId = 5220, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: XID {Direction} — {Detail}")]
     private partial void LogXid(string port, string local, string remote, string direction, string detail);
+
+    [LoggerMessage(EventId = 5221, Level = LogLevel.Error, Message = "AX.25 [{Port}] inbound pump stopped on a transport fault: {ExceptionType}: {Detail}")]
+    private partial void LogPumpFaulted(string port, string exceptionType, string detail);
 
     private static readonly Dictionary<string, IReadOnlyList<TransitionSpec>> DefaultTransitionMap = new()
     {

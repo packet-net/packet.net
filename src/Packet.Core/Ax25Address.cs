@@ -24,7 +24,20 @@ namespace Packet.Core;
 /// </list>
 /// <para>
 /// We model the C/H bit as <see cref="CrhBit"/> (caller knows which role this slot has).
-/// Reserved bits are read back faithfully; on write we follow the v2.2 default of "11".
+/// </para>
+/// <para>
+/// <b>The reserved bits are not carried.</b> <see cref="Read(ReadOnlySpan{byte}, Ax25ParseOptions)"/>
+/// takes only the C/H, SSID and E bits out of the SSID octet, and
+/// <see cref="Write(Span{byte})"/> always emits "11", which is what §3.12.2 / §3.12.3
+/// prescribe: the R bits "may be used in an agreed-upon manner in individual
+/// networks. When not implemented, they are set to one." So a
+/// slot received with R = 00 (a v1.x station, or one of the vendor uses the spec
+/// leaves open) is re-serialised as 11 rather than byte-for-byte. Likewise bit 0 of
+/// each of the six callsign octets is an HDLC address-extension bit, not data, and
+/// is ignored on read. Nothing in the stack consumes the reserved bits; a
+/// byte-exact re-serialisation would need them carried as a member of this record.
+/// The record's three fields are the whole of what round-trips
+/// (packet-net/packet.net#696).
 /// </para>
 /// </remarks>
 public readonly record struct Ax25Address(Callsign Callsign, bool CrhBit, bool ExtensionBit)
