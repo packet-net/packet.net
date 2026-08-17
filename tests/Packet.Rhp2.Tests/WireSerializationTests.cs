@@ -334,6 +334,64 @@ public class WireSerializationTests
         unknown.Id.Should().Be(31);
     }
 
+    [Theory]
+    [InlineData(""" "seven" """)]   // a string where an int belongs
+    [InlineData("1.5")]              // a number that isn't an int32
+    [InlineData("4294967296")]       // a number too big for an int32
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[1]")]
+    public void Unknown_message_with_a_non_integer_id_or_seqno_still_decodes(string value)
+    {
+        // An unknown type must never kill the session, and neither must a malformed
+        // correlation field on one: GetValue<int>() threw InvalidOperationException here,
+        // a type this codec never declares, so it escaped the caller's bad-frame handling
+        // (packet.net#698 RM-1). Now the field is simply not lifted.
+        var msg = Parse($$"""{"type":"weird","id":{{value}},"seqno":{{value}}}""");
+
+        var unknown = msg.Should().BeOfType<UnknownMessage>().Subject;
+        unknown.Type.Should().Be("weird");
+        unknown.Id.Should().BeNull();
+        unknown.Seqno.Should().BeNull();
+        unknown.Raw.ContainsKey("id").Should().BeTrue();   // the raw JSON still carries it verbatim
+    }
+
+    [Fact]
+    public void Unknown_message_still_lifts_an_integer_id_and_seqno()
+    {
+        var unknown = Parse("""{"type":"weird","id":31,"seqno":4}""").Should().BeOfType<UnknownMessage>().Subject;
+
+        unknown.Id.Should().Be(31);
+        unknown.Seqno.Should().Be(4);
+    }
+
+    // -----------------------------------------------------------------
+    //  openReply: handle present on success, absent on errors
+    // -----------------------------------------------------------------
+
+    [Fact]
+    public void OpenReply_omits_the_handle_key_on_an_error()
+    {
+        // spec/rhp2.cddl: "? handle: uint  ; present on success; absent on parameter errors"
+        // (docs/rhp2-server.md row 12 says the same, and every other optional-handle reply
+        // DTO is int?). Handle 0 is never allocated (the counter starts at 100), so emitting
+        // `"handle":0` on a failure was contract drift (packet.net#698 RM-3).
+        var json = ToJson(new OpenReplyMessage { Id = 2, ErrCode = 15, ErrText = "No Route" });
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.TryGetProperty("handle", out _).Should().BeFalse();
+        json.Should().NotContain("handle");
+    }
+
+    [Fact]
+    public void OpenReply_carries_the_handle_key_on_success()
+    {
+        var json = ToJson(new OpenReplyMessage { Id = 2, Handle = 100, ErrCode = 0, ErrText = "Ok" });
+
+        using var doc = JsonDocument.Parse(json);
+        doc.RootElement.GetProperty("handle").GetInt32().Should().Be(100);
+    }
+
     [Fact]
     public void Status_notification_flags_decode_as_StatusFlags_bits()
     {

@@ -201,10 +201,23 @@ public sealed class FlrigRig : IRigControl
     }
 
     /// <inheritdoc />
+    /// <remarks>The dispose-unkey latch is raised <em>before</em> the key goes on the wire and
+    /// lowered only after an unkey the server confirmed: flrig acts on a command as soon as it
+    /// reads it, so a fault or timeout leaves the transmitter's real state unknown, and unknown
+    /// must resolve toward sending the unkey rather than skipping it.</remarks>
     public async ValueTask SetPttAsync(bool transmit, CancellationToken cancellationToken = default)
     {
+        if (transmit)
+        {
+            keyedByUs = true;
+        }
+
         await CallAsync("rig.set_ptt", [transmit ? 1 : 0], cancellationToken).ConfigureAwait(false);
-        keyedByUs = transmit;
+
+        if (!transmit)
+        {
+            keyedByUs = false;
+        }
     }
 
     /// <inheritdoc />
@@ -230,13 +243,29 @@ public sealed class FlrigRig : IRigControl
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Hamlib's flrig backend computes this as <c>deflection / 100 x scale</c> (flrig.c), and
+    /// <c>rig.get_pwrmeter_scale</c> is the meter's full scale in hundreds of watts, so on a
+    /// 200 W meter (scale 2) that expression reaches 2.0 at full deflection, outside the
+    /// <see cref="IRigControl.ReadRfPowerAsync"/> 0.0-1.0 contract. The relative reading is
+    /// therefore clamped to full scale here; the absolute reading is unclamped and lives in
+    /// <see cref="ReadRfPowerWattsAsync"/>, which is why the two diverge above 100 W.
+    /// </remarks>
     public async ValueTask<double> ReadRfPowerAsync(CancellationToken cancellationToken = default)
     {
         var meter = await CallAsync("rig.get_pwrmeter", [], cancellationToken).ConfigureAwait(false);
-        return Parse(meter, "rig.get_pwrmeter") / 100.0 * powerMeterScale;
+
+        // hamlib flrig.c: relative = deflection/100 x scale. Kept verbatim, then clamped to the
+        // interface's 0-1 fraction-of-full-scale contract (a scale above 1 means a meter whose
+        // full scale is above 100 W, and the watts read below is where that headroom belongs).
+        var relative = Parse(meter, "rig.get_pwrmeter") / 100.0 * powerMeterScale;
+        return Math.Clamp(relative, 0.0, 1.0);
     }
 
     /// <inheritdoc />
+    /// <remarks>Watts are the faithful hamlib flrig.c arithmetic, <c>deflection x scale</c>, and
+    /// deliberately unclamped: a 200 W meter at full deflection reads 200 W here while
+    /// <see cref="ReadRfPowerAsync"/> reads 1.0 (full scale).</remarks>
     public async ValueTask<double> ReadRfPowerWattsAsync(CancellationToken cancellationToken = default)
     {
         var meter = await CallAsync("rig.get_pwrmeter", [], cancellationToken).ConfigureAwait(false);

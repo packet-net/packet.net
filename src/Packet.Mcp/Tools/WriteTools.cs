@@ -59,11 +59,11 @@ public sealed class WriteTools(INodeMcpBackend backend, IMcpCallerAccessor calle
         => backend.DisconnectSessionAsync(id, RequireOperate(), ct);
 
     [McpServerTool(Name = "set_kiss_param")]
-    [Description("Set a KISS parameter on a port (txdelay, persist, slottime, txtail). The result says whether it took live or needs a port restart.")]
+    [Description("Set a KISS parameter on a port (txdelay, persist, slottime, txtail). txdelay, slottime and txtail are in 10 ms units (30 = 300 ms, 255 = 2.55 s); persist is a raw p-persistence byte. The result says whether it took live or needs a port restart.")]
     public Task<KissParamResult> SetKissParam(
         [Description("Port whose KISS parameter to set.")] string port,
         [Description("Parameter name: txdelay, persist, slottime, txtail.")] string param,
-        [Description("Parameter value (0..255).")] int value,
+        [Description("Parameter value (0..255), applied as the raw KISS byte. For txdelay, slottime and txtail that byte is in units of 10 ms, so 30 means 300 ms and 255 (2.55 s) is the longest KISS can express; do not send milliseconds. For persist it is the p-persistence byte, where 255 = always transmit when the channel is clear.")] int value,
         CancellationToken ct = default)
         => backend.SetKissParamAsync(new SetKissParamRequest(port, param, value), RequireOperate(), ct);
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Packet.Radio.Tait.Ccdi;
 using Packet.Rig;
 
@@ -24,12 +25,42 @@ public class TaitRigControlTests
         return io;
     }
 
-    private static TaitCcdiRadio NewRadio(FakeSerialIo io, TimeSpan? transactionTimeout = null)
-        => TaitCcdiRadio.OpenForTest(io, new TaitCcdiRadioOptions
+    private static TaitCcdiRadio NewRadio(
+        FakeSerialIo io,
+        TimeSpan? transactionTimeout = null,
+        TimeProvider? clock = null,
+        TimeSpan? promptErrorGrace = null)
+    {
+        var options = new TaitCcdiRadioOptions
         {
             KeepAliveInterval = null,
+            StaleBusyRevalidateAfter = null,
             TransactionTimeout = transactionTimeout ?? TimeSpan.FromSeconds(2),
-        });
+        };
+        if (promptErrorGrace is { } grace)
+        {
+            options = options with { PromptErrorGrace = grace };
+        }
+        return TaitCcdiRadio.OpenForTest(io, options, clock);
+    }
+
+    /// <summary>The identity the node caches at adoption, so the adapter can be built without
+    /// wire traffic (an identity query needs the clock advanced under a FakeTimeProvider).</summary>
+    private static TaitRadioIdentity KnownIdentity()
+        => new('1', '3', '2', "03.02", "12345678", new Dictionary<string, string>());
+
+    /// <summary>Walk <paramref name="clock"/> forward in fake-time steps until
+    /// <paramref name="inflight"/> settles, so a virtualised deadline fires without a real wait.</summary>
+    private static async Task AdvanceUntilSettledAsync(FakeTimeProvider clock, Task inflight)
+    {
+        for (int i = 0; i < 40 && !inflight.IsCompleted; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(5);
+        }
+
+        inflight.IsCompleted.Should().BeTrue("the operation's deadline must run on the injected clock");
+    }
 
     [Fact]
     public async Task CreateAsync_Queries_Identity_And_Advertises_The_Honest_Capability_Slice()
@@ -200,6 +231,51 @@ public class TaitRigControlTests
         // The radio object survives the adapter — the port supervisor still owns it.
         var act = async () => await rig.GetPttAsync();
         await act.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task Dispose_Unkeys_When_The_Adapters_Key_Command_Timed_Out()
+    {
+        var clock = new FakeTimeProvider();
+        using var io = new FakeSerialIo();
+        io.RespondTo(Frame('f', "90"), ".");   // the unkey is answered
+        // ...but nothing answers the key. The 'f91' bytes are on the wire before the deadline
+        // fires, so the transmitter may be keyed even though SetPtt failed (#698).
+        await using var radio = NewRadio(io, clock: clock, promptErrorGrace: TimeSpan.Zero);
+        var rig = TaitRigControl.Create(radio, KnownIdentity(), ownsRadio: false, timeProvider: clock);
+
+        var keying = rig.SetPttAsync(true).AsTask();
+        await AdvanceUntilSettledAsync(clock, keying);
+        var act = () => keying;
+        await act.Should().ThrowAsync<RigTimeoutException>();
+
+        await rig.DisposeAsync();
+
+        io.WrittenAscii.Should().Contain(
+            Frame('f', "90") + "\r",
+            "the radio outlives this adapter, so a key that may have taken effect must be undone here");
+    }
+
+    [Fact]
+    public async Task The_Dispose_Unkey_Budget_Runs_On_The_Injected_Clock()
+    {
+        var clock = new FakeTimeProvider();
+        using var io = new FakeSerialIo();
+        io.RespondTo(Frame('f', "91"), ".");
+        // Nothing answers the unkey, and the transaction deadline is set far past the 2 s
+        // dispose budget: dispose can only finish if that budget runs on the injected clock
+        // (plan 2.7), which this test advances instead of waiting two real seconds for.
+        await using var radio = NewRadio(
+            io, transactionTimeout: TimeSpan.FromMinutes(10), clock: clock, promptErrorGrace: TimeSpan.Zero);
+        var rig = TaitRigControl.Create(radio, KnownIdentity(), ownsRadio: false, timeProvider: clock);
+        await rig.SetPttAsync(true);
+
+        var disposing = rig.DisposeAsync().AsTask();
+        await AdvanceUntilSettledAsync(clock, disposing);
+
+        await disposing;
+        io.WrittenAscii.Should().Contain(
+            Frame('f', "90") + "\r", "the unkey reaches the wire before the budget abandons the wait");
     }
 
     [Fact]

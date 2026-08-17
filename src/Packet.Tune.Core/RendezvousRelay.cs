@@ -29,15 +29,17 @@ namespace Packet.Tune.Core;
 public sealed class RendezvousRelay : IAsyncDisposable
 {
     private readonly TcpListener listener;
+    private readonly TimeProvider clock;
     private readonly CancellationTokenSource stopCts = new();
     private readonly Task acceptLoop;
     private readonly ConcurrentDictionary<string, ParkedClient> parked = new();
     private readonly ConcurrentDictionary<string, bool> usedPins = new();
     private int disposed;
 
-    private RendezvousRelay(TcpListener listener)
+    private RendezvousRelay(TcpListener listener, TimeProvider clock)
     {
         this.listener = listener;
+        this.clock = clock;
         acceptLoop = Task.Run(() => AcceptLoopAsync(stopCts.Token));
     }
 
@@ -49,11 +51,14 @@ public sealed class RendezvousRelay : IAsyncDisposable
 
     /// <summary>Start listening on all interfaces at <paramref name="port"/>
     /// (0 = ephemeral; read <see cref="Port"/>).</summary>
-    public static RendezvousRelay Start(int port)
+    /// <param name="port">The TCP port to listen on (0 = ephemeral).</param>
+    /// <param name="timeProvider">Time source for the per-client handshake
+    /// deadline; null = system.</param>
+    public static RendezvousRelay Start(int port, TimeProvider? timeProvider = null)
     {
         var listener = new TcpListener(IPAddress.Any, port);
         listener.Start();
-        return new RendezvousRelay(listener);
+        return new RendezvousRelay(listener, timeProvider ?? TimeProvider.System);
     }
 
     /// <summary>Generate a random 6-digit session PIN.</summary>
@@ -110,8 +115,9 @@ public sealed class RendezvousRelay : IAsyncDisposable
         var stream = client.GetStream();
         try
         {
-            using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            handshakeTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var handshakeDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10), clock);
+            using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, handshakeDeadline.Token);
 
             var request = await ReadRequestHeadAsync(stream, handshakeTimeout.Token).ConfigureAwait(false);
             if (request is null)

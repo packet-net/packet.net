@@ -102,9 +102,12 @@ public sealed class OpenReplyMessage : RhpMessage
     {
     }
 
-    /// <summary>Handle for the newly opened socket.</summary>
+    /// <summary>Handle for the newly opened socket; absent on failure. Nullable so the
+    /// wire matches <c>spec/rhp2.cddl</c> ("? handle: uint ; present on success; absent
+    /// on parameter errors") and the row-12 rule every other reply DTO already follows:
+    /// a parameter error has no truthful handle to echo, so it emits none.</summary>
     [JsonPropertyName("handle")]
-    public int Handle { get; set; }
+    public int? Handle { get; set; }
 
     /// <summary>Result code; see <see cref="RhpErrorCode"/>.</summary>
     [JsonPropertyName("errCode")]

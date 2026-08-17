@@ -22,17 +22,28 @@ public sealed class TxDelayMinResponder
     private readonly ITuningLink link;
     private readonly ITxDelayMinStation station;
     private readonly TxDelayMinOptions options;
+    private readonly TimeProvider clock;
     private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>
-    public TxDelayMinResponder(ITuningLink link, ITxDelayMinStation station, TxDelayMinOptions? options = null)
+    /// <param name="link">The (mode-agnostic) coordination link.</param>
+    /// <param name="station">The rig this end meters.</param>
+    /// <param name="options">Sweep knobs; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the arrival grace and the idle
+    /// timeout; null = system.</param>
+    public TxDelayMinResponder(
+        ITuningLink link,
+        ITxDelayMinStation station,
+        TxDelayMinOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         ArgumentNullException.ThrowIfNull(station);
         this.link = link;
         this.station = station;
         this.options = options ?? new TxDelayMinOptions();
+        clock = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>Diagnostic sink. Null = silent.</summary>
@@ -78,9 +89,9 @@ public sealed class TxDelayMinResponder
             while (true)
             {
                 TuningTelegram telegram;
-                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                using (var idleCts = new CancellationTokenSource(options.MeterIdleTimeout, clock))
+                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, idleCts.Token))
                 {
-                    readCts.CancelAfter(options.MeterIdleTimeout);
                     try
                     {
                         telegram = await inbox.Reader.ReadAsync(readCts.Token).ConfigureAwait(false);
@@ -154,7 +165,7 @@ public sealed class TxDelayMinResponder
                             Log?.Invoke("txdmeter: 'sent' with no step open — ignoring");
                             break;
                         }
-                        await Task.Delay(options.ArrivalGrace, cancellationToken).ConfigureAwait(false);
+                        await Task.Delay(options.ArrivalGrace, clock, cancellationToken).ConfigureAwait(false);
                         int decoded = counter.Count;
                         double? medianPre = counter.MedianPreDataCarrierMs;
                         counter.Dispose();

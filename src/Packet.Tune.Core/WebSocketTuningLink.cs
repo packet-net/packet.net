@@ -24,12 +24,17 @@ public sealed class WebSocketTuningLink : ITuningLink
     };
 
     private readonly WebSocket socket;
+    private readonly TimeProvider clock;
     private readonly SemaphoreSlim sendGate = new(1, 1);
     private readonly HashSet<int> seenSequences = [];
     private readonly Queue<int> seenOrder = new();
     private int disposed;
 
-    private WebSocketTuningLink(WebSocket socket) => this.socket = socket;
+    private WebSocketTuningLink(WebSocket socket, TimeProvider clock)
+    {
+        this.socket = socket;
+        this.clock = clock;
+    }
 
     /// <summary>
     /// Connect to a rendezvous relay and join the session for
@@ -40,11 +45,16 @@ public sealed class WebSocketTuningLink : ITuningLink
     /// (a bare authority gets the standard <c>/ws</c> path appended).</param>
     /// <param name="pin">The session's 6-digit PIN.</param>
     /// <param name="role">This end's role, <c>tuned</c> or <c>meter</c> (informational).</param>
+    /// <param name="timeProvider">Time source for the close-handshake budget; null = system.</param>
     /// <param name="cancellationToken">Cancels the connect.</param>
     /// <exception cref="TuningLinkException">The relay refused the connection
     /// (bad PIN, PIN already used, relay down).</exception>
     public static async Task<WebSocketTuningLink> ConnectAsync(
-        Uri rendezvous, string pin, string role, CancellationToken cancellationToken = default)
+        Uri rendezvous,
+        string pin,
+        string role,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(rendezvous);
         ArgumentException.ThrowIfNullOrEmpty(pin);
@@ -67,14 +77,16 @@ public sealed class WebSocketTuningLink : ITuningLink
             client.Dispose();
             throw new TuningLinkException($"could not join rendezvous session at {builder.Uri}: {ex.Message}", ex);
         }
-        return new WebSocketTuningLink(client);
+        return new WebSocketTuningLink(client, timeProvider ?? TimeProvider.System);
     }
 
     /// <summary>Wrap an already-open WebSocket (e.g. a relay-side or test socket).</summary>
-    public static WebSocketTuningLink FromSocket(WebSocket socket)
+    /// <param name="socket">The open socket to carry telegrams.</param>
+    /// <param name="timeProvider">Time source for the close-handshake budget; null = system.</param>
+    public static WebSocketTuningLink FromSocket(WebSocket socket, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(socket);
-        return new WebSocketTuningLink(socket);
+        return new WebSocketTuningLink(socket, timeProvider ?? TimeProvider.System);
     }
 
     /// <inheritdoc/>
@@ -150,7 +162,7 @@ public sealed class WebSocketTuningLink : ITuningLink
         {
             if (socket.State == WebSocketState.Open)
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2), clock);
                 await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "bye", cts.Token)
                     .ConfigureAwait(false);
             }

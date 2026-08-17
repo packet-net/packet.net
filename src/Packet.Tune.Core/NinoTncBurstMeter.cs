@@ -69,16 +69,27 @@ public sealed class NinoTncBurstMeter : IBurstMeter
     private readonly NinoTncSerialPort tnc;
     private readonly TaitCcdiRadio? radio;
     private readonly NinoTncBurstMeterOptions options;
+    private readonly TimeProvider clock;
     private bool? audioLevelMeterAvailable;
 
     /// <summary>Create over an open TNC (and optionally its radio's CCDI
     /// connection). Lifetimes stay the caller's.</summary>
-    public NinoTncBurstMeter(NinoTncSerialPort tnc, TaitCcdiRadio? radio = null, NinoTncBurstMeterOptions? options = null)
+    /// <param name="tnc">The NinoTNC the burst is measured on.</param>
+    /// <param name="radio">The paired radio's CCDI connection, or <c>null</c>.</param>
+    /// <param name="options">Tunables; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the sample cadence and the
+    /// measurement window; null = system.</param>
+    public NinoTncBurstMeter(
+        NinoTncSerialPort tnc,
+        TaitCcdiRadio? radio = null,
+        NinoTncBurstMeterOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(tnc);
         this.tnc = tnc;
         this.radio = radio;
         this.options = options ?? new NinoTncBurstMeterOptions();
+        clock = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>Diagnostic sink. Null = silent.</summary>
@@ -127,7 +138,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
 
         for (int i = 1; i < options.IdleBaselineSamples; i++)
         {
-            await Task.Delay(options.RssiPollInterval, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(options.RssiPollInterval, clock, cancellationToken).ConfigureAwait(false);
             try
             {
                 idleSamples.Add(await tnc.GetRssiAsync(options.AudioLevelProbeTimeout, cancellationToken)
@@ -169,8 +180,8 @@ public sealed class NinoTncBurstMeter : IBurstMeter
         var levelSamples = new List<(float Db, bool Busy)>();
         try
         {
-            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            windowCts.CancelAfter(window);
+            using var windowDeadline = new CancellationTokenSource(window, clock);
+            using var windowCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, windowDeadline.Token);
             await PollSignalsAsync(rssiSamples, levelSamples, windowCts.Token).ConfigureAwait(false);
         }
         finally
@@ -234,7 +245,7 @@ public sealed class NinoTncBurstMeter : IBurstMeter
                         Log?.Invoke("meter: GETRSSI poll got no reply — level sample skipped");
                     }
                 }
-                await Task.Delay(options.RssiPollInterval, windowToken).ConfigureAwait(false);
+                await Task.Delay(options.RssiPollInterval, clock, windowToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (windowToken.IsCancellationRequested)

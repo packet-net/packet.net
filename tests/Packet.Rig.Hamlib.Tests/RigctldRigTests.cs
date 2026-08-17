@@ -99,6 +99,53 @@ public class RigctldRigTests
     }
 
     [Fact]
+    public async Task Dispose_Unkeys_After_A_Key_That_Timed_Out_And_Dropped_The_Socket()
+    {
+        var time = new FakeTimeProvider();
+        await using var fake = new FakeRigctld();
+        var rig = await RigctldRig.ConnectAsync(new RigctldRigOptions
+        {
+            Port = fake.Port,
+            TimeProvider = time,
+            CommandTimeout = TimeSpan.FromSeconds(5),
+        });
+
+        // The daemon keys the rig and then never answers: the client's key command times out,
+        // which faults the connection away. The transmitter is up with nobody sure of it.
+        fake.ActOnNextCommandThenSwallowReply = true;
+        var pending = rig.SetPttAsync(true).AsTask();
+        await WaitUntilAsync(() => fake.Ptt == 1);
+        time.Advance(TimeSpan.FromSeconds(6));
+        var act = async () => await pending;
+        await act.Should().ThrowAsync<RigTimeoutException>();
+
+        await rig.DisposeAsync();
+
+        await WaitUntilAsync(() => fake.Ptt == 0);
+        fake.Ptt.Should().Be(0, "an unconfirmed key must still be unkeyed at dispose");
+        fake.ConnectionCount.Should().Be(2, "the timeout dropped the socket, so the unkey redials");
+    }
+
+    [Fact]
+    public async Task Dispose_Unkeys_Again_When_An_Explicit_Unkey_Was_Rejected()
+    {
+        await using var fake = new FakeRigctld();
+        var rig = await ConnectAsync(fake);
+        await rig.SetPttAsync(true);
+        fake.Ptt.Should().Be(1);
+
+        fake.FailNextWithCode.Enqueue(1); // rigctld rejects the T 0, so the rig stays keyed
+        var act = async () => await rig.SetPttAsync(false);
+        await act.Should().ThrowAsync<RigCommandException>();
+        fake.Ptt.Should().Be(1);
+
+        await rig.DisposeAsync();
+
+        await WaitUntilAsync(() => fake.Ptt == 0);
+        fake.Ptt.Should().Be(0, "the latch clears on a confirmed unkey only");
+    }
+
+    [Fact]
     public async Task Dispose_Does_Not_Touch_Ptt_We_Never_Keyed()
     {
         await using var fake = new FakeRigctld { Ptt = 1 }; // keyed by someone else

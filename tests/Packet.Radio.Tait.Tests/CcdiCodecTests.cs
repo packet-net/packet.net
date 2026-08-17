@@ -51,6 +51,40 @@ public class CcdiCodecTests
         bytes.Should().Equal("q002F\r"u8.ToArray());
     }
 
+    [Fact]
+    public void Frame_Encodes_The_255_Character_Ceiling_And_Parses_It_Back()
+    {
+        string parameters = new('A', CcdiFrame.MaxParameterLength);
+
+        string wire = new CcdiFrame('q', parameters).Encode();
+
+        wire.Should().StartWith("qFF", "255 renders as the largest two-digit SIZE there is");
+        CcdiFrame.TryParse(wire, out var frame).Should().BeTrue("the ceiling must survive our own parser");
+        frame.Parameters.Should().Be(parameters);
+    }
+
+    [Fact]
+    public void Frame_Refuses_To_Encode_More_Parameters_Than_SIZE_Can_Count()
+    {
+        // 256 chars renders SIZE '100': a three-digit field in a two-digit slot, which shifts
+        // every following byte and makes the frame unparseable (#698).
+        Action act = () => _ = new CcdiFrame('q', new string('A', 256)).Encode();
+
+        act.Should().Throw<ArgumentException>().WithMessage("*two hex digits*");
+    }
+
+    [Theory]
+    [InlineData('\r')]   // terminates the line: one frame becomes two unparseable ones
+    [InlineData('\n')]
+    [InlineData('\u0011')] // XON
+    [InlineData('\u0013')] // XOFF
+    public void Frame_Refuses_To_Encode_Characters_That_Break_Line_Framing(char forbidden)
+    {
+        Action act = () => _ = new CcdiFrame('q', $"AB{forbidden}CD").EncodeToBytes();
+
+        act.Should().Throw<ArgumentException>();
+    }
+
     [Theory]
     [InlineData("j07064-456C9", 'j', "064-456")] // §1.10.1 example: raw RSSI −45.6 dBm
     [InlineData("m0813203.02A2", 'm', "13203.02")] // live TM8110 capture

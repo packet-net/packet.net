@@ -38,16 +38,21 @@ public sealed class TaitRigControl : IRigControl
     /// <summary>CCTM 318/319 detector full scale in millivolts (manual: raw 0–1200 mV).</summary>
     public const double DetectorFullScaleMillivolts = 1200.0;
 
+    /// <summary>How long the dispose-unkey may take before it is abandoned (best effort).</summary>
+    private static readonly TimeSpan UnkeyBudget = TimeSpan.FromSeconds(2);
+
     private readonly TaitCcdiRadio radio;
     private readonly bool ownsRadio;
+    private readonly TimeProvider clock;
     private volatile bool lastKnownPtt;
     private bool keyedByUs;
     private bool disposed;
 
-    private TaitRigControl(TaitCcdiRadio radio, bool ownsRadio, RigInfo info)
+    private TaitRigControl(TaitCcdiRadio radio, bool ownsRadio, RigInfo info, TimeProvider? timeProvider)
     {
         this.radio = radio;
         this.ownsRadio = ownsRadio;
+        clock = timeProvider ?? TimeProvider.System;
         Info = info;
         radio.TransmitterStateChanged += OnTransmitterStateChanged;
     }
@@ -66,21 +71,35 @@ public sealed class TaitRigControl : IRigControl
     /// disposing the adapter disposes the radio; when false (the node case — the port supervisor
     /// owns the radio) disposal only detaches and best-effort-unkeys anything this adapter keyed.
     /// </summary>
+    /// <param name="radio">The CCDI radio to re-present through the rig seam.</param>
+    /// <param name="ownsRadio">Whether disposing the adapter also disposes the radio.</param>
+    /// <param name="timeProvider">Clock for the dispose-unkey budget (test seam, plan 2.7);
+    /// null uses the system clock.</param>
+    /// <param name="cancellationToken">Cancels the identity query.</param>
     public static async Task<TaitRigControl> CreateAsync(
-        TaitCcdiRadio radio, bool ownsRadio = false, CancellationToken cancellationToken = default)
+        TaitCcdiRadio radio,
+        bool ownsRadio = false,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(radio);
         var identity = await radio.QueryIdentityAsync(cancellationToken).ConfigureAwait(false);
-        return new TaitRigControl(radio, ownsRadio, InfoFrom(identity));
+        return new TaitRigControl(radio, ownsRadio, InfoFrom(identity), timeProvider);
     }
 
     /// <summary>Wrap <paramref name="radio"/> with an already-known identity (the node caches
     /// identity at adoption) — no wire traffic.</summary>
-    public static TaitRigControl Create(TaitCcdiRadio radio, TaitRadioIdentity identity, bool ownsRadio = false)
+    /// <param name="radio">The CCDI radio to re-present through the rig seam.</param>
+    /// <param name="identity">The radio's already-queried identity.</param>
+    /// <param name="ownsRadio">Whether disposing the adapter also disposes the radio.</param>
+    /// <param name="timeProvider">Clock for the dispose-unkey budget (test seam, plan 2.7);
+    /// null uses the system clock.</param>
+    public static TaitRigControl Create(
+        TaitCcdiRadio radio, TaitRadioIdentity identity, bool ownsRadio = false, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(radio);
         ArgumentNullException.ThrowIfNull(identity);
-        return new TaitRigControl(radio, ownsRadio, InfoFrom(identity));
+        return new TaitRigControl(radio, ownsRadio, InfoFrom(identity), timeProvider);
     }
 
     private static RigInfo InfoFrom(TaitRadioIdentity identity)
@@ -129,13 +148,28 @@ public sealed class TaitRigControl : IRigControl
     public async ValueTask SetPttAsync(bool transmit, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (transmit)
+        {
+            // Latch before the key command goes out (#698), for the same reason the driver does:
+            // the key bytes reach the radio before this call can fail, so a failure here is
+            // "possibly keyed", not "not keyed". Setting the latch first keeps the dispose-unkey
+            // guard below on the safe side of that uncertainty.
+            keyedByUs = true;
+            lastKnownPtt = true;
+        }
+
         await MapAsync(async () =>
         {
             await radio.SetTransmitterAsync(transmit, cancellationToken).ConfigureAwait(false);
             return true;
         }, "FUNCTION 9 (transmitter)").ConfigureAwait(false);
-        keyedByUs = transmit;
-        lastKnownPtt = transmit;
+
+        if (!transmit)
+        {
+            // Only a confirmed key-off clears the latch.
+            keyedByUs = false;
+            lastKnownPtt = false;
+        }
     }
 
     /// <inheritdoc />
@@ -194,7 +228,9 @@ public sealed class TaitRigControl : IRigControl
             // The radio outlives this adapter, so its own dispose-unkey won't run — unkey here.
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                // Budgeted on the injected clock (plan 2.7), so a FakeTimeProvider test can
+                // drive the abandonment instead of waiting two real seconds.
+                using var cts = new CancellationTokenSource(UnkeyBudget, clock);
                 await radio.SetTransmitterAsync(false, cts.Token).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is TaitCcdiException or TimeoutException or IOException

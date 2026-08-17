@@ -54,6 +54,7 @@ public sealed class StationHailer : IAsyncDisposable
     private readonly ITuningLink link;
     private readonly StationHailerOptions options;
     private readonly string? requesterCallsign;
+    private readonly TimeProvider clock;
     private readonly Channel<TuningTelegram> inbox = Channel.CreateUnbounded<TuningTelegram>();
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
@@ -64,12 +65,18 @@ public sealed class StationHailer : IAsyncDisposable
     /// <param name="requesterCallsign">This station's callsign, carried in the hail so the
     /// peer can log who hailed it. Null omits it.</param>
     /// <param name="options">Tunables; null = defaults.</param>
-    public StationHailer(ITuningLink link, string? requesterCallsign = null, StationHailerOptions? options = null)
+    /// <param name="timeProvider">Time source for the reply timeout; null = system.</param>
+    public StationHailer(
+        ITuningLink link,
+        string? requesterCallsign = null,
+        StationHailerOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         this.link = link;
         this.requesterCallsign = requesterCallsign;
         this.options = options ?? new StationHailerOptions();
+        clock = timeProvider ?? TimeProvider.System;
         pumpLoop = Task.Run(() => PumpAsync(pumpCts.Token));
     }
 
@@ -129,8 +136,8 @@ public sealed class StationHailer : IAsyncDisposable
 
     private async Task<StationStatus?> WaitForStatusAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
+        using var deadline = new CancellationTokenSource(timeout, clock);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             while (true)

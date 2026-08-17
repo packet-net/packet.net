@@ -33,6 +33,10 @@ public sealed record TransparentReadinessOptions
 
     /// <summary>Source callsign for the baud-clean loopback frame. Default <c>N0CALL</c>.</summary>
     public string Callsign { get; init; } = "N0CALL";
+
+    /// <summary>Clock used for timeout scheduling. Tests inject <c>FakeTimeProvider</c>;
+    /// production leaves the system clock.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
 /// <summary>
@@ -214,8 +218,8 @@ public static class TransparentReadinessDoctor
         // so a baud/FFSK mismatch that garbles or drops bytes cannot round-trip clean by luck.
         byte[] sent = Ax25Frame.Ui(new Callsign("TXTEST"), source, BaudTestPattern()).ToBytes();
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(opts.LoopbackTimeout);
+        using var deadline = new CancellationTokenSource(opts.LoopbackTimeout, opts.TimeProvider);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
 
         // Begin receiving before sending so a fast round-trip cannot race us.
         var receiveTask = FirstFrameAsync(peer, timeoutCts.Token);

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Packet.Tune.Core.Tests;
 
@@ -7,6 +8,9 @@ namespace Packet.Tune.Core.Tests;
 /// stations: the propose→confirm→commit→probe choreography, per-direction cells,
 /// the rejection path, and — the safety property — every failure mode ending with
 /// BOTH stations back at the session's home mode/channel.
+/// <para>The two tests that turn on a timeout expiring (the confirm timeout and the
+/// responder's idle watchdog) run on a <see cref="FakeTimeProvider"/> and advance virtual
+/// time; the rest are telegram-driven and wait on the rig itself, never on the clock.</para>
 /// </summary>
 public class ModeCoordinationTests
 {
@@ -166,9 +170,14 @@ public class ModeCoordinationTests
     public async Task No_responder_means_confirm_timeout_and_an_untouched_rig()
     {
         var rig = FakeRig.Create(); // responder never started
-        await using var coordinator = new ModeCoordinator(rig.CoordinatorLink, rig.CoordinatorStation, FastOptions);
+        var clock = new FakeTimeProvider();
+        await using var coordinator = new ModeCoordinator(
+            rig.CoordinatorLink, rig.CoordinatorStation, FastOptions, clock);
 
-        var attempt = await coordinator.CoordinateAsync(7).WaitAsync(Timeout);
+        // Three re-proposals, each waiting out the confirm timeout: 9 s of protocol
+        // time, none of it real.
+        var attempt = await VirtualTime.AdvanceUntilAsync(
+            clock, coordinator.CoordinateAsync(7), FastOptions.ConfirmTimeout);
 
         attempt.Outcome.Should().Be(ModeCoordOutcome.ConfirmTimeout);
         rig.CoordinatorStation.ModeApplies.Should().BeEmpty("nothing may switch before a confirm");
@@ -178,8 +187,9 @@ public class ModeCoordinationTests
     public async Task The_responder_watchdog_reverts_home_when_the_coordinator_goes_silent_after_commit()
     {
         var rig = FakeRig.Create();
+        var clock = new FakeTimeProvider();
         var options = FastOptions with { ResponderIdleRevert = TimeSpan.FromMilliseconds(400) };
-        var responder = new ModeResponder(rig.ResponderLink, rig.ResponderStation, options);
+        var responder = new ModeResponder(rig.ResponderLink, rig.ResponderStation, options, clock);
         using var responderCts = new CancellationTokenSource();
         var responderRun = Task.Run(() => responder.RunAsync(responderCts.Token));
 
@@ -190,10 +200,13 @@ public class ModeCoordinationTests
         await rig.CoordinatorLink.SendAsync(
             new ModeCoordMessage { Action = ModeCoordAction.Commit, Mode = 2 }.ToTelegram(++seq));
 
-        await WaitUntilAsync(() => rig.ResponderStation.Mode == 2, Timeout,
-            "the responder switches on commit");
-        await WaitUntilAsync(() => rig.ResponderStation.Mode == 6, Timeout,
-            "the watchdog reverts the silent session to home");
+        // Telegram-driven: the switch needs no clock at all.
+        await rig.ResponderStation.ModeReachedAsync(2).WaitAsync(Timeout);
+
+        // Nothing but the passage of (virtual) time brings the silent session home.
+        var home = rig.ResponderStation.ModeReachedAsync(6);
+        home.IsCompleted.Should().BeFalse("the idle window has not elapsed yet");
+        await VirtualTime.AdvanceUntilAsync(clock, home, TimeSpan.FromMilliseconds(100));
 
         await responderCts.CancelAsync();
         await responderRun.WaitAsync(Timeout);
@@ -211,7 +224,7 @@ public class ModeCoordinationTests
             new ModeCoordMessage { Action = ModeCoordAction.Propose, Mode = 2 }.ToTelegram(++seq));
         await rig.CoordinatorLink.SendAsync(
             new ModeCoordMessage { Action = ModeCoordAction.Commit, Mode = 2 }.ToTelegram(++seq));
-        await WaitUntilAsync(() => rig.ResponderStation.Mode == 2, Timeout, "responder switched");
+        await rig.ResponderStation.ModeReachedAsync(2).WaitAsync(Timeout);
 
         await rig.CoordinatorLink.SendAsync(new TuningTelegram(++seq, TuningVerb.Bye, string.Empty));
 
@@ -299,16 +312,6 @@ public class ModeCoordinationTests
         cts.Dispose();
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string because)
-    {
-        var deadline = DateTimeOffset.UtcNow + timeout;
-        while (!condition())
-        {
-            (DateTimeOffset.UtcNow < deadline).Should().BeTrue(because);
-            await Task.Delay(20);
-        }
-    }
-
     /// <summary>Two stations sharing one fake ether, linked by the in-memory pair.</summary>
     private sealed class FakeRig
     {
@@ -374,6 +377,7 @@ public class ModeCoordinationTests
     {
         private readonly FakeEther ether;
         private readonly ConcurrentBag<Counter> counters = [];
+        private readonly ConcurrentDictionary<byte, TaskCompletionSource> modeReached = new();
 
         public FakeStation(FakeEther ether)
         {
@@ -403,6 +407,7 @@ public class ModeCoordinationTests
             Mode = mode;
             ModeApplies.Add(mode);
             Record($"mode:{mode}");
+            Waiter(mode).TrySetResult();
             return Task.CompletedTask;
         }
 
@@ -432,6 +437,23 @@ public class ModeCoordinationTests
             counters.Add(counter);
             return counter;
         }
+
+        /// <summary>Completes when this station is (or becomes) running
+        /// <paramref name="mode"/>. The rig itself signals, so a test never polls a clock
+        /// waiting for the protocol to move.</summary>
+        public Task ModeReachedAsync(byte mode)
+        {
+            var waiter = Waiter(mode);
+            if (Mode == mode)
+            {
+                waiter.TrySetResult();
+            }
+            return waiter.Task;
+        }
+
+        private TaskCompletionSource Waiter(byte mode) =>
+            modeReached.GetOrAdd(
+                mode, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
 
         private void Record(string entry)
         {

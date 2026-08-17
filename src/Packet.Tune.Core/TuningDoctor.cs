@@ -47,6 +47,10 @@ public sealed record TuningDoctorOptions
     /// "requires a brief transmit" detail and <b>nothing is transmitted</b>.
     /// </summary>
     public bool IncludeTransmittingProbes { get; init; } = true;
+
+    /// <summary>Clock used for timeout scheduling. Tests inject <c>FakeTimeProvider</c>;
+    /// production leaves the system clock.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
 /// <summary>
@@ -289,9 +293,10 @@ public static class TuningDoctor
             {
                 var source = Callsign.Parse(opts.Callsign);
                 await tnc.SetModeAsync(opts.PinMode, persistToFlash: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(250), opts.TimeProvider, cancellationToken).ConfigureAwait(false);
                 int bitRate = NinoTncCatalog.TryGetByMode(opts.PinMode) is { BitRateHz: > 0 } entry ? entry.BitRateHz : 1200;
-                var check = await TxDelayControlCheck.RunAsync(tnc, source, bitRate, log: null, cancellationToken)
+                var check = await TxDelayControlCheck
+                    .RunAsync(tnc, source, bitRate, log: null, opts.TimeProvider, cancellationToken)
                     .ConfigureAwait(false);
                 add(new DoctorProbe(
                     "txdelay-software-control",
@@ -417,7 +422,7 @@ public static class TuningDoctor
                     .ConfigureAwait(false);
                 try
                 {
-                    await ptt.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+                    await ptt.Task.WaitAsync(TimeSpan.FromSeconds(2), opts.TimeProvider, cancellationToken).ConfigureAwait(false);
                     add(new DoctorProbe(
                         "tnc-radio-pairing", DoctorOutcome.Pass,
                         "radio reported PTT within 2 s of the TNC keying a frame", null));

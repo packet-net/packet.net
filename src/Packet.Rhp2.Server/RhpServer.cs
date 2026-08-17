@@ -52,6 +52,14 @@ public sealed class RhpServerOptions
     public TimeSpan InFrameTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// The clock <see cref="InFrameTimeout"/> runs on (docs/plan.md §2.7: production code that
+    /// needs the time takes a <see cref="System.TimeProvider"/>). Defaults to the system clock,
+    /// so no caller has to pass one; a test passes a fake provider and advances it instead of
+    /// waiting in real time.
+    /// </summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
+    /// <summary>
     /// Optional per-source-IP throttle on failed <c>auth</c> attempts (only consulted
     /// when <see cref="RequireAuth"/> is on). Once an IP accumulates the throttle's
     /// failure budget within its window, further <c>auth</c> attempts from it are
@@ -204,7 +212,7 @@ public sealed partial class RhpServer : IAsyncDisposable
                 byte[]? frame;
                 try
                 {
-                    frame = await RhpFraming.ReadFrameAsync(client.Stream, options.InFrameTimeout, ct).ConfigureAwait(false);
+                    frame = await RhpFraming.ReadFrameAsync(client.Stream, options.InFrameTimeout, options.TimeProvider, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -252,6 +260,11 @@ public sealed partial class RhpServer : IAsyncDisposable
         finally
         {
             clients.TryRemove(client, out _);
+            // Mark the client dead BEFORE the handle sweep below: the sweep snapshots the
+            // handle table, so an `open` still on the air would otherwise land its handle
+            // after the snapshot and never be torn down (packet.net#698 RM-2). The
+            // background open re-reads this flag either side of its insert.
+            client.MarkDead();
             await CloseClientHandlesAsync(client).ConfigureAwait(false);
             client.Dispose();
             Interlocked.Decrement(ref connectionCount);
@@ -350,7 +363,7 @@ public sealed partial class RhpServer : IAsyncDisposable
                 // errCode 2. Built as raw JSON — there is no DTO for a manufactured type.
                 var reply = new JsonObject
                 {
-                    ["type"] = unknown.Type + "Reply",
+                    ["type"] = UnknownReplyType(unknown.Type),
                     ["errCode"] = RhpErrorCode.BadOrMissingType,
                     ["errText"] = RhpErrorCode.Text(RhpErrorCode.BadOrMissingType),
                 };
@@ -419,7 +432,7 @@ public sealed partial class RhpServer : IAsyncDisposable
 
         if (err != 0)
         {
-            await WriteAsync(client, new OpenReplyMessage { Id = open.Id, Handle = 0, ErrCode = err, ErrText = text }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new OpenReplyMessage { Id = open.Id, ErrCode = err, ErrText = text }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -439,7 +452,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         if (!client.TryReserveHandle(options.MaxHandlesPerClient))
         {
             LogHandleCapReached(client.Peer, options.MaxHandlesPerClient);
-            await WriteAsync(client, new OpenReplyMessage { Id = open.Id, Handle = 0, ErrCode = RhpErrorCode.NoMemory, ErrText = RhpErrorCode.Text(RhpErrorCode.NoMemory) }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new OpenReplyMessage { Id = open.Id, ErrCode = RhpErrorCode.NoMemory, ErrText = RhpErrorCode.Text(RhpErrorCode.NoMemory) }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -456,7 +469,7 @@ public sealed partial class RhpServer : IAsyncDisposable
             catch (RhpGatewayException gex)
             {
                 client.ReleaseHandle();   // reserved slot never became a handle
-                await WriteAsync(client, new OpenReplyMessage { Id = open.Id, Handle = 0, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
+                await WriteAsync(client, new OpenReplyMessage { Id = open.Id, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException)
@@ -466,7 +479,30 @@ public sealed partial class RhpServer : IAsyncDisposable
             }
 
             var handle = new RhpHandle(Interlocked.Increment(ref nextHandle), client, conn);
+
+            // The client can vanish while the connect is on the air (seconds of it). Its read
+            // loop tears down the handles it can SEE, so a handle registered after that sweep
+            // would own a live AX.25 session with no owner until the process exits
+            // (packet.net#698 RM-2). Check the dead flag before registering...
+            if (client.Dead)
+            {
+                LogOrphanedOpen(open.Remote!, client.Peer);
+                await TearDownHandleAsync(handle, notifyOwner: false).ConfigureAwait(false);
+                return;
+            }
+
             handles[handle.Id] = handle;
+
+            // ...and again after, because the read loop can end (and sweep) in the window
+            // between the check and the insert. Both sides fence on the handle table's own
+            // locking, so one of the two orderings always sees the other's write.
+            if (client.Dead)
+            {
+                LogOrphanedOpen(open.Remote!, client.Peer);
+                await TearDownHandleAsync(handle, notifyOwner: false).ConfigureAwait(false);
+                return;
+            }
+
             LogOpened(handle.Id, open.Remote!, client.Peer);
 
             await WriteAsync(client, new OpenReplyMessage
@@ -502,7 +538,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         if (!client.TryReserveHandle(options.MaxHandlesPerClient))
         {
             LogHandleCapReached(client.Peer, options.MaxHandlesPerClient);
-            await WriteAsync(client, new OpenReplyMessage { Id = id, Handle = 0, ErrCode = RhpErrorCode.NoMemory, ErrText = RhpErrorCode.Text(RhpErrorCode.NoMemory) }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new OpenReplyMessage { Id = id, ErrCode = RhpErrorCode.NoMemory, ErrText = RhpErrorCode.Text(RhpErrorCode.NoMemory) }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -520,7 +556,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         {
             handle.Owner.ReleaseHandle();
             handles.TryRemove(handle.Id, out _);
-            await WriteAsync(client, new OpenReplyMessage { Id = id, Handle = 0, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
+            await WriteAsync(client, new OpenReplyMessage { Id = id, ErrCode = gex.ErrCode, ErrText = gex.Message }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -1085,7 +1121,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         var text = RhpErrorCode.Text(errCode);
         RhpMessage? reply = msg switch
         {
-            OpenMessage m => new OpenReplyMessage { Id = m.Id, Handle = 0, ErrCode = errCode, ErrText = text },
+            OpenMessage m => new OpenReplyMessage { Id = m.Id, ErrCode = errCode, ErrText = text },
             SocketMessage m => new SocketReplyMessage { Id = m.Id, Handle = null, ErrCode = errCode, ErrText = text },
             BindMessage m => new BindReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = errCode, ErrText = text },
             ListenMessage m => new ListenReplyMessage { Id = m.Id, Handle = m.Handle, ErrCode = errCode, ErrText = text },
@@ -1103,7 +1139,7 @@ public sealed partial class RhpServer : IAsyncDisposable
         }
         var raw = new JsonObject
         {
-            ["type"] = msg.Type + "Reply",
+            ["type"] = UnknownReplyType(msg.Type),
             ["errCode"] = errCode,
             ["errText"] = text,
         };
@@ -1112,6 +1148,30 @@ public sealed partial class RhpServer : IAsyncDisposable
             raw["id"] = id;
         }
         return WriteRawAsync(client, raw, ct);
+    }
+
+    // Build the `{type}Reply` echo for a type we don't recognise, BOUNDED. A client's `type` can
+    // be anything up to the 64 KB frame cap, and echoing it verbatim made the reply longer than
+    // the 16-bit length prefix can express: RhpFraming threw ArgumentException out of the write
+    // path, past the IOException/ObjectDisposedException filter, and the connection was dropped
+    // instead of getting its errCode 2 (packet.net#698 RM-14). 256 chars is far past any real
+    // type name and leaves the whole frame budget for errCode/errText even when every character
+    // escapes to \uXXXX.
+    private const int MaxEchoedTypeLength = 256;
+
+    private static string UnknownReplyType(string type)
+    {
+        if (type.Length <= MaxEchoedTypeLength)
+        {
+            return type + "Reply";
+        }
+
+        var kept = type.AsSpan(0, MaxEchoedTypeLength);
+        if (char.IsHighSurrogate(kept[^1]))
+        {
+            kept = kept[..^1];   // never cut a surrogate pair in half
+        }
+        return string.Concat(kept, "Reply");
     }
 
     // The strict outbound-construction callsign rule applied at the RHP wire: AX.25 SSIDs
@@ -1123,39 +1183,41 @@ public sealed partial class RhpServer : IAsyncDisposable
     // Writes are serialized per client (replies from the dispatch loop interleave with pushes
     // from handle pumps). A write failure means the client is gone — swallowed; the read loop
     // notices and tears the client down.
-    private static async Task WriteAsync(ClientState client, RhpMessage msg, CancellationToken ct)
-    {
-        var payload = RhpJson.Serialize(msg);
-        await client.WriteGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            await RhpFraming.WriteFrameAsync(client.Stream, payload, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-        {
-            // client gone — the read loop will clean up.
-        }
-        finally
-        {
-            client.WriteGate.Release();
-        }
-    }
+    private static Task WriteAsync(ClientState client, RhpMessage msg, CancellationToken ct)
+        => WriteFramedAsync(client, RhpJson.Serialize(msg), ct);
 
-    private static async Task WriteRawAsync(ClientState client, JsonObject obj, CancellationToken ct)
+    private static Task WriteRawAsync(ClientState client, JsonObject obj, CancellationToken ct)
+        => WriteFramedAsync(client, System.Text.Encoding.UTF8.GetBytes(obj.ToJsonString()), ct);
+
+    // The one framed-write path. Acquiring the gate is INSIDE the guard: a write can be racing
+    // the read loop's teardown (a handle pump's push, or an `open` that resolved just as the
+    // client vanished), and ClientState.Dispose disposes the gate; an unguarded WaitAsync then
+    // threw ObjectDisposedException out of a discarded Task, surfacing as an unobserved task
+    // exception instead of the "client gone, drop it" no-op every other write path already is
+    // (packet.net#698 RM-2).
+    private static async Task WriteFramedAsync(ClientState client, byte[] payload, CancellationToken ct)
     {
-        var payload = System.Text.Encoding.UTF8.GetBytes(obj.ToJsonString());
-        await client.WriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await client.WriteGate.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;   // client already torn down; nothing to write to.
+        }
+
         try
         {
             await RhpFraming.WriteFrameAsync(client.Stream, payload, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // client gone.
+            // client gone; the read loop will clean up.
         }
         finally
         {
-            client.WriteGate.Release();
+            // The gate can be disposed under us between the wait and the release (same race).
+            try { client.WriteGate.Release(); } catch (ObjectDisposedException) { /* client gone */ }
         }
     }
 
@@ -1189,6 +1251,7 @@ public sealed partial class RhpServer : IAsyncDisposable
     {
         private int seqno = -1;   // first push must carry seqno 0 (RHPTEST; live wire)
         private int handleCount;  // live handles owned by this connection (capped)
+        private int dead;         // 1 once the read loop has ended and swept this client's handles
 
         public ClientState(Socket socket, bool authed)
         {
@@ -1234,6 +1297,14 @@ public sealed partial class RhpServer : IAsyncDisposable
         /// <summary>Release one reserved handle slot (on teardown, or a reserved
         /// open whose connect failed before a handle existed).</summary>
         public void ReleaseHandle() => Interlocked.Decrement(ref handleCount);
+
+        /// <summary>True once the read loop has ended and swept this client's handles: nothing
+        /// may be registered against it afterwards (packet.net#698 RM-2).</summary>
+        public bool Dead => Volatile.Read(ref dead) != 0;
+
+        /// <summary>Mark the client dead. Called in the read loop's finally BEFORE the handle
+        /// sweep, so a background open that lands late sees it and tears its own session down.</summary>
+        public void MarkDead() => Volatile.Write(ref dead, 1);
 
         public void Dispose()
         {
@@ -1339,6 +1410,9 @@ public sealed partial class RhpServer : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP handle {Handle} opened to {Remote} for {Peer}.")]
     private partial void LogOpened(int handle, string remote, string peer);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "RHP open to {Remote} for {Peer} resolved after the client had gone; the session was discarded.")]
+    private partial void LogOrphanedOpen(string remote, string peer);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "RHP datagram handle {Handle} bound to {Local} for {Peer}.")]
     private partial void LogOpenedDgram(int handle, string local, string peer);

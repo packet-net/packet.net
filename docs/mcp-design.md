@@ -72,13 +72,15 @@ Use the official C# SDK — **`ModelContextProtocol`** (core, stdio) + **`ModelC
 | `send_ui_frame` | `operate` | `SendUiFrameAsync` | `port`, `dest`, `payload`, `path?`, `pid?` | send result (accepted/queued) |
 | `reset_port` | `operate` | `ResetPortAsync` | `port` | port-restart result (maps to the `restart` lifecycle) |
 | `disconnect_session` | `operate` | `DisconnectSessionAsync` | `id` (`port:peer`) | disconnect result |
-| `set_kiss_param` | `operate` | `SetKissParamAsync` | `port`, `param`, `value` | applied/queued, plus whether it took live or needs a restart |
+| `set_kiss_param` | `operate` | `SetKissParamAsync` | `port`, `param`, `value` (the raw KISS byte; 10 ms units for txdelay/slottime/txtail) | applied/queued, plus whether it took live or needs a restart |
 | `set_rig_frequency` | `operate` | `SetRigFrequencyAsync` | `port`, `frequencyHz` | QSY result with the read-back dial frequency (maps to `POST /ports/{id}/rig/frequency`; capability-gated, audited as `rig_set_frequency`) |
 | `set_rig_mode` | `operate` | `SetRigModeAsync` | `port`, `mode`, `passbandHz?` (null = rig default width) | mode result with the read-back mode/passband (maps to `POST /ports/{id}/rig/mode`; capability-gated, audited as `rig_set_mode`) |
 
 Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` builds frames through the spec-strict factories — MCP never produces a frame the encoder would reject, even though decode/inbound accepts lenient input.
 
 `set_kiss_param` distinguishes **live** params (TXDELAY/persist/slottime/TXtail via a KISS SetHardware/param write) from **construction-time** ones (e.g. `kiss.ackMode`, which restarts the port — see the 2026-06-11 ACKMODE amendment); the result says which happened so the caller isn't surprised.
+
+`value` is applied as the raw KISS byte, and the tool schema says so: TXDELAY/slottime/TXtail are in units of 10 ms (30 = 300 ms, 255 = 2.55 s, the longest KISS can express), persist is the p-persistence byte (255 = always transmit when the channel is clear). The unit belongs in the LLM-facing `[Description]`s because thinking in milliseconds is the standing trap on this parameter; the web panel itself once posted `txDelay: 300`, which is why `KissParamsValidator` spells the unit out in its rejection messages too.
 
 ## Auth & audit (reconciling §6)
 

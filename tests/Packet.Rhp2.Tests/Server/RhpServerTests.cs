@@ -386,6 +386,58 @@ public sealed class RhpServerTests : IAsyncDisposable
         Assert.Contains("\"id\":42", json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Unknown_type_with_a_non_integer_id_is_still_answered_and_keeps_the_session()
+    {
+        // The malformed id used to throw InvalidOperationException out of the codec, past the
+        // read loop's bad-frame filter, and the whole session was dropped instead of getting
+        // its graceful errCode 2 (packet.net#698 RM-1).
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendRawAsync("""{"type":"thisIsNotReal","id":"not-an-int","seqno":1.5}""");
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal("thisIsNotRealReply", type);
+        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"id\":", json, StringComparison.Ordinal);   // nothing truthful to echo
+
+        // The session survives: a normal request still works on the same connection.
+        await client.SendAsync(new SocketMessage { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
+        Assert.Equal(RhpErrorCode.Ok, (await client.ExpectAsync<SocketReplyMessage>()).ErrCode);
+    }
+
+    [Fact]
+    public async Task An_error_openReply_carries_no_handle_key_on_the_wire()
+    {
+        // spec/rhp2.cddl: "? handle: uint  ; present on success; absent on parameter errors".
+        // pdn used to emit "handle":0 on every failure (packet.net#698 RM-3).
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "G9DUM-S", Flags = (int)OpenFlags.Active });
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal("openReply", type);
+        Assert.Contains("\"errCode\":7", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("handle", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_successful_openReply_still_carries_its_handle()
+    {
+        var (server, _) = await StartServerAsync();
+        var client = await ConnectAsync(server);
+
+        await client.SendAsync(new OpenMessage
+        { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
+
+        var (type, json) = await client.ReadRawAsync();
+        Assert.Equal("openReply", type);
+        Assert.Contains("\"handle\":", json, StringComparison.Ordinal);
+    }
+
     // ── Auth: the gate + the D2 no-wedge deviation ────────────────────────
 
     [Fact]
@@ -724,7 +776,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         var reply = await client.ExpectAsync<OpenReplyMessage>();
         Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
         _ = await client.ExpectAsync<StatusMessage>();   // swallow the connected push
-        return reply.Handle;
+        return reply.Handle!.Value;
     }
 
     // The packet engine stand-in: returns one scripted in-memory connection (or throws), and
@@ -752,14 +804,26 @@ public sealed class RhpServerTests : IAsyncDisposable
         public string? UiListenerPort;
         public int UiRegistrations, UiDisposals;
 
-        public Task<INodeConnection> OpenAx25StreamAsync(string? portLabel, string? local, string remote, CancellationToken ct = default)
+        /// <summary>Signals that the server has entered the connect (an open is in flight).</summary>
+        public TaskCompletionSource OpenEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>When set, the connect blocks until it is completed: the seam for driving
+        /// what happens to a client while its open is still on the air.</summary>
+        public TaskCompletionSource? OpenGate { get; set; }
+
+        public async Task<INodeConnection> OpenAx25StreamAsync(string? portLabel, string? local, string remote, CancellationToken ct = default)
         {
             (LastPort, LastLocal, LastRemote) = (portLabel, local, remote);
+            OpenEntered.TrySetResult();
+            if (OpenGate is { } gate)
+            {
+                await gate.Task.WaitAsync(Timeout, ct).ConfigureAwait(false);
+            }
             if (Fail is { } f)
             {
                 throw f;
             }
-            return Task.FromResult<INodeConnection>(Connection);
+            return Connection;
         }
 
         public IDisposable RegisterListener(string? portLabel, string local, Func<INodeConnection, string, Task> onAccepted)

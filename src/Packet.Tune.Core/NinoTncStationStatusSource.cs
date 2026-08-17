@@ -49,20 +49,27 @@ public sealed class NinoTncStationStatusSource : IStationStatusProvider
     private readonly TaitCcdiRadio? radio;
     private readonly string callsign;
     private readonly NinoTncStationStatusOptions options;
+    private readonly TimeProvider clock;
 
     /// <summary>Create over a TNC + radio pair (lifetimes stay the caller's).</summary>
     /// <param name="tnc">The NinoTNC whose mode is reported, or <c>null</c> (mode unknown).</param>
     /// <param name="radio">The paired radio for channel/RSSI, or <c>null</c> (both omitted).</param>
     /// <param name="callsign">This station's callsign.</param>
     /// <param name="options">Tunables; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the per-query timeouts; null = system.</param>
     public NinoTncStationStatusSource(
-        NinoTncSerialPort? tnc, TaitCcdiRadio? radio, string callsign, NinoTncStationStatusOptions? options = null)
+        NinoTncSerialPort? tnc,
+        TaitCcdiRadio? radio,
+        string callsign,
+        NinoTncStationStatusOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(callsign);
         this.tnc = tnc;
         this.radio = radio;
         this.callsign = callsign;
         this.options = options ?? new NinoTncStationStatusOptions();
+        clock = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>Diagnostic sink. Null = silent.</summary>
@@ -141,7 +148,7 @@ public sealed class NinoTncStationStatusSource : IStationStatusProvider
         try
         {
             float dbm = await radio!.ReadRssiDbmAsync(cancellationToken).AsTask()
-                .WaitAsync(options.QueryTimeout, cancellationToken).ConfigureAwait(false);
+                .WaitAsync(options.QueryTimeout, clock, cancellationToken).ConfigureAwait(false);
             return Math.Round(dbm, 1);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -159,7 +166,7 @@ public sealed class NinoTncStationStatusSource : IStationStatusProvider
     {
         try
         {
-            var report = await radio!.QueryCurrentChannelAsync(cancellationToken).WaitAsync(options.QueryTimeout, cancellationToken)
+            var report = await radio!.QueryCurrentChannelAsync(cancellationToken).WaitAsync(options.QueryTimeout, clock, cancellationToken)
                 .ConfigureAwait(false);
             return string.IsNullOrEmpty(report.ChannelId) ? null : report.ChannelId;
         }

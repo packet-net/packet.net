@@ -102,6 +102,7 @@ public sealed class SdmTuningLink : ITuningLink
     private readonly IRadioSideChannel channel;
     private readonly string peerId;
     private readonly SdmTuningLinkOptions options;
+    private readonly TimeProvider clock;
     private readonly SemaphoreSlim sendGate = new(1, 1);
     private readonly Channel<TuningTelegram> inbound = Channel.CreateUnbounded<TuningTelegram>();
     private readonly SemaphoreSlim arrivalSignal = new(0);
@@ -116,25 +117,37 @@ public sealed class SdmTuningLink : ITuningLink
 
     /// <summary>
     /// Create over any <see cref="IRadioSideChannel"/> (see
-    /// <see cref="Create(TaitCcdiRadio, string, SdmTuningLinkOptions?, bool)"/> for
+    /// <see cref="Create(TaitCcdiRadio, string, SdmTuningLinkOptions?, bool, TimeProvider?)"/> for
     /// the live-Tait-radio form).
     /// </summary>
     /// <param name="channel">The radio's side channel.</param>
     /// <param name="peerId">The peer radio's side-channel identity (for Tait
     /// SDM, the 8-character data identity).</param>
     /// <param name="options">Tunables; null = defaults.</param>
-    public SdmTuningLink(IRadioSideChannel channel, string peerId, SdmTuningLinkOptions? options = null)
-        : this(channel, peerId, options, ownedAdapter: null)
+    /// <param name="timeProvider">Time source for the guard, backoff, poll and receipt
+    /// waits; null = system.</param>
+    public SdmTuningLink(
+        IRadioSideChannel channel,
+        string peerId,
+        SdmTuningLinkOptions? options = null,
+        TimeProvider? timeProvider = null)
+        : this(channel, peerId, options, timeProvider, ownedAdapter: null)
     {
     }
 
-    private SdmTuningLink(IRadioSideChannel channel, string peerId, SdmTuningLinkOptions? options, TaitSdmSideChannel? ownedAdapter)
+    private SdmTuningLink(
+        IRadioSideChannel channel,
+        string peerId,
+        SdmTuningLinkOptions? options,
+        TimeProvider? timeProvider,
+        TaitSdmSideChannel? ownedAdapter)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentException.ThrowIfNullOrEmpty(peerId);
         this.channel = channel;
         this.peerId = peerId;
         this.options = options ?? new SdmTuningLinkOptions();
+        clock = timeProvider ?? TimeProvider.System;
         this.ownedAdapter = ownedAdapter;
         channel.DatagramArrived += OnDatagramArrived;
         channel.DeliveryReceipt += OnDeliveryReceipt;
@@ -151,8 +164,14 @@ public sealed class SdmTuningLink : ITuningLink
     /// budget to ride an extended SDM (up to 128 characters — natively split/reassembled by the
     /// radios). Needed for the richer <see cref="StationStatus"/> reply; leave <c>false</c> for the
     /// short mode-coordination / deviation telegrams. Default <c>false</c>.</param>
+    /// <param name="timeProvider">Time source for the guard, backoff, poll and receipt
+    /// waits; null = system.</param>
     public static SdmTuningLink Create(
-        TaitCcdiRadio radio, string peerId, SdmTuningLinkOptions? options = null, bool extendedSdm = false)
+        TaitCcdiRadio radio,
+        string peerId,
+        SdmTuningLinkOptions? options = null,
+        bool extendedSdm = false,
+        TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(peerId);
         if (peerId.Length != TaitSdmSideChannel.IdentityLength)
@@ -162,7 +181,7 @@ public sealed class SdmTuningLink : ITuningLink
         }
         var adapter = new TaitSdmSideChannel(
             radio, new TaitSdmSideChannelOptions { EnableExtendedSdm = extendedSdm });
-        return new SdmTuningLink(adapter, peerId, options, adapter);
+        return new SdmTuningLink(adapter, peerId, options, timeProvider, adapter);
     }
 
     /// <summary>Diagnostic sink (attempt/receipt/retry lines). Null = silent.</summary>
@@ -232,7 +251,7 @@ public sealed class SdmTuningLink : ITuningLink
                         bool? acked;
                         try
                         {
-                            acked = await receipt!.Task.WaitAsync(options.ReceiptTimeout, cancellationToken)
+                            acked = await receipt!.Task.WaitAsync(options.ReceiptTimeout, clock, cancellationToken)
                                 .ConfigureAwait(false);
                         }
                         catch (TimeoutException)
@@ -257,7 +276,7 @@ public sealed class SdmTuningLink : ITuningLink
 
                 if (attempt < options.MaxAttempts)
                 {
-                    await Task.Delay(options.RetryBackoff, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(options.RetryBackoff, clock, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -329,27 +348,27 @@ public sealed class SdmTuningLink : ITuningLink
         {
             return;
         }
-        var since = DateTimeOffset.UtcNow - new DateTimeOffset(arrival, TimeSpan.Zero);
+        var since = clock.GetUtcNow() - new DateTimeOffset(arrival, TimeSpan.Zero);
         var wait = options.PostReceiveGuard - since;
         if (wait > TimeSpan.Zero)
         {
             // The radio is (or may be) transmitting its auto-ack for the
             // telegram we just received — sending now would pre-empt it.
-            await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(wait, clock, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async Task WaitForChannelClearAsync(CancellationToken cancellationToken)
     {
-        var start = DateTimeOffset.UtcNow;
+        var start = clock.GetUtcNow();
         while (channel.ChannelBusy == true)
         {
-            if (DateTimeOffset.UtcNow - start > options.ChannelClearTimeout)
+            if (clock.GetUtcNow() - start > options.ChannelClearTimeout)
             {
                 throw new TuningLinkException(
                     $"channel still busy after {options.ChannelClearTimeout.TotalSeconds:0.#}s — refusing to transmit over it");
             }
-            await Task.Delay(options.ChannelClearPollInterval, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(options.ChannelClearPollInterval, clock, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -361,9 +380,22 @@ public sealed class SdmTuningLink : ITuningLink
             {
                 // Prompt read on arrival events; slow fallback poll otherwise
                 // (the buffer is one-deep — a missed event must not strand a
-                // telegram until the next one overwrites it).
-                await arrivalSignal.WaitAsync(options.ReceivePollInterval, cancellationToken)
-                    .ConfigureAwait(false);
+                // telegram until the next one overwrites it). SemaphoreSlim has
+                // no TimeProvider-timeout overload, so the poll deadline rides a
+                // clock-driven token: on the system clock this is the same wait,
+                // and under a test clock it only ticks when time is advanced.
+                using (var poll = new CancellationTokenSource(options.ReceivePollInterval, clock))
+                using (var wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, poll.Token))
+                {
+                    try
+                    {
+                        await arrivalSignal.WaitAsync(wake.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // Fallback poll tick: read the buffer anyway.
+                    }
+                }
 
                 string? message;
                 try
@@ -380,7 +412,7 @@ public sealed class SdmTuningLink : ITuningLink
                 {
                     continue;
                 }
-                Interlocked.Exchange(ref lastArrivalTicks, DateTimeOffset.UtcNow.UtcTicks);
+                Interlocked.Exchange(ref lastArrivalTicks, clock.GetUtcNow().UtcTicks);
                 if (!TuningTelegram.TryParse(message, out var telegram) || telegram is null)
                 {
                     Log?.Invoke($"sdm-link: ignoring non-telegram SDM: '{message}'");

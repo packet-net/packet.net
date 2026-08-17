@@ -99,6 +99,42 @@ public class FlrigRigTests
     }
 
     [Fact]
+    public async Task Dispose_Unkeys_After_A_Key_That_Faulted_Once_Flrig_Had_Acted_On_It()
+    {
+        using var handler = new FakeFlrigHandler();
+        var rig = await ConnectAsync(handler);
+
+        // flrig keys the rig and then answers with a fault: the client sees a failed command,
+        // the transmitter is up regardless.
+        handler.FaultsAfterActing["rig.set_ptt"] = (-1, "reply lost");
+        var act = async () => await rig.SetPttAsync(true);
+        await act.Should().ThrowAsync<RigCommandException>();
+        handler.Ptt.Should().Be(1);
+
+        await rig.DisposeAsync();
+
+        handler.Ptt.Should().Be(0, "an unconfirmed key must still be unkeyed at dispose");
+    }
+
+    [Fact]
+    public async Task Dispose_Unkeys_Again_When_An_Explicit_Unkey_Faulted()
+    {
+        using var handler = new FakeFlrigHandler();
+        var rig = await ConnectAsync(handler);
+        await rig.SetPttAsync(true);
+        handler.Ptt.Should().Be(1);
+
+        handler.Faults["rig.set_ptt"] = (-1, "busy"); // the unkey never reaches the rig
+        var act = async () => await rig.SetPttAsync(false);
+        await act.Should().ThrowAsync<RigCommandException>();
+        handler.Ptt.Should().Be(1);
+
+        await rig.DisposeAsync();
+
+        handler.Ptt.Should().Be(0, "the latch clears on a confirmed unkey only");
+    }
+
+    [Fact]
     public async Task Swr_Prefers_The_Direct_Method()
     {
         using var handler = new FakeFlrigHandler { SwrDirect = 1.7 };
@@ -131,6 +167,29 @@ public class FlrigRigTests
         // hamlib flrig.c: relative = deflection/100 × scale; watts = deflection × scale.
         (await rig.ReadRfPowerAsync()).Should().Be(1.0);
         (await rig.ReadRfPowerWattsAsync()).Should().Be(100.0);
+    }
+
+    [Fact]
+    public async Task Rf_Power_Relative_Is_The_Plain_Deflection_At_Scale_One()
+    {
+        using var handler = new FakeFlrigHandler { PwrMeter = 40, PwrMeterScale = 1.0 };
+        await using var rig = await ConnectAsync(handler);
+
+        (await rig.ReadRfPowerAsync()).Should().Be(0.4);
+        (await rig.ReadRfPowerWattsAsync()).Should().Be(40.0);
+    }
+
+    [Fact]
+    public async Task Rf_Power_Relative_Clamps_To_Full_Scale_While_Watts_Stay_Absolute()
+    {
+        // A 200 W meter (scale 2) at full deflection: hamlib's relative arithmetic would give
+        // 2.0, outside IRigControl's 0-1 fraction-of-full-scale contract (and rendered as "200%"
+        // by anything that treats it as one). The watts stay the faithful deflection x scale.
+        using var handler = new FakeFlrigHandler { PwrMeter = 100, PwrMeterScale = 2.0 };
+        await using var rig = await ConnectAsync(handler);
+
+        (await rig.ReadRfPowerAsync()).Should().Be(1.0);
+        (await rig.ReadRfPowerWattsAsync()).Should().Be(200.0);
     }
 
     [Fact]

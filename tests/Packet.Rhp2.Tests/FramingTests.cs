@@ -1,5 +1,6 @@
 using System.Text;
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace Packet.Rhp2.Tests;
@@ -119,9 +120,36 @@ public class FramingTests
     {
         // A peer sends the first byte of a frame and then never sends the rest —
         // the slowloris shape. With an in-frame timeout the reader gives up rather
-        // than waiting forever.
+        // than waiting forever. The deadline runs on the INJECTED clock (docs/plan.md
+        // §2.7), so this asserts the drop by advancing time, not by waiting for it
+        // (packet.net#698 RM-8).
+        var time = new FakeTimeProvider();
         using var stalled = new StallAfterStream(yield: [0x00]);
-        var act = async () => await RhpFraming.ReadFrameAsync(stalled, TimeSpan.FromMilliseconds(150));
+
+        var read = RhpFraming.ReadFrameAsync(stalled, TimeSpan.FromSeconds(30), time);
+        await stalled.Stalling.Task.WaitAsync(TimeSpan.FromSeconds(30));   // the deadline is armed
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        var act = async () => await read;
+        await act.Should().ThrowAsync<TimeoutException>();
+    }
+
+    [Fact]
+    public async Task ReadFrameAsync_does_not_fire_the_in_frame_deadline_before_it_elapses()
+    {
+        // The other half of the seam: advancing to just short of the window leaves the read
+        // pending, proving the reader isn't simply cancelling on the first tick.
+        var time = new FakeTimeProvider();
+        using var stalled = new StallAfterStream(yield: [0x00]);
+
+        var read = RhpFraming.ReadFrameAsync(stalled, TimeSpan.FromSeconds(30), time);
+        await stalled.Stalling.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        time.Advance(TimeSpan.FromSeconds(29));
+
+        read.IsCompleted.Should().BeFalse();
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        var act = async () => await read;
         await act.Should().ThrowAsync<TimeoutException>();
     }
 
@@ -160,6 +188,10 @@ public class FramingTests
     {
         private int position;
 
+        /// <summary>Completes when the stalling read begins. That is strictly after the reader
+        /// has armed its in-frame deadline, so it is the point a fake clock may be advanced.</summary>
+        public TaskCompletionSource Stalling { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
         {
             if (position < yield.Length)
@@ -167,6 +199,7 @@ public class FramingTests
                 buffer.Span[0] = yield[position++];
                 return 1;
             }
+            Stalling.TrySetResult();
             await Task.Delay(System.Threading.Timeout.Infinite, ct).ConfigureAwait(false);
             return 0;   // unreachable — the delay only ends by cancellation
         }

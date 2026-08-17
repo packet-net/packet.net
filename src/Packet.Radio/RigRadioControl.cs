@@ -40,9 +40,9 @@ namespace Packet.Radio;
 /// adapter (the node factory hands it a dedicated rig connection): dispose stops the poll loop,
 /// then disposes the rig. <c>false</c> (default) leaves the rig to outlive the adapter. Dispose
 /// best-effort unkeys (swallowing failures) only when the last transmitter command through this
-/// adapter was a key AND the rig is not owned — an owned rig's own dispose already guarantees
-/// best-effort unkey (the <see cref="IRigControl.SetPttAsync"/> contract), so the adapter
-/// avoids issuing a second one.
+/// adapter keyed the rig (or left a key's outcome unknown) AND the rig is not owned; an owned
+/// rig's own dispose already guarantees best-effort unkey (the
+/// <see cref="IRigControl.SetPttAsync"/> contract), so the adapter avoids issuing a second one.
 /// </para>
 /// </remarks>
 public sealed class RigRadioControl : IRadioControl
@@ -160,8 +160,22 @@ public sealed class RigRadioControl : IRadioControl
                 "The rig does not advertise PttSet — the transmitter cannot be keyed through " +
                 "this adapter. Probe Capabilities for RadioCapabilities.TransmitterControl before calling.");
         }
+        // Raise the latch before the command goes out and lower it only after an unkey the rig
+        // confirmed: a key that faults or times out mid-command may well have reached the rig,
+        // so the transmitter's real state is unknown and unknown must resolve toward unkeying at
+        // dispose. Ordering it the other way round skips the dispose-unkey exactly when a keyed
+        // transmitter is most likely.
+        if (transmit)
+        {
+            lastCommandedPtt = true;
+        }
+
         await rig.SetPttAsync(transmit, cancellationToken).ConfigureAwait(false);
-        lastCommandedPtt = transmit;
+
+        if (!transmit)
+        {
+            lastCommandedPtt = false;
+        }
     }
 
     private async Task PollLoopAsync(CancellationToken ct)
