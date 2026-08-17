@@ -991,7 +991,10 @@ async function appPackageSetIdentity(id: string, body: AppIdentityRequest): Prom
     const p = mock.APP_PACKAGES.find((x) => x.id === id);
     if (!p || p.source === "inline") throw new Error(`Unknown package '${id}'.`);
     p.command = body.command?.trim() || null;
-    p.callsign = body.callsign?.trim() || p.callsign; // a blank pin falls back to auto-assign (kept as-is in the mock)
+    // The pin is what the body carries; `callsign` is the node-RESOLVED value, so a blank pin
+    // falls back to auto-assignment (kept as-is in the mock, which has no resolver).
+    p.pinnedCallsign = body.callsign?.trim() || null;
+    p.callsign = p.pinnedCallsign ?? p.callsign;
     p.netromAlias = body.netromAlias?.trim() || null;
     p.netromQuality = p.netromAlias ? (body.netromQuality ?? 255) : null;
     return structuredClone(p);

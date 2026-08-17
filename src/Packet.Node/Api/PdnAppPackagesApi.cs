@@ -349,7 +349,7 @@ public static class PdnAppPackagesApi
             Id: id, Name: id, Version: null, Description: null, Icon: null,
             Capabilities: [], Enabled: override_?.Enabled ?? false, Source: "package",
             Error: null, Service: "none", State: null, Pid: null, Detail: null, Forwards: [],
-            Command: override_?.Command, Callsign: resolvedCall,
+            Command: override_?.Command, Callsign: resolvedCall, PinnedCallsign: override_?.Callsign,
             NetromAlias: override_?.Netrom?.Alias, NetromQuality: override_?.Netrom?.Quality);
     }
 
@@ -414,10 +414,12 @@ public static class PdnAppPackagesApi
             Forwards: [.. package.Forwards.Select(f => new AppForwardEntry(
                 f.Listen, f.Target, f.Tls == ForwardTls.Raw ? "raw" : "terminate"))],
             // Packet identity: the effective command verb (owner override ?? manifest), the
-            // node-resolved callsign (pin or auto-assigned — null when the app binds none), and
-            // the opt-in NET/ROM advert (null until the owner sets it).
+            // node-resolved callsign (pin or auto-assigned, null when the app binds none), the
+            // owner's literal pin (null when the callsign above was auto-assigned), and the
+            // opt-in NET/ROM advert (null until the owner sets it).
             Command: package.EffectiveCommand,
             Callsign: callsigns.TryGetValue(package.Id, out var resolved) ? resolved.Callsign.ToString() : null,
+            PinnedCallsign: package.Override?.Callsign,
             NetromAlias: package.Override?.Netrom?.Alias,
             NetromQuality: package.Override?.Netrom?.Quality);
     }
@@ -446,6 +448,7 @@ public static class PdnAppPackagesApi
         // owner-authored analog of a BPQ APPLICATION line).
         Command: inline.Command,
         Callsign: callsigns.TryGetValue(inline.Id, out var inlineCall) ? inlineCall.Callsign.ToString() : null,
+        PinnedCallsign: inline.Callsign,
         NetromAlias: inline.Netrom?.Alias,
         NetromQuality: inline.Netrom?.Quality);
 
@@ -462,8 +465,16 @@ public static class PdnAppPackagesApi
     /// <c>Command</c> is the effective node-prompt verb (owner override ?? manifest /
     /// inline), <c>Callsign</c> is the node-resolved on-air callsign (a pin or an
     /// auto-assigned <c>&lt;node-base&gt;-N</c>, null when the app binds none),
-    /// <c>NetromAlias</c>/<c>NetromQuality</c> are the opt-in NET/ROM advertisement (null when
-    /// the owner hasn't opted in).</summary>
+    /// <c>PinnedCallsign</c> is the owner's literal <c>callsign</c> pin (null when the
+    /// resolved callsign was auto-assigned), <c>NetromAlias</c>/<c>NetromQuality</c> are the
+    /// opt-in NET/ROM advertisement (null when the owner hasn't opted in).
+    /// <para><c>Callsign</c> alone cannot drive an edit: it is the RESOLVED value either way,
+    /// so a client re-sending it would pin an auto-assignment, and a client sending null (as
+    /// the panel's identity editor did) would silently CLEAR a pin on any verb/alias edit,
+    /// since <c>PUT /{id}/identity</c> is a full replace (#702 C043). <c>PinnedCallsign</c> is
+    /// the field that round-trips: it is the configured text verbatim, including the bare
+    /// <c>-N</c> SSID form and a pin the resolver rejected, and it survives the app being
+    /// disabled, which drops it out of the resolver's map entirely.</para></summary>
     public sealed record AppPackageEntry(
         string Id,
         string Name,
@@ -481,6 +492,7 @@ public static class PdnAppPackagesApi
         IReadOnlyList<AppForwardEntry> Forwards,
         string? Command,
         string? Callsign,
+        string? PinnedCallsign,
         string? NetromAlias,
         int? NetromQuality);
 

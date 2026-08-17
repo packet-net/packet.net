@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -259,6 +260,75 @@ public sealed class AppPackagesApiTests : IDisposable
         wall.GetProperty("service").GetString().Should().Be("none");
         wall.GetProperty("capabilities").EnumerateArray().Select(c => c.GetString())
             .Should().Equal("session");
+    }
+
+    // --- packet identity -----------------------------------------------------------------
+
+    [Fact]
+    public async Task Identity_projects_the_owner_pin_separately_from_the_resolved_callsign()
+    {
+        // #702 C043: `callsign` on the wire is the node-RESOLVED value (a pin OR an
+        // auto-assignment), so it cannot tell an editor what to send back. PUT /identity is a
+        // full replace, so the panel's editor - which had only the resolved value and sent
+        // null - cleared the pin on every verb-only save. `pinnedCallsign` is the field that
+        // round-trips: the owner's literal text, null when the callsign was auto-assigned.
+        await using var factory = new NodeAppFactory(new FakeSupervisor());
+        using var client = factory.CreateClient();
+
+        // svc is packet-capable; enabling it makes the resolver assign it the lowest free SSID
+        // on the node base (M0LTE-1 is the node's own).
+        (await client.PostAsync("/api/v1/apps/packages/svc/enable", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var auto = Entry(await GetInventoryAsync(client), "svc");
+        auto.GetProperty("callsign").GetString().Should().Be("M0LTE-2");
+        auto.GetProperty("pinnedCallsign").ValueKind.Should().Be(JsonValueKind.Null);
+
+        // Pin it in the bare "-N" form the resolver accepts.
+        var put = await client.PutAsync("/api/v1/apps/packages/svc/identity",
+            JsonContent.Create(new { command = "SVC", callsign = "-7", netromAlias = (string?)null, netromQuality = (int?)null }));
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var pinned = JsonDocument.Parse(await put.Content.ReadAsStringAsync()).RootElement;
+        // The resolved callsign expands the pin; the pin itself round-trips verbatim.
+        pinned.GetProperty("callsign").GetString().Should().Be("M0LTE-7");
+        pinned.GetProperty("pinnedCallsign").GetString().Should().Be("-7");
+
+        var reread = Entry(await GetInventoryAsync(client), "svc");
+        reread.GetProperty("pinnedCallsign").GetString().Should().Be("-7");
+    }
+
+    [Fact]
+    public async Task Identity_keeps_the_pin_when_the_editor_sends_it_back_with_a_new_verb()
+    {
+        // The client-side half of the same fix: send `pinnedCallsign` back unchanged and a
+        // verb-only edit leaves the pin alone (an absent/blank one would clear it).
+        await using var factory = new NodeAppFactory(new FakeSupervisor());
+        using var client = factory.CreateClient();
+
+        (await client.PostAsync("/api/v1/apps/packages/svc/enable", content: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PutAsync("/api/v1/apps/packages/svc/identity",
+            JsonContent.Create(new { command = "SVC", callsign = "M9YYY-3", netromAlias = (string?)null, netromQuality = (int?)null })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var edit = await client.PutAsync("/api/v1/apps/packages/svc/identity",
+            JsonContent.Create(new { command = "MAIL", callsign = "M9YYY-3", netromAlias = (string?)null, netromQuality = (int?)null }));
+        edit.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var after = Entry(await GetInventoryAsync(client), "svc");
+        after.GetProperty("command").GetString().Should().Be("MAIL");
+        after.GetProperty("pinnedCallsign").GetString().Should().Be("M9YYY-3");
+        // A pin off the node base is honoured verbatim.
+        after.GetProperty("callsign").GetString().Should().Be("M9YYY-3");
+
+        // And a blank pin still CLEARS it, back to auto-assignment (the documented behaviour).
+        (await client.PutAsync("/api/v1/apps/packages/svc/identity",
+            JsonContent.Create(new { command = "MAIL", callsign = (string?)null, netromAlias = (string?)null, netromQuality = (int?)null })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var cleared = Entry(await GetInventoryAsync(client), "svc");
+        cleared.GetProperty("pinnedCallsign").ValueKind.Should().Be(JsonValueKind.Null);
+        cleared.GetProperty("callsign").GetString().Should().Be("M0LTE-2");
     }
 
     // --- the trust toggle ----------------------------------------------------------------

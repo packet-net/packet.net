@@ -383,6 +383,49 @@ describe("Apps — packet identity", () => {
     expect(body.netromAlias).toBeNull();
   });
 
+  it("editing only the verb keeps an existing callsign pin in the PUT body", async () => {
+    // #702 C043: PUT /identity is a full REPLACE, and the form used to seed the callsign field
+    // to "" (the pin only ever showed as a placeholder), so saving a verb change sent
+    // callsign:null and silently dropped the pin - the app fell back to an auto-assigned SSID.
+    // bbs-bridge is the pinned fixture (pinnedCallsign "M0ABC-3").
+    const setIdentity = vi.spyOn(api, "appPackageSetIdentity").mockResolvedValue(fixture("bbs-bridge"));
+    await mountApps();
+
+    fireEvent.click(within(row("bbs-bridge")).getByRole("button", { name: "Identity" }));
+    const title = screen.getByText(/Packet identity — BBS bridge/);
+    const modal = title.closest("div.relative") as HTMLElement;
+
+    // The pin is seeded into the field (not just hinted as a placeholder)…
+    expect(within(modal).getByDisplayValue("M0ABC-3")).toBeInTheDocument();
+    // …and a verb-only edit sends it back unchanged.
+    fireEvent.change(within(modal).getByDisplayValue("BBS"), { target: { value: "MAIL" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(setIdentity).toHaveBeenCalled());
+    expect(setIdentity.mock.calls[0][1]).toMatchObject({ command: "MAIL", callsign: "M0ABC-3" });
+  });
+
+  it("an auto-assigned callsign is not turned into a pin by an unrelated edit", async () => {
+    // The mirror of the above: `callsign` on the wire is the node-RESOLVED value, so seeding
+    // the field from it would PIN an auto-assignment the node is meant to keep choosing.
+    // wall resolves to M0ABC-1 with pinnedCallsign null.
+    const setIdentity = vi.spyOn(api, "appPackageSetIdentity").mockResolvedValue(fixture("wall"));
+    await mountApps();
+
+    fireEvent.click(within(row("wall")).getByRole("button", { name: "Identity" }));
+    const title = screen.getByText(/Packet identity — WALL/);
+    const modal = title.closest("div.relative") as HTMLElement;
+
+    // Empty field, with the resolved callsign offered only as a placeholder.
+    const callsignInput = within(modal).getByPlaceholderText("M0ABC-1") as HTMLInputElement;
+    expect(callsignInput.value).toBe("");
+    fireEvent.change(within(modal).getByDisplayValue("WALL"), { target: { value: "NOTES" } });
+    fireEvent.click(within(modal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(setIdentity).toHaveBeenCalled());
+    expect(setIdentity.mock.calls[0][1]).toMatchObject({ command: "NOTES", callsign: null });
+  });
+
   it("the Identity editor is disabled for read scope", async () => {
     await mountApps("read");
     const btn = within(row("wall")).getByRole("button", { name: "Identity" });
