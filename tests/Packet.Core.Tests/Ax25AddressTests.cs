@@ -116,4 +116,23 @@ public class Ax25AddressTests
         };
         act.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Read_Rejects_Non_Space_Character_After_Padding()
+    {
+        // Callsign characters are left-justified and space-padded; a non-space
+        // appearing after a padding space (here 'A', space, 'B') is malformed.
+        var buf = new byte[Ax25Address.EncodedLength];
+        buf[0] = (byte)('A' << 1);
+        buf[1] = (byte)(' ' << 1);   // padding starts
+        buf[2] = (byte)('B' << 1);   // non-space after padding, invalid
+        for (int i = 3; i < 6; i++)
+        {
+            buf[i] = (byte)(' ' << 1);
+        }
+
+        buf[6] = 0x61;   // C=0, R=11, SSID=0, E=1
+
+        ((Action)(() => Ax25Address.Read(buf))).Should().Throw<ArgumentException>();
+    }
 }

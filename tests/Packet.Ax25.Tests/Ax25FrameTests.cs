@@ -169,4 +169,36 @@ public class Ax25FrameTests
             digipeaters: nine);
         act.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Ui_Accepts_Exactly_Eight_Digipeaters()
+    {
+        // §3.12.5 allows up to 8 repeaters, so the boundary value itself must
+        // be accepted (only the 9th is rejected).
+        var eight = Enumerable.Range(0, 8).Select(i => new Callsign($"D{i}", 0));
+        var frame = Ax25Frame.Ui(
+            destination: new Callsign("APRS", 0),
+            source: new Callsign("G7XYZ", 0),
+            info: ReadOnlySpan<byte>.Empty,
+            digipeaters: eight);
+
+        frame.Digipeaters.Count.Should().Be(8);
+        frame.Digipeaters[7].ExtensionBit.Should().BeTrue("E-bit lands on the last digipeater");
+    }
+
+    [Fact]
+    public void Ui_Constructs_Digipeaters_With_Has_Been_Repeated_Bit_Clear()
+    {
+        // §3.12.4: the repeater slot C/H bit is the has-been-repeated flag. A
+        // freshly built frame has not been repeated anywhere, so every
+        // digipeater slot must start with it clear.
+        var frame = Ax25Frame.Ui(
+            destination: new Callsign("APRS", 0),
+            source: new Callsign("G7XYZ", 0),
+            info: ReadOnlySpan<byte>.Empty,
+            digipeaters: new[] { new Callsign("WIDE1", 1), new Callsign("WIDE2", 2) });
+
+        frame.Digipeaters.Should().OnlyContain(d => d.CrhBit == false,
+            "no digipeater has repeated the frame yet");
+    }
 }
