@@ -426,7 +426,6 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                     PublishChildPid(process.Id, groupLeader);
                     // Cancellable pumps tied to this run's stop (C076).
                     using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    var pid = process.Id;
                     var pumps = Task.WhenAll(
                         PumpStdoutAsync(process.StandardOutput, ts.Funnel, pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => SidecarLog.Stderr(childLogger, line), pumpStop.Token));
@@ -446,16 +445,18 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                     catch (OperationCanceledException)
                     {
                         // Stop requested (disable / reconfigure / shutdown): graceful teardown.
-                        ClearChildPid(process.Id);
+                        var stoppedPid = SafePid(process);
+                        ClearChildPid(stoppedPid);
                         await GracefulStopAsync(process, groupLeader).ConfigureAwait(false);
-                        await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader, tempKeyFile).ConfigureAwait(false);
+                        await CleanupChildAsync(process, pumps, pumpStop, stoppedPid, tempKeyFile).ConfigureAwait(false);
                         return;
                     }
 
-                    ClearChildPid(process.Id);
+                    var exitedPid = SafePid(process);
+                    ClearChildPid(exitedPid);
                     var exitCode = process.ExitCode;
                     LogExited(exitCode);
-                    await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader, tempKeyFile).ConfigureAwait(false);
+                    await CleanupChildAsync(process, pumps, pumpStop, exitedPid, tempKeyFile).ConfigureAwait(false);
                     // The child exited on its own (it should only exit on SIGTERM). Surface the
                     // unexpected exit as an error and back off into a respawn.
                     status.Update(TailscaleStatusSnapshot.Faulted(
@@ -496,21 +497,34 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         }
     }
 
-    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
-    /// to a group SIGKILL when a grandchild is holding the pipes open - C076), dispose the process
-    /// handle, and delete the temp auth-key file. Used by both the graceful-stop (cancellation)
-    /// and unexpected-exit paths of <see cref="RunChildAsync"/>.</summary>
+    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED - C076; it
+    /// closes our ends of the pipes rather than waiting on a grandchild that holds them), dispose
+    /// the process handle, and delete the temp auth-key file. Used by both the graceful-stop
+    /// (cancellation) and unexpected-exit paths of <see cref="RunChildAsync"/>.</summary>
     private async Task CleanupChildAsync(
-        Process process, Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader, string? tempKeyFile)
+        Process process, Task pumps, CancellationTokenSource pumpStop, int pid, string? tempKeyFile)
     {
         var drained = await ProcessSupervision.DrainPumpsAsync(
-            pumps, pumpStop, pid, groupLeader, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
+            pumps, pumpStop, process, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
         if (!drained)
         {
             LogDrainAbandoned(pid);
         }
-        process.Dispose();
         DeleteTempKey(tempKeyFile);
+    }
+
+    /// <summary>The child's pid, or 0 once the handle no longer has one. Log-only: a reaped pid
+    /// can already belong to something else, so it is never signalled.</summary>
+    private static int SafePid(Process process)
+    {
+        try
+        {
+            return process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
+        }
     }
 
     // ---- the spawn ------------------------------------------------------------------------

@@ -80,7 +80,6 @@ public sealed class HeardLog : IDisposable
     // opportunistic prune (pure in-memory then) stays inline, exactly as before.
     private readonly Channel<HeardEntry>? writes;
     private readonly CancellationTokenSource? writerStop;
-    private readonly Task? writer;
 
     // Serialises the drain so the background loop and an explicit Flush/Dispose can never
     // interleave: whoever holds it takes the pending snapshots AND writes them, so once Flush
@@ -118,7 +117,9 @@ public sealed class HeardLog : IDisposable
                 SingleWriter = false,   // every port's inbound pump records
             });
             writerStop = new CancellationTokenSource();
-            writer = Task.Run(() => WriteLoopAsync(writerStop.Token));
+            // Not awaited or held: the scheduler roots a running task, and Dispose flushes the
+            // tail through the same gate rather than by waiting on this one.
+            _ = Task.Run(() => WriteLoopAsync(writerStop.Token));
         }
 
         // Re-apply the retention policy to the hydrated set, so a restart drops stations that
@@ -243,9 +244,11 @@ public sealed class HeardLog : IDisposable
                 DrainOnce();
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception)
         {
-            // Disposal.
+            // Disposal, or a store fault the store itself already logged. Total by design: this
+            // is a background task on the node's shutdown path, so an escaping fault would be an
+            // unobserved exception, never a diagnosis.
         }
     }
 
@@ -285,18 +288,14 @@ public sealed class HeardLog : IDisposable
 
         writerStop!.Cancel();
         writes.Writer.TryComplete();
-        try
-        {
-            writer!.GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected on cancellation.
-        }
-        // The loop may have been cancelled mid-queue; persist the tail so a clean shutdown
-        // never loses hearings.
+
+        // Flush the tail synchronously, but do NOT block on the writer task and do NOT dispose
+        // the CTS the loop is still parked on. DI disposes this singleton on the host's shutdown
+        // path; a blocking wait on a thread-pool continuation there deadlocks whenever the pool
+        // is saturated. DrainOnce takes the same writeGate the loop holds, so it is a bounded
+        // Monitor wait (no pool involvement) and still guarantees everything enqueued before this
+        // call has reached the store.
         DrainOnce();
-        writerStop.Dispose();
     }
 
     /// <summary>Every heard entry across all ports (per (port, callsign)), most-recently-heard

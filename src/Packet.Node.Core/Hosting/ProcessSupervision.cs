@@ -23,8 +23,15 @@ namespace Packet.Node.Core.Hosting;
 /// exits, but the pipes stay open as long as any grandchild holds them - a service that
 /// double-forks or backgrounds a helper. An unbounded <c>await pumps</c> there parks the run loop
 /// forever, and with it the reconcile gate and shutdown. The drain is therefore bounded by a
-/// <see cref="TimeProvider"/> grace and escalates to SIGKILL of the process group, which is what
-/// actually releases the pipes.
+/// <see cref="TimeProvider"/> grace, after which it closes OUR ends of the pipes and abandons the
+/// log tail rather than the supervisor.
+/// </para>
+/// <para>
+/// <b>Never signal a reaped pid.</b> Every signal here goes to a child we have established is
+/// still alive. Once <c>WaitForExitAsync</c> returns, .NET has reaped the child and the kernel is
+/// free to hand that pid to anything, so a post-exit <c>kill(-pid, SIGKILL)</c> can land on an
+/// unrelated process group - and on a busy box that is not theoretical. That is why the bounded
+/// drain closes handles instead of signalling.
 /// </para>
 /// </remarks>
 internal static class ProcessSupervision
@@ -42,8 +49,8 @@ internal static class ProcessSupervision
     /// once a minute forever rather than never.</summary>
     public static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
 
-    /// <summary>How long <see cref="DrainPumpsAsync"/> waits for pipe EOF at each escalation
-    /// step. Short: the child is already gone, so this is pure log-tail salvage.</summary>
+    /// <summary>How long <see cref="DrainPumpsAsync"/> waits for pipe EOF at each step. Short:
+    /// the child is already gone, so this is pure log-tail salvage.</summary>
     public static readonly TimeSpan DefaultDrainGrace = TimeSpan.FromSeconds(2);
 
     /// <summary>UTF-8 without a BOM for the child's captured streams.</summary>
@@ -194,42 +201,40 @@ internal static class ProcessSupervision
     }
 
     /// <summary>
-    /// Drain the stdout/stderr pumps after the direct child has exited, BOUNDED (C076).
+    /// Drain the stdout/stderr pumps after the direct child has exited, BOUNDED (C076), and
+    /// dispose <paramref name="process"/>. Returns whether the pumps finished, so a caller can
+    /// log an honest "log tail lost".
     /// <para>
-    /// Waits <paramref name="grace"/> for pipe EOF; if a pipe-holding grandchild means EOF is
-    /// never coming, SIGKILLs the process group (the only thing that actually releases those
-    /// pipes) and waits one more grace; failing that, cancels the pump token and abandons them.
-    /// Returns whether the pumps finished, so a caller can log an honest "log tail lost".
+    /// Waits <paramref name="grace"/> for pipe EOF. If a grandchild inherited the pipes and is
+    /// still holding them, EOF is never coming, so the drain cancels the pump token and disposes
+    /// the process handle - which closes OUR ends of those pipes and makes the blocked reads
+    /// fail out - then waits one more grace and abandons whatever is left. The pumps only feed a
+    /// logger, so an unkillable reader costs a parked task; awaiting it costs the run loop, the
+    /// reconcile gate and shutdown.
     /// </para>
     /// <para>
-    /// The pump token is belt-and-braces, not the fix: a read already blocked inside the OS pipe
-    /// is not reliably interruptible, which is why killing the group is the load-bearing step.
+    /// It deliberately does NOT signal the process group here: the direct child has already been
+    /// reaped, so its pid is free for reuse and <c>kill(-pid, ...)</c> could hit something else
+    /// entirely. Orphan grandchildren are reaped by the stop path instead
+    /// (<see cref="GracefulStopAsync"/>), which signals a child it has established is alive.
     /// </para>
     /// </summary>
     public static async Task<bool> DrainPumpsAsync(
         Task pumps,
         CancellationTokenSource pumpStop,
-        int pid,
-        bool groupLeader,
+        Process process,
         TimeSpan grace,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(pumps);
         ArgumentNullException.ThrowIfNull(pumpStop);
+        ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(clock);
 
         if (await FinishedWithinAsync(pumps, grace, clock).ConfigureAwait(false))
         {
+            process.Dispose();
             return true;
-        }
-
-        if (groupLeader && !OperatingSystem.IsWindows())
-        {
-            _ = Signal(-pid, Sigkill);
-            if (await FinishedWithinAsync(pumps, grace, clock).ConfigureAwait(false))
-            {
-                return true;
-            }
         }
 
         try
@@ -238,10 +243,16 @@ internal static class ProcessSupervision
         }
         catch (ObjectDisposedException)
         {
-            // Raced with teardown; the abandon below still applies.
+            // Raced with teardown; closing the handles below still applies.
         }
-        // Abandoned deliberately: the pumps only feed a logger, so an unkillable reader costs a
-        // parked task, whereas awaiting it costs the whole supervisor.
+        try
+        {
+            process.Dispose();   // closes the redirected stream handles the pumps are blocked on
+        }
+        catch (Exception)
+        {
+            // Racing a reader; the handles are going away either way.
+        }
         return await FinishedWithinAsync(pumps, grace, clock).ConfigureAwait(false);
     }
 

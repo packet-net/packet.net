@@ -443,7 +443,6 @@ public sealed partial class AppServiceSupervisor(
                     // The pumps are cancellable and tied to this entry's stop (C076): a stop
                     // must be able to end log capture, not wait on a pipe nobody will close.
                     using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    var pid = process.Id;
                     var pumps = Task.WhenAll(
                         ProcessSupervision.PumpAsync(process.StandardOutput, line => AppLog.Stdout(appLogger, line), pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => AppLog.Stderr(appLogger, line), pumpStop.Token));
@@ -467,13 +466,14 @@ public sealed partial class AppServiceSupervisor(
                         // Stop requested (disable / shutdown / restart): graceful teardown. The
                         // stop SIGKILLs the group, which releases the pipes, so the drain here
                         // completes; it is bounded anyway.
+                        var stoppedPid = SafePid(process);
                         await GracefulStopAsync(process, groupLeader, entry.Id).ConfigureAwait(false);
                         SetState(entry, AppServiceState.Stopped, pid: null, detail: "stopped");
-                        await DrainPumpsAsync(pumps, pumpStop, pid, groupLeader, entry.Id).ConfigureAwait(false);
-                        process.Dispose();
+                        await DrainPumpsAsync(pumps, pumpStop, process, stoppedPid, entry.Id).ConfigureAwait(false);
                         return;
                     }
 
+                    var exitedPid = SafePid(process);
                     var exitCode = process.ExitCode;
                     LogServiceExited(entry.Id, exitCode);
                     detail = $"exited {exitCode}";
@@ -485,8 +485,7 @@ public sealed partial class AppServiceSupervisor(
                     // salvage the log tail, and the drain must not park the run loop, the
                     // reconcile gate and shutdown behind it.
                     SetState(entry, AppServiceState.Stopped, pid: null, detail);
-                    await DrainPumpsAsync(pumps, pumpStop, pid, groupLeader, entry.Id).ConfigureAwait(false);
-                    process.Dispose();
+                    await DrainPumpsAsync(pumps, pumpStop, process, exitedPid, entry.Id).ConfigureAwait(false);
 
                     // A run that lasted long enough counts as healthy: reset the backoff so one
                     // failure after hours of uptime is not punished at the crash-loop rate.
@@ -588,17 +587,31 @@ public sealed partial class AppServiceSupervisor(
         }
     }
 
-    /// <summary>Bounded post-exit drain (C076): salvage the log tail, escalate to SIGKILL of the
-    /// process group if a grandchild is holding the pipes open, then give up rather than park
-    /// the supervisor. A lost tail is logged; it is never a reason to stop supervising.</summary>
+    /// <summary>Bounded post-exit drain (C076): salvage the log tail, then close our ends of the
+    /// pipes and give up rather than park the supervisor. Disposes the process handle. A lost tail
+    /// is logged; it is never a reason to stop supervising.</summary>
     private async Task DrainPumpsAsync(
-        Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader, string id)
+        Task pumps, CancellationTokenSource pumpStop, Process process, int pid, string id)
     {
         var drained = await ProcessSupervision.DrainPumpsAsync(
-            pumps, pumpStop, pid, groupLeader, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
+            pumps, pumpStop, process, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
         if (!drained)
         {
             LogDrainAbandoned(id, pid);
+        }
+    }
+
+    /// <summary>The child's pid, or 0 once the handle no longer has one. Only ever used for a log
+    /// line - never to signal, because a reaped pid can already belong to something else.</summary>
+    private static int SafePid(Process process)
+    {
+        try
+        {
+            return process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
         }
     }
 

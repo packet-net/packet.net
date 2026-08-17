@@ -253,7 +253,6 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                     PublishChildPid(process.Id);
                     // Cancellable pumps tied to this run's stop (C076).
                     using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    var pid = process.Id;
                     var pumps = Task.WhenAll(
                         ProcessSupervision.PumpAsync(process.StandardOutput, line => DaemonLog.Stdout(childLogger, line), pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => DaemonLog.Stderr(childLogger, line), pumpStop.Token));
@@ -273,20 +272,22 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                     catch (OperationCanceledException)
                     {
                         // Stop requested (port teardown / dispose): graceful teardown.
-                        ClearChildPid(process.Id);
+                        var stoppedPid = SafePid(process);
+                        ClearChildPid(stoppedPid);
                         await GracefulStopAsync(process, groupLeader).ConfigureAwait(false);
-                        await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader).ConfigureAwait(false);
+                        await CleanupChildAsync(process, pumps, pumpStop, stoppedPid).ConfigureAwait(false);
                         return;
                     }
 
-                    ClearChildPid(process.Id);
+                    var exitedPid = SafePid(process);
+                    ClearChildPid(exitedPid);
                     var exitCode = process.ExitCode;
                     // The child exited on its own (a crash, or the USB device vanished from under
                     // it). Respawn after the backoff — same port, so the re-dialling clients
                     // recover without reconfiguration when the device comes back. The drain is
                     // BOUNDED (C076): a grandchild holding the pipes must not wedge this loop.
                     LogExited(portId, exitCode, delay.TotalSeconds);
-                    await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader).ConfigureAwait(false);
+                    await CleanupChildAsync(process, pumps, pumpStop, exitedPid).ConfigureAwait(false);
 
                     // A run that lasted counts as healthy: reset the backoff so one failure
                     // after hours of uptime is not punished at the crash-loop rate.
@@ -399,19 +400,32 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         }
     }
 
-    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
-    /// to a group SIGKILL when a grandchild is holding the pipes open - C076), then dispose the
-    /// process handle.</summary>
+    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED - C076; it
+    /// closes our ends of the pipes rather than waiting on a grandchild that holds them) and
+    /// dispose the process handle.</summary>
     private async Task CleanupChildAsync(
-        Process process, Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader)
+        Process process, Task pumps, CancellationTokenSource pumpStop, int pid)
     {
         var drained = await ProcessSupervision.DrainPumpsAsync(
-            pumps, pumpStop, pid, groupLeader, ProcessSupervision.DefaultDrainGrace, clock).ConfigureAwait(false);
+            pumps, pumpStop, process, ProcessSupervision.DefaultDrainGrace, clock).ConfigureAwait(false);
         if (!drained)
         {
             LogDrainAbandoned(portId, pid);
         }
-        process.Dispose();
+    }
+
+    /// <summary>The child's pid, or 0 once the handle no longer has one. Log-only: a reaped pid
+    /// can already belong to something else, so it is never signalled.</summary>
+    private static int SafePid(Process process)
+    {
+        try
+        {
+            return process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
+        }
     }
 
     private void PublishChildPid(int pid)
