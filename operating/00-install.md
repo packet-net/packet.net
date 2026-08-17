@@ -203,6 +203,8 @@ sudo systemctl restart packetnet
 
 An import validates before it applies, and rejects the file whole if anything in it is wrong. The restart is what makes the running node pick it up.
 
+Both verbs name the database they resolved in everything they print, and **neither ever creates one**: without `--db` (or `PACKETNET_DB`) they look at `/var/lib/packetnet/pdn.db` first and the working directory's `pdn.db` second, and if neither is there they refuse and list what they looked at. That matters most when you are exporting as a **pre-upgrade backup** - an export that quietly created a database would hand you a backup of a node that does not exist. Name the database explicitly, as above, and check the path in the output before you trust the file.
+
 ## Updating
 
 The panel's **Config** screen shows the running version and how this node updates - and, on a package install, offers **Apply** when a newer release exists. The node downloads the next release `.deb`, verifies its checksum, installs it through dpkg, and rolls back if the new version does not come up healthy; it restarts itself and the panel reconnects. dpkg stays the owner of every file it installed - the node never overwrites them itself.

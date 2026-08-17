@@ -58,9 +58,13 @@ NinoTNC port with a Tait radio attached, bound by serial:
 > **Where config lives.** A node keeps its config in its `pdn.db`, not a watched
 > file ([config-in-DB](../docs/config-in-db.md), #473) — so "edit it directly" means
 > either the web UI/API, or the export-edit-import round-trip: `pdn config export
-> --out node.yaml`, edit the YAML, `pdn config import node.yaml`. (A `--config` YAML
-> is read only on *first* boot, to migrate a legacy config into the DB.) Every YAML
-> block in this guide is that same config shape, whichever way you apply it.
+> --db /var/lib/packetnet/pdn.db --out node.yaml`, edit the YAML, `pdn config import
+> node.yaml --db /var/lib/packetnet/pdn.db`. Both verbs read a database that already
+> exists (they never create one) and name the one they resolved in what they print,
+> so name it explicitly unless you are running from the state directory. (A
+> `--config` YAML is read only on *first* boot, to migrate a legacy config into the
+> DB.) Every YAML block in this guide is that same config shape, whichever way you
+> apply it.
 
 ```yaml
 ports:

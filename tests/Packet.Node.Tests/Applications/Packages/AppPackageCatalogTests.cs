@@ -573,6 +573,38 @@ public class AppPackageCatalogTests : IDisposable
         Snapshot().Should().Equal(before, "directories (state dirs included) are created on use, not on scan");
     }
 
+    // ---- configured, but not installed (#738 item 2) ----------------------------------
+
+    [Fact]
+    public void An_apps_entry_naming_a_package_no_root_holds_is_reported_as_not_installed()
+    {
+        WritePackage(rootA, "alpha", SocketManifest("alpha", "ALPHA"));
+        var config = Config(
+            apps: [
+                new AppOverrideConfig { Id = "alpha", Enabled = true },
+                new AppOverrideConfig { Id = "ghost", Enabled = true },
+                new AppOverrideConfig { Id = "motd", Enabled = true },
+            ],
+            inline: [new ApplicationConfig { Id = "motd", Command = "MOTD", Executable = "/bin/cat" }]);
+
+        var missing = AppPackageCatalog.ConfiguredButNotInstalled(config, catalog.Discover(config));
+
+        // Only `ghost`: `alpha` is on disk, and `motd` resolves to the inline applications:
+        // entry (which IS its own payload - the catalog flags an id collision separately).
+        missing.Select(a => a.Id).Should().Equal("ghost");
+        AppPackageCatalog.RootsFor(config).Should().Equal(rootA.FullName, rootB.FullName);
+    }
+
+    [Fact]
+    public void Nothing_is_reported_as_not_installed_when_every_apps_entry_has_its_package()
+    {
+        WritePackage(rootA, "alpha", SocketManifest("alpha", "ALPHA"));
+        var config = Config(apps: [new AppOverrideConfig { Id = "ALPHA", Enabled = false }]);
+
+        // Ids are matched case-insensitively, like every other apps:/package pairing.
+        AppPackageCatalog.ConfiguredButNotInstalled(config, catalog.Discover(config)).Should().BeEmpty();
+    }
+
     private string[] Snapshot() =>
         new[] { rootA.FullName, rootB.FullName }
             .SelectMany(r => Directory.EnumerateFileSystemEntries(r, "*", SearchOption.AllDirectories))

@@ -1943,55 +1943,55 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     [LoggerMessage(EventId = 5201, Level = LogLevel.Information, Message = "AX.25 [{Port}] listener stopped")]
     private partial void LogStopped(string port);
 
-    [LoggerMessage(EventId = 5202, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connecting {Local} → {Remote} ({Version})")]
+    [LoggerMessage(EventId = 5202, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connecting {Local} -> {Remote} ({Version})")]
     private partial void LogConnecting(string port, string local, string remote, string version);
 
-    [LoggerMessage(EventId = 5203, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} → {Remote}: pre-connect XID probe (SREJ offer)")]
+    [LoggerMessage(EventId = 5203, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} -> {Remote}: pre-connect XID probe (SREJ offer)")]
     private partial void LogPreConnectXid(string port, string local, string remote);
 
-    [LoggerMessage(EventId = 5204, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} → {Remote}: XID {Outcome} — {Detail}")]
+    [LoggerMessage(EventId = 5204, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} -> {Remote}: XID {Outcome} - {Detail}")]
     private partial void LogXidOutcome(string port, string local, string remote, string outcome, string detail);
 
-    [LoggerMessage(EventId = 5205, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} ↔ {Remote} ({Version})")]
+    [LoggerMessage(EventId = 5205, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connected {Local} <-> {Remote} ({Version})")]
     private partial void LogConnected(string port, string local, string remote, string version);
 
-    [LoggerMessage(EventId = 5206, Level = LogLevel.Warning, Message = "AX.25 [{Port}] connect {Local} → {Remote} timed out after {Seconds}s")]
+    [LoggerMessage(EventId = 5206, Level = LogLevel.Warning, Message = "AX.25 [{Port}] connect {Local} -> {Remote} timed out after {Seconds}s")]
     private partial void LogConnectTimeout(string port, string local, string remote, string seconds);
 
-    [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} → {Remote} refused (DM / link reset)")]
+    [LoggerMessage(EventId = 5207, Level = LogLevel.Debug, Message = "AX.25 [{Port}] connect {Local} -> {Remote} refused (DM / link reset)")]
     private partial void LogConnectRefused(string port, string local, string remote);
 
-    [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} → {Local}: {FrameType} received — accepting connection")]
+    [LoggerMessage(EventId = 5210, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - accepting connection")]
     private partial void LogInboundAccept(string port, string peer, string local, string frameType);
 
-    [LoggerMessage(EventId = 5211, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} → {Local}: {FrameType} received — rejecting (DM)")]
+    [LoggerMessage(EventId = 5211, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Peer} -> {Local}: {FrameType} received - rejecting (DM)")]
     private partial void LogInboundReject(string port, string peer, string local, string frameType);
 
-    [LoggerMessage(EventId = 5212, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: {Event} — {FromState} → {ToState}")]
+    [LoggerMessage(EventId = 5212, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} <-> {Remote}: {Event} - {FromState} -> {ToState}")]
     private partial void LogTransition(string port, string local, string remote, string @event, string fromState, string toState);
 
-    [LoggerMessage(EventId = 5213, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Local} → {Remote}: {FrameDesc}")]
+    [LoggerMessage(EventId = 5213, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Local} -> {Remote}: {FrameDesc}")]
     private partial void LogTx(string port, string local, string remote, string frameDesc);
 
-    [LoggerMessage(EventId = 5214, Level = LogLevel.Debug, Message = "AX.25 [{Port}] RX {Peer} → {Local}: {FrameDesc}")]
+    [LoggerMessage(EventId = 5214, Level = LogLevel.Debug, Message = "AX.25 [{Port}] RX {Peer} -> {Local}: {FrameDesc}")]
     private partial void LogRx(string port, string peer, string local, string frameDesc);
 
-    [LoggerMessage(EventId = 5215, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: {Timer} expired (RC={RC})")]
+    [LoggerMessage(EventId = 5215, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} <-> {Remote}: {Timer} expired (RC={RC})")]
     private partial void LogTimerExpiry(string port, string local, string remote, string timer, int rc);
 
-    [LoggerMessage(EventId = 5216, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: ↑ {Signal}")]
+    [LoggerMessage(EventId = 5216, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} <-> {Remote}: up {Signal}")]
     private partial void LogDlSignal(string port, string local, string remote, string signal);
 
-    [LoggerMessage(EventId = 5217, Level = LogLevel.Debug, Message = "AX.25 [{Port}] session cache evicted {Local} ↔ {Remote}")]
+    [LoggerMessage(EventId = 5217, Level = LogLevel.Debug, Message = "AX.25 [{Port}] session cache evicted {Local} <-> {Remote}")]
     private partial void LogSessionEvicted(string port, string local, string remote);
 
     [LoggerMessage(EventId = 5218, Level = LogLevel.Debug, Message = "AX.25 [{Port}] CSMA: waited {Ms}ms for clear channel")]
     private partial void LogCsmaWait(string port, long ms);
 
-    [LoggerMessage(EventId = 5219, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Source} → {Dest}: {FrameDesc}")]
+    [LoggerMessage(EventId = 5219, Level = LogLevel.Debug, Message = "AX.25 [{Port}] TX {Source} -> {Dest}: {FrameDesc}")]
     private partial void LogConnectionlessTx(string port, string source, string dest, string frameDesc);
 
-    [LoggerMessage(EventId = 5220, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} ↔ {Remote}: XID {Direction} — {Detail}")]
+    [LoggerMessage(EventId = 5220, Level = LogLevel.Debug, Message = "AX.25 [{Port}] {Local} <-> {Remote}: XID {Direction} - {Detail}")]
     private partial void LogXid(string port, string local, string remote, string direction, string detail);
 
     [LoggerMessage(EventId = 5221, Level = LogLevel.Error, Message = "AX.25 [{Port}] inbound pump stopped on a transport fault: {ExceptionType}: {Detail}")]

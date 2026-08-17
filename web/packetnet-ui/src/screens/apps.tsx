@@ -599,6 +599,10 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
   const working = busy !== null;
   const broken = p.error !== null;
   const inline = p.source === "inline";
+  // Configured here, no package on disk (packet.net#738 item 2). There is no manifest behind
+  // the row, so there is nothing to restart, uninstall or give an identity to; only the trust
+  // switch, which is how the owner turns off an app whose payload has gone.
+  const missing = !p.installed;
   // Why the enable/disable control is read-only, in priority order — the title explains it.
   const toggleTitle = !isAdmin ? "Requires admin"
     : inline ? "Inline apps are managed in the node's config file — edit them there."
@@ -612,7 +616,7 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
   // Uninstall is offered for discovered packages only (not inline, config-authored). The
   // server is the real gate — it 409s a hand-sideloaded (marker-less) dir; here we keep
   // the affordance present but block it while enabled (uninstall needs it disabled first).
-  const showUninstall = p.source === "package";
+  const showUninstall = p.source === "package" && !missing;
   const uninstallTitle = !isAdmin ? "Requires admin"
     : p.enabled ? "Disable this app before uninstalling it."
     : working ? "Working…"
@@ -621,10 +625,10 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
   // A not-running warning: the app is ENABLED (so the supervisor SHOULD be running it) but its
   // service is Stopped/Backoff/Faulted — it crashed or won't start. A disabled app is expected
   // to be stopped, so it never warns. Mirrors the left-nav badge (both use isAppNotRunning).
-  const notRunning = p.enabled && isAppNotRunning(p.state);
+  const notRunning = p.enabled && !missing && isAppNotRunning(p.state);
 
   return (
-    <Card className={cn("p-4", (broken || p.state === "Faulted") && "border-danger/40")}>
+    <Card className={cn("p-4", (broken || p.state === "Faulted") && "border-danger/40", missing && "border-warning/40")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/15 text-primary">
@@ -636,6 +640,13 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
               <span className="font-mono text-[11px] text-muted-foreground">{p.id}{p.version ? ` · v${p.version}` : ""}</span>
               <Badge variant={inline ? "muted" : "secondary"}>{p.source}</Badge>
               <StatePill state={p.state} service={p.service} />
+              {missing && (
+                <span data-warning="not-installed">
+                  <Badge variant="warning">
+                    <Icon name="alert" size={11} className="mr-1" /> not installed
+                  </Badge>
+                </span>
+              )}
               {notRunning && (
                 <span data-warning="not-running">
                   <Badge variant="warning">
@@ -652,8 +663,9 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/* Edit the packet identity (command verb / callsign / NET/ROM alias) — discovered
-              packages only; an inline app is config-authored, so its identity is read-only here. */}
-          {!inline && (
+              packages only; an inline app is config-authored, so its identity is read-only here,
+              and a not-installed app has nothing to give an identity to. */}
+          {!inline && !missing && (
             <Button
               variant="ghost"
               size="sm"
@@ -696,6 +708,13 @@ function PackageRow({ p, isAdmin, busy, onToggle, onRestart, onUninstall, onEdit
         </div>
       </div>
 
+      {missing && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-warning/10 px-2.5 py-1.5 text-xs text-warning">
+          <Icon name="alert" size={13} className="shrink-0" />
+          This app is configured on this node but its package is not installed, so it cannot run.
+          Install or upload it above, or turn it off here.
+        </div>
+      )}
       {broken && (
         <div className="mt-3 flex items-center gap-2 rounded-md bg-danger/10 px-2.5 py-1.5 text-xs text-danger">
           <Icon name="alert" size={13} className="shrink-0" /> {p.error}

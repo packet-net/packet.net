@@ -45,6 +45,8 @@ The hot **hand-edit-the-file** flow is gone — a hand-edit of the vestigial YAM
 - **`pdn config export [--out <path>]`** — boot just the provider, write `NodeConfigYaml.Serialize(Current)` to stdout/file. Inspect, diff, back up.
 - **`pdn config import <path>`** — boot just the provider, parse + validate + `TryApply` a YAML file (the explicit apply that replaces the old hot file-watch).
 
+Both resolve the database exactly as `pdn auth rotate-signing-key` does (`NodeStatePaths.ResolveExistingDbPath`): `--db <path>`, then `PACKETNET_DB`, then `/var/lib/packetnet/pdn.db`, then the working directory's `pdn.db`, and **only ever a file that already exists**. Neither verb creates a database, and both name the resolved path in every line they print. They used to use the node's *creating* resolver, so an `export` run from a directory with no `pdn.db` built one, seeded the N0CALL template into it and wrote that as the operator's pre-upgrade backup, exiting 0; an `import` wrote into the same orphan and reported success as the literal string `pdn.db` (#738 item 1, the same class as #727 item 3). A first-boot database is the *node's* to create, not the CLI's.
+
 `GET /api/v1/config/raw` still serialises `Current` to YAML, so the human-facing YAML view is preserved. Together `export` + `import` give the full export → `$EDITOR` → import workflow on top of DB storage.
 
 ## Persist-before-advance

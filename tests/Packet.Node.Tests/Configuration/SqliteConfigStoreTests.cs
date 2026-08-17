@@ -184,7 +184,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
         // Capturing-logger discipline: assert the RENDERED migration line, not just behaviour
         // (a LoggerMessage arg-swap would still load but render a garbled v→v line).
         log.Messages.Should().ContainSingle(m =>
-            m.Level == LogLevel.Information && m.Text.Contains("migrated the persisted config schema v1→v2"));
+            m.Level == LogLevel.Information && m.Text.Contains("migrated the persisted config schema v1->v2"));
     }
 
     [Fact]

@@ -149,6 +149,13 @@ jobs:
         # that had moved to a sibling repo or been deleted, and nothing noticed for months.
         run: scripts/check-doc-links.sh
 
+      - name: operator-facing output is plain ASCII
+        # #738 item 3: an em dash or a U+2192 in a log template renders as <E2><80><94> in
+        # journalctl (its pager runs under a C locale). WP8's C066 swept them out by hand and
+        # nothing held the line - three had come back by the GB7RDG upgrade rehearsal, one on
+        # the config-schema migration line every upgrade prints.
+        run: scripts/check-ascii-log-output.sh
+
       - name: no Flaky-traited test runs unfiltered
         # C110: the repo's one [Trait("Category","Flaky")] test ran on every push, because the
         # test filter excludes only HardwareLoop and Interop, so the trait meant nothing and a

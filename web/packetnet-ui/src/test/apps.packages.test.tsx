@@ -171,6 +171,24 @@ describe("Apps — package management section", () => {
     expect(disableSeg("wx")).toBeDisabled();
   });
 
+  it("shows a configured app whose package is not installed, instead of hiding it", async () => {
+    // packet.net#738 item 2: a configured, enabled app with no payload used to appear nowhere:
+    // the inventory only projected discovered packages, so a node whose app payloads had gone
+    // missing rendered as a healthy node (or "No app packages"). The row is now visible, badged,
+    // and carries only the trust switch: there is no package to restart, uninstall or identify.
+    await mountApps();
+    const r = row("chat");
+    expect(r.querySelector('[data-warning="not-installed"]')).not.toBeNull();
+    expect(within(r).getByText(/package is not installed/i)).toBeInTheDocument();
+    expect(within(r).queryByRole("button", { name: /Uninstall/ })).toBeNull();
+    expect(within(r).queryByRole("button", { name: /Identity/ })).toBeNull();
+    expect(within(r).queryByRole("button", { name: /Restart/ })).toBeNull();
+    // Enabled but not running is expected here, so the row does not ALSO cry "not running".
+    expect(r.querySelector('[data-warning="not-running"]')).toBeNull();
+    // Disable stays live: turning the ghost off is the fix the owner has from this screen.
+    expect(disableSeg("chat")).toBeEnabled();
+  });
+
   it("renders inline entries read-only — the control explains they are managed in config", async () => {
     await mountApps();
     const en = enableSeg("motd");
