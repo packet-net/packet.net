@@ -151,6 +151,6 @@ public sealed partial class RhpServerHostedService : IHostedService, IAsyncDispo
     [LoggerMessage(Level = LogLevel.Warning, Message = "RHPv2 server not started: rhp.bind '{Bind}' is not a valid IP address.")]
     private partial void LogBadBind(string bind);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RHPv2 server failed to bind {Bind}:{Port} — running without RHP.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "RHPv2 server failed to bind {Bind}:{Port} - running without RHP.")]
     private partial void LogStartFailed(Exception ex, string bind, int port);
 }

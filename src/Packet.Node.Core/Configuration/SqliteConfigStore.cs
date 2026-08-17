@@ -253,7 +253,7 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
     private partial void LogDeserializeFailed(Exception ex, string db);
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "Config store: migrated the persisted config schema v{FromVer}→v{ToVer} ({Db}); the upgraded shape persists on the next config write.")]
+        Message = "Config store: migrated the persisted config schema v{FromVer}->v{ToVer} ({Db}); the upgraded shape persists on the next config write.")]
     private partial void LogMigratedSchema(int fromVer, int toVer, string db);
 
     [LoggerMessage(Level = LogLevel.Warning,
