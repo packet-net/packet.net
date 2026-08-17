@@ -37,11 +37,11 @@ public sealed class TxDelayMinPortSessionTests
         var (nodeLink, peerLink) = InMemoryTuningLink.CreatePair();
         var options = FastOptions();
 
-        int restores = 0;
+        var restore = new RestoreProbe();
         var coordinatorStation = new FakeStation(ether);
         var session = new TxDelayMinPortSession(
             "s1", "vhf-1", "12345678", TxDelayMinMode.SweepCoordinator, nodeLink, coordinatorStation, options,
-            restore: _ => { Interlocked.Increment(ref restores); return ValueTask.CompletedTask; });
+            restore: restore.OnRestoreAsync);
 
         var peerRun = RunMeter(peerLink, new FakeStation(ether), options, out var meterCts);
         var sub = session.Subscribe(out var reader);
@@ -50,6 +50,7 @@ public sealed class TxDelayMinPortSessionTests
         var events = await CollectAsync(reader);
         (await peerRun.WaitAsync(Timeout)).Should().Be(0);
         sub.Dispose();
+        await restore.Restored.WaitAsync(Timeout);
 
         events[0].Kind.Should().Be("armed");
         var rounds = events.Where(e => e.Kind == "round").ToList();
@@ -60,7 +61,7 @@ public sealed class TxDelayMinPortSessionTests
         var ended = events.Last();
         ended.Kind.Should().Be("ended");
         ended.RecommendedTxDelayMs.Should().Be(380);
-        restores.Should().Be(1, "the port is restored exactly once");
+        restore.Count.Should().Be(1, "the port is restored exactly once");
         meterCts.Dispose();
     }
 
@@ -101,10 +102,10 @@ public sealed class TxDelayMinPortSessionTests
         var options = FastOptions();
 
         int persistCalls = 0;
-        int restores = 0;
+        var restore = new RestoreProbe();
         var session = new TxDelayMinPortSession(
             "s3", "vhf-1", "12345678", TxDelayMinMode.Apply, nodeLink, new FakeStation(ether), options,
-            restore: _ => { Interlocked.Increment(ref restores); return ValueTask.CompletedTask; },
+            restore: restore.OnRestoreAsync,
             applyTxDelayMs: 380,
             persist: (_, _) => { Interlocked.Increment(ref persistCalls); return Task.FromResult(true); });
 
@@ -115,10 +116,11 @@ public sealed class TxDelayMinPortSessionTests
         var events = await CollectAsync(reader);
         (await peerRun.WaitAsync(Timeout)).Should().Be(0);
         sub.Dispose();
+        await restore.Restored.WaitAsync(Timeout);
 
         persistCalls.Should().Be(0, "a failed verify never persists");
         events.Last().Kind.Should().Be("error");
-        restores.Should().Be(1);
+        restore.Count.Should().Be(1, "the port is restored exactly once");
         meterCts.Dispose();
     }
 
@@ -130,14 +132,15 @@ public sealed class TxDelayMinPortSessionTests
         _ = peerLink;
         var options = FastOptions();
 
-        int restores = 0;
+        var restore = new RestoreProbe();
         var session = new TxDelayMinPortSession(
             "s4", "vhf-1", "12345678", TxDelayMinMode.Meter, nodeLink, new FakeStation(ether), options,
-            restore: _ => { Interlocked.Increment(ref restores); return ValueTask.CompletedTask; });
+            restore: restore.OnRestoreAsync);
         session.Start();
 
         await session.StopAsync();
-        restores.Should().Be(1);
+        await restore.Restored.WaitAsync(Timeout);
+        restore.Count.Should().Be(1, "the port is restored exactly once");
     }
 
     private static Task<int> RunMeter(
@@ -165,6 +168,37 @@ public sealed class TxDelayMinPortSessionTests
         {
         }
         return events;
+    }
+
+    /// <summary>
+    /// Observes the session's port-restore callback so a test can <b>await</b> it instead of
+    /// racing it. The session's teardown completes the event-stream subscribers FIRST and calls
+    /// <c>restore</c> afterwards, so a counter read straight off the back of
+    /// <see cref="CollectAsync"/> is inherently racy: it passed locally and failed on a loaded
+    /// CI runner ("expected 1, found 0"), where the restore continuation had not been scheduled
+    /// yet. <see cref="Restored"/> completes on the first restore; <see cref="Count"/> still
+    /// proves "exactly once", so no assertion is weakened.
+    /// </summary>
+    private sealed class RestoreProbe
+    {
+        private readonly TaskCompletionSource restored =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private int count;
+
+        /// <summary>How many times the restore callback has run (the "exactly once" assertion).</summary>
+        public int Count => Volatile.Read(ref count);
+
+        /// <summary>Completes once the restore callback has run at least once.</summary>
+        public Task Restored => restored.Task;
+
+        /// <summary>The delegate to hand the session as its port-restore hook.</summary>
+        public ValueTask OnRestoreAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref count);
+            restored.TrySetResult();
+            return ValueTask.CompletedTask;
+        }
     }
 
     // ─── shared fake rig (a trimmed twin of the Tune.Core protocol test's) ──────

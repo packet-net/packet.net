@@ -7,14 +7,25 @@ namespace Packet.Node.Tests.Support;
 
 /// <summary>
 /// A scripted <see cref="IRadioControl"/> for supervisor tests: advertises RSSI (and
-/// carrier-sense) capability, answers RSSI polls with a settable value, and records
+/// carrier-sense) capability, answers RSSI polls with a settable value, counts the
+/// carrier-sense reads the AX.25 medium-access gate makes through it, and records
 /// its disposal (optionally into a shared ordering log) so tests can assert the
 /// radio outlives the RSSI-tagging wrapper that samples it.
 /// </summary>
 public sealed class FakeRadioControl(List<string>? disposalLog = null, string name = "radio") : IRadioControl
 {
     private int disposed;
-    private bool? channelBusy;
+
+    // Scripted DCD, held as an int so the read side is one atomic read: the CSMA gate polls
+    // ChannelBusy from its own task while the test thread scripts edges, and a bool? is two
+    // fields (HasValue + Value) that can tear. 0 = unknown (no DCD report yet), 1 = busy, 2 = clear.
+    private const int Unknown = 0;
+    private const int Busy = 1;
+    private const int Clear = 2;
+    private int carrierState = Unknown;
+
+    private int channelBusyReads;
+    private int busyChannelBusyReads;
 
     /// <summary>What <see cref="ReadRssiDbmAsync"/> answers.</summary>
     public float RssiDbm { get; set; } = -100f;
@@ -27,7 +38,38 @@ public sealed class FakeRadioControl(List<string>? disposalLog = null, string na
         RadioCapabilities.RssiRead | RadioCapabilities.CarrierSense;
 
     /// <inheritdoc/>
-    public bool? ChannelBusy => channelBusy;
+    public bool? ChannelBusy
+    {
+        get
+        {
+            var state = Volatile.Read(ref carrierState);
+            Interlocked.Increment(ref channelBusyReads);
+            if (state == Busy)
+            {
+                Interlocked.Increment(ref busyChannelBusyReads);
+            }
+            return state switch { Busy => true, Clear => false, _ => null };
+        }
+    }
+
+    /// <summary>
+    /// How many times <see cref="ChannelBusy"/> has been read, whatever it answered.
+    /// </summary>
+    public int ChannelBusyReads => Volatile.Read(ref channelBusyReads);
+
+    /// <summary>
+    /// How many of those reads answered <b>busy</b>: the deferral observable. The AX.25
+    /// stack's medium-access gate (<c>Packet.Ax25.Session.CarrierSenseGate</c>) reads this
+    /// seam once on entry and once more per slot time inside its wait loop, reaching this
+    /// fake through the node's <c>RadioCarrierSense</c> adapter, which is a pure read-through
+    /// and caches nothing. So a count that climbs while the channel is busy is direct evidence
+    /// that a frame reached the gate and is being <em>held</em> there, the positive a test
+    /// must observe before "nothing was heard on the medium" means anything. Nothing else in a
+    /// supervisor test reads this seam unprompted: the generic radio-status monitor only reads
+    /// it inside <c>Snapshot()</c> (an API request), so with the virtual clock un-advanced the
+    /// gate is the only reader.
+    /// </summary>
+    public int BusyChannelBusyReads => Volatile.Read(ref busyChannelBusyReads);
 
     /// <inheritdoc/>
     public event EventHandler<CarrierSenseChange>? CarrierSenseChanged;
@@ -43,7 +85,7 @@ public sealed class FakeRadioControl(List<string>? disposalLog = null, string na
     /// <summary>Script a hardware DCD edge (drives <see cref="CarrierSenseChanged"/>).</summary>
     public void RaiseCarrierSense(bool busy, DateTimeOffset at)
     {
-        channelBusy = busy;
+        Volatile.Write(ref carrierState, busy ? Busy : Clear);
         CarrierSenseChanged?.Invoke(this, new CarrierSenseChange(busy, at));
     }
 

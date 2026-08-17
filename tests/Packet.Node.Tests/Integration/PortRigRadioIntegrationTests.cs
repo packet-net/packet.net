@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Ax25;
+using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
@@ -19,12 +20,30 @@ namespace Packet.Node.Tests.Integration;
 /// signal strength RSSI-tags inbound frames) with any transport, the headline case being a
 /// kiss-tcp soundmodem beside rigctld. The rig-status poller keeps its own connection
 /// undisturbed; a DCD-only rig skips the RSSI-tagging wrapper without crashing the bring-up.
+/// The deferral is observed positively, never inferred from a sleep: the node's UA is awaited
+/// onto the transmit path before the "nothing on the air" assertion, and the listener's own
+/// CSMA record (emitted only when the gate really held a frame) closes the loop afterwards.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class PortRigRadioIntegrationTests
 {
     private static readonly Callsign NodeCall = new("NODE", 1);
     private static readonly Callsign RemoteCall = new("REMOTE", 1);
+
+    /// <summary>
+    /// How much virtual time each poll of a wait nudges the clock by. Deliberately a fifth of
+    /// both the gate's 100 ms slot time and the rig-backed radio's 100 ms DCD poll: the waits
+    /// below advance on EVERY poll (a single Advance can be missed if a loop is between timer
+    /// arms when it lands, which would hang the test on a starved runner), so the step has to be
+    /// small enough that reaching the gate's 10 s fail-open backstop would take thousands of
+    /// polls - and the test asserts it never does.
+    /// </summary>
+    private static readonly TimeSpan ClockNudge = TimeSpan.FromMilliseconds(20);
+
+    /// <summary>The gate's bounded wait (<c>CarrierSenseGateOptions.MaxWait</c>), after which it
+    /// transmits anyway (fail-open). The deferral below is asserted to have ended well inside it,
+    /// so the release is only ever the rig's DCD clearing.</summary>
+    private static readonly TimeSpan GateFailOpenAfter = TimeSpan.FromSeconds(10);
 
     private static NodeConfig ConfigWithRigBackedRadio() => new()
     {
@@ -48,6 +67,9 @@ public sealed class PortRigRadioIntegrationTests
     {
         var time = new FakeTimeProvider();
         var bus = new SharedRadioBus();
+        // Captures what the node logs, so the deferral can be read off the listener's own
+        // rendered record rather than inferred from silence (see the assertion at the end).
+        var logs = new CapturingLoggerFactory();
         var config = new TestConfigProvider(ConfigWithRigBackedRadio());
         var transports = new FakeTransportFactory().Provide("kiss-tcp:mem:1", bus.Attach());
         // Two dedicated connections to the same daemon: the radio arm dials FIRST (bring-up
@@ -78,7 +100,7 @@ public sealed class PortRigRadioIntegrationTests
         });
 
         await using (var supervisor = new PortSupervisor(
-            config, transports, time, NullLoggerFactory.Instance, rigFactory: rigs))
+            config, transports, time, logs, rigFactory: rigs))
         {
             await supervisor.StartAsync();
             await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up");
@@ -96,28 +118,76 @@ public sealed class PortRigRadioIntegrationTests
             // saw the asserted carrier.
             await Wait.ForAsync(() => port.Radio!.ChannelBusy == true, "the bridge sampled the rig's DCD");
 
-            await observer.SendAsync(Ax25Frame.Sabm(NodeCall, RemoteCall).ToBytes());
+            // POSITIVE proof the UA reached the transmit path, awaited before any negative is
+            // asserted: the listener traces a frame as Transmitted at the moment it hands it to
+            // the carrier-sense-gated send (Ax25Listener's SendGatedAsync). A rig-backed radio
+            // caches DCD behind its own poll loop, so - unlike the FakeRadioControl port, whose
+            // fake counts the gate's reads directly - the gate's sampling is not observable at
+            // the fake rig here; the deferral itself is proven from the listener's CSMA record
+            // once the frame is released, below. Waiting on a Task.Delay instead, as this test
+            // used to, proved nothing: a gate that leaked the UA immediately still left `heard`
+            // empty on a starved runner, because the frame had not been built yet.
+            var uaOnTheTransmitPath = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnFrameTraced(object? sender, Ax25FrameEventArgs e)
+            {
+                if (e.Direction == FrameDirection.Transmitted && (e.Frame.Control & 0xEF) == 0x63)
+                {
+                    uaOnTheTransmitPath.TrySetResult();
+                }
+            }
 
-            // Give the node's inbound pump time to process the SABM and reach the medium-access
-            // gate. The gate then holds the UA on the (un-advanced) virtual clock: the node
-            // cannot key up while the rig reports carrier.
-            await Task.Delay(300);
+            var deferralStartedAt = time.GetUtcNow();
+            port.Listener.FrameTraced += OnFrameTraced;
+            try
+            {
+                await observer.SendAsync(Ax25Frame.Sabm(NodeCall, RemoteCall).ToBytes());
+                await uaOnTheTransmitPath.Task.WaitAsync(Wait.DefaultBudget);
+            }
+            finally
+            {
+                port.Listener.FrameTraced -= OnFrameTraced;
+            }
+
             lock (heardGate)
             {
                 heard.Should().BeEmpty("a busy channel holds the node's UA off the air (hardware DCD via the rig)");
             }
 
+            // Hold it there over several slot times of virtual clock - the gate re-samples every
+            // slot and the rig's DCD poll every interval, and the UA still never reaches the air.
+            for (var nudge = 0; nudge < 15; nudge++)
+            {
+                time.Advance(ClockNudge);
+            }
+            lock (heardGate)
+            {
+                heard.Should().BeEmpty("the keyup stays deferred for as long as the rig reports carrier");
+            }
+
             // Channel clears: the next poll tick re-samples DCD, and one slot later the gate
-            // releases the keyup. Each wait tick advances the virtual clock a poll interval.
+            // releases the keyup.
             radioRig.Dcd = false;
             await Wait.ForAsync(() =>
             {
-                time.Advance(TimeSpan.FromMilliseconds(100));
+                time.Advance(ClockNudge);
                 lock (heardGate)
                 {
                     return heard.Any(IsUa);
                 }
             }, "the node keys up its UA once the rig's DCD clears");
+
+            // ...and it was the DCD clear that released it, not the gate's fail-open backstop.
+            (time.GetUtcNow() - deferralStartedAt).Should().BeLessThan(
+                GateFailOpenAfter, "the DCD clearing released the UA, not the gate's fail-open backstop");
+
+            // And the UA was HELD by the gate, not merely late. The listener renders
+            // "AX.25 [{Port}] CSMA: waited {Ms}ms for clear channel" only after its gate actually
+            // parked a frame for more than 50 ms of the injected clock, so the record is positive
+            // evidence of the deferral: a gate that let the UA straight through waits zero and
+            // logs nothing at all.
+            logs.Lines.Should().Contain(
+                line => line.Contains("CSMA: waited", StringComparison.Ordinal),
+                "the gate held the UA off the air until the rig's DCD cleared, and said so");
         }
 
         radioRig.Disposed.Should().BeTrue("the owning bridge closes its dedicated connection on teardown");
