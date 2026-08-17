@@ -30,6 +30,16 @@ namespace Packet.Node.Api;
 /// for the request being verified, rather than baking one global origin at startup that
 /// would not match a node reachable under more than one name.
 /// </para>
+/// <para>
+/// <b>WARNING (suffix RP id):</b> the zero-config empty-<see cref="WebAuthnConfig.AllowedOrigins"/>
+/// path trusts the request's own Host header as an accepted origin. That is safe for the
+/// default single-name RP id, but if the operator sets a SUFFIX relyingPartyId (e.g.
+/// <c>example.net</c> to share passkeys across subdomains) while leaving allowedOrigins
+/// empty, an attacker-controlled subdomain (<c>evil.example.net</c>) or a DNS-rebind that
+/// reaches the node with such a Host passes origin verification. A suffix RP id therefore
+/// REQUIRES pinning <see cref="WebAuthnConfig.AllowedOrigins"/> to the exact origins that
+/// may present passkeys.
+/// </para>
 /// </remarks>
 public static class WebAuthnFido2Builder
 {
@@ -80,6 +90,9 @@ public static class WebAuthnFido2Builder
         {
             // Zero-config default: accept the origin the browser actually used for this
             // request, plus the loopback origins (so localhost works with no setup).
+            // WARNING: this trusts the Host header - with a SUFFIX relyingPartyId an
+            // attacker-controlled subdomain or DNS-rebind would pass; a suffix RP id
+            // REQUIRES pinning AllowedOrigins (see the type remarks).
             var serving = ServingOrigin(request);
             if (serving is not null)
             {

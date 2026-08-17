@@ -139,28 +139,7 @@ public sealed class RefreshTokenService
 
         if (record.Revoked)
         {
-            // A consumed/revoked token was replayed. With strict one-time use this is
-            // always the theft response — but the legitimate client races itself
-            // routinely (two tabs, a retried silent refresh, a backgrounded tab waking)
-            // and presents the SAME just-rotated token twice within a moment. Burning
-            // the family for that logs the real user out every time the access token
-            // expires. So: if this token was rotation-consumed within the leeway window
-            // AND its family is still alive (not logged out / not already burned), treat
-            // the replay as benign and mint a fresh successor instead of burning.
-            bool withinLeeway = reuseLeeway > TimeSpan.Zero
-                && record.RevokedUtc is { } revokedAt
-                && now - revokedAt <= reuseLeeway;
-            if (withinLeeway && store.HasLiveToken(record.Family))
-            {
-                var graceNext = MintInFamily(record.Username, record.Family);
-                return graceNext is null
-                    ? RefreshResult.Failure(RefreshOutcome.Invalid, record.Username, record.Family)
-                    : RefreshResult.Success(graceNext, record.Username, record.Family);
-            }
-
-            // Old replay, or a dead/logged-out family → genuine reuse: burn the family.
-            store.RevokeFamily(record.Family);
-            return RefreshResult.Failure(RefreshOutcome.ReuseDetected, record.Username, record.Family);
+            return HandleReplay(record, now);
         }
 
         if (now >= record.ExpiresUtc)
@@ -172,9 +151,42 @@ public sealed class RefreshTokenService
             return RefreshResult.Failure(RefreshOutcome.Expired, record.Username, record.Family);
         }
 
-        // Valid: consume it (one-time use, stamping the leeway window) and mint a
-        // successor in the SAME family.
-        store.Revoke(hash, consumedAtUtc: now);
+        // Valid: consume it atomically (one-time use, stamping the leeway window). The
+        // store's consume is conditional (only a live token is revoked), so of N
+        // concurrent rotations of this SAME token exactly one wins; the losers see
+        // false here instead of all minting their own successor.
+        if (!store.Revoke(hash, consumedAtUtc: now))
+        {
+            // Consumed 0 rows: a concurrent rotation of this SAME live token won the
+            // consume race and is minting the family's successor right now. Resolve the
+            // loser WITHOUT re-deriving family liveness (deliberately NOT HandleReplay,
+            // which reads HasLiveToken): that read races the winner's not-yet-committed
+            // insert and can transiently observe zero live tokens, which would wrongly
+            // steer a benign self-race into a family burn (spurious logout) or a burn
+            // that races the winner's fresh successor. We already established at the top
+            // of Rotate that the token was live, so within the leeway this is the same
+            // benign near-simultaneous use a sequential double-submit is: mint a grace
+            // successor. Outside the leeway (strict one-time-use) a concurrent double-use
+            // is treated as reuse and burns the family.
+            var reread = store.FindByHash(hash);
+            if (reread is null)
+            {
+                return RefreshResult.Failure(RefreshOutcome.Invalid);   // pruned mid-flight
+            }
+            bool withinLeeway = reuseLeeway > TimeSpan.Zero
+                && reread.RevokedUtc is { } revokedAt
+                && now - revokedAt <= reuseLeeway;
+            if (withinLeeway)
+            {
+                var graceNext = MintInFamily(reread.Username, reread.Family);
+                return graceNext is null
+                    ? RefreshResult.Failure(RefreshOutcome.Invalid, reread.Username, reread.Family)
+                    : RefreshResult.Success(graceNext, reread.Username, reread.Family);
+            }
+            store.RevokeFamily(reread.Family);
+            return RefreshResult.Failure(RefreshOutcome.ReuseDetected, reread.Username, reread.Family);
+        }
+
         var next = MintInFamily(record.Username, record.Family);
         if (next is null)
         {
@@ -184,6 +196,34 @@ public sealed class RefreshTokenService
             return RefreshResult.Failure(RefreshOutcome.Invalid, record.Username, record.Family);
         }
         return RefreshResult.Success(next, record.Username, record.Family);
+    }
+
+    // Replay semantics for a token that is already revoked (or was just found to be,
+    // after losing the consume race). A consumed/revoked token being presented means
+    // someone replayed it - but the legitimate client races itself routinely (two
+    // tabs, a retried silent refresh, a backgrounded tab waking) and presents the SAME
+    // just-rotated token twice within a moment. Burning the family for that logs the
+    // real user out every time the access token expires. So: if this token was
+    // rotation-consumed within the leeway window AND its family is still alive (not
+    // logged out / not already burned), treat the replay as benign and mint a fresh
+    // successor instead of burning. Outside the window, or against a dead family, it
+    // is the theft response: burn the family.
+    private RefreshResult HandleReplay(RefreshTokenRecord record, DateTimeOffset now)
+    {
+        bool withinLeeway = reuseLeeway > TimeSpan.Zero
+            && record.RevokedUtc is { } revokedAt
+            && now - revokedAt <= reuseLeeway;
+        if (withinLeeway && store.HasLiveToken(record.Family))
+        {
+            var graceNext = MintInFamily(record.Username, record.Family);
+            return graceNext is null
+                ? RefreshResult.Failure(RefreshOutcome.Invalid, record.Username, record.Family)
+                : RefreshResult.Success(graceNext, record.Username, record.Family);
+        }
+
+        // Old replay, or a dead/logged-out family → genuine reuse: burn the family.
+        store.RevokeFamily(record.Family);
+        return RefreshResult.Failure(RefreshOutcome.ReuseDetected, record.Username, record.Family);
     }
 
     /// <summary>

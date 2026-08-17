@@ -555,10 +555,12 @@ public static class PdnAuthApi
     private static string ClientIp(HttpContext http) =>
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-    // Namespaced throttle keys so a username can never collide with an IP. The username
-    // key is empty-safe (a blank-username attempt still keys to "user:").
-    private static string UserKey(string username) => "user:" + username;
-    private static string IpKey(string ip) => "ip:" + ip;
+    // The SHARED credential-guess key namespace (LoginThrottle.UserKey/IpKey): the OAuth
+    // consent POST keys under the same namespace, so splitting guesses across /auth/login
+    // and /oauth/authorize cannot double the per-window password budget. The username key
+    // is empty-safe (a blank-username attempt still keys to "user:").
+    private static string UserKey(string username) => LoginThrottle.UserKey(username);
+    private static string IpKey(string ip) => LoginThrottle.IpKey(ip);
 
     // Audit-log redaction: usernames are not secret, but an empty/unknown one logs as a
     // placeholder rather than a blank field. Passwords/tokens are NEVER passed here.

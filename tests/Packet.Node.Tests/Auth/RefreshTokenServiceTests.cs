@@ -128,6 +128,92 @@ public sealed class RefreshTokenServiceTests
     }
 
     [Fact]
+    public void Losing_the_consume_race_within_the_leeway_resolves_to_the_same_grace_successor()
+    {
+        // The atomicity fix: two concurrent Rotate() calls for the same live token. The
+        // winner consumes + mints; the loser's conditional consume matches 0 rows and
+        // must re-enter the replay path - within the leeway with a live family that is
+        // the SAME outcome as a sequential double-submit (one grace successor), not a
+        // second independent successor minted off the same consume.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 9, 0, 0, 0, TimeSpan.Zero));
+        var inner = new InMemoryRefreshStore();
+        var store = new RaceLosingRefreshStore(inner);
+        var svc = new RefreshTokenService(store, TimeSpan.FromDays(7), clock);
+
+        var first = svc.Issue("tom")!;
+        var family = inner.Rows.Single().Family;
+
+        // A concurrent rotation wins the race just before our consume: it consumes
+        // `first` (stamped now, leeway-eligible) and mints its own successor.
+        store.WinnerStamp = clock.GetUtcNow();
+        var loser = svc.Rotate(first);
+
+        loser.IsSuccess.Should().BeTrue();
+        loser.Outcome.Should().Be(RefreshOutcome.Rotated);
+        loser.NewToken.Should().NotBeNullOrEmpty();
+
+        // One coherent outcome: `first` consumed exactly once, the winner's successor +
+        // the loser's grace successor live in the same family, nothing burned.
+        inner.FindByHash(RefreshTokenService.HashToken(first))!.Revoked.Should().BeTrue();
+        inner.Rows.Should().HaveCount(3);
+        inner.HasLiveToken(family).Should().BeTrue();
+        svc.Rotate(loser.NewToken!).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Losing_the_consume_race_with_zero_leeway_is_reuse_and_burns_the_family()
+    {
+        // The same race under strict zero-tolerance: the loser must NOT mint its own
+        // successor - it lands in the theft response and the family burns.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 9, 0, 0, 0, TimeSpan.Zero));
+        var inner = new InMemoryRefreshStore();
+        var store = new RaceLosingRefreshStore(inner);
+        var svc = new RefreshTokenService(store, TimeSpan.FromDays(7), clock, TimeSpan.Zero);
+
+        var first = svc.Issue("tom")!;
+        var family = inner.Rows.Single().Family;
+
+        store.WinnerStamp = clock.GetUtcNow();
+        var loser = svc.Rotate(first);
+
+        loser.IsSuccess.Should().BeFalse();
+        loser.Outcome.Should().Be(RefreshOutcome.ReuseDetected);
+
+        // The loser minted nothing; the family (winner's successor included) is burned.
+        inner.Rows.Should().HaveCount(2).And.OnlyContain(r => r.Revoked);
+        inner.HasLiveToken(family).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Losing_the_consume_race_during_the_winner_mint_gap_grants_grace_not_a_spurious_logout()
+    {
+        // Regression guard (2026-08-17 adversarial review): the lost-consume-race branch
+        // must NOT re-derive family liveness via HasLiveToken. Here the winner has revoked
+        // the presented token but has NOT yet committed its successor insert
+        // (SkipWinnerInsert), so the family transiently has zero live tokens and
+        // HasLiveToken would return false. A benign self-race in that gap must still get a
+        // grace successor within the leeway - never a family burn / spurious logout, which
+        // is what a HasLiveToken false-negative here would have produced.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 9, 0, 0, 0, TimeSpan.Zero));
+        var inner = new InMemoryRefreshStore();
+        var store = new RaceLosingRefreshStore(inner) { SkipWinnerInsert = true };
+        var svc = new RefreshTokenService(store, TimeSpan.FromDays(7), clock);
+
+        var first = svc.Issue("tom")!;
+        _ = inner.Rows.Single().Family;
+
+        store.WinnerStamp = clock.GetUtcNow();
+        var loser = svc.Rotate(first);
+
+        // Grace (a live successor), not the ReuseDetected/burn a HasLiveToken false-negative
+        // in the mint gap would have produced.
+        loser.IsSuccess.Should().BeTrue();
+        loser.Outcome.Should().Be(RefreshOutcome.Rotated);
+        loser.NewToken.Should().NotBeNullOrEmpty();
+        inner.FindByHash(RefreshTokenService.HashToken(loser.NewToken!))!.Revoked.Should().BeFalse();
+    }
+
+    [Fact]
     public void The_leeway_grace_cannot_resurrect_a_logged_out_family()
     {
         var (svc, store, clock) = Make();
@@ -282,6 +368,10 @@ public sealed class RefreshTokenServiceTests
             {
                 return false;
             }
+            if (r.Revoked)
+            {
+                return false;   // conditional consume: a concurrent caller already won
+            }
             rows[tokenHash] = r with { Revoked = true, RevokedUtc = consumedAtUtc };
             return true;
         }
@@ -344,5 +434,53 @@ public sealed class RefreshTokenServiceTests
         public int RevokeAllForUser(string username) => 0;
         public bool HasLiveToken(string family) => false;
         public int PruneExpired(DateTimeOffset olderThanUtc) => 0;
+    }
+
+    // Makes the service LOSE the rotation race: while WinnerStamp is set, the next
+    // Revoke of a live token first simulates the concurrent winner (consume with the
+    // winner's stamp + mint the winner's successor in the same family), then reports
+    // false - exactly what the conditional UPDATE returns when it matched 0 rows
+    // because the winner already revoked the token.
+    private sealed class RaceLosingRefreshStore(IRefreshTokenStore inner) : IRefreshTokenStore
+    {
+        public DateTimeOffset? WinnerStamp { get; set; }
+
+        // When set, the simulated winner revokes the presented token but does NOT insert
+        // its successor - reproducing the consume->mint GAP, where the family transiently
+        // has zero live tokens. This is the interleaving the atomic winner above hides.
+        public bool SkipWinnerInsert { get; set; }
+
+        public bool Insert(RefreshTokenRecord token) => inner.Insert(token);
+
+        public RefreshTokenRecord? FindByHash(string tokenHash) => inner.FindByHash(tokenHash);
+
+        public bool Revoke(string tokenHash, DateTimeOffset? consumedAtUtc)
+        {
+            if (WinnerStamp is { } stamp)
+            {
+                WinnerStamp = null;
+                var rec = inner.FindByHash(tokenHash);
+                if (rec is { Revoked: false })
+                {
+                    inner.Revoke(tokenHash, stamp);
+                    if (!SkipWinnerInsert)
+                    {
+                        inner.Insert(new RefreshTokenRecord(
+                            "winner-successor", rec.Username, rec.Family,
+                            stamp, stamp + TimeSpan.FromDays(7), Revoked: false));
+                    }
+                    return false;
+                }
+            }
+            return inner.Revoke(tokenHash, consumedAtUtc);
+        }
+
+        public int RevokeFamily(string family) => inner.RevokeFamily(family);
+
+        public int RevokeAllForUser(string username) => inner.RevokeAllForUser(username);
+
+        public bool HasLiveToken(string family) => inner.HasLiveToken(family);
+
+        public int PruneExpired(DateTimeOffset olderThanUtc) => inner.PruneExpired(olderThanUtc);
     }
 }

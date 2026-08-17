@@ -70,6 +70,18 @@ public sealed class LoginThrottle
         this.window = window is { } w && w > TimeSpan.Zero ? w : TimeSpan.FromMinutes(5);
     }
 
+    /// <summary>The canonical throttle key for a USERNAME on any credential-guessing
+    /// endpoint. Every surface that verifies a password (/auth/login, the OAuth
+    /// consent POST) must record failures under this SAME key namespace - separate
+    /// namespaces would let an attacker split guesses across endpoints and double
+    /// the per-window budget.</summary>
+    public static string UserKey(string username) => "user:" + username;
+
+    /// <summary>The canonical throttle key for a SOURCE IP on any credential-guessing
+    /// endpoint. Same shared-namespace rule as <see cref="UserKey"/>: one budget per
+    /// IP across every password-verifying surface.</summary>
+    public static string IpKey(string ip) => "ip:" + ip;
+
     /// <summary>
     /// Whether <paramref name="key"/> is currently locked out (≥ <see cref="MaxFailures"/>
     /// failures still inside the window). Pure-ish: it ages out stale failures as a
