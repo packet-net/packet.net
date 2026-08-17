@@ -75,6 +75,23 @@ public static class NodeConfigTemplate
         #      # quirks: default     # SDL session quirks: default (spec-correct) |
         #      #                     # strictly-faithful (figures as drawn, defects
         #      #                     # included - conformance study only)
+        #    link:                 # optional - per-port OUTBOUND link policy, applied live.
+        #                          # Inbound is untouched: the node always answers whatever
+        #                          # version the caller offers.
+        #      dial: auto          # which AX.25 version this port's connects offer FIRST:
+        #                          #   auto (default) - offer v2.2, and if a peer never answers
+        #                          #                    a SABME, learn that and retry it as v2.0
+        #                          #   v22            - always v2.2, never fall back
+        #                          #   v20            - always plain v2.0 (SABM / mod-8). Pick
+        #                          #                    this for a port facing BPQ / LinBPQ or
+        #                          #                    older TNCs: many IGNORE a SABME instead
+        #                          #                    of rejecting it, so a v2.2 dial just
+        #                          #                    burns the whole N2 x T1 budget and
+        #                          #                    fails. The tell in a bpq32.cfg is
+        #                          #                    MAXFRAME <= 7 on that port.
+        #      preConnectXid: auto # lead a v2.0 dial with an XID to negotiate SREJ:
+        #                          # auto (default; skipped for a peer that ignored one) |
+        #                          # on | off. No effect on a v2.2 dial.
         #    kiss:                 # optional - applied live, no restart
         #      txDelay: 30         # units of 10 ms
         #      persistence: 63

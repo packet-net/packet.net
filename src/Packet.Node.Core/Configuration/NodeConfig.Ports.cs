@@ -76,6 +76,17 @@ public sealed record PortConfig
     public PortCompatConfig? Compat { get; init; }
 
     /// <summary>
+    /// Optional per-port <b>link policy</b>: which AX.25 version this port's outbound connects
+    /// offer first (<c>auto</c> / <c>v22</c> / <c>v20</c>) and whether a mod-8 dial leads with
+    /// an SREJ-negotiating XID (<c>auto</c> / <c>on</c> / <c>off</c>). Null = all-auto, the
+    /// node's historical behaviour (v2.2-first, learned per peer). Set <c>dial: v20</c> on a
+    /// port facing BPQ / LinBPQ or an older TNC, which typically ignores a SABME outright
+    /// instead of rejecting it. Applied live: it gates <em>future</em> dials only, never a link
+    /// already up. See <see cref="PortLinkConfig"/>.
+    /// </summary>
+    public PortLinkConfig? Link { get; init; }
+
+    /// <summary>
     /// Optional per-port ID-beacon override. Null = inherit the system default
     /// (<see cref="NodeConfig.Beacon"/>) wholesale. When present, its
     /// <see cref="PortBeaconConfig.Enabled"/> flag wins outright, and its nullable

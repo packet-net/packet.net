@@ -290,6 +290,37 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void Link_policy_change_only_is_hot_no_restart()
+    {
+        // A link-policy-only change is HOT: it decides what the NEXT outbound dial offers, so
+        // nothing running has to be disturbed. Classified on its own so the operator is told
+        // which knob moved, and kept out of the restart classes entirely.
+        var before = Config("M0LTE-1", Tcp("a"));
+        var to = Config("M0LTE-1", Tcp("a") with { Link = new PortLinkConfig { Dial = LinkDialPreference.V20 } });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.LinkChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty();
+        plan.Ax25ParamsChanged.Should().BeEmpty();
+        plan.CompatChanged.Should().BeEmpty();
+        plan.KissParamsChanged.Should().BeEmpty();
+        plan.IsNoOp.Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_all_auto_link_policy_is_not_a_change_at_all()
+    {
+        // An explicit all-auto block says exactly what an absent one does, but it is a different
+        // VALUE, so the planner does classify it. What must never happen is a RESTART.
+        var before = Config("M0LTE-1", Tcp("a"));
+        var to = Config("M0LTE-1", Tcp("a") with { Link = new PortLinkConfig() });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.ToRestart.Should().BeEmpty("a link-policy edit never restarts a port, whatever it says");
+        plan.NodeWideReset.Should().BeFalse();
+    }
+
+    [Fact]
     public void Callsign_change_is_a_node_wide_reset()
     {
         var before = Config("M0LTE-1", Tcp("a"), Tcp("b", 8002));

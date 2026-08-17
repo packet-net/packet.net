@@ -216,6 +216,38 @@ describe("screens render without crashing", () => {
     expect(screen.getByText(/NET\/ROM quality/i)).toBeInTheDocument();
   });
 
+  it("Ports editor surfaces the per-port link setup (dial version + pre-connect XID)", async () => {
+    // The hf-300 mock port is the BPQ-facing one: link { dial: V20, preConnectXid: On }. A
+    // non-default link policy counts as "tuned", so the editor opens with Advanced expanded and
+    // both dropdowns show the port's stored policy rather than the Auto placeholder (#724).
+    mount(<Ports />);
+    await waitFor(() => expect(screen.getByText("hf-300")).toBeInTheDocument());
+
+    let card: HTMLElement | null = screen.getByText("hf-300");
+    while (card && !within(card).queryByRole("button", { name: "Edit" })) {
+      card = card.parentElement;
+    }
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(screen.getByText(/Edit port .* hf-300/i)).toBeInTheDocument());
+    expect(screen.getByText(/Link setup/i)).toBeInTheDocument();
+
+    // The Field label is not htmlFor-wired to its control, so walk from the label text to the
+    // enclosing Field and read the select inside it (the idiom the other editor smokes use).
+    const selectUnder = (label: RegExp): HTMLSelectElement => {
+      let host: HTMLElement | null = screen.getByText(label);
+      while (host && !within(host).queryByRole("combobox")) {
+        host = host.parentElement;
+      }
+      expect(host, `no select under ${label}`).not.toBeNull();
+      return within(host!).getByRole("combobox") as HTMLSelectElement;
+    };
+
+    expect(selectUnder(/Outgoing call version/i).value).toBe("V20");
+    expect(selectUnder(/Ask for SREJ before a 2.0 call/i).value).toBe("On");
+  });
+
   it("Ports editor surfaces the multipoint-AXUDP peer table + per-port MINQUAL / NODESPACLEN", async () => {
     // The mp-net mock port is an axudp-multipoint transport with 2 peers + a per-port
     // netRomMinQuality (MINQUAL) and nodesPaclen (NODESPACLEN). Opening its editor proves

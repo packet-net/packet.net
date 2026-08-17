@@ -148,6 +148,43 @@ For the full rationale (why there are two seams, and where IP is and is not
 actually required), see packet.net's
 [`docs/network-integration-adr.md`](../docs/network-integration-adr.md).
 
+## Talking to a BPQ or LinBPQ node on air
+
+The other "existing software" you have to live with is what is already on the
+air. Here is a symptom worth naming: your node connects to some stations
+perfectly well, but every connect to the **BPQ / LinBPQ node down the road** sits
+there and times out. There is nothing useful in the log, no rejection and no
+"busy" from the far end, just the timeout. It works the other way round, though:
+that node can still call yours.
+
+**Why.** Your node opens outbound connections with the newer AX.25 **v2.2**
+first. A station that only speaks the older **v2.0** is meant to refuse the
+offer, which your node sees at once and retries the old way. Plenty of BPQ builds
+and older TNCs do neither: they ignore the v2.2 opener completely, so your node
+just re-sends it until it gives up. The tell, if you can see the other operator's
+`bpq32.cfg`, is `MAXFRAME 7` or lower on that port.
+
+**The fix.** Tell that port to dial the old way:
+
+```yaml
+ports:
+  - id: vhf
+    link:
+      dial: v20        # always open connects as plain AX.25 v2.0
+```
+
+The control panel has the same setting: **Ports → edit the port → Advanced
+parameters**, then the dial-preference control. Either way it applies **live**,
+to new outbound connects only; nothing restarts and no session drops.
+
+> [!NOTE]
+> You do not have to set this. The default, `dial: auto`, learns for itself: the
+> first call to a silent station stalls once, then your node remembers it and
+> dials v2.0 from then on (re-checking about a month later). Setting `v20` just
+> skips that one-off stall. Its companion setting `preConnectXid` decides whether
+> a v2.0 call leads with a short capability probe asking for selective
+> retransmission (cheaper recovery when a frame is lost); leave it on `auto`.
+
 ---
 
 Return to the [operating guide index](index.md).

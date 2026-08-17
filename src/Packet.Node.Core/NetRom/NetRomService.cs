@@ -180,6 +180,20 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// </remarks>
     public Func<string, Callsign, PeerDialPlan, CancellationToken, Task<Ax25Session>>? OpenInterlink { get; set; }
 
+    /// <summary>
+    /// Resolve a port's declared link policy (<c>PortConfig.Link</c>) for an interlink dial.
+    /// Supplied by the port supervisor, which owns the config; null (or a null answer) ⇒ all-auto,
+    /// under which interlinks keep their conservative mod-8 default. Read per dial, so a hot
+    /// <c>link:</c> edit reaches the next interlink without a restart.
+    /// </summary>
+    /// <remarks>
+    /// The rule, stated: an interlink dials mod-8 unless the PORT declares <c>dial: v22</c>. The
+    /// NET/ROM neighbour population is overwhelmingly v2.0/mod-8 (BPQ/XRouter) and a stalled SABME
+    /// costs the whole backbone a retry cycle, so <c>auto</c> and <c>v20</c> both mean SABM here;
+    /// only an explicit <c>v22</c> makes an interlink lead with SABME.
+    /// </remarks>
+    public Func<string, PortLinkConfig?>? PortLinkPolicy { get; set; }
+
     /// <summary>The circuit manager (null when NET/ROM connect is disabled). Exposed
     /// for the outbound connector + tests.</summary>
     public CircuitManager? Circuits => circuits;
@@ -1159,14 +1173,16 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             throw new InvalidOperationException("no NET/ROM port available to open an interlink.");
         }
 
-        // Consult the per-peer capability cache for this dial. The default (no cache)
-        // preserves today's behaviour exactly: extended:false (mod-8 NET/ROM
-        // infrastructure) + PreConnectXid:true (the listener's pre-connect-XID default,
-        // which the no-arg ConnectAsync overload was honouring). A learned positive lets
-        // a known-extended neighbour go straight to SABME, and a learned non-XID-answerer
-        // skips the pre-connect XID it would only stall on.
-        var plan = capabilityCache?.PlanDial(attachment.PortId, neighbour.ToString(), PeerDialPolicy.Interlink)
-            ?? new PeerDialPlan(Extended: false, PreConnectXid: true);
+        // Consult the port's declared link policy, then the per-peer capability cache, for this
+        // dial. The default (all-auto, no cache) preserves today's behaviour exactly:
+        // extended:false (mod-8 NET/ROM infrastructure) + PreConnectXid:true (the listener's
+        // pre-connect-XID default, which the no-arg ConnectAsync overload was honouring). A
+        // learned positive lets a known-extended neighbour go straight to SABME, and a learned
+        // non-XID-answerer skips the pre-connect XID it would only stall on. The port's own
+        // dial: v22 is the only thing that makes an interlink LEAD with SABME.
+        var link = PortLinkPolicy?.Invoke(attachment.PortId);
+        var plan = capabilityCache?.PlanDial(attachment.PortId, neighbour.ToString(), PeerDialPolicy.Interlink, link)
+            ?? PeerCapabilityCache.PlanWithoutCache(PeerDialPolicy.Interlink, link);
 
         // Dial the interlink. Prefer the supervisor's claim-aware hook (so no console
         // is started against the neighbour — see OpenInterlink); fall back to a direct

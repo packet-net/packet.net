@@ -128,6 +128,18 @@ export interface PortCompatConfig {
   allowCommandFrameAsResponse?: boolean | null;
   quirks?: "default" | "strictly-faithful" | null;
 }
+// Per-port AX.25 LINK SETUP - how this port dials OUT (server:
+// Packet.Node.Core.Configuration.PortLinkConfig). dial picks which AX.25 version an outbound
+// connect offers first (Auto = offer v2.2/SABME and learn per peer, V22 = always v2.2, V20 =
+// always plain v2.0/SABM - what a BPQ / LinBPQ or older-TNC facing port wants); preConnectXid
+// decides whether a v2.0 dial leads with an XID exchange to negotiate SREJ. Both are plain
+// enums with defaults on the server, so both are always present when `link` is; the config
+// dialect serialises them as their member names. Absent/null link = Auto + Auto, i.e. exactly
+// today's dial behaviour. Inbound connects are never affected - the node answers whatever
+// version the caller offers.
+export type LinkDialPreference = "Auto" | "V22" | "V20";
+export type LinkPreConnectXid = "Auto" | "On" | "Off";
+export interface PortLinkConfig { dial: LinkDialPreference; preConnectXid: LinkPreConnectXid }
 // Optional per-port radio-control attachment (server: Packet.Node.Core.Configuration.PortRadioConfig).
 // The serial control channel to the radio behind this port's modem - a SEPARATE serial device from
 // the modem's. When present, every inbound frame carries per-frame RSSI/SNR sampled from the radio's
@@ -197,6 +209,10 @@ export interface PortConfig {
   kiss: KissParams | null;
   beacon: PortBeacon | null;
   compat?: PortCompatConfig | null;
+  // Per-port outbound-dial link policy (which AX.25 version this port offers first, and whether
+  // a v2.0 dial leads with an XID to negotiate SREJ). Null/absent = Auto + Auto, today's
+  // behaviour exactly. See Packet.Node.Core.Configuration.PortConfig.Link.
+  link?: PortLinkConfig | null;
   // Per-port radio-control attachment (RSSI/health). Null/absent = no radio.
   radio?: RadioConfig | null;
   // Per-port rig-control (CAT) attachment. Null/absent = no rig.

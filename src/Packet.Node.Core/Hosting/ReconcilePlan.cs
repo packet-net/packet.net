@@ -53,6 +53,13 @@ public sealed record ReconcilePlan
     /// untouched. Keyed by the new config.</summary>
     public IReadOnlyList<PortConfig> CompatChanged { get; init; } = [];
 
+    /// <summary>Ports whose link policy (<see cref="PortConfig.Link"/>) changed but nothing
+    /// restart-class did → the same live reseed as <see cref="Ax25ParamsChanged"/> (the reseeded
+    /// parameter record carries the listener's dial defaults), and the dial path reads the new
+    /// policy on its next connect. It gates FUTURE outbound dials only - a link already up keeps
+    /// the version it negotiated. Keyed by the new config.</summary>
+    public IReadOnlyList<PortConfig> LinkChanged { get; init; } = [];
+
     /// <summary>Ports whose per-port NET/ROM <see cref="PortConfig.NetRomQuality"/>
     /// changed but nothing restart-class did → hot-apply the new route quality to the
     /// port's NET/ROM attachment (no restart). QUALITY only affects how the next NODES
@@ -76,5 +83,5 @@ public sealed record ReconcilePlan
         ToBringUp.Count == 0 && ToTearDown.Count == 0 && ToRestart.Count == 0 &&
         ToDisable.Count == 0 && ToEnable.Count == 0 &&
         KissParamsChanged.Count == 0 && Ax25ParamsChanged.Count == 0 && CompatChanged.Count == 0 &&
-        NetRomQualityChanged.Count == 0;
+        LinkChanged.Count == 0 && NetRomQualityChanged.Count == 0;
 }

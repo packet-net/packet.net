@@ -96,6 +96,11 @@ public static class ReconcilePreviewBuilder
             live.Add(new ReconcileChange($"ports.{p.Id}.compat", Live,
                 $"Port '{p.Id}' AX.25 compatibility profile applied live (inbound parsing from the next frame; session quirks for new sessions)."));
         }
+        foreach (var p in plan.LinkChanged)
+        {
+            live.Add(new ReconcileChange($"ports.{p.Id}.link", Live,
+                $"Port '{p.Id}' link policy applied live (the next outbound connect uses it; links already up are untouched)."));
+        }
         foreach (var p in plan.NetRomQualityChanged)
         {
             live.Add(new ReconcileChange($"ports.{p.Id}.netRom", Live,

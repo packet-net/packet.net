@@ -622,6 +622,50 @@ public class NodeConfigValidatorTests
         Validator.Validate(config).IsValid.Should().Be(expectValid);
     }
 
+    [Theory]
+    [InlineData(LinkDialPreference.Auto, LinkPreConnectXid.Auto, true)]
+    [InlineData(LinkDialPreference.V22, LinkPreConnectXid.On, true)]
+    [InlineData(LinkDialPreference.V20, LinkPreConnectXid.Off, true)]
+    [InlineData((LinkDialPreference)99, LinkPreConnectXid.Auto, false)]
+    [InlineData(LinkDialPreference.Auto, (LinkPreConnectXid)42, false)]
+    public void Link_policy_members_must_name_a_declared_preference(
+        LinkDialPreference dial, LinkPreConnectXid xid, bool expectValid)
+    {
+        // A typo'd YAML/JSON NAME is rejected at parse time (the candidate config is thrown out
+        // whole). What reaches the validator is a numeric value the JSON enum converter accepted
+        // on read - "dial": 99 - and that must be a named 422, not a silent fall-through to auto.
+        var config = Valid(new PortConfig
+        {
+            Id = "p",
+            Transport = new KissTcpTransport { Host = "h", Port = 1 },
+            Link = new PortLinkConfig { Dial = dial, PreConnectXid = xid },
+        });
+        Validator.Validate(config).IsValid.Should().Be(expectValid);
+    }
+
+    [Fact]
+    public void A_two_port_config_may_declare_a_different_link_policy_on_each_port()
+    {
+        // The whole point of a PER-PORT policy: a BPQ-facing HF port pinned to v2.0 alongside a
+        // VHF port left on auto, in one valid config.
+        var config = Valid(
+            new PortConfig
+            {
+                Id = "hf",
+                Transport = new KissTcpTransport { Host = "h1", Port = 1 },
+                Link = new PortLinkConfig { Dial = LinkDialPreference.V20, PreConnectXid = LinkPreConnectXid.On },
+            },
+            new PortConfig
+            {
+                Id = "vhf",
+                Transport = new KissTcpTransport { Host = "h2", Port = 2 },
+            });
+
+        Validator.Validate(config).IsValid.Should().BeTrue();
+        config.Ports[0].Link!.Dial.Should().Be(LinkDialPreference.V20);
+        config.Ports[1].Link.Should().BeNull("an unset link: block is all-auto - the historical behaviour");
+    }
+
     [Fact]
     public void Rejects_out_of_range_ax25_window()
     {

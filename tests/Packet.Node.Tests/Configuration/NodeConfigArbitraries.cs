@@ -72,6 +72,13 @@ public static class NodeConfigArbitraries
                 AllowEmptyCallsignBase = emptyBase,
             });
 
+    private static Gen<PortLinkConfig?> LinkGen() =>
+        Gen.OneOf(
+            Gen.Constant<PortLinkConfig?>(null),
+            from dial in Gen.Elements(LinkDialPreference.Auto, LinkDialPreference.V22, LinkDialPreference.V20)
+            from xid in Gen.Elements(LinkPreConnectXid.Auto, LinkPreConnectXid.On, LinkPreConnectXid.Off)
+            select (PortLinkConfig?)new PortLinkConfig { Dial = dial, PreConnectXid = xid });
+
     // The optional radio-control attachment: only generated when the transport is a
     // serial-modem kind (serial-kiss / nino-tnc) — validation rejects it elsewhere —
     // and null ~half the time even then (most ports have no radio cabled).
@@ -95,6 +102,7 @@ public static class NodeConfigArbitraries
         from ax25 in Ax25Gen()
         from kiss in KissGen()
         from compat in CompatGen()
+        from link in LinkGen()
         // Per-port NET/ROM knobs: each is null (inherit) ~half the time, else an in-range value.
         from netRomQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
         from netRomMinQuality in Gen.OneOf(Gen.Constant((int?)null), Gen.Choose(0, 255).Select(q => (int?)q))
@@ -108,6 +116,7 @@ public static class NodeConfigArbitraries
             Ax25 = ax25,
             Kiss = kiss,
             Compat = compat,
+            Link = link,
             NetRomQuality = netRomQuality,
             NetRomMinQuality = netRomMinQuality,
             NodesPaclen = nodesPaclen,

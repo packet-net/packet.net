@@ -101,7 +101,7 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
     }
 
     [Fact]
-    public async Task A_dial_that_throws_leaves_the_cache_unchanged()
+    public async Task An_extended_dial_that_times_out_records_only_the_silent_to_sabme_negative()
     {
         var cache = new PeerCapabilityCache();
 
@@ -112,9 +112,14 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
         var connector = new Ax25OutboundConnector(PortId, caller, claim: null, localOverride: null, cache: cache);
 
         Func<Task> dial = async () => await connector.ConnectAsync(Target);
-        await dial.Should().ThrowAsync<Exception>("no peer answers, so the connect exhausts its budget and throws");
+        await dial.Should().ThrowAsync<Exception>("no peer answers either version, so both the SABME and the v2.0 retry exhaust their budgets");
 
-        cache.All().Should().BeEmpty("a dial that throws must NOT record an outcome (no link ⇒ no signal)");
+        // The invariant is unchanged for the POSITIVE dimensions: a dial that never linked proves
+        // nothing about SREJ-via-XID. What a timed-out SABME DOES prove enough to act on is that
+        // offering SABME again is not worth another stall (#724) - see RecordSilentToExtended.
+        var rec = cache.All().Single();
+        rec.SupportsExtended.Should().BeFalse("the SABME drew no answer at all, which is the silent-to-SABME negative");
+        rec.SupportsSrejViaXid.Should().BeNull("no pre-connect XID was ever answered, so that dimension stays unprobed");
 
         await caller.DisposeAsync();
     }
