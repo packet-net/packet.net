@@ -596,6 +596,17 @@ public sealed partial class PortSupervisor : IPortHealthView
                         LogRetryAbandoned(id);
                         return;
                     }
+                    if (!Equals(livePort.Transport, port.Transport))
+                    {
+                        // The config moved under us between the ungated open and this gated
+                        // adopt: the pipe we hold was opened for a transport block the port no
+                        // longer has. Never attach it; discard and let the next attempt open
+                        // the live one.
+                        await opened.DisposeAsync().ConfigureAwait(false);
+                        RecordRetryFailure(id, attempt, "the port's transport changed while the retry was opening it");
+                        delay = NextDelay(delay);
+                        continue;
+                    }
 
                     // BringUpAsync owns the pipe from here, success or failure.
                     await BringUpAsync(livePort, live.Identity, ct, quiet: true, preOpened: opened)

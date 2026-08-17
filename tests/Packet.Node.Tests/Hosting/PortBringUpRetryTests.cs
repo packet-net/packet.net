@@ -49,12 +49,12 @@ public sealed class PortBringUpRetryTests
             config, transports, clock, NullLoggerFactory.Instance);
         await supervisor.StartAsync();
 
-        supervisor.RunningPortIds.Should().BeEmpty("the head-end is unreachable at boot — the port faults");
+        supervisor.RunningPortIds.Should().BeEmpty("the head-end is unreachable at boot - the port faults");
 
         // The head-end appears (Pi finished booting): the transport now opens.
         transports.ClearFault(Endpoint).Provide(Endpoint, bus.Attach());
 
-        // Nothing happens until the retry interval elapses — then the loop brings the port up
+        // Nothing happens until the retry interval elapses - then the loop brings the port up
         // with NO config change. Walk the fake clock; the loop's delay + gate hops run on real
         // threads, so poll briefly between steps.
         for (int i = 0; i < 40 && !supervisor.RunningPortIds.Contains("a"); i++)
@@ -85,7 +85,7 @@ public sealed class PortBringUpRetryTests
             clock.Advance(TimeSpan.FromSeconds(30));
             await Task.Delay(25);
         }
-        supervisor.RunningPortIds.Should().BeEmpty("every attempt so far failed — the port stays down, nothing crashes");
+        supervisor.RunningPortIds.Should().BeEmpty("every attempt so far failed - the port stays down, nothing crashes");
 
         transports.ClearFault(Endpoint).Provide(Endpoint, bus.Attach());
         for (int i = 0; i < 40 && !supervisor.RunningPortIds.Contains("a"); i++)
