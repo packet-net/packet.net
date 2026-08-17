@@ -87,16 +87,24 @@ rhp-message = auth / auth-reply
 ; Error codes 0–17 (row 8: 17 is XRouter-observed, not in the published spec)
 err-code = 0..17
 
+; NOTE on the "-val" suffixes below: a rule name must never collide with a
+; bareword member key used anywhere in this file. RFC 8610 §3.5.1 says a
+; bareword before ":" is the text string with that name, but the reference
+; `cddl` CLI (Rust crate, checked at 0.10.7) resolves such a bareword as the
+; RULE of that name instead, turning `pfam: pfam` into a `tstr => tstr` type
+; key that swallows arbitrary entries and then reports the real "pfam" key as
+; unexpected. Keeping the value rules suffixed keeps validation honest.
+
 ; Port: XRouter emits a JSON string in DGRAM mode but a JSON number in TRACE
 ; mode (row 4); the spec's accept example shows a number (row 3). Readers
 ; normalise both; emitters use string. The grammar accepts both.
 port-val = tstr / uint
 
 ; Protocol family (open set on the wire — XRouter can grow new families)
-pfam = tstr  ; "ax25" / "inet" / "netrom" / "unix" / future
+pfam-val = tstr  ; "ax25" / "inet" / "netrom" / "unix" / future
 
 ; Socket mode (open set on the wire)
-mode = tstr  ; "stream" / "dgram" / "custom" / "seqpkt" / "trace" / "raw" / "semiraw"
+mode-val = tstr  ; "stream" / "dgram" / "custom" / "seqpkt" / "trace" / "raw" / "semiraw"
 
 ; ─── Authentication ───────────────────────────────────────────────────────────
 
@@ -119,8 +127,8 @@ auth-reply = {
 open = {
   type: "open",
   ? id: uint,
-  pfam: pfam,
-  mode: mode,
+  pfam: pfam-val,
+  mode: mode-val,
   ? port: port-val,        ; P-2: spec says mandatory; XRouter accepts absent
   ? local: tstr,           ; D8: spec says mandatory, XRouter requires it; pdn defaults to node callsign
   ? remote: tstr,          ; spec: "active open only"
@@ -140,8 +148,8 @@ open-reply = {
 socket = {
   type: "socket",
   ? id: uint,
-  pfam: pfam,
-  mode: mode,
+  pfam: pfam-val,
+  mode: mode-val,
 }
 
 socket-reply = {

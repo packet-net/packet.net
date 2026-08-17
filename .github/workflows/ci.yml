@@ -68,7 +68,36 @@ jobs:
       - name: report .NET
         run: dotnet --version
 
+      - name: provision cddl (RHPv2 wire-grammar conformance)
+        if: matrix.project == 'Packet.Rhp2.Tests'
+        # tests/Packet.Rhp2.Tests/CddlWireConformanceTests.cs validates every RHPv2 JSON
+        # payload against spec/rhp2.cddl with the `cddl` CLI. No runner had the binary, and
+        # the suite used to `return` silently when it was missing: 33 tests reported Passed
+        # having verified nothing (#700 C028). They now report Skipped when it is absent, and
+        # PDN_REQUIRE_CDDL=1 on the test step below turns "absent on CI" into a red build.
+        # `cargo install` is a one-off per runner (a few minutes of rustc); every later run is
+        # the PATH check. The flock keeps two concurrent workflow runs off the same cargo
+        # target dir. A runner without cargo cannot provision it: that is a loud warning and
+        # the suite reports Skipped, never a false Pass. A cargo that fails to build it is a
+        # red build, because that is a real breakage rather than a missing prerequisite.
+        run: |
+          if command -v cddl >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/cddl" ]; then
+            echo "cddl already provisioned"
+            echo "PDN_REQUIRE_CDDL=1" >> "$GITHUB_ENV"
+          elif command -v cargo >/dev/null 2>&1; then
+            # Pinned: the suite passes the global `--ci` flag, without which `cddl validate`
+            # exits 0 even when validation FAILS, which is how the suite managed to be vacuous
+            # a second way. Bump deliberately, after checking that flag still exists.
+            flock /tmp/pdn-ci-cddl-install.lock cargo install cddl --locked --version 0.10.7
+            echo "PDN_REQUIRE_CDDL=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::cargo is absent on this runner, so the RHPv2 CDDL conformance suite will report Skipped; install rustup on the runner to close the gap"
+          fi
+
       - name: test
+        # PDN_REQUIRE_CDDL comes from the provisioning step above (Rhp2 leg only): with the
+        # tool present the CDDL suite must run, so a later disappearance fails the build
+        # instead of silently skipping.
         # Shared (reader) box-wide flock. The 4 org-level runners are separate
         # processes on the same LXC host, sharing /tmp, so this lock coordinates
         # across all of them. Multiple shared holders coexist (4 test legs run
@@ -119,6 +148,21 @@ jobs:
         # C107: the 2026-05-17 repo split and the config-in-DB move left links to files
         # that had moved to a sibling repo or been deleted, and nothing noticed for months.
         run: scripts/check-doc-links.sh
+
+      - name: no Flaky-traited test runs unfiltered
+        # C110: the repo's one [Trait("Category","Flaky")] test ran on every push, because the
+        # test filter excludes only HardwareLoop and Interop, so the trait meant nothing and a
+        # known-unreliable test kept gating main. That test is now deterministic and the trait
+        # is gone. If a Flaky trait ever comes back, either it gets fixed or the filter has to
+        # exclude it; this guard forces that choice instead of letting it lurk.
+        run: |
+          if grep -rn '"Flaky"' tests --include=*.cs; then
+            if ! grep -q 'Category!=Flaky' .github/workflows/ci.yml; then
+              echo "::error::a test is traited Flaky but ci.yml's test filter does not exclude it"
+              exit 1
+            fi
+          fi
+          echo "ok: no Flaky-traited test runs unfiltered"
 
       - name: no node_modules is git-tracked
         # C102: web/ax25/node_modules (3058 files, 19 MB) stayed tracked long after the
