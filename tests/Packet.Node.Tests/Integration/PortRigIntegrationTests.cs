@@ -139,16 +139,24 @@ public sealed class PortRigIntegrationTests
     public async Task A_hot_kiss_only_apply_keeps_the_ports_rig_attached()
     {
         var bus = new SharedRadioBus();
-        var before = PortWithRig("hf", "/dev/pty-hf") with { Kiss = new KissParams { TxDelay = 30 } };
+        // C072: the same port also carries a radio, so the hot apply is asserted over
+        // EVERY construction-time object a running port owns, not just the rig trio.
+        var before = PortWithRig("hf", "/dev/pty-hf") with
+        {
+            Kiss = new KissParams { TxDelay = 30 },
+            Radio = new PortRadioConfig { Kind = "tait-ccdi", Port = "/dev/ttyUSB0", Baud = 28800 },
+        };
         var config = new TestConfigProvider(Config(before));
         var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-hf", bus.Attach());
         var disposal = new List<string>();
         var rig = new FakeRigControl(disposal, "rig") { FrequencyHz = 14_074_000 };
         var rigs = new FakeRigControlFactory().Provide(rig);
+        var radio = new FakeRadioControl(disposal, "radio");
+        var radios = new FakeRadioControlFactory().Provide(radio);
 
         var supervisor = new PortSupervisor(
             config, transports, TimeProvider.System, NullLoggerFactory.Instance,
-            rigFactory: rigs, rigTelemetry: new RigTelemetry());
+            radioFactory: radios, rigFactory: rigs, rigTelemetry: new RigTelemetry());
         await supervisor.StartAsync();
         await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up");
 
@@ -156,6 +164,12 @@ public sealed class PortRigIntegrationTests
         running.Rig.Should().BeSameAs(rig);
         var monitor = running.RigStatus;
         monitor.Should().NotBeNull("an attached rig gets a status poller");
+        var listener = running.Listener;
+        var transport = running.Transport;
+        var modem = running.ModemTransport;
+        var radioMonitor = running.RadioStatus;
+        running.Radio.Should().BeSameAs(radio);
+        radioMonitor.Should().NotBeNull("an attached radio gets a status/health monitor");
 
         // A KISS-only edit: the planner must classify it hot (no restart), which is exactly
         // the class that used to lose the rig.
@@ -174,9 +188,18 @@ public sealed class PortRigIntegrationTests
         rebaselined.RigStatus.Should().BeSameAs(monitor, "a hot apply must not drop the status poller");
         rebaselined.RigDaemon.Should().BeNull("this port dials a BYO daemon; there is none to keep");
         RigReadModels.ForPort(supervisor, newConfig, "hf")!.Attached.Should().BeTrue();
+        // C072: nothing else the port owns moved either - a hot apply rebuilds no object.
+        rebaselined.Listener.Should().BeSameAs(listener, "a hot apply must not rebuild the listener");
+        rebaselined.Transport.Should().BeSameAs(transport, "nor re-open the transport chain");
+        rebaselined.ModemTransport.Should().BeSameAs(modem);
+        rebaselined.Radio.Should().BeSameAs(radio, "a hot apply must not detach the radio");
+        rebaselined.RadioStatus.Should().BeSameAs(radioMonitor, "nor drop the radio health monitor");
+        rig.Disposed.Should().BeFalse("the rig is disposed at TEARDOWN, never by a hot apply");
+        radio.Disposed.Should().BeFalse("and neither is the radio");
 
         await supervisor.DisposeAsync();
         rig.Disposed.Should().BeTrue("teardown must still own and dispose the rig after a hot apply");
+        radio.Disposed.Should().BeTrue("and the radio control channel with it");
     }
 
     // ---- the node-managed shape (device + model → the supervisor spawns rigctld) ----------
@@ -189,13 +212,10 @@ public sealed class PortRigIntegrationTests
         Rig = rig,
     };
 
-    [Fact]
+    [SkippableFact]
     public async Task A_node_managed_rig_whose_daemon_cannot_start_degrades_to_a_working_port()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the managed rigctld spawn path is Linux-only");
 
         var bus = new SharedRadioBus();
         var rigConfig = new PortRigConfig { Kind = "hamlib", Device = "/dev/ttyUSB9", Model = 3073 };
