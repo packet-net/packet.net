@@ -21,6 +21,9 @@ namespace Packet.NetRom.Tests.Routing;
 /// </summary>
 public sealed class Inp3BuildRifTests
 {
+    // The port every single-port case in this file ingests on. A neighbour is keyed
+    // (port, callsign), so a RIF is filed under the adjacency it arrived on.
+    private const string Port = "vhf";
     private static readonly Callsign Me = new("M0LTE", 0);
     private static readonly Callsign NbrA = new("GB7RDG", 0);   // a neighbour
     private static readonly Callsign NbrB = new("GB7XYZ", 0);   // a second neighbour
@@ -72,8 +75,8 @@ public sealed class Inp3BuildRifTests
     public void Own_node_rip_is_always_first_and_is_zero_zero_regardless_of_table_state()
     {
         var table = NewTable();
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
-        table.IngestRif(NbrB, Me, neighbourSnttMs: 20, Rif(Rip(DestMnc, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestMnc, hopCount: 1, targetTimeMs: 100)));
 
         foreach (var toward in new[] { NbrA, NbrB })
         {
@@ -90,7 +93,7 @@ public sealed class Inp3BuildRifTests
     {
         // Degenerate: building toward ourselves (the loop-guard identity == target neighbour).
         var table = NewTable();
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var rif = table.BuildRif(Me, Me);
 
@@ -106,7 +109,7 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // 100 + 73 + 10 = 183 ms stored; emitted floored to the 10 ms wire granule → 180.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 73, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 73, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var rif = table.BuildRif(Me, NbrB);   // toward a DIFFERENT neighbour → no poison
 
@@ -135,8 +138,8 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // Two destinations, faster via the same neighbour so neither is poisoned toward NbrB.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 200, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 310
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 20, Rif(Rip(DestMnc, hopCount: 1, targetTimeMs: 100)));    // 130
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 200, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 310
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestMnc, hopCount: 1, targetTimeMs: 100)));    // 130
 
         var rif = table.BuildRif(Me, NbrB);
 
@@ -152,7 +155,7 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // SOT is reached via NbrA. The RIF toward NbrA must poison SOT.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var towardA = table.BuildRif(Me, NbrA);
 
@@ -166,7 +169,7 @@ public sealed class Inp3BuildRifTests
     {
         var table = NewTable();
         // SOT via NbrA: poisoned toward NbrA, but advertised at its real time toward NbrB.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));
 
         var towardA = table.BuildRif(Me, NbrA);
         var towardB = table.BuildRif(Me, NbrB);
@@ -183,8 +186,8 @@ public sealed class Inp3BuildRifTests
         // SOT reachable via BOTH neighbours. The shipped multi-route LB forwards SOT traffic
         // over BOTH, so advertising SOT back at a finite metric to EITHER seeds a loop — both
         // must be poisoned, not just the faster/best one.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 200, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 310 via NbrA
-        table.IngestRif(NbrB, Me, neighbourSnttMs: 20, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));    // 130 via NbrB
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 200, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 310 via NbrA
+        table.IngestRif(NbrB, Port, Me, neighbourSnttMs: 20, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));    // 130 via NbrB
 
         RipFor(table.BuildRif(Me, NbrA), DestSot).IsHorizon.Should().BeTrue("SOT is reached via NbrA → poison toward NbrA");
         RipFor(table.BuildRif(Me, NbrB), DestSot).IsHorizon.Should().BeTrue("SOT is reached via NbrB too → poison toward NbrB");
@@ -210,9 +213,9 @@ public sealed class Inp3BuildRifTests
         var d2 = new Callsign("GB7EEE", 0);
         var d3 = new Callsign("GB7FFF", 0);
 
-        table.IngestRif(n1, Me, neighbourSnttMs: 10, Rif(Rip(d1, hopCount: 1, targetTimeMs: 100)));   // d1 via n1
-        table.IngestRif(n2, Me, neighbourSnttMs: 10, Rif(Rip(d2, hopCount: 1, targetTimeMs: 100)));   // d2 via n2
-        table.IngestRif(n1, Me, neighbourSnttMs: 10, Rif(Rip(d3, hopCount: 1, targetTimeMs: 100)));   // d3 via n1
+        table.IngestRif(n1, Port, Me, neighbourSnttMs: 10, Rif(Rip(d1, hopCount: 1, targetTimeMs: 100)));   // d1 via n1
+        table.IngestRif(n2, Port, Me, neighbourSnttMs: 10, Rif(Rip(d2, hopCount: 1, targetTimeMs: 100)));   // d2 via n2
+        table.IngestRif(n1, Port, Me, neighbourSnttMs: 10, Rif(Rip(d3, hopCount: 1, targetTimeMs: 100)));   // d3 via n1
 
         foreach (var toward in new[] { n1, n2 })
         {
@@ -252,7 +255,7 @@ public sealed class Inp3BuildRifTests
         // Emission advertises every destination we HOLD an INP3 time-route for, so neighbours
         // learn the time topology — even on a node that forwards by quality. preferInp3Routes is
         // a local *forwarding* preference (Inp3RouteSelector / I-3), not an advertisement gate.
-        table.IngestRif(NbrA, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 160 via NbrA
+        table.IngestRif(NbrA, Port, Me, neighbourSnttMs: 50, Rif(Rip(DestSot, hopCount: 1, targetTimeMs: 100)));   // 160 via NbrA
 
         var rif = table.BuildRif(Me, NbrB);   // toward a different neighbour → finite
 

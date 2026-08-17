@@ -190,7 +190,7 @@ REST + JSON, JWT bearer, scoped. SSE for the live feed. Versioned under `/api/v1
 | 7.4 | `GET /api/v1/config` · `GET /config/schema` · `PUT /config` (full) · `PATCH /config` (section) · `GET /config/raw` · `PUT /config/raw` · `POST /config:validate` (→ reconcile preview) | config read/edit, both models | 4.8 |
 | 7.5 | `GET /api/v1/setup/state` · `POST /setup` · `POST /auth/login` · WebAuthn `…/register\|authenticate` · `GET\|POST\|DELETE /users…` | onboarding + auth + users | 4.1/4.2/4.9 |
 | 7.6 | `GET /api/v1/events` (SSE) | multiplexed live feed: `frame`, `session`, `port`, `config`, `route` event types (client subscribes/filters) | 4.3/4.5/4.6 |
-| 7.7 | `GET /api/v1/netrom/routes` | `NetRomRoutingSnapshot` | 4.7 |
+| 7.7 | `GET /api/v1/netrom/routes` | `NetRomRoutingSnapshot` - neighbours are **adjacencies**, one row per `(portId, neighbour)`, and each route carries its own `portId`; key rows on both halves ([#725](https://github.com/packet-net/packet.net/issues/725)) | 4.7 |
 
 **Auth scopes (sketch):** `read` (status/monitor/routes/sessions-view), `operate` (connect/disconnect, port up/down, beacon), `admin` (config write, users). JWT carries scopes; passkey or password obtains it.
 

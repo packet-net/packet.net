@@ -17,15 +17,19 @@ public class Inp3RouteSelectorTests
     private static readonly Callsign NbrA = new("GB7AAA", 0);
     private static readonly Callsign NbrB = new("GB7BBB", 0);
     private static readonly Callsign NbrC = new("GB7CCC", 0);
+    // Every route here is on one port; a route's next hop is the (port, callsign) adjacency,
+    // so the port travels with it.
+    private const string Port = "vhf";
+
     private static readonly Callsign Dest = new("GB7SOT", 0);
 
     // A quality-only route (today's vanilla triple; no INP3 metric).
-    private static NetRomRoute Q(Callsign nbr, byte quality)
-        => new(nbr, quality, Obsolescence: 6);
+    private static NetRomRoute Q(Callsign nbr, byte quality, string portId = Port)
+        => new(nbr, portId, quality, Obsolescence: 6);
 
     // A route carrying both a quality and an INP3 (target-time) metric.
-    private static NetRomRoute T(Callsign nbr, byte quality, int targetTimeMs, byte hopCount)
-        => new(nbr, quality, Obsolescence: 6, new Inp3RouteMetric(targetTimeMs, hopCount));
+    private static NetRomRoute T(Callsign nbr, byte quality, int targetTimeMs, byte hopCount, string portId = Port)
+        => new(nbr, portId, quality, Obsolescence: 6, new Inp3RouteMetric(targetTimeMs, hopCount));
 
     // Build a destination from a best-quality-first route list (the ordering the table
     // maintains; Routes[0] is the quality-best route = today's BestRoute).

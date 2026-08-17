@@ -7,6 +7,13 @@
       "portId": "vhf-1",
       "pathQuality": 203,
       "lastHeard": "0:00:14"
+    },
+    {
+      "neighbour": "GB7BNS",
+      "alias": "BNSGW",
+      "portId": "uhf-2",
+      "pathQuality": 168,
+      "lastHeard": "0:00:31"
     }
   ],
   "destinations": [
@@ -17,6 +24,7 @@
       "routes": [
         {
           "neighbour": "GB7CIP",
+          "portId": "vhf-1",
           "quality": 188,
           "obsolescence": 6,
           "inp3": {
@@ -26,7 +34,15 @@
         },
         {
           "neighbour": "GB7BNS",
+          "portId": "vhf-1",
           "quality": 142,
+          "obsolescence": 4,
+          "inp3": null
+        },
+        {
+          "neighbour": "GB7BNS",
+          "portId": "uhf-2",
+          "quality": 118,
           "obsolescence": 4,
           "inp3": null
         }

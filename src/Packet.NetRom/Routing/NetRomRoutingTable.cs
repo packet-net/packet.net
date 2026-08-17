@@ -69,11 +69,15 @@ public sealed class NetRomRoutingTable
     private readonly NetRomRoutingOptions options;
     private readonly TimeProvider timeProvider;
     private readonly object gate = new();
+    private readonly IComparer<RouteState> routeRank;
 
-    // destination callsign -> its entry (alias + per-neighbour routes).
+    // destination callsign -> its entry (alias + per-neighbour routes). A DESTINATION is a
+    // node, not a link, so it stays keyed by callsign alone (design §10 item 2).
     private readonly Dictionary<Callsign, DestinationState> destinations = new();
-    // neighbour callsign -> directly-heard neighbour state.
-    private readonly Dictionary<Callsign, NeighbourState> neighbours = new();
+    // (port, callsign) -> directly-heard neighbour state. A neighbour is an ADJACENCY: the same
+    // station audible on two ports is two rows, each with its own path quality and its own
+    // routes (docs/netrom-multiport-neighbours.md).
+    private readonly Dictionary<NeighbourKey, NeighbourState> neighbours = new();
 
     // INP3 invariant (W): destinations that have lost their LAST Inp3-bearing route
     // (withdrawn at horizon, dropped by MarkNeighbourDown, or aged out by Sweep) since
@@ -101,6 +105,29 @@ public sealed class NetRomRoutingTable
     {
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        routeRank = Comparer<RouteState>.Create(CompareRoutes);
+    }
+
+    // The one deterministic route ordering: best quality first, then the node's canonical port
+    // order (NetRomRoutingOptions.PortRank; ordinal port id when none is wired), then neighbour
+    // callsign ordinal. Shared by Snapshot, the per-destination route cap and the advertisement
+    // pick, so all three agree on which of two equal-quality per-port routes is "the" route -
+    // without which the selected next hop would flap with dictionary order once one callsign can
+    // occupy several slots.
+    private int CompareRoutes(RouteState? a, RouteState? b)
+    {
+        if (a is null || b is null)
+        {
+            return a is null ? (b is null ? 0 : 1) : -1;
+        }
+        if (a.Quality != b.Quality)
+        {
+            return b.Quality.CompareTo(a.Quality);   // descending quality
+        }
+        int byPort = options.ComparePorts(a.Neighbour.PortId, b.Neighbour.PortId);
+        return byPort != 0
+            ? byPort
+            : string.CompareOrdinal(a.Neighbour.Callsign.ToString(), b.Neighbour.Callsign.ToString());
     }
 
     /// <summary>
@@ -148,19 +175,22 @@ public sealed class NetRomRoutingTable
         // rejects out-of-range, but a clamp keeps the floor comparison total).
         int floor = Math.Clamp(minQuality ?? options.MinQuality, NetRomQuality.Min, NetRomQuality.Max);
 
+        var key = new NeighbourKey(portId, originator);
+
         lock (gate)
         {
-            // Heuristic 3: ensure a neighbour-list entry for the originator, created with
-            // the (per-port or default) path quality. Refresh its alias + last-heard each
-            // time — and refresh its path quality too, so a per-port QUALITY change (or a
-            // neighbour newly heard on a different-grade port) reflects on the next broadcast.
-            if (!neighbours.TryGetValue(originator, out var nbr))
+            // Heuristic 3: ensure a neighbour-list entry for this ADJACENCY - (port,
+            // originator), not the originator alone - created with the (per-port or default)
+            // path quality. Refresh its alias + last-heard each time, and its path quality too,
+            // so a per-port QUALITY edit reflects on the next broadcast. Because the port is in
+            // the key, a broadcast heard on ANOTHER port creates a second row instead of
+            // overwriting this one's quality: that overwrite was the whole defect (#725).
+            if (!neighbours.TryGetValue(key, out var nbr))
             {
                 nbr = new NeighbourState { PathQuality = pathQuality };
-                neighbours[originator] = nbr;
+                neighbours[key] = nbr;
             }
             nbr.Alias = broadcast.SenderAlias;
-            nbr.PortId = portId;
             nbr.PathQuality = pathQuality;
             nbr.LastHeard = now;
             byte originatorPathQuality = nbr.PathQuality;
@@ -173,7 +203,7 @@ public sealed class NetRomRoutingTable
             UpsertRoute(
                 destination: originator,
                 alias: broadcast.SenderAlias,
-                viaNeighbour: originator,
+                via: key,
                 quality: originatorPathQuality,
                 minQuality: floor);
 
@@ -200,7 +230,7 @@ public sealed class NetRomRoutingTable
                 UpsertRoute(
                     destination: entry.Destination,
                     alias: entry.DestinationAlias,
-                    viaNeighbour: originator,
+                    via: key,
                     quality: quality,
                     minQuality: floor);
             }
@@ -263,6 +293,10 @@ public sealed class NetRomRoutingTable
     /// </remarks>
     /// <param name="receivedFromNeighbour">The interlink neighbour the RIF arrived on — the
     /// next-hop (via) for every route this RIF teaches.</param>
+    /// <param name="portId">The port that interlink runs on. Together with
+    /// <paramref name="receivedFromNeighbour"/> it is the <see cref="NeighbourKey"/> every route
+    /// this RIF teaches is filed under, so a RIF from one station over two ports keeps two
+    /// independent time-routes (and a withdrawal on one leaves the other standing).</param>
     /// <param name="myCall">Our own node callsign — a RIP whose destination is us is skipped
     /// (the trivial-loop guard).</param>
     /// <param name="neighbourSnttMs">The smoothed transport time to
@@ -275,13 +309,16 @@ public sealed class NetRomRoutingTable
     /// learned. Values &lt; 1 are treated as 1.</param>
     public void IngestRif(
         Callsign receivedFromNeighbour,
+        string portId,
         Callsign myCall,
         uint neighbourSnttMs,
         Inp3Rif rif,
         int hopLimit = DefaultHopLimit)
     {
         ArgumentNullException.ThrowIfNull(rif);
+        ArgumentNullException.ThrowIfNull(portId);
         int effectiveHopLimit = Math.Max(1, hopLimit);
+        var via = new NeighbourKey(portId, receivedFromNeighbour);
 
         lock (gate)
         {
@@ -303,7 +340,7 @@ public sealed class NetRomRoutingTable
                 // withdrawal — hence the linkMeasured guard on the second clause).
                 if (rip.IsHorizon || (linkMeasured && localTargetTime >= Inp3Rip.HorizonMs))
                 {
-                    WithdrawInp3(rip.Destination, receivedFromNeighbour);
+                    WithdrawInp3(rip.Destination, via);
                     continue;
                 }
 
@@ -326,7 +363,7 @@ public sealed class NetRomRoutingTable
                 UpsertInp3Route(
                     destination: rip.Destination,
                     alias: rip.Alias ?? string.Empty,
-                    viaNeighbour: receivedFromNeighbour,
+                    via: via,
                     metric: new Inp3RouteMetric((int)localTargetTime, (byte)Math.Min(localHopCount, byte.MaxValue)));
             }
         }
@@ -359,7 +396,7 @@ public sealed class NetRomRoutingTable
                     }
                 }
 
-                var survivors = new Dictionary<Callsign, RouteState>(dest.Routes.Count);
+                var survivors = new Dictionary<NeighbourKey, RouteState>(dest.Routes.Count);
                 bool hasInp3After = false;
                 foreach (var (via, route) in dest.Routes)
                 {
@@ -415,51 +452,103 @@ public sealed class NetRomRoutingTable
     /// returns. Idempotent — marking an unknown / already-removed neighbour down is a
     /// no-op returning 0.
     /// </summary>
-    /// <param name="neighbour">The neighbour whose routes to drop.</param>
+    /// <remarks>
+    /// <b>Per adjacency, not per station.</b> The argument is a <see cref="NeighbourKey"/>, so a
+    /// failed dial on 2m drops the routes that ran over 2m and leaves the very same station's
+    /// 70cm routes standing - the port diversity a multi-port node is for (#725). Use
+    /// <see cref="MarkPortDown"/> to drop a whole port's adjacencies at once.
+    /// </remarks>
+    /// <param name="neighbour">The adjacency - (port, callsign) - whose routes to drop.</param>
     /// <returns>The number of routes dropped (across all destinations).</returns>
-    public int MarkNeighbourDown(Callsign neighbour)
+    public int MarkNeighbourDown(NeighbourKey neighbour)
     {
         lock (gate)
         {
-            int dropped = 0;
-            var emptyDestinations = new List<Callsign>();
-
-            foreach (var (destCall, dest) in destinations)
-            {
-                // Note whether the route we are about to drop carried an INP3 metric —
-                // only then can dropping it cost the destination its last time-route.
-                bool removedRouteHadInp3 =
-                    dest.Routes.TryGetValue(neighbour, out var removed) && removed.Inp3 is not null;
-
-                if (dest.Routes.Remove(neighbour))
-                {
-                    dropped++;
-                }
-                if (dest.Routes.Count == 0)
-                {
-                    emptyDestinations.Add(destCall);
-                }
-
-                // Invariant (W): a destination that just lost its LAST Inp3-bearing route
-                // leaves the INP3 time-space → record it for the one-shot horizon RIP. Guarded
-                // on "the removed route carried an Inp3 metric," so a vanilla (quality-only)
-                // MarkNeighbourDown — the L4 dial-failure path that runs with INP3 off — never
-                // populates the set (the load-bearing default-off guard, design §7.1).
-                if (removedRouteHadInp3 && !HasAnyInp3Route(destCall))
-                {
-                    recentlyWithdrawn.Add(destCall);
-                }
-            }
-
-            foreach (var dc in emptyDestinations)
-            {
-                destinations.Remove(dc);
-            }
-
+            int dropped = DropRoutes(r => r.Equals(neighbour));
             neighbours.Remove(neighbour);
             PruneOrphanNeighbours();
             return dropped;
         }
+    }
+
+    /// <summary>
+    /// React to a whole <b>port</b> going away - it was detached, disabled or faulted - by
+    /// dropping every adjacency on it and every route that ran over one, in a single pass. The
+    /// port-scoped sibling of <see cref="MarkNeighbourDown"/>: other ports' adjacencies to the
+    /// same stations are untouched, so a destination reachable on two bands fails over to the
+    /// surviving band on the very next decision instead of going dark until the obsolescence
+    /// sweep. A destination that loses all its routes is removed; everything re-learns from the
+    /// next NODES broadcast if the port comes back. Idempotent - an unknown / already-detached
+    /// port is a no-op returning 0.
+    /// </summary>
+    /// <param name="portId">The port whose adjacencies and routes to drop.</param>
+    /// <returns>The number of routes dropped (across all destinations).</returns>
+    public int MarkPortDown(string portId)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        lock (gate)
+        {
+            int dropped = DropRoutes(r => string.Equals(r.PortId, portId, StringComparison.Ordinal));
+            foreach (var key in neighbours.Keys.Where(k => string.Equals(k.PortId, portId, StringComparison.Ordinal)).ToList())
+            {
+                neighbours.Remove(key);
+            }
+            PruneOrphanNeighbours();
+            return dropped;
+        }
+    }
+
+    // Drop every route whose next hop matches `match`, maintaining INP3 invariant (W) per
+    // destination and removing destinations left with no route. The shared body of
+    // MarkNeighbourDown (one key) and MarkPortDown (a port's worth of keys). Caller holds the lock.
+    private int DropRoutes(Func<NeighbourKey, bool> match)
+    {
+        int dropped = 0;
+        var emptyDestinations = new List<Callsign>();
+
+        foreach (var (destCall, dest) in destinations)
+        {
+            // Note whether any route we are about to drop carried an INP3 metric - only then
+            // can dropping it cost the destination its last time-route.
+            bool removedRouteHadInp3 = false;
+            var doomed = new List<NeighbourKey>();
+            foreach (var (via, route) in dest.Routes)
+            {
+                if (!match(via))
+                {
+                    continue;
+                }
+                doomed.Add(via);
+                removedRouteHadInp3 |= route.Inp3 is not null;
+            }
+
+            foreach (var via in doomed)
+            {
+                dest.Routes.Remove(via);
+                dropped++;
+            }
+            if (dest.Routes.Count == 0)
+            {
+                emptyDestinations.Add(destCall);
+            }
+
+            // Invariant (W): a destination that just lost its LAST Inp3-bearing route
+            // leaves the INP3 time-space → record it for the one-shot horizon RIP. Guarded
+            // on "a removed route carried an Inp3 metric," so a vanilla (quality-only)
+            // MarkNeighbourDown - the L4 dial-failure path that runs with INP3 off - never
+            // populates the set (the load-bearing default-off guard, design §7.1).
+            if (removedRouteHadInp3 && !HasAnyInp3Route(destCall))
+            {
+                recentlyWithdrawn.Add(destCall);
+            }
+        }
+
+        foreach (var dc in emptyDestinations)
+        {
+            destinations.Remove(dc);
+        }
+
+        return dropped;
     }
 
     /// <summary>
@@ -476,10 +565,9 @@ public sealed class NetRomRoutingTable
             foreach (var (destCall, dest) in destinations)
             {
                 var routes = dest.Routes.Values
-                    .OrderByDescending(r => r.Quality)
-                    .ThenBy(r => r.Neighbour.ToString(), StringComparer.Ordinal)
+                    .OrderBy(r => r, routeRank)
                     .Take(options.MaxRoutesPerDestination)
-                    .Select(r => new NetRomRoute(r.Neighbour, r.Quality, r.Obsolescence, r.Inp3))
+                    .Select(r => new NetRomRoute(r.Neighbour.Callsign, r.Neighbour.PortId, r.Quality, r.Obsolescence, r.Inp3))
                     .ToList();
 
                 dests.Add(new NetRomDestination(destCall, dest.Alias, routes));
@@ -490,13 +578,50 @@ public sealed class NetRomRoutingTable
                 .ThenBy(d => d.Destination.ToString(), StringComparer.Ordinal)
                 .ToList();
 
+            // One row per (port, callsign) - a station audible on two ports appears twice, each
+            // with its own path quality, exactly as BPQ's ROUTES prints one line per pair.
             var nbrs = neighbours
                 .Select(kvp => new NetRomNeighbour(
-                    kvp.Key, kvp.Value.Alias, kvp.Value.PortId, kvp.Value.PathQuality, kvp.Value.LastHeard))
+                    kvp.Key.Callsign, kvp.Value.Alias, kvp.Key.PortId, kvp.Value.PathQuality, kvp.Value.LastHeard))
                 .OrderBy(n => n.Neighbour.ToString(), StringComparer.Ordinal)
+                .ThenBy(n => n.PortId, StringComparer.Ordinal)
                 .ToList();
 
             return new NetRomRoutingSnapshot(dests, nbrs, timeProvider.GetUtcNow());
+        }
+    }
+
+    /// <summary>
+    /// The port of the <b>best adjacency</b> to <paramref name="neighbour"/> (highest path
+    /// quality, ties by the canonical port order then port id ordinal), or <c>null</c> if it is
+    /// not a known neighbour on any port.
+    /// </summary>
+    /// <remarks>
+    /// The cheap answer to "which link to that station do we prefer". <see cref="Snapshot"/>
+    /// plus <see cref="NetRomRoutingSnapshot.BestNeighbourFor"/> gives the same answer but
+    /// materialises the whole table, which is the wrong shape for a per-frame decision - the
+    /// INP3 selected-link rule asks this of every inbound interlink frame.
+    /// </remarks>
+    public string? BestNeighbourPort(Callsign neighbour)
+    {
+        lock (gate)
+        {
+            string? best = null;
+            byte bestQuality = 0;
+            foreach (var (key, state) in neighbours)
+            {
+                if (!key.Callsign.Equals(neighbour))
+                {
+                    continue;
+                }
+                if (best is null || state.PathQuality > bestQuality ||
+                    (state.PathQuality == bestQuality && options.ComparePorts(key.PortId, best) < 0))
+                {
+                    best = key.PortId;
+                    bestQuality = state.PathQuality;
+                }
+            }
+            return best;
         }
     }
 
@@ -527,10 +652,9 @@ public sealed class NetRomRoutingTable
 
             foreach (var n in snapshot.Neighbours)
             {
-                neighbours[n.Neighbour] = new NeighbourState
+                neighbours[new NeighbourKey(n.PortId, n.Neighbour)] = new NeighbourState
                 {
                     Alias = n.Alias,
-                    PortId = n.PortId,
                     PathQuality = n.PathQuality,
                     LastHeard = n.LastHeard,
                 };
@@ -538,7 +662,7 @@ public sealed class NetRomRoutingTable
 
             foreach (var d in snapshot.Destinations)
             {
-                var routes = new Dictionary<Callsign, RouteState>(d.Routes.Count);
+                var routes = new Dictionary<NeighbourKey, RouteState>(d.Routes.Count);
                 foreach (var r in d.Routes)
                 {
                     int obs = r.Obsolescence - decay;
@@ -546,9 +670,10 @@ public sealed class NetRomRoutingTable
                     {
                         continue;   // aged out during the downtime
                     }
-                    routes[r.Neighbour] = new RouteState
+                    var via = new NeighbourKey(r.PortId, r.Neighbour);
+                    routes[via] = new RouteState
                     {
-                        Neighbour = r.Neighbour,
+                        Neighbour = via,
                         Quality = r.Quality,
                         Obsolescence = obs,
                     };
@@ -588,9 +713,15 @@ public sealed class NetRomRoutingTable
             var entries = new List<(Wire.NodesBroadcastBuilder.Entry Entry, byte Quality)>();
             foreach (var (destCall, dest) in destinations)
             {
+                // One entry per DESTINATION, at its best route's quality - unchanged on the wire
+                // (a NODES entry has no port field). "Best" is now chosen across the per-port
+                // routes: quality, then freshness, then the canonical port order / callsign
+                // tie-break, so two equal routes via one callsign on two ports advertise the same
+                // entry every time rather than alternating with dictionary order.
                 var best = dest.Routes.Values
                     .OrderByDescending(r => r.Quality)
                     .ThenByDescending(r => r.Obsolescence)
+                    .ThenBy(r => r, routeRank)
                     .FirstOrDefault();
                 if (best is null)
                 {
@@ -606,7 +737,7 @@ public sealed class NetRomRoutingTable
                 }
 
                 entries.Add((
-                    new Wire.NodesBroadcastBuilder.Entry(destCall, dest.Alias, best.Neighbour, best.Quality),
+                    new Wire.NodesBroadcastBuilder.Entry(destCall, dest.Alias, best.Neighbour.Callsign, best.Quality),
                     best.Quality));
             }
 
@@ -707,7 +838,11 @@ public sealed class NetRomRoutingTable
                 bool poison = false;
                 foreach (var r in dest.Routes.Values)
                 {
-                    if (r.Neighbour.Equals(toTargetNeighbour))
+                    // Poison-reverse compares the CALLSIGN, not the key: a route we learned to D
+                    // over another port to the very same station must still be advertised back to
+                    // it at the horizon, or the two-hop loop the split horizon exists to break is
+                    // simply moved onto the other band.
+                    if (r.Neighbour.Callsign.Equals(toTargetNeighbour))
                     {
                         poison = true;
                     }
@@ -857,13 +992,14 @@ public sealed class NetRomRoutingTable
 
     // ─── Internals ────────────────────────────────────────────────────
 
-    // Add or refresh a route to `destination` via `viaNeighbour`. Applies the
-    // quality-0 / MINQUAL floor (heuristic 8) — using the caller-supplied effective
-    // floor, which is the per-port MINQUAL when this ingest carried one, else the
-    // table-wide options.MinQuality — resets obsolescence to OBSINIT, enforces the
+    // Add or refresh a route to `destination` via the adjacency `via` - (port, callsign), so a
+    // route learned from the same station on another port is a DIFFERENT route with its own
+    // quality and obsolescence. Applies the quality-0 / MINQUAL floor (heuristic 8) - using the
+    // caller-supplied effective floor, which is the per-port MINQUAL when this ingest carried
+    // one, else the table-wide options.MinQuality - resets obsolescence to OBSINIT, enforces the
     // per-destination route cap (heuristic 7) and the destination cap (heuristic 9).
     // Caller holds the lock.
-    private void UpsertRoute(Callsign destination, string alias, Callsign viaNeighbour, byte quality, int minQuality)
+    private void UpsertRoute(Callsign destination, string alias, NeighbourKey via, byte quality, int minQuality)
     {
         // A quality-0 route is never usable / kept; likewise anything under the
         // effective floor. If such a route already existed (from a prior, better
@@ -892,7 +1028,7 @@ public sealed class NetRomRoutingTable
         if (!acceptable)
         {
             // Drop a route that has decayed below the floor.
-            dest.Routes.Remove(viaNeighbour);
+            dest.Routes.Remove(via);
             if (dest.Routes.Count == 0)
             {
                 destinations.Remove(destination);
@@ -900,13 +1036,13 @@ public sealed class NetRomRoutingTable
             return;
         }
 
-        // Preserve any INP3 metric already learned for this (dest via neighbour)
+        // Preserve any INP3 metric already learned for this (dest via adjacency)
         // route — a NODES quality refresh must not wipe a coexisting time-route
         // (the two metric spaces are independent; see IngestRif).
-        dest.Routes.TryGetValue(viaNeighbour, out var existing);
-        dest.Routes[viaNeighbour] = new RouteState
+        dest.Routes.TryGetValue(via, out var existing);
+        dest.Routes[via] = new RouteState
         {
-            Neighbour = viaNeighbour,
+            Neighbour = via,
             Quality = quality,
             Obsolescence = options.ObsoleteInitial,
             Inp3 = existing?.Inp3,
@@ -917,10 +1053,16 @@ public sealed class NetRomRoutingTable
 
     // Heuristic 7 (and its INP3 analogue): keep only the N best routes per
     // destination. When the cap is exceeded, evict by the SAME key the quality
-    // selection orders by — lowest-quality-first, ties by neighbour callsign — so a
+    // selection orders by (routeRank: quality, canonical port order, callsign) - so a
     // node that never prefers INP3 routes evicts byte-identically to today; an
     // INP3-only route (quality 0) sorts as a quality-0 route for eviction ordering
     // only (design AMBIGUITY-I3-2). Caller holds the lock.
+    //
+    // Slots are counted per ROUTE, not per distinct neighbour callsign: one station audible on
+    // three ports can occupy all three slots. That is BPQ's own behaviour - its NRROUTE[3] holds
+    // pointers to ROUTEs and PROCROUTES compares pointer identity (L3Code.c:629-632), so the same
+    // callsign on two ports takes two slots - and fidelity to the reference beat a
+    // diversity heuristic of our own invention (docs/netrom-multiport-neighbours.md §9).
     private void EnforceRouteCap(DestinationState dest)
     {
         if (dest.Routes.Count <= options.MaxRoutesPerDestination)
@@ -929,8 +1071,7 @@ public sealed class NetRomRoutingTable
         }
 
         var keep = dest.Routes.Values
-            .OrderByDescending(r => r.Quality)
-            .ThenBy(r => r.Neighbour.ToString(), StringComparer.Ordinal)
+            .OrderBy(r => r, routeRank)
             .Take(options.MaxRoutesPerDestination)
             .ToDictionary(r => r.Neighbour);
         dest.Routes = keep;
@@ -945,7 +1086,7 @@ public sealed class NetRomRoutingTable
     // (AMBIGUITY-I3-2). Honours the destination cap exactly as UpsertRoute does. Caller
     // holds the lock. (Floor/horizon/hop/loop gating is done by IngestRif before here,
     // so this only ever stores a live, finite, in-horizon metric.)
-    private void UpsertInp3Route(Callsign destination, string alias, Callsign viaNeighbour, Inp3RouteMetric metric)
+    private void UpsertInp3Route(Callsign destination, string alias, NeighbourKey via, Inp3RouteMetric metric)
     {
         if (!destinations.TryGetValue(destination, out var dest))
         {
@@ -961,12 +1102,12 @@ public sealed class NetRomRoutingTable
             dest.Alias = alias;
         }
 
-        if (dest.Routes.TryGetValue(viaNeighbour, out var existing))
+        if (dest.Routes.TryGetValue(via, out var existing))
         {
             // Refresh the time-route in place: keep the route's quality (its other
             // metric space) and reset obsolescence so the time-route ages like a
             // quality route refreshed by a NODES broadcast.
-            dest.Routes[viaNeighbour] = existing with
+            dest.Routes[via] = existing with
             {
                 Obsolescence = options.ObsoleteInitial,
                 Inp3 = metric,
@@ -977,9 +1118,9 @@ public sealed class NetRomRoutingTable
             // A brand-new route known only via INP3: quality 0 (no NODES quality), the
             // time metric carrying its reachability. Quality 0 means it is invisible to
             // the quality path / never advertised, exactly as intended.
-            dest.Routes[viaNeighbour] = new RouteState
+            dest.Routes[via] = new RouteState
             {
-                Neighbour = viaNeighbour,
+                Neighbour = via,
                 Quality = (byte)NetRomQuality.Min,
                 Obsolescence = options.ObsoleteInitial,
                 Inp3 = metric,
@@ -994,13 +1135,13 @@ public sealed class NetRomRoutingTable
     // with neither a usable quality (≤ MINQUAL / 0) nor an INP3 metric is removed; a
     // destination left with no route is removed. A no-op if the route / destination is
     // unknown or the route had no INP3 metric. Caller holds the lock.
-    private void WithdrawInp3(Callsign destination, Callsign viaNeighbour)
+    private void WithdrawInp3(Callsign destination, NeighbourKey via)
     {
         if (!destinations.TryGetValue(destination, out var dest))
         {
             return;
         }
-        if (!dest.Routes.TryGetValue(viaNeighbour, out var route) || route.Inp3 is null)
+        if (!dest.Routes.TryGetValue(via, out var route) || route.Inp3 is null)
         {
             return;   // nothing INP3 to withdraw on this route
         }
@@ -1011,11 +1152,11 @@ public sealed class NetRomRoutingTable
         bool hasUsableQuality = route.Quality > NetRomQuality.Min && route.Quality >= options.MinQuality;
         if (hasUsableQuality)
         {
-            dest.Routes[viaNeighbour] = route with { Inp3 = null };
+            dest.Routes[via] = route with { Inp3 = null };
         }
         else
         {
-            dest.Routes.Remove(viaNeighbour);
+            dest.Routes.Remove(via);
             if (dest.Routes.Count == 0)
             {
                 destinations.Remove(destination);
@@ -1062,7 +1203,9 @@ public sealed class NetRomRoutingTable
             return;
         }
 
-        var inUse = new HashSet<Callsign>();
+        // "In use" is the composite key: an adjacency on port A is an orphan even while the same
+        // station is still the next hop for a route on port B.
+        var inUse = new HashSet<NeighbourKey>();
         foreach (var dest in destinations.Values)
         {
             foreach (var via in dest.Routes.Keys)
@@ -1081,12 +1224,13 @@ public sealed class NetRomRoutingTable
     private sealed class DestinationState
     {
         public string Alias { get; set; } = string.Empty;
-        public Dictionary<Callsign, RouteState> Routes { get; set; } = new();
+        public Dictionary<NeighbourKey, RouteState> Routes { get; set; } = new();
     }
 
     private sealed record RouteState
     {
-        public required Callsign Neighbour { get; init; }
+        /// <summary>The adjacency this route forwards over - (port, callsign).</summary>
+        public required NeighbourKey Neighbour { get; init; }
         public required byte Quality { get; init; }
         public required int Obsolescence { get; init; }
 
@@ -1100,10 +1244,11 @@ public sealed class NetRomRoutingTable
         public Inp3RouteMetric? Inp3 { get; init; }
     }
 
+    // The per-adjacency state. No PortId: it is half of the dictionary key (NeighbourKey), which
+    // is what stops one port's QUALITY overwriting another's.
     private sealed class NeighbourState
     {
         public string Alias { get; set; } = string.Empty;
-        public string PortId { get; set; } = string.Empty;
         public byte PathQuality { get; set; }
         public DateTimeOffset LastHeard { get; set; }
     }

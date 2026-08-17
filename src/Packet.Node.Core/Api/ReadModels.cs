@@ -19,6 +19,13 @@ public sealed record NodeStatus(
     NetRomSummary Netrom,
     TrafficLogStatus Traffic);
 
+/// <param name="Neighbours">Directly-heard neighbour <b>adjacencies</b> - one per (port,
+/// callsign), so a station audible on two ports counts twice. This mirrors what BPQ's
+/// <c>ROUTES</c> lists, and it is the count the routes screen and the
+/// <c>pdn_netrom_neighbours</c> gauge show.</param>
+/// <param name="Destinations">Reachable destination nodes (a destination is a node, not a link,
+/// so it is counted once however many ports reach it).</param>
+/// <param name="Inp3Enabled">Whether the INP3 routing overlay is on.</param>
 public sealed record NetRomSummary(int Neighbours, int Destinations, bool Inp3Enabled);
 
 /// <summary>The persistent traffic log's health: whether it is running this boot,

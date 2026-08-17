@@ -9,6 +9,15 @@ namespace Packet.NetRom.Tests.Routing;
 
 public class NetRomRoutingTableTests
 {
+    // The port the single-port cases ingest on. A neighbour is keyed (port, callsign), so the
+    // key of a neighbour heard here is (Port, NbrX).
+    private const string Port = "vhf";
+    // Two ports whose CONFIG order and ID order disagree, for the multi-port cases: "vhf" is the
+    // node's first configured port but sorts after "hf", so a test that passes under ordinal
+    // ordering and fails under configuration order (or vice versa) is visible.
+    private const string PortVhf = "vhf";
+    private const string PortHf = "hf";
+
     private static readonly Callsign Me = new("M0LTE", 0);
     private static readonly Callsign NbrA = new("GB7RDG", 0);   // a heard neighbour (originator)
     private static readonly Callsign NbrB = new("GB7XYZ", 0);   // another heard neighbour
@@ -265,7 +274,7 @@ public class NetRomRoutingTableTests
         table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrA, 200)));
         table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
 
-        int dropped = table.MarkNeighbourDown(NbrA);
+        int dropped = table.MarkNeighbourDown(new NeighbourKey(Port, NbrA));
 
         dropped.Should().BeGreaterThan(0, "the routes via the down neighbour are removed");
         var snap = table.Snapshot();
@@ -285,7 +294,7 @@ public class NetRomRoutingTableTests
         var before = table.Snapshot().Destinations.Single(d => d.Destination == DestSot);
         before.BestRoute!.Neighbour.Should().Be(NbrA, "NbrA is the higher-quality next hop");
 
-        table.MarkNeighbourDown(NbrA);
+        table.MarkNeighbourDown(new NeighbourKey(Port, NbrA));
 
         var after = table.Snapshot().Destinations.Single(d => d.Destination == DestSot);
         after.Routes.Should().NotContain(r => r.Neighbour == NbrA, "the down neighbour's route is gone");
@@ -298,7 +307,7 @@ public class NetRomRoutingTableTests
         var table = NewTable(out _);
         table.Ingest(NbrA, Me, "vhf", Broadcast("RDG", (DestSot, "SOT", NbrA, 200)));
 
-        int dropped = table.MarkNeighbourDown(NbrB);   // NbrB is not in the table
+        int dropped = table.MarkNeighbourDown(new NeighbourKey(Port, NbrB));   // NbrB is not in the table
 
         dropped.Should().Be(0);
         table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot, "an unrelated neighbour's routes are untouched");
@@ -433,5 +442,179 @@ public class NetRomRoutingTableTests
         snap.Neighbours.Should().BeEmpty();
         snap.DestinationCount.Should().Be(0);
         snap.NeighbourCount.Should().Be(0);
+    }
+
+    // ─── One station, several ports: the (port, callsign) key (#725) ───
+    //
+    // Every case above uses a distinct callsign per port, which is exactly why the pre-PC4 defect
+    // could not be seen: with the neighbour keyed by callsign alone, the LAST port to hear a
+    // station overwrote the path quality the others had learned, one dead port dropped routes
+    // another port could still carry, and a dual-homed peer got a single interlink.
+
+    [Fact]
+    public void One_station_heard_on_two_ports_is_two_neighbours_each_with_its_own_path_quality()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG"), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG"), neighbourQuality: 150);
+
+        var rows = table.Snapshot().Neighbours.Where(n => n.Neighbour == NbrA).ToList();
+        rows.Should().HaveCount(2, "a neighbour is an adjacency: one row per (port, callsign)");
+        rows.Single(n => n.PortId == PortVhf).PathQuality.Should().Be(191);
+        rows.Single(n => n.PortId == PortHf).PathQuality.Should().Be(150,
+            "the second port's QUALITY must NOT overwrite the first's - that overwrite was the defect");
+    }
+
+    [Fact]
+    public void The_better_port_wins_route_selection_and_the_route_names_it()
+    {
+        var table = NewTable(out _);
+        // SOT is advertised by the same station over both bands. The derived route quality is the
+        // advertised quality combined with each port's own path quality, so the good band wins.
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 150);
+
+        var sot = table.Snapshot().Destinations.Single(d => d.Destination == DestSot);
+        sot.Routes.Should().HaveCount(2, "the same callsign on two ports is two routes, not one");
+        sot.BestRoute!.Neighbour.Should().Be(NbrA);
+        sot.BestRoute.PortId.Should().Be(PortVhf, "the better-quality port carries the destination");
+        sot.BestRoute.Quality.Should().BeGreaterThan(
+            sot.Routes.Single(r => r.PortId == PortHf).Quality,
+            "each route derives from ITS OWN port's path quality");
+    }
+
+    [Fact]
+    public void Marking_one_adjacency_down_leaves_the_same_station_routing_on_the_other_port()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 150);
+
+        int dropped = table.MarkNeighbourDown(new NeighbourKey(PortVhf, NbrA));
+
+        dropped.Should().BeGreaterThan(0);
+        var snap = table.Snapshot();
+        snap.Neighbours.Should().ContainSingle(n => n.Neighbour == NbrA && n.PortId == PortHf,
+            "only the failed adjacency leaves; the station is still audible on the other band");
+        var sot = snap.Destinations.Single(d => d.Destination == DestSot);
+        sot.Routes.Should().ContainSingle();
+        sot.BestRoute!.PortId.Should().Be(PortHf,
+            "a failed dial on one band must not kill the routes the other band can still carry");
+    }
+
+    [Fact]
+    public void Marking_a_port_down_drops_only_that_ports_rows()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 150);
+        table.Ingest(NbrB, Me, PortHf, Broadcast("XYZ", (DestMnc, "MNC", NbrB, 200)), neighbourQuality: 150);
+
+        int dropped = table.MarkPortDown(PortVhf);
+
+        dropped.Should().BeGreaterThan(0);
+        var snap = table.Snapshot();
+        snap.Neighbours.Should().NotContain(n => n.PortId == PortVhf, "the port's adjacencies are gone");
+        snap.Neighbours.Should().Contain(n => n.Neighbour == NbrA && n.PortId == PortHf);
+        snap.Destinations.Single(d => d.Destination == DestSot).BestRoute!.PortId.Should().Be(PortHf);
+        snap.Destinations.Should().Contain(d => d.Destination == DestMnc,
+            "an unrelated port's destinations are untouched");
+    }
+
+    [Fact]
+    public void Marking_an_unknown_port_down_is_a_noop()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)));
+
+        table.MarkPortDown("satellite").Should().Be(0);
+        table.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot);
+    }
+
+    [Fact]
+    public void The_advertisement_still_carries_one_entry_per_destination_at_the_better_quality()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 150);
+
+        var entries = table.BuildAdvertisement(obsoleteMinimum: 0);
+
+        // The port is not a wire field: a NODES entry is (dest, alias, best neighbour, quality).
+        // Two per-port routes to one destination must NOT become two advertised entries.
+        entries.Should().ContainSingle(e => e.Destination == DestSot,
+            "the wire shape is unchanged - one entry per destination");
+        var sotEntry = entries.Single(e => e.Destination == DestSot);
+        var best = table.Snapshot().Destinations.Single(d => d.Destination == DestSot).BestRoute!;
+        sotEntry.BestNeighbour.Should().Be(NbrA);
+        sotEntry.Quality.Should().Be(best.Quality, "the advertised quality is the BETTER port's");
+    }
+
+    [Fact]
+    public void Obsolescence_decays_per_route_so_one_ports_route_can_age_out_alone()
+    {
+        var table = NewTable(out _);
+        table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        table.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 150);
+
+        // The hf side stops being heard; the vhf side keeps refreshing. Sweep the table
+        // OBSINIT times, refreshing vhf each round, and hf's route must age out on its own.
+        for (int i = 0; i < NetRomRoutingOptions.Default.ObsoleteInitial; i++)
+        {
+            table.Sweep();
+            table.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 191);
+        }
+
+        var snap = table.Snapshot();
+        var sot = snap.Destinations.Single(d => d.Destination == DestSot);
+        sot.Routes.Should().ContainSingle(r => r.PortId == PortVhf, "the refreshed route survives");
+        sot.Routes.Should().NotContain(r => r.PortId == PortHf, "obsolescence is per route, so the silent port's aged out");
+        snap.Neighbours.Should().NotContain(n => n.PortId == PortHf,
+            "the adjacency with no surviving route is an orphan even though the station is still a neighbour on vhf");
+    }
+
+    [Fact]
+    public void Equal_quality_routes_on_two_ports_break_the_tie_on_the_canonical_port_order()
+    {
+        // Identical path quality on both ports, so quality cannot decide and something must, or
+        // the selected next hop flaps with dictionary order.
+        static void Feed(NetRomRoutingTable t)
+        {
+            t.Ingest(NbrA, Me, PortVhf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 200);
+            t.Ingest(NbrA, Me, PortHf, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: 200);
+        }
+
+        // No rank wired: ordinal port id decides, which is stable but arbitrary ("hf" < "vhf").
+        var ordinal = NewTable(out _);
+        Feed(ordinal);
+        ordinal.Snapshot().Destinations.Single(d => d.Destination == DestSot).BestRoute!.PortId
+            .Should().Be(PortHf, "with no canonical order the tie-break is ordinal port id");
+
+        // Rank wired to the node's configuration order [vhf, hf] - the alphabet's answer is now
+        // the WRONG one, so this can only pass if PortRank is actually consulted.
+        var ranked = NewTable(
+            NetRomRoutingOptions.Default with { PortRank = id => id == PortVhf ? 0 : 1 },
+            out _);
+        Feed(ranked);
+        ranked.Snapshot().Destinations.Single(d => d.Destination == DestSot).BestRoute!.PortId
+            .Should().Be(PortVhf, "the node's canonical (configuration) port order breaks the tie");
+    }
+
+    [Fact]
+    public void One_station_on_three_ports_can_fill_every_route_slot()
+    {
+        // BPQ's own behaviour: NRROUTE[3] holds pointers to ROUTEs, and PROCROUTES compares
+        // pointer identity, so one callsign on three ports takes three slots. We mirror the
+        // reference rather than inventing a diversity heuristic (design §9).
+        var table = NewTable(out _);
+        foreach (var (port, quality) in new[] { (PortVhf, 200), (PortHf, 190), ("uhf", 180) })
+        {
+            table.Ingest(NbrA, Me, port, Broadcast("RDG", (DestSot, "SOT", NbrA, 200)), neighbourQuality: quality);
+        }
+
+        var sot = table.Snapshot().Destinations.Single(d => d.Destination == DestSot);
+        sot.Routes.Should().HaveCount(3);
+        sot.Routes.Select(r => r.Neighbour).Should().AllBeEquivalentTo(NbrA);
+        sot.Routes.Select(r => r.PortId).Should().BeEquivalentTo([PortVhf, PortHf, "uhf"]);
     }
 }

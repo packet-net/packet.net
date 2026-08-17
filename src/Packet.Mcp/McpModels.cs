@@ -72,8 +72,10 @@ public sealed record McpNeighbour(
 public sealed record McpDestination(
     string Destination, string? Alias, IReadOnlyList<McpRoute> Routes);
 
-/// <summary>One route to a destination, via a neighbour.</summary>
-public sealed record McpRoute(string Neighbour, int Quality, int Obsolescence);
+/// <summary>One route to a destination, via a neighbour on a port. The pair is the route's
+/// next-hop identity: a destination can hold two routes via the same callsign on different
+/// ports, each with its own quality.</summary>
+public sealed record McpRoute(string Neighbour, string PortId, int Quality, int Obsolescence);
 
 /// <summary>
 /// One port's rig-control (CAT) attachment (the <c>get_rig_status</c> projection) — mirrors the

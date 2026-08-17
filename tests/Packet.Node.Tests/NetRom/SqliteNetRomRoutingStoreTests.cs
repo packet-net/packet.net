@@ -1,3 +1,5 @@
+using Dapper;
+using Microsoft.Data.Sqlite;
 using Packet.Core;
 using Packet.NetRom.Routing;
 using Packet.Node.Core.NetRom;
@@ -16,16 +18,20 @@ public sealed class SqliteNetRomRoutingStoreTests : IDisposable
 {
     private readonly string dbPath = TestPaths.NewPath("pdn-store", ".db");
 
+    // The port these adjacencies are on: a neighbour row and a route both key by
+    // (port, callsign) since #725.
+    private const string Port = "vhf";
+
     private static readonly Callsign Nbr = new("GB7RDG", 0);
     private static readonly Callsign Dest = new("GB7SOT", 0);
 
     private static NetRomRoutingSnapshot Sample(DateTimeOffset at) => new(
         new List<NetRomDestination>
         {
-            new(Dest, "SOT", new List<NetRomRoute> { new(Nbr, 200, 6) }),
-            new(Nbr, "RDGBPQ", new List<NetRomRoute> { new(Nbr, 192, 5) }),
+            new(Dest, "SOT", new List<NetRomRoute> { new(Nbr, Port, 200, 6) }),
+            new(Nbr, "RDGBPQ", new List<NetRomRoute> { new(Nbr, Port, 192, 5) }),
         },
-        new List<NetRomNeighbour> { new(Nbr, "RDGBPQ", "p1", 192, at) },
+        new List<NetRomNeighbour> { new(Nbr, "RDGBPQ", Port, 192, at) },
         at);
 
     [Fact]
@@ -50,7 +56,7 @@ public sealed class SqliteNetRomRoutingStoreTests : IDisposable
         var nbr = snap.Neighbours.Should().ContainSingle().Subject;
         nbr.Neighbour.Should().Be(Nbr);
         nbr.Alias.Should().Be("RDGBPQ");
-        nbr.PortId.Should().Be("p1");
+        nbr.PortId.Should().Be(Port);
         nbr.PathQuality.Should().Be(192);
         nbr.LastHeard.Should().Be(at);
 
@@ -103,6 +109,95 @@ public sealed class SqliteNetRomRoutingStoreTests : IDisposable
         store.Load().Should().BeNull();
         var save = () => store.Save(NetRomRoutingSnapshot.Empty, DateTimeOffset.UtcNow);
         save.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Two_adjacencies_to_one_callsign_round_trip()
+    {
+        // The UNIQUE-violation test (#725). At schema v1 `neighbour` had callsign as its PRIMARY
+        // KEY and `route` was keyed (dest, via), so the moment the in-memory table could hold one
+        // station on two ports every Save threw a UNIQUE violation - which this class swallows and
+        // logs, so persistence would have stopped silently. The schema and the key HAD to move in
+        // the same commit.
+        var at = new DateTimeOffset(2026, 6, 6, 12, 0, 0, TimeSpan.Zero);
+        var snapshot = new NetRomRoutingSnapshot(
+            [
+                new NetRomDestination(Dest, "SOT",
+                [
+                    new NetRomRoute(Nbr, "vhf", 200, 6),
+                    new NetRomRoute(Nbr, "hf", 150, 5),
+                ]),
+            ],
+            [
+                new NetRomNeighbour(Nbr, "RDGBPQ", "vhf", 191, at),
+                new NetRomNeighbour(Nbr, "RDGBPQ", "hf", 150, at),
+            ],
+            at);
+
+        var store = new SqliteNetRomRoutingStore(dbPath);
+        store.Save(snapshot, at);
+
+        var loaded = store.Load();
+        loaded.Should().NotBeNull("the save must not have thrown a swallowed UNIQUE violation");
+        loaded!.Value.Snapshot.Neighbours.Where(n => n.Neighbour == Nbr).Should().HaveCount(2);
+        loaded.Value.Snapshot.Neighbours.Single(n => n.PortId == "vhf").PathQuality.Should().Be(191);
+        loaded.Value.Snapshot.Neighbours.Single(n => n.PortId == "hf").PathQuality.Should().Be(150);
+        var routes = loaded.Value.Snapshot.Destinations.Single(d => d.Destination == Dest).Routes;
+        routes.Should().HaveCount(2, "a route is keyed (dest, port, via) since v2");
+        routes.Single(r => r.PortId == "vhf").Quality.Should().Be(200);
+        routes.Single(r => r.PortId == "hf").Obsolescence.Should().Be(5);
+    }
+
+    [Fact]
+    public void A_v1_database_is_recreated_at_v2_rather_than_left_wearing_a_v2_stamp()
+    {
+        // EnsureSchema is a version STAMP, not a runner, and CREATE TABLE IF NOT EXISTS no-ops on
+        // an existing table - so bumping the version alone would leave v1's callsign-PK tables in
+        // place under a v2 stamp, and every Save would fail. Build a genuine v1 file (v1's exact
+        // DDL, with a row in it) and open it with the current store.
+        using (var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString()))
+        {
+            conn.Open();
+            conn.Execute("""
+                CREATE TABLE neighbour (
+                    callsign       TEXT PRIMARY KEY,
+                    alias          TEXT NOT NULL,
+                    port_id        TEXT NOT NULL,
+                    path_quality   INTEGER NOT NULL,
+                    last_heard_utc TEXT NOT NULL);
+                CREATE TABLE destination (
+                    callsign TEXT PRIMARY KEY,
+                    alias    TEXT NOT NULL);
+                CREATE TABLE route (
+                    dest_callsign TEXT NOT NULL,
+                    via_neighbour TEXT NOT NULL,
+                    quality       INTEGER NOT NULL,
+                    obsolescence  INTEGER NOT NULL,
+                    PRIMARY KEY (dest_callsign, via_neighbour));
+                CREATE TABLE meta (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL);
+                """);
+            conn.Execute("INSERT INTO neighbour VALUES ('GB7RDG', 'RDGBPQ', 'vhf', 192, '2026-06-06T12:00:00.0000000+00:00');");
+            conn.Execute("INSERT INTO meta VALUES ('saved_at_utc', '2026-06-06T12:00:00.0000000+00:00');");
+            conn.Execute("PRAGMA user_version=1;");
+        }
+
+        var store = new SqliteNetRomRoutingStore(dbPath);
+
+        // Drop-and-recreate: the table is a cache, fully re-learnt within one NODESINTERVAL.
+        store.Load().Should().BeNull("v1's rows went with v1's tables - there is no saved_at stamp left");
+
+        // And the recreated schema is genuinely v2: a save that v1's PK could not hold succeeds.
+        var at = new DateTimeOffset(2026, 6, 6, 13, 0, 0, TimeSpan.Zero);
+        store.Save(
+            new NetRomRoutingSnapshot(
+                [new NetRomDestination(Dest, "SOT", [new NetRomRoute(Nbr, "vhf", 200, 6), new NetRomRoute(Nbr, "hf", 150, 6)])],
+                [new NetRomNeighbour(Nbr, "RDGBPQ", "vhf", 191, at), new NetRomNeighbour(Nbr, "RDGBPQ", "hf", 150, at)],
+                at),
+            at);
+
+        store.Load()!.Value.Snapshot.Neighbours.Should().HaveCount(2, "the recreated schema keys neighbours (port, callsign)");
     }
 
     public void Dispose()

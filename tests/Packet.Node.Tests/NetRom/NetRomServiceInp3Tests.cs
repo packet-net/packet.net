@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Core;
+using Packet.NetRom.Routing;
 using Packet.NetRom.Wire;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.NetRom;
@@ -22,6 +23,9 @@ namespace Packet.Node.Tests.NetRom;
 [Trait("Category", "Node")]
 public sealed class NetRomServiceInp3Tests
 {
+    // The port these single-port cases feed interlink frames in on.
+    private const string Port = "vhf";
+
     private static readonly Callsign Me = new("GB7AAA", 0);
     private static readonly Callsign NbrA = new("GB7RDG", 0);   // an interlink neighbour
     private static readonly Callsign NbrB = new("GB7XYZ", 0);   // a second neighbour
@@ -52,8 +56,12 @@ public sealed class NetRomServiceInp3Tests
 
     // A captured outbound interlink frame (the test send sink records these instead of touching a
     // real Ax25Session). Kind is derived from the wire bytes exactly as the inbound dispatch keys.
-    private sealed record Sent(Callsign Neighbour, byte[] Bytes)
+    private sealed record Sent(NeighbourKey Key, byte[] Bytes)
     {
+        // The station the frame went to. The adjacency it left on is Key.PortId; with no
+        // ports attached in this harness the selected link is unresolved (empty port).
+        public Callsign Neighbour => Key.Callsign;
+
         public bool IsRif => Bytes.Length >= 1 && Bytes[0] == Inp3Rif.Signature;
         public bool IsL3Rtt => !IsRif && NetRomPacket.TryParse(Bytes, out var p) && Inp3L3RttFrame.IsL3Rtt(p!);
     }
@@ -123,9 +131,9 @@ public sealed class NetRomServiceInp3Tests
         // get TODAY's generic treatment: the RIF-shaped bytes fail NetRomPacket.TryParse → dropped;
         // the L3RTT packet (dest L3RTT-0 ≠ us, and Forward is on by default under Connect) goes to
         // the forwarder, which finds no route and drops it. NEITHER is recognised as INP3.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
         var probe = Inp3L3RttFrame.Build(NbrA).ToBytes();   // an L3RTT a peer would send us
-        h.Service.IngestInterlinkForTest(NbrA, probe);
+        h.Service.IngestInterlinkForTest(Port, NbrA, probe);
 
         // Even after driving the (no-op) interval, nothing INP3 ever reaches the wire.
         h.Clock.Advance(TimeSpan.FromHours(2));
@@ -160,7 +168,7 @@ public sealed class NetRomServiceInp3Tests
             Payload = new byte[] { 1, 2, 3 },
         };
 
-        h.Service.IngestInterlinkForTest(NbrA, l4.ToBytes());
+        h.Service.IngestInterlinkForTest(Port, NbrA, l4.ToBytes());
 
         h.Sent.Should().BeEmpty("a datagram addressed to us terminates locally; nothing goes back on the wire as INP3");
     }
@@ -183,7 +191,7 @@ public sealed class NetRomServiceInp3Tests
 
         // Observe NbrA + send our probe: feeding any 0xCF frame observes the neighbour; the first
         // tick (LastL3RttSent == NeverProbed) sends our probe (ProbeUnknownCapability default on).
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, 1, 100));   // observes NbrA (RIF ignored: link unmeasured)
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, 1, 100));   // observes NbrA (RIF ignored: link unmeasured)
         h.Service.Inp3TickForTest();
 
         var ourProbe = h.L3Rtts.Should().ContainSingle("the engine probes NbrA on the first tick").Subject;
@@ -191,7 +199,7 @@ public sealed class NetRomServiceInp3Tests
 
         // 80 ms later, NbrA reflects our probe verbatim (origin still us). RTT = 80 ms → SNTT = 40.
         h.Clock.Advance(TimeSpan.FromMilliseconds(80));
-        h.Service.IngestInterlinkForTest(NbrA, ourProbe.Bytes);
+        h.Service.IngestInterlinkForTest(Port, NbrA, ourProbe.Bytes);
 
         h.Service.Inp3EngineForTest!.SnttMs(NbrA).Should().Be(40u,
             "RTT 80 ms ÷ 2 → the first sample seeds SNTT directly at 40 ms");
@@ -206,7 +214,7 @@ public sealed class NetRomServiceInp3Tests
         MeasureLink(h, NbrA, rttMs: 100);   // → SNTT 50
 
         // Now a RIF advertising SOT (target 100, hop 1) over NbrA. localTargetTime = 100 + 50 + 10.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
 
         var dest = h.Service.Snapshot().Destinations.SingleOrDefault(d => d.Destination == DestSot);
         dest.Should().NotBeNull("the RIF teaches an INP3 time-route to SOT via NbrA");
@@ -224,7 +232,7 @@ public sealed class NetRomServiceInp3Tests
         h.Sent.Clear();   // drop the probe we sent while measuring
 
         // A RIF to a destination that is NOT us must be peeled off as INP3 — never forwarded.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
 
         h.Sent.Should().NotContain(s => !s.IsRif && !s.IsL3Rtt,
             "a RIF is ingested, never relayed onward as a forwarded L4 datagram");
@@ -244,7 +252,7 @@ public sealed class NetRomServiceInp3Tests
         h.Sent.Clear();
 
         // Learn SOT via NbrA (160 ms local target time).
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
 
         // Advance past the (compressed 5 s) periodic RIF interval — but under the 180 s reset
         // window, so the neighbours stay alive — and tick → a Periodic fan-out emits one full RIF
@@ -284,7 +292,7 @@ public sealed class NetRomServiceInp3Tests
         MeasureLink(h, NbrB, rttMs: 60);
 
         // Learn SOT via NbrA, fan it out once (periodic), then clear the wire capture.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
         h.Clock.Advance(TimeSpan.FromSeconds(6));
         h.Service.Inp3TickForTest();
         h.Service.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot, "SOT learned via NbrA");
@@ -293,7 +301,7 @@ public sealed class NetRomServiceInp3Tests
         // NbrA now withdraws SOT at the horizon. SOT loses its last INP3 route → recently-withdrawn.
         // The next tick DRAINS the set, marks SOT NEGATIVE, and fans out IMMEDIATELY (no debounce) to
         // every capable neighbour, each RIF carrying the one-shot horizon withdrawal for SOT.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
         h.Service.Inp3TickForTest();   // 0 s later → only the NEGATIVE (immediate) path fires, not periodic
 
         var rifs = h.Rifs.ToList();
@@ -331,8 +339,8 @@ public sealed class NetRomServiceInp3Tests
         MeasureLink(h, NbrB, rttMs: 60);
 
         // Learn SOT and MNC via NbrA, fan them out once, then clear the wire capture.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestMnc, hop: 1, targetTimeMs: 120));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: 100));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestMnc, hop: 1, targetTimeMs: 120));
         h.Clock.Advance(TimeSpan.FromSeconds(6));
         h.Service.Inp3TickForTest();
         h.Service.Snapshot().Destinations.Should().Contain(d => d.Destination == DestSot)
@@ -341,8 +349,8 @@ public sealed class NetRomServiceInp3Tests
 
         // Withdraw BOTH via two separate ingests, with NO tick in between — they accumulate in the
         // recently-withdrawn set.
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
-        h.Service.IngestInterlinkForTest(NbrA, RifBytes(DestMnc, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestSot, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
+        h.Service.IngestInterlinkForTest(Port, NbrA, RifBytes(DestMnc, hop: 1, targetTimeMs: Inp3Rip.HorizonMs));
 
         // One tick drains both and fans them out together to every capable neighbour.
         h.Service.Inp3TickForTest();
@@ -370,7 +378,7 @@ public sealed class NetRomServiceInp3Tests
         // and is reflected by the engine — but we want OUR probe out so we can reflect it for the
         // RTT sample). Send a peer probe so the neighbour becomes capable, then drive our probe.
         var peerProbe = Inp3L3RttFrame.Build(neighbour).ToBytes();   // origin = neighbour → a peer probe to us
-        h.Service.IngestInterlinkForTest(neighbour, peerProbe);      // observes + learns $N capability + reflects
+        h.Service.IngestInterlinkForTest(Port, neighbour, peerProbe);      // observes + learns $N capability + reflects
 
         h.Service.Inp3TickForTest();   // sends OUR probe to the neighbour (cadence elapsed)
         var ourProbe = h.Sent.LastOrDefault(s => s.IsL3Rtt && s.Neighbour.Equals(neighbour)
@@ -378,7 +386,7 @@ public sealed class NetRomServiceInp3Tests
         ourProbe.Should().NotBeNull($"the engine should probe {neighbour}");
 
         h.Clock.Advance(TimeSpan.FromMilliseconds(rttMs));
-        h.Service.IngestInterlinkForTest(neighbour, ourProbe!.Bytes);   // reflect OUR probe → SNTT sample
+        h.Service.IngestInterlinkForTest(Port, neighbour, ourProbe!.Bytes);   // reflect OUR probe → SNTT sample
     }
 
     private static Inp3Rif ParseRif(Sent sent)
