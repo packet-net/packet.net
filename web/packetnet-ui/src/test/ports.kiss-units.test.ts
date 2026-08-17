@@ -9,7 +9,7 @@
 // These tests pin the contract on both sides of the conversion: the catalogue is stored in wire
 // units, and the editor field converts to/from ms for display.
 import { describe, it, expect } from "vitest";
-import { RADIO_PROFILES, msToTenMs, tenMsToMs } from "@/lib/mock";
+import { RADIO_PROFILES, msToTenMs, tenMsToMs } from "@/lib/catalogue";
 import { ENGINE_AX25_DEFAULTS, ENGINE_KISS_DEFAULTS } from "@/screens/ports";
 
 const TIMERS = ["txDelay", "slotTime", "txTail"] as const;

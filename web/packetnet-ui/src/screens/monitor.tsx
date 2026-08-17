@@ -11,15 +11,17 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { api, useFrameStream, useQuery } from "@/lib/api";
-import { FRAME_TYPES, PORTS_LIST, hex } from "@/lib/mock";
+import { FRAME_TYPES, hex } from "@/lib/catalogue";
 import type { LinkStats, MonitorEvent } from "@/lib/types";
 
 export function Monitor() {
   const { frames, paused, setPaused, clear, connected } = useFrameStream(500);
   const { data: links } = useQuery(api.linkStats, []);
   const { data: config } = useQuery(api.config, []);
-  // Port-filter options come from the live config; fall back to the mock list.
-  const portIds = config?.ports.map((p) => p.id) ?? PORTS_LIST;
+  // Port-filter options are THIS node's ports. Empty until /config resolves - the
+  // "All ports" option still works, and offering a port the node does not have would
+  // only filter the table down to nothing (#691 C022).
+  const portIds = config?.ports.map((p) => p.id) ?? [];
 
   const [fPort, setFPort] = useState("all");
   const [fType, setFType] = useState("all");
@@ -280,7 +282,9 @@ function FrameDecode({ f }: { f: MonitorEvent }) {
           {f.ns != null && <DecRow k="N(S) send seq" v={f.ns} />}
           {f.nr != null && <DecRow k="N(R) recv seq" v={f.nr} />}
           <DecRow k="Poll/Final" v={f.pf ? "1" : "0"} />
-          {f.pid && <DecRow k="PID" v={`${f.pid} — ${f.pidName}`} />}
+          {/* The server names only four PIDs (MonitorEvent.cs PidName) and returns null for
+              the rest, so an unnamed PID shows its octet alone - never "0xE0 - null" (#691 C050). */}
+          {f.pid && <DecRow k="PID" v={f.pidName ? `${f.pid} - ${f.pidName}` : f.pid} />}
           <DecRow k="Length" v={`${f.length} bytes`} />
           {/* radio metadata (null on TX frames / ports with no radio → em-dash) */}
           <DecRow k="RSSI" v={f.rssiDbm == null ? emdash : `${f.rssiDbm} dBm`} />

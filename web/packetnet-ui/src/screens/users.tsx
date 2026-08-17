@@ -98,7 +98,11 @@ export function Users() {
 
             <div className="mt-4 space-y-2 border-t border-border pt-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Web login</p>
-              <AuthMethod icon="key" title="Password" sub="Argon2id" enabled action={<Button variant="ghost" size="xs" disabled={!isAdmin}>Reset</Button>} />
+              {/* No "Reset" action: the button here had no handler and there is no endpoint
+                  behind it - PdnAuthApi maps no password change/reset route, and api.ts has no
+                  call for one, so it was an enabled control that did nothing (#691 C025).
+                  Whether pdn grows PUT /users/{username}/password is #693's (WP6's) call. */}
+              <AuthMethod icon="key" title="Password" sub="Argon2id" enabled />
               <Passkeys isSelf={auth.username === u.username} />
 
               <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On-air auth</p>
@@ -176,7 +180,7 @@ function AddUser({ open, onClose, onDone }: { open: boolean; onClose: () => void
 
 // one authentication method row
 function AuthMethod({ icon, title, sub, enabled, action }: {
-  icon: IconName; title: string; sub: string; enabled?: boolean; action: ReactNode;
+  icon: IconName; title: string; sub: string; enabled?: boolean; action?: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
@@ -187,7 +191,7 @@ function AuthMethod({ icon, title, sub, enabled, action }: {
           <p className="truncate text-xs text-muted-foreground">{sub}</p>
         </div>
       </div>
-      <div className="shrink-0">{action}</div>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }

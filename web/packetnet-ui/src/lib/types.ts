@@ -782,9 +782,14 @@ export interface TuningEvent {
 }
 
 // ---- 6.3 monitor event (derived from FrameTraced) ----------
+// Every value the server's decoder puts in MonitorEvent.type (server:
+// Packet.Node.Core/Api/MonitorEvent.cs FrameKind). TEST is a real U-frame - it is
+// what POST /ping transmits - and the bare "U"/"S" are the decoder's fallbacks for a
+// control octet it does not name. All three reached the table but were missing here
+// and from the type filter, so they could not be isolated (#691 C050).
 export type FrameType =
   | "UI" | "SABM" | "SABME" | "I" | "RR" | "RNR" | "REJ" | "SREJ"
-  | "FRMR" | "UA" | "DISC" | "DM" | "XID";
+  | "FRMR" | "UA" | "DISC" | "DM" | "XID" | "TEST" | "U" | "S";
 export type FrameClass = "I" | "U" | "S";
 export type FrameDirection = "in" | "out";
 export interface MonitorEvent {
@@ -835,11 +840,11 @@ export interface PortHealth {
   level: "good" | "degraded" | "faulted";
   reason?: string;
 }
-export interface NinoTest {
-  portId: string; receivedAt: string; firmware: string;
-  mode: number; modeLabel: string; txdelaySource: string;
-  softwareControl: boolean; rssiDbm: number; crcOk: boolean;
-}
+// (NinoTest went with the Ports screen's NinoTNC test-frame banner in #691. It typed a
+// fixture, not a wire record - no endpoint or SSE event ever carried one - and the banner
+// it fed had been disabled behind `false &&` since it would otherwise have announced the
+// mock's test frame on a node with no NinoTNC. Reinstate it from the server's shape if a
+// real test-frame event is ever added.)
 // A per-port beacon override (Packet.Node.Core.Configuration.PortBeaconConfig).
 // enabled is authoritative for the port; null intervalMinutes / text inherit the
 // system default (BeaconConfig).

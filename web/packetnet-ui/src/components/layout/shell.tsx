@@ -9,7 +9,7 @@ import { Icon, AppIcon, type IconName } from "@/components/icon";
 import { Button } from "@/components/ui";
 import { useAuth } from "@/app/auth";
 import { api, useQuery, APPS_CHANGED_EVENT } from "@/lib/api";
-import { fmtUptime } from "@/lib/mock";
+import { fmtUptime } from "@/lib/catalogue";
 import { isAppNotRunning } from "@/lib/types";
 
 export const NAV: { id: string; to: string; label: string; icon: IconName }[] = [

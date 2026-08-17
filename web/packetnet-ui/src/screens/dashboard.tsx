@@ -14,12 +14,12 @@ import { cn } from "@/lib/utils";
 import { api, useQuery, subscribeFrames, subscribeRigs } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 import { portHealth } from "@/lib/health";
-import { KIND_LABEL, fmtUptime, fmtRigFrequency } from "@/lib/mock";
+import { KIND_LABEL, fmtUptime, fmtRigFrequency } from "@/lib/catalogue";
 import type { RadioStatus, RigStatus } from "@/lib/types";
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { data: status } = useQuery(api.status, []);
+  const { data: status, error: statusError } = useQuery(api.status, []);
   const { data: config } = useQuery(api.config, []);
   const { data: portStatus } = useQuery(api.ports, []);
   const { data: links } = useQuery(api.linkStats, []);
@@ -60,6 +60,15 @@ export function Dashboard() {
   const ports = portStatus ?? [];
   const faulted = ports.filter((p) => p.state === "faulted").length;
 
+  // The Status card told every operator "Operational" with a green live dot regardless of
+  // what the node said - it was a literal (#691 C024). It now reads the node: unreachable
+  // when /status errors, degraded while any port is faulted, operational otherwise.
+  const health: { dot: "up" | "faulted" | "error" | "down"; label: string } =
+    statusError ? { dot: "error", label: "Unreachable" }
+      : !s ? { dot: "down", label: "Checking…" }
+        : faulted > 0 ? { dot: "faulted", label: "Degraded" }
+          : { dot: "up", label: "Operational" };
+
   return (
     <Page>
       <PageHeader
@@ -76,8 +85,9 @@ export function Dashboard() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
           label="Status"
-          value={<span className="flex items-center gap-2"><StatusDot state="up" live /> Operational</span>}
-          sub={s ? `up ${fmtUptime(s.uptimeSeconds)}` : "—"}
+          value={<span className="flex items-center gap-2"><StatusDot state={health.dot} live={health.dot === "up"} /> {health.label}</span>}
+          sub={statusError ? statusError : s ? `up ${fmtUptime(s.uptimeSeconds)}` : "—"}
+          subVariant={statusError || faulted > 0 ? "warning" : undefined}
         />
         <Metric
           label="Ports up"
@@ -155,7 +165,11 @@ export function Dashboard() {
           <CardContent className="space-y-2.5">
             <Row k="Neighbours" v={<span className="tnum font-semibold">{s ? s.netrom.neighbours : "—"}</span>} />
             <Row k="Destinations" v={<span className="tnum font-semibold">{s ? s.netrom.destinations : "—"}</span>} />
-            <Row k="Forwarding" v={<Badge variant="success">PerFlow</Badge>} />
+            {/* The node's own forward mode (config.netRom.forwardMode), not the literal
+                "PerFlow" badge this used to be on every node (#691 C024). */}
+            <Row k="Forwarding" v={config
+              ? <Badge variant="success">{config.netRom.forwardMode}</Badge>
+              : <span className="text-muted-foreground">—</span>} />
             <Row k="INP3 overlay" v={s?.netrom.inp3Enabled ? <Badge variant="success">on</Badge> : <Badge variant="muted">off</Badge>} />
           </CardContent>
         </Card>
