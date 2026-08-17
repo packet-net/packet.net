@@ -34,6 +34,10 @@ PW_VERSION="1.56.0"                 # must match the image tag: the client and t
 PDN_BIN="${PDN_BIN:-$repo/src/Packet.Node/bin/Debug/net10.0/packetnet}"
 pw_cache="${LIVE_SMOKE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/pdn-live-smoke}"
 
+for tool in node npm curl docker python3; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "FAILED: $tool is required by the live smoke and is not on PATH"; exit 2; }
+done
+
 # The smoke's own identity + credentials. The callsign is deliberately NOT the mock
 # fixture's (GB7RDG): the dashboard step asserts the panel shows THIS node.
 CALLSIGN="M0SMK-7"
@@ -212,8 +216,10 @@ fi
 # this codebase); it applies the identity through the same write seam the editor uses,
 # then creates the admin. Shapes taken from tests/Packet.Node.Tests/Integration/AuthApiTests.cs.
 echo "==> first-run setup"
-setup_body="$(jq -nc --arg call "$CALLSIGN" --arg alias "$ALIAS" --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" \
-  '{identity:{callsign:$call, alias:$alias}, admin:{username:$u, password:$p}}')"
+# JSON bodies via node (already required for the SPA build) rather than jq, which the
+# self-hosted runners do not have.
+setup_body="$(node -e 'process.stdout.write(JSON.stringify({identity:{callsign:process.argv[1], alias:process.argv[2]}, admin:{username:process.argv[3], password:process.argv[4]}}))' \
+  "$CALLSIGN" "$ALIAS" "$ADMIN_USER" "$ADMIN_PASS")"
 setup_out="$scratch/setup.json"
 setup_code="$(curl -s -o "$setup_out" -w '%{http_code}' -X POST "$base/api/v1/setup" \
   -H 'content-type: application/json' -d "$setup_body")"
@@ -228,14 +234,14 @@ echo "==> login"
 login_out="$scratch/login.json"
 login_code="$(curl -s -o "$login_out" -w '%{http_code}' -X POST "$base/api/v1/auth/login" \
   -H 'content-type: application/json' \
-  -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u, password:$p}')")"
+  -d "$(node -e 'process.stdout.write(JSON.stringify({username:process.argv[1], password:process.argv[2]}))' "$ADMIN_USER" "$ADMIN_PASS")")"
 if [[ "$login_code" != "200" ]]; then
   echo "FAILED: POST /api/v1/auth/login returned $login_code"
   cat "$login_out"; echo
   dump_node_log
   exit 1
 fi
-token="$(jq -r '.token' "$login_out")"
+token="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(j.token ?? "")' "$login_out")"
 [[ -n "$token" && "$token" != "null" ]] || { echo "FAILED: no token in the login response"; exit 1; }
 
 # ---------------------------------------------------------------- playwright client
