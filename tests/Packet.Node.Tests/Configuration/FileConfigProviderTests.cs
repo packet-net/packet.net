@@ -43,11 +43,35 @@ public class FileConfigProviderTests : IDisposable
     }
 
     [Fact]
-    public void Initial_invalid_config_throws_on_construction()
+    public void An_initially_invalid_config_is_logged_loudly_and_the_node_still_starts()
+    {
+        // It used to throw here. A config provider is constructed before the web host exists,
+        // so a throw at load is an unhandled startup exception: the process exits, systemd
+        // restarts it, it exits again, and there is no panel and no API to fix the config from
+        // (#727 item 5). A tightened validator rule must be free to land without bricking the
+        // nodes it newly disagrees with; writes are still validated, so it cannot get worse.
+        File.WriteAllText(path, "identity:\n  callsign: not a callsign!\n");
+        var captured = new CapturingLogger<FileConfigProvider>();
+
+        using var provider = new FileConfigProvider(path, new FakeTimeProvider(), captured, watch: false);
+
+        provider.Current.Identity.Callsign.Should().Be("not a callsign!", "the node runs on the config it has");
+        captured.Messages.Should().Contain(m =>
+            m.Level == LogLevel.Error && m.Text.Contains("Stored config no longer validates"));
+        captured.Messages.Should().Contain(m =>
+            m.Level == LogLevel.Error
+            && m.Text.Contains("running on a config that no longer validates")
+            && m.Text.Contains("pdn config import"));
+    }
+
+    [Fact]
+    public void A_write_is_still_validated_even_when_the_loaded_config_is_not_valid()
     {
         File.WriteAllText(path, "identity:\n  callsign: not a callsign!\n");
-        var act = () => new FileConfigProvider(path, new FakeTimeProvider(), watch: false);
-        act.Should().Throw<InvalidOperationException>();
+        using var provider = new FileConfigProvider(path, new FakeTimeProvider(), watch: false);
+
+        provider.TryApply(provider.Current, out var errors).Should().BeFalse();
+        errors.Should().NotBeEmpty();
     }
 
     [Fact]

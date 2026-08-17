@@ -9,9 +9,15 @@ namespace Packet.Node.Tests.Configuration;
 /// Behavioural tests for <see cref="SqliteConfigProvider"/> — the config-in-DB provider
 /// (#473). Covers the NON-NEGOTIABLE first-boot YAML→DB migration (an existing install's
 /// hand-tuned /etc YAML is imported unchanged, runs identically, and a second boot reads
-/// the DB not the YAML), idempotency, the boot-fails-on-broken-config invariant, the seed
-/// fallbacks, and the write path (TryApply persists + raises OnChange once;
-/// persist-before-advance: a DB write failure does NOT advance Current).
+/// the DB not the YAML), idempotency, the seed fallbacks, and the write path (TryApply
+/// persists + raises OnChange once; persist-before-advance: a DB write failure does NOT
+/// advance Current).
+///
+/// Boot-fails-on-broken-config applies to the IMPORT paths only (a present-but-invalid legacy
+/// YAML or seed, which the operator is asking the node to adopt right now). An ALREADY-PERSISTED
+/// config that no longer validates is logged loudly and booted anyway, because the provider is
+/// constructed before the web host and a throw there is a restart loop with no way in to fix it
+/// (#727 item 5).
 /// </summary>
 public sealed class SqliteConfigProviderTests : IDisposable
 {
@@ -55,6 +61,33 @@ public sealed class SqliteConfigProviderTests : IDisposable
           hostname: rdg-pdn
           tags:
             - tag:server
+        """;
+
+    // A config that validated on node-v0.40 and does not on 0.41.0: two soundmodem ports on
+    // one ALSA device, distinguished only by mode (#711 C074 narrowed the endpoint key).
+    private const string TwoModemsOneDeviceYaml = """
+        schemaVersion: 1
+        identity:
+          callsign: M0LTE-7
+          alias: LONDON
+        ports:
+          - id: hf-bpsk
+            enabled: true
+            transport:
+              kind: soundmodem
+              device: default
+              mode: bpsk1200
+          - id: hf-afsk
+            enabled: true
+            transport:
+              kind: soundmodem
+              device: default
+              mode: afsk1200
+        management:
+          auth:
+            enabled: false
+          telnet:
+            enabled: false
         """;
 
     private SqliteConfigStore NewStore() => new(dbPath, new FakeTimeProvider());
@@ -136,15 +169,70 @@ public sealed class SqliteConfigProviderTests : IDisposable
         act.Should().Throw<InvalidOperationException>().WithMessage("*invalid*");
     }
 
+    // --- Load-time validation of an ALREADY-PERSISTED config is non-fatal (#727 item 5) ---
+
     [Fact]
-    public void An_invalid_blob_already_in_the_DB_throws_at_boot()
+    public void An_invalid_blob_already_in_the_DB_is_logged_loudly_and_the_node_still_boots()
     {
-        // Persist an invalid config directly, then boot — the node never runs on broken config.
+        // It used to THROW here. This provider is constructed at the top of Program.cs, before
+        // the web host exists, so that throw was an unhandled startup exception: the process
+        // exited, systemd restarted it, it exited again, and the operator had no panel, no API
+        // and no shipped recovery for the very config that needed editing.
         var store = NewStore();
         store.Save(new NodeConfig { Identity = new Identity { Callsign = "" } }).Should().BeTrue();
+        var log = new CapturingLogger<SqliteConfigProvider>();
 
-        var act = () => NewProvider(store: store);
-        act.Should().Throw<InvalidOperationException>().WithMessage("*pdn.db is invalid*");
+        using var provider = NewProvider(store: store, logger: log);
+
+        provider.Current.Identity.Callsign.Should().BeEmpty("the node runs on the config it has");
+
+        // Each error at Error level, naming the property, plus the one line telling the
+        // operator what to do about it. Assert the RENDERED text, not just that something
+        // was logged.
+        log.Messages.Should().Contain(m =>
+            m.Level == LogLevel.Error && m.Text.Contains("Stored config no longer validates"));
+        log.Messages.Should().Contain(m =>
+            m.Level == LogLevel.Error
+            && m.Text.Contains("running on a config that no longer validates")
+            && m.Text.Contains("pdn config import"));
+    }
+
+    [Fact]
+    public void A_config_that_validated_before_711_still_boots_and_keeps_both_ports()
+    {
+        // The real upgrade case. #711 (C074) narrowed the soundmodem duplicate-endpoint key from
+        // device/mode to device, so two soundmodem ports on one ALSA device in different modes
+        // validated on node-v0.40 and stopped validating on 0.41.0. Every node configured that
+        // way would have restart-looped on upgrade.
+        var store = NewStore();
+        store.Save(NodeConfigYaml.Parse(TwoModemsOneDeviceYaml)).Should().BeTrue();
+        var log = new CapturingLogger<SqliteConfigProvider>();
+
+        using var provider = NewProvider(store: store, logger: log);
+
+        provider.Current.Ports.Select(p => p.Id).Should().Equal("hf-bpsk", "hf-afsk");
+
+        // And the operator is told WHICH two ports collide, not merely that something is wrong -
+        // the NodeConfigWarnings entry that names the duplicate.
+        log.Messages.Should().Contain(m =>
+            m.Text.Contains("'hf-bpsk'") && m.Text.Contains("'hf-afsk'") && m.Text.Contains("soundmodem:default"));
+    }
+
+    [Fact]
+    public void A_write_is_still_validated_even_when_the_stored_config_is_not_valid()
+    {
+        // The whole bargain: boot on what is there, but never let it get worse. An invalid
+        // candidate is rejected by TryApply exactly as before.
+        var store = NewStore();
+        store.Save(new NodeConfig { Identity = new Identity { Callsign = "" } }).Should().BeTrue();
+        using var provider = NewProvider(store: store);
+
+        provider.TryApply(provider.Current, out var errors).Should().BeFalse();
+        errors.Should().NotBeEmpty();
+
+        provider.TryApply(
+            provider.Current with { Identity = new Identity { Callsign = "M0LTE-7" } }, out _)
+            .Should().BeTrue("a repair through the panel must still land");
     }
 
     // --- Seed fallbacks ---
