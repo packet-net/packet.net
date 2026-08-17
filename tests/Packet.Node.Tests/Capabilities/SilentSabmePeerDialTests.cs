@@ -206,6 +206,9 @@ public sealed class SilentSabmePeerDialTests
         // behaviour under test (a real operator re-connects seconds later, not microseconds).
         var session = caller.ActiveSessions.Single(x => x.Context.Remote.Equals(Target));
         await Wait.ForAsync(() => session.CurrentState == "Disconnected", "the first link releases");
+        // Both ends must be idle: the peer's own release tail (its UA/DM to our DISC) would
+        // otherwise land on the second SABM and read as a refusal.
+        await Wait.ForAsync(() => peer.IsIdle, "the peer releases its side too");
 
         await using var second = await connector.ConnectAsync(Target);
 

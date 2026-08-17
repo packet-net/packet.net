@@ -278,6 +278,8 @@ public static class ReconcilePlanner
             [nameof(PortConfig.NetRomMinQuality)] = PortFieldClass.Live,
             [nameof(PortConfig.NodesPaclen)] = PortFieldClass.Live,
             [nameof(PortConfig.MqttInstance)] = PortFieldClass.Live,
+            // Dial policy affects new dials only; it live-reseeds through the same path as Ax25.
+            [nameof(PortConfig.Link)] = PortFieldClass.Live,
         };
 
     // Did the ACKMODE-pacing flag flip between two ports' KISS settings? A null Kiss
