@@ -1,0 +1,12 @@
+[
+  {
+    "portId": "vhf-1",
+    "peer": "M0LTE",
+    "smoothedRttMs": 612,
+    "retries": 0,
+    "rejCount": 1,
+    "srejCount": 0,
+    "framesIn": 1204,
+    "framesOut": 1190
+  }
+]

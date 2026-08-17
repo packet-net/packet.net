@@ -1,0 +1,19 @@
+{
+  "callsign": "M0LTE-1",
+  "alias": "LONDON",
+  "grid": "IO91nl",
+  "version": "0.40.0 (abc1234)",
+  "uptimeSeconds": 1987260,
+  "portsUp": 3,
+  "portsTotal": 4,
+  "sessionCount": 2,
+  "netrom": {
+    "neighbours": 4,
+    "destinations": 6,
+    "inp3Enabled": true
+  },
+  "traffic": {
+    "enabled": true,
+    "dropped": 0
+  }
+}

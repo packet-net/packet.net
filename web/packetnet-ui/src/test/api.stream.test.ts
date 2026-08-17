@@ -96,7 +96,7 @@ function frame(seq: number, timestamp: string, bootId?: string): MonitorEvent {
   return {
     seq, timestamp, bootId, portId: "vhf-1", direction: "in", source: "M0LTE", dest: "GB7RDG",
     type: "UI", classKind: "U", pid: null, pidName: null, ns: null, nr: null, pf: 0,
-    command: true, length: 20, summary: "UI", raw: [], path: [],
+    command: true, length: 20, summary: "UI", raw: [], path: [], control: 0x03, infoLength: 5,
   } as MonitorEvent;
 }
 

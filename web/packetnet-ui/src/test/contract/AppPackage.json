@@ -1,0 +1,53 @@
+[
+  {
+    "id": "wall",
+    "name": "WALL",
+    "version": "1.2.0",
+    "description": "Shared message wall",
+    "icon": "message-square",
+    "capabilities": [
+      "session",
+      "web"
+    ],
+    "enabled": true,
+    "source": "package",
+    "error": null,
+    "service": "managed",
+    "state": "Running",
+    "pid": 4711,
+    "detail": null,
+    "forwards": [
+      {
+        "listen": 993,
+        "target": "127.0.0.1:1430",
+        "tls": "terminate"
+      }
+    ],
+    "command": "WALL",
+    "callsign": "M0LTE-1",
+    "pinnedCallsign": "M0LTE-1",
+    "netromAlias": "RDGWAL",
+    "netromQuality": 255
+  },
+  {
+    "id": "wx",
+    "name": "wx",
+    "version": null,
+    "description": null,
+    "icon": null,
+    "capabilities": [],
+    "enabled": false,
+    "source": "inline",
+    "error": "pdn-app.yaml: missing required field \u0027command\u0027",
+    "service": "none",
+    "state": null,
+    "pid": null,
+    "detail": null,
+    "forwards": [],
+    "command": null,
+    "callsign": null,
+    "pinnedCallsign": null,
+    "netromAlias": null,
+    "netromQuality": null
+  }
+]

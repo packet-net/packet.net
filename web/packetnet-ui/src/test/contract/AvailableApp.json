@@ -1,0 +1,33 @@
+[
+  {
+    "id": "dapps",
+    "name": "DAPPS",
+    "version": "0.34.1",
+    "description": "Store-and-forward messaging",
+    "icon": "inbox",
+    "capabilities": [
+      "network",
+      "web"
+    ],
+    "homepage": "https://github.com/packet-net/dapps",
+    "kind": "assets",
+    "installed": false,
+    "installedVersion": null,
+    "updateAvailable": false,
+    "installable": true
+  },
+  {
+    "id": "bpqchat",
+    "name": "BPQ Chat",
+    "version": "0.1.0",
+    "description": null,
+    "icon": null,
+    "capabilities": [],
+    "homepage": null,
+    "kind": "deb",
+    "installed": true,
+    "installedVersion": "0.0.9",
+    "updateAvailable": true,
+    "installable": false
+  }
+]

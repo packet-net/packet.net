@@ -6,7 +6,7 @@
 // poll-reconnect (POST /update → poll /info + /healthz until the version changes).
 // Mirrors tailscale.panel.test.tsx's mount + spy style.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/app/auth";
 import { Config } from "@/screens/config";
@@ -48,12 +48,17 @@ const APT_UPDATE: SystemInfo = {
   updateAvailable: true, latestVersion: "0.8.0",
 };
 
+// config.tsx's UPDATE_POLL_INTERVAL_MS - the wait between /info + /healthz probes.
+const UPDATE_POLL_INTERVAL_MS = 2_000;
+
 beforeEach(() => {
   localStorage.clear();
 });
 afterEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
+  // Any test that faked time hands it back here, so a later test never inherits a frozen clock.
+  vi.useRealTimers();
 });
 
 describe("Config — About this node (self-update) panel", () => {
@@ -119,13 +124,52 @@ describe("Config — About this node (self-update) panel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Management" }));
     await waitFor(() => expect(within(panel()).getByTestId("update-banner")).toBeInTheDocument());
 
+    // The poll loop sleeps UPDATE_POLL_INTERVAL_MS between probes, which this test used to
+    // spend for real (~2.1 s of the suite's wall clock, under a 10 s waitFor). Fake the clock
+    // from here - after the mount has settled, so the timers being faked are only the poll's -
+    // and step it by exactly one interval instead. waitFor is deliberately not used beyond this
+    // point: vitest defines no `jest` global, so testing-library cannot auto-advance vi's fake
+    // timers and a waitFor under them would simply hang until it timed out.
+    vi.useFakeTimers();
     fireEvent.click(within(panel()).getByRole("button", { name: /Apply update/ }));
-    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(UPDATE_POLL_INTERVAL_MS); });
+
+    expect(update).toHaveBeenCalledTimes(1);
     // it reconnects on the new version (the poll loop sees a different version)
-    await waitFor(() => expect(within(panel()).getByTestId("update-done")).toBeInTheDocument(), { timeout: 10_000 });
+    expect(within(panel()).getByTestId("update-done")).toBeInTheDocument();
     expect(within(panel()).getByText(/now running v0\.8\.0/)).toBeInTheDocument();
     expect(healthy).toHaveBeenCalled();
     expect(infoSpy.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("keeps waiting while the node answers on the version it started on", async () => {
+    // The other half of the poll contract, and only affordable now the clock is faked: /healthz
+    // answering is NOT the signal (it can be up on the old binary mid-restart), so a probe that
+    // still reports 0.7.0 must leave the panel waiting rather than declaring the update done.
+    vi.spyOn(api, "systemUpdate").mockResolvedValue(undefined);
+    vi.spyOn(api, "nodeHealthy").mockResolvedValue(true);
+    // Note the spy is installed here rather than through mountSystem, which installs its own
+    // systemInfo spy and would replace this one.
+    const infoSpy = vi.spyOn(api, "systemInfo").mockResolvedValue(APT_UPDATE); // never changes
+
+    seedScope("admin");
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Config />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Management" }));
+    await waitFor(() => expect(within(panel()).getByTestId("update-banner")).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    fireEvent.click(within(panel()).getByRole("button", { name: /Apply update/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(UPDATE_POLL_INTERVAL_MS * 3); });
+
+    expect(within(panel()).queryByTestId("update-done")).toBeNull();
+    // It really is still polling (not stalled): three intervals bought three more /info probes.
+    expect(infoSpy.mock.calls.length).toBeGreaterThanOrEqual(4);
   });
 
   it("surfaces a server error from the update launch as a banner", async () => {

@@ -1,0 +1,28 @@
+[
+  {
+    "callsign": "M0LTE",
+    "portId": "vhf-1",
+    "firstHeard": "2:14:08",
+    "lastHeard": "0:00:12",
+    "count": 412,
+    "ports": 1,
+    "lastRssiDbm": -79,
+    "lastSnrDb": 24.5,
+    "medianPreDataCarrierMs": 210,
+    "preDataCarrierSamples": 12,
+    "txDelayAdvisory": "300 ms is ~90 ms longer than needed"
+  },
+  {
+    "callsign": "G8PZT-7",
+    "portId": null,
+    "firstHeard": "1:03:11",
+    "lastHeard": "0:00:03",
+    "count": 20441,
+    "ports": 3,
+    "lastRssiDbm": null,
+    "lastSnrDb": null,
+    "medianPreDataCarrierMs": null,
+    "preDataCarrierSamples": 0,
+    "txDelayAdvisory": null
+  }
+]

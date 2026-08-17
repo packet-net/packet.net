@@ -1,0 +1,4 @@
+{
+  "secret": "JBSWY3DPEHPK3PXP",
+  "otpauthUri": "otpauth://totp/pdn:tom?secret=JBSWY3DPEHPK3PXP\u0026issuer=pdn"
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "username": "tom",
+    "scope": "admin",
+    "createdUtc": "2026-01-29T12:00:00+00:00",
+    "lastLoginUtc": "2026-08-17T11:57:00+00:00",
+    "hasTotp": true,
+    "callsign": "M0LTE"
+  },
+  {
+    "username": "guest",
+    "scope": "read",
+    "createdUtc": "2026-08-15T12:00:00+00:00",
+    "lastLoginUtc": null,
+    "hasTotp": false,
+    "callsign": null
+  }
+]

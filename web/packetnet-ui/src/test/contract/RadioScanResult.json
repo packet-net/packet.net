@@ -1,0 +1,22 @@
+[
+  {
+    "serial": "19925328",
+    "model": "Tait TM8110",
+    "ccdiVersion": "1.10.0",
+    "baud": 28800,
+    "devicePath": "/dev/ttyUSB0",
+    "byIdPath": "/dev/serial/by-id/usb-Silicon_Labs_CP2102-if00-port0",
+    "bandCode": "B1",
+    "amateurBand": "2m"
+  },
+  {
+    "serial": "1G000123",
+    "model": "Tait TM8110",
+    "ccdiVersion": "1.10.0",
+    "baud": 28800,
+    "devicePath": "/dev/ttyUSB2",
+    "byIdPath": null,
+    "bandCode": null,
+    "amateurBand": null
+  }
+]

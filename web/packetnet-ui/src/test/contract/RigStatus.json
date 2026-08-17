@@ -1,0 +1,48 @@
+[
+  {
+    "portId": "hf-300",
+    "attached": true,
+    "kind": "hamlib",
+    "endpoint": "127.0.0.1:4532",
+    "backend": "Hamlib rigctld",
+    "manufacturer": "Icom",
+    "model": "IC-7300",
+    "capabilities": [
+      "frequencyGet",
+      "frequencySet",
+      "modeGet",
+      "modeSet",
+      "pttGet",
+      "swrMeter"
+    ],
+    "connectionState": "healthy",
+    "frequencyHz": 14074000,
+    "mode": "PKTUSB",
+    "passbandHz": 3000,
+    "transmitting": false,
+    "meters": {
+      "swr": 1.3,
+      "rfPowerWatts": 42,
+      "rfPowerRelative": 0.42,
+      "sampleAt": "2026-08-17T11:58:30+00:00"
+    },
+    "sampledAt": "2026-08-17T11:59:57+00:00"
+  },
+  {
+    "portId": "vhf-1",
+    "attached": false,
+    "kind": "flrig",
+    "endpoint": "127.0.0.1:12345",
+    "backend": null,
+    "manufacturer": null,
+    "model": null,
+    "capabilities": [],
+    "connectionState": "unknown",
+    "frequencyHz": null,
+    "mode": null,
+    "passbandHz": null,
+    "transmitting": null,
+    "meters": null,
+    "sampledAt": null
+  }
+]

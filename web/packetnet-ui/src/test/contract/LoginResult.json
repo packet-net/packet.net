@@ -1,0 +1,7 @@
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.e30.sig",
+  "expiresAt": "2026-08-17T13:00:00+00:00",
+  "scopes": "admin",
+  "refreshToken": "rt-0123456789abcdef",
+  "username": "tom"
+}

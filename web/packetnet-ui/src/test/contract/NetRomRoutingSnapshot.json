@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-08-17T12:00:00+00:00",
+  "neighbours": [
+    {
+      "neighbour": "GB7BNS",
+      "alias": "BNSGW",
+      "portId": "vhf-1",
+      "pathQuality": 203,
+      "lastHeard": "0:00:14"
+    }
+  ],
+  "destinations": [
+    {
+      "destination": "GB7CIP",
+      "alias": "CIPGW",
+      "bestRoute": 0,
+      "routes": [
+        {
+          "neighbour": "GB7CIP",
+          "quality": 188,
+          "obsolescence": 6,
+          "inp3": {
+            "targetTimeMs": 410,
+            "hopCount": 1
+          }
+        },
+        {
+          "neighbour": "GB7BNS",
+          "quality": 142,
+          "obsolescence": 4,
+          "inp3": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "errors": [
+    {
+      "path": "Ports[0].Profile",
+      "message": "Port.Profile \u0027vhf-fm-1200\u0027 is not a known channel profile"
+    }
+  ]
+}

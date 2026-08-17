@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "state": "running",
+  "fqdn": "pdn.tail-scale.ts.net",
+  "authUrl": null,
+  "funnel": false
+}

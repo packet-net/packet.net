@@ -1,0 +1,85 @@
+{
+  "instances": [
+    {
+      "instanceId": "shack-pi",
+      "host": "192.168.1.44",
+      "httpPort": 8080,
+      "source": "mdns",
+      "reachable": true,
+      "error": null,
+      "devices": [
+        {
+          "deviceId": "nino-0",
+          "kind": "nino-tnc",
+          "model": "NinoTNC N9600A4",
+          "version": "3.44",
+          "serial": null,
+          "baud": 57600,
+          "free": true,
+          "bandCode": null,
+          "amateurBand": null,
+          "idSource": "by-path",
+          "idStable": true
+        },
+        {
+          "deviceId": "tait-0",
+          "kind": "tait-ccdi",
+          "model": "Tait TM8110",
+          "version": "1.10.0",
+          "serial": "19925328",
+          "baud": 28800,
+          "free": true,
+          "bandCode": "B1",
+          "amateurBand": "2m",
+          "idSource": "dev",
+          "idStable": false
+        },
+        {
+          "deviceId": "unknown-0",
+          "kind": "unknown",
+          "model": null,
+          "version": null,
+          "serial": null,
+          "baud": 9600,
+          "free": false,
+          "bandCode": null,
+          "amateurBand": null,
+          "idSource": null,
+          "idStable": null
+        }
+      ],
+      "proposedPairs": [
+        {
+          "tncDeviceId": "nino-0",
+          "radioDeviceId": "tait-0",
+          "auto": true
+        }
+      ],
+      "pairingAmbiguous": false,
+      "reachableNow": true,
+      "lastSeen": "2026-08-17T11:59:30+00:00"
+    },
+    {
+      "instanceId": "attic-relay",
+      "host": "192.168.1.77",
+      "httpPort": 8080,
+      "source": "config",
+      "reachable": false,
+      "error": "connection refused",
+      "devices": [],
+      "proposedPairs": [],
+      "pairingAmbiguous": false,
+      "reachableNow": null,
+      "lastSeen": null
+    }
+  ],
+  "conflicts": [
+    {
+      "instanceId": "spare-pi",
+      "addresses": [
+        "192.168.1.90:8080",
+        "192.168.1.91:8080"
+      ]
+    }
+  ]
+}

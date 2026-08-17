@@ -24,7 +24,9 @@ import { FRAME_TYPES, PIDS } from "./catalogue";
 
 // 6.1 NodeConfig tree ----------------------------------------
 export const NODE_CONFIG: NodeConfig = {
-  schemaVersion: 3,
+  // NodeConfig.CurrentSchemaVersion on the server. The mock claimed 3, a version the node has
+  // never written (src/test/contract.test.ts now pins the whole document to the server's shape).
+  schemaVersion: 2,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
     { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: null, ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
@@ -39,17 +41,37 @@ export const NODE_CONFIG: NodeConfig = {
     http: { bind: "0.0.0.0", port: 8080 },
     https: { enabled: false, bind: "0.0.0.0", port: 8443, certificatePath: null, certificatePassword: null, generateSelfSignedOnMissing: true },
     auth: { enabled: false, accessTokenMinutes: null, refreshTokenMinutes: null, sysopElevationMinutes: null, webAuthn: { relyingPartyId: "localhost", relyingPartyName: "pdn node", allowedOrigins: [] } },
+    mdns: { enabled: true, instanceName: null },
+    console: { idleTimeoutMinutes: 30 },
   },
   netRom: {
     enabled: true, broadcast: true, routing: "Transit", forwardMode: "PerFlow",
+    // The legacy pair `routing` replaced. A node that never carried them sends null for both.
+    connect: null, forward: null,
     defaultNeighbourQuality: 192, minQuality: 40,
     obsoleteInitial: 6, obsoleteMinimum: 4, sweepIntervalSeconds: 300,
     window: 4, transportTimeoutSeconds: 60, transportRetries: 3, timeToLive: 25,
     compress: false,
-    // The four timing knobs are seconds on the wire; these are the server defaults.
-    inp3: { enabled: true, preferInp3Routes: true, l3RttInterval: 60, l3RttResetWindow: 180, rifInterval: 300, positiveDebounce: 5 },
+    // The four timing knobs are seconds on the wire; these are the server defaults, as are
+    // the six the Config screen does not surface but every GET carries.
+    inp3: {
+      enabled: true, preferInp3Routes: true, l3RttInterval: 60, l3RttResetWindow: 180,
+      rifInterval: 300, positiveDebounce: 5,
+      snttGainShift: 3, probeUnknownCapability: true, advertiseIpAccept: null,
+      capabilityTextWidth: 8, hopLimit: 30, worsenThresholdMs: 1000,
+    },
   },
   beacon: { enabled: true, intervalMinutes: 30, text: "{node}:{call} pdn node — Reading & District ARS" },
+  rhp: { enabled: false, bind: "127.0.0.1", port: 9000, requireAuth: false, maxConnections: 64, maxHandlesPerClient: 256, inFrameTimeoutSeconds: 30 },
+  mcp: { enabled: false, sse: { enabled: false, path: "/mcp" }, tokenLifetimeDays: 90, oauth: { enabled: false, accessTokenLifetimeMinutes: 60 } },
+  applications: [],
+  // The owner's overrides for the discovered packages in APP_PACKAGES - what the Apps screen writes.
+  apps: [
+    { id: "wall", enabled: true, command: "WALL", callsign: "M0ABC-1", netrom: null, environment: {} },
+    { id: "bbs-bridge", enabled: true, command: "BBS", callsign: "M0ABC-3", netrom: { alias: "RDGBBS", quality: 255 }, environment: {} },
+  ],
+  appPackageRoots: null,
+  traffic: { enabled: true, path: null, retentionDays: 14, maxMb: 512 },
   tailscale: { enabled: false, authKey: null, authKeyFile: null, hostname: "pdn", tags: [], stateDir: "/var/lib/packetnet/tsnet", target: "127.0.0.1:8080", funnel: false },
   oarc: {
     enabled: false, baseUrl: "https://node-api.packet.oarc.uk/",
@@ -57,10 +79,15 @@ export const NODE_CONFIG: NodeConfig = {
     reportTraces: false, tracesRfOnly: true, publishExactPosition: false,
     statusIntervalSecs: 300, sessionStatusIntervalSecs: 60,
   },
+  mqtt: {
+    enabled: false, brokerHost: "", brokerPort: 1883, useTls: false,
+    username: null, password: null, topicPrefix: "", nodeName: null, base64: false, qos: 2, rfOnly: false,
+  },
   // Node-level soundmodem services, both off by default (server defaults). Enabling either opens a
   // dedicated audio device + a TCP listener — see the Services tab's ARDOP / POCSAG forms.
-  ardop: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8515, ptt: "" },
   paging: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8106, baud: 1200, invertPolarity: false, ptt: "" },
+  ardop: { enabled: false, device: "default", captureRate: 48000, bind: "127.0.0.1", port: 8515, ptt: "" },
+  headEnds: [{ id: "shack-north", address: "192.168.1.44:8080" }],
 };
 
 // The node's version + install channel + available-update view (GET /api/v1/system/info).
@@ -109,6 +136,7 @@ export const NODE_STATUS: NodeStatus = {
   uptimeSeconds: 1987260,
   portsUp: 3, portsTotal: 4, sessionCount: 4,
   netrom: { neighbours: 4, destinations: 6, inp3Enabled: true },
+  traffic: { enabled: true, dropped: 0 },
 };
 
 // 6.4 port status -------------------------------------------
@@ -133,10 +161,10 @@ export const PORTS_LIST = ["vhf-1", "uhf-2", "link-dn"];
 
 export function randItem<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
 
-// What the fake stream emits. The filter's FRAME_TYPES also carries the decoder's bare
-// "U"/"S" fallbacks, which are what the server calls a control octet it cannot name - not
-// a frame anything would deliberately send, so the generator leaves them out.
-const GENERATED_FRAME_TYPES: FrameType[] = FRAME_TYPES.filter((t) => t !== "U" && t !== "S");
+// What the fake stream emits. The filter's FRAME_TYPES also carries the decoder's bare "U"
+// fallback, which is what the server calls a U control octet it cannot name - not a frame
+// anything would deliberately send, so the generator leaves it out.
+const GENERATED_FRAME_TYPES: FrameType[] = FRAME_TYPES.filter((t) => t !== "U");
 
 let _frameSeq = 9000;
 // The mock stands in for one node process, so every frame it makes carries one boot id (the
@@ -191,6 +219,11 @@ export function makeFrame(now: Date): MonitorEvent {
     classKind: isI ? "I" : isU ? "U" : "S",
     pid: pidKey, pidName: pidKey ? PIDS[pidKey] : null,
     ns, nr, pf, command: dir === "out", length, summary, raw,
+    // The decoded first control octet + the info-field length the server also puts on the wire.
+    // The generator does not synthesise a real control octet, so it reports the one value that
+    // is always honest for a fixture: 0. infoLength IS derivable from the frame it made up.
+    control: 0,
+    infoLength: isI ? Math.max(0, length - 17) : type === "UI" ? Math.max(0, length - 15) : 0,
     path: Math.random() > 0.7 ? [randItem(["GB7BNS", "GB7CIP", "MB7UWS"])] : [],
     rssiDbm, snrDb, noiseFloorDbm, bootId: _bootId,
   };
@@ -240,8 +273,8 @@ export const RADIOS: RadioStatus[] = [
 // Two TM8110s: the first canonicalises to a /dev/serial/by-id symlink; the second is a shared-USB-
 // serial CP2102 dongle whose symlink collides, so byIdPath is null — exactly why binding is by serial.
 export const RADIO_SCAN: RadioScanResult[] = [
-  { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0" },
-  { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null },
+  { serial: "19925328", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB0", byIdPath: "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller-if00-port0", bandCode: "B1", amateurBand: "2m" },
+  { serial: "1G000123", model: "Tait TM8110", ccdiVersion: "1.10.0", baud: 28800, devicePath: "/dev/ttyUSB2", byIdPath: null, bandCode: null, amateurBand: null },
 ];
 
 // Rig-control attachments (GET /api/v1/rigs) — the station-control (CAT) view. One attached
@@ -618,10 +651,10 @@ export function driveTuneStream(
 // Heard stations (GET /api/v1/mheard) with last-heard RSSI where a radio measured it. Fixture data for
 // a future MHeard view — lastRssiDbm is null for stations heard on a port with no radio attached.
 export const HEARD_STATIONS: HeardStation[] = [
-  { callsign: "M0LTE", portId: "vhf-1", firstHeard: "2:14:08", lastHeard: "0:00:12", count: 412, ports: 1, lastRssiDbm: -79 },
-  { callsign: "2E0XYZ", portId: "vhf-1", firstHeard: "5:41:22", lastHeard: "0:01:47", count: 88, ports: 1, lastRssiDbm: -101 },
-  { callsign: "G4APL-1", portId: "uhf-2", firstHeard: "9:02:51", lastHeard: "0:00:33", count: 1904, ports: 1, lastRssiDbm: null },
-  { callsign: "G8PZT-7", portId: "link-dn", firstHeard: "1d 3:11:00", lastHeard: "0:00:03", count: 20441, ports: 1, lastRssiDbm: null },
+  { callsign: "M0LTE", portId: "vhf-1", firstHeard: "2:14:08", lastHeard: "0:00:12", count: 412, ports: 1, lastRssiDbm: -79, lastSnrDb: 24.5, medianPreDataCarrierMs: 212, preDataCarrierSamples: 18, txDelayAdvisory: "300 ms of TXDELAY, ~90 ms more than this station needs" },
+  { callsign: "2E0XYZ", portId: "vhf-1", firstHeard: "5:41:22", lastHeard: "0:01:47", count: 88, ports: 1, lastRssiDbm: -101, lastSnrDb: 8.0, medianPreDataCarrierMs: null, preDataCarrierSamples: 0, txDelayAdvisory: null },
+  { callsign: "G4APL-1", portId: "uhf-2", firstHeard: "9:02:51", lastHeard: "0:00:33", count: 1904, ports: 1, lastRssiDbm: null, lastSnrDb: null, medianPreDataCarrierMs: null, preDataCarrierSamples: 0, txDelayAdvisory: null },
+  { callsign: "G8PZT-7", portId: "link-dn", firstHeard: "1d 3:11:00", lastHeard: "0:00:03", count: 20441, ports: 1, lastRssiDbm: null, lastSnrDb: null, medianPreDataCarrierMs: null, preDataCarrierSamples: 0, txDelayAdvisory: null },
 ];
 
 // The learned per-peer AX.25 capability cache (GET /api/v1/capabilities). One row per

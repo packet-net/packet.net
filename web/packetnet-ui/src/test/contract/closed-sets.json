@@ -1,0 +1,88 @@
+{
+  "channelProfiles": [
+    "slow-afsk1200"
+  ],
+  "transportKinds": [
+    "serial-kiss",
+    "nino-tnc",
+    "nino-tnc-tcp",
+    "kiss-tcp",
+    "axudp",
+    "axudp-multipoint",
+    "tait-transparent",
+    "soundmodem"
+  ],
+  "authScopes": [
+    "read",
+    "operate",
+    "admin"
+  ],
+  "radioKinds": [
+    "tait-ccdi",
+    "rig"
+  ],
+  "rigKinds": [
+    "hamlib",
+    "flrig"
+  ],
+  "compatPresets": [
+    "strict",
+    "lenient",
+    "bpq",
+    "xrouter",
+    "direwolf"
+  ],
+  "compatQuirks": [
+    "default",
+    "strictly-faithful"
+  ],
+  "headEndDeviceKinds": [
+    "nino-tnc",
+    "tait-ccdi",
+    "unknown"
+  ],
+  "appPackageStates": [
+    "Stopped",
+    "Starting",
+    "Running",
+    "Backoff",
+    "Faulted",
+    "External"
+  ],
+  "netRomRouting": [
+    "None",
+    "Endpoint",
+    "Transit"
+  ],
+  "netRomForwardMode": [
+    "BestRoute",
+    "PerFlow"
+  ],
+  "appUiModes": [
+    "standalone",
+    "embedded",
+    "slot"
+  ],
+  "frameTypes": [
+    "DISC",
+    "DM",
+    "FRMR",
+    "I",
+    "REJ",
+    "RNR",
+    "RR",
+    "SABM",
+    "SABME",
+    "SREJ",
+    "TEST",
+    "U",
+    "UA",
+    "UI",
+    "XID"
+  ],
+  "frameClasses": [
+    "I",
+    "S",
+    "U"
+  ]
+}

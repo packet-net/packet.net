@@ -4,12 +4,19 @@
 // fields the Raw-YAML tab already round-trips:
 //   1. an axudp-multipoint transport (localPort + a peers[] table of call/host/port/broadcast)
 //   2. per-port netRomMinQuality (MINQUAL) + nodesPaclen (NODESPACLEN)
-//   3. netRom.compress (L4Compress)
 // A regression here = a multipoint port (or the new knobs) silently dropped on a
 // Forms load→save, the exact bug this UI work closes.
+//
+// Every case here runs the EDITOR: openEdit's draft, then portDraftToConfig, then the wire.
+// #692 C032 found the first four cases applying JSON.parse(JSON.stringify(x)) to fixture
+// literals instead - true of any JSON-safe object, and reachable without the editor existing
+// at all, while the header above framed a failure as a Forms load→save drop. The third GB7RDG
+// feature, netRom.compress, is node-level rather than per-port and so has no reconstruction
+// function to exercise; it is now covered by mounting the Config screen and reading the PUT
+// body (src/test/screens.smoke.test.tsx, "toggling NET/ROM compression PUTs netRom.compress").
 import { describe, it, expect } from "vitest";
 import { NODE_CONFIG } from "@/lib/mock";
-import type { AxudpMultipointTransport, NodeConfig, PortConfig, TransportConfig } from "@/lib/types";
+import type { AxudpMultipointTransport, PortConfig, TransportConfig } from "@/lib/types";
 import { portDraftToConfig, radioPairsWith, type PortDraft } from "@/screens/ports";
 
 // The PUT /config wire path is JSON; this is the same shape the server deserialises.
@@ -38,14 +45,53 @@ function draftWith(transport: TransportConfig, radio: PortDraft["radio"], rig: P
   };
 }
 
+// What the Ports screen's openEdit builds from a loaded port (see screens/ports.tsx). Every
+// "does a load→save preserve X" question in this file goes through here.
+function draftOf(p: PortConfig): PortDraft {
+  return {
+    id: p.id,
+    enabled: p.enabled,
+    transport: p.transport,
+    profile: p.profile ?? null,
+    ax25: p.ax25 ?? null,
+    kiss: p.kiss ?? null,
+    setup: { radio: null, channel: "shared", difficulty: "moderate", custom: false },
+    beacon: p.beacon,
+    compat: p.compat ?? null,
+    radio: p.radio ?? null,
+    rig: p.rig ?? null,
+    netRomQuality: p.netRomQuality ?? null,
+    netRomMinQuality: p.netRomMinQuality ?? null,
+    nodesPaclen: p.nodesPaclen ?? null,
+    _origId: p.id,
+    _orig: p,
+  };
+}
+
+// One editor load→save: open the port, reconstruct it, put it on the wire.
+function editorRoundTrip(p: PortConfig, edit: (d: PortDraft) => PortDraft = (d) => d): PortConfig {
+  return wireRoundTrip(portDraftToConfig(edit(draftOf(p))));
+}
+
+// A no-op save must not change the port. The one licence the reconstruction has is to SPELL an
+// absent optional field as an explicit null (the server binder reads null and absent the same);
+// dropping a value, or inventing one, is the bug this file exists to catch.
+function expectUnchanged(out: PortConfig, src: PortConfig, label: string): void {
+  expect(out, `${label}: a field the server sent changed or was dropped`).toMatchObject(src);
+  const invented = Object.keys(out)
+    .filter((k) => !(k in src))
+    .filter((k) => (out as unknown as Record<string, unknown>)[k] !== null);
+  expect(invented, `${label}: the save invented values the server never sent`).toEqual([]);
+}
+
 describe("config round-trip preserves the GB7RDG features", () => {
-  it("a multipoint-AXUDP port with 2 peers survives serialize -> deserialize", () => {
+  it("a multipoint-AXUDP port with 2 peers survives a Forms load -> save", () => {
     const mp = NODE_CONFIG.ports.find((p) => p.transport.kind === "axudp-multipoint");
     expect(mp, "the mock seeds a multipoint port").toBeDefined();
 
-    const out = wireRoundTrip(mp!);
-    // Deep-equal: nothing added, nothing dropped, including the nested peers[].
-    expect(out).toEqual(mp);
+    const out = editorRoundTrip(mp!);
+    // Nothing changed, nothing dropped by the reconstruction, including the nested peers[].
+    expectUnchanged(out, mp!, "mp-net");
 
     const t = out.transport as AxudpMultipointTransport;
     expect(t.kind).toBe("axudp-multipoint");
@@ -56,40 +102,58 @@ describe("config round-trip preserves the GB7RDG features", () => {
     expect(t.peers[1]).toEqual({ call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false });
   });
 
-  it("per-port netRomMinQuality + nodesPaclen survive serialize -> deserialize", () => {
+  it("editing one peer row rewrites that peer and leaves the other alone", () => {
+    // The peers table is the editor's own control, so a save must carry the operator's edit
+    // AND the row they never touched - the whole table is replaced on every save.
     const mp = NODE_CONFIG.ports.find((p) => p.id === "mp-net")!;
-    const out = wireRoundTrip(mp);
-    expect(out.netRomMinQuality).toBe(100);
-    expect(out.nodesPaclen).toBe(160);
+    const out = editorRoundTrip(mp, (d) => {
+      const t = d.transport as AxudpMultipointTransport;
+      return {
+        ...d,
+        transport: { ...t, peers: [{ ...t.peers[0], host: "44.131.10.9", broadcast: false }, t.peers[1]] },
+      };
+    });
+
+    const peers = (out.transport as AxudpMultipointTransport).peers;
+    expect(peers).toHaveLength(2);
+    expect(peers[0]).toEqual({ call: "N0CALL-1", host: "44.131.10.9", port: 10093, broadcast: false });
+    expect(peers[1]).toEqual({ call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false });
+  });
+
+  it("per-port netRomMinQuality + nodesPaclen survive a Forms load -> save, edited or not", () => {
+    const mp = NODE_CONFIG.ports.find((p) => p.id === "mp-net")!;
+
+    // Untouched: MINQUAL 100 / NODESPACLEN 160 come back exactly as the server sent them.
+    const untouched = editorRoundTrip(mp);
+    expect(untouched.netRomMinQuality).toBe(100);
+    expect(untouched.nodesPaclen).toBe(160);
+
+    // Edited: the operator's numbers reach the wire (these are per-port overrides, so a save
+    // that silently re-derived them from the node-level defaults would be the bug).
+    const edited = editorRoundTrip(mp, (d) => ({ ...d, netRomMinQuality: 143, nodesPaclen: 120 }));
+    expect(edited.netRomMinQuality).toBe(143);
+    expect(edited.nodesPaclen).toBe(120);
   });
 
   it("a port that leaves the new per-port knobs unset round-trips them as absent/null", () => {
-    // Mirror the editor's saveDraft: an unset (blank) field maps to null, not 0.
-    const draftSaved: PortConfig = {
-      id: "vhf-x",
-      enabled: true,
-      transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL", host: "44.0.0.1", port: 10093, broadcast: false }] },
-      profile: null,
-      ax25: null,
-      kiss: null,
-      beacon: null,
-      compat: null,
-      netRomQuality: null,
-      netRomMinQuality: null,
-      nodesPaclen: null,
-    };
-    const out = wireRoundTrip(draftSaved);
+    // A blank field maps to null, not 0 - 0 is a meaningful MINQUAL ("accept everything"),
+    // so the two must stay distinguishable through the reconstruction.
+    const out = wireRoundTrip(portDraftToConfig(draftWith(
+      { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL", host: "44.0.0.1", port: 10093, broadcast: false }] },
+      null,
+    )));
     expect(out.netRomMinQuality).toBeNull();
     expect(out.nodesPaclen).toBeNull();
     expect((out.transport as AxudpMultipointTransport).peers).toHaveLength(1);
   });
 
-  it("netRom.compress survives serialize -> deserialize", () => {
-    const out: NodeConfig = wireRoundTrip(NODE_CONFIG);
-    expect(out.netRom.compress).toBe(NODE_CONFIG.netRom.compress);
-    // And toggling it round-trips the toggled value (NetRomSection emits compress).
-    const toggled = wireRoundTrip({ ...NODE_CONFIG, netRom: { ...NODE_CONFIG.netRom, compress: true } });
-    expect(toggled.netRom.compress).toBe(true);
+  it("every port in the mock config survives an untouched open -> save unchanged", () => {
+    // The load→save identity across the whole fixture: transports of five different kinds,
+    // radios, rigs, beacons and the per-port NET/ROM knobs, each through the real editor path.
+    expect(NODE_CONFIG.ports.length).toBeGreaterThan(3);
+    for (const p of NODE_CONFIG.ports) {
+      expectUnchanged(editorRoundTrip(p), p, `port ${p.id}`);
+    }
   });
 });
 
@@ -211,13 +275,15 @@ describe("rig (CAT) block survives the PortEditor save (saveDraft reconstruction
     expect(out.rig).toBeNull();
   });
 
-  it("the mock config's rig-attached ports round-trip byte-for-byte", () => {
-    for (const p of NODE_CONFIG.ports.filter((x) => x.rig)) {
-      const out = wireRoundTrip(p);
-      expect(out.rig).toEqual(p.rig);
+  it("the mock config's rig-attached ports round-trip byte-for-byte through the editor", () => {
+    // The fixture's real rigs (a BYO flrig daemon and a BYO rigctld), opened and saved the way
+    // the screen does. Asserting this over the fixture literal instead proved only that the
+    // fixture is JSON-safe and never touched the reconstruction that used to drop the block.
+    const rigPorts = NODE_CONFIG.ports.filter((x) => x.rig);
+    expect(rigPorts.length, "the fixture seeds at least one rig-attached port").toBeGreaterThan(0);
+    for (const p of rigPorts) {
+      expect(editorRoundTrip(p).rig, `port ${p.id} lost its rig on save`).toEqual(p.rig);
     }
-    // The fixture seeds at least one rig-attached port, so the loop above really ran.
-    expect(NODE_CONFIG.ports.some((x) => x.rig)).toBe(true);
   });
 });
 
@@ -283,28 +349,6 @@ describe("the save body is the loaded port plus the operator's edits", () => {
     radio: { kind: "tait-ccdi", headEndId: "shack-pi", deviceId: "tait-0" },
     mqttInstance: "2m",
   };
-
-  // What the Ports screen's openEdit builds from a loaded port (see screens/ports.tsx).
-  function draftOf(p: PortConfig): PortDraft {
-    return {
-      id: p.id,
-      enabled: p.enabled,
-      transport: p.transport,
-      profile: p.profile ?? null,
-      ax25: p.ax25 ?? null,
-      kiss: p.kiss ?? null,
-      setup: { radio: null, channel: "shared", difficulty: "moderate", custom: false },
-      beacon: p.beacon,
-      compat: p.compat ?? null,
-      radio: p.radio ?? null,
-      rig: p.rig ?? null,
-      netRomQuality: p.netRomQuality ?? null,
-      netRomMinQuality: p.netRomMinQuality ?? null,
-      nodesPaclen: p.nodesPaclen ?? null,
-      _origId: p.id,
-      _orig: p,
-    };
-  }
 
   it("an adopted head-end port round-trips through open -> save unchanged", () => {
     const out = wireRoundTrip(portDraftToConfig(draftOf(ADOPTED)));

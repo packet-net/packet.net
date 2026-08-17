@@ -156,10 +156,21 @@ export function Console() {
         // console look dead on iPhone). Purely cosmetic: the node stays the source of truth for
         // the line. We do NOT echo server-side, which would double-echo every real telnet/RF
         // sysop. `col` bounds Backspace so it can't erase back into the prompt.
+        //
+        // ORDERING. Each keystroke is its own POST, and POST /console/{id}/input answers 202
+        // "queued" - nothing on the wire or on the server sequences two in-flight requests. Typed
+        // at speed the node received "OPRTS" for "PORTS" and answered "Unknown command" (found by
+        // the live-smoke driver, #692). The sends are chained through one promise per console so
+        // the next only leaves after the previous has been accepted; a keystroke is small and the
+        // node answers immediately, so this costs nothing a typist can feel.
         let col = 0;
+        let sendChain: Promise<void> = Promise.resolve();
         term.onData((data) => {
           if (!id) return;
-          api.consoleInput(id, data).catch(() => { if (!disposed) setPhase("closed"); });
+          const consoleId = id;   // the narrowing does not survive into the deferred send
+          sendChain = sendChain
+            .then(() => api.consoleInput(consoleId, data))
+            .catch(() => { if (!disposed) setPhase("closed"); });
           for (const ch of data) {
             if (ch === "\r" || ch === "\n") { term.write("\r\n"); col = 0; }
             else if (ch === "\x7f" || ch === "\b") { if (col > 0) { term.write("\b \b"); col -= 1; } }

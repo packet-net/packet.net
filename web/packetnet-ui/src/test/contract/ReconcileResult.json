@@ -1,0 +1,25 @@
+{
+  "valid": true,
+  "live": [
+    {
+      "path": "netRom.minQuality",
+      "impact": "live",
+      "summary": "40 -\u003E 60"
+    }
+  ],
+  "portRestart": [
+    {
+      "path": "ports.vhf-1.kiss.txDelay",
+      "impact": "port-restart",
+      "summary": "30 -\u003E 40"
+    }
+  ],
+  "nodeReset": [
+    {
+      "path": "identity.callsign",
+      "impact": "node-reset",
+      "summary": "M0LTE-1 -\u003E M0LTE-2"
+    }
+  ],
+  "applied": true
+}

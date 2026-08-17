@@ -1328,7 +1328,7 @@ async function setup(payload: SetupRequest): Promise<SetupResult> {
 
 // In-memory mock user list, so the Users screen demos create/delete with no node.
 const mockUsers: UserSummary[] = [
-  { username: "tom", scope: "admin", createdUtc: "2026-01-01T00:00:00Z", lastLoginUtc: "2026-06-08T14:02:00Z" },
+  { username: "tom", scope: "admin", createdUtc: "2026-01-01T00:00:00Z", lastLoginUtc: "2026-06-08T14:02:00Z", hasTotp: true, callsign: "M0LTE" },
 ];
 
 async function usersList(): Promise<UserSummary[]> {
@@ -1341,7 +1341,10 @@ async function usersList(): Promise<UserSummary[]> {
 async function userCreate(username: string, password: string, scope: string): Promise<UserSummary> {
   if (MODE === "mock") {
     await new Promise((r) => setTimeout(r, 120));
-    const u: UserSummary = { username, scope, createdUtc: new Date().toISOString(), lastLoginUtc: null };
+    const u: UserSummary = {
+      username, scope, createdUtc: new Date().toISOString(), lastLoginUtc: null,
+      hasTotp: false, callsign: null,
+    };
     mockUsers.push(u);
     return structuredClone(u);
   }

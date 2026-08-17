@@ -589,7 +589,13 @@ function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val:
   const inp3 = nr.inp3;
   const toggleKeys = ["enabled", "broadcast", "compress"] as const;
   const numKeys = ["defaultNeighbourQuality", "minQuality", "sweepIntervalSeconds", "timeToLive", "window"] as const;
-  const routingDesc = NETROM_ROUTING_HELP.options.find((o) => o.value === nr.routing)?.desc;
+  // `routing` is nullable on the wire: a node still carrying the legacy connect/forward pair
+  // sends routing:null, and the server resolves the pair into `effectiveRouting`. Showing that
+  // resolution is what the node is ACTUALLY doing; a blank select would be a lie (and React
+  // would warn on a null-valued <select>). Picking it also migrates the node to the new key on
+  // the next save, which is the intent of the 3-state successor.
+  const routing: NetRomRouting = nr.routing ?? nr.effectiveRouting ?? "None";
+  const routingDesc = NETROM_ROUTING_HELP.options.find((o) => o.value === routing)?.desc;
   const inp3Keys = ["l3RttInterval", "l3RttResetWindow", "rifInterval", "positiveDebounce"] as const;
   const nrRec = nr as unknown as Record<string, number | undefined>;
   const inp3Rec = inp3 as unknown as Record<string, number>;
@@ -619,7 +625,7 @@ function NetRomSection({ cfg, set }: { cfg: NodeConfig; set: (path: string, val:
       <div className="max-w-md rounded-lg border border-border p-3">
         <Field label={NETROM_ROUTING_HELP.label} info={NETROM_ROUTING_HELP.help}>
           <Select
-            value={nr.routing}
+            value={routing}
             onChange={(e) => set("netRom.routing", e.target.value as NetRomRouting, "live")}
           >
             {NETROM_ROUTING_HELP.options.map((o) => (

@@ -1,0 +1,50 @@
+[
+  {
+    "kind": "armed",
+    "at": "2026-08-17T12:00:00+00:00",
+    "state": "armed",
+    "burstIndex": null,
+    "decoded": null,
+    "total": null,
+    "levelDb": null,
+    "rssiDbm": null,
+    "advice": null,
+    "note": null,
+    "error": null,
+    "txDelayMs": null,
+    "preDataCarrierMs": null,
+    "recommendedTxDelayMs": null
+  },
+  {
+    "kind": "round",
+    "at": "2026-08-17T12:00:02+00:00",
+    "state": "peer-connected",
+    "burstIndex": 1,
+    "decoded": 4,
+    "total": 5,
+    "levelDb": -55,
+    "rssiDbm": -90.3,
+    "advice": "up",
+    "note": "turn the deviation up",
+    "error": null,
+    "txDelayMs": 300,
+    "preDataCarrierMs": 212.5,
+    "recommendedTxDelayMs": 220
+  },
+  {
+    "kind": "error",
+    "at": "2026-08-17T12:00:04+00:00",
+    "state": "error",
+    "burstIndex": null,
+    "decoded": null,
+    "total": null,
+    "levelDb": null,
+    "rssiDbm": null,
+    "advice": null,
+    "note": null,
+    "error": "peer stopped answering",
+    "txDelayMs": null,
+    "preDataCarrierMs": null,
+    "recommendedTxDelayMs": null
+  }
+]

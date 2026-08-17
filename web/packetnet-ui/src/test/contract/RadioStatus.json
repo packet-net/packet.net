@@ -1,0 +1,35 @@
+[
+  {
+    "portId": "vhf-1",
+    "attached": true,
+    "kind": "tait-ccdi",
+    "controlPort": "/dev/ttyUSB0",
+    "serial": "19925328",
+    "identity": {
+      "model": "Tait TM8110",
+      "ccdiVersion": "1.10.0"
+    },
+    "connectionState": "healthy",
+    "channelBusy": true,
+    "health": {
+      "rssiDbm": -78.5,
+      "averagedRssiDbm": -80.2,
+      "paTemperatureC": 41,
+      "forwardTrendMillivolts": 2140,
+      "reverseTrendMillivolts": 190,
+      "reverseForwardRatio": 0.089,
+      "sampleAt": "2026-08-17T11:59:56+00:00"
+    }
+  },
+  {
+    "portId": "hf-300",
+    "attached": false,
+    "kind": "rig",
+    "controlPort": null,
+    "serial": null,
+    "identity": null,
+    "connectionState": "unknown",
+    "channelBusy": null,
+    "health": null
+  }
+]

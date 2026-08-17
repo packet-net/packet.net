@@ -39,14 +39,16 @@ export const APPLY_IMPACT: Record<string, ApplyImpact> = {
 };
 
 // ---- monitor frame vocabulary ------------------------------
-// The frame-type filter's options. Every value the server's decoder can put in
-// MonitorEvent.type (Packet.Node.Core/Api/MonitorEvent.cs FrameKind): the named
-// U/S frames, TEST (which /ping itself transmits), and the bare "U"/"S" the
-// decoder falls back to for a control octet it does not name. Without those three
-// the operator could see the frames in the table but never isolate them (#691 C050).
+// The frame-type filter's options: every value the server's decoder can put in
+// MonitorEvent.type (Packet.Node.Core/Api/MonitorEvent.cs) - the named U/S frames, TEST
+// (which /ping itself transmits), and the bare "U" the decoder falls back to for a U
+// control octet it does not name. Without those the operator could see the frames in the
+// table but never isolate them (#691 C050). There is no bare "S" here: the S-frame subtype
+// is two bits with all four values named, so that fallback is unreachable - the contract
+// fixtures now derive the set from the classifier itself (#692 C018).
 export const FRAME_TYPES: FrameType[] = [
   "UI", "SABM", "SABME", "I", "RR", "RNR", "REJ", "SREJ", "FRMR", "UA", "DISC", "DM", "XID",
-  "TEST", "U", "S",
+  "TEST", "U",
 ];
 // PID octet -> the name the decoder gives it. Mirrors MonitorEvent.cs PidName, which
 // returns null for anything else - so a decode row shows the hex alone rather than the
