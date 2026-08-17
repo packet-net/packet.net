@@ -1,5 +1,6 @@
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Traffic;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Traffic;
 
@@ -19,7 +20,7 @@ public sealed class SqliteTrafficStoreTests : IDisposable
 
     public SqliteTrafficStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-traffic-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-traffic");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "traffic.db");
     }

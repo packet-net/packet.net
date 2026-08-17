@@ -5,6 +5,7 @@ using Packet.Ax25;
 using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Hosting;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -24,7 +25,7 @@ public sealed class EventsSseTests : IDisposable
 
     public EventsSseTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-sse-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-sse");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

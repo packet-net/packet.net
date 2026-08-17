@@ -1,4 +1,5 @@
 using Packet.Node.Core.Heard;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Heard;
 
@@ -18,7 +19,7 @@ public sealed class SqliteHeardStoreTests : IDisposable
 
     public SqliteHeardStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-heardstore-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-heardstore");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

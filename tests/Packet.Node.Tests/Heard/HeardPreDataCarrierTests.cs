@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Heard;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Heard;
 
@@ -20,7 +21,7 @@ public sealed class HeardPreDataCarrierTests : IDisposable
 
     public HeardPreDataCarrierTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-heardpredata-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-heardpredata");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

@@ -71,12 +71,12 @@ public sealed class RhpGatewayConnectRouterTests
         await using var userConn = await gateway.OpenAx25StreamAsync(portLabel: null, local: OriginApp.ToString(), remote: AppCall.ToString());
 
         var (conn, portId) = await handled.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("local", portId);                        // crossconnect, not an RF port
-        Assert.Equal(OriginApp.ToString(), conn.PeerId);      // target app sees the originating app
+        portId.Should().Be("local");                        // crossconnect, not an RF port
+        conn.PeerId.Should().Be(OriginApp.ToString());      // target app sees the originating app
 
         // App → caller (the greeting comes back over the returned connection)…
         var greeting = await ReadTextAsync(userConn, TimeSpan.FromSeconds(10));
-        Assert.Contains("DAPPSv1>", greeting, StringComparison.Ordinal);
+        greeting.Should().Contain("DAPPSv1>");
 
         // …and caller → app.
         await userConn.WriteAsync("HELLO APP\r"u8.ToArray());
@@ -121,7 +121,7 @@ public sealed class RhpGatewayConnectRouterTests
 
         // The bridge must outlive the handler's return: the app's banner reaches the caller…
         var greeting = await ReadTextAsync(userConn, TimeSpan.FromSeconds(10));
-        Assert.Contains("DAPPSv1>", greeting, StringComparison.Ordinal);
+        greeting.Should().Contain("DAPPSv1>");
 
         // …and caller → app still flows.
         await userConn.WriteAsync("PING\r"u8.ToArray());
@@ -140,11 +140,11 @@ public sealed class RhpGatewayConnectRouterTests
         using var registration = host.Supervisor!.RegisterAppCallsign(AppCall, portId: null, (_, _) => Task.CompletedTask);
         var gateway = new SupervisorRhpGateway(host, config);
 
-        var ex = await Assert.ThrowsAsync<RhpGatewayException>(() =>
-            gateway.OpenAx25StreamAsync(portLabel: "nope", local: null, remote: AppCall.ToString()));
+        var open = () => gateway.OpenAx25StreamAsync(portLabel: "nope", local: null, remote: AppCall.ToString());
+        var ex = (await open.Should().ThrowAsync<RhpGatewayException>()).Which;
 
-        Assert.Equal(RhpErrorCode.NoSuchPort, ex.ErrCode);
-        Assert.Contains("No such port 'nope'", ex.Message, StringComparison.Ordinal);
+        ex.ErrCode.Should().Be(RhpErrorCode.NoSuchPort);
+        ex.Message.Should().Contain("No such port 'nope'");
     }
 
     [Fact]
@@ -156,11 +156,11 @@ public sealed class RhpGatewayConnectRouterTests
 
         var gateway = new SupervisorRhpGateway(host, config);
 
-        var ex = await Assert.ThrowsAsync<RhpGatewayException>(() =>
-            gateway.OpenAx25StreamAsync(portLabel: null, local: null, remote: "GB7RDG"));
+        var open = () => gateway.OpenAx25StreamAsync(portLabel: null, local: null, remote: "GB7RDG");
+        var ex = (await open.Should().ThrowAsync<RhpGatewayException>()).Which;
 
-        Assert.Equal(RhpErrorCode.NoSuchPort, ex.ErrCode);
-        Assert.Contains("explicit port", ex.Message, StringComparison.Ordinal);
+        ex.ErrCode.Should().Be(RhpErrorCode.NoSuchPort);
+        ex.Message.Should().Contain("explicit port");
     }
 
     private static async Task<string> ReadTextAsync(INodeConnection conn, TimeSpan budget)

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Applications.Catalog;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Applications.Catalog;
 
@@ -21,7 +22,7 @@ public class EmbeddedAppCatalogTests
     public void Missing_file_yields_an_empty_list_not_a_throw()
     {
         var catalog = new EmbeddedAppCatalog(NullLoggerFactory.Instance,
-            Path.Combine(Path.GetTempPath(), $"no-such-catalog-{Guid.NewGuid():N}.yaml"));
+            TestPaths.NewPath("no-such-catalog", ".yaml"));
 
         catalog.List().Should().BeEmpty();
     }

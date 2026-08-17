@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Audit;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -30,7 +31,7 @@ public sealed class PortsApiTests : IDisposable
     {
         // Start with NO ports — every test adds/removes its own. Telnet off so the
         // WAF-hosted node binds no fixed TCP port (could clash across parallel classes).
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-portsapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-portsapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, $"""

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -21,7 +22,7 @@ public sealed class ConfigCasApiTests : IDisposable
 
     public ConfigCasApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-casapi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-casapi");
         Directory.CreateDirectory(dir);
         var configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

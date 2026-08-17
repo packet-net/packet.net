@@ -1,4 +1,5 @@
 using Packet.Node.Core.Capabilities;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Capabilities;
 
@@ -19,7 +20,7 @@ public sealed class SqlitePeerCapabilityStoreTests : IDisposable
 
     public SqlitePeerCapabilityStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-pcstore-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-pcstore");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

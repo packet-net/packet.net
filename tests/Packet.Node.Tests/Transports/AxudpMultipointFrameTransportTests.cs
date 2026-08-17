@@ -6,6 +6,7 @@ using Packet.Ax25.Transport;
 using Packet.Axudp;
 using Packet.Core;
 using Packet.Node.Core.Transports;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Transports;
 
@@ -265,30 +266,5 @@ public sealed class AxudpMultipointFrameTransportTests
             return f;
         }
         throw new InvalidOperationException("no frame arrived");
-    }
-
-    // Captures rendered log STRINGS per level so a test asserts the message a human reads — not
-    // just that something was logged (catches a placeholder/arg swap the source-gen would hide).
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        private readonly object gate = new();
-        private readonly List<(LogLevel Level, string Text)> messages = new();
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> fmt)
-        {
-            lock (gate)
-            {
-                messages.Add((level, fmt(state, ex)));
-            }
-        }
-        public List<string> Render(LogLevel level)
-        {
-            lock (gate)
-            {
-                return messages.Where(m => m.Level == level).Select(m => m.Text).ToList();
-            }
-        }
-        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
     }
 }

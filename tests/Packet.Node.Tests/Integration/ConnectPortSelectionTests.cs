@@ -30,7 +30,7 @@ public sealed class ConnectPortSelectionTests : IDisposable
 
     public ConnectPortSelectionTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-connectport-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-connectport");
         Directory.CreateDirectory(dir);
         var configPath = Path.Combine(dir, "node.yaml");
 

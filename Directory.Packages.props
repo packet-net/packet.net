@@ -123,6 +123,11 @@
     <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
+    <!-- Banned-symbol analyzer for the test projects: plan 2.8 makes AwesomeAssertions the
+         sole assertion library, and 718 xunit Assert.* calls had drifted back in across 35
+         files because nothing enforced it (#700 C012). tests/BannedSymbols.txt bans
+         Xunit.Assert; RS0030 is an error there. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
 
     <!-- Fuzzing (SP-004 — AX.25 / KISS wire-format fuzzer) -->
     <PackageVersion Include="SharpFuzz" Version="2.3.0" />

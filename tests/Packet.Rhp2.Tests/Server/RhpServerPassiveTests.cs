@@ -46,17 +46,17 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
     {
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
         var handle = sock.Handle!.Value;
 
         await client.SendAsync(new BindMessage { Id = 2, Handle = handle, Local = callsign, Port = null });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new ListenMessage { Id = 3, Handle = handle, Flags = 0 });
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, listen.ErrCode);
-        Assert.Equal((callsign, null as string), (gateway.ListenerLocal, gateway.ListenerPort));   // null port = all ports
+        listen.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (gateway.ListenerLocal, gateway.ListenerPort).Should().Be((callsign, null as string));   // null port = all ports
         return handle;
     }
 
@@ -68,8 +68,8 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         var handle = await ListenAsync(client, gateway);
 
-        Assert.True(handle >= 100);
-        Assert.Equal(1, gateway.Registrations);
+        (handle >= 100).Should().BeTrue();
+        gateway.Registrations.Should().Be(1);
     }
 
     [Fact]
@@ -83,32 +83,32 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await gateway.AcceptHandler!(gateway.Connection, "2");
 
         var accept = await client.ExpectAsync<AcceptMessage>();
-        Assert.Equal(listener, accept.Handle);
-        Assert.True(accept.Child > listener);
-        Assert.Equal("GB7RDG", accept.Remote);          // the FakeConnection's PeerId
-        Assert.Equal("M0LTE-7", accept.Local);
-        Assert.Equal("2", accept.Port);                 // the wire's STRING port (XRouter shape)
-        Assert.Null(accept.Id);
-        Assert.NotNull(accept.Seqno);
+        accept.Handle.Should().Be(listener);
+        (accept.Child > listener).Should().BeTrue();
+        accept.Remote.Should().Be("GB7RDG");          // the FakeConnection's PeerId
+        accept.Local.Should().Be("M0LTE-7");
+        accept.Port.Should().Be("2");                 // the wire's STRING port (XRouter shape)
+        accept.Id.Should().BeNull();
+        accept.Seqno.Should().NotBeNull();
 
         // The protocol lifecycle: the accept push is followed by a status push announcing
         // the CHILD's link is up (rhp2lib protocol primer's incoming-listener sequence).
         var status = await client.ExpectAsync<StatusMessage>();
-        Assert.Equal(accept.Child, status.Handle);
-        Assert.True(((StatusFlags)(status.Flags ?? 0)).HasFlag(StatusFlags.Connected));
-        Assert.Null(status.Id);
-        Assert.NotNull(status.Seqno);
+        status.Handle.Should().Be(accept.Child);
+        ((StatusFlags)(status.Flags ?? 0)).HasFlag(StatusFlags.Connected).Should().BeTrue();
+        status.Id.Should().BeNull();
+        status.Seqno.Should().NotBeNull();
 
         // The child handle is live both ways: peer bytes push as recv; send reaches the peer.
         gateway.Connection.Inject("hi\r"u8.ToArray());
         var recv = await client.ExpectAsync<RecvMessage>();
-        Assert.Equal(accept.Child, recv.Handle);
-        Assert.Equal("hi\r", recv.Data);
+        recv.Handle.Should().Be(accept.Child);
+        recv.Data.Should().Be("hi\r");
 
         await client.SendAsync(new SendMessage { Id = 9, Handle = accept.Child, Data = "DAPPSv1>\r" });
         var sendReply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sendReply.ErrCode);
-        Assert.Equal("DAPPSv1>\r"u8.ToArray(), await gateway.Connection.WrittenAsync());
+        sendReply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (await gateway.Connection.WrittenAsync()).Should().Equal("DAPPSv1>\r"u8.ToArray());
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.SendAsync(new ListenMessage { Id = 4, Handle = handle, Flags = 0 });
         var again = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, again.ErrCode);
-        Assert.Equal(1, gateway.Registrations);   // no second engine registration
+        again.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.Registrations.Should().Be(1);   // no second engine registration
     }
 
     [Fact]
@@ -140,8 +140,8 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new ListenMessage { Id = 3, Handle = sock.Handle!.Value, Flags = 0 });
 
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.DuplicateSocket, listen.ErrCode);
-        Assert.Equal("callsign M0LTE-7 is already registered.", listen.ErrText);
+        listen.ErrCode.Should().Be(RhpErrorCode.DuplicateSocket);
+        listen.ErrText.Should().Be("callsign M0LTE-7 is already registered.");
     }
 
     [Theory]
@@ -156,7 +156,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = pfam, Mode = mode });
         var reply = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(expected, reply.ErrCode);
+        reply.ErrCode.Should().Be(expected);
     }
 
     // ── dgram socket lifecycle (R-6): socket(dgram) → bind → sendto / recv ──
@@ -169,20 +169,20 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
         var handle = sock.Handle!.Value;
-        Assert.True(handle >= 100);
+        (handle >= 100).Should().BeTrue();
 
         await client.SendAsync(new BindMessage { Id = 2, Handle = handle, Local = "M0LTE-7", Port = null });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
-        Assert.Equal(1, gateway.UiRegistrations);      // bind started the promiscuous UI RX tap
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiRegistrations.Should().Be(1);      // bind started the promiscuous UI RX tap
 
         // The bound dgram handle takes sendto (a datagram, not a stream connect).
         await client.SendAsync(new SendToMessage { Id = 3, Handle = handle, Remote = "GB7RDG", Data = "x" });
         var sent = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sent.ErrCode);
-        Assert.Equal("M0LTE-7", gateway.UiLocal);
+        sent.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiLocal.Should().Be("M0LTE-7");
     }
 
     [Fact]
@@ -195,12 +195,12 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         var sock = await client.ExpectAsync<SocketReplyMessage>();
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7" });
         _ = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(1, gateway.UiRegistrations);
+        gateway.UiRegistrations.Should().Be(1);
 
         await client.SendAsync(new CloseMessage { Id = 3, Handle = sock.Handle!.Value });
         var closed = await client.ExpectAsync<CloseReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, closed.ErrCode);
-        Assert.Equal(1, gateway.UiDisposals);          // the UI tap is gone with the handle
+        closed.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiDisposals.Should().Be(1);          // the UI tap is gone with the handle
     }
 
     // ── custom socket lifecycle (R-7): socket(custom) → bind → sendto (PID in data[0]) / recv ──
@@ -213,22 +213,22 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
         var handle = sock.Handle!.Value;
-        Assert.True(handle >= 100);
+        (handle >= 100).Should().BeTrue();
 
         await client.SendAsync(new BindMessage { Id = 2, Handle = handle, Local = "M0LTE-7", Port = null });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
-        Assert.Equal(1, gateway.UiRegistrations);      // bind started the promiscuous UI RX tap (same as dgram)
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiRegistrations.Should().Be(1);      // bind started the promiscuous UI RX tap (same as dgram)
 
         // The bound custom handle takes sendto with the PID as the first data octet.
         await client.SendAsync(new SendToMessage { Id = 3, Handle = handle, Remote = "GB7RDG", Data = RhpDataEncoding.ToWireString([0xCC, (byte)'x']) });
         var sent = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sent.ErrCode);
-        Assert.Equal("M0LTE-7", gateway.UiLocal);
-        Assert.Equal((byte)0xCC, gateway.UiPid);       // data[0] → the UI frame PID
-        Assert.Equal("x"u8.ToArray(), gateway.UiInfo); // data[1..] → the UI info
+        sent.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiLocal.Should().Be("M0LTE-7");
+        gateway.UiPid.Should().Be((byte)0xCC);       // data[0] → the UI frame PID
+        gateway.UiInfo.Should().Equal("x"u8.ToArray()); // data[1..] → the UI info
     }
 
     [Fact]
@@ -241,12 +241,12 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         var sock = await client.ExpectAsync<SocketReplyMessage>();
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7" });
         _ = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(1, gateway.UiRegistrations);
+        gateway.UiRegistrations.Should().Be(1);
 
         await client.SendAsync(new CloseMessage { Id = 3, Handle = sock.Handle!.Value });
         var closed = await client.ExpectAsync<CloseReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, closed.ErrCode);
-        Assert.Equal(1, gateway.UiDisposals);          // the UI tap is gone with the handle
+        closed.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiDisposals.Should().Be(1);          // the UI tap is gone with the handle
     }
 
     [Fact]
@@ -263,7 +263,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new SendMessage { Id = 7, Handle = listener, Data = "x" });
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.OperationNotSupported, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.OperationNotSupported);
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new SendMessage { Id = 2, Handle = sock.Handle!.Value, Data = "x" });
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.NotConnected, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.NotConnected);
     }
 
     [Fact]
@@ -299,8 +299,8 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "G9DUM-S" });
 
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidLocalAddress, bind.ErrCode);
-        Assert.Equal("Invalid local address", bind.ErrText);
+        bind.ErrCode.Should().Be(RhpErrorCode.InvalidLocalAddress);
+        bind.ErrText.Should().Be("Invalid local address");
     }
 
     [Fact]
@@ -316,12 +316,12 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         var sock = await client.ExpectAsync<SocketReplyMessage>();
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = "M0LTE-7", Port = "0" });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new ListenMessage { Id = 3, Handle = sock.Handle!.Value, Flags = 0 });
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, listen.ErrCode);
-        Assert.Null(gateway.ListenerPort);                 // "0" registered as all-ports
+        listen.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.ListenerPort.Should().BeNull();                 // "0" registered as all-ports
     }
 
     [Fact]
@@ -335,7 +335,7 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         await client.SendAsync(new ListenMessage { Id = 2, Handle = sock.Handle!.Value, Flags = 0 });
 
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.BadParameter, listen.ErrCode);
+        listen.ErrCode.Should().Be(RhpErrorCode.BadParameter);
     }
 
     [Fact]
@@ -351,13 +351,13 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
 
         await client.SendAsync(new CloseMessage { Id = 5, Handle = listener });
         var closed = await client.ExpectAsync<CloseReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, closed.ErrCode);
-        Assert.Equal(1, gateway.Disposals);             // the engine registration is gone
+        closed.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.Disposals.Should().Be(1);             // the engine registration is gone
 
         // The accepted child is an independent handle — still live.
         await client.SendAsync(new SendMessage { Id = 6, Handle = accept.Child, Data = "x" });
         var sendReply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sendReply.ErrCode);
+        sendReply.ErrCode.Should().Be(RhpErrorCode.Ok);
     }
 
     [Fact]
@@ -375,6 +375,6 @@ public sealed class RhpServerPassiveTests : IAsyncDisposable
         {
             await Task.Delay(20);
         }
-        Assert.Equal(1, gateway.Disposals);
+        gateway.Disposals.Should().Be(1);
     }
 }

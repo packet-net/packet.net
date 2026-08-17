@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -25,7 +26,7 @@ public sealed class LogLevelApiTests : IDisposable
 
     public LogLevelApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-loglevel-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-loglevel");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "packetnet.yaml");
         dbPath = Path.Combine(dir, "pdn.db");

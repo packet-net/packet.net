@@ -21,7 +21,7 @@ public sealed class WallAppIntegrationTests : IDisposable
 
     public WallAppIntegrationTests()
     {
-        workDir = Path.Combine(Path.GetTempPath(), "pdn-wall-" + Guid.NewGuid().ToString("N"));
+        workDir = TestPaths.NewPath("pdn-wall");
         Directory.CreateDirectory(workDir);   // WALL writes wall.txt in its working directory
     }
 
@@ -30,17 +30,15 @@ public sealed class WallAppIntegrationTests : IDisposable
         try { Directory.Delete(workDir, recursive: true); } catch (IOException) { /* best effort */ }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_user_posts_and_reads_the_wall_through_the_bridge()
     {
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture is a Linux python3 script");
         var python = FindPython();
-        if (python is null || !OperatingSystem.IsLinux())
-        {
-            return;   // Linux + python3 only
-        }
+        Skip.If(python is null, "python3 not installed");
 
         var wallPy = Path.Combine(RepoRoot(), "examples", "wall", "wall.py");
-        Assert.True(File.Exists(wallPy), $"WALL app not found at {wallPy}");
+        File.Exists(wallPy).Should().BeTrue("WALL app not found at {0}", wallPy);
 
         var app = new ExternalProcessApplication(
             new ApplicationConfig
@@ -66,10 +64,10 @@ public sealed class WallAppIntegrationTests : IDisposable
 
         conn.Inject("LIST\r");
         await Wait.ForAsync(() => conn.Output.Contains("hello from the bridge"), "post listed back");
-        Assert.Contains("M0LTE-7", conn.Output, StringComparison.Ordinal);   // attributed to the caller
+        conn.Output.Should().Contain("M0LTE-7");   // attributed to the caller
 
         // The app emits only \n; over AX.25 the bridge must have translated every one to CR.
-        Assert.DoesNotContain('\n', conn.Output);
+        conn.Output.Should().NotContain("\n");
 
         // The user types BYE → WALL prints a goodbye and exits → the bridge returns.
         conn.Inject("BYE\r");
@@ -77,8 +75,8 @@ public sealed class WallAppIntegrationTests : IDisposable
 
         // The post persisted to the working-dir state file (visible to the next connect).
         var wallFile = Path.Combine(workDir, "wall.txt");
-        Assert.True(File.Exists(wallFile));
-        Assert.Contains("hello from the bridge", await File.ReadAllTextAsync(wallFile), StringComparison.Ordinal);
+        File.Exists(wallFile).Should().BeTrue();
+        (await File.ReadAllTextAsync(wallFile)).Should().Contain("hello from the bridge");
     }
 
     private static string? FindPython() =>

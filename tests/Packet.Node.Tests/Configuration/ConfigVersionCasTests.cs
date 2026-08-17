@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Configuration;
 
@@ -17,7 +18,7 @@ public sealed class ConfigVersionCasTests : IDisposable
 
     public ConfigVersionCasTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-cas-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-cas");
         Directory.CreateDirectory(dir);
         path = Path.Combine(dir, "node.yaml");
         File.WriteAllText(path, NodeConfigYaml.Serialize(Config("M0LTE-1", "IO91wm")));

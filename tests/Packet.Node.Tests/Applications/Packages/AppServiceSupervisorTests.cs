@@ -50,13 +50,10 @@ public sealed class AppServiceSupervisorTests
     /// process group, so the exit is observed, the state leaves Running, and both reconcile
     /// and disposal complete promptly.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public async Task A_backgrounded_grandchild_holding_the_pipes_does_not_wedge_the_supervisor()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("forker");
         pkg.WriteScript("run.sh", """
@@ -90,13 +87,10 @@ public sealed class AppServiceSupervisorTests
     /// releases a grandchild's grip on stdout/stderr - so an <c>always</c> service is
     /// respawned as it should be.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public async Task A_pipe_holding_grandchild_does_not_stop_the_restart_policy_running()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("forker2");
         pkg.WriteScript("run.sh", """
@@ -130,13 +124,10 @@ public sealed class AppServiceSupervisorTests
 
     // ---- the spawn contract ---------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Enable_starts_the_service_running_with_pdn_environment_and_state_dir_cwd()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("envy");
         pkg.WriteScript("run.sh", """
@@ -158,32 +149,29 @@ public sealed class AppServiceSupervisorTests
 
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => StatusOf(supervisor, "envy")?.State == AppServiceState.Running, "service running");
-        Assert.NotNull(StatusOf(supervisor, "envy")!.Pid);
+        StatusOf(supervisor, "envy")!.Pid.Should().NotBeNull();
 
         // cwd.txt is written after env.txt, so once it exists env.txt is complete.
         await Wait.ForAsync(() => File.Exists(pkg.StatePath("cwd.txt")), "child wrote env + cwd");
         var env = File.ReadAllLines(pkg.StatePath("env.txt"));
-        Assert.Contains("PDN_APP_ID=envy", env);
-        Assert.Contains($"PDN_APP_DIR={pkg.PackageDir}", env);
-        Assert.Contains($"PDN_APP_STATE={pkg.StateDir}", env);
-        Assert.Contains("PDN_NODE_CALLSIGN=M0LTE-1", env); // the node's identity, for the SSID-of-the-node-callsign convention
-        Assert.Contains("PDN_RHP_HOST=127.0.0.1", env);   // present: the config enables RHP
-        Assert.Contains("PDN_RHP_PORT=9123", env);
-        Assert.Contains("FROM_MANIFEST=m", env);
-        Assert.Contains("FROM_OWNER=o", env);
-        Assert.Contains("WINNER=override", env);          // owner's override wins over the manifest
+        env.Should().Contain("PDN_APP_ID=envy");
+        env.Should().Contain($"PDN_APP_DIR={pkg.PackageDir}");
+        env.Should().Contain($"PDN_APP_STATE={pkg.StateDir}");
+        env.Should().Contain("PDN_NODE_CALLSIGN=M0LTE-1"); // the node's identity, for the SSID-of-the-node-callsign convention
+        env.Should().Contain("PDN_RHP_HOST=127.0.0.1");   // present: the config enables RHP
+        env.Should().Contain("PDN_RHP_PORT=9123");
+        env.Should().Contain("FROM_MANIFEST=m");
+        env.Should().Contain("FROM_OWNER=o");
+        env.Should().Contain("WINNER=override");          // owner's override wins over the manifest
 
         // Working dir defaults to the state dir (which the supervisor created).
-        Assert.Equal(pkg.StateDir, File.ReadAllLines(pkg.StatePath("cwd.txt"))[0]);
+        File.ReadAllLines(pkg.StatePath("cwd.txt"))[0].Should().Be(pkg.StateDir);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Rhp_disabled_means_no_rhp_environment()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("norhp");
         pkg.WriteScript("run.sh", """
@@ -198,18 +186,15 @@ public sealed class AppServiceSupervisorTests
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => File.Exists(pkg.StatePath("done")), "child wrote env");
         var env = File.ReadAllLines(pkg.StatePath("env.txt"));
-        Assert.DoesNotContain(env, line => line.StartsWith("PDN_RHP_", StringComparison.Ordinal));
+        env.Should().NotContain(line => line.StartsWith("PDN_RHP_", StringComparison.Ordinal));
     }
 
     // ---- reconcile: desired vs running ----------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Disable_stops_the_running_service_on_reconcile()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("toggly");
         pkg.WriteScript("run.sh", "while :; do sleep 0.2; done\n");
@@ -224,17 +209,14 @@ public sealed class AppServiceSupervisorTests
         catalog.Set(pkg.Service("run.sh", enabled: false));
         await supervisor.ReconcileAsync();
 
-        Assert.Equal(AppServiceState.Stopped, StatusOf(supervisor, "toggly")!.State);
+        StatusOf(supervisor, "toggly")!.State.Should().Be(AppServiceState.Stopped);
         await Wait.ForAsync(() => PackageTestSupport.ProcessGone(pid), "process gone after disable");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Package_removed_from_discovery_is_surplus_stopped_on_reconcile()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("vanish");
         pkg.WriteScript("run.sh", "while :; do sleep 0.2; done\n");
@@ -249,17 +231,14 @@ public sealed class AppServiceSupervisorTests
         catalog.Set();   // the package dir is gone on the next scan
         await supervisor.ReconcileAsync();
 
-        Assert.Null(StatusOf(supervisor, "vanish"));
+        StatusOf(supervisor, "vanish").Should().BeNull();
         await Wait.ForAsync(() => PackageTestSupport.ProcessGone(pid), "process gone after removal");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fingerprint_change_restarts_a_running_service()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("shifty");
         pkg.WriteScript("run.sh", """
@@ -279,18 +258,15 @@ public sealed class AppServiceSupervisorTests
 
         await Wait.ForAsync(() => StatusOf(supervisor, "shifty")?.State == AppServiceState.Running, "running with B");
         await Wait.ForAsync(() => PackageTestSupport.ProcessGone(firstPid), "old process gone");
-        Assert.NotEqual(firstPid, StatusOf(supervisor, "shifty")!.Pid!.Value);
+        StatusOf(supervisor, "shifty")!.Pid!.Value.Should().NotBe(firstPid);
         var runs = File.ReadAllLines(pkg.StatePath("runs.txt"));
-        Assert.Equal(["A", "B"], runs);
+        runs.Should().Equal("A", "B");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Concurrent_reconciles_are_serialized_and_start_the_service_once()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("once");
         pkg.WriteScript("run.sh", """
@@ -307,19 +283,16 @@ public sealed class AppServiceSupervisorTests
 
         await Wait.ForAsync(() => StatusOf(supervisor, "once")?.State == AppServiceState.Running, "running");
         await Task.Delay(150);   // bounded observation window for a (forbidden) second spawn
-        Assert.Equal(1, CountRuns(pkg.StatePath("runs.txt")));
-        Assert.Equal(AppServiceState.Running, StatusOf(supervisor, "once")!.State);
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(1);
+        StatusOf(supervisor, "once")!.State.Should().Be(AppServiceState.Running);
     }
 
     // ---- restart policies -------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Crash_goes_through_backoff_then_running_again_under_on_failure()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("phoenix");
         pkg.WriteScript("run.sh", """
@@ -336,17 +309,14 @@ public sealed class AppServiceSupervisorTests
 
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => StatusOf(supervisor, "phoenix")?.State == AppServiceState.Backoff, "backoff after the crash");
-        Assert.Equal("exited 3", StatusOf(supervisor, "phoenix")!.Detail);
+        StatusOf(supervisor, "phoenix")!.Detail.Should().Be("exited 3");
         await Wait.ForAsync(() => StatusOf(supervisor, "phoenix")?.State == AppServiceState.Running, "running after backoff");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Clean_exit_under_on_failure_stays_stopped_and_a_plain_reconcile_does_not_respawn()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("oneshot");
         pkg.WriteScript("run.sh", """
@@ -359,23 +329,20 @@ public sealed class AppServiceSupervisorTests
 
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => StatusOf(supervisor, "oneshot")?.State == AppServiceState.Stopped, "stopped after clean exit");
-        Assert.Equal("exited 0", StatusOf(supervisor, "oneshot")!.Detail);
-        Assert.Equal(1, CountRuns(pkg.StatePath("runs.txt")));
+        StatusOf(supervisor, "oneshot")!.Detail.Should().Be("exited 0");
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(1);
 
         // Same desired fingerprint → the reconcile leaves the cleanly-exited service alone.
         await supervisor.ReconcileAsync();
         await Task.Delay(200);   // bounded observation window for a (forbidden) respawn
-        Assert.Equal(1, CountRuns(pkg.StatePath("runs.txt")));
-        Assert.Equal(AppServiceState.Stopped, StatusOf(supervisor, "oneshot")!.State);
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(1);
+        StatusOf(supervisor, "oneshot")!.State.Should().Be(AppServiceState.Stopped);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Clean_exit_under_always_restarts()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("again");
         pkg.WriteScript("run.sh", """
@@ -390,13 +357,10 @@ public sealed class AppServiceSupervisorTests
         await Wait.ForAsync(() => CountRuns(pkg.StatePath("runs.txt")) >= 2, "restarted after a clean exit");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Never_policy_never_restarts()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("fatal");
         pkg.WriteScript("run.sh", """
@@ -409,21 +373,18 @@ public sealed class AppServiceSupervisorTests
 
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => StatusOf(supervisor, "fatal")?.State == AppServiceState.Stopped, "stopped after the failure");
-        Assert.Equal("exited 5", StatusOf(supervisor, "fatal")!.Detail);
+        StatusOf(supervisor, "fatal")!.Detail.Should().Be("exited 5");
         await Task.Delay(250);   // bounded observation window for a (forbidden) restart
-        Assert.Equal(1, CountRuns(pkg.StatePath("runs.txt")));
-        Assert.Equal(AppServiceState.Stopped, StatusOf(supervisor, "fatal")!.State);
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(1);
+        StatusOf(supervisor, "fatal")!.State.Should().Be(AppServiceState.Stopped);
     }
 
     // ---- the crash-loop breaker --------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Crash_loop_faults_plain_reconcile_does_not_resurrect_restart_does()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("loopy");
         pkg.WriteScript("run.sh", """
@@ -436,14 +397,14 @@ public sealed class AppServiceSupervisorTests
 
         await supervisor.ReconcileAsync();
         await Wait.ForAsync(() => StatusOf(supervisor, "loopy")?.State == AppServiceState.Faulted, "breaker tripped");
-        Assert.Equal(5, CountRuns(pkg.StatePath("runs.txt")));   // exactly the 5 windowed starts
-        Assert.Contains("crash loop", StatusOf(supervisor, "loopy")!.Detail, StringComparison.Ordinal);
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(5);   // exactly the 5 windowed starts
+        StatusOf(supervisor, "loopy")!.Detail.Should().Contain("crash loop");
 
         // A plain re-reconcile with the same fingerprint must NOT resurrect a faulted service.
         await supervisor.ReconcileAsync();
         await Task.Delay(200);   // bounded observation window for a (forbidden) respawn
-        Assert.Equal(AppServiceState.Faulted, StatusOf(supervisor, "loopy")!.State);
-        Assert.Equal(5, CountRuns(pkg.StatePath("runs.txt")));
+        StatusOf(supervisor, "loopy")!.State.Should().Be(AppServiceState.Faulted);
+        CountRuns(pkg.StatePath("runs.txt")).Should().Be(5);
 
         // RestartAsync is the owner's way out: it clears the breaker and spawns again.
         await supervisor.RestartAsync("loopy");
@@ -451,13 +412,10 @@ public sealed class AppServiceSupervisorTests
         await Wait.ForAsync(() => StatusOf(supervisor, "loopy")?.State == AppServiceState.Faulted, "faults again (still crashing)");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Changed_fingerprint_resurrects_a_faulted_service_on_reconcile()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("healed");
         pkg.WriteScript("run.sh", """
@@ -480,13 +438,10 @@ public sealed class AppServiceSupervisorTests
 
     // ---- external + statuses ------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task External_services_are_never_spawned_report_external_and_reject_restart()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("ext");
         pkg.WriteScript("run.sh", """
@@ -498,12 +453,13 @@ public sealed class AppServiceSupervisorTests
         await using var supervisor = NewSupervisor(catalog);
 
         await supervisor.ReconcileAsync();
-        Assert.Equal(AppServiceState.External, StatusOf(supervisor, "ext")!.State);
+        StatusOf(supervisor, "ext")!.State.Should().Be(AppServiceState.External);
         await Task.Delay(150);   // bounded observation window for a (forbidden) spawn
-        Assert.False(File.Exists(pkg.StatePath("started")), "pdn must never start an external service");
+        File.Exists(pkg.StatePath("started")).Should().BeFalse("pdn must never start an external service");
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => supervisor.RestartAsync("ext"));
-        Assert.Contains("external", ex.Message, StringComparison.OrdinalIgnoreCase);
+        var restartExternal = () => supervisor.RestartAsync("ext");
+        var ex = (await restartExternal.Should().ThrowAsync<InvalidOperationException>()).Which;
+        ex.Message.Should().ContainEquivalentOf("external");
     }
 
     [Fact]
@@ -511,16 +467,14 @@ public sealed class AppServiceSupervisorTests
     {
         var catalog = new FakeAppPackageCatalog();
         await using var supervisor = NewSupervisor(catalog);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => supervisor.RestartAsync("nope"));
+        var act = () => supervisor.RestartAsync("nope");
+        await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Statuses_cover_running_external_and_disabled_services()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var running = new TempAppPackage("alive");
         running.WriteScript("run.sh", "while :; do sleep 0.2; done\n");
@@ -540,25 +494,22 @@ public sealed class AppServiceSupervisorTests
         await Wait.ForAsync(() => StatusOf(supervisor, "alive")?.State == AppServiceState.Running, "running");
 
         var statuses = supervisor.Statuses;
-        Assert.Equal(3, statuses.Count);
+        statuses.Count.Should().Be(3);
         var alive = statuses.Single(s => s.Id == "alive");
-        Assert.Equal(AppServiceState.Running, alive.State);
-        Assert.NotNull(alive.Pid);
-        Assert.Equal(AppServiceState.External, statuses.Single(s => s.Id == "theirs").State);
+        alive.State.Should().Be(AppServiceState.Running);
+        alive.Pid.Should().NotBeNull();
+        statuses.Single(s => s.Id == "theirs").State.Should().Be(AppServiceState.External);
         var dormant = statuses.Single(s => s.Id == "dormant");
-        Assert.Equal(AppServiceState.Stopped, dormant.State);
-        Assert.Null(dormant.Pid);
+        dormant.State.Should().Be(AppServiceState.Stopped);
+        dormant.Pid.Should().BeNull();
     }
 
     // ---- teardown ------------------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Graceful_stop_delivers_sigterm_the_child_can_act_on()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("polite");
         pkg.WriteScript("run.sh", """
@@ -576,17 +527,14 @@ public sealed class AppServiceSupervisorTests
         catalog.Set(pkg.Service("run.sh", enabled: false));
         await supervisor.ReconcileAsync();   // the stop completes inside the reconcile
 
-        Assert.True(File.Exists(pkg.StatePath("term.marker")), "the child must see SIGTERM before any kill");
-        Assert.Equal(AppServiceState.Stopped, StatusOf(supervisor, "polite")!.State);
+        File.Exists(pkg.StatePath("term.marker")).Should().BeTrue("the child must see SIGTERM before any kill");
+        StatusOf(supervisor, "polite")!.State.Should().Be(AppServiceState.Stopped);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Dispose_stops_the_whole_process_tree_leaving_no_orphans()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
 
         using var pkg = new TempAppPackage("brood");
         pkg.WriteScript("run.sh", """

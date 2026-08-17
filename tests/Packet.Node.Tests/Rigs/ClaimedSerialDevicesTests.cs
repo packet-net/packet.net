@@ -1,5 +1,6 @@
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Rigs;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Rigs;
 
@@ -18,7 +19,7 @@ public sealed class ClaimedSerialDevicesTests : IDisposable
 
     public ClaimedSerialDevicesTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-claimed-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-claimed");
         Directory.CreateDirectory(dir);
     }
 

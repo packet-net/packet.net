@@ -1,4 +1,5 @@
 using Packet.Node.Core.Auth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Auth;
 
@@ -15,7 +16,7 @@ public sealed class SqliteUserStoreTests : IDisposable
 
     public SqliteUserStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-userstore-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-userstore");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

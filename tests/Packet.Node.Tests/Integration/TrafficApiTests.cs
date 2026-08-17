@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Packet.Node.Core.Traffic;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -24,7 +25,7 @@ public sealed class TrafficApiTests : IDisposable
 
     public TrafficApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-trafficapi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-trafficapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         trafficDbPath = Path.Combine(dir, "traffic.db");

@@ -114,7 +114,7 @@ public sealed class PortHailServiceTests
             clock.Advance(TimeSpan.FromMinutes(10));
         }
 
-        var lines = log.Messages.FindAll(m => m.Text.Contains("not armed", StringComparison.Ordinal));
+        var lines = log.Messages.Where(m => m.Text.Contains("not armed", StringComparison.Ordinal)).ToList();
         lines.Should().ContainSingle("a standing fault logs on the transition, not once per cycle");
         lines[0].Level.Should().Be(LogLevel.Warning);
         lines[0].Text.Should().Be($"hail[vhf] resident responder not armed: {SdmDisabled} (retrying in 10s)");
@@ -133,7 +133,7 @@ public sealed class PortHailServiceTests
         svc.NoteResidentSkipped("vhf", SdmDisabled);
         svc.NoteResidentSkipped("vhf", "the radio stopped answering CCDI");
 
-        var lines = log.Messages.FindAll(m => m.Text.Contains("not armed", StringComparison.Ordinal));
+        var lines = log.Messages.Where(m => m.Text.Contains("not armed", StringComparison.Ordinal)).ToList();
         lines.Should().HaveCount(2, "a NEW reason is news; a repeat is not");
         lines[1].Text.Should().Be("hail[vhf] resident responder not armed: the radio stopped answering CCDI (retrying in 40s)");
     }
@@ -151,7 +151,7 @@ public sealed class PortHailServiceTests
         clock.Advance(TimeSpan.FromMinutes(10));
         svc.NoteResidentStartFailed("vhf", new IOException("serial port closed"));
 
-        var lines = log.Messages.FindAll(m => m.Text.Contains("failed to start", StringComparison.Ordinal));
+        var lines = log.Messages.Where(m => m.Text.Contains("failed to start", StringComparison.Ordinal)).ToList();
         lines.Should().ContainSingle();
         lines[0].Level.Should().Be(LogLevel.Error);
         lines[0].Text.Should().Be("hail[vhf] resident responder failed to start (retrying in 10s)");
@@ -186,30 +186,6 @@ public sealed class PortHailServiceTests
         svc.ResidentAttemptDue("vhf").Should().BeFalse();
         svc.ClearResidentFailure("vhf");
         svc.ResidentAttemptDue("vhf").Should().BeTrue();
-    }
-
-    /// <summary>An in-memory ILogger recording the level + RENDERED text of every entry, so the
-    /// assertions read the line an operator would see (capturing-logger discipline).</summary>
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public List<(LogLevel Level, string Text)> Messages { get; } = new();
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) =>
-            Messages.Add((logLevel, formatter(state, exception)));
-
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
-
-            public void Dispose()
-            {
-            }
-        }
     }
 
     private sealed class FakeProvider(StationStatus status) : IStationStatusProvider

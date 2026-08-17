@@ -1,6 +1,7 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using Packet.Node.Core.Applications.Catalog;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Applications.Catalog;
 
@@ -38,7 +39,7 @@ internal sealed class FakeArtifactFetcher : IArtifactFetcher
         {
             throw new InvalidOperationException($"fixture for '{url}' exceeds the {maxBytes}-byte cap.");
         }
-        var temp = Path.Combine(Path.GetTempPath(), $"pdn-fake-fetch-{Guid.NewGuid():N}.tmp");
+        var temp = TestPaths.NewPath("pdn-fake-fetch", ".tmp");
         File.WriteAllBytes(temp, bytes);
         return Task.FromResult(temp);
     }
@@ -49,7 +50,7 @@ internal sealed class TempDir : IDisposable
 {
     public TempDir(string label)
     {
-        Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"pdn-{label}-tests", Guid.NewGuid().ToString("N"));
+        Path = TestPaths.NewPath($"pdn-{label}");
         Directory.CreateDirectory(Path);
     }
 

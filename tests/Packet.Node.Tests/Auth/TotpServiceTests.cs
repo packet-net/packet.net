@@ -29,46 +29,46 @@ public sealed class TotpServiceTests
     public void ComputeCode_matches_the_rfc6238_appendixB_sha1_vectors(long unixTime, string expected)
     {
         long counter = TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(unixTime));
-        Assert.Equal(expected, TotpService.ComputeCode(Seed, counter, digits: 8));
+        TotpService.ComputeCode(Seed, counter, digits: 8).Should().Be(expected);
         // and via the base32 string boundary
-        Assert.Equal(expected, TotpService.ComputeCode(Seed32, counter, digits: 8));
+        TotpService.ComputeCode(Seed32, counter, digits: 8).Should().Be(expected);
     }
 
     [Fact]
     public void CounterAt_is_floor_of_unix_seconds_over_step()
     {
-        Assert.Equal(0, TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(0)));
-        Assert.Equal(0, TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(29)));
-        Assert.Equal(1, TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(30)));
-        Assert.Equal(1, TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(59)));
-        Assert.Equal(2, TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(60)));
+        TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(0)).Should().Be(0);
+        TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(29)).Should().Be(0);
+        TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(30)).Should().Be(1);
+        TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(59)).Should().Be(1);
+        TotpService.CounterAt(DateTimeOffset.FromUnixTimeSeconds(60)).Should().Be(2);
     }
 
     [Fact]
     public void Base32_round_trips_arbitrary_bytes()
     {
         var data = new byte[] { 0x00, 0x01, 0x7F, 0x80, 0xFF, 0xAB, 0xCD, 0xEF, 0x10 };
-        Assert.Equal(data, TotpService.Base32Decode(TotpService.Base32Encode(data)));
+        TotpService.Base32Decode(TotpService.Base32Encode(data)).Should().Equal(data);
     }
 
     [Fact]
     public void GenerateSecret_is_valid_base32_of_the_requested_width()
     {
         var s = TotpService.GenerateSecret();   // 20 bytes
-        Assert.Equal(20, TotpService.Base32Decode(s).Length);
+        TotpService.Base32Decode(s).Length.Should().Be(20);
     }
 
     [Fact]
     public void BuildOtpAuthUri_pins_the_parameters_and_escapes_the_label()
     {
         var uri = TotpService.BuildOtpAuthUri("JBSWY3DPEHPK3PXP", "M0LTE-7", "pdn node");
-        Assert.StartsWith("otpauth://totp/", uri, StringComparison.Ordinal);
-        Assert.Contains("secret=JBSWY3DPEHPK3PXP", uri, StringComparison.Ordinal);
-        Assert.Contains("algorithm=SHA1", uri, StringComparison.Ordinal);
-        Assert.Contains("digits=6", uri, StringComparison.Ordinal);
-        Assert.Contains("period=30", uri, StringComparison.Ordinal);
-        Assert.Contains("issuer=pdn%20node", uri, StringComparison.Ordinal);     // space escaped
-        Assert.Contains("pdn%20node%3AM0LTE-7", uri, StringComparison.Ordinal);  // label "issuer:account" escaped
+        uri.Should().StartWith("otpauth://totp/");
+        uri.Should().Contain("secret=JBSWY3DPEHPK3PXP");
+        uri.Should().Contain("algorithm=SHA1");
+        uri.Should().Contain("digits=6");
+        uri.Should().Contain("period=30");
+        uri.Should().Contain("issuer=pdn%20node");      // space escaped
+        uri.Should().Contain("pdn%20node%3AM0LTE-7");   // label "issuer:account" escaped
     }
 
     private static FakeTimeProvider At(long unixSeconds) =>
@@ -84,8 +84,8 @@ public sealed class TotpServiceTests
 
         bool ok = svc.TryVerify(Seed32, code, lastAcceptedCounter: -1, out long accepted);
 
-        Assert.True(ok);
-        Assert.Equal(counter, accepted);
+        ok.Should().BeTrue();
+        accepted.Should().Be(counter);
     }
 
     [Fact]
@@ -97,10 +97,10 @@ public sealed class TotpServiceTests
         string code = TotpService.ComputeCode(Seed32, counter);
 
         // First use accepted...
-        Assert.True(svc.TryVerify(Seed32, code, lastAcceptedCounter: -1, out long accepted));
+        svc.TryVerify(Seed32, code, lastAcceptedCounter: -1, out long accepted).Should().BeTrue();
         // ...and the caller persists `accepted`; presenting the SAME code again (still the
         // same window ⇒ same counter, now == lastAccepted, not >) is rejected.
-        Assert.False(svc.TryVerify(Seed32, code, lastAcceptedCounter: accepted, out _));
+        svc.TryVerify(Seed32, code, lastAcceptedCounter: accepted, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class TotpServiceTests
         string priorCode = TotpService.ComputeCode(Seed32, counter - 1);
 
         // lastAccepted is the current counter; the prior window's counter is <= it.
-        Assert.False(svc.TryVerify(Seed32, priorCode, lastAcceptedCounter: counter, out _));
+        svc.TryVerify(Seed32, priorCode, lastAcceptedCounter: counter, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -126,13 +126,13 @@ public sealed class TotpServiceTests
 
         // A code generated for the PREVIOUS step (authenticator slightly ahead of us).
         string prevStep = TotpService.ComputeCode(Seed32, now - 1);
-        Assert.True(svc.TryVerify(Seed32, prevStep, lastAcceptedCounter: -1, out long a1));
-        Assert.Equal(now - 1, a1);
+        svc.TryVerify(Seed32, prevStep, lastAcceptedCounter: -1, out long a1).Should().BeTrue();
+        a1.Should().Be(now - 1);
 
         // A code for the NEXT step (authenticator slightly behind), with a fresh high-water.
         string nextStep = TotpService.ComputeCode(Seed32, now + 1);
-        Assert.True(svc.TryVerify(Seed32, nextStep, lastAcceptedCounter: -1, out long a2));
-        Assert.Equal(now + 1, a2);
+        svc.TryVerify(Seed32, nextStep, lastAcceptedCounter: -1, out long a2).Should().BeTrue();
+        a2.Should().Be(now + 1);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public sealed class TotpServiceTests
         var svc = new TotpService(clock);
         long now = TotpService.CounterAt(clock.GetUtcNow());
         string twoAhead = TotpService.ComputeCode(Seed32, now + 2);
-        Assert.False(svc.TryVerify(Seed32, twoAhead, lastAcceptedCounter: -1, out _));
+        svc.TryVerify(Seed32, twoAhead, lastAcceptedCounter: -1, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class TotpServiceTests
         long now = TotpService.CounterAt(clock.GetUtcNow());
         string code = TotpService.ComputeCode(Seed32, now);
         string spaced = code[..3] + " " + code[3..];   // "123 456"
-        Assert.True(svc.TryVerify(Seed32, spaced, lastAcceptedCounter: -1, out _));
+        svc.TryVerify(Seed32, spaced, lastAcceptedCounter: -1, out _).Should().BeTrue();
     }
 
     [Theory]
@@ -165,16 +165,16 @@ public sealed class TotpServiceTests
     public void TryVerify_rejects_blank_or_wrong_codes(string? code)
     {
         var svc = new TotpService(At(1111111111L));
-        Assert.False(svc.TryVerify(Seed32, code, lastAcceptedCounter: -1, out long accepted));
-        Assert.Equal(-1, accepted);
+        svc.TryVerify(Seed32, code, lastAcceptedCounter: -1, out long accepted).Should().BeFalse();
+        accepted.Should().Be(-1);
     }
 
     [Fact]
     public void TryVerify_rejects_when_the_secret_is_missing_or_malformed()
     {
         var svc = new TotpService(At(1111111111L));
-        Assert.False(svc.TryVerify(null, "123456", -1, out _));
-        Assert.False(svc.TryVerify("", "123456", -1, out _));
-        Assert.False(svc.TryVerify("not base32 ‽", "123456", -1, out _));   // out-of-alphabet
+        svc.TryVerify(null, "123456", -1, out _).Should().BeFalse();
+        svc.TryVerify("", "123456", -1, out _).Should().BeFalse();
+        svc.TryVerify("not base32 ‽", "123456", -1, out _).Should().BeFalse();   // out-of-alphabet
     }
 }

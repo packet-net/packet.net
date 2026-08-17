@@ -1,0 +1,1 @@
+T:Xunit.Assert;use AwesomeAssertions instead: value.Should().Be(...) - see docs/plan.md 2.8

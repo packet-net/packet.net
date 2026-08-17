@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Packet.Node.Core.SelfUpdate;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.SelfUpdate;
 
@@ -18,7 +19,7 @@ public sealed class SystemctlUpdateLauncherTests : IDisposable
 
     public SystemctlUpdateLauncherTests()
     {
-        spool = Path.Combine(Path.GetTempPath(), "pdn-spool-" + Guid.NewGuid().ToString("N"));
+        spool = TestPaths.NewPath("pdn-spool");
         Environment.SetEnvironmentVariable("PDN_UPDATE_SPOOL", spool);
     }
 

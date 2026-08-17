@@ -27,7 +27,7 @@ public sealed class TrafficLogServiceTests : IDisposable
 
     public TrafficLogServiceTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-trafficsvc-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-trafficsvc");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "traffic.db");
     }

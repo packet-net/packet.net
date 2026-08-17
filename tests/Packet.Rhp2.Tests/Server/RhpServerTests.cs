@@ -72,18 +72,18 @@ public sealed class RhpServerTests : IAsyncDisposable
         });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(7, reply.Id);                         // reply echoes the request id
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal("Ok", reply.ErrText);
-        Assert.True(reply.Handle >= 100);                  // reference-style numbering
+        reply.Id.Should().Be(7);                         // reply echoes the request id
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        reply.ErrText.Should().Be("Ok");
+        (reply.Handle >= 100).Should().BeTrue();                  // reference-style numbering
 
         var status = await client.ExpectAsync<StatusMessage>();
-        Assert.Null(status.Id);                            // a push, not a reply
-        Assert.NotNull(status.Seqno);
-        Assert.Equal(reply.Handle, status.Handle);
-        Assert.True(((StatusFlags)(status.Flags ?? 0)).HasFlag(StatusFlags.Connected));
+        status.Id.Should().BeNull();                            // a push, not a reply
+        status.Seqno.Should().NotBeNull();
+        status.Handle.Should().Be(reply.Handle);
+        ((StatusFlags)(status.Flags ?? 0)).HasFlag(StatusFlags.Connected).Should().BeTrue();
 
-        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.LastPort, gateway.LastLocal, gateway.LastRemote));
+        (gateway.LastPort, gateway.LastLocal, gateway.LastRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
     }
 
     [Fact]
@@ -96,10 +96,10 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendMessage { Id = 9, Handle = handle, Data = "N\r" });
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(9, reply.Id);
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        reply.Id.Should().Be(9);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
         var written = await gateway.Connection.WrittenAsync();
-        Assert.Equal("N\r"u8.ToArray(), written);
+        written.Should().Equal("N\r"u8.ToArray());
     }
 
     [Fact]
@@ -112,10 +112,10 @@ public sealed class RhpServerTests : IAsyncDisposable
         gateway.Connection.Inject("GB7RDG:GLOSTR} hello\r"u8.ToArray());
 
         var recv = await client.ExpectAsync<RecvMessage>();
-        Assert.Equal(handle, recv.Handle);
-        Assert.Null(recv.Id);
-        Assert.NotNull(recv.Seqno);
-        Assert.Equal("GB7RDG:GLOSTR} hello\r", recv.Data);
+        recv.Handle.Should().Be(handle);
+        recv.Id.Should().BeNull();
+        recv.Seqno.Should().NotBeNull();
+        recv.Data.Should().Be("GB7RDG:GLOSTR} hello\r");
     }
 
     [Fact]
@@ -128,13 +128,13 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new CloseMessage { Id = 3, Handle = handle });
 
         var reply = await client.ExpectAsync<CloseReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
         await gateway.Connection.DisposedTask.WaitAsync(Timeout);   // DISC posted
 
         // The handle is gone: a second close is an invalid handle.
         await client.SendAsync(new CloseMessage { Id = 4, Handle = handle });
         var again = await client.ExpectAsync<CloseReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidHandle, again.ErrCode);
+        again.ErrCode.Should().Be(RhpErrorCode.InvalidHandle);
     }
 
     [Fact]
@@ -147,9 +147,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         gateway.Connection.Drop();   // the far station disconnected
 
         var close = await client.ExpectAsync<CloseMessage>();
-        Assert.Equal(handle, close.Handle);
-        Assert.Null(close.Id);
-        Assert.NotNull(close.Seqno);
+        close.Handle.Should().Be(handle);
+        close.Id.Should().BeNull();
+        close.Seqno.Should().NotBeNull();
     }
 
     // ── seqno: per-RHP-connection, starting at 0, shared across push types ─
@@ -167,7 +167,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         _ = await client.ExpectAsync<OpenReplyMessage>();
 
         var status = await client.ExpectAsync<StatusMessage>();
-        Assert.Equal(0, status.Seqno);                     // not 1 — the counter starts at 0
+        status.Seqno.Should().Be(0);                     // not 1, the counter starts at 0
     }
 
     [Fact]
@@ -182,16 +182,16 @@ public sealed class RhpServerTests : IAsyncDisposable
 
         // One counter across all push types: status, recv, recv, server-close.
         var status = await client.ExpectAsync<StatusMessage>();
-        Assert.Equal(0, status.Seqno);
+        status.Seqno.Should().Be(0);
 
         gateway.Connection.Inject("one\r"u8.ToArray());
-        Assert.Equal(1, (await client.ExpectAsync<RecvMessage>()).Seqno);
+        (await client.ExpectAsync<RecvMessage>()).Seqno.Should().Be(1);
 
         gateway.Connection.Inject("two\r"u8.ToArray());
-        Assert.Equal(2, (await client.ExpectAsync<RecvMessage>()).Seqno);
+        (await client.ExpectAsync<RecvMessage>()).Seqno.Should().Be(2);
 
         gateway.Connection.Drop();
-        Assert.Equal(3, (await client.ExpectAsync<CloseMessage>()).Seqno);
+        (await client.ExpectAsync<CloseMessage>()).Seqno.Should().Be(3);
     }
 
     [Fact]
@@ -205,13 +205,13 @@ public sealed class RhpServerTests : IAsyncDisposable
         await alice.SendAsync(new OpenMessage
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
         _ = await alice.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(0, (await alice.ExpectAsync<StatusMessage>()).Seqno);
+        (await alice.ExpectAsync<StatusMessage>()).Seqno.Should().Be(0);
 
         // ...so Bob's first push is still seqno 0 (a server-wide counter would give 1 here).
         await bob.SendAsync(new OpenMessage
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
         _ = await bob.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(0, (await bob.ExpectAsync<StatusMessage>()).Seqno);
+        (await bob.ExpectAsync<StatusMessage>()).Seqno.Should().Be(0);
     }
 
     // ── send.data: mandatory even when empty (RHPTEST) ───────────────────
@@ -227,9 +227,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendRawAsync($$"""{"type":"send","id":5,"handle":{{handle}}}""");
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.BadParameter, reply.ErrCode);
-        Assert.Equal("Missing data", reply.ErrText);       // the live wire's exact errText
-        Assert.Equal(5, reply.Id);
+        reply.ErrCode.Should().Be(RhpErrorCode.BadParameter);
+        reply.ErrText.Should().Be("Missing data");       // the live wire's exact errText
+        reply.Id.Should().Be(5);
     }
 
     [Fact]
@@ -242,8 +242,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendMessage { Id = 6, Handle = handle, Data = "" });
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);      // "" ≠ absent — RHPTEST's zero-byte send
-        Assert.Empty(await gateway.Connection.WrittenAsync());
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);      // "" ≠ absent, RHPTEST's zero-byte send
+        (await gateway.Connection.WrittenAsync()).Should().BeEmpty();
     }
 
     // ── absent handle: errCode 12 ("Missing handle"), never 3 ────────────
@@ -266,11 +266,11 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendRawAsync(request);
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal(expectedReplyType, type);
-        Assert.Contains("\"errCode\":12", json, StringComparison.Ordinal);
-        Assert.Contains("\"errText\":\"Missing handle\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"id\":3", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"handle\"", json, StringComparison.Ordinal);   // nothing truthful to echo
+        type.Should().Be(expectedReplyType);
+        json.Should().Contain("\"errCode\":12");
+        json.Should().Contain("\"errText\":\"Missing handle\"");
+        json.Should().Contain("\"id\":3");
+        json.Should().NotContain("\"handle\"");   // nothing truthful to echo
     }
 
     // ── callsign validation at the wire: 6 / 7, never a wedge (deviation D7) ─
@@ -287,8 +287,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Local = "G9DUM-S", Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidLocalAddress, reply.ErrCode);
-        Assert.Equal("Invalid local address", reply.ErrText);   // a clean 6, not a generic failure
+        reply.ErrCode.Should().Be(RhpErrorCode.InvalidLocalAddress);
+        reply.ErrText.Should().Be("Invalid local address");   // a clean 6, not a generic failure
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "G9DUM-S", Flags = (int)OpenFlags.Active });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidRemoteAddress, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.InvalidRemoteAddress);
     }
 
     [Fact]
@@ -317,8 +317,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Null(gateway.LastLocal);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.LastLocal.Should().BeNull();
     }
 
     // ── The validation ladder + gateway error passthrough ────────────────
@@ -339,8 +339,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new OpenMessage { Id = 1, Pfam = pfam, Mode = mode, Flags = flags, Remote = remote });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(expected, reply.ErrCode);
-        Assert.Equal(1, reply.Id);
+        reply.ErrCode.Should().Be(expected);
+        reply.Id.Should().Be(1);
     }
 
     [Fact]
@@ -354,8 +354,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
 
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.NoRoute, reply.ErrCode);
-        Assert.Equal("Connect to GB7RDG timed out.", reply.ErrText);
+        reply.ErrCode.Should().Be(RhpErrorCode.NoRoute);
+        reply.ErrText.Should().Be("Connect to GB7RDG timed out.");
     }
 
     [Fact]
@@ -367,7 +367,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendMessage { Id = 1, Handle = 12345, Data = "x" });
 
         var reply = await client.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidHandle, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.InvalidHandle);
     }
 
     // ── XRouter wire contracts: unknown type, R-3 deferrals ───────────────
@@ -381,9 +381,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendRawAsync("""{"type":"thisIsNotReal","id":42}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("thisIsNotRealReply", type);
-        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
-        Assert.Contains("\"id\":42", json, StringComparison.Ordinal);
+        type.Should().Be("thisIsNotRealReply");
+        json.Should().Contain("\"errCode\":2");
+        json.Should().Contain("\"id\":42");
     }
 
     [Fact]
@@ -398,13 +398,13 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendRawAsync("""{"type":"thisIsNotReal","id":"not-an-int","seqno":1.5}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("thisIsNotRealReply", type);
-        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"id\":", json, StringComparison.Ordinal);   // nothing truthful to echo
+        type.Should().Be("thisIsNotRealReply");
+        json.Should().Contain("\"errCode\":2");
+        json.Should().NotContain("\"id\":");   // nothing truthful to echo
 
         // The session survives: a normal request still works on the same connection.
         await client.SendAsync(new SocketMessage { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
-        Assert.Equal(RhpErrorCode.Ok, (await client.ExpectAsync<SocketReplyMessage>()).ErrCode);
+        (await client.ExpectAsync<SocketReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
     }
 
     [Fact]
@@ -419,9 +419,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "G9DUM-S", Flags = (int)OpenFlags.Active });
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("openReply", type);
-        Assert.Contains("\"errCode\":7", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("handle", json, StringComparison.Ordinal);
+        type.Should().Be("openReply");
+        json.Should().Contain("\"errCode\":7");
+        json.Should().NotContain("handle");
     }
 
     [Fact]
@@ -434,8 +434,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("openReply", type);
-        Assert.Contains("\"handle\":", json, StringComparison.Ordinal);
+        type.Should().Be("openReply");
+        json.Should().Contain("\"handle\":");
     }
 
     // ── Auth: the gate + the D2 no-wedge deviation ────────────────────────
@@ -450,22 +450,22 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new OpenMessage
         { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
         var refused = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Unauthorised, refused.ErrCode);
+        refused.ErrCode.Should().Be(RhpErrorCode.Unauthorised);
 
         // Bad auth fails THAT attempt only (D2: no connection wedge)...
         await client.SendAsync(new AuthMessage { Id = 2, User = "tom", Pass = "wrong" });
         var bad = await client.ExpectAsync<AuthReplyMessage>();
-        Assert.Equal(RhpErrorCode.Unauthorised, bad.ErrCode);
+        bad.ErrCode.Should().Be(RhpErrorCode.Unauthorised);
 
         // ...a subsequent good auth on the SAME connection succeeds and unlocks it.
         await client.SendAsync(new AuthMessage { Id = 3, User = "tom", Pass = "pw" });
         var good = await client.ExpectAsync<AuthReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, good.ErrCode);
+        good.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new OpenMessage
         { Id = 4, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
         var opened = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, opened.ErrCode);
+        opened.ErrCode.Should().Be(RhpErrorCode.Ok);
     }
 
     // ── D3: handles are owned by the connection that created them ─────────
@@ -481,7 +481,7 @@ public sealed class RhpServerTests : IAsyncDisposable
         await bob.SendAsync(new SendMessage { Id = 1, Handle = handle, Data = "stolen" });
 
         var reply = await bob.ExpectAsync<SendReplyMessage>();
-        Assert.Equal(RhpErrorCode.InvalidHandle, reply.ErrCode);   // same as unknown — no oracle
+        reply.ErrCode.Should().Be(RhpErrorCode.InvalidHandle);   // same as unknown, no oracle
     }
 
     // ── dgram (pure UI datagram): socket → bind → sendto (TX) + async recv (RX) — R-6 ───
@@ -498,11 +498,11 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 9, Handle = handle, Remote = "GB7RDG", Data = "hi\r" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(9, reply.Id);
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
-        Assert.Equal((byte)0xF0, gateway.UiPid);                 // implicit no-Layer-3 PID
-        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);        // the whole `data` is the info
+        reply.Id.Should().Be(9);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (gateway.UiPort, gateway.UiLocal, gateway.UiRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
+        gateway.UiPid.Should().Be((byte)0xF0);                 // implicit no-Layer-3 PID
+        gateway.UiInfo.Should().Equal("hi\r"u8.ToArray());        // the whole `data` is the info
     }
 
     [Fact]
@@ -516,9 +516,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "APRS", Data = "!beacon" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal((byte)0xF0, gateway.UiPid);
-        Assert.Equal("APRS", gateway.UiRemote);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiPid.Should().Be((byte)0xF0);
+        gateway.UiRemote.Should().Be("APRS");
     }
 
     [Fact]
@@ -531,8 +531,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "GB7RDG", Data = "x" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal("M0LTE-1", gateway.UiLocal);   // the bound local becomes the frame source
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiLocal.Should().Be("M0LTE-1");   // the bound local becomes the frame source
     }
 
     [Fact]
@@ -546,8 +546,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 4, Handle = handle, Remote = "GB7RDG", Data = "" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Unspecified, reply.ErrCode);   // 1, distinct from 12 (absent data)
-        Assert.Equal(4, reply.Id);
+        reply.ErrCode.Should().Be(RhpErrorCode.Unspecified);   // 1, distinct from 12 (absent data)
+        reply.Id.Should().Be(4);
     }
 
     [Fact]
@@ -558,12 +558,12 @@ public sealed class RhpServerTests : IAsyncDisposable
 
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new ListenMessage { Id = 2, Handle = sock.Handle!.Value, Flags = 0 });
 
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.OperationNotSupported, listen.ErrCode);   // a datagram has no listening state
+        listen.ErrCode.Should().Be(RhpErrorCode.OperationNotSupported);   // a datagram has no listening state
     }
 
     [Fact]
@@ -577,14 +577,14 @@ public sealed class RhpServerTests : IAsyncDisposable
         await gateway.InjectUiAsync(new UiDatagram("2E0XYZ", "M0LTE-1", 0xCC, "ping"u8.ToArray(), "1"));
 
         var recv = await client.ExpectAsync<RecvMessage>();
-        Assert.Equal(handle, recv.Handle);
-        Assert.Null(recv.Id);                       // a push, not a reply
-        Assert.NotNull(recv.Seqno);                 // carries a seqno, not an id
-        Assert.Equal("2E0XYZ", recv.Remote);        // the frame's true source → recv.remote
-        Assert.Equal("M0LTE-1", recv.Local);        // the frame's destination → recv.local
-        Assert.Equal("1", recv.Port);               // the arrival port label
-        Assert.Null(recv.Pid);                      // pure dgram carries NO pid field (PID is implicit 0xF0)
-        Assert.Equal("ping", recv.Data);            // the info verbatim (no PID prepended)
+        recv.Handle.Should().Be(handle);
+        recv.Id.Should().BeNull();                       // a push, not a reply
+        recv.Seqno.Should().NotBeNull();                 // carries a seqno, not an id
+        recv.Remote.Should().Be("2E0XYZ");        // the frame's true source → recv.remote
+        recv.Local.Should().Be("M0LTE-1");        // the frame's destination → recv.local
+        recv.Port.Should().Be("1");               // the arrival port label
+        recv.Pid.Should().BeNull();                      // pure dgram carries NO pid field (PID is implicit 0xF0)
+        recv.Data.Should().Be("ping");            // the info verbatim (no PID prepended)
     }
 
     [Fact]
@@ -599,13 +599,13 @@ public sealed class RhpServerTests : IAsyncDisposable
             Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram, Local = "M0LTE-1", Port = "1",
         });
         var open = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, open.ErrCode);
-        Assert.True(open.Handle >= 100);
+        open.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (open.Handle >= 100).Should().BeTrue();
 
         await client.SendAsync(new SendToMessage { Id = 2, Handle = open.Handle, Remote = "GB7RDG", Data = "y" });
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (gateway.UiPort, gateway.UiLocal, gateway.UiRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
     }
 
     // ── custom (PID-in-data UI): socket → bind → sendto (TX) + async recv (RX) — R-7 ───
@@ -628,11 +628,11 @@ public sealed class RhpServerTests : IAsyncDisposable
         });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(9, reply.Id);
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
-        Assert.Equal((byte)0xCC, gateway.UiPid);            // data[0] → the UI frame PID
-        Assert.Equal("hi\r"u8.ToArray(), gateway.UiInfo);   // data[1..] → the UI info
+        reply.Id.Should().Be(9);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (gateway.UiPort, gateway.UiLocal, gateway.UiRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
+        gateway.UiPid.Should().Be((byte)0xCC);            // data[0] → the UI frame PID
+        gateway.UiInfo.Should().Equal("hi\r"u8.ToArray());   // data[1..] → the UI info
     }
 
     [Fact]
@@ -646,9 +646,9 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 1, Handle = handle, Remote = "GB7RDG", Data = CustomData(0xF0, []) });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal((byte)0xF0, gateway.UiPid);
-        Assert.Empty(gateway.UiInfo!);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        gateway.UiPid.Should().Be((byte)0xF0);
+        gateway.UiInfo!.Should().BeEmpty();
     }
 
     [Fact]
@@ -662,8 +662,8 @@ public sealed class RhpServerTests : IAsyncDisposable
         await client.SendAsync(new SendToMessage { Id = 4, Handle = handle, Remote = "GB7RDG", Data = "" });
 
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Unspecified, reply.ErrCode);   // 1, distinct from 12 (absent data)
-        Assert.Equal(4, reply.Id);
+        reply.ErrCode.Should().Be(RhpErrorCode.Unspecified);   // 1, distinct from 12 (absent data)
+        reply.Id.Should().Be(4);
     }
 
     [Fact]
@@ -674,12 +674,12 @@ public sealed class RhpServerTests : IAsyncDisposable
 
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new ListenMessage { Id = 2, Handle = sock.Handle!.Value, Flags = 0 });
 
         var listen = await client.ExpectAsync<ListenReplyMessage>();
-        Assert.Equal(RhpErrorCode.OperationNotSupported, listen.ErrCode);   // a datagram has no listening state
+        listen.ErrCode.Should().Be(RhpErrorCode.OperationNotSupported);   // a datagram has no listening state
     }
 
     [Fact]
@@ -693,14 +693,14 @@ public sealed class RhpServerTests : IAsyncDisposable
         await gateway.InjectUiAsync(new UiDatagram("2E0XYZ", "M0LTE-1", 0xCC, "ping"u8.ToArray(), "1"));
 
         var recv = await client.ExpectAsync<RecvMessage>();
-        Assert.Equal(handle, recv.Handle);
-        Assert.Null(recv.Id);                                    // a push, not a reply
-        Assert.NotNull(recv.Seqno);
-        Assert.Equal("2E0XYZ", recv.Remote);                     // the frame's true source → recv.remote
-        Assert.Equal("M0LTE-1", recv.Local);                     // the frame's destination → recv.local
-        Assert.Equal("1", recv.Port);
-        Assert.Null(recv.Pid);                                   // no pid field — the PID is in data[0]
-        Assert.Equal(CustomData(0xCC, "ping"u8), recv.Data);     // data = [frame.pid] ++ info
+        recv.Handle.Should().Be(handle);
+        recv.Id.Should().BeNull();                                    // a push, not a reply
+        recv.Seqno.Should().NotBeNull();
+        recv.Remote.Should().Be("2E0XYZ");                     // the frame's true source → recv.remote
+        recv.Local.Should().Be("M0LTE-1");                     // the frame's destination → recv.local
+        recv.Port.Should().Be("1");
+        recv.Pid.Should().BeNull();                                   // no pid field, the PID is in data[0]
+        recv.Data.Should().Be(CustomData(0xCC, "ping"u8));     // data = [frame.pid] ++ info
     }
 
     [Fact]
@@ -715,14 +715,14 @@ public sealed class RhpServerTests : IAsyncDisposable
             Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom, Local = "M0LTE-1", Port = "1",
         });
         var open = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, open.ErrCode);
-        Assert.True(open.Handle >= 100);
+        open.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (open.Handle >= 100).Should().BeTrue();
 
         await client.SendAsync(new SendToMessage { Id = 2, Handle = open.Handle, Remote = "GB7RDG", Data = CustomData(0xCC, "y"u8) });
         var reply = await client.ExpectAsync<SendToReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
-        Assert.Equal(("1", "M0LTE-1", "GB7RDG"), (gateway.UiPort, gateway.UiLocal, gateway.UiRemote));
-        Assert.Equal((byte)0xCC, gateway.UiPid);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
+        (gateway.UiPort, gateway.UiLocal, gateway.UiRemote).Should().Be(("1", "M0LTE-1", "GB7RDG"));
+        gateway.UiPid.Should().Be((byte)0xCC);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
@@ -732,11 +732,11 @@ public sealed class RhpServerTests : IAsyncDisposable
     {
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Dgram });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = callsign, Port = port });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
         return sock.Handle!.Value;
     }
 
@@ -745,11 +745,11 @@ public sealed class RhpServerTests : IAsyncDisposable
     {
         await client.SendAsync(new SocketMessage { Id = 1, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Custom });
         var sock = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, sock.ErrCode);
+        sock.ErrCode.Should().Be(RhpErrorCode.Ok);
 
         await client.SendAsync(new BindMessage { Id = 2, Handle = sock.Handle!.Value, Local = callsign, Port = port });
         var bind = await client.ExpectAsync<BindReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, bind.ErrCode);
+        bind.ErrCode.Should().Be(RhpErrorCode.Ok);
         return sock.Handle!.Value;
     }
 
@@ -774,7 +774,7 @@ public sealed class RhpServerTests : IAsyncDisposable
             Flags = (int)OpenFlags.Active,
         });
         var reply = await client.ExpectAsync<OpenReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
         _ = await client.ExpectAsync<StatusMessage>();   // swallow the connected push
         return reply.Handle!.Value;
     }
@@ -959,7 +959,7 @@ public sealed class RhpServerTests : IAsyncDisposable
             var frame = await RhpFraming.ReadFrameAsync(stream, cts.Token)
                 ?? throw new InvalidOperationException("Server closed the connection.");
             var msg = RhpJson.Deserialize(frame);
-            return Assert.IsType<T>(msg);
+            return msg.Should().BeOfType<T>().Subject;
         }
 
         public async Task<(string type, string json)> ReadRawAsync()

@@ -55,12 +55,12 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         raws.Add(await RoundTripAsync(client, new StatusMessage { Id = 1, Handle = 99999 }));
         raws.Add(await RoundTripAsync(client, new CloseMessage { Id = 1, Handle = 99999 }));
 
-        Assert.All(raws, json =>
+        raws.Should().AllSatisfy(json =>
         {
-            Assert.Contains("\"errCode\":", json, StringComparison.Ordinal);
-            Assert.Contains("\"errText\":", json, StringComparison.Ordinal);
-            Assert.DoesNotContain("\"errcode\"", json, StringComparison.Ordinal);
-            Assert.DoesNotContain("\"errtext\"", json, StringComparison.Ordinal);
+            json.Should().Contain("\"errCode\":");
+            json.Should().Contain("\"errText\":");
+            json.Should().NotContain("\"errcode\"");
+            json.Should().NotContain("\"errtext\"");
         });
     }
 
@@ -118,7 +118,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var clientC = await ConnectAsync(serverC);
         raws.Add(await RoundTripAsync(clientC, new AuthMessage { Id = 1, User = "x", Pass = "y" }));
 
-        Assert.All(raws, json => Assert.StartsWith("{\"type\":\"", json, StringComparison.Ordinal));
+        raws.Should().AllSatisfy(json => json.Should().StartWith("{\"type\":\""));
     }
 
     [Fact]
@@ -132,17 +132,17 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
 
         var (handle, openJson, statusJson) = await OpenRawAsync(client, id: 7);
 
-        Assert.Contains("\"id\":7", openJson, StringComparison.Ordinal);          // echoed verbatim
+        openJson.Should().Contain("\"id\":7");          // echoed verbatim
 
-        Assert.Contains("\"seqno\":", statusJson, StringComparison.Ordinal);      // a push...
-        Assert.DoesNotContain("\"id\":", statusJson, StringComparison.Ordinal);   // ...not a reply
+        statusJson.Should().Contain("\"seqno\":");      // a push...
+        statusJson.Should().NotContain("\"id\":");   // ...not a reply
 
         gateway.Connection.Inject("GB7RDG:GLOSTR} hello\r"u8.ToArray());
         var (type, recvJson) = await client.ReadRawAsync();
-        Assert.Equal("recv", type);
-        Assert.Contains("\"seqno\":", recvJson, StringComparison.Ordinal);
-        Assert.Contains($"\"handle\":{handle}", recvJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"id\":", recvJson, StringComparison.Ordinal);
+        type.Should().Be("recv");
+        recvJson.Should().Contain("\"seqno\":");
+        recvJson.Should().Contain($"\"handle\":{handle}");
+        recvJson.Should().NotContain("\"id\":");
     }
 
     [Fact]
@@ -157,10 +157,10 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         await client.SendRawAsync("""{"type":"thisIsNotReal","id":7}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("thisIsNotRealReply", type);
-        Assert.Contains("\"type\":\"thisIsNotRealReply\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
-        Assert.Contains("\"id\":7", json, StringComparison.Ordinal);
+        type.Should().Be("thisIsNotRealReply");
+        json.Should().Contain("\"type\":\"thisIsNotRealReply\"");
+        json.Should().Contain("\"errCode\":2");
+        json.Should().Contain("\"id\":7");
     }
 
     [Fact]
@@ -181,13 +181,13 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         await gateway.AcceptHandler!(gateway.Connection, "2");   // a station connects on port "2"
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("accept", type);
-        Assert.Contains("\"port\":\"2\"", json, StringComparison.Ordinal);    // quoted — the XRouter shape
-        Assert.DoesNotContain("\"port\":2", json, StringComparison.Ordinal);  // never the spec example's bare number
-        Assert.Contains("\"child\":", json, StringComparison.Ordinal);
-        Assert.Contains("\"remote\":", json, StringComparison.Ordinal);
-        Assert.Contains("\"seqno\":", json, StringComparison.Ordinal);        // a push...
-        Assert.DoesNotContain("\"id\":", json, StringComparison.Ordinal);     // ...not a reply
+        type.Should().Be("accept");
+        json.Should().Contain("\"port\":\"2\"");    // quoted, the XRouter shape
+        json.Should().NotContain("\"port\":2");  // never the spec example's bare number
+        json.Should().Contain("\"child\":");
+        json.Should().Contain("\"remote\":");
+        json.Should().Contain("\"seqno\":");        // a push...
+        json.Should().NotContain("\"id\":");     // ...not a reply
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
 
         // send on an unknown handle → 3 (Invalid handle).
         var sendJson = await RoundTripAsync(client, new SendMessage { Id = 1, Handle = 99999, Data = "x" });
-        Assert.Contains("\"errCode\":3", sendJson, StringComparison.Ordinal);
+        sendJson.Should().Contain("\"errCode\":3");
 
         // re-listen on the SAME socket → idempotent 0 Ok (the live XRouter wire — the R-4
         // diff corrected our initial 9 here)...
@@ -210,7 +210,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         _ = await RoundTripAsync(client, new BindMessage { Id = 3, Handle = listener, Local = "M0LTE-7" });
         _ = await RoundTripAsync(client, new ListenMessage { Id = 4, Handle = listener, Flags = 0 });
         var againJson = await RoundTripAsync(client, new ListenMessage { Id = 5, Handle = listener, Flags = 0 });
-        Assert.Contains("\"errCode\":0", againJson, StringComparison.Ordinal);
+        againJson.Should().Contain("\"errCode\":0");
 
         // ...while a DIFFERENT socket claiming an already-listening callsign → 9 (Duplicate
         // socket) raised by the engine (deviation D5, docs/rhp2-server.md).
@@ -219,21 +219,21 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var listener2 = Parse<SocketReplyMessage>(socket2Json).Handle!.Value;
         _ = await RoundTripAsync(client, new BindMessage { Id = 7, Handle = listener2, Local = "M0LTE-7" });
         var dupJson = await RoundTripAsync(client, new ListenMessage { Id = 8, Handle = listener2, Flags = 0 });
-        Assert.Contains("\"errCode\":9", dupJson, StringComparison.Ordinal);
+        dupJson.Should().Contain("\"errCode\":9");
 
         // open with an unknown family → 8 (Bad or missing family).
         var badFamilyJson = await RoundTripAsync(client, new OpenMessage { Id = 6, Pfam = "nonsense", Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
-        Assert.Contains("\"errCode\":8", badFamilyJson, StringComparison.Ordinal);
+        badFamilyJson.Should().Contain("\"errCode\":8");
 
         // a valid-but-unimplemented family (inet) → 16 (Operation not supported).
         var inetJson = await RoundTripAsync(client, new OpenMessage { Id = 7, Pfam = ProtocolFamily.Inet, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
-        Assert.Contains("\"errCode\":16", inetJson, StringComparison.Ordinal);
+        inetJson.Should().Contain("\"errCode\":16");
 
         // any pre-auth request under RequireAuth → 14 (Unauthorised).
         var (authServer, _) = await StartServerAsync(requireAuth: true, auth: (_, _) => false);
         var authClient = await ConnectAsync(authServer);
         var preAuthJson = await RoundTripAsync(authClient, new OpenMessage { Id = 8, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream, Remote = "GB7RDG", Flags = (int)OpenFlags.Active });
-        Assert.Contains("\"errCode\":14", preAuthJson, StringComparison.Ordinal);
+        preAuthJson.Should().Contain("\"errCode\":14");
     }
 
     [Fact]
@@ -250,22 +250,22 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         // land on the session as exactly the original bytes.
         var binary = new byte[] { 0x00, 0x7F, 0xFF, 0x0A };
         _ = await RoundTripAsync(client, new SendMessage { Id = 2, Handle = handle, Data = RhpDataEncoding.ToWireString(binary) });
-        Assert.Equal(binary, await gateway.Connection.WrittenAsync());
+        (await gateway.Connection.WrittenAsync()).Should().Equal(binary);
 
         // Server → client: the same bytes injected by the peer come back as a recv push whose
         // data decodes to the original payload via the Latin-1 decoder.
         gateway.Connection.Inject(binary);
         var (recvType, recvJson) = await client.ReadRawAsync();
-        Assert.Equal("recv", recvType);
-        Assert.Equal(binary, RhpDataEncoding.FromWireString(Parse<RecvMessage>(recvJson).Data));
+        recvType.Should().Be("recv");
+        RhpDataEncoding.FromWireString(Parse<RecvMessage>(recvJson).Data).Should().Equal(binary);
 
         // And the raw shape is readable escaped text, not a base64 blob: payload "hello\r"
         // appears as hello\r (the JSON two-character escape); its base64 form (aGVsbG8N) must
         // appear nowhere.
         gateway.Connection.Inject("hello\r"u8.ToArray());
         var (_, textJson) = await client.ReadRawAsync();
-        Assert.Contains("hello\\r", textJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("aGVsbG8N", textJson, StringComparison.Ordinal);
+        textJson.Should().Contain("hello\\r");
+        textJson.Should().NotContain("aGVsbG8N");
     }
 
     [Fact]
@@ -278,13 +278,13 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         var client = await ConnectAsync(server);
 
         var (handle, _, statusJson) = await OpenRawAsync(client, id: 1);
-        Assert.Contains("\"seqno\":0", statusJson, StringComparison.Ordinal);
+        statusJson.Should().Contain("\"seqno\":0");
 
         gateway.Connection.Inject("x\r"u8.ToArray());
         var (recvType, recvJson) = await client.ReadRawAsync();
-        Assert.Equal("recv", recvType);
-        Assert.Contains("\"seqno\":1", recvJson, StringComparison.Ordinal);
-        Assert.Contains($"\"handle\":{handle}", recvJson, StringComparison.Ordinal);
+        recvType.Should().Be("recv");
+        recvJson.Should().Contain("\"seqno\":1");
+        recvJson.Should().Contain($"\"handle\":{handle}");
     }
 
     [Fact]
@@ -299,19 +299,19 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
 
         await client.SendRawAsync("""{"type":"close","id":21}""");
         var (closeType, closeJson) = await client.ReadRawAsync();
-        Assert.Equal("closeReply", closeType);
-        Assert.Contains("\"errCode\":12", closeJson, StringComparison.Ordinal);
-        Assert.Contains("\"errText\":\"Missing handle\"", closeJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"handle\"", closeJson, StringComparison.Ordinal);
+        closeType.Should().Be("closeReply");
+        closeJson.Should().Contain("\"errCode\":12");
+        closeJson.Should().Contain("\"errText\":\"Missing handle\"");
+        closeJson.Should().NotContain("\"handle\"");
 
         var socketJson = await RoundTripAsync(client, new SocketMessage { Id = 22, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var handle = Parse<SocketReplyMessage>(socketJson).Handle!.Value;
         await client.SendRawAsync($$"""{"type":"send","id":23,"handle":{{handle}}}""");
         var (sendType, sendJson) = await client.ReadRawAsync();
-        Assert.Equal("sendReply", sendType);
-        Assert.Contains("\"errCode\":12", sendJson, StringComparison.Ordinal);
-        Assert.Contains("\"errText\":\"Missing data\"", sendJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"handle\"", sendJson, StringComparison.Ordinal);
+        sendType.Should().Be("sendReply");
+        sendJson.Should().Contain("\"errCode\":12");
+        sendJson.Should().Contain("\"errText\":\"Missing data\"");
+        sendJson.Should().NotContain("\"handle\"");
     }
 
     [Fact]
@@ -332,15 +332,15 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         await gateway.AcceptHandler!(gateway.Connection, "2");
 
         var (acceptType, acceptJson) = await client.ReadRawAsync();
-        Assert.Equal("accept", acceptType);
+        acceptType.Should().Be("accept");
         var child = Parse<AcceptMessage>(acceptJson).Child;
 
         var (statusType, statusJson) = await client.ReadRawAsync();
-        Assert.Equal("status", statusType);
-        Assert.Contains($"\"handle\":{child}", statusJson, StringComparison.Ordinal);
-        Assert.Contains("\"flags\":3", statusJson, StringComparison.Ordinal);   // Connected|ConOk — the open path's announcement shape
-        Assert.Contains("\"seqno\":", statusJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"id\":", statusJson, StringComparison.Ordinal);
+        statusType.Should().Be("status");
+        statusJson.Should().Contain($"\"handle\":{child}");
+        statusJson.Should().Contain("\"flags\":3");   // Connected|ConOk, the open path's announcement shape
+        statusJson.Should().Contain("\"seqno\":");
+        statusJson.Should().NotContain("\"id\":");
     }
 
     [Fact]
@@ -357,15 +357,15 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         await client.SendRawAsync("""{"type":"hello","id":31}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("helloReply", type);
-        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
-        Assert.Contains("\"id\":31", json, StringComparison.Ordinal);
+        type.Should().Be("helloReply");
+        json.Should().Contain("\"errCode\":2");
+        json.Should().Contain("\"id\":31");
         // None of the removed capability fields appear on the wire.
-        Assert.DoesNotContain("\"proto\"", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"impl\"", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"pfams\"", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"maxData\"", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"enc\"", json, StringComparison.Ordinal);
+        json.Should().NotContain("\"proto\"");
+        json.Should().NotContain("\"impl\"");
+        json.Should().NotContain("\"pfams\"");
+        json.Should().NotContain("\"maxData\"");
+        json.Should().NotContain("\"enc\"");
     }
 
     [Fact]
@@ -380,9 +380,9 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         await client.SendRawAsync("""{"type":"hello","id":32}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.Equal("helloReply", type);
-        Assert.Contains("\"errCode\":14", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"pfams\"", json, StringComparison.Ordinal);
+        type.Should().Be("helloReply");
+        json.Should().Contain("\"errCode\":14");
+        json.Should().NotContain("\"pfams\"");
     }
 
     // ── helpers (harness types reused from RhpServerTests — same assembly) ─
@@ -419,7 +419,7 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
     // Re-parses a raw frame through the codec when a test needs a field VALUE (a handle, the
     // decoded data) — the conformance assertions themselves stay on the raw text.
     private static T Parse<T>(string json) where T : RhpMessage
-        => Assert.IsType<T>(RhpJson.Deserialize(Encoding.UTF8.GetBytes(json)));
+        => RhpJson.Deserialize(Encoding.UTF8.GetBytes(json)).Should().BeOfType<T>().Subject;
 
     // Opens an active AX.25 stream through the fake gateway, returning the handle plus the
     // RAW openReply and status-push frames for text-level assertions.
@@ -434,9 +434,9 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
             Flags = (int)OpenFlags.Active,
         });
         var (openType, openJson) = await client.ReadRawAsync();
-        Assert.Equal("openReply", openType);
+        openType.Should().Be("openReply");
         var (statusType, statusJson) = await client.ReadRawAsync();
-        Assert.Equal("status", statusType);
+        statusType.Should().Be("status");
         return (Parse<OpenReplyMessage>(openJson).Handle!.Value, openJson, statusJson);
     }
 }

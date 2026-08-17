@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -31,7 +32,7 @@ public sealed class AppGatewayApiTests : IDisposable
         upstream.Start();
         upstreamLoop = Task.Run(EchoUpstreamAsync);
 
-        dir = Path.Combine(Path.GetTempPath(), "pdn-gw-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-gw");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, $"""
@@ -95,11 +96,11 @@ public sealed class AppGatewayApiTests : IDisposable
         using var client = factory.CreateClient();
 
         var resp = await client.GetAsync("/api/v1/apps");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadAsStringAsync();
-        Assert.Contains("\"id\":\"wall\"", body, StringComparison.Ordinal);
-        Assert.Contains("/apps/wall/", body, StringComparison.Ordinal);
-        Assert.Contains("message-square", body, StringComparison.Ordinal);
+        body.Should().Contain("\"id\":\"wall\"");
+        body.Should().Contain("/apps/wall/");
+        body.Should().Contain("message-square");
     }
 
     [Fact]
@@ -110,12 +111,14 @@ public sealed class AppGatewayApiTests : IDisposable
 
         var resp = await client.GetAsync("/apps/wall/hello?x=1");
         var body = await resp.Content.ReadAsStringAsync();
-        Assert.True(HttpStatusCode.OK == resp.StatusCode, $"status={resp.StatusCode} body=<<{body}>>");
+        // The body is passed as a because-ARG, not interpolated: it is arbitrary upstream text and
+        // AwesomeAssertions treats the because string itself as a format string.
+        (HttpStatusCode.OK == resp.StatusCode).Should().BeTrue("status={0} body=<<{1}>>", resp.StatusCode, body);
 
-        Assert.Contains("path=/hello?x=1", body, StringComparison.Ordinal);   // /apps/wall prefix stripped
-        Assert.Contains("gateway=[1]", body, StringComparison.Ordinal);       // gateway marker injected
-        Assert.Contains("prefix=[/apps/wall]", body, StringComparison.Ordinal); // the public mount point — apps prefix absolute URLs with it
-        Assert.Contains("user=[]", body, StringComparison.Ordinal);           // anonymous (auth off)
+        body.Should().Contain("path=/hello?x=1");     // /apps/wall prefix stripped
+        body.Should().Contain("gateway=[1]");         // gateway marker injected
+        body.Should().Contain("prefix=[/apps/wall]"); // the public mount point, apps prefix absolute URLs with it
+        body.Should().Contain("user=[]");             // anonymous (auth off)
     }
 
     [Fact]
@@ -128,10 +131,10 @@ public sealed class AppGatewayApiTests : IDisposable
         using var client = factory.CreateClient();
 
         var resp = await client.GetAsync("/apps/wall/");
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadAsStringAsync();
-        Assert.Contains("path=/", body, StringComparison.Ordinal);
-        Assert.Contains("gateway=[1]", body, StringComparison.Ordinal);
+        body.Should().Contain("path=/");
+        body.Should().Contain("gateway=[1]");
     }
 
     [Fact]
@@ -146,7 +149,7 @@ public sealed class AppGatewayApiTests : IDisposable
         // the web root, and the committed/built wwwroot is NOT reliably at the WebApplicationFactory
         // content root across machines (it's present locally, absent under CI — which silently fell
         // through to the proxy and made this assertion flap). Pinning the web root makes it deterministic.
-        string webRoot = Path.Combine(Path.GetTempPath(), "pdn-gw-webroot-" + Guid.NewGuid().ToString("N"));
+        string webRoot = TestPaths.NewPath("pdn-gw-webroot");
         Directory.CreateDirectory(webRoot);
         await File.WriteAllTextAsync(Path.Combine(webRoot, "index.html"),
             "<!doctype html><html><body><div id=\"root\"></div></body></html>");
@@ -157,15 +160,15 @@ public sealed class AppGatewayApiTests : IDisposable
             using var client = factory.CreateClient();
 
             var resp = await client.GetAsync("/apps/wall");
-            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var body = await resp.Content.ReadAsStringAsync();
 
             // The SPA shell (index.html from the web root), not the upstream echo. The echo body would
             // carry `gateway=[1]`; the shell carries the React root div.
-            Assert.Contains("<div id=\"root\">", body, StringComparison.Ordinal);
-            Assert.DoesNotContain("gateway=[1]", body, StringComparison.Ordinal);
+            body.Should().Contain("<div id=\"root\">");
+            body.Should().NotContain("gateway=[1]");
             // The shell must be no-cache so a redeploy's new asset hashes are picked up at once.
-            Assert.Contains("no-cache", resp.Headers.CacheControl?.ToString() ?? "", StringComparison.Ordinal);
+            (resp.Headers.CacheControl?.ToString() ?? "").Should().Contain("no-cache");
         }
         finally
         {
@@ -186,8 +189,8 @@ public sealed class AppGatewayApiTests : IDisposable
 
         // The spoofed identity is dropped — the upstream sees the gateway's value (empty here),
         // never the client's.
-        Assert.Contains("user=[]", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("attacker", body, StringComparison.Ordinal);
+        body.Should().Contain("user=[]");
+        body.Should().NotContain("attacker");
     }
 
     [Fact]
@@ -197,7 +200,7 @@ public sealed class AppGatewayApiTests : IDisposable
         using var client = factory.CreateClient();
 
         var resp = await client.GetAsync("/apps/ghost/anything");
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     private static int FreeTcpPort()

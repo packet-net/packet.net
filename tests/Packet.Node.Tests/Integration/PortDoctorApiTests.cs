@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -21,7 +22,7 @@ public sealed class PortDoctorApiTests : IDisposable
 
     public PortDoctorApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-doctorapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-doctorapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // One disabled port: configured (valid config) but not brought up, so its id never names a

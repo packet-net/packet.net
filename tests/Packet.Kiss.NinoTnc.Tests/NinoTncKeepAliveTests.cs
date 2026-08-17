@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
+using Packet.Tests.Shared;
 
 namespace Packet.Kiss.NinoTnc.Tests;
 
@@ -38,7 +39,7 @@ public class NinoTncKeepAliveTests
             await Task.Delay(25);
         }
 
-        await WaitUntil(() => io.Writes.Length >= 1, "the keep-alive GETVER goes out once the link has been quiet the full interval");
+        await TestWait.ForAsync(() => io.Writes.Length >= 1, "the keep-alive GETVER goes out once the link has been quiet the full interval");
         io.Writes[0].Should().Equal(
             KissEncoder.Encode(0, (KissCommand)NinoTncCommands.GetVersionCommand, NinoTncCommands.BuildGetVersionPayload()),
             "the probe is a plain GETVER — harmless to the TNC, guaranteed to elicit reply bytes");
@@ -134,7 +135,7 @@ public class NinoTncKeepAliveTests
             if (fakeElapsed - lastReplyAt >= TimeSpan.FromMinutes(4))
             {
                 int before = Volatile.Read(ref answered);
-                await WaitUntil(() => Volatile.Read(ref answered) > before, "the due keep-alive probe is answered");
+                await TestWait.ForAsync(() => Volatile.Read(ref answered) > before, "the due keep-alive probe is answered");
                 continue;
             }
             clock.Advance(step);
@@ -157,19 +158,6 @@ public class NinoTncKeepAliveTests
         await stream.WaitAsync(Timeout);
         streamFault.Should().BeOfType<IOException>(
             "with no reply bytes the read-idle budget must still fault the dead link — the reconnect wrapper depends on it");
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, string because)
-    {
-        var deadline = DateTimeOffset.UtcNow + Timeout;
-        while (!condition())
-        {
-            if (DateTimeOffset.UtcNow >= deadline)
-            {
-                throw new TimeoutException($"condition not met within {Timeout.TotalSeconds:0}s: {because}");
-            }
-            await Task.Delay(10);
-        }
     }
 
     /// <summary>A loopback listener standing in for the head-end's raw pipe.</summary>

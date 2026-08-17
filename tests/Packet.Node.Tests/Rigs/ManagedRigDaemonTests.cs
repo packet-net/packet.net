@@ -24,7 +24,7 @@ public sealed class ManagedRigDaemonTests : IDisposable
 
     public ManagedRigDaemonTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-rigctld-tests", Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-rigctld");
         Directory.CreateDirectory(dir);
     }
 
@@ -159,13 +159,10 @@ public sealed class ManagedRigDaemonTests : IDisposable
 
     // ---- failure paths + the argument contract (fake children) -------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task A_child_that_exits_immediately_is_not_ready_within_the_budget_and_does_not_throw()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake rigctld is a POSIX shell script");
 
         var bin = WriteFakeRigctld("rigctld-flap", exitCode: 1);
         await using var daemon = Start(DummyRig(), binaryPath: bin);
@@ -175,13 +172,10 @@ public sealed class ManagedRigDaemonTests : IDisposable
         (await daemon.WaitUntilReadyAsync(TimeSpan.FromMilliseconds(700))).Should().BeFalse();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_missing_binary_is_a_fast_clean_not_ready()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake rigctld is a POSIX shell script");
 
         await using var daemon = Start(DummyRig(), binaryPath: Path.Combine(dir, "no-such-rigctld"));
 
@@ -192,13 +186,10 @@ public sealed class ManagedRigDaemonTests : IDisposable
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5), "a spawn fault fails readiness fast");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task The_child_is_launched_with_the_pinned_rigctld_flag_contract()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake rigctld is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var bin = WriteFakeRigctld("rigctld-flags", argsLog: argsLog);
@@ -221,13 +212,10 @@ public sealed class ManagedRigDaemonTests : IDisposable
         argv.Should().Contain($"-t {daemon.Port}");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Serial_speed_is_omitted_when_unset()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake rigctld is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var bin = WriteFakeRigctld("rigctld-nospeed", argsLog: argsLog);

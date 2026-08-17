@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Configuration;
 
@@ -22,7 +23,7 @@ public sealed class SqliteConfigStoreTests : IDisposable
 
     public SqliteConfigStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-cfgstore-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-cfgstore");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

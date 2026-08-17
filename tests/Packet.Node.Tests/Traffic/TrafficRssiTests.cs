@@ -6,6 +6,7 @@ using Packet.Ax25.Transport;
 using Packet.Core;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Traffic;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Traffic;
 
@@ -25,7 +26,7 @@ public sealed class TrafficRssiTests : IDisposable
 
     public TrafficRssiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-trafficrssi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-trafficrssi");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "traffic.db");
     }

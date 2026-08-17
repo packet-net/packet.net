@@ -163,10 +163,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"pnConformanceProbe","id":42}""");
 
-        Assert.Equal(xr, pdn);                                  // type/errCode/id-echo/casing all match
-        Assert.Equal("pnConformanceProbeReply", xr.Item1);      // and the shape is the known wire contract
-        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);
-        Assert.Equal(42, xr.Item3);
+        pdn.Should().Be(xr);                                  // type/errCode/id-echo/casing all match
+        xr.Item1.Should().Be("pnConformanceProbeReply");      // and the shape is the known wire contract
+        xr.Item2.Should().Be(RhpErrorCode.BadOrMissingType);
+        xr.Item3.Should().Be(42);
     }
 
     [Fact]
@@ -175,9 +175,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"send","id":7,"handle":99999,"data":"x"}""");
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal("sendReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.InvalidHandle, xr.Item2);
+        pdn.Should().Be(xr);
+        xr.Item1.Should().Be("sendReply");
+        xr.Item2.Should().Be(RhpErrorCode.InvalidHandle);
     }
 
     [Fact]
@@ -186,9 +186,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"close","id":8,"handle":99999}""");
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal("closeReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.InvalidHandle, xr.Item2);
+        pdn.Should().Be(xr);
+        xr.Item1.Should().Be("closeReply");
+        xr.Item2.Should().Be(RhpErrorCode.InvalidHandle);
     }
 
     [Fact]
@@ -200,8 +200,8 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         // socket(ax25, stream) — both allocate a handle with errCode 0, capital casing.
         var (xrSock, pdnSock) = await DiffAsync(xrouter, pdn,
             """{"type":"socket","id":1,"pfam":"ax25","mode":"stream"}""");
-        Assert.Equal(("socketReply", (int?)RhpErrorCode.Ok, (int?)1, true, false), xrSock);
-        Assert.Equal(xrSock, pdnSock);
+        xrSock.Should().Be(("socketReply", (int?)RhpErrorCode.Ok, (int?)1, true, false));
+        pdnSock.Should().Be(xrSock);
 
         // The allocated handles differ numerically — extract each side's own.
         var xrHandle = await HandleOf(xrouter, """{"type":"socket","id":2,"pfam":"ax25","mode":"stream"}""");
@@ -211,23 +211,23 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xrBind, pdnBind) = (
             Shape(await Send(xrouter, $$"""{"type":"bind","id":3,"handle":{{xrHandle}},"local":"PN9TST-1"}""")),
             Shape(await Send(pdn, $$"""{"type":"bind","id":3,"handle":{{pdnHandle}},"local":"PN9TST-1"}""")));
-        Assert.Equal(("bindReply", (int?)RhpErrorCode.Ok, (int?)3, true, false), xrBind);
-        Assert.Equal(xrBind, pdnBind);
+        xrBind.Should().Be(("bindReply", (int?)RhpErrorCode.Ok, (int?)3, true, false));
+        pdnBind.Should().Be(xrBind);
 
         // listen — both Ok.
         var (xrListen, pdnListen) = (
             Shape(await Send(xrouter, $$"""{"type":"listen","id":4,"handle":{{xrHandle}},"flags":0}""")),
             Shape(await Send(pdn, $$"""{"type":"listen","id":4,"handle":{{pdnHandle}},"flags":0}""")));
-        Assert.Equal(("listenReply", (int?)RhpErrorCode.Ok, (int?)4, true, false), xrListen);
-        Assert.Equal(xrListen, pdnListen);
+        xrListen.Should().Be(("listenReply", (int?)RhpErrorCode.Ok, (int?)4, true, false));
+        pdnListen.Should().Be(xrListen);
 
         // Re-listen on the SAME socket: idempotent Ok on both (observed XRouter wire — the
         // diff oracle corrected our initial 9 here).
         var (xrAgain, pdnAgain) = (
             Shape(await Send(xrouter, $$"""{"type":"listen","id":5,"handle":{{xrHandle}},"flags":0}""")),
             Shape(await Send(pdn, $$"""{"type":"listen","id":5,"handle":{{pdnHandle}},"flags":0}""")));
-        Assert.Equal(xrAgain, pdnAgain);
-        Assert.Equal(RhpErrorCode.Ok, xrAgain.Item2);
+        pdnAgain.Should().Be(xrAgain);
+        xrAgain.Item2.Should().Be(RhpErrorCode.Ok);
 
         // A SECOND SOCKET claiming the same callsign — a DELIBERATE divergence (deviation D5,
         // docs/rhp2-server.md): the live XRouter (this pinned build, null-port binds) answers
@@ -241,10 +241,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xrDup, pdnDup) = (
             Shape(await Send(xrouter, $$"""{"type":"listen","id":8,"handle":{{xrHandle2}},"flags":0}""")),
             Shape(await Send(pdn, $$"""{"type":"listen","id":8,"handle":{{pdnHandle2}},"flags":0}""")));
-        Assert.Equal(RhpErrorCode.Ok, xrDup.Item2);             // the observed XRouter wire
-        Assert.Equal(RhpErrorCode.DuplicateSocket, pdnDup.Item2); // pdn's deliberate D5
-        Assert.Equal(8, xrDup.Item3);
-        Assert.Equal(8, pdnDup.Item3);
+        xrDup.Item2.Should().Be(RhpErrorCode.Ok);             // the observed XRouter wire
+        pdnDup.Item2.Should().Be(RhpErrorCode.DuplicateSocket); // pdn's deliberate D5
+        xrDup.Item3.Should().Be(8);
+        pdnDup.Item3.Should().Be(8);
     }
 
     [Fact]
@@ -253,8 +253,8 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"open","id":9,"pfam":"warble","mode":"stream","remote":"PN9TST","flags":128}""");
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal(RhpErrorCode.BadOrMissingFamily, xr.Item2);
+        pdn.Should().Be(xr);
+        xr.Item2.Should().Be(RhpErrorCode.BadOrMissingFamily);
     }
 
     // ── R-5: the field-notes / RHPTEST conformance sweep ──────────────────
@@ -268,10 +268,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"socket","pfam":"ax25","mode":"stream"}""");
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal("socketReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.Ok, xr.Item2);
-        Assert.Null(xr.Item3);                              // replied, but no id to echo
+        pdn.Should().Be(xr);
+        xr.Item1.Should().Be("socketReply");
+        xr.Item2.Should().Be(RhpErrorCode.Ok);
+        xr.Item3.Should().BeNull();                              // replied, but no id to echo
     }
 
     [Fact]
@@ -280,10 +280,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"pnIdlessProbe"}""");
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal("pnIdlessProbeReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);
-        Assert.Null(xr.Item3);
+        pdn.Should().Be(xr);
+        xr.Item1.Should().Be("pnIdlessProbeReply");
+        xr.Item2.Should().Be(RhpErrorCode.BadOrMissingType);
+        xr.Item3.Should().BeNull();
     }
 
     [Theory]
@@ -300,9 +300,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         // but unknown". Verified per-op against the live wire (errText "Missing handle").
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(), request);
 
-        Assert.Equal(xr, pdn);
-        Assert.Equal(expectedReplyType, xr.Item1);
-        Assert.Equal(RhpErrorCode.BadParameter, xr.Item2);
+        pdn.Should().Be(xr);
+        xr.Item1.Should().Be(expectedReplyType);
+        xr.Item2.Should().Be(RhpErrorCode.BadParameter);
     }
 
     [Fact]
@@ -319,9 +319,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
             Shape(await Send(xrouter, $$"""{"type":"send","id":2,"handle":{{xrHandle}}}""")),
             Shape(await Send(pdn, $$"""{"type":"send","id":2,"handle":{{pdnHandle}}}""")));
 
-        Assert.Equal(xr, pdnShape);
-        Assert.Equal("sendReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.BadParameter, xr.Item2);
+        pdnShape.Should().Be(xr);
+        xr.Item1.Should().Be("sendReply");
+        xr.Item2.Should().Be(RhpErrorCode.BadParameter);
     }
 
     [Fact]
@@ -337,9 +337,9 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
             Shape(await Send(xrouter, $$"""{"type":"send","id":2,"handle":{{xrHandle}},"data":"x"}""")),
             Shape(await Send(pdn, $$"""{"type":"send","id":2,"handle":{{pdnHandle}},"data":"x"}""")));
 
-        Assert.Equal(xr, pdnShape);
-        Assert.Equal("sendReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.NotConnected, xr.Item2);
+        pdnShape.Should().Be(xr);
+        xr.Item1.Should().Be("sendReply");
+        xr.Item2.Should().Be(RhpErrorCode.NotConnected);
     }
 
     [Fact]
@@ -363,10 +363,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var xr = Shape(await Send(xrouter, $$"""{"type":"send","id":4,"handle":{{xrHandle}},"data":"x"}"""));
         var pdnShape = Shape(await Send(pdn, $$"""{"type":"send","id":4,"handle":{{pdnHandle}},"data":"x"}"""));
 
-        Assert.Equal(RhpErrorCode.NotConnected, xr.Item2);            // the observed 505c wire
-        Assert.Equal(RhpErrorCode.OperationNotSupported, pdnShape.Item2);   // pdn's deliberate D9 (RHPTEST/v505d intent)
-        Assert.Equal(4, xr.Item3);
-        Assert.Equal(4, pdnShape.Item3);
+        xr.Item2.Should().Be(RhpErrorCode.NotConnected);            // the observed 505c wire
+        pdnShape.Item2.Should().Be(RhpErrorCode.OperationNotSupported);   // pdn's deliberate D9 (RHPTEST/v505d intent)
+        xr.Item3.Should().Be(4);
+        pdnShape.Item3.Should().Be(4);
 
         // Tidy: close the XRouter listener so nothing lingers for later scenarios.
         _ = await Send(xrouter, $$"""{"type":"close","id":5,"handle":{{xrHandle}}}""");
@@ -388,8 +388,8 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var xr = Shape(await Send(xrouter, $$"""{"type":"bind","id":2,"handle":{{xrHandle}},"local":"G9DUM-S"}"""));
         var pdnShape = Shape(await Send(pdn, $$"""{"type":"bind","id":2,"handle":{{pdnHandle}},"local":"G9DUM-S"}"""));
 
-        Assert.Equal(RhpErrorCode.Ok, xr.Item2);                          // XRouter accepts the wedge-fuse
-        Assert.Equal(RhpErrorCode.InvalidLocalAddress, pdnShape.Item2);   // pdn refuses deterministically (D7)
+        xr.Item2.Should().Be(RhpErrorCode.Ok);                          // XRouter accepts the wedge-fuse
+        pdnShape.Item2.Should().Be(RhpErrorCode.InvalidLocalAddress);   // pdn refuses deterministically (D7)
 
         // Tidy: release the XRouter handle without ever connecting from it.
         _ = await Send(xrouter, $$"""{"type":"close","id":3,"handle":{{xrHandle}}}""");
@@ -405,10 +405,10 @@ public sealed class XRouterRhpWireDiffTests : IAsyncDisposable
         var (xr, pdn) = await DiffAsync(await XRouterAsync(), await PdnAsync(),
             """{"type":"hello","id":18}""");
 
-        Assert.Equal(xr, pdn);                                   // type/errCode/id-echo/casing all match
-        Assert.Equal("helloReply", xr.Item1);
-        Assert.Equal(RhpErrorCode.BadOrMissingType, xr.Item2);   // the live fallback, on both
-        Assert.Equal(18, xr.Item3);
+        pdn.Should().Be(xr);                                   // type/errCode/id-echo/casing all match
+        xr.Item1.Should().Be("helloReply");
+        xr.Item2.Should().Be(RhpErrorCode.BadOrMissingType);   // the live fallback, on both
+        xr.Item3.Should().Be(18);
     }
 
     private static async Task<int> HandleOf(WireClient c, string req)

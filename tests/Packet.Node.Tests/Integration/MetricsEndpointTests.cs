@@ -1,5 +1,5 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -14,45 +14,14 @@ namespace Packet.Node.Tests.Integration;
 public sealed class MetricsEndpointTests : IDisposable
 {
     private const string Callsign = "M0LTE-1";
-    private readonly string configPath;
 
-    public MetricsEndpointTests()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-metrics-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        configPath = Path.Combine(dir, "node.yaml");
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: {Callsign}
-              alias: LONDON
-            ports:
-              - id: vhf
-                enabled: false
-                transport:
-                  kind: kiss-tcp
-                  host: 127.0.0.1
-                  port: 8131
-            management:
-              auth:
-                enabled: false
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-            """);
-        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", configPath);
-        Environment.SetEnvironmentVariable("PACKETNET_DB", Path.Combine(dir, "pdn.db"));
-    }
-
-    private sealed class NodeAppFactory : WebApplicationFactory<Program>;
+    private readonly NodeHostFixture node = new(
+        NodeYaml.Build(callsign: Callsign, ports: [NodeYaml.DisabledKissTcpPort("vhf", 8131)]), "metrics");
 
     [Fact]
     public async Task Metrics_is_served_in_the_prometheus_exposition_format()
     {
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         var resp = await client.GetAsync("/metrics");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -92,19 +61,11 @@ public sealed class MetricsEndpointTests : IDisposable
         // management.auth.enabled. Auth defaults on now, so without this the documented
         // scrape workflow would 401 on every stock install. Deliberate (Tom, 2026-08-03):
         // metrics are public; the exposure trade is documented in docs/observability.md.
-        File.WriteAllText(configPath, File.ReadAllText(configPath).Replace(
-            """
-              auth:
-                enabled: false
-            """,
-            """
-              auth:
-                enabled: true
-            """,
-            StringComparison.Ordinal));
+        File.WriteAllText(
+            node.ConfigPath,
+            NodeYaml.Build(callsign: Callsign, ports: [NodeYaml.DisabledKissTcpPort("vhf", 8131)], authEnabled: true));
 
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         var resp = await client.GetAsync("/metrics");   // no Authorization header
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -117,16 +78,6 @@ public sealed class MetricsEndpointTests : IDisposable
     public void Dispose()
     {
         GC.SuppressFinalize(this);
-        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", null);
-        Environment.SetEnvironmentVariable("PACKETNET_DB", null);
-        try
-        {
-            var dir = Path.GetDirectoryName(configPath);
-            if (dir is not null)
-            {
-                Directory.Delete(dir, recursive: true);
-            }
-        }
-        catch { /* best effort */ }
+        node.Dispose();
     }
 }

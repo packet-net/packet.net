@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Configuration;
 
@@ -20,7 +21,7 @@ public class FileConfigProviderWriteTests : IDisposable
 
     public FileConfigProviderWriteTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-cfgwrite-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-cfgwrite");
         Directory.CreateDirectory(dir);
         path = Path.Combine(dir, "node.yaml");
     }

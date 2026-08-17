@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -28,7 +29,7 @@ public sealed class AuthApiTests : IDisposable
 
     public AuthApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-authapi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-authapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         dbPath = Path.Combine(dir, "pdn.db");

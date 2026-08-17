@@ -27,7 +27,7 @@ public sealed class CapabilityConsoleTests : IDisposable
 
     public CapabilityConsoleTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-cap-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-cap");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }
@@ -44,7 +44,7 @@ public sealed class CapabilityConsoleTests : IDisposable
     {
         var store = new SqliteUserStore(dbPath, NullLogger<SqliteUserStore>.Instance);
         store.Create(new UserRecord("sysop", "hash", scope, clock.GetUtcNow(), null));
-        Assert.True(store.SetTotpSecret("sysop", Secret, Callsign));
+        store.SetTotpSecret("sysop", Secret, Callsign).Should().BeTrue();
         return store;
     }
 
@@ -92,13 +92,13 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Peer capabilities:", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Peer capabilities:");
         // Positive extended + unknown SREJ; ordered by id so gb7isw precedes gb7rdg.
-        Assert.Contains("gb7rdg:M0LTE-1  v2.2  SREJ?  probed 0:00:00", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("gb7rdg:M0LTE-1  v2.2  SREJ?  probed 0:00:00");
         // Refused extended (v2.0) + a probed-no SREJ (REJ), and a refused timestamp rendered.
-        Assert.Contains("gb7isw:G0XYZ-2  v2.0  REJ  probed 0:00:00  refused 0:00:00", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("gb7isw:G0XYZ-2  v2.0  REJ  probed 0:00:00  refused 0:00:00");
         // Read-only: it never demanded elevation.
-        Assert.DoesNotContain("Not authorised", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().NotContain("Not authorised");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("cache not available", conn.Text, StringComparison.OrdinalIgnoreCase);
+        conn.Text.Should().ContainEquivalentOf("cache not available");
     }
 
     [Fact]
@@ -122,10 +122,10 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Forgot capability for gb7rdg:M0LTE-1.", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Forgot capability for gb7rdg:M0LTE-1.");
         // The cache really lost that entry — and only that entry.
-        Assert.DoesNotContain(cache.All(), r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
-        Assert.Contains(cache.All(), r => r.PortId == "gb7isw" && r.Peer == "G0XYZ-2");
+        cache.All().Should().NotContain(r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
+        cache.All().Should().Contain(r => r.PortId == "gb7isw" && r.Peer == "G0XYZ-2");
     }
 
     [Fact]
@@ -138,9 +138,9 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Not authorised. Use SYSOP", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Not authorised. Use SYSOP");
         // The gate was reached before the cache — the record survives.
-        Assert.Contains(cache.All(), r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
+        cache.All().Should().Contain(r => r.PortId == "gb7rdg" && r.Peer == "M0LTE-1");
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("No cached capability for gb7rdg:NOBODY-9.", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("No cached capability for gb7rdg:NOBODY-9.");
     }
 
     [Fact]
@@ -169,32 +169,8 @@ public sealed class CapabilityConsoleTests : IDisposable
 
         // The RENDERED line: the actor is the connection the command came in over, and the
         // cleared target is its own field (it used to render in the {PeerId} slot).
-        var line = log.Messages.Find(m => m.Text.Contains("CAP-CLEAR", StringComparison.Ordinal));
+        var line = log.Messages.FirstOrDefault(m => m.Text.Contains("CAP-CLEAR", StringComparison.Ordinal));
         line.Text.Should().Be("Sysop command CAP-CLEAR (gb7rdg:M0LTE-1) run over M0LTE-7.");
-    }
-
-    /// <summary>An in-memory ILogger recording the level + RENDERED text of every entry, so the
-    /// audit assertion reads exactly what an operator would see in the log.</summary>
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public List<(LogLevel Level, string Text)> Messages { get; } = new();
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) =>
-            Messages.Add((logLevel, formatter(state, exception)));
-
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
-
-            public void Dispose()
-            {
-            }
-        }
     }
 
     // A no-op privileged-operations stub — these tests exercise CAP, not SESSIONS/KICK/etc., so

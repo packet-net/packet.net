@@ -26,7 +26,7 @@ public sealed class WebAuthnFido2BuilderTests
     public void ServingOrigin_renders_scheme_host_and_nondefault_port()
     {
         var req = RequestFor("https", "pdn.m0lte.uk", 8443);
-        Assert.Equal("https://pdn.m0lte.uk:8443", WebAuthnFido2Builder.ServingOrigin(req));
+        WebAuthnFido2Builder.ServingOrigin(req).Should().Be("https://pdn.m0lte.uk:8443");
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public sealed class WebAuthnFido2BuilderTests
         // with no port, and the origin it then signs into clientDataJSON likewise has no
         // port — so the serving origin we derive must match (no port).
         var req = RequestFor("https", "pdn.m0lte.uk");
-        Assert.Equal("https://pdn.m0lte.uk", WebAuthnFido2Builder.ServingOrigin(req));
+        WebAuthnFido2Builder.ServingOrigin(req).Should().Be("https://pdn.m0lte.uk");
     }
 
     [Fact]
@@ -49,8 +49,8 @@ public sealed class WebAuthnFido2BuilderTests
 
         var origins = WebAuthnFido2Builder.AcceptedOrigins(cfg, req);
 
-        Assert.Contains("http://localhost:8080", origins);
-        Assert.Contains("http://localhost", origins);
+        origins.Should().Contain("http://localhost:8080");
+        origins.Should().Contain("http://localhost");
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class WebAuthnFido2BuilderTests
 
         var origins = WebAuthnFido2Builder.AcceptedOrigins(cfg, req);
 
-        Assert.Equal(["https://pdn.m0lte.uk:8443"], origins);
+        origins.Should().Equal(["https://pdn.m0lte.uk:8443"]);
     }
 
     [Fact]
@@ -85,8 +85,8 @@ public sealed class WebAuthnFido2BuilderTests
 
         var origins = WebAuthnFido2Builder.AcceptedOrigins(cfg, spoofed);
 
-        Assert.Equal(["https://pdn.m0lte.uk:8443"], origins);
-        Assert.DoesNotContain("https://evil.example:8443", origins);
+        origins.Should().Equal(["https://pdn.m0lte.uk:8443"]);
+        origins.Should().NotContain("https://evil.example:8443");
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class WebAuthnFido2BuilderTests
 
         var origins = WebAuthnFido2Builder.AcceptedOrigins(cfg, req);
 
-        Assert.Equal(["https://pdn.m0lte.uk:8443"], origins);
+        origins.Should().Equal(["https://pdn.m0lte.uk:8443"]);
     }
 
     [Fact]
@@ -116,8 +116,8 @@ public sealed class WebAuthnFido2BuilderTests
 
         var origins = WebAuthnFido2Builder.AcceptedOrigins(cfg, req);
 
-        Assert.Equal(2, origins.Count);
-        Assert.Contains("https://pdn.m0lte.uk:8443", origins);
-        Assert.Contains("https://pdn.m0lte.uk", origins);
+        origins.Count.Should().Be(2);
+        origins.Should().Contain("https://pdn.m0lte.uk:8443");
+        origins.Should().Contain("https://pdn.m0lte.uk");
     }
 }

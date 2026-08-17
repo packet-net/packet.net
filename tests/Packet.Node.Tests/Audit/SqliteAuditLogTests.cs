@@ -1,10 +1,11 @@
 using Packet.Node.Core.Audit;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Audit;
 
 public sealed class SqliteAuditLogTests : IDisposable
 {
-    private readonly string dbPath = Path.Combine(Path.GetTempPath(), $"pdn-audit-{Guid.NewGuid():N}.db");
+    private readonly string dbPath = TestPaths.NewPath("pdn-audit", ".db");
 
     public void Dispose()
     {

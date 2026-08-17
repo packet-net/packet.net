@@ -65,14 +65,14 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
     {
         await client.SendAsync(new SocketMessage { Id = id, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var reply = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
     }
 
     private static async Task<int> SocketAsync(RhpServerTests.RhpTestClient client, int id)
     {
         await client.SendAsync(new SocketMessage { Id = id, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var reply = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.Ok, reply.ErrCode);
+        reply.ErrCode.Should().Be(RhpErrorCode.Ok);
         return reply.Handle!.Value;
     }
 
@@ -95,7 +95,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         using var cts = new CancellationTokenSource(Timeout);
         var buffer = new byte[1];
         int read = await third.GetStream().ReadAsync(buffer, cts.Token);
-        Assert.Equal(0, read);
+        read.Should().Be(0);
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
                 await Task.Delay(50);
             }
         }
-        Assert.NotNull(c2);
+        c2.Should().NotBeNull();
     }
 
     // ── Per-client handle cap ────────────────────────────────────────────
@@ -145,8 +145,8 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         // The third socket request exceeds the cap.
         await client.SendAsync(new SocketMessage { Id = 3, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
         var reply = await client.ExpectAsync<SocketReplyMessage>();
-        Assert.Equal(RhpErrorCode.NoMemory, reply.ErrCode);
-        Assert.Null(reply.Handle);
+        reply.ErrCode.Should().Be(RhpErrorCode.NoMemory);
+        reply.Handle.Should().BeNull();
     }
 
     [Fact]
@@ -159,11 +159,11 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
 
         // At the cap: a second handle is refused.
         await client.SendAsync(new SocketMessage { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
-        Assert.Equal(RhpErrorCode.NoMemory, (await client.ExpectAsync<SocketReplyMessage>()).ErrCode);
+        (await client.ExpectAsync<SocketReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.NoMemory);
 
         // Close the first handle, freeing its reservation.
         await client.SendAsync(new CloseMessage { Id = 3, Handle = handle });
-        Assert.Equal(RhpErrorCode.Ok, (await client.ExpectAsync<CloseReplyMessage>()).ErrCode);
+        (await client.ExpectAsync<CloseReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
 
         // Now a new handle fits again.
         await SocketAsync(client, 4);
@@ -183,7 +183,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
 
         // Each is independently capped thereafter.
         await a.SendAsync(new SocketMessage { Id = 2, Pfam = ProtocolFamily.Ax25, Mode = SocketMode.Stream });
-        Assert.Equal(RhpErrorCode.NoMemory, (await a.ExpectAsync<SocketReplyMessage>()).ErrCode);
+        (await a.ExpectAsync<SocketReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.NoMemory);
     }
 
     // ── In-frame read timeout (slowloris) ────────────────────────────────
@@ -204,7 +204,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         using var cts = new CancellationTokenSource(Timeout);
         var buffer = new byte[1];
         int read = await stream.ReadAsync(buffer, cts.Token);
-        Assert.Equal(0, read);   // server closed the connection after the in-frame timeout
+        read.Should().Be(0);   // server closed the connection after the in-frame timeout
     }
 
     [Fact]
@@ -264,7 +264,7 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         // registers one (pre-fix the server announced "handle 100 opened" and nothing ever
         // tore it down, so the session lived on for the life of the process).
         await log.WaitForAsync("the session was discarded", Timeout);
-        Assert.DoesNotContain(log.Lines, line => line.Contains("opened to GB7RDG", StringComparison.Ordinal));
+        log.Lines.Should().NotContain(line => line.Contains("opened to GB7RDG", StringComparison.Ordinal));
 
         // The server is still serving other clients.
         var fresh = await ConnectAsync(server);
@@ -289,11 +289,11 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         await client.SendRawAsync($$"""{"type":"{{huge}}","id":42}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.StartsWith("xxxx", type, StringComparison.Ordinal);
-        Assert.EndsWith("Reply", type, StringComparison.Ordinal);
-        Assert.True(type.Length < 1024, $"the echoed type must be bounded, was {type.Length}");
-        Assert.Contains("\"errCode\":2", json, StringComparison.Ordinal);
-        Assert.Contains("\"id\":42", json, StringComparison.Ordinal);
+        type.Should().StartWith("xxxx");
+        type.Should().EndWith("Reply");
+        (type.Length < 1024).Should().BeTrue($"the echoed type must be bounded, was {type.Length}");
+        json.Should().Contain("\"errCode\":2");
+        json.Should().Contain("\"id\":42");
 
         await PingAsync(client, 2);   // and the session is still usable
     }
@@ -319,13 +319,13 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         await client.SendRawAsync($$"""{"type":"{{huge}}","id":7}""");
 
         var (type, json) = await client.ReadRawAsync();
-        Assert.EndsWith("Reply", type, StringComparison.Ordinal);
-        Assert.True(type.Length < 1024, $"the echoed type must be bounded, was {type.Length}");
-        Assert.Contains("\"errCode\":14", json, StringComparison.Ordinal);
+        type.Should().EndWith("Reply");
+        (type.Length < 1024).Should().BeTrue($"the echoed type must be bounded, was {type.Length}");
+        json.Should().Contain("\"errCode\":14");
 
         // Still on the air: the auth that follows is answered normally.
         await client.SendAsync(new AuthMessage { Id = 8, User = "sysop", Pass = "right" });
-        Assert.Equal(RhpErrorCode.Ok, (await client.ExpectAsync<AuthReplyMessage>()).ErrCode);
+        (await client.ExpectAsync<AuthReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
     }
 
     // ── Auth brute-force throttle ────────────────────────────────────────
@@ -357,10 +357,10 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         {
             await client.SendAsync(new AuthMessage { Id = i, User = "sysop", Pass = "wrong" });
             var reply = await client.ExpectAsync<AuthReplyMessage>();
-            Assert.Equal(RhpErrorCode.Unauthorised, reply.ErrCode);
+            reply.ErrCode.Should().Be(RhpErrorCode.Unauthorised);
         }
 
-        Assert.Equal(3, verifyCalls);   // locked out after 3 — attempts 4 and 5 short-circuited
+        verifyCalls.Should().Be(3);   // locked out after 3, attempts 4 and 5 short-circuited
     }
 
     [Fact]
@@ -384,14 +384,14 @@ public sealed class RhpServerHardeningTests : IAsyncDisposable
         for (int i = 1; i <= 2; i++)
         {
             await client.SendAsync(new AuthMessage { Id = i, User = "sysop", Pass = "wrong" });
-            Assert.Equal(RhpErrorCode.Unauthorised, (await client.ExpectAsync<AuthReplyMessage>()).ErrCode);
+            (await client.ExpectAsync<AuthReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Unauthorised);
         }
         await client.SendAsync(new AuthMessage { Id = 3, User = "sysop", Pass = "right" });
-        Assert.Equal(RhpErrorCode.Ok, (await client.ExpectAsync<AuthReplyMessage>()).ErrCode);
+        (await client.ExpectAsync<AuthReplyMessage>()).ErrCode.Should().Be(RhpErrorCode.Ok);
 
         // The reset means the failure budget is full again — three more failures are
         // needed to lock, proving the earlier two were cleared.
-        Assert.False(throttle.IsLocked(IPAddress.Loopback.ToString()));
+        throttle.IsLocked(IPAddress.Loopback.ToString()).Should().BeFalse();
     }
 
     /// <summary>

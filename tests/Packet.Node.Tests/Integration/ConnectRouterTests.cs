@@ -52,9 +52,9 @@ public sealed class ConnectRouterTests
 
         var resolution = router.Resolve(port: null, AppCall, inbound);
 
-        Assert.False(resolution.Failed);
-        Assert.True(resolution.IsLocalApp);
-        Assert.NotNull(resolution.Connector);
+        resolution.Failed.Should().BeFalse();
+        resolution.IsLocalApp.Should().BeTrue();
+        resolution.Connector.Should().NotBeNull();
     }
 
     [Fact]
@@ -66,9 +66,9 @@ public sealed class ConnectRouterTests
 
         var resolution = router.Resolve(port: 1, RemoteCall, inbound);
 
-        Assert.False(resolution.Failed);
-        Assert.False(resolution.IsLocalApp);
-        Assert.Equal("p1", resolution.Connector!.PortId);
+        resolution.Failed.Should().BeFalse();
+        resolution.IsLocalApp.Should().BeFalse();
+        resolution.Connector!.PortId.Should().Be("p1");
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public sealed class ConnectRouterTests
 
         var resolution = router.Resolve(port: 2, RemoteCall, inbound);
 
-        Assert.True(resolution.Failed);
-        Assert.Contains("No such port 2 (1..1)", resolution.Error, StringComparison.Ordinal);
+        resolution.Failed.Should().BeTrue();
+        resolution.Error.Should().Contain("No such port 2 (1..1)");
     }
 
     [Fact]
@@ -95,9 +95,9 @@ public sealed class ConnectRouterTests
         // RemoteCall isn't a registered app and no port was given → the session's default dial.
         var resolution = router.Resolve(port: null, RemoteCall, inbound);
 
-        Assert.False(resolution.Failed);
-        Assert.False(resolution.IsLocalApp);
-        Assert.Same(fallback, resolution.Connector);
+        resolution.Failed.Should().BeFalse();
+        resolution.IsLocalApp.Should().BeFalse();
+        resolution.Connector.Should().BeSameAs(fallback);
     }
 
     [Fact]
@@ -109,8 +109,8 @@ public sealed class ConnectRouterTests
 
         var resolution = router.Resolve(port: null, RemoteCall, inbound);
 
-        Assert.True(resolution.Failed);
-        Assert.Contains("not available", resolution.Error, StringComparison.OrdinalIgnoreCase);
+        resolution.Failed.Should().BeTrue();
+        resolution.Error.Should().ContainEquivalentOf("not available");
     }
 
     [Fact]
@@ -154,8 +154,8 @@ public sealed class ConnectRouterTests
         remote.SendLine("C DAPPS-7");
 
         var (conn, portId) = await handled.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("local", portId);                       // the crossconnect label, not an RF port
-        Assert.Equal(RemoteCall.ToString(), conn.PeerId);    // the app sees the real caller
+        portId.Should().Be("local");                       // the crossconnect label, not an RF port
+        conn.PeerId.Should().Be(RemoteCall.ToString());    // the app sees the real caller
         await Wait.ForAsync(() => remote.Saw("DAPPSv1>"), "the app's greeting reached the caller via the crossconnect");
 
         // Caller → app data flows over the loopback.

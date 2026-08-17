@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using AwesomeAssertions;
 using Packet.Ax25.Session;
+using Packet.Ax25.Transport;
 using Packet.Core;
 using Xunit;
 
@@ -27,6 +30,11 @@ public class Ax25ListenerConcurrencyTests
     private static readonly Callsign PeerCallA = new("G7XYZ", 7);
     private static readonly Callsign PeerCallB = new("M5ABC", 3);
     private static readonly Callsign PeerCallC = new("VK2DEF", 1);
+
+    // Payload tags identifying the two frames the serial-dispatch test drives
+    // through the pump (see Listener_Dispatches_Frame_Handlers_Serially_On_The_Pump).
+    private static readonly byte[] GateFrame1 = "gate-frame-1"u8.ToArray();
+    private static readonly byte[] GateFrame2 = "gate-frame-2"u8.ToArray();
 
     // ─── Category 1: concurrency / collisions ───────────────────────────
 
@@ -329,69 +337,177 @@ public class Ax25ListenerConcurrencyTests
     }
 
     /// <summary>
-    /// A slow FrameTraced handler must not block the listener's pump —
-    /// otherwise a slow consumer DoSes the modem inbound stream. Test
-    /// strategy: subscribe one handler that sleeps 1s, then a second
-    /// fast handler that records timestamps. Inject two frames back to
-    /// back. The fast handler should observe both within (say) 300ms —
-    /// well under the 1s × 2 the slow handler will take if invoked
-    /// serially on the pump thread.
+    /// The listener dispatches its frame handlers <em>serially, on the inbound pump
+    /// itself</em>. <see cref="Ax25Listener.FrameTraced"/> subscribers are invoked
+    /// synchronously from the body of the pump's <c>await foreach</c> over the
+    /// transport (<c>InboundPumpAsync</c> -&gt; <c>TraceFrame</c> -&gt;
+    /// <c>SafeInvoke</c>), so a handler that blocks backpressures the whole port:
+    /// the pump does not even ask the transport for the next frame until the
+    /// handler returns. That is the contract a consumer has to respect - do heavy
+    /// work off-thread (hand it to a queue and return), because blocking inside a
+    /// handler stalls every subsequent inbound frame on that port.
     /// </summary>
     /// <remarks>
-    /// Worth being honest: today's listener invokes event handlers
-    /// synchronously on the pump thread. If that changes (handlers
-    /// off-loaded to ThreadPool), this test still passes. If today's
-    /// listener does NOT offload, the slow handler DOES block the pump
-    /// — and this test will fail, surfacing the constraint as a real
-    /// design issue rather than letting it lurk silently.
+    /// The negative half ("frame 2 has not been observed") is a proof rather than a
+    /// race, and the probe is the pump's own read of the transport rather than a
+    /// downstream side effect:
+    /// <list type="number">
+    /// <item>The handler signals <c>enteredGate</c> from inside itself and the test
+    /// awaits that signal, so from then on the pump thread is known to be parked
+    /// inside the frame-1 handler.</item>
+    /// <item><see cref="RecordingTransport"/> records every <c>MoveNextAsync</c> the
+    /// pump makes. Parked in the handler, the pump cannot be inside
+    /// <c>MoveNextAsync</c>, so the ask count is still 1 - and it stays 1 until the
+    /// gate is released. Were handlers dispatched off the pump, the pump would have
+    /// gone straight back for the next frame and the count would be 2.</item>
+    /// <item>Frame 2 is queued synchronously by <c>Inject</c> before the assertion
+    /// runs, so it is demonstrably available; the only reason it is not observed is
+    /// the parked pump.</item>
+    /// </list>
+    /// Releasing the gate then makes frame 2 observable, which is what proves the
+    /// negative was not vacuous. The recorded event order states the contract
+    /// directly: the second ask lands after the first handler returned, never
+    /// alongside it.
     /// </remarks>
-    [Trait("Category", "Flaky")]
     [Fact]
-    public async Task Listener_Slow_Handler_Does_Not_Block_Frame_Pump()
+    public async Task Listener_Dispatches_Frame_Handlers_Serially_On_The_Pump()
     {
-        var modem = new LoopbackModem();
-        await using var listener = new Ax25Listener(modem, new Ax25ListenerOptions
+        await using var transport = new RecordingTransport();
+        await using var listener = new Ax25Listener(transport, new Ax25ListenerOptions
         {
             MyCall = LocalCall,
         });
 
-        // Slow handler: sleeps for a full second on every frame.
-        listener.FrameTraced += (_, _) => Thread.Sleep(1000);
+        var enteredGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var leftGateOnRelease = false;
 
-        // Fast handler: records every frame's arrival timestamp.
-        var stamps = new ConcurrentQueue<DateTimeOffset>();
-        listener.FrameTraced += (_, _) => stamps.Enqueue(DateTimeOffset.UtcNow);
+        listener.FrameTraced += (_, e) =>
+        {
+            if (e.Direction != FrameDirection.Received)
+            {
+                return;
+            }
+
+            var info = e.Frame.Info.Span;
+            if (info.SequenceEqual(GateFrame1))
+            {
+                transport.Record("enter-handler-1");
+                enteredGate.TrySetResult();
+
+                // Deliberately block the pump from inside the handler: that IS the
+                // behaviour under test. The bounded wait is a deadlock guard so a
+                // regression fails the run instead of hanging it; a passing run never
+                // reaches the timeout, and the assertion below proves it did not.
+                leftGateOnRelease = releaseGate.Task.Wait(TimeSpan.FromSeconds(30));
+                transport.Record("leave-handler-1");
+            }
+            else if (info.SequenceEqual(GateFrame2))
+            {
+                transport.Record("enter-handler-2");
+                secondObserved.TrySetResult();
+            }
+        };
 
         await listener.StartAsync();
 
-        var t0 = DateTimeOffset.UtcNow;
-        modem.InjectInbound(Ax25Frame.Sabm(LocalCall, PeerCallA));
-        // Inject a second inbound frame quickly. We use a UI frame to
-        // avoid disturbing the session state.
-        await Task.Delay(50);
-        modem.InjectInbound(Ax25Frame.Ui(LocalCall, PeerCallA, ReadOnlySpan<byte>.Empty));
+        try
+        {
+            // Third-party UI frames (A -> B, overheard): the pump traces every frame
+            // it parses, but DispatchInbound drops one not addressed to us straight
+            // away - monitor-only. So the only work between the pump's trace call and
+            // its next read of the transport is the handler itself, which is exactly
+            // what this test measures.
+            transport.Inject(Ax25Frame.Ui(PeerCallB, PeerCallA, GateFrame1));
+            await enteredGate.Task.WithTimeout(TimeSpan.FromSeconds(5));
 
-        // If the slow handler blocks the pump, the fast handler will
-        // observe frame 2 after frame 1 + ~1000ms. If the pump is
-        // non-blocking, the fast handler observes both within ~150ms.
-        //
-        // Acceptance criterion: we observe at least 2 RX-traces. If
-        // they arrive within 800ms each from t0, the pump is decoupled
-        // enough. If not, the listener is serialising on the slow
-        // handler — surface that.
-        await ListenerTestSupport.WaitFor(() => stamps.Count >= 2, TimeSpan.FromSeconds(5));
-        var arrivals = stamps.ToArray();
-        var firstDelta = arrivals[0] - t0;
-        var secondDelta = arrivals[1] - t0;
+            transport.Asks.Should().Be(1,
+                "the pump is parked inside the frame-1 handler, so it cannot have gone back to the transport for another frame");
 
-        // Document the current behaviour. Pump invokes handlers synchronously,
-        // so the slow handler DOES gate per-frame processing. We accept either
-        // mode but flag the constraint explicitly.
-        //
-        // Strict check: the second frame's observation should not be more
-        // than (firstObservation + 50ms-inter-frame-delay + 1100ms-slow-handler-budget).
-        // That's lenient enough to pass even with strict serial dispatch.
-        (secondDelta - firstDelta).Should().BeLessThan(TimeSpan.FromMilliseconds(1500),
-            "the listener's frame pump should not stack up more than one slow-handler invocation between frame observations");
+            // Frame 2 is now queued on the transport with its only reader provably
+            // parked inside the frame-1 handler (see the remarks).
+            transport.Inject(Ax25Frame.Ui(PeerCallB, PeerCallA, GateFrame2));
+            transport.Asks.Should().Be(1, "queueing a frame cannot un-park the pump");
+            secondObserved.Task.IsCompleted.Should().BeFalse(
+                "a slow handler backpressures the port - frame 2 waits behind frame 1's handler");
+            transport.Events.Should().Equal(["ask", "take", "enter-handler-1"],
+                "one read, one handler invocation, and the pump is still inside it");
+        }
+        finally
+        {
+            releaseGate.TrySetResult();
+        }
+
+        await secondObserved.Task.WithTimeout(TimeSpan.FromSeconds(5));
+
+        leftGateOnRelease.Should().BeTrue(
+            "the handler returned because the test released the gate, not because the deadlock guard expired");
+        // Prefix, not the whole log: once frame 2's handler has returned the pump
+        // goes back for a third frame, and that ask may or may not be recorded by
+        // the time this assertion runs. Everything up to frame 2's dispatch is
+        // strictly ordered.
+        transport.Events.Take(7).Should().Equal(
+            ["ask", "take", "enter-handler-1", "leave-handler-1", "ask", "take", "enter-handler-2"],
+            "the pump reads and dispatches one frame at a time - handler invocations never overlap, and the next read waits for the handler to return");
+        listener.IsRunning.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// An <see cref="IAx25Transport"/> that records the pump's reads: one "ask" per
+    /// <c>MoveNextAsync</c> the listener makes on the inbound enumerator, one "take"
+    /// per frame handed over. That makes the pump's position observable to a test
+    /// without any timing assumptions - the serial-dispatch test above asserts on
+    /// what the pump did and when, not on how long something took.
+    /// </summary>
+    private sealed class RecordingTransport : IAx25Transport
+    {
+        private readonly Channel<Ax25InboundFrame> rx =
+            Channel.CreateUnbounded<Ax25InboundFrame>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+
+        private readonly ConcurrentQueue<string> events = new();
+        private int asks;
+
+        /// <summary>Snapshot of the ordered log of pump reads interleaved with whatever the test records.</summary>
+        public IReadOnlyList<string> Events => events.ToArray();
+
+        /// <summary>How many times the pump has asked the transport for a frame.</summary>
+        public int Asks => Volatile.Read(ref asks);
+
+        public void Record(string what) => events.Enqueue(what);
+
+        public void Inject(Ax25Frame frame) =>
+            rx.Writer.TryWrite(new Ax25InboundFrame(frame.ToBytes().ToArray(), 0, DateTimeOffset.UtcNow));
+
+        public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)
+        {
+            events.Enqueue("send");
+            return Task.CompletedTask;
+        }
+
+        public async IAsyncEnumerable<Ax25InboundFrame> ReceiveAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            while (true)
+            {
+                Interlocked.Increment(ref asks);
+                events.Enqueue("ask");
+
+                Ax25InboundFrame frame;
+                try
+                {
+                    frame = await rx.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    yield break;   // listener shutdown
+                }
+
+                events.Enqueue("take");
+                yield return frame;
+            }
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

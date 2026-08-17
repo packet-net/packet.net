@@ -4,6 +4,7 @@ using Packet.Core;
 using Packet.NetRom.Routing;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.NetRom;
 
@@ -15,7 +16,7 @@ namespace Packet.Node.Tests.NetRom;
 [Trait("Category", "Node")]
 public sealed class NetRomPersistenceTests : IDisposable
 {
-    private readonly string dbPath = Path.Combine(Path.GetTempPath(), "pdn-svc-" + Guid.NewGuid().ToString("N") + ".db");
+    private readonly string dbPath = TestPaths.NewPath("pdn-svc", ".db");
 
     private static readonly Callsign Nbr = new("GB7RDG", 0);
     private static readonly Callsign Dest = new("GB7SOT", 0);

@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Tls;
 
@@ -21,7 +22,7 @@ public sealed class TlsCertificateProviderTests : IDisposable
 
     public TlsCertificateProviderTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-tls-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-tls");
         Directory.CreateDirectory(dir);
         pfxPath = Path.Combine(dir, "certs", "server.pfx");
     }

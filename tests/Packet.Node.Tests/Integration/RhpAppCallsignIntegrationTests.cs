@@ -74,10 +74,10 @@ public sealed class RhpAppCallsignIntegrationTests
         // The handler got the session (with the arrival port), the caller got the APP's
         // greeting — and never the node console banner.
         var (conn, portId) = await handled.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("p1", portId);
-        Assert.Equal(RemoteCall.ToString(), conn.PeerId);
+        portId.Should().Be("p1");
+        conn.PeerId.Should().Be(RemoteCall.ToString());
         await Wait.ForAsync(() => remote.Saw("DAPPSv1>"), "the app's greeting reached the caller");
-        Assert.DoesNotContain("Welcome to", remote.ReceivedText, StringComparison.Ordinal);
+        remote.ReceivedText.Should().NotContain("Welcome to");
 
         // Caller → app data flows.
         remote.SendLine("HELLO APP");
@@ -115,12 +115,12 @@ public sealed class RhpAppCallsignIntegrationTests
         await using var supervisor = new PortSupervisor(provider, factory, TimeProvider.System, NullLoggerFactory.Instance);
         await supervisor.StartAsync();
 
-        Assert.Throws<InvalidOperationException>(
-            () => supervisor.RegisterAppCallsign(NodeCall, null, (_, _) => Task.CompletedTask));
+        var registerTheNodesOwnCall = () => supervisor.RegisterAppCallsign(NodeCall, null, (_, _) => Task.CompletedTask);
+        registerTheNodesOwnCall.Should().Throw<InvalidOperationException>();
 
         // And a duplicate app registration is refused too (one listener per callsign).
         using var first = supervisor.RegisterAppCallsign(AppCall, null, (_, _) => Task.CompletedTask);
-        Assert.Throws<InvalidOperationException>(
-            () => supervisor.RegisterAppCallsign(AppCall, null, (_, _) => Task.CompletedTask));
+        var registerTheSameCallAgain = () => supervisor.RegisterAppCallsign(AppCall, null, (_, _) => Task.CompletedTask);
+        registerTheSameCallAgain.Should().Throw<InvalidOperationException>();
     }
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -26,7 +27,7 @@ public sealed class ReadApiTests : IDisposable
         // size against, while telnet stays off so the WAF-hosted node binds no fixed
         // TCP port (could clash across parallel test classes). A disabled port is a
         // legal idle-node port — it is not brought up, so no transport is opened.
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-readapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-readapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, $"""

@@ -26,7 +26,7 @@ public sealed class SysopElevationTests : IDisposable
 
     public SysopElevationTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-sysop-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-sysop");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }
@@ -44,7 +44,7 @@ public sealed class SysopElevationTests : IDisposable
     {
         var store = new SqliteUserStore(dbPath, NullLogger<SqliteUserStore>.Instance);
         store.Create(new UserRecord("sysop", "hash", scope, clock.GetUtcNow(), null));
-        Assert.True(store.SetTotpSecret("sysop", Secret, Callsign));
+        store.SetTotpSecret("sysop", Secret, Callsign).Should().BeTrue();
         return store;
     }
 
@@ -73,9 +73,9 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Elevated as sysop (admin)", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("gb7rdg:M0LTE-1 Connected", conn.Text, StringComparison.Ordinal);
-        Assert.Equal(1, ops.ListSessionsCalls);
+        conn.Text.Should().Contain("Elevated as sysop (admin)");
+        conn.Text.Should().Contain("gb7rdg:M0LTE-1 Connected");
+        ops.ListSessionsCalls.Should().Be(1);
     }
 
     [Fact]
@@ -94,10 +94,10 @@ public sealed class SysopElevationTests : IDisposable
 
         // Exactly one elevation, and a subsequent failure.
         var elevations = CountOccurrences(conn.Text, "Elevated as sysop");
-        Assert.Equal(1, elevations);
-        Assert.Contains("Sysop authentication failed", conn.Text, StringComparison.Ordinal);
+        elevations.Should().Be(1);
+        conn.Text.Should().Contain("Sysop authentication failed");
         // The replay guard is persisted: the store's high-water mark advanced past the code.
-        Assert.NotNull(store.FindByUsername("sysop")!.LastTotpCounter);
+        store.FindByUsername("sysop")!.LastTotpCounter.Should().NotBeNull();
     }
 
     [Fact]
@@ -110,8 +110,8 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Not authorised. Use SYSOP", conn.Text, StringComparison.Ordinal);
-        Assert.Equal(0, ops.ListSessionsCalls);   // the privileged op was never reached
+        conn.Text.Should().Contain("Not authorised. Use SYSOP");
+        ops.ListSessionsCalls.Should().Be(0);   // the privileged op was never reached
     }
 
     [Fact]
@@ -128,9 +128,9 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Elevated as sysop", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("Not authorised. Use SYSOP", conn.Text, StringComparison.Ordinal);
-        Assert.Equal(0, ops.ListSessionsCalls);
+        conn.Text.Should().Contain("Elevated as sysop");
+        conn.Text.Should().Contain("Not authorised. Use SYSOP");
+        ops.ListSessionsCalls.Should().Be(0);
     }
 
     [Fact]
@@ -145,9 +145,9 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("No active sessions", conn.Text, StringComparison.Ordinal);   // SESSIONS allowed
-        Assert.Contains("Not authorised (admin required)", conn.Text, StringComparison.Ordinal);   // PORT denied
-        Assert.Equal(0, ops.SetPortCalls);
+        conn.Text.Should().Contain("No active sessions");   // SESSIONS allowed
+        conn.Text.Should().Contain("Not authorised (admin required)");   // PORT denied
+        ops.SetPortCalls.Should().Be(0);
     }
 
     [Fact]
@@ -160,9 +160,9 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Sysop authentication failed", conn.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Elevated as", conn.Text, StringComparison.Ordinal);
-        Assert.Equal(0, ops.ListSessionsCalls);
+        conn.Text.Should().Contain("Sysop authentication failed");
+        conn.Text.Should().NotContain("Elevated as");
+        ops.ListSessionsCalls.Should().Be(0);
     }
 
     [Fact]
@@ -176,8 +176,8 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Sysop authentication failed", conn.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Elevated as", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Sysop authentication failed");
+        conn.Text.Should().NotContain("Elevated as");
     }
 
     [Fact]
@@ -190,8 +190,8 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("not available", conn.Text, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Elevated as", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().ContainEquivalentOf("not available");
+        conn.Text.Should().NotContain("Elevated as");
     }
 
     [Fact]
@@ -206,9 +206,9 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Usage: SYSOP <user> <code>", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("Elevated as sysop (admin)", conn.Text, StringComparison.Ordinal);
-        Assert.Equal(1, ops.ListSessionsCalls);
+        conn.Text.Should().Contain("Usage: SYSOP <user> <code>");
+        conn.Text.Should().Contain("Elevated as sysop (admin)");
+        ops.ListSessionsCalls.Should().Be(1);
     }
 
     [Fact]
@@ -222,10 +222,10 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Sysop (elevated):", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("CAP CLEAR <id>", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("Commands: SESSIONS, KICK, PORT.", conn.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("RELOAD", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Sysop (elevated):");
+        conn.Text.Should().Contain("CAP CLEAR <id>");
+        conn.Text.Should().Contain("Commands: SESSIONS, KICK, PORT.");
+        conn.Text.Should().NotContain("RELOAD");
     }
 
     [Fact]
@@ -239,8 +239,8 @@ public sealed class SysopElevationTests : IDisposable
 
         await svc.RunAsync(conn);
 
-        Assert.Contains("Commands: SESSIONS, KICK, PORT, RELOAD.", conn.Text, StringComparison.Ordinal);
-        Assert.Contains("RELOAD             re-read the config file", conn.Text, StringComparison.Ordinal);
+        conn.Text.Should().Contain("Commands: SESSIONS, KICK, PORT, RELOAD.");
+        conn.Text.Should().Contain("RELOAD             re-read the config file");
     }
 
     private static int CountOccurrences(string haystack, string needle)

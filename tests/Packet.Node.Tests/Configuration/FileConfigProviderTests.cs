@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Configuration;
 
@@ -11,7 +12,7 @@ public class FileConfigProviderTests : IDisposable
 
     public FileConfigProviderTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-cfg-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-cfg");
         Directory.CreateDirectory(dir);
         path = Path.Combine(dir, "node.yaml");
     }
@@ -151,30 +152,5 @@ public class FileConfigProviderTests : IDisposable
     {
         GC.SuppressFinalize(this);
         try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
-    }
-
-    // A minimal in-memory ILogger that records the rendered Warning-level messages, so a
-    // test can assert the back-compat note reaches the boot log.
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public List<string> Warnings { get; } = new();
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Warning)
-            {
-                Warnings.Add(formatter(state, exception));
-            }
-        }
-
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
-            public void Dispose() { }
-        }
     }
 }

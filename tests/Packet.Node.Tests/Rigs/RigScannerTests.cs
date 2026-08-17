@@ -2,6 +2,7 @@ using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
 using Packet.Node.Core.Rigs;
 using Packet.Node.Core.SelfUpdate;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Rigs;
 
@@ -36,7 +37,7 @@ public sealed class RigScannerTests : IDisposable
 
     public RigScannerTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-rigscan-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-rigscan");
         byIdDir = Path.Combine(dir, "by-id");
         Directory.CreateDirectory(byIdDir);
         devKiss = Device("ttyUSB0");

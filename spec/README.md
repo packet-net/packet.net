@@ -17,8 +17,20 @@ RHPv2 (PWP-0222 / PWP-0245) JSON-over-TCP wire format, expressed in
 
 ```sh
 # Requires: cargo install cddl
-echo '{"type":"auth","id":1,"user":"op","pass":"x"}' | cddl validate --cddl spec/rhp2.cddl --stdin
+echo '{"type":"auth","id":1,"user":"op","pass":"x"}' | cddl --ci validate --cddl spec/rhp2.cddl --stdin
 ```
+
+The global `--ci` flag is not optional. Without it (checked against cddl 0.10.7)
+the CLI prints its validation errors to stderr and **still exits 0**, so any
+script or test that checks only the exit status would report success for any
+input at all, including `"a string"`. `--ci` is what turns a failed validation
+into a non-zero exit.
+
+One more trap for grammar authors: keep rule names distinct from the bareword
+member keys used in the maps. RFC 8610 says a bareword before `:` is the text
+string of that name, but the CLI resolves one that matches a rule name as that
+rule instead, which quietly turns `pfam: pfam` into a `tstr => tstr` type key
+that matches almost anything. Hence the `-val` suffixes in `rhp2.cddl`.
 
 ### Validate the full vectors corpus
 
@@ -26,7 +38,7 @@ echo '{"type":"auth","id":1,"user":"op","pass":"x"}' | cddl validate --cddl spec
 python3 -c "
 import json, subprocess, sys
 for i, v in enumerate(json.load(open('spec/vectors/rhp2-messages.json'))):
-    r = subprocess.run(['cddl','validate','--cddl','spec/rhp2.cddl','--stdin'],
+    r = subprocess.run(['cddl','--ci','validate','--cddl','spec/rhp2.cddl','--stdin'],
                        input=json.dumps(v), capture_output=True, text=True)
     if r.returncode != 0:
         print(f'FAIL [{i}]: {r.stderr}'); sys.exit(1)
@@ -37,8 +49,18 @@ print('All vectors pass')
 ### In CI (pdn)
 
 The `CddlWireConformanceTests` class in `tests/Packet.Rhp2.Tests/` serializes
-every message type the codec emits and validates each against `rhp2.cddl`. A
-code change that alters the wire shape fails the build.
+every message type the codec emits and validates each against `rhp2.cddl`. The
+suite shells out to the `cddl` CLI, so what it reports depends on the tool:
+
+| `cddl` present? | `PDN_REQUIRE_CDDL=1`? | Result |
+|---|---|---|
+| yes | either | every payload is really validated; a wire-shape change fails the build |
+| no | no | every test reports **Skipped** (never a silent pass) |
+| no | yes | every test **fails** |
+
+CI installs the CLI and sets `PDN_REQUIRE_CDDL=1` on the Rhp2 leg, so an
+unprovisioned runner turns red instead of quietly reporting green. Locally the
+suite is Skipped until you `cargo install cddl`.
 
 ## Cross-implementation conformance
 
@@ -46,7 +68,7 @@ Any RHPv2 implementation (server or client) can validate its wire output against
 this grammar:
 
 1. Capture the JSON payloads your implementation emits (one per line, or as an array).
-2. Validate each against `rhp2.cddl` using the `cddl` CLI.
+2. Validate each against `rhp2.cddl` using the `cddl` CLI (with `--ci`, see above).
 3. Replay `vectors/rhp2-messages.json` through your parser — every vector must
    parse without error and produce the expected semantics.
 
