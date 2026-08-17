@@ -11,8 +11,10 @@ namespace Packet.Node.Core.Hosting;
 /// kick (so they can't race a config reconcile or a port bring-up), and
 /// <see cref="IWritableConfigProvider.TryApply"/> for the port enable/disable (the same
 /// validated, persisted, reconcile-driving path the Ports API takes). Reload re-reads the
-/// conffile via <see cref="FileConfigProvider.Reload"/> — identical to the file-watcher's
-/// own trigger.
+/// conffile via <see cref="FileConfigProvider.Reload"/>, identical to the file-watcher's
+/// own trigger, and is offered only on a conffile node: <see cref="SupportsReload"/> is
+/// false when config lives in <c>pdn.db</c> (see <c>docs/config-in-db.md</c>), so the
+/// console neither advertises nor promises a verb that cannot work there.
 /// </summary>
 /// <remarks>
 /// The caller (<c>NodeCommandService</c>) has already authorised: it only invokes these
@@ -107,6 +109,9 @@ internal sealed class HostSysopOperations : ISysopOperations
     }
 
     /// <inheritdoc/>
+    public bool SupportsReload => config is FileConfigProvider;
+
+    /// <inheritdoc/>
     public Task<SysopActionResult> ReloadAsync(CancellationToken ct = default)
     {
         if (config is FileConfigProvider file)
@@ -115,7 +120,10 @@ internal sealed class HostSysopOperations : ISysopOperations
             return Task.FromResult(SysopActionResult.Success(
                 applied ? "Config reloaded." : "Config re-read (no change / unchanged or invalid; see logs)."));
         }
-        return Task.FromResult(SysopActionResult.Failure("Reload is not supported on this node."));
+        // Not a conffile node: config lives in pdn.db (docs/config-in-db.md) and every write
+        // applies through the reconcile path as it is made, so there is nothing to re-read.
+        return Task.FromResult(SysopActionResult.Failure(
+            "Nothing to reload: config lives in pdn.db and applies as soon as it is written."));
     }
 
     // Split "portId:peer" at the first ':' — the id SESSIONS renders. The peer (a callsign

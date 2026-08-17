@@ -123,7 +123,7 @@ public sealed class PortDoctorRunner : IDisposable
         {
             mapped.Add(new PortDoctorProbe(
                 "radio-attached", "unknown",
-                $"radio kind '{radioKind ?? "?"}' attached — the doctor's radio probes support tait-ccdi only",
+                $"radio kind '{radioKind ?? "?"}' attached - the doctor's radio probes support tait-ccdi only",
                 null));
         }
 
@@ -141,13 +141,13 @@ public sealed class PortDoctorRunner : IDisposable
     [
         new PortDoctorProbe(
             TransparentReadinessDoctor.EnabledProbe, "pass",
-            "Transparent mode active — this port is running as a byte pipe, so the radio accepted the Transparent-mode entry command (t) at startup",
+            "Transparent mode active - this port is running as a byte pipe, so the radio accepted the Transparent-mode entry command (t) at startup",
             null),
         new PortDoctorProbe(
             TransparentReadinessDoctor.EscapeProbe, "unknown",
             "the +++ escape is exercised only at port teardown and cannot be safely re-tested on a live byte pipe. "
                 + "Stop the port and run `packet-tune transparent-doctor <ccdiPort> --interrupt` to verify recovery",
-            "if the port ever fails to return to Command mode when stopped, the radio has 'Ignore Escape Sequence' on — "
+            "if the port ever fails to return to Command mode when stopped, the radio has 'Ignore Escape Sequence' on - "
                 + "uncheck it in the Data form (a wedged radio needs a power cycle)"),
         new PortDoctorProbe(
             TransparentReadinessDoctor.BaudCleanProbe, "unknown",

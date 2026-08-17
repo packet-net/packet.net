@@ -374,11 +374,11 @@ public sealed partial class NetRomService
     }
 
     [LoggerMessage(Level = LogLevel.Debug,
-        Message = "NET/ROM INP3: dropped a {Kind} frame to {Neighbour} — no interlink up (drop, don't dial).")]
+        Message = "NET/ROM INP3: dropped a {Kind} frame to {Neighbour} - no interlink up (drop, don't dial).")]
     private partial void LogInp3SendDropped(string neighbour, string kind);
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "NET/ROM INP3: neighbour {Neighbour} down (silent {SilentForMs} ms past the reset window) — dropped {Dropped} route(s).")]
+        Message = "NET/ROM INP3: neighbour {Neighbour} down (silent {SilentForMs} ms past the reset window) - dropped {Dropped} route(s).")]
     private partial void LogInp3NeighbourDown(string neighbour, long silentForMs, int dropped);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "NET/ROM INP3: host tick faulted (continuing).")]

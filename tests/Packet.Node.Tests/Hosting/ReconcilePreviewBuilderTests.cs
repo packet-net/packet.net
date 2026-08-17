@@ -38,6 +38,26 @@ public class ReconcilePreviewBuilderTests
             .Which.Path.Should().Be("identity.callsign");
     }
 
+    // C070: the preview has always put identity.alias in the Live bucket, but
+    // NetRomService captured the alias at construction and no plan arm restarted anything
+    // for an alias-only edit, so the promise was false - the new name never reached the
+    // air until the process restarted. NetRomService.NodeAliasSource now reads it per
+    // broadcast, which is what makes this bucket honest; pin both halves.
+    [Fact]
+    public void An_alias_change_applies_live_and_says_where()
+    {
+        var baseline = Base();
+        var to = baseline with { Identity = baseline.Identity with { Alias = "READING" } };
+
+        var preview = ReconcilePreviewBuilder.Build(baseline, to);
+
+        preview.NodeReset.Should().BeEmpty();
+        preview.PortRestart.Should().BeEmpty();
+        var change = preview.Live.Should().ContainSingle().Subject;
+        change.Path.Should().Be("identity.alias");
+        change.Summary.Should().Contain("READING").And.Contain("NODES broadcast");
+    }
+
     [Fact]
     public void Adding_an_enabled_port_is_a_port_restart()
     {

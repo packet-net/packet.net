@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Hosting;
 
 namespace Packet.Node.Core.Applications.Packages;
 
@@ -44,38 +44,11 @@ public sealed partial class AppServiceSupervisor(
     TimeSpan? backoffBase = null,
     TimeSpan? stopGrace = null) : IAppServiceSupervisor, IAsyncDisposable
 {
-    /// <summary>Backoff doubles per consecutive restart, capped here (the contract's 60 s).</summary>
-    private static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
-
     /// <summary>The crash-loop breaker's sliding window (the contract's 5 minutes).</summary>
     private static readonly TimeSpan CrashLoopWindow = TimeSpan.FromMinutes(5);
 
     /// <summary>Starts inside <see cref="CrashLoopWindow"/> that trip the breaker.</summary>
     private const int CrashLoopThreshold = 5;
-
-    private const int Sigterm = 15;
-    private const int Sigkill = 9;
-
-    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
-
-    // setsid(1) execs the target in-place when the child is not already a group leader (it
-    // never is — it was just forked from the node), so the tracked PID IS the daemon's PID and
-    // pid == pgid: kill(-pid, SIGTERM) reaches the whole tree gracefully.
-    private static readonly Lazy<string?> SetsidPath = new(() =>
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-        foreach (var candidate in new[] { "/usr/bin/setsid", "/bin/setsid" })
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return null;
-    });
 
     private readonly IConfigProvider config = config ?? throw new ArgumentNullException(nameof(config));
     private readonly IAppPackageCatalog catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
@@ -186,7 +159,7 @@ public sealed partial class AppServiceSupervisor(
             if (service.Managed == AppServiceManaged.External)
             {
                 throw new InvalidOperationException(
-                    $"Service '{id}' is owner-managed (managed: external) — pdn does not start or stop it.");
+                    $"Service '{id}' is owner-managed (managed: external) - pdn does not start or stop it.");
             }
             if (pkg.Error is not null)
             {
@@ -194,7 +167,7 @@ public sealed partial class AppServiceSupervisor(
             }
             if (!pkg.Enabled)
             {
-                throw new InvalidOperationException($"App package '{id}' is disabled — enable it first.");
+                throw new InvalidOperationException($"App package '{id}' is disabled - enable it first.");
             }
 
             ServiceEntry? existing;
@@ -444,6 +417,7 @@ public sealed partial class AppServiceSupervisor(
                 Process? process = null;
                 string? spawnError = null;
                 var groupLeader = false;
+                var startedAt = timeProvider.GetUtcNow();
                 try
                 {
                     (process, groupLeader) = Spawn(entry.Spec);
@@ -466,9 +440,12 @@ public sealed partial class AppServiceSupervisor(
                     SetState(entry, AppServiceState.Running, process.Id, detail: null);
                     LogServiceStarted(entry.Id, entry.Spec.Command, process.Id);
 
+                    // The pumps are cancellable and tied to this entry's stop (C076): a stop
+                    // must be able to end log capture, not wait on a pipe nobody will close.
+                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     var pumps = Task.WhenAll(
-                        PumpAsync(process.StandardOutput, line => AppLog.Stdout(appLogger, line)),
-                        PumpAsync(process.StandardError, line => AppLog.Stderr(appLogger, line)));
+                        ProcessSupervision.PumpAsync(process.StandardOutput, line => AppLog.Stdout(appLogger, line), pumpStop.Token),
+                        ProcessSupervision.PumpAsync(process.StandardError, line => AppLog.Stderr(appLogger, line), pumpStop.Token));
                     // A daemon gets no stdin — closing the pipe reads as immediate EOF
                     // (equivalent to /dev/null for a well-behaved service).
                     try
@@ -486,20 +463,36 @@ public sealed partial class AppServiceSupervisor(
                     }
                     catch (OperationCanceledException)
                     {
-                        // Stop requested (disable / shutdown / restart): graceful teardown.
+                        // Stop requested (disable / shutdown / restart): graceful teardown. The
+                        // stop SIGKILLs the group, which releases the pipes, so the drain here
+                        // completes; it is bounded anyway.
+                        var stoppedPid = SafePid(process);
                         await GracefulStopAsync(process, groupLeader, entry.Id).ConfigureAwait(false);
-                        await SwallowAsync(pumps).ConfigureAwait(false);
                         SetState(entry, AppServiceState.Stopped, pid: null, detail: "stopped");
-                        process.Dispose();
+                        await DrainPumpsAsync(pumps, pumpStop, process, stoppedPid, entry.Id).ConfigureAwait(false);
                         return;
                     }
 
+                    var exitedPid = SafePid(process);
                     var exitCode = process.ExitCode;
-                    await SwallowAsync(pumps).ConfigureAwait(false);
-                    process.Dispose();
                     LogServiceExited(entry.Id, exitCode);
                     detail = $"exited {exitCode}";
                     failed = exitCode != 0;
+
+                    // State FIRST, then drain (C076). WaitForExitAsync returns when the DIRECT
+                    // child exits, but a grandchild holding stdout/stderr means pipe EOF may
+                    // never arrive; the entry must not sit in Running with a dead pid while we
+                    // salvage the log tail, and the drain must not park the run loop, the
+                    // reconcile gate and shutdown behind it.
+                    SetState(entry, AppServiceState.Stopped, pid: null, detail);
+                    await DrainPumpsAsync(pumps, pumpStop, process, exitedPid, entry.Id).ConfigureAwait(false);
+
+                    // A run that lasted long enough counts as healthy: reset the backoff so one
+                    // failure after hours of uptime is not punished at the crash-loop rate.
+                    if (ProcessSupervision.WasHealthyRun(timeProvider.GetUtcNow() - startedAt))
+                    {
+                        delay = backoffBase;
+                    }
                 }
 
                 var restart = entry.Spec.Restart switch
@@ -542,7 +535,7 @@ public sealed partial class AppServiceSupervisor(
                     SetState(entry, AppServiceState.Stopped, pid: null, detail: "stopped");
                     return;
                 }
-                delay = delay + delay > BackoffCap ? BackoffCap : delay + delay;
+                delay = ProcessSupervision.NextBackoff(delay);
             }
             SetState(entry, AppServiceState.Stopped, pid: null, detail: "stopped");
         }
@@ -554,112 +547,71 @@ public sealed partial class AppServiceSupervisor(
         }
     }
 
-    /// <summary>Spawn the service: state dir ensured, stdout+stderr captured, environment
-    /// overlay applied over the inherited environment, and — where the platform allows — as a
-    /// new process group (Linux <c>setsid</c>) so a stop can signal the whole tree.</summary>
+    /// <summary>Spawn the service: state dir ensured, then the shared group-leader spawn
+    /// (<see cref="ProcessSupervision.Spawn"/>) with this service's working directory and
+    /// environment overlay.</summary>
     private static (Process Process, bool GroupLeader) Spawn(ServiceSpawnSpec spec)
     {
         Directory.CreateDirectory(spec.StateDir);
-
-        var setsid = SetsidPath.Value;
-        var psi = new ProcessStartInfo
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,           // no shell — args pass verbatim, no injection
-            CreateNoWindow = true,
-            WorkingDirectory = spec.WorkingDirectory,
-            StandardOutputEncoding = Utf8NoBom,
-            StandardErrorEncoding = Utf8NoBom,
-        };
-        if (setsid is not null)
-        {
-            psi.FileName = setsid;
-            psi.ArgumentList.Add(spec.Command);
-        }
-        else
-        {
-            psi.FileName = spec.Command;
-        }
-        foreach (var arg in spec.Args)
-        {
-            psi.ArgumentList.Add(arg);
-        }
-        foreach (var (key, value) in spec.Environment)
-        {
-            psi.Environment[key] = value;
-        }
-
-        var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Process.Start returned null.");
-        return (process, setsid is not null);
+        return ProcessSupervision.Spawn(spec.Command, spec.Args, spec.WorkingDirectory, spec.Environment);
     }
 
     /// <summary>Graceful stop, mirroring <see cref="ExternalProcessApplication"/>'s teardown
     /// discipline with SIGTERM in place of stdin-EOF: TERM the process group (or the child,
-    /// when no group was available) → the grace period → SIGKILL the group + kill the tree.</summary>
+    /// when no group was available) → the grace period → SIGKILL the group + kill the tree.
+    /// The mechanics live in <see cref="ProcessSupervision"/>; only the log line is ours.</summary>
     private async Task GracefulStopAsync(Process process, bool groupLeader, string id)
     {
+        int pid;
         try
         {
-            if (process.HasExited)
-            {
-                return;
-            }
-            var pid = process.Id;
-            if (OperatingSystem.IsWindows())
-            {
-                // No SIGTERM to offer — go straight to the tree kill.
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            _ = SysKill(groupLeader ? -pid : pid, Sigterm);
-            using var grace = new CancellationTokenSource(stopGrace, timeProvider);
-            try
-            {
-                await process.WaitForExitAsync(grace.Token).ConfigureAwait(false);
-                LogServiceStopped(id, pid);
-            }
-            catch (OperationCanceledException)
-            {
-                // TERM ignored within the grace — kill the whole group, then the tree as the
-                // backstop for anything not in the group.
-                LogServiceKilled(id, pid);
-                if (groupLeader)
-                {
-                    _ = SysKill(-pid, Sigkill);
-                }
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                try
-                {
-                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Reaped elsewhere — nothing left to wait for.
-                }
-            }
+            pid = process.Id;
         }
         catch (InvalidOperationException)
         {
-            // No process associated (already torn down) — nothing to do.
+            return;   // no process associated (already torn down)
+        }
+
+        var outcome = await ProcessSupervision
+            .GracefulStopAsync(process, groupLeader, stopGrace, timeProvider).ConfigureAwait(false);
+        switch (outcome)
+        {
+            case ProcessSupervision.StopOutcome.Terminated:
+                LogServiceStopped(id, pid);
+                break;
+            case ProcessSupervision.StopOutcome.Killed:
+                LogServiceKilled(id, pid);
+                break;
+            default:
+                break;   // already exited: nothing to report
+        }
+    }
+
+    /// <summary>Bounded post-exit drain (C076): salvage the log tail, then close our ends of the
+    /// pipes and give up rather than park the supervisor. Disposes the process handle. A lost tail
+    /// is logged; it is never a reason to stop supervising.</summary>
+    private async Task DrainPumpsAsync(
+        Task pumps, CancellationTokenSource pumpStop, Process process, int pid, string id)
+    {
+        var drained = await ProcessSupervision.DrainPumpsAsync(
+            pumps, pumpStop, process, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
+        if (!drained)
+        {
+            LogDrainAbandoned(id, pid);
+        }
+    }
+
+    /// <summary>The child's pid, or 0 once the handle no longer has one. Only ever used for a log
+    /// line - never to signal, because a reaped pid can already belong to something else.</summary>
+    private static int SafePid(Process process)
+    {
+        try
+        {
+            return process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
         }
     }
 
@@ -672,44 +624,6 @@ public sealed partial class AppServiceSupervisor(
             entry.Detail = detail;
         }
     }
-
-    private static async Task PumpAsync(StreamReader reader, Action<string> sink)
-    {
-        try
-        {
-            string? line;
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
-            {
-                if (line.Length > 0)
-                {
-                    sink(line);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Best-effort log capture only — never disturbs supervision.
-        }
-    }
-
-    private static async Task SwallowAsync(Task task)
-    {
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Handled in-pump; ignore here.
-        }
-    }
-
-    // Classic DllImport (not LibraryImport): the source-generated marshaller demands
-    // AllowUnsafeBlocks project-wide, which this one int-only syscall does not justify.
-#pragma warning disable SYSLIB1054
-    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int SysKill(int pid, int signal);
-#pragma warning restore SYSLIB1054
 
     /// <summary>One tracked managed service: the desired spawn it was started for, the run-loop
     /// task that owns its process, and its mutable status (guarded by the supervisor's state
@@ -778,6 +692,10 @@ public sealed partial class AppServiceSupervisor(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App service '{Id}' restart requested.")]
     private partial void LogRestartRequested(string id);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "App service '{Id}' (pid {Pid}) exited but its output pipes stayed open (a background grandchild still holds them); abandoning the log tail.")]
+    private partial void LogDrainAbandoned(string id, int pid);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "App service '{Id}' supervision loop faulted.")]
     private partial void LogRunLoopFault(Exception ex, string id);

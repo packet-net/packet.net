@@ -53,6 +53,7 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
         byte[] Frame,
         TimeSpan? Timeout,
         TaskCompletionSource<TxCompletion>? Receipt);
+    private readonly TimeProvider timeProvider;
     private readonly CancellationTokenSource lifecycle = new();
     private readonly Task pump;
     private int disposed;
@@ -70,11 +71,19 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
     /// before giving up on that frame and releasing the next. <see cref="DefaultPacingTimeout"/>
     /// if not specified.</param>
     /// <param name="logger">Optional logger for per-frame pace faults.</param>
-    public PacingKissModem(ITxCompletionTransport inner, TimeSpan? pacingTimeout = null, ILogger? logger = null)
+    /// <param name="timeProvider">Clock for the link-swap reconnect wait (plan 2.7: no
+    /// wall-clock waits in production code). <see cref="TimeProvider.System"/> if not
+    /// specified; tests drive it with a <c>FakeTimeProvider</c>.</param>
+    public PacingKissModem(
+        ITxCompletionTransport inner,
+        TimeSpan? pacingTimeout = null,
+        ILogger? logger = null,
+        TimeProvider? timeProvider = null)
     {
         this.inner = inner ?? throw new ArgumentNullException(nameof(inner));
         this.pacingTimeout = pacingTimeout ?? DefaultPacingTimeout;
         this.logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
 
         // Unbounded: the listener's send sink is fire-and-forget and must never block,
         // and the node's own offered load is naturally bounded by the AX.25 send windows
@@ -180,18 +189,26 @@ internal sealed partial class PacingKissModem : ITxCompletionTransport, ICsmaCha
         }
     }
 
+    /// <summary>How long the link-swap retry waits for a fresh link before giving up and
+    /// letting T1 retransmit: the reconnect backoff is at most ~30 s per attempt, so this
+    /// covers one attempt with margin.</summary>
+    private static readonly TimeSpan ReconnectWaitBudget = TimeSpan.FromSeconds(35);
+
+    /// <summary>How often the link state is re-polled while waiting.</summary>
+    private static readonly TimeSpan ReconnectPollInterval = TimeSpan.FromMilliseconds(50);
+
     private async Task WaitForReconnectAsync(CancellationToken ct)
     {
-        // Poll the link-state; the reconnect backoff is at most ~30 s per attempt.
-        // Bound the wait so a permanently-down link still degrades to the old
-        // drop-and-let-T1-retransmit behaviour rather than wedging the pump forever.
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(35));
+        // Poll the link-state on the INJECTED clock (plan 2.7). Bound the wait so a
+        // permanently-down link still degrades to the old drop-and-let-T1-retransmit
+        // behaviour rather than wedging the pump forever.
+        using var budget = new CancellationTokenSource(ReconnectWaitBudget, timeProvider);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, budget.Token);
         try
         {
             while (inner is ITransportLinkState { IsReconnecting: true })
             {
-                await Task.Delay(50, timeout.Token).ConfigureAwait(false);
+                await Task.Delay(ReconnectPollInterval, timeProvider, timeout.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

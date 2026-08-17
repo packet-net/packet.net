@@ -34,7 +34,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         var s = await GetAsync<List<RestSession>>("api/v1/sessions", ct).ConfigureAwait(false) ?? [];
         return s.Select(x => new McpSessionInfo(
             x.Id, x.PortId, x.Peer, x.Role ?? "?", x.State ?? "?", x.Vs, x.Vr, x.Window,
-            x.UptimeSeconds, x.BytesIn, x.BytesOut, x.LastActivity ?? "—")).ToList();
+            x.UptimeSeconds, x.BytesIn, x.BytesOut, x.LastActivity ?? "-")).ToList();
     }
 
     public async Task<IReadOnlyList<McpMonitorFrame>> RecentFramesAsync(FrameFilter filter, CancellationToken ct = default)
@@ -92,7 +92,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         }
 
         var neighbours = (topo.Neighbours ?? [])
-            .Select(n => new McpNeighbour(n.Neighbour, n.Alias, n.PortId ?? "?", n.PathQuality, n.LastHeard ?? "—"))
+            .Select(n => new McpNeighbour(n.Neighbour, n.Alias, n.PortId ?? "?", n.PathQuality, n.LastHeard ?? "-"))
             .ToList();
         var destinations = (topo.Destinations ?? [])
             .Select(d => new McpDestination(d.Destination, d.Alias,

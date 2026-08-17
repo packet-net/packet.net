@@ -250,7 +250,7 @@ public static class PdnReadApi
         long uptime = link is { FirstSeen: var seen } && seen != DateTimeOffset.MinValue
             ? (long)Math.Max(0, (now - seen).TotalSeconds)
             : 0;
-        string lastActivity = link is null ? "—" : RelativeAgo(now, link.LastActivity);
+        string lastActivity = link is null ? "-" : RelativeAgo(now, link.LastActivity);
 
         return new SessionInfo(
             Id: $"{portId}:{peer}",

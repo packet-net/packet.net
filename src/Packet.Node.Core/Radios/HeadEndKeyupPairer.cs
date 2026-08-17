@@ -93,7 +93,7 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
         {
             bool conflicted = scan.Conflicts.Any(c => string.Equals(c.InstanceId, instanceId, StringComparison.Ordinal));
             return Unreachable(instanceId, conflicted
-                ? "instance id is a duplicate-address conflict — resolve the clash (pin a config address) first"
+                ? "instance id is a duplicate-address conflict - resolve the clash (pin a config address) first"
                 : "no such head-end instance in the current scan (config ∪ discovery)");
         }
         if (!instance.Reachable)
@@ -359,10 +359,10 @@ public sealed partial class HeadEndKeyupPairer : IHeadEndKeyupPairer
         new(instanceId, Reachable: false, Error: error, Pairs: [], UnpairedTncs: [], UnpairedRadios: [],
             Ambiguous: [], HeadEndKeyupCaveat.Text);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Keyup-pairing: Tait watcher for device '{DeviceId}' failed to open — excluded from pairing.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Keyup-pairing: Tait watcher for device '{DeviceId}' failed to open - excluded from pairing.")]
     private partial void LogWatchOpenFailed(Exception ex, string deviceId);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Keyup-pairing: NinoTNC '{DeviceId}' failed to open/key — reported unpaired.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Keyup-pairing: NinoTNC '{DeviceId}' failed to open/key - reported unpaired.")]
     private partial void LogKeyupFailed(Exception ex, string deviceId);
 
     // A production Tait watcher: latches the PTT-activated edge (TransmitterStateChanged) so the loop

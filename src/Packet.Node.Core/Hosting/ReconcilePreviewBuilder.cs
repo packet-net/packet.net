@@ -48,10 +48,13 @@ public static class ReconcilePreviewBuilder
         }
         else
         {
-            // Cosmetic identity fields are read live by the status API (no on-air effect).
+            // Identity fields other than the callsign are read live: the status API reads
+            // them per request, and the NET/ROM alias is read per NODES broadcast
+            // (NetRomService.NodeAliasSource, C070) rather than captured at start.
             if (!string.Equals(from.Identity.Alias, to.Identity.Alias, StringComparison.Ordinal))
             {
-                live.Add(new ReconcileChange("identity.alias", Live, $"Alias → {Show(to.Identity.Alias)}."));
+                live.Add(new ReconcileChange("identity.alias", Live,
+                    $"Alias → {Show(to.Identity.Alias)}: applies to the next NET/ROM NODES broadcast; no session is disturbed."));
             }
             if (!string.Equals(from.Identity.Grid, to.Identity.Grid, StringComparison.Ordinal))
             {
@@ -113,7 +116,7 @@ public static class ReconcilePreviewBuilder
         // about that rather than implying it went live.
         if (!from.NetRom.Equals(to.NetRom))
         {
-            nodeReset.Add(new ReconcileChange("netRom", NodeReset, "NET/ROM settings changed — applies after a node restart."));
+            nodeReset.Add(new ReconcileChange("netRom", NodeReset, "NET/ROM settings changed - applies after a node restart."));
         }
 
         // The ARDOP and POCSAG services are not driven by the reconcile plan — each is an
@@ -123,12 +126,12 @@ public static class ReconcilePreviewBuilder
         if (!from.Ardop.Equals(to.Ardop))
         {
             portRestart.Add(new ReconcileChange("ardop", PortRestart,
-                "ARDOP virtual TNC reconfigured — the service restarts (connected ARDOP hosts reconnect; the audio device is re-acquired)."));
+                "ARDOP virtual TNC reconfigured - the service restarts (connected ARDOP hosts reconnect; the audio device is re-acquired)."));
         }
         if (!from.Paging.Equals(to.Paging))
         {
             portRestart.Add(new ReconcileChange("paging", PortRestart,
-                "POCSAG paging reconfigured — the service restarts (connected paging clients reconnect; the audio device is re-acquired)."));
+                "POCSAG paging reconfigured - the service restarts (connected paging clients reconnect; the audio device is re-acquired)."));
         }
 
         return new ReconcilePreview(Valid: true, Live: live, PortRestart: portRestart, NodeReset: nodeReset);

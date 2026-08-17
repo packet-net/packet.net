@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Auth;
@@ -50,7 +51,9 @@ public sealed class CapabilityConsoleTests : IDisposable
     private string CurrentCode() => TotpService.ComputeCode(Secret, TotpService.CounterAt(clock.GetUtcNow()));
 
     // Build the service over the given (optional) cache; sysop wired so CAP CLEAR can elevate.
-    private NodeCommandService BuildService(PeerCapabilityCache? cache, IUserStore store, bool authEnabled = true)
+    // The logger is a seam so a test can assert the RENDERED audit line.
+    private NodeCommandService BuildService(
+        PeerCapabilityCache? cache, IUserStore store, bool authEnabled = true, ILogger<NodeCommandService>? logger = null)
     {
         var config = new TestConfigProvider(new NodeConfig
         {
@@ -62,7 +65,7 @@ public sealed class CapabilityConsoleTests : IDisposable
         var env = new NodeConsoleEnvironment(
             config, outboundConnector: null, netRom: null, sysop: ctx,
             applications: null, connectRouter: null, capabilities: cache);
-        return new NodeCommandService(env, NullLogger<NodeCommandService>.Instance, clock);
+        return new NodeCommandService(env, logger ?? NullLogger<NodeCommandService>.Instance, clock);
     }
 
     // A cache (sharing the test clock) seeded with two learned records on two ports.
@@ -153,10 +156,53 @@ public sealed class CapabilityConsoleTests : IDisposable
         Assert.Contains("No cached capability for gb7rdg:NOBODY-9.", conn.Text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Cap_clear_audit_line_names_the_issuing_connection_and_the_target()
+    {
+        var cache = SeededCache();
+        var log = new CapturingLogger<NodeCommandService>();
+        var svc = BuildService(cache, StoreWithSysop(AuthScopes.Operate), logger: log);
+        var conn = new ScriptedConnection("M0LTE-7", NodeTransportKind.Ax25,
+            [$"SYSOP {CurrentCode()}", "CAP CLEAR gb7rdg:M0LTE-1", "B"]);
+
+        await svc.RunAsync(conn);
+
+        // The RENDERED line: the actor is the connection the command came in over, and the
+        // cleared target is its own field (it used to render in the {PeerId} slot).
+        var line = log.Messages.Find(m => m.Text.Contains("CAP-CLEAR", StringComparison.Ordinal));
+        line.Text.Should().Be("Sysop command CAP-CLEAR (gb7rdg:M0LTE-1) run over M0LTE-7.");
+    }
+
+    /// <summary>An in-memory ILogger recording the level + RENDERED text of every entry, so the
+    /// audit assertion reads exactly what an operator would see in the log.</summary>
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Text)> Messages { get; } = new();
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add((logLevel, formatter(state, exception)));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
     // A no-op privileged-operations stub — these tests exercise CAP, not SESSIONS/KICK/etc., so
     // the ops surface just needs to exist for the SysopContext.
     private sealed class NoopSysopOps : ISysopOperations
     {
+        public bool SupportsReload => false;   // a pdn.db node, like every shipped one
+
         public Task<IReadOnlyList<string>> ListSessionsAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<string>>([]);
 

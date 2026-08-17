@@ -1,9 +1,9 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Auth;
 
@@ -251,8 +251,8 @@ public sealed partial class SqliteUserStore : IUserStore
                     u = user.Username,
                     h = user.PasswordHash,
                     s = user.Scope,
-                    c = Stamp(user.CreatedUtc),
-                    l = user.LastLoginUtc is { } when ? Stamp(when) : null,
+                    c = SqliteStamps.Stamp(user.CreatedUtc),
+                    l = user.LastLoginUtc is { } when ? SqliteStamps.Stamp(when) : null,
                     call = user.Callsign,
                     secret = user.TotpSecret,
                     counter = user.LastTotpCounter,
@@ -298,7 +298,7 @@ public sealed partial class SqliteUserStore : IUserStore
             using var conn = Open();
             conn.Execute(
                 "UPDATE user SET last_login_utc = @l WHERE username = @u;",
-                new { u = username, l = Stamp(whenUtc) });
+                new { u = username, l = SqliteStamps.Stamp(whenUtc) });
         }
         catch (SqliteException ex)
         {
@@ -423,16 +423,11 @@ public sealed partial class SqliteUserStore : IUserStore
         row.Username,
         row.PasswordHash,
         row.Scopes,
-        ParseStamp(row.CreatedUtc),
-        string.IsNullOrEmpty(row.LastLoginUtc) ? null : ParseStamp(row.LastLoginUtc),
+        SqliteStamps.ParseStamp(row.CreatedUtc),
+        string.IsNullOrEmpty(row.LastLoginUtc) ? null : SqliteStamps.ParseStamp(row.LastLoginUtc),
         Callsign: string.IsNullOrEmpty(row.Callsign) ? null : row.Callsign,
         TotpSecret: string.IsNullOrEmpty(row.TotpSecret) ? null : row.TotpSecret,
         LastTotpCounter: row.LastTotpCounter);
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     private static bool TryFromBase64(string s, out byte[] bytes)
     {

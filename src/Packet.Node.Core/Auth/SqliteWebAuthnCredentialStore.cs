@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Auth;
 
@@ -103,8 +103,8 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
                     ct = credential.CredType,
                     tr = credential.Transports,
                     ag = credential.AaGuid,
-                    c = Stamp(credential.CreatedUtc),
-                    l = credential.LastUsedUtc is { } when ? Stamp(when) : null,
+                    c = SqliteStamps.Stamp(credential.CreatedUtc),
+                    l = credential.LastUsedUtc is { } when ? SqliteStamps.Stamp(when) : null,
                 });
             return true;
         }
@@ -190,7 +190,7 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
             using var conn = Open();
             conn.Execute(
                 "UPDATE webauthn_credential SET sign_count = @sc, last_used_utc = @l WHERE credential_id = @id;",
-                new { id = credentialId, sc = (long)newCount, l = Stamp(whenUtc) });
+                new { id = credentialId, sc = (long)newCount, l = SqliteStamps.Stamp(whenUtc) });
         }
         catch (SqliteException ex)
         {
@@ -240,13 +240,8 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
         row.CredType,
         row.Transports,
         row.AaGuid,
-        ParseStamp(row.CreatedUtc),
-        string.IsNullOrEmpty(row.LastUsedUtc) ? null : ParseStamp(row.LastUsedUtc));
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        SqliteStamps.ParseStamp(row.CreatedUtc),
+        string.IsNullOrEmpty(row.LastUsedUtc) ? null : SqliteStamps.ParseStamp(row.LastUsedUtc));
 
     // Dapper row DTO (mutable so Dapper's setter mapping binds it).
     private sealed class CredentialRow

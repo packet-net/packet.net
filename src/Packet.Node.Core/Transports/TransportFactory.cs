@@ -216,7 +216,7 @@ public sealed class TransportFactory : ITransportFactory
 
         throw new InvalidOperationException(
             $"no tait-transparent radio with CCDI serial '{t.Serial}' found among {found.Count} " +
-            $"probed port(s) at {t.Baud} baud — is it plugged in and powered?");
+            $"probed port(s) at {t.Baud} baud - is it plugged in and powered?");
     }
 
     // Resolve a host:port to an IPEndPoint. A literal IP short-circuits DNS;

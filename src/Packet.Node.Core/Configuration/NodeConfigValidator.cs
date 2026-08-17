@@ -19,9 +19,17 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
 {
     public NodeConfigValidator()
     {
+        // Bounded at BOTH ends. A version above what this build understands must be a
+        // 422 at the door, not a persisted row: the loader's migration chain throws
+        // NodeConfigSchemaException on a from > to blob (the deliberate
+        // boot-fails-on-unknown-config fail-safe), and that throw escapes the provider
+        // constructor - which `pdn config import` / `export` boot too - so a single
+        // typo'd schemaVersion would brick the node with no shipped recovery path.
         RuleFor(c => c.SchemaVersion)
-            .GreaterThan(0)
-            .WithMessage("SchemaVersion must be a positive integer.");
+            .InclusiveBetween(1, NodeConfig.CurrentSchemaVersion)
+            .WithMessage(c =>
+                $"schemaVersion must be in 1..{NodeConfig.CurrentSchemaVersion} (what this build understands) - got {c.SchemaVersion}. " +
+                "A newer config cannot be read by an older node; upgrade the node first.");
 
         RuleFor(c => c.Identity)
             .NotNull()
@@ -63,7 +71,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
             .WithMessage(c =>
                 "The same head-end device is bound more than once: " +
                 $"{string.Join(", ", DuplicateHeadEndDeviceBindings(c).Select(d => $"'{d}'"))}. " +
-                "A head-end device is single-client — each (headEndId, deviceId) may back only one " +
+                "A head-end device is single-client - each (headEndId, deviceId) may back only one " +
                 "transport or radio across all ports.");
 
         RuleFor(c => c.Management).NotNull().SetValidator(new ManagementValidator());
@@ -76,7 +84,7 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         // Refuse the combination at config-apply rather than ship a false sense of security.
         RuleFor(c => c)
             .Must(c => !(c.Mcp.Oauth.Enabled && !c.Management.Auth.Enabled))
-            .WithMessage("mcp.oauth.enabled requires management.auth.enabled — OAuth tokens are only enforced when management auth is on.");
+            .WithMessage("mcp.oauth.enabled requires management.auth.enabled - OAuth tokens are only enforced when management auth is on.");
 
         RuleFor(c => c.NetRom).NotNull().SetValidator(new NetRomValidator());
 
@@ -299,8 +307,11 @@ public sealed class NodeConfigValidator : AbstractValidator<NodeConfig>
         // Two ports pointing at the same physical device / TCP endpoint can't
         // both own it — flag the collision regardless of Enabled, so toggling a
         // disabled twin on later doesn't suddenly conflict.
+        // EndpointKey, not DescribeEndpoint: the key is the exclusive resource, the
+        // description is display text. They differ for soundmodem (C074), where the mode
+        // is part of the description but not part of what two ports would fight over.
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return ports.All(p => p.Transport is null || seen.Add(p.Transport.DescribeEndpoint()));
+        return ports.All(p => p.Transport is null || seen.Add(p.Transport.EndpointKey));
     }
 }
 
@@ -314,7 +325,7 @@ public sealed class IdentityValidator : AbstractValidator<Identity>
             .Must(c => Callsign.TryParse(c, out _))
             .WithMessage(i =>
                 $"Identity.Callsign '{i.Callsign}' is not a valid AX.25 callsign " +
-                "(1–6 uppercase alphanumerics, optional -SSID in 0–15).");
+                "(1-6 uppercase alphanumerics, optional -SSID in 0-15).");
 
         // The node alias is the single node-name concept (the BPQ NODEALIAS). It is also the alias
         // advertised in the NODES broadcast, whose wire field is 6 octets — so it is capped at 6
@@ -322,6 +333,6 @@ public sealed class IdentityValidator : AbstractValidator<Identity>
         RuleFor(i => i.Alias!)
             .Must(a => a.Trim().Length is >= 1 and <= 6)
             .When(i => !string.IsNullOrWhiteSpace(i.Alias))
-            .WithMessage("Identity.Alias must be 1–6 characters (the NET/ROM alias wire field is 6 octets); put longer friendly text in services.banner.");
+            .WithMessage("Identity.Alias must be 1-6 characters (the NET/ROM alias wire field is 6 octets); put longer friendly text in services.banner.");
     }
 }

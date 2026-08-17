@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Capabilities;
 
@@ -94,8 +94,8 @@ public sealed partial class SqlitePeerCapabilityStore : IPeerCapabilityStore
                     c = record.Peer,
                     ext = ToInt(record.SupportsExtended),
                     srej = ToInt(record.SupportsSrejViaXid),
-                    probed = Stamp(record.LastProbed),
-                    refused = record.LastRefused is { } r ? Stamp(r) : null,
+                    probed = SqliteStamps.Stamp(record.LastProbed),
+                    refused = record.LastRefused is { } r ? SqliteStamps.Stamp(r) : null,
                 });
         }
         catch (SqliteException ex)
@@ -187,18 +187,13 @@ public sealed partial class SqlitePeerCapabilityStore : IPeerCapabilityStore
         row.Peer,
         ToBool(row.SupportsExtended),
         ToBool(row.SupportsSrejViaXid),
-        ParseStamp(row.LastProbedUtc),
-        string.IsNullOrEmpty(row.LastRefusedUtc) ? null : ParseStamp(row.LastRefusedUtc));
+        SqliteStamps.ParseStamp(row.LastProbedUtc),
+        string.IsNullOrEmpty(row.LastRefusedUtc) ? null : SqliteStamps.ParseStamp(row.LastRefusedUtc));
 
     // bool? <-> nullable INTEGER: null stays null; true/false map to 1/0.
     private static long? ToInt(bool? value) => value is { } b ? (b ? 1L : 0L) : null;
 
     private static bool? ToBool(long? value) => value is { } v ? v != 0 : null;
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     // Dapper row DTO (mutable so Dapper's setter mapping binds it).
     private sealed class CapabilityRow

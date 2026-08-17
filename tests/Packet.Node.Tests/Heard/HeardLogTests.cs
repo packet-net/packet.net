@@ -94,17 +94,19 @@ public sealed class HeardLogTests : IDisposable
     [Fact]
     public void The_log_survives_a_simulated_restart()
     {
-        // First run: record over a real sqlite store, then dispose the reference.
+        // First run: record over a real sqlite store, then shut the log down (which stops the
+        // writer and flushes what it still holds - writes are asynchronous now, C077).
         var store1 = new SqliteHeardStore(dbPath);
         var log1 = new HeardLog(store1, clock);
         log1.Record("vhf", "M0LTE-1", T0);
         log1.Record("vhf", "M0LTE-1", T0.AddMinutes(1));
         log1.Record("hf", "G0ABC", T0.AddMinutes(2));
+        log1.Dispose();
 
         // Second run: a brand-new log over a brand-new store on the SAME db file hydrates the
         // persisted state — survival across node restart AND port teardown (no AttachPort needed).
         var store2 = new SqliteHeardStore(dbPath);
-        var log2 = new HeardLog(store2, clock);
+        using var log2 = new HeardLog(store2, clock);
 
         log2.All().Should().HaveCount(2);
         log2.ForPort("vhf").Single().Count.Should().Be(2);     // the count persisted
@@ -164,9 +166,114 @@ public sealed class HeardLogTests : IDisposable
         store.Upsert(new HeardEntry("vhf", "STALE", T0.AddDays(-10), T0.AddDays(-10), 1));
         store.Upsert(new HeardEntry("vhf", "FRESH", T0, T0, 1));
 
-        var log = new HeardLog(store, clock, retention: TimeSpan.FromDays(2));
+        using var log = new HeardLog(store, clock, retention: TimeSpan.FromDays(2));
 
         log.ForPort("vhf").Should().ContainSingle(e => e.Callsign == "FRESH");
+    }
+
+    // ---- C077: the store write must never sit on the AX.25 inbound pump ------------------
+
+    /// <summary>
+    /// Record used to do a synchronous SQLite upsert (and, every 2048 hearings, an inline prune)
+    /// on the inbound pump BEFORE DispatchInbound, so a stalled writer stalled port RX. The write
+    /// now goes to a bounded drop-oldest channel drained by one writer: Record returns promptly
+    /// even while the store is wedged.
+    /// </summary>
+    [Fact]
+    public void Record_returns_promptly_while_the_store_is_blocked()
+    {
+        using var blocked = new BlockingHeardStore();
+        using var log = new HeardLog(blocked, clock);
+
+        // Park the writer inside the store, then keep recording on "the pump".
+        log.Record("vhf", "M0LTE-1", T0);
+        blocked.EnteredWrite.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the writer should have reached the store");
+
+        for (var i = 0; i < 200; i++)
+        {
+            log.Record("vhf", $"G{i}ABC", T0.AddSeconds(i));
+        }
+
+        // Nothing blocked: the hot view is complete and correct with the store still wedged.
+        log.ForPort("vhf").Should().HaveCount(201);
+        blocked.Release();
+    }
+
+    /// <summary>The writer coalesces per (port, callsign): a station heard many times while the
+    /// writer is busy costs ONE row write carrying the newest snapshot, not one per frame.</summary>
+    [Fact]
+    public void The_writer_coalesces_repeated_hearings_of_one_station()
+    {
+        using var store = new BlockingHeardStore();
+        using var log = new HeardLog(store, clock);
+
+        // Park the writer inside its first write, so the rest queue up behind it.
+        log.Record("vhf", "M0LTE-1", T0);
+        store.EnteredWrite.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the writer should have reached the store");
+        for (var i = 1; i < 50; i++)
+        {
+            log.Record("vhf", "M0LTE-1", T0.AddSeconds(i));
+        }
+
+        store.Release();
+        log.Flush();
+
+        store.Rows.Should().BeLessThan(50, "repeated hearings of one station coalesce into one row write");
+        store.Last!.Count.Should().Be(50, "the coalesced row must carry the newest snapshot");
+    }
+
+    /// <summary>A store fault must not be visible to the pump, and Dispose must persist the tail
+    /// (a clean shutdown loses no hearings).</summary>
+    [Fact]
+    public void Dispose_flushes_the_tail_to_the_store()
+    {
+        var store = new SqliteHeardStore(dbPath);
+        var log = new HeardLog(store, clock);
+        log.Record("vhf", "M0LTE-1", T0);
+        log.Dispose();
+
+        new SqliteHeardStore(dbPath).All().Should().ContainSingle()
+            .Which.Callsign.Should().Be("M0LTE-1");
+    }
+
+    /// <summary>A store whose writes park until released, counting the rows that get through:
+    /// the wedged-writer case, and the coalescing evidence.</summary>
+    private sealed class BlockingHeardStore : IHeardStore, IDisposable
+    {
+        private readonly ManualResetEventSlim gate = new(false);
+        private int rows;
+
+        public ManualResetEventSlim EnteredWrite { get; } = new(false);
+
+        /// <summary>Rows actually written (the writer is single-threaded, so this is safe).</summary>
+        public int Rows => Volatile.Read(ref rows);
+
+        public HeardEntry? Last { get; private set; }
+
+        public void Upsert(HeardEntry entry)
+        {
+            EnteredWrite.Set();
+            gate.Wait(TimeSpan.FromSeconds(30));
+            Interlocked.Increment(ref rows);
+            Last = entry;
+        }
+
+        public void Release() => gate.Set();
+
+        public IReadOnlyList<HeardEntry> All() => [];
+
+        public bool Clear(string portId, string callsign) => false;
+
+        public int ClearAll() => 0;
+
+        public int Prune(DateTimeOffset olderThan, int maxPerPort) => 0;
+
+        public void Dispose()
+        {
+            gate.Set();
+            gate.Dispose();
+            EnteredWrite.Dispose();
+        }
     }
 
     [Fact]

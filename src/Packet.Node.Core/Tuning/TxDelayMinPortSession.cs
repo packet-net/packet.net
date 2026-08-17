@@ -339,10 +339,10 @@ public sealed class TxDelayMinPortSession : IAsyncDisposable, IPortTuningSession
         string note = string.Create(CultureInfo.InvariantCulture,
             $"TXDELAY {result.TxDelayMs} ms verified {result.Decoded}/{result.Probes}");
         note += persist is null
-            ? " — not persisted (the port restore re-applies the configured value)"
+            ? " - not persisted (the port restore re-applies the configured value)"
             : persisted
-                ? " — persisted to the port's KISS params"
-                : " — PERSIST FAILED (the port restore re-applies the old configured value)";
+                ? " - persisted to the port's KISS params"
+                : " - PERSIST FAILED (the port restore re-applies the old configured value)";
         EmitLifecycle(
             persisted || persist is null ? TuningSessionState.Ended : TuningSessionState.Error,
             persisted || persist is null ? "ended" : "error",
@@ -355,7 +355,7 @@ public sealed class TxDelayMinPortSession : IAsyncDisposable, IPortTuningSession
     {
         int index = Interlocked.Increment(ref stepIndex);
         string note = string.Create(CultureInfo.InvariantCulture,
-            $"TXDELAY {step.TxDelayMs} ms — {step.Decoded}/{step.Probes} decoded" +
+            $"TXDELAY {step.TxDelayMs} ms - {step.Decoded}/{step.Probes} decoded" +
             $"{(step.MedianPreDataCarrierMs is { } pre ? $", heard pre-data ~{pre:0} ms" : string.Empty)}");
         Publish(new TuningEvent(
             "round",

@@ -75,7 +75,7 @@ public static class AppPackageManifestYaml
         }
 
         return parsed ?? throw new InvalidDataException(
-            "pdn-app.yaml is empty — a manifest must declare `manifest: 1`, an `id`, and at " +
+            "pdn-app.yaml is empty - a manifest must declare `manifest: 1`, an `id`, and at " +
             "least one of session / service / ui.");
     }
 

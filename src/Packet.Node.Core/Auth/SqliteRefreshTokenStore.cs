@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Auth;
 
@@ -109,10 +109,10 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
                     h = token.TokenHash,
                     u = token.Username,
                     f = token.Family,
-                    i = Stamp(token.IssuedUtc),
-                    e = Stamp(token.ExpiresUtc),
+                    i = SqliteStamps.Stamp(token.IssuedUtc),
+                    e = SqliteStamps.Stamp(token.ExpiresUtc),
                     r = token.Revoked ? 1 : 0,
-                    ru = token.RevokedUtc is { } ru ? Stamp(ru) : null,
+                    ru = token.RevokedUtc is { } ru ? SqliteStamps.Stamp(ru) : null,
                 });
             return true;
         }
@@ -154,7 +154,7 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
             using var conn = Open();
             int rows = conn.Execute(
                 "UPDATE refresh_token SET revoked = 1, revoked_utc = @ru WHERE token_hash = @h;",
-                new { h = tokenHash, ru = consumedAtUtc is { } ru ? Stamp(ru) : null });
+                new { h = tokenHash, ru = consumedAtUtc is { } ru ? SqliteStamps.Stamp(ru) : null });
             return rows > 0;
         }
         catch (SqliteException ex)
@@ -208,7 +208,7 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
             using var conn = Open();
             return conn.Execute(
                 "DELETE FROM refresh_token WHERE expires_utc < @e;",
-                new { e = Stamp(olderThanUtc) });
+                new { e = SqliteStamps.Stamp(olderThanUtc) });
         }
         catch (SqliteException ex)
         {
@@ -221,15 +221,10 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
         row.TokenHash,
         row.Username,
         row.Family,
-        ParseStamp(row.IssuedUtc),
-        ParseStamp(row.ExpiresUtc),
+        SqliteStamps.ParseStamp(row.IssuedUtc),
+        SqliteStamps.ParseStamp(row.ExpiresUtc),
         row.Revoked != 0,
-        string.IsNullOrEmpty(row.RevokedUtc) ? null : ParseStamp(row.RevokedUtc));
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        string.IsNullOrEmpty(row.RevokedUtc) ? null : SqliteStamps.ParseStamp(row.RevokedUtc));
 
     // Dapper row DTO (mutable so Dapper's setter mapping binds it).
     private sealed class TokenRow

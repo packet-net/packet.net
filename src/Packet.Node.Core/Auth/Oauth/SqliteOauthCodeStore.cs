@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Auth.Oauth;
 
@@ -62,7 +62,7 @@ public sealed partial class SqliteOauthCodeStore : IOauthCodeStore
                     code.Scope,
                     code.Resource,
                     code.Username,
-                    Expires = code.ExpiresUtc.ToString("O", CultureInfo.InvariantCulture),
+                    Expires = SqliteStamps.Stamp(code.ExpiresUtc),
                 });
         }
         catch (SqliteException ex)
@@ -99,6 +99,25 @@ public sealed partial class SqliteOauthCodeStore : IOauthCodeStore
         }
     }
 
+    /// <inheritdoc />
+    public int PruneExpired(DateTimeOffset now)
+    {
+        try
+        {
+            using var conn = Open();
+            // Mirrors SqliteRefreshTokenStore.PruneExpired: a plain lexical range delete, which is
+            // only sound because every stamp is written UTC-normalised by SqliteStamps.
+            return conn.Execute(
+                "DELETE FROM oauth_code WHERE expires_utc < @Now;",
+                new { Now = SqliteStamps.Stamp(now) });
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return 0;
+        }
+    }
+
     private SqliteConnection Open()
     {
         var conn = new SqliteConnection(connectionString);
@@ -126,7 +145,7 @@ public sealed partial class SqliteOauthCodeStore : IOauthCodeStore
     {
         public OauthCode ToCode() => new(
             Code, ClientId, RedirectUri, CodeChallenge, Scope, Resource, Username,
-            DateTimeOffset.Parse(ExpiresUtcRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+            SqliteStamps.ParseStamp(ExpiresUtcRaw));
     }
 
     [LoggerMessage(EventId = 4211, Level = LogLevel.Warning,

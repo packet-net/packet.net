@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Core.Heard;
@@ -32,8 +33,19 @@ namespace Packet.Node.Core.Heard;
 /// doesn't survive a restart) — keeping tests and embedders that don't supply a <c>pdn.db</c>
 /// unaffected, mirroring the capability cache + NET/ROM service.
 /// </para>
+/// <para>
+/// <b>The radio path is never back-pressured (C077).</b> <see cref="Record"/> runs on the AX.25
+/// inbound pump, BEFORE the frame is dispatched, so anything slow there is channel downtime. Only
+/// the hot-dictionary update is inline; the snapshot is handed to a bounded drop-oldest channel
+/// drained by ONE writer that coalesces per (port, callsign) and upserts the batch in a single
+/// transaction, and the opportunistic retention pass runs on that writer too. This is the
+/// <see cref="Traffic.TrafficLogService"/> shape, applied to the same frame stream: a stalled disk
+/// costs heard-log freshness, never RX. An explicit <see cref="Prune"/> and the operator verbs
+/// (<see cref="Forget"/> / <see cref="Clear"/>) stay synchronous - they are caller-initiated, not
+/// on the pump.
+/// </para>
 /// </remarks>
-public sealed class HeardLog
+public sealed class HeardLog : IDisposable
 {
     /// <summary>Default age-out window — a station not heard for this long is pruned.</summary>
     public static readonly TimeSpan DefaultRetention = TimeSpan.FromDays(30);
@@ -52,8 +64,28 @@ public sealed class HeardLog
     // Opportunistic-prune throttle: instead of a background timer, re-apply the retention policy
     // once every this-many recorded hearings. Cheap (a dictionary scan), bounds both the age-out
     // lag and the per-port size without owning a timer to dispose. Construction prunes once too.
+    // With a store attached the pass runs on the WRITER, not the pump that asked for it.
     private const int PruneEveryRecords = 2048;
     private long recordsSincePrune;
+    private int pruneRequested;
+
+    /// <summary>Bound on the writer hand-off queue. Generous (a snapshot is small) but finite:
+    /// a stalled writer drops heard-log freshness, never RX. Drop-OLDEST because the writer
+    /// coalesces per (port, callsign) anyway, so the newest snapshot for a station is the only
+    /// one that carries information; the hot dictionary remains the truth either way, and the
+    /// station's next frame re-enqueues it.</summary>
+    private const int WriteQueueCapacity = 4096;
+
+    // Null when there is no store: nothing to write, so no queue and no writer task, and the
+    // opportunistic prune (pure in-memory then) stays inline, exactly as before.
+    private readonly Channel<HeardEntry>? writes;
+    private readonly CancellationTokenSource? writerStop;
+
+    // Serialises the drain so the background loop and an explicit Flush/Dispose can never
+    // interleave: whoever holds it takes the pending snapshots AND writes them, so once Flush
+    // acquires it, everything enqueued before the call has reached the store.
+    private readonly object writeGate = new();
+    private int disposed;
 
     /// <summary>Build the log over an optional <paramref name="store"/> (null ⇒ in-memory only),
     /// an optional <paramref name="time"/> source, and the retention policy (age-out window +
@@ -77,6 +109,17 @@ public sealed class HeardLog
             {
                 hot[(e.PortId, e.Callsign)] = Entry.From(e);
             }
+
+            writes = Channel.CreateBounded<HeardEntry>(new BoundedChannelOptions(WriteQueueCapacity)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,    // one drainer at a time, enforced by writeGate
+                SingleWriter = false,   // every port's inbound pump records
+            });
+            writerStop = new CancellationTokenSource();
+            // Not awaited or held: the scheduler roots a running task, and Dispose flushes the
+            // tail through the same gate rather than by waiting on this one.
+            _ = Task.Run(() => WriteLoopAsync(writerStop.Token));
         }
 
         // Re-apply the retention policy to the hydrated set, so a restart drops stations that
@@ -149,14 +192,110 @@ public sealed class HeardLog
                 portId, callsign, entry.FirstHeard, entry.LastHeard, entry.Count,
                 entry.LastRssiDbm, entry.LastSnrDb, entry.MedianPreDataCarrierMs, entry.PreDataCarrierSamples);
         }
-        store?.Upsert(snapshot);
-
         // Timer-free retention: re-apply the policy every PruneEveryRecords hearings.
+        bool prune = false;
         if (Interlocked.Increment(ref recordsSincePrune) >= PruneEveryRecords)
         {
             Interlocked.Exchange(ref recordsSincePrune, 0);
-            Prune();
+            prune = true;
         }
+
+        if (writes is null)
+        {
+            // No store: nothing to write and the prune is a pure in-memory scan, so it stays
+            // where it was. (This is the tests-and-embedders path.)
+            if (prune)
+            {
+                Prune();
+            }
+            return;
+        }
+
+        if (prune)
+        {
+            Volatile.Write(ref pruneRequested, 1);
+        }
+
+        // The ONLY thing this method does with the store: a non-blocking hand-off. TryWrite on a
+        // drop-oldest channel cannot block and cannot fail, so a wedged SQLite writer can never
+        // stall the inbound pump between TraceFrame and DispatchInbound.
+        writes.Writer.TryWrite(snapshot);
+    }
+
+    /// <summary>
+    /// Write every pending hearing through to the store now, on the calling thread. The
+    /// deterministic seam for tests and for <see cref="Dispose"/>; a no-op with no store.
+    /// After it returns, every snapshot enqueued before the call has been persisted.
+    /// </summary>
+    public void Flush()
+    {
+        if (writes is not null)
+        {
+            DrainOnce();
+        }
+    }
+
+    private async Task WriteLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (await writes!.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            {
+                DrainOnce();
+            }
+        }
+        catch (Exception)
+        {
+            // Disposal, or a store fault the store itself already logged. Total by design: this
+            // is a background task on the node's shutdown path, so an escaping fault would be an
+            // unobserved exception, never a diagnosis.
+        }
+    }
+
+    // Take everything queued and write it as ONE coalesced, batched transaction. Coalescing is
+    // what makes a busy channel cheap: a station heard 50 times between two drains is one row
+    // write, not 50. Runs under writeGate so a concurrent Flush/Dispose serialises behind it.
+    private void DrainOnce()
+    {
+        lock (writeGate)
+        {
+            Dictionary<(string PortId, string Callsign), HeardEntry>? batch = null;
+            while (writes!.Reader.TryRead(out var snapshot))
+            {
+                batch ??= [];
+                batch[(snapshot.PortId, snapshot.Callsign)] = snapshot;   // newest wins
+            }
+
+            if (batch is not null)
+            {
+                store!.Upsert([.. batch.Values]);
+            }
+
+            if (Interlocked.Exchange(ref pruneRequested, 0) == 1)
+            {
+                Prune();
+            }
+        }
+    }
+
+    /// <summary>Stop the writer and flush what it still holds. Idempotent.</summary>
+    public void Dispose()
+    {
+        if (writes is null || Interlocked.Exchange(ref disposed, 1) == 1)
+        {
+            return;
+        }
+
+        writerStop!.Cancel();
+        writes.Writer.TryComplete();
+
+        // Flush the tail synchronously, but do NOT block on the writer task and do NOT dispose
+        // the CTS the loop is still parked on. DI disposes this singleton on the host's shutdown
+        // path; a blocking wait on a thread-pool continuation there deadlocks whenever the pool
+        // is saturated. DrainOnce takes the same writeGate the loop holds, so it is a bounded
+        // Monitor wait (no pool involvement) and still guarantees everything enqueued before this
+        // call has reached the store.
+        DrainOnce();
     }
 
     /// <summary>Every heard entry across all ports (per (port, callsign)), most-recently-heard

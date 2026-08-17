@@ -6,7 +6,7 @@
 #
 # Edit the callsign below, then add one or more ports under `ports:`.
 
-schemaVersion: 1
+schemaVersion: 2
 
 identity:
   callsign: N0CALL        # <-- your station callsign, e.g. M0LTE-1

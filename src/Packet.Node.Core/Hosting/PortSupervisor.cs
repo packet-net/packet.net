@@ -811,7 +811,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             transport = new PacingKissModem(
                 txCapable,
                 PacingKissModem.DefaultPacingTimeout,
-                loggerFactory.CreateLogger<PacingKissModem>());
+                loggerFactory.CreateLogger<PacingKissModem>(),
+                timeProvider);
         }
 
         // The modem chain as it stands here (before the optional RSSI-tagging wrap):
@@ -866,7 +867,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                     LogRigDaemonFailed(
                         port.Id, managedRig.Device!,
                         "the daemon never started listening within the readiness budget " +
-                        "(missing rigctld binary, or a device/model it cannot open — see the rigctld log)");
+                        "(missing rigctld binary, or a device/model it cannot open - see the rigctld log)");
                     await rigDaemon.DisposeAsync().ConfigureAwait(false);
                     rigDaemon = null;
                     effectiveRig = null;
@@ -918,7 +919,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
                 if (RadioKinds.Is(radioConfig.Kind, RadioKinds.Rig) && effectiveRig is null && port.Rig is not null)
                 {
                     throw new RigConnectionException(
-                        "the port's node-managed rigctld is not running (it failed to start — " +
+                        "the port's node-managed rigctld is not running (it failed to start - " +
                         "see the log above), so the rig-backed radio has no daemon to dial.");
                 }
                 radio = await radioFactory.CreateAsync(radioConfig, timeProvider, headEndResolver, effectiveRig, ct).ConfigureAwait(false);
@@ -1416,28 +1417,23 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     }
 
     // Update the stored baseline config for a still-running port without
-    // touching the listener — so the next field-diff is against the latest
+    // touching the listener - so the next field-diff is against the latest
     // applied values and a no-op re-apply stays a no-op.
+    //
+    // This mutates Config on the LIVE RunningPort; it deliberately does not build a
+    // replacement. The old code cloned all-but-one member by hand and so dropped the
+    // three it forgot (Rig/RigStatus/RigDaemon): every hot apply - KISS params, AX.25
+    // params, compat, NET/ROM quality - silently detached a rig-attached port's rig,
+    // leaking the poller and the CAT connection while the API reported attached:false.
+    // Mutating the one member that actually changes makes that class of bug
+    // unreachable, whatever members RunningPort grows next.
     private void RebaselineConfig(PortConfig port)
     {
         lock (ports)
         {
             if (ports.TryGetValue(port.Id, out var running))
             {
-                ports[port.Id] = new RunningPort
-                {
-                    Id = running.Id,
-                    Config = port,
-                    Transport = running.Transport,
-                    InnerTransport = running.InnerTransport,
-                    NinoTnc = running.NinoTnc,
-                    Radio = running.Radio,
-                    RadioStatus = running.RadioStatus,
-                    LinkState = running.LinkState,
-                    Listener = running.Listener,
-                    CarrierSense = running.CarrierSense,
-                    Started = running.Started,
-                };
+                running.Config = port;
             }
         }
     }
@@ -1636,22 +1632,22 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted bringing up {Endpoint}; skipping it (other ports unaffected).")]
     private partial void LogPortFaultedEx(Exception ex, string id, string endpoint);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) — inbound frames carry RSSI/SNR metadata.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) - inbound frames carry RSSI/SNR metadata.")]
     private partial void LogRadioAttached(string id, string kind, string radioPort);
 
     // Per-frame soundmodem FEC early-warning (#635): only emitted when a frame actually needed
     // repair (CorrectedBytes > 0), so a clean link stays silent. Not called "BER" — it is an
     // honest byte-error-rate floor, not a bit-error rate.
-    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: inbound {Mode} frame needed FEC repair — {CorrectedBytes} of {FrameBytes} byte(s) corrected (early warning: persistently non-zero means the link is spending its error budget).")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: inbound {Mode} frame needed FEC repair - {CorrectedBytes} of {FrameBytes} byte(s) corrected (early warning: persistently non-zero means the link is spending its error budget).")]
     private partial void LogSoundModemFecCorrections(string id, string mode, int correctedBytes, int frameBytes);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads — capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: radio control attached ({Kind} on {RadioPort}) without RSSI reads - capabilities: {Capabilities}; inbound frames carry no signal metadata.")]
     private partial void LogRadioAttachedNoRssi(string id, string kind, string radioPort, RadioCapabilities capabilities);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: radio control ({Kind} on {RadioPort}) failed to open; the port runs WITHOUT radio metadata.")]
     private partial void LogRadioFaulted(Exception ex, string id, string kind, string radioPort);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: rig control attached ({Kind} at {Endpoint}) — frequency/mode/PTT/meters are polled and projected on /api/v1/rigs.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: rig control attached ({Kind} at {Endpoint}) - frequency/mode/PTT/meters are polled and projected on /api/v1/rigs.")]
     private partial void LogRigAttached(string id, string kind, string endpoint);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: rig control ({Kind} at {Endpoint}) failed to connect; the port runs WITHOUT rig status.")]
@@ -1663,7 +1659,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id} faulted: {Reason}")]
     private partial void LogPortFaulted(string id, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: head-end-bound bring-up failed; retrying every {Seconds}s until the head-end appears (logged once — attempts are Debug).")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Port {Id}: head-end-bound bring-up failed; retrying every {Seconds}s until the head-end appears (logged once - attempts are Debug).")]
     private partial void LogHeadEndRetryArmed(string id, int seconds);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Port {Id}: bring-up retry still failing ({Reason}).")]
@@ -1681,7 +1677,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: AX.25 parameters reseeded live; new sessions use them (existing sessions untouched).")]
     private partial void LogAx25ParamsApplied(string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: AX.25 compatibility profile applied live — inbound parsing from the next frame, session quirks for new sessions (existing sessions untouched).")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: AX.25 compatibility profile applied live - inbound parsing from the next frame, session quirks for new sessions (existing sessions untouched).")]
     private partial void LogCompatApplied(string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: NET/ROM route quality applied live; the next NODES broadcast on this port uses it.")]
@@ -1693,7 +1689,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     [LoggerMessage(Level = LogLevel.Warning, Message = "Console session for {PeerId} faulted.")]
     private partial void LogConsoleFaulted(Exception ex, string peerId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} registered (port {Port}) — the node now answers for it.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} registered (port {Port}) - the node now answers for it.")]
     private partial void LogAppCallsignRegistered(Callsign callsign, string port);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App callsign {Callsign} unregistered.")]

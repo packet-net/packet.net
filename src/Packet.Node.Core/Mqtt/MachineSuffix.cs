@@ -59,7 +59,7 @@ public static class MachineSuffix
         }
         warn?.Invoke(
             "could not derive a stable machine id (no machine-id file, no NIC MAC); " +
-            "using a fixed fallback suffix — two same-named nodes on one broker will collide.");
+            "using a fixed fallback suffix - two same-named nodes on one broker will collide.");
         return FallbackToken;
     }
 

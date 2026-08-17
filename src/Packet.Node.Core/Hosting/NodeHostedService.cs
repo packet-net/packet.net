@@ -178,6 +178,12 @@ public sealed partial class NodeHostedService : BackgroundService
         // by the supervisor as ports come up), so it can never disturb a session.
         netRom = new NetRomService(startConfig.NetRom, timeProvider, loggerFactory.CreateLogger<NetRomService>(), routingStore, capabilityCache, nodeAlias: startConfig.Identity.Alias);
 
+        // The alias in our own NODES broadcast is read LIVE off the current config (C070).
+        // It used to be captured above and never re-read, while the reconcile preview told
+        // the operator identity.alias applied live and no plan arm restarted anything for
+        // it - so an alias-only edit silently never reached the air.
+        netRom.NodeAliasSource = () => config.Current.Identity.Alias;
+
         // Feed the opt-in app NET/ROM adverts (docs/app-packages.md § Application packet identity):
         // when an enabled app's owner set netrom.alias, the node advertises alias → the app's
         // resolved callsign in its NODES broadcast. Read fresh per broadcast off the live config +

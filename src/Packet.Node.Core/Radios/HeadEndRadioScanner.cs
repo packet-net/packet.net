@@ -406,7 +406,7 @@ public sealed partial class HeadEndRadioScanner : IHeadEndRadioScanner
     [LoggerMessage(Level = LogLevel.Information, Message = "Head-end device '{DeviceId}' identified as a Tait CCDI radio after sweeping to {Baud} baud.")]
     private partial void LogBaudSwept(string deviceId, int baud);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{InstanceId}': a port binding uses the legacy by-id device id '{LegacyId}' (inventory device '{CurrentId}') — re-adopt the pairing to migrate the config to the stable by-path id.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{InstanceId}': a port binding uses the legacy by-id device id '{LegacyId}' (inventory device '{CurrentId}') - re-adopt the pairing to migrate the config to the stable by-path id.")]
     private partial void LogLegacyByIdBound(string legacyId, string currentId, string instanceId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Head-end '{InstanceId}' at {Host}:{Port} inventory fetch failed during scan.")]

@@ -192,7 +192,7 @@ public sealed partial class AppInstaller : IAppInstaller
             if (!File.Exists(markerPath))
             {
                 return Task.FromResult(InstallOutcome.Failure(id,
-                    "no install marker — this package was sideloaded by hand, not catalog-installed; " +
+                    "no install marker - this package was sideloaded by hand, not catalog-installed; " +
                     "refusing to delete files we did not place."));
             }
 

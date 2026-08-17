@@ -107,8 +107,9 @@ public sealed partial class BeaconService : IAsyncDisposable
     /// Re-arm every attached port from the current config. Called by the host after a
     /// config reconcile so a beacon-only edit (which is invisible to the port-supervisor
     /// reconcile plan) takes effect: each port re-resolves its effective beacon and the
-    /// timer is re-armed (or disarmed). Idempotent — re-applying the same config simply
-    /// re-arms to the same schedule.
+    /// timer is re-armed (or disarmed). Idempotent in the strong sense: re-applying an
+    /// unchanged beacon leaves the running timer completely alone, so a config edit
+    /// elsewhere never resets a beacon's phase (and never repeats the "armed" line).
     /// </summary>
     public void Reapply()
     {
@@ -148,8 +149,29 @@ public sealed partial class BeaconService : IAsyncDisposable
         var nodeName = NodeTextTemplate.NodeName(identity.Callsign, identity.Alias);
         var text = NodeTextTemplate.Expand(effective.Text, nodeName, identity.Callsign);
 
-        port.Rearm(timeProvider, period, text, OnTick);
-        LogArmed(port.PortId, minutes, text);
+        // Only touch the timer when the effective beacon actually changed. The host calls
+        // Reapply after EVERY reconcile (a KISS tweak on another port lands here too), and a
+        // blind re-arm would push the next beacon a full interval out each time: a node
+        // edited more often than its beacon interval would never transmit.
+        var change = port.Apply(timeProvider, period, text, OnTick);
+        if (change != BeaconArm.Unchanged)
+        {
+            LogArmed(port.PortId, minutes, text);
+        }
+    }
+
+    /// <summary>What <see cref="PortBeacon.Apply"/> actually did, so <see cref="Arm"/> logs
+    /// (and disturbs the schedule) only when something really changed.</summary>
+    private enum BeaconArm
+    {
+        /// <summary>Same period, same text: the running timer was left exactly as it was.</summary>
+        Unchanged,
+
+        /// <summary>Only the text changed: swapped in place, the timer (and its phase) kept.</summary>
+        TextChanged,
+
+        /// <summary>The timer was created or retuned to a new period.</summary>
+        Rearmed,
     }
 
     // The periodic timer callback. Async + fault-swallowing: a send fault is logged, not
@@ -206,6 +228,10 @@ public sealed partial class BeaconService : IAsyncDisposable
         private ITimer? timer;
         private int sending;
 
+        // The period the live timer is currently armed with (Zero when disarmed). Compared on
+        // every Apply so an unchanged beacon is left running untouched.
+        private TimeSpan armedPeriod;
+
         public string PortId { get; } = portId;
         public IBeaconChannel Channel { get; } = channel;
 
@@ -223,17 +249,41 @@ public sealed partial class BeaconService : IAsyncDisposable
             }
         }
 
-        // (Re)arm: swap in the new text + period. We dispose the old timer and create a
-        // fresh one so a changed interval takes effect immediately (ITimer.Change would
-        // also work, but a fresh timer keeps the dueTime == period semantics simple and
-        // matches "first beacon one interval after arming").
-        public void Rearm(TimeProvider clock, TimeSpan period, string newText, Func<PortBeacon, Task> onTick)
+        // Bring the timer in line with the wanted (period, text), doing the LEAST that gets
+        // there:
+        //   * nothing armed        -> create the timer (first beacon one interval from now);
+        //   * same period + text   -> leave it completely alone (phase preserved);
+        //   * text only changed    -> swap the volatile string the callback reads, timer kept;
+        //   * period changed       -> ITimer.Change on the SAME timer (a new interval has no
+        //                             meaning against the old phase, so the due time moves).
+        public BeaconArm Apply(TimeProvider clock, TimeSpan period, string newText, Func<PortBeacon, Task> onTick)
         {
             lock (gate)
             {
+                if (timer is null)
+                {
+                    text = newText;
+                    armedPeriod = period;
+                    timer = clock.CreateTimer(_ => _ = onTick(this), state: null, dueTime: period, period: period);
+                    return BeaconArm.Rearmed;
+                }
+
+                bool periodChanged = armedPeriod != period;
+                bool textChanged = !string.Equals(text, newText, StringComparison.Ordinal);
+                if (!periodChanged && !textChanged)
+                {
+                    return BeaconArm.Unchanged;
+                }
+
                 text = newText;
-                timer?.Dispose();
-                timer = clock.CreateTimer(_ => _ = onTick(this), state: null, dueTime: period, period: period);
+                if (!periodChanged)
+                {
+                    return BeaconArm.TextChanged;
+                }
+
+                armedPeriod = period;
+                timer.Change(period, period);
+                return BeaconArm.Rearmed;
             }
         }
 
@@ -243,6 +293,7 @@ public sealed partial class BeaconService : IAsyncDisposable
             {
                 timer?.Dispose();
                 timer = null;
+                armedPeriod = TimeSpan.Zero;
             }
         }
 
@@ -252,7 +303,7 @@ public sealed partial class BeaconService : IAsyncDisposable
         public void EndSend() => Interlocked.Exchange(ref sending, 0);
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Beacon armed on port {PortId}: every {Minutes} min — \"{Text}\".")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Beacon armed on port {PortId}: every {Minutes} min - \"{Text}\".")]
     private partial void LogArmed(string portId, int minutes, string text);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Beacon disabled on port {PortId} (no timer).")]

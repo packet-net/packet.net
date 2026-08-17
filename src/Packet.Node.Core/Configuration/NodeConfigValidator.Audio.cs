@@ -31,7 +31,7 @@ public sealed class PagingConfigValidator : AbstractValidator<PagingConfig>
         RuleFor(p => p.Ptt)
             .Must(string.IsNullOrEmpty)
             .When(p => FlexDevice.IsFlex(p.Device))
-            .WithMessage("paging.ptt must be empty for a flex: device — the radio keys itself.");
+            .WithMessage("paging.ptt must be empty for a flex: device - the radio keys itself.");
 
         RuleFor(p => p.Device)
             .NotEmpty()
@@ -66,7 +66,7 @@ public sealed class ArdopConfigValidator : AbstractValidator<ArdopConfig>
         RuleFor(a => a.Ptt)
             .Must(string.IsNullOrEmpty)
             .When(a => FlexDevice.IsFlex(a.Device))
-            .WithMessage("ardop.ptt must be empty for a flex: device — the radio keys itself.");
+            .WithMessage("ardop.ptt must be empty for a flex: device - the radio keys itself.");
 
         RuleFor(a => a.Device)
             .NotEmpty()

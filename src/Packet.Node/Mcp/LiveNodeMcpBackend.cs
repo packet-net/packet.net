@@ -325,7 +325,7 @@ public sealed class LiveNodeMcpBackend(
         }
         if (!rig.Capabilities.HasFlag(required))
         {
-            return $"the attached rig does not advertise {required} — nothing was changed.";
+            return $"the attached rig does not advertise {required} - nothing was changed.";
         }
 
         try

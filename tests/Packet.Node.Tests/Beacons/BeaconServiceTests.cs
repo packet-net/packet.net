@@ -215,6 +215,70 @@ public sealed class BeaconServiceTests
     }
 
     [Fact]
+    public async Task Reapply_with_an_unchanged_beacon_preserves_the_phase()
+    {
+        var clock = new FakeTimeProvider();
+        var cfg = new TestConfigProvider(Config(new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "id" }, Port("vhf")));
+        await using var svc = new BeaconService(cfg, clock);
+        var channel = new FakeChannel(Callsign.Parse("M0LTE-1"));
+
+        svc.AttachPort("vhf", channel);
+
+        // 29 minutes into the 30-minute cycle, an unrelated config edit (a KISS tweak on
+        // another port) lands and the host calls Reapply. The beacon itself is unchanged.
+        clock.Advance(TimeSpan.FromMinutes(29));
+        svc.Reapply();
+
+        // The phase survived: the beacon still fires at its original 30-minute mark, not
+        // 30 minutes after the reconcile.
+        clock.Advance(TimeSpan.FromMinutes(1));
+        channel.Sent.Should().ContainSingle("re-applying an unchanged beacon must not push the due time out");
+        channel.Sent[0].Info.Should().Be("id");
+        svc.ArmedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Reapply_with_only_the_text_changed_swaps_the_text_without_resetting_the_phase()
+    {
+        var clock = new FakeTimeProvider();
+        var cfg = new TestConfigProvider(Config(new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "old" }, Port("vhf")));
+        await using var svc = new BeaconService(cfg, clock);
+        var channel = new FakeChannel(Callsign.Parse("M0LTE-1"));
+
+        svc.AttachPort("vhf", channel);
+        clock.Advance(TimeSpan.FromMinutes(29));
+
+        // Same interval, new text: the timer keeps running, the text is swapped in place.
+        cfg.Apply(Config(new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "new" }, Port("vhf")));
+        svc.Reapply();
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        channel.Sent.Should().ContainSingle("a text-only edit keeps the schedule");
+        channel.Sent[0].Info.Should().Be("new");
+    }
+
+    [Fact]
+    public async Task Repeated_Reapply_never_starves_a_beacon()
+    {
+        var clock = new FakeTimeProvider();
+        var cfg = new TestConfigProvider(Config(new BeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "id" }, Port("vhf")));
+        await using var svc = new BeaconService(cfg, clock);
+        var channel = new FakeChannel(Callsign.Parse("M0LTE-1"));
+
+        svc.AttachPort("vhf", channel);
+
+        // An operator editing config every 20 minutes used to reset the 30-minute beacon
+        // every time, so it never transmitted. Three edits across an hour must not stop it.
+        for (int i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromMinutes(20));
+            svc.Reapply();
+        }
+
+        channel.Sent.Should().HaveCount(2, "60 minutes of a 30-minute beacon is two transmissions");
+    }
+
+    [Fact]
     public async Task Reapply_can_turn_a_beacon_off_live()
     {
         var clock = new FakeTimeProvider();

@@ -310,7 +310,7 @@ public sealed partial class AxudpMultipointFrameTransport : IAx25Transport
         return ValueTask.CompletedTask;
     }
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: dropped an outbound frame — {Reason}.")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: dropped an outbound frame - {Reason}.")]
     private partial void LogUnroutable(string reason);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "AXUDP-multipoint: broadcast frame to {Destination} had no broadcast peers configured; dropped.")]

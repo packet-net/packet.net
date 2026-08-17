@@ -217,6 +217,42 @@ public sealed class SqliteConfigProviderTests : IDisposable
         reboot.Current.Identity.Grid.Should().Be("JO01aa");
     }
 
+    // C069: the one write that could brick the node. A candidate stamped with a schema
+    // version this build cannot read must be rejected like any other invalid candidate -
+    // never persisted - because the loader's from > to migration throw escapes the
+    // provider constructor and there is no shipped recovery for a bad row. And the row a
+    // valid write leaves behind must always be readable by the build that wrote it: the
+    // store stamps its OWN target version, not the caller's.
+    [Fact]
+    public void TryApply_a_future_schema_version_is_rejected_and_the_node_still_reboots()
+    {
+        File.WriteAllText(yamlPath, LabYaml);
+        using (var provider = NewProvider(configPath: yamlPath))
+        {
+            var future = provider.Current with { SchemaVersion = NodeConfig.CurrentSchemaVersion + 1 };
+            provider.TryApply(future, out var errors).Should().BeFalse();
+            errors.Should().NotBeEmpty();
+            errors.Should().Contain(e => e.Message.Contains("schemaVersion", StringComparison.Ordinal));
+
+            // A legitimate edit that happens to carry a stale caller stamp still persists,
+            // and persists AT CURRENT.
+            var stale = provider.Current with
+            {
+                SchemaVersion = 1,
+                Identity = provider.Current.Identity with { Grid = "JO01aa" },
+            };
+            provider.TryApply(stale, out var errs).Should().BeTrue();
+            errs.Should().BeEmpty();
+        }
+
+        // The restart the bad stamp used to kill: the provider boots, reads the row, and
+        // finds it stamped at the version this build targets.
+        using var reboot = NewProvider(configPath: yamlPath);
+        reboot.Current.Identity.Grid.Should().Be("JO01aa");
+        NewStore().Load()!.Value.SchemaVer.Should().Be(NodeConfig.CurrentSchemaVersion,
+            "the store stamps the version it targets, so a row is always readable by the build that wrote it");
+    }
+
     [Fact]
     public void TryApply_an_invalid_candidate_is_rejected_atomically_no_event_no_persist()
     {

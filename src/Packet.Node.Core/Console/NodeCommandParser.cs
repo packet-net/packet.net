@@ -297,7 +297,7 @@ public static class NodeCommandParser
         if (!Callsign.TryParse(targetToken.ToUpperInvariant(), out var call))
         {
             return new MalformedConnect(rawLine,
-                $"'{targetToken}' is not a valid callsign (1–6 letters/digits, optional -SSID 0–15).");
+                $"'{targetToken}' is not a valid callsign (1-6 letters/digits, optional -SSID 0-15).");
         }
 
         return new ConnectCommand(call, port);

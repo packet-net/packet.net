@@ -59,7 +59,7 @@ public static class AppCatalogYaml
         }
 
         return parsed ?? throw new InvalidDataException(
-            "apps.yaml is empty — a catalog must declare `catalog: 1` and an `apps:` list.");
+            "apps.yaml is empty - a catalog must declare `catalog: 1` and an `apps:` list.");
     }
 
     /// <summary>

@@ -81,7 +81,7 @@ public sealed partial class HeadEndDeviceResolver
             {
                 throw new InvalidOperationException(
                     $"head-end '{headEndId}': legacy by-id device id '{deviceId}' matches " +
-                    $"{legacyMatches.Count} inventory devices ({string.Join(", ", legacyMatches.Select(p => p.Id))}) — " +
+                    $"{legacyMatches.Count} inventory devices ({string.Join(", ", legacyMatches.Select(p => p.Id))}) - " +
                     "a shared-USB-serial by-id hint cannot identify the physical radio; re-adopt the pairing " +
                     "to bind the stable by-path id.");
             }
@@ -114,7 +114,7 @@ public sealed partial class HeadEndDeviceResolver
     /// <summary>The basename of a <c>/dev/serial/by-id</c> path (already-bare values pass through).</summary>
     internal static string ByIdBasename(string byIdPath) => Path.GetFileName(byIdPath.TrimEnd('/'));
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{HeadEndId}': binding uses a legacy by-id device id '{LegacyId}' (matched inventory device '{CurrentId}' via its byId hint) — re-adopt the pairing to migrate the config to the stable by-path id.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Head-end '{HeadEndId}': binding uses a legacy by-id device id '{LegacyId}' (matched inventory device '{CurrentId}' via its byId hint) - re-adopt the pairing to migrate the config to the stable by-path id.")]
     private partial void LogLegacyByIdBinding(string legacyId, string currentId, string headEndId);
 
     // The headEndId → base address step. With a discovery-backed resolver: config address, else an
@@ -126,14 +126,14 @@ public sealed partial class HeadEndDeviceResolver
         {
             return await addressResolver.ResolveBaseAddressAsync(headEnd.Id, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(
-                    $"head-end '{headEnd.Id}' has no resolvable address — its config address is blank and mDNS " +
+                    $"head-end '{headEnd.Id}' has no resolvable address - its config address is blank and mDNS " +
                     "discovery returned no unambiguous match (unknown instance, or a duplicate-id conflict).");
         }
 
         if (string.IsNullOrWhiteSpace(headEnd.Address))
         {
             throw new InvalidOperationException(
-                $"head-end '{headEnd.Id}' has no address — a manual host:port is required when no mDNS " +
+                $"head-end '{headEnd.Id}' has no address - a manual host:port is required when no mDNS " +
                 "discovery is wired.");
         }
 

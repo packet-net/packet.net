@@ -111,12 +111,12 @@ public static class TuningPreflight
     {
         if (!hasNinoTnc)
         {
-            error = "this port's modem is not a NinoTNC — deviation tuning transmits and measures NinoTNC bursts";
+            error = "this port's modem is not a NinoTNC - deviation tuning transmits and measures NinoTNC bursts";
             return false;
         }
         if (!hasTaitRadio)
         {
-            error = "this port has no Tait CCDI radio attached — the SDM coordination link needs one";
+            error = "this port has no Tait CCDI radio attached - the SDM coordination link needs one";
             return false;
         }
         if (string.IsNullOrEmpty(peerSdmId) || peerSdmId.Length != PeerSdmIdLength)

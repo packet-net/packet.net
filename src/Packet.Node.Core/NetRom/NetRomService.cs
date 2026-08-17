@@ -60,8 +60,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private static readonly TimeSpan PersistDebounce = TimeSpan.FromSeconds(30);
 
     private readonly NetRomConfig config;
-    // The node's own NET/ROM alias for the NODES broadcast — unified with Identity.Alias (the
-    // single node-name concept); passed in at construction since identity.alias is node-reset impact.
+    // The node's own NET/ROM alias for the NODES broadcast - unified with Identity.Alias (the
+    // single node-name concept). The construction-time fallback only: NodeAliasSource is the
+    // live read the composition root wires, so an alias edit hot-applies (C070).
     private readonly string? nodeAlias;
     // The resolved routing role (Endpoint/Transit ⇒ interlinks; Transit ⇒ also relay
     // transit). Resolved once from config.ResolveRouting() so every gate below reads one
@@ -204,6 +205,20 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// catalog + the node callsign authority the resolution needs.
     /// </summary>
     public Func<IReadOnlyList<NodesBroadcastBuilder.Entry>>? AppAdvertSource { get; set; }
+
+    /// <summary>
+    /// Live source of the node's own NET/ROM alias, read fresh on every broadcast. Null =
+    /// the constructor's <c>nodeAlias</c> is used (the old fixed-at-construction behaviour,
+    /// which every test and embedder keeps).
+    /// <para>
+    /// C070: the composition root points this at <c>config.Current.Identity.Alias</c>. The
+    /// alias used to be captured once at construction while the reconcile preview told the
+    /// operator it applied live, and no plan arm restarted anything on an alias-only edit -
+    /// so an alias change never reached the wire until the next process restart. Same shape
+    /// as <see cref="AppAdvertSource"/>: read per broadcast, so an edit hot-applies.
+    /// </para>
+    /// </summary>
+    public Func<string?>? NodeAliasSource { get; set; }
 
     public NetRomService(
         NetRomConfig config,
@@ -720,9 +735,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     private string ResolveAlias()
     {
         // The node alias is unified with Identity.Alias (the single node-name concept).
-        if (!string.IsNullOrWhiteSpace(nodeAlias))
+        // Read the LIVE source first (C070) so an alias-only config edit reaches the next
+        // broadcast; fall back to the value captured at construction when no source is set.
+        var alias = NodeAliasSource?.Invoke() ?? nodeAlias;
+        if (!string.IsNullOrWhiteSpace(alias))
         {
-            return nodeAlias!;
+            return alias!;
         }
         // Fall back to the node callsign base (the first 6 chars reach the wire).
         return nodeCallSet ? nodeCall.Base : string.Empty;
@@ -1354,7 +1372,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: interlink to {Neighbour} disconnected (clean teardown).")]
     private partial void LogInterlinkClosed(string neighbour);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: neighbour {Neighbour} down (interlink unreachable) — dropped {Dropped} route(s); failing over.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: neighbour {Neighbour} down (interlink unreachable) - dropped {Dropped} route(s); failing over.")]
     private partial void LogNeighbourDown(string neighbour, int dropped);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: connect via {Neighbour} to {Destination} failed (neighbour down); trying next route.")]
@@ -1372,13 +1390,13 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: forwarded transit datagram for {Destination} via {Neighbour} (ttl {TimeToLive}).")]
     private partial void LogForwarded(string destination, string neighbour, byte timeToLive);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} — TTL expired.")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} - TTL expired.")]
     private partial void LogForwardTtlExpired(string destination);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} — looped back to its origin.")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} - looped back to its origin.")]
     private partial void LogForwardLoop(string destination);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} — no onward route.")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: dropped transit datagram for {Destination} - no onward route.")]
     private partial void LogForwardNoRoute(string destination);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "NET/ROM: frame tap on port {PortId} faulted (frame ignored).")]

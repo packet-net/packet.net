@@ -15,7 +15,7 @@ internal static partial class SystemLog
     public static partial void UpdateRequested(ILogger logger, string channel, string user, string ip);
 
     [LoggerMessage(EventId = 5002, Level = LogLevel.Information,
-        Message = "system: update STARTED via {Via} (detached) — node will restart; user={User} ip={Ip}")]
+        Message = "system: update STARTED via {Via} (detached) - node will restart; user={User} ip={Ip}")]
     public static partial void UpdateStarted(ILogger logger, string via, string user, string ip);
 
     [LoggerMessage(EventId = 5003, Level = LogLevel.Warning,

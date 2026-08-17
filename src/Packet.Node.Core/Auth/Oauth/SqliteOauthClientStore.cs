@@ -1,10 +1,10 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Auth.Oauth;
 
@@ -57,7 +57,7 @@ public sealed partial class SqliteOauthClientStore : IOauthClientStore
                     client.ClientId,
                     client.ClientName,
                     RedirectUris = JsonSerializer.Serialize(redirectUris),
-                    CreatedUtc = now.ToString("O", CultureInfo.InvariantCulture),
+                    CreatedUtc = SqliteStamps.Stamp(now),
                 });
             return client;
         }
@@ -157,7 +157,7 @@ public sealed partial class SqliteOauthClientStore : IOauthClientStore
             ClientId,
             ClientName,
             JsonSerializer.Deserialize<List<string>>(RedirectUrisJson) ?? [],
-            DateTimeOffset.Parse(CreatedUtcRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+            SqliteStamps.ParseStamp(CreatedUtcRaw));
     }
 
     [LoggerMessage(EventId = 4201, Level = LogLevel.Warning,
