@@ -73,7 +73,10 @@ public static class PdnConfigApi
 
             // A round-tripped edit carries "***" wherever the read projection masked a secret;
             // restore the stored value so an edit elsewhere in the file can't wipe the tailnet
-            // key / broker password / PKCS#12 password (C010).
+            // key / broker password / PKCS#12 password (C010). This stays AHEAD of Validate on
+            // purpose - the validator must see the real stored secrets, not placeholders - and
+            // it is null-safe about a candidate whose blocks are explicit nulls, so a malformed
+            // body reaches the validator and comes back a 422 rather than a 500 (#727 item 4).
             candidate = ConfigRedaction.Unredact(candidate, before);
 
             if (AuthBlockChanged(before, candidate) && !IsAdmin(ctx, before))
@@ -137,7 +140,8 @@ public static class PdnConfigApi
             var before = cfg.Current;
 
             // Same placeholder contract as the structured PUT: the advanced editor reads
-            // masked YAML, so "***" means keep-current (C010).
+            // masked YAML, so "***" means keep-current (C010). Null-safe about an emptied
+            // `mqtt:` / `tailscale:` key, which YamlDotNet parses as a null block (#727 item 4).
             candidate = ConfigRedaction.Unredact(candidate, before);
 
             if (AuthBlockChanged(before, candidate) && !IsAdmin(ctx, before))
@@ -175,28 +179,31 @@ public static class PdnConfigApi
     // whole node open, which makes operate silently equal to admin. So a write that CHANGES
     // the auth block needs `admin`, while every other config write stays `operate`.
     //
-    // Compared field by field on purpose: AuthConfig/WebAuthnConfig are records holding a
-    // list, and record equality on IReadOnlyList<string> is reference equality - two equal
-    // configs deserialized separately would never compare equal, so an == check here would
-    // 403 every operate write.
-    private static bool AuthBlockChanged(NodeConfig before, NodeConfig after)
-    {
-        var a = before.Management.Auth;
-        var b = after.Management.Auth;
-        return a.Enabled != b.Enabled
-            || a.AccessTokenMinutes != b.AccessTokenMinutes
-            || a.RefreshTokenMinutes != b.RefreshTokenMinutes
-            || a.SysopElevationMinutes != b.SysopElevationMinutes
-            || !string.Equals(a.WebAuthn.RelyingPartyId, b.WebAuthn.RelyingPartyId, StringComparison.Ordinal)
-            || !string.Equals(a.WebAuthn.RelyingPartyName, b.WebAuthn.RelyingPartyName, StringComparison.Ordinal)
-            || !a.WebAuthn.AllowedOrigins.SequenceEqual(b.WebAuthn.AllowedOrigins, StringComparer.Ordinal);
-    }
+    // Compared by RECORD VALUE EQUALITY, which is what AuthConfig already offers. The
+    // hand-rolled field compare this replaces was justified by a comment claiming record
+    // equality on the origins list would be reference equality; that was wrong -
+    // WebAuthnConfig ships an explicit Equals over the null-safe ConfigEquality.ListEqual for
+    // exactly this reason, and AuthConfig's compiler-generated Equals uses it. The hand-rolled
+    // version instead dereferenced `WebAuthn.AllowedOrigins` on both sides with no guard, so a
+    // candidate carrying `allowedOrigins: null` was an ArgumentNullException (a 500 rather than
+    // the validator's 422), and once such a config had been PERSISTED the live side was null
+    // too and EVERY later config write on that node 500'd permanently, with no error text to
+    // explain it (#727 item 4).
+    //
+    // The null-conditional walk down to Auth matters for the same reason: STJ and YamlDotNet
+    // both put a real null on the non-nullable Management property for an explicit null block.
+    // Two nulls compare equal (no auth change), and a null on one side only is a change, which
+    // is the conservative answer: it demands admin and then the validator rejects it.
+    private static bool AuthBlockChanged(NodeConfig before, NodeConfig after) =>
+        before.Management?.Auth != after.Management?.Auth;
 
     // Admin for the purposes of that guard. With auth OFF there is no principal and no gate to
     // protect (the whole API is open), so the guard passes through exactly like every other
     // scope check does - it must not block the first-run "turn auth on" write.
     private static bool IsAdmin(HttpContext ctx, NodeConfig before) =>
-        !before.Management.Auth.Enabled
+        // A null management/auth block in the LIVE config (see AuthBlockChanged) reads as
+        // "auth is on": unknown must not open the gate.
+        (before.Management?.Auth?.Enabled ?? true) is false
         || AuthScopes.Satisfies(ctx.User.FindFirst(AuthScopes.ScopeClaim)?.Value, AuthScopes.Admin);
 
     private static IResult AuthChangeForbidden() =>

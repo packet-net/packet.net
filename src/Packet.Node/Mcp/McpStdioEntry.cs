@@ -20,10 +20,20 @@ namespace Packet.Node.Mcp;
 /// (<c>management.auth.enabled</c> defaults to true) and there is no loopback exemption, so a
 /// token-less bridge 401s on every tool call. The token is resolved once at start from, in
 /// order: <c>--token &lt;value&gt;</c>, <c>PDN_NODE_TOKEN</c>, or the contents of the file named
-/// by <c>PDN_NODE_TOKEN_FILE</c>; mint one with <c>POST /api/v1/mcp/token</c>. It is attached as
-/// the client's default <c>Authorization: Bearer</c> header. With no token the bridge still
-/// starts (an auth-off node works fine) and any 401/403 is reported as a plain "node requires
-/// auth" message rather than a raw <c>HttpRequestException</c> (review item C061, #694).
+/// by <c>PDN_NODE_TOKEN_FILE</c>. It is attached as the client's default
+/// <c>Authorization: Bearer</c> header. With no token the bridge still starts (an auth-off node
+/// works fine) and any 401/403 is reported as a plain "node requires auth" message rather than a
+/// raw <c>HttpRequestException</c> (review item C061, #694).
+/// </para>
+/// <para>
+/// <b>Mint it with <c>POST /api/v1/auth/service-token</c></b> (admin; body
+/// <c>{"name":"mcp-bridge","scope":"operate","days":90}</c>), which issues a bounded-lifetime
+/// bearer in the <c>packet.net-control-api</c> audience with the subject
+/// <c>service:mcp-bridge</c>. NOT <c>POST /api/v1/mcp/token</c>: that mints the
+/// <c>packet.net-mcp</c> audience, which every control-API route this bridge calls refuses
+/// (#727 item 2) - it is for a client speaking MCP to <c>/mcp</c> directly, not for this
+/// stdio bridge. A leaked service token is revoked by
+/// <c>pdn auth rotate-signing-key</c> + a node restart.
 /// </para>
 /// </remarks>
 public static class McpStdioEntry

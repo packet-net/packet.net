@@ -269,6 +269,14 @@ const CASES: Case[] = [
     method: "POST", url: "/api/v1/sessions", body: { target: "GB7CIP" },
   },
   {
+    // The connect-out dialog's auto choice is the EMPTY STRING, and it has to reach the wire
+    // as a body with no portId at all: a portId means a direct AX.25 dial on that port, so a
+    // stray "" would cost the caller the node's NET/ROM routing (#727).
+    key: "connectSession", label: "auto (empty port id) omits portId",
+    call: (a) => a.connectSession("GB7CIP", ""),
+    method: "POST", url: "/api/v1/sessions", body: { target: "GB7CIP" },
+  },
+  {
     key: "disconnectSession", call: (a) => a.disconnectSession("vhf-1:GB7CIP"),
     responses: [NO_CONTENT()], method: "DELETE", url: "/api/v1/sessions/vhf-1%3AGB7CIP",
   },

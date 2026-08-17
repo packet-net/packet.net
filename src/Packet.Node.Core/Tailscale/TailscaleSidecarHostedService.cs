@@ -96,10 +96,13 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
     // The live child's pid + whether it leads its own process group, published by the run loop while
     // a child is actually running (cleared on exit/teardown) so the reconcile path can SIGHUP it for
-    // a forwards-only reload. -1 = no running child to signal.
+    // a forwards-only reload. -1 = no running child to signal. The Process HANDLE is held alongside
+    // so a signal can re-check liveness under the same gate (#727 item 11) rather than trusting a
+    // pid the runtime may already have reaped.
     private readonly object childSignalGate = new();
     private int childPid = -1;
     private bool childGroupLeader;
+    private Process? childProcess;
 
     public TailscaleSidecarHostedService(
         IConfigProvider config,
@@ -294,51 +297,88 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     /// up). Returns <c>false</c> when there is no running child pid to signal (mid-backoff/spawn
     /// failure) or the signal fails — the caller then falls back to a restart so the new forwards
     /// still take effect. Caller holds the gate. Total: a fault degrades to a restart, never throws.</summary>
+    /// <remarks>
+    /// The whole read-write-signal sequence runs under <c>childSignalGate</c> (#727 item 11). It
+    /// used to snapshot the pid under the gate, RELEASE it, do the disk I/O, and only then
+    /// <c>kill(-pid, SIGHUP)</c> with no liveness re-check - so a child that exited during the
+    /// rewrite had already been reaped by the runtime, the kernel was free to hand that pid to
+    /// anything, and SIGHUP (default disposition: terminate) could land on an unrelated process
+    /// group. That is the invariant <see cref="ProcessSupervision"/> states outright: every signal
+    /// goes to a child we have established is still alive. Holding the gate serialises this against
+    /// the run loop's <c>ClearChildPid</c>, and the <c>HasExited</c> re-check immediately before the
+    /// kill closes the residual window between the runtime's reap and that clear. The disk I/O
+    /// inside the lock is one small local file write, contended only by a child start/stop.
+    /// </remarks>
     private bool TryReloadForwardsLocked(TailscaleConfig ts, IReadOnlyList<ForwardEntry> forwards)
     {
-        int pid;
-        bool groupLeader;
+        if (OperatingSystem.IsWindows())
+        {
+            return false;   // no SIGHUP to send → restart.
+        }
+
         lock (childSignalGate)
         {
-            pid = childPid;
-            groupLeader = childGroupLeader;
-        }
-        if (pid < 0 || OperatingSystem.IsWindows())
-        {
-            return false;   // no live child to signal (Windows has no SIGHUP either) → restart.
-        }
-
-        // Rewrite the file the child re-reads on SIGHUP. A drop to zero forwards removes the file so
-        // the child reconciles down to none (it reads an absent file as "no forwards"). A write
-        // fault degrades to a restart (which rewrites args + the file from scratch).
-        try
-        {
-            if (forwards.Count > 0)
+            var pid = childPid;
+            var groupLeader = childGroupLeader;
+            var child = childProcess;
+            if (pid < 0 || child is null)
             {
-                if (WriteForwardsFile(ts.StateDir, forwards) is null)
+                return false;   // no live child to signal (mid-backoff / spawn failure) → restart.
+            }
+
+            // Rewrite the file the child re-reads on SIGHUP. A drop to zero forwards removes the file so
+            // the child reconciles down to none (it reads an absent file as "no forwards"). A write
+            // fault degrades to a restart (which rewrites args + the file from scratch).
+            try
+            {
+                if (forwards.Count > 0)
                 {
-                    return false;
+                    if (WriteForwardsFile(ts.StateDir, forwards) is null)
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    DeleteForwardsFile(ts.StateDir);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                DeleteForwardsFile(ts.StateDir);
+                LogForwardsFileFailed(ts.StateDir, ex.Message);
+                return false;
             }
-        }
-        catch (Exception ex)
-        {
-            LogForwardsFileFailed(ts.StateDir, ex.Message);
-            return false;
-        }
 
-        // SIGHUP the child (or its group, mirroring the SIGTERM target). A non-zero return means the
-        // pid was already gone — fall back to a restart.
-        if (ProcessSupervision.Signal(groupLeader ? -pid : pid, ProcessSupervision.Sighup) != 0)
-        {
-            return false;
+            // Re-verify the child is still alive, immediately before the kill and still under the
+            // gate. A reaped pid belongs to the kernel again; never signal one.
+            if (HasExited(child))
+            {
+                return false;
+            }
+
+            // SIGHUP the child (or its group, mirroring the SIGTERM target). A non-zero return means the
+            // pid was already gone; fall back to a restart.
+            if (ProcessSupervision.Signal(groupLeader ? -pid : pid, ProcessSupervision.Sighup) != 0)
+            {
+                return false;
+            }
+            LogForwardsReloaded(pid, forwards.Count);
+            return true;
         }
-        LogForwardsReloaded(pid, forwards.Count);
-        return true;
+    }
+
+    /// <summary>Whether <paramref name="process"/> has exited, treating a torn-down handle as
+    /// exited. Never throws: this only ever gates a signal, and "unsure" must mean "do not signal".</summary>
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     /// <summary>Signal the live child to stop, await its run loop, untrack it. Caller holds the
@@ -423,9 +463,11 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                     LogStarted(binaryPath, process.Id);
                     // Publish the live pid so a forwards-only reconcile can SIGHUP this child for a
                     // live forwards reload (cleared in every exit path below).
-                    PublishChildPid(process.Id, groupLeader);
-                    // Cancellable pumps tied to this run's stop (C076).
-                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    PublishChildPid(process.Id, groupLeader, process);
+                    // NOT linked to the run token (#727 item 6): on the stop path it is already
+                    // cancelled, so linking it dropped the child's whole SIGTERM-to-exit output.
+                    // DrainPumpsAsync cancels this after its own bounded grace (C076).
+                    using var pumpStop = new CancellationTokenSource();
                     var pumps = Task.WhenAll(
                         PumpStdoutAsync(process.StandardOutput, ts.Funnel, pumpStop.Token),
                         ProcessSupervision.PumpAsync(process.StandardError, line => SidecarLog.Stderr(childLogger, line), pumpStop.Token));
@@ -645,12 +687,13 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
     /// <summary>Publish the running child's pid so the reconcile path can SIGHUP it for a live
     /// forwards reload. Called by the run loop the instant the child starts.</summary>
-    private void PublishChildPid(int pid, bool groupLeader)
+    private void PublishChildPid(int pid, bool groupLeader, Process process)
     {
         lock (childSignalGate)
         {
             childPid = pid;
             childGroupLeader = groupLeader;
+            childProcess = process;
         }
     }
 
@@ -664,6 +707,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
             {
                 childPid = -1;
                 childGroupLeader = false;
+                childProcess = null;
             }
         }
     }
@@ -677,6 +721,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         {
             childPid = -1;
             childGroupLeader = false;
+            childProcess = null;
         }
     }
 

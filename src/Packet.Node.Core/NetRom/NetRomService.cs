@@ -751,7 +751,13 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // The node alias is unified with Identity.Alias (the single node-name concept).
         // Read the LIVE source first (C070) so an alias-only config edit reaches the next
         // broadcast; fall back to the value captured at construction when no source is set.
-        var alias = NodeAliasSource?.Invoke() ?? nodeAlias;
+        //
+        // The coalesce is on the PRESENCE of the delegate, not on its result (#727 item 7):
+        // `NodeAliasSource?.Invoke() ?? nodeAlias` silently reinstated the boot-time capture
+        // whenever the live source returned null, so CLEARING identity.alias never reached the
+        // air - every later NODES broadcast still advertised the alias the node booted with.
+        // A wired source is authoritative including when it says "no alias".
+        var alias = NodeAliasSource is { } src ? src() : nodeAlias;
         if (!string.IsNullOrWhiteSpace(alias))
         {
             return alias!;

@@ -24,6 +24,16 @@ namespace Packet.Node.Api;
 /// removed. Only the exact placeholder string is special - a real secret of <c>***</c> would
 /// be preserved rather than set, which is a better failure than leaking it.
 /// </para>
+/// <para>
+/// <b>A null sub-record passes through untouched.</b> These properties are declared
+/// non-nullable, but neither System.Text.Json (web defaults, no
+/// <c>RespectNullableAnnotations</c>) nor YamlDotNet honours that: an explicit
+/// <c>mqtt: null</c>, or an emptied <c>tailscale:</c> key in the advanced YAML editor, lands a
+/// real null on the property. Dereferencing it here threw a NullReferenceException out of the
+/// handler BEFORE the validator's <c>NotNull</c> rules could turn it into a clean 422, so the
+/// panel got an unexplained 500 (#727 item 4). Passing the null through leaves the verdict to
+/// <c>NodeConfigValidator</c>, which is the component that owns it.
+/// </para>
 /// </remarks>
 internal static class ConfigRedaction
 {
@@ -39,15 +49,16 @@ internal static class ConfigRedaction
 
         return config with
         {
-            Tailscale = config.Tailscale with { AuthKey = Mask(config.Tailscale.AuthKey) },
-            Mqtt = config.Mqtt with { Password = Mask(config.Mqtt.Password) },
-            Management = config.Management with
-            {
-                Https = config.Management.Https with
+            Tailscale = config.Tailscale is { } ts ? ts with { AuthKey = Mask(ts.AuthKey) } : config.Tailscale,
+            Mqtt = config.Mqtt is { } mq ? mq with { Password = Mask(mq.Password) } : config.Mqtt,
+            Management = config.Management is { } mg
+                ? mg with
                 {
-                    CertificatePassword = Mask(config.Management.Https.CertificatePassword),
-                },
-            },
+                    Https = mg.Https is { } https
+                        ? https with { CertificatePassword = Mask(https.CertificatePassword) }
+                        : mg.Https,
+                }
+                : config.Management,
         };
     }
 
@@ -61,23 +72,25 @@ internal static class ConfigRedaction
 
         return candidate with
         {
-            Tailscale = candidate.Tailscale with
-            {
-                AuthKey = Restore(candidate.Tailscale.AuthKey, current.Tailscale.AuthKey),
-            },
-            Mqtt = candidate.Mqtt with
-            {
-                Password = Restore(candidate.Mqtt.Password, current.Mqtt.Password),
-            },
-            Management = candidate.Management with
-            {
-                Https = candidate.Management.Https with
+            Tailscale = candidate.Tailscale is { } ts
+                ? ts with { AuthKey = Restore(ts.AuthKey, current.Tailscale?.AuthKey) }
+                : candidate.Tailscale,
+            Mqtt = candidate.Mqtt is { } mq
+                ? mq with { Password = Restore(mq.Password, current.Mqtt?.Password) }
+                : candidate.Mqtt,
+            Management = candidate.Management is { } mg
+                ? mg with
                 {
-                    CertificatePassword = Restore(
-                        candidate.Management.Https.CertificatePassword,
-                        current.Management.Https.CertificatePassword),
-                },
-            },
+                    Https = mg.Https is { } https
+                        ? https with
+                        {
+                            CertificatePassword = Restore(
+                                https.CertificatePassword,
+                                current.Management?.Https?.CertificatePassword),
+                        }
+                        : mg.Https,
+                }
+                : candidate.Management,
         };
     }
 

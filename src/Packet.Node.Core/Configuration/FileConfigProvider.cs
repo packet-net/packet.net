@@ -234,11 +234,20 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
 
         var text = File.ReadAllText(path);
         var candidate = NodeConfigYaml.Parse(text);
+        // An already-persisted config that no longer validates is logged loudly and started
+        // anyway, never thrown (#727 item 5, and see SqliteConfigProvider.LoadOrMigrateOrSeed
+        // for the full reasoning): the provider is constructed before the web host, so a throw
+        // is a restart loop with no panel and no API to fix the config from. A newly tightened
+        // validator rule must be free to land without bricking the nodes it newly disagrees
+        // with. Writes still validate, so the node cannot be edited further into this state.
         var result = validator.Validate(candidate);
         if (!result.IsValid)
         {
-            throw new InvalidOperationException(
-                $"the config at '{path}' is invalid:{Environment.NewLine}{FormatErrors(result.Errors)}");
+            foreach (var error in result.Errors)
+            {
+                LogStoredConfigInvalid(error.PropertyName, error.ErrorMessage);
+            }
+            LogStoredConfigInvalidSummary(result.Errors.Count);
         }
         lastText = text;
         LogLoaded(path, candidate.Identity.Callsign, candidate.Ports.Count);
@@ -255,7 +264,10 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     private void WarnOnConfigQuirks(NodeConfig config)
     {
         var (_, warnings) = config.NetRom.ResolveRouting();
-        foreach (var warning in warnings.Concat(NodeConfigWarnings.DuplicateMqttInstances(config)).Concat(NodeConfigWarnings.WideWindowSeeds(config)))
+        foreach (var warning in warnings
+            .Concat(NodeConfigWarnings.DuplicateMqttInstances(config))
+            .Concat(NodeConfigWarnings.WideWindowSeeds(config))
+            .Concat(NodeConfigWarnings.DuplicateEndpoints(config)))
         {
             LogConfigWarning(warning);
         }
@@ -396,6 +408,14 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Config note: {Warning}")]
     private partial void LogConfigWarning(string warning);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Stored config no longer validates: {Property}: {Error}")]
+    private partial void LogStoredConfigInvalid(string property, string error);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "The node is running on a config that no longer validates ({ErrorCount} error(s) above); fix it via the panel or `pdn config import`. Writes are still validated, so the next config save will reject the same errors.")]
+    private partial void LogStoredConfigInvalidSummary(int errorCount);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "A config-change subscriber threw; continuing.")]
     private partial void LogSubscriberThrew(Exception ex);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Configuration;
@@ -24,11 +25,12 @@ public sealed class AppServiceSupervisorTests
         FakeAppPackageCatalog catalog,
         NodeConfig? config = null,
         TimeSpan? backoffBase = null,
-        TimeSpan? stopGrace = null) => new(
+        TimeSpan? stopGrace = null,
+        ILoggerFactory? loggerFactory = null) => new(
             new TestConfigProvider(config ?? PackageTestSupport.Node()),
             catalog,
             TimeProvider.System,
-            NullLoggerFactory.Instance,
+            loggerFactory ?? NullLoggerFactory.Instance,
             backoffBase ?? TimeSpan.FromMilliseconds(25),
             stopGrace ?? TimeSpan.FromSeconds(2));
 
@@ -529,6 +531,49 @@ public sealed class AppServiceSupervisorTests
 
         File.Exists(pkg.StatePath("term.marker")).Should().BeTrue("the child must see SIGTERM before any kill");
         StatusOf(supervisor, "polite")!.State.Should().Be(AppServiceState.Stopped);
+    }
+
+    /// <summary>
+    /// #727 item 6: what the child prints while it is shutting down is CAPTURED, not discarded.
+    /// </summary>
+    /// <remarks>
+    /// WP8 gave the stdout/stderr pumps a token linked to the entry's stop token. On the stop
+    /// path that token is already cancelled - it is what made <c>WaitForExitAsync</c> throw -
+    /// so the pumps were dead before SIGTERM was even sent, and the child's whole stop grace of
+    /// output went nowhere. That is exactly the window an operator needs when a stop goes wrong
+    /// ("flushing N messages", a shutdown stack trace, a hung-forwarding warning), and before
+    /// WP8 it was captured. The pump source is standalone again; the bounded drain is what ends
+    /// log capture.
+    /// </remarks>
+    [SkippableFact]
+    public async Task A_childs_shutdown_output_is_captured_not_discarded()
+    {
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake services are POSIX shell scripts");
+
+        using var pkg = new TempAppPackage("chatty");
+        pkg.WriteScript("run.sh", """
+            trap 'echo "flushing 3 messages"; echo "shutdown complete"; exit 0' TERM
+            echo "service up"
+            touch "$PDN_APP_STATE/ready"
+            while :; do sleep 0.1; done
+            """);
+        var catalog = new FakeAppPackageCatalog();
+        catalog.Set(pkg.Service("run.sh"));
+        var logs = new CapturingLoggerFactory();
+        await using var supervisor = NewSupervisor(catalog, loggerFactory: logs);
+
+        await supervisor.ReconcileAsync();
+        await Wait.ForAsync(() => File.Exists(pkg.StatePath("ready")), "the child is up and trapping TERM");
+        await Wait.ForAsync(() => logs.Lines.Any(l => l.Contains("service up", StringComparison.Ordinal)),
+            "the pumps are running while the child is up");
+
+        catalog.Set(pkg.Service("run.sh", enabled: false));
+        await supervisor.ReconcileAsync();   // SIGTERM, the grace, then the bounded drain
+
+        StatusOf(supervisor, "chatty")!.State.Should().Be(AppServiceState.Stopped);
+        logs.Lines.Should().Contain(l => l.Contains("flushing 3 messages", StringComparison.Ordinal));
+        logs.Lines.Should().Contain(l => l.Contains("shutdown complete", StringComparison.Ordinal),
+            "the last thing a child says on its way out is the most diagnostic thing it says");
     }
 
     [SkippableFact]

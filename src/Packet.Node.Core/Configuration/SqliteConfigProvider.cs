@@ -207,10 +207,30 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
             : result.Errors.Select(e => new ConfigValidationError(e.PropertyName, e.ErrorMessage)).ToArray();
 
     /// <summary>
-    /// The ctor load path. If the singleton row is present, load + validate + run on it
-    /// (THROW on invalid — a node never boots on broken config). If absent, resolve a source
-    /// (the first-boot migration/seed) and import it.
+    /// The ctor load path. If the singleton row is present, load it and run on it. If absent,
+    /// resolve a source (the first-boot migration/seed) and import it.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An ALREADY-PERSISTED config that no longer validates is logged loudly and started
+    /// anyway; it is never a throw. This provider is constructed at the top of
+    /// <c>Program.cs</c>, before the web host exists, so a throw here is an unhandled exception
+    /// during startup: the process exits, systemd restarts it, it exits again, and the operator
+    /// has no panel, no API and no shipped recovery for the very config that needs editing.
+    /// </para>
+    /// <para>
+    /// That is not hypothetical. #711 (C074) legitimately narrowed the soundmodem duplicate-
+    /// endpoint key from <c>device/mode</c> to <c>device</c>; two soundmodem ports on one ALSA
+    /// device with different modes validated on node-v0.40 and stopped validating on 0.41.0, so
+    /// upgrading such a node turned it into a restart loop (#727 item 5). A tightened rule must
+    /// be free to land without bricking the nodes it newly disagrees with.
+    /// </para>
+    /// <para>
+    /// WRITES still validate. <see cref="Apply"/> rejects an invalid candidate exactly as
+    /// before, so the node cannot be edited further into an invalid state; it just is not
+    /// prevented from starting on the state it is already in.
+    /// </para>
+    /// </remarks>
     private NodeConfig LoadOrMigrateOrSeed()
     {
         var loaded = store.Load();
@@ -219,8 +239,11 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
             var result = validator.Validate(row.Config);
             if (!result.IsValid)
             {
-                throw new InvalidOperationException(
-                    $"the config in pdn.db is invalid:{Environment.NewLine}{FormatErrors(result.Errors)}");
+                foreach (var error in result.Errors)
+                {
+                    LogStoredConfigInvalid(error.PropertyName, error.ErrorMessage);
+                }
+                LogStoredConfigInvalidSummary(result.Errors.Count);
             }
             LogLoaded(row.SchemaVer, row.Config.Identity.Callsign, row.Config.Ports.Count);
             WarnOnConfigQuirks(row.Config);
@@ -364,7 +387,10 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
     private void WarnOnConfigQuirks(NodeConfig config)
     {
         var (_, warnings) = config.NetRom.ResolveRouting();
-        foreach (var warning in warnings.Concat(NodeConfigWarnings.DuplicateMqttInstances(config)).Concat(NodeConfigWarnings.WideWindowSeeds(config)))
+        foreach (var warning in warnings
+            .Concat(NodeConfigWarnings.DuplicateMqttInstances(config))
+            .Concat(NodeConfigWarnings.WideWindowSeeds(config))
+            .Concat(NodeConfigWarnings.DuplicateEndpoints(config)))
         {
             LogConfigWarning(warning);
         }
@@ -421,6 +447,14 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Config note: {Warning}")]
     private partial void LogConfigWarning(string warning);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Stored config no longer validates: {Property}: {Error}")]
+    private partial void LogStoredConfigInvalid(string property, string error);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "The node is running on a config that no longer validates ({ErrorCount} error(s) above); fix it via the panel or `pdn config import`. Writes are still validated, so the next config save will reject the same errors.")]
+    private partial void LogStoredConfigInvalidSummary(int errorCount);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not write the config-migration marker in {Dir} (informational only; boot is unaffected).")]
     private partial void LogMarkerFailed(Exception ex, string dir);

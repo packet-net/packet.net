@@ -51,6 +51,21 @@ shapes are read from the types that define them.
 - **Auth**: one scope per user, hierarchical `read` then `operate` then `admin`. The
   policy on each route is in the table below. Tokens ride the `Authorization` header; the
   scope gate passes everything through when `management.auth.enabled` is off.
+- **Audience**: a token is bound to an audience as well as a scope, and the two are
+  checked separately. Everything under `/api/v1` requires `packet.net-control-api`;
+  `/mcp` requires `packet.net-mcp`. A token minted for one is refused by the other, and
+  the refusal is reported as a 403 (which reads as a scope problem, so check the audience
+  first). Login and refresh issue control-API tokens; `POST /api/v1/mcp/token` issues an
+  MCP one.
+- **Service tokens**: `POST /api/v1/auth/service-token` (admin) mints a long-lived
+  **control-API** bearer for a headless caller, with `sub` = `service:<name>`. Body:
+  `{ "name": "mcp-bridge", "scope": "read" | "operate" | "admin", "days": 90 }` - `scope`
+  defaults to `read` and may not exceed the minting admin's own, `days` defaults to 90 and
+  is clamped to 365. The mint is audited (`service_token`). This is the credential the
+  `pdn mcp` stdio bridge wants in `PDN_NODE_TOKEN`, because that bridge drives the REST
+  control API rather than `/mcp`. Like every node-minted JWT it is stateless and cannot be
+  revoked individually: `pdn auth rotate-signing-key` plus a restart invalidates all of
+  them.
 - **SSE**: the streaming routes are marked in the table. They also accept
   `?access_token=`, because a browser `EventSource` has no header API. That permission is
   endpoint metadata (`AcceptsQueryAccessToken`), not a path list, so a new feed either
@@ -74,6 +89,13 @@ shapes are read from the types that define them.
   components (`radio` / `rig` / `rigctld` / `transport`). `since` is when the port entered its
   current state. A reconcile is asynchronous, so the status returned straight after a
   `lifecycle up` may still read `configured` or `starting`: that is honest, not a failure.
+- **Connect-out (`POST /api/v1/sessions`) and `portId`**: naming a port is a **direct AX.25
+  dial on that port**, the same as the console's `C <port> <call>`, and is never NET/ROM
+  wrapped. **Omitting `portId` is how you ask the node to route**: it resolves its default
+  connector, which is NET/ROM-wrapped when NET/ROM connect routing is on, so an alias or a
+  distant destination goes over the network. Send `portId` only when a direct dial on that
+  specific port is what you want; a client that always sends one cannot reach a NET/ROM
+  alias at all.
 
 ## The route inventory
 
@@ -105,6 +127,7 @@ To regenerate after adding or moving a route: `scripts/update-node-api.sh`.
 | POST | `/api/v1/auth/login` | anonymous |
 | POST | `/api/v1/auth/logout` | anonymous |
 | POST | `/api/v1/auth/refresh` | anonymous |
+| POST | `/api/v1/auth/service-token` | `admin` |
 | DELETE | `/api/v1/auth/totp/enroll` | `read` |
 | GET | `/api/v1/auth/totp/enroll` | `read` |
 | POST | `/api/v1/auth/totp/enroll/begin` | `read` |

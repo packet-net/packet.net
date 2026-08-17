@@ -10,7 +10,8 @@ namespace Packet.Node.Api;
 /// <summary>
 /// The authentication side of the pdn node control API: login (with refresh-token
 /// issue + lockout hardening), refresh-token rotation + logout, the first-run setup
-/// probe + bootstrap, and user management.
+/// probe + bootstrap, user management, and the admin-minted long-lived service token a
+/// headless caller (the <c>pdn mcp</c> stdio bridge) uses against the control API.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -436,8 +437,97 @@ public static class PdnAuthApi
             return Results.NoContent();
         });
 
+        // --- Admin-gated service tokens -------------------------------------------
+        //
+        // A long-lived CONTROL-API bearer for a headless caller: today that is the `pdn mcp`
+        // stdio bridge, which talks to the node's REST control API and needs a credential that
+        // outlives a 60-minute login token. There was none (#727 item 2). The bridge told the
+        // operator to mint one with POST /api/v1/mcp/token, but that mints aud=packet.net-mcp
+        // and every route the bridge calls is bound to aud=packet.net-control-api, so following
+        // the instruction produced a permanent 403 that blamed the SCOPE - and no endpoint
+        // existed that minted the right audience at all, leaving `pdn mcp` unusable with auth on.
+        //
+        // Gated inline rather than handed back to Program.cs like /users: the policy passes
+        // through when management.auth.enabled is false, so this is the same "open when auth is
+        // off" behaviour, expressed where the route is (as PdnMcpApi already does).
+        var serviceTokens = v1.MapGroup("/auth").RequireAuthorization(PdnAuthPolicies.Admin);
+
+        serviceTokens.MapPost("/service-token", (
+            ServiceTokenRequest? body, HttpContext ctx, IConfigProvider config, IAuditLog audit,
+            TimeProvider clock, [Microsoft.AspNetCore.Mvc.FromServices] JwtTokenService? tokens) =>
+        {
+            // No signing key (pdn.db could not produce one) means nothing to sign with.
+            if (tokens is null)
+            {
+                return Results.Problem(
+                    "Auth is not configured (no signing key); cannot mint a service token.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            if (body is null || string.IsNullOrWhiteSpace(body.Name))
+            {
+                return Results.BadRequest(new { error = "A 'name' is required (it becomes the token's subject, service:NAME)." });
+            }
+
+            var name = body.Name.Trim();
+            if (!IsValidServiceName(name))
+            {
+                return Results.BadRequest(new
+                {
+                    error = $"'{name}' is not a valid service name (1-{MaxServiceNameLength} characters of A-Z a-z 0-9 . _ -).",
+                });
+            }
+
+            var scope = (body.Scope ?? AuthScopes.Read).Trim().ToLowerInvariant();
+            if (!AuthScopes.IsKnown(scope))
+            {
+                return Results.BadRequest(new { error = $"scope must be one of: {AuthScopes.Read}, {AuthScopes.Operate}, {AuthScopes.Admin}." });
+            }
+
+            // A service token can never grant more than the admin minting it holds. With auth
+            // OFF there is no principal and no privilege to exceed (the whole API is open), so
+            // the check passes through exactly like every other scope gate does.
+            var authOn = config.Current.Management?.Auth?.Enabled ?? true;
+            var callerScope = ctx.User.FindFirst(AuthScopes.ScopeClaim)?.Value;
+            if (authOn && !AuthScopes.Satisfies(callerScope, scope))
+            {
+                return Results.Problem(
+                    $"Cannot mint a '{scope}' service token: your own scope is '{callerScope ?? "(none)"}'.",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            int days = Math.Clamp(body.Days ?? DefaultServiceTokenDays, 1, MaxServiceTokenDays);
+
+            // The CONTROL-API audience: this is the whole point. `service:NAME` as the subject
+            // keeps a service credential distinguishable from a human account in the audit log
+            // and in `sub`, and it can never collide with a username (':' is not a legal
+            // service name character).
+            var (token, expires) = tokens.Issue(
+                $"service:{name}", scope, TimeSpan.FromDays(days), JwtTokenService.Audience);
+
+            audit.RecordRest(ctx, clock, "service_token", name, "ok", $"scope={scope} lifetimeDays={days}");
+
+            return Results.Ok(new ServiceTokenResponse(token, expires, scope, $"service:{name}", "Bearer"));
+        });
+
         return usersGroup;
     }
+
+    /// <summary>Default service-token lifetime in days when the caller names none.</summary>
+    public const int DefaultServiceTokenDays = 90;
+
+    /// <summary>Ceiling on a service token's lifetime in days. Long-lived is the point; forever
+    /// is not, and a stateless JWT can only be revoked by rotating the signing key.</summary>
+    public const int MaxServiceTokenDays = 365;
+
+    /// <summary>Longest accepted service name.</summary>
+    public const int MaxServiceNameLength = 64;
+
+    // A service name goes into the token's `sub` and the audit log, so keep it to characters
+    // that cannot be confused with structure (no ':' - that separates the "service" prefix -
+    // and no whitespace).
+    private static bool IsValidServiceName(string name) =>
+        name.Length is > 0 and <= MaxServiceNameLength
+        && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     // The identical generic 401 every login failure returns — no detail on which of
     // username/password was wrong. Reused by /auth/refresh so an invalid refresh and a
@@ -508,4 +598,16 @@ public static class PdnAuthApi
 
     /// <summary>The <c>POST /users</c> request body.</summary>
     public sealed record CreateUserRequest(string Username, string Password, string Scope);
+
+    /// <summary>The <c>POST /auth/service-token</c> request body. <c>name</c> becomes the
+    /// token's subject (<c>service:</c> + the name); <c>scope</c> defaults to <c>read</c> and
+    /// may not exceed the caller's; <c>days</c> defaults to
+    /// <see cref="DefaultServiceTokenDays"/> and is clamped to
+    /// <see cref="MaxServiceTokenDays"/>.</summary>
+    public sealed record ServiceTokenRequest(string Name, string? Scope = null, int? Days = null);
+
+    /// <summary>The minted service token, its absolute expiry, the granted scope and the
+    /// subject it carries.</summary>
+    public sealed record ServiceTokenResponse(
+        string Token, DateTimeOffset ExpiresAt, string Scope, string Subject, string TokenType);
 }

@@ -97,8 +97,10 @@ function DestinationsTable({ data, navigate }: {
   data: NetRomRoutingSnapshot;
   navigate: (to: string) => void;
 }) {
-  // Resolve the port the best route's neighbour is heard on (fall back to the
-  // first neighbour's port) — used for the per-row Ping + Connect hand-off.
+  // Resolve the port the best route's neighbour is heard on (fall back to the first
+  // neighbour's port), used for the per-row Ping, which is a connectionless TEST frame to
+  // the NEIGHBOUR and so does name a port. The Connect hand-off deliberately does NOT use
+  // it; see the Connect button below.
   const portOfNeighbour = (neighbour: string): string => {
     const nb = data.neighbours.find((x) => x.neighbour === neighbour);
     return nb?.portId ?? data.neighbours[0]?.portId ?? "";
@@ -166,10 +168,15 @@ function DestinationsTable({ data, navigate }: {
                   <Td>
                     <div className="flex items-center justify-end gap-1">
                       <PingButton station={r.neighbour} portId={viaPort} />
+                      {/* NO &port= : a destination is reached THROUGH the routing table, and
+                          naming a port makes POST /sessions a direct AX.25 dial on that port
+                          (server: PortSupervisor.ResolveConnector), which for a NET/ROM
+                          destination is a raw SABM into thin air and a 504 (#727). Handing
+                          off without a port lands the dialog in auto, so the node routes it. */}
                       <Button
                         variant="ghost"
                         size="xs"
-                        onClick={() => navigate(`/sessions?connect=${encodeURIComponent(d.destination)}&port=${encodeURIComponent(viaPort)}`)}
+                        onClick={() => navigate(`/sessions?connect=${encodeURIComponent(d.destination)}`)}
                       >
                         <Icon name="link" size={13} /> Connect
                       </Button>

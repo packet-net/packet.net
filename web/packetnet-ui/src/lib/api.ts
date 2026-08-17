@@ -603,8 +603,12 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 async function connectSession(target: string, portId?: string): Promise<SessionInfo> {
   if (MODE === "mock") {
     await new Promise((r) => setTimeout(r, 200));
+    // No portId (the connect-out dialog's auto choice, #727) means the node picked the path
+    // itself, so the fake node answers with the port the session would have come out of
+    // rather than an empty one - an empty portId is not a session any node could report.
+    const via = portId || mock.NODE_CONFIG.ports[0]?.id || "vhf";
     return {
-      id: `${portId ?? "vhf"}:${target}`, portId: portId ?? "vhf", peer: target,
+      id: `${via}:${target}`, portId: via, peer: target,
       role: "console", state: "Connected", vs: 0, vr: 0, window: 4,
       uptimeSeconds: 0, bytesIn: 0, bytesOut: 0, lastActivity: "0:00:00",
     };

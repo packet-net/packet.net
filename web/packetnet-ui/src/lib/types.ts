@@ -617,7 +617,9 @@ export interface SoundModemQualitySnapshot {
   recent: SoundModemFrameQuality[];
 }
 export type SessionRole = "console" | "interlink" | "bridge";
-/** One LIVE connected-mode circuit (the node only lists Connected / TimerRecovery sessions).
+/** One LIVE circuit: the node lists every session it holds in a state other than Disconnected,
+ *  so an establishing (AwaitingConnection / AwaitingV22Connection) or releasing (AwaitingRelease)
+ *  link appears too and can be disconnected - read `state` to tell them apart (packet.net#727).
  *  Note the last four fields are per-LINK, not per-circuit: uptimeSeconds, bytesIn, bytesOut and
  *  lastActivity come from the node's (port, peer) telemetry link, so they span every circuit with
  *  that callsign on that port since the port attached and count all traffic to/from it (UI frames

@@ -149,7 +149,9 @@ public static class PdnReadApi
         int portsUp = supervisor?.Snapshot().Count(p => p.IsServing) ?? 0;
         // Live sessions only: ActiveSessions is the listener's LRU peer CACHE, which keeps a
         // Disconnected session object until eviction, so summing it made "Active sessions" climb
-        // forever (review item C052, #694). SessionLiveness is the shared predicate.
+        // forever (review item C052, #694). SessionLiveness is the shared predicate: everything
+        // except Disconnected counts, so a link mid-handshake or mid-release is still visible
+        // (#727 item 8).
         int sessionCount = running.Sum(p => p.Listener.ActiveSessions.Count(SessionLiveness.IsLive));
 
         var snapshot = SnapshotOf(host);
@@ -197,9 +199,10 @@ public static class PdnReadApi
             foreach (var session in port.Listener.ActiveSessions)
             {
                 // The listener's ActiveSessions is a peer CACHE that keeps Disconnected entries
-                // until LRU eviction; only established circuits belong in the API view, so a
+                // until LRU eviction; only the cached dead peer is filtered out, so a
                 // DELETE /sessions/{id} that really did tear the link down stops showing a row
-                // (review item C052, #694). The engine keeps its cache untouched.
+                // (review item C052, #694) while a session still handshaking or releasing stays
+                // listed and stays actionable (#727 item 8). The engine keeps its cache untouched.
                 if (!SessionLiveness.IsLive(session))
                 {
                     continue;

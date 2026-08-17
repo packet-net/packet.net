@@ -33,6 +33,37 @@ public static class NodeConfigWarnings
     }
 
     /// <summary>
+    /// One warning per transport endpoint claimed by two or more ports, naming the ports and
+    /// the endpoint they collide on.
+    /// </summary>
+    /// <remarks>
+    /// This is the same collision <c>NodeConfigValidator</c>'s <c>NoDuplicateEndpoints</c> rule
+    /// rejects, so it is silent on any config that validates. It exists for the config that is
+    /// already PERSISTED: since #727 item 5 a stored config that no longer validates is logged
+    /// and booted rather than thrown, and the operator then needs to be told which two ports
+    /// are the problem, not just that something is wrong. The concrete case is #711 (C074)
+    /// narrowing the soundmodem key from <c>device/mode</c> to <c>device</c>, which turned two
+    /// soundmodem ports on one ALSA device from legal into a validation error across an
+    /// upgrade. The endpoint is printed as the DESCRIPTION (which includes the soundmodem
+    /// mode), because that is the text an operator can match against their config.
+    /// </remarks>
+    public static IReadOnlyList<string> DuplicateEndpoints(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        return config.Ports
+            .Where(p => p.Transport is not null)
+            .GroupBy(p => p.Transport!.EndpointKey, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g =>
+                $"ports {string.Join(", ", g.Select(p => $"'{p.Id}'"))} all claim the transport endpoint " +
+                $"'{g.Key}' ({string.Join(", ", g.Select(p => p.Transport!.DescribeEndpoint()).Distinct(StringComparer.Ordinal))}) - " +
+                "one physical device cannot be owned by two ports. Give each port its own device, " +
+                "or remove the duplicate port.")
+            .ToArray();
+    }
+
+    /// <summary>
     /// Ports whose AX.25 window seed (k) exceeds 7. Legal, but only a mod-128 (SABME) link
     /// can use it: a mod-8 session clamps the live window to Modulus-1 = 7
     /// (Ax25SessionContext.EffectiveWindow), so on a port that only ever answers plain

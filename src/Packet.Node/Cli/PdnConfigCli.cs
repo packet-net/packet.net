@@ -160,16 +160,10 @@ public static class PdnConfigCli
 
     // The CLI resolves --db / --config / PACKETNET_* identically to Program.cs's resolvers
     // so it operates on the exact same pdn.db + legacy YAML the running host would.
-    private static string ResolveDbPath(string[] args)
-    {
-        var v = ArgValue(args, "--db");
-        if (v is { Length: > 0 })
-        {
-            return v;
-        }
-
-        return Env("PACKETNET_DB") ?? Path.Combine(Directory.GetCurrentDirectory(), "pdn.db");
-    }
+    // The node's resolution, verbatim (NodeStatePaths is the single definition): --db, then
+    // PACKETNET_DB, then pdn.db in the working directory. `pdn config` may legitimately seed a
+    // first-boot database, so unlike `pdn auth` it does not require the file to exist already.
+    private static string ResolveDbPath(string[] args) => NodeStatePaths.ResolveDbPath(args);
 
     private static string ResolveConfigPath(string[] args)
     {

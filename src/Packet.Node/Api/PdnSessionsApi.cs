@@ -51,6 +51,19 @@ namespace Packet.Node.Api;
 /// two-port node the SABM left on the ordinal-first port whatever the operator picked.
 /// </para>
 /// <para>
+/// <b>Omitting <c>portId</c> is the NET/ROM path, and callers must be able to.</b> The two
+/// meanings are exclusive by design: a named port is "go out this way, as AX.25", and no port
+/// is "route it". A client that always sends a port therefore has no way to reach a NET/ROM
+/// alias at all, which is exactly what happened to the web panel in node-v0.41.0 - its connect
+/// dialog forced the first live port, so every alias was dialled as a raw SABM on an RF port
+/// the far station was not on and 504'd after the 30 s dial timeout (#727 item 1). The panel
+/// now offers an explicit "Auto (NET/ROM routing)" option that omits <c>portId</c> and defaults
+/// to it when NET/ROM connect routing is on; the Routes screen hands off destinations with no
+/// port. Anything else driving this endpoint (scripts, MCP, the RHPv2 server) should do the
+/// same: send <c>portId</c> only when a direct dial on that specific port is what is wanted.
+/// See docs/node-api.md and docs/node-ui-design.md §4.6.
+/// </para>
+/// <para>
 /// <b>Ping (<c>POST /ping</c>).</b> A connectionless AX.25 TEST ping ("axping"): it sends N
 /// TEST command frames to a station and correlates each echo off the listener's
 /// <see cref="Ax25Listener.FrameTraced"/> stream to measure RTT. The correlation core lives

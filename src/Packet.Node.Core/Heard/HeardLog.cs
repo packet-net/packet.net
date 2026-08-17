@@ -42,7 +42,8 @@ namespace Packet.Node.Core.Heard;
 /// <see cref="Traffic.TrafficLogService"/> shape, applied to the same frame stream: a stalled disk
 /// costs heard-log freshness, never RX. An explicit <see cref="Prune"/> and the operator verbs
 /// (<see cref="Forget"/> / <see cref="Clear"/>) stay synchronous - they are caller-initiated, not
-/// on the pump.
+/// on the pump - but they are ORDERED behind the pending queue, and no store call is made while
+/// the drain gate is held (#727 item 10).
 /// </para>
 /// </remarks>
 public sealed class HeardLog : IDisposable
@@ -53,6 +54,10 @@ public sealed class HeardLog : IDisposable
     /// <summary>Default per-port cap — at most this many heard stations are kept per port (the
     /// oldest-heard beyond it are pruned). Bounds growth on a busy channel.</summary>
     public const int DefaultMaxPerPort = 500;
+
+    /// <summary>How long <see cref="Dispose"/> waits for each of the two gates before abandoning
+    /// the write tail. Host shutdown must not be held by a wedged database.</summary>
+    public static readonly TimeSpan DisposeDrainBudget = TimeSpan.FromSeconds(2);
 
     private readonly IHeardStore? store;
     private readonly TimeProvider time;
@@ -81,10 +86,20 @@ public sealed class HeardLog : IDisposable
     private readonly Channel<HeardEntry>? writes;
     private readonly CancellationTokenSource? writerStop;
 
-    // Serialises the drain so the background loop and an explicit Flush/Dispose can never
-    // interleave: whoever holds it takes the pending snapshots AND writes them, so once Flush
-    // acquires it, everything enqueued before the call has reached the store.
+    // Serialises the DRAIN so the background loop, an explicit Flush/Dispose and the operator
+    // verbs can never interleave. Held only across channel reads - never across store I/O
+    // (#727 item 10): Microsoft.Data.Sqlite's default command timeout is 30 s, so a busy pdn.db
+    // used to hold this gate for that long per statement and Dispose, which must acquire it,
+    // blocked the host's shutdown path past systemd's TimeoutStopSec and turned a clean stop
+    // into a SIGKILL.
     private readonly object writeGate = new();
+
+    // Serialises the store I/O itself. Always claimed WHILE writeGate is held and released
+    // AFTER it, which pins the order writes reach the store to the order their batches were
+    // taken - so moving the I/O out of writeGate cannot let an older snapshot land on top of a
+    // newer one.
+    private readonly object storeGate = new();
+
     private int disposed;
 
     /// <summary>Build the log over an optional <paramref name="store"/> (null ⇒ in-memory only),
@@ -252,30 +267,83 @@ public sealed class HeardLog : IDisposable
         }
     }
 
-    // Take everything queued and write it as ONE coalesced, batched transaction. Coalescing is
-    // what makes a busy channel cheap: a station heard 50 times between two drains is one row
-    // write, not 50. Runs under writeGate so a concurrent Flush/Dispose serialises behind it.
-    private void DrainOnce()
+    /// <summary>
+    /// Take everything queued and write it as ONE coalesced, batched transaction. Coalescing is
+    /// what makes a busy channel cheap: a station heard 50 times between two drains is one row
+    /// write, not 50.
+    /// </summary>
+    /// <param name="bound">When set, the longest this will wait for each of the two gates before
+    /// giving up and returning false. Dispose passes it; every other caller waits.</param>
+    /// <returns>False only when a bounded caller could not get in (it has consumed nothing, so
+    /// nothing is lost - the tail is simply left for whoever runs next, or abandoned).</returns>
+    private bool DrainOnce(TimeSpan? bound = null)
     {
-        lock (writeGate)
+        if (!TryEnter(writeGate, bound))
         {
-            Dictionary<(string PortId, string Callsign), HeardEntry>? batch = null;
-            while (writes!.Reader.TryRead(out var snapshot))
-            {
-                batch ??= [];
-                batch[(snapshot.PortId, snapshot.Callsign)] = snapshot;   // newest wins
-            }
+            return false;
+        }
 
+        bool storeHeld;
+        HeardEntry[]? batch = null;
+        bool prune = false;
+        try
+        {
+            // Claim the store slot BEFORE reading the channel, while still holding the drain
+            // gate: that fixes the store-write order to the batch-take order.
+            storeHeld = TryEnter(storeGate, bound);
+            if (storeHeld)
+            {
+                Dictionary<(string PortId, string Callsign), HeardEntry>? map = null;
+                while (writes!.Reader.TryRead(out var snapshot))
+                {
+                    map ??= [];
+                    map[(snapshot.PortId, snapshot.Callsign)] = snapshot;   // newest wins
+                }
+                batch = map is null ? null : [.. map.Values];
+                prune = Interlocked.Exchange(ref pruneRequested, 0) == 1;
+            }
+        }
+        finally
+        {
+            Monitor.Exit(writeGate);
+        }
+
+        if (!storeHeld)
+        {
+            return false;
+        }
+
+        // The store I/O runs with writeGate RELEASED, so a slow/locked pdn.db no longer blocks
+        // Flush, Dispose or an operator Clear behind a 30 s SQLite command timeout.
+        try
+        {
             if (batch is not null)
             {
-                store!.Upsert([.. batch.Values]);
+                store!.Upsert(batch);
             }
 
-            if (Interlocked.Exchange(ref pruneRequested, 0) == 1)
+            if (prune)
             {
                 Prune();
             }
         }
+        finally
+        {
+            Monitor.Exit(storeGate);
+        }
+        return true;
+    }
+
+    // Enter a gate, optionally bounded. A null bound waits (the normal path); a set bound is the
+    // Dispose budget. Returns whether the gate is now held by this thread.
+    private static bool TryEnter(object gate, TimeSpan? bound)
+    {
+        if (bound is { } budget)
+        {
+            return Monitor.TryEnter(gate, budget);
+        }
+        Monitor.Enter(gate);
+        return true;
     }
 
     /// <summary>Stop the writer and flush what it still holds. Idempotent.</summary>
@@ -292,10 +360,17 @@ public sealed class HeardLog : IDisposable
         // Flush the tail synchronously, but do NOT block on the writer task and do NOT dispose
         // the CTS the loop is still parked on. DI disposes this singleton on the host's shutdown
         // path; a blocking wait on a thread-pool continuation there deadlocks whenever the pool
-        // is saturated. DrainOnce takes the same writeGate the loop holds, so it is a bounded
-        // Monitor wait (no pool involvement) and still guarantees everything enqueued before this
-        // call has reached the store.
-        DrainOnce();
+        // is saturated.
+        //
+        // Genuinely BOUNDED (#727 item 10). The old comment called this "a bounded Monitor wait",
+        // but it was bounded only by however long the writer's in-flight store call took, because
+        // that call ran INSIDE writeGate: with a pdn.db locked by another writer, Microsoft.Data.
+        // Sqlite's 30 s default command timeout could hold shutdown for 30 s per statement, past
+        // systemd's TimeoutStopSec and into a SIGKILL. The store I/O is out of the gate now, and
+        // the two gate acquisitions here carry an explicit budget, so this returns in at most
+        // 2 x DisposeDrainBudget even against a wedged store - abandoning the tail, which a
+        // SIGKILL would have lost anyway.
+        DrainOnce(DisposeDrainBudget);
     }
 
     /// <summary>Every heard entry across all ports (per (port, callsign)), most-recently-heard
@@ -352,22 +427,83 @@ public sealed class HeardLog : IDisposable
     }
 
     /// <summary>Forget one (port, callsign) — clears the store row and the hot entry. Returns
-    /// whether the hot entry was present (the store delete is best-effort).</summary>
+    /// whether the hot entry was present (the store delete is best-effort). Ordered behind
+    /// everything already queued for the writer; see <see cref="Clear"/>.</summary>
     public bool Forget(string portId, string callsign)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(callsign);
-        store?.Clear(portId, callsign);
-        return hot.TryRemove((portId, callsign), out _);
+        var survivors = TakePending(e =>
+            string.Equals(e.PortId, portId, StringComparison.Ordinal)
+            && string.Equals(e.Callsign, callsign, StringComparison.Ordinal));
+        var removed = hot.TryRemove((portId, callsign), out _);
+        MutateStore(s => s.Clear(portId, callsign), survivors);
+        return removed;
     }
 
     /// <summary>Forget everything — the operator reset. Returns the number of hot entries removed.</summary>
+    /// <remarks>
+    /// The store mutation is ordered AFTER the writer's pending queue (#727 item 10). Since
+    /// C077 <see cref="Record"/> hands snapshots to a channel drained asynchronously, so a clear
+    /// that went straight to the store left every snapshot enqueued before it to be upserted
+    /// afterwards: the panel showed an empty MH log, the writer flushed the queue behind it, and
+    /// the cleared stations reappeared out of <c>pdn.db</c> at the next restart.
+    /// </remarks>
     public int Clear()
     {
-        store?.ClearAll();
+        var survivors = TakePending(_ => true);
         int n = hot.Count;
         hot.Clear();
+        MutateStore(s => s.ClearAll(), survivors);
         return n;
+    }
+
+    // Empty the writer's pending queue under the DRAIN gate, dropping the snapshots the operator
+    // has just asked to forget and handing the rest back to be re-persisted after the mutation.
+    //
+    // Taking the queue is the whole fix (#727 item 10): a snapshot enqueued before the reset
+    // describes a hearing the operator has deleted, so writing it afterwards resurrects the row -
+    // the panel showed an empty MH log, the writer flushed the backlog behind it, and the cleared
+    // stations reappeared out of pdn.db at the next restart. It happens FIRST, before the hot
+    // dictionary is touched and before the (possibly blocking) store mutation, so there is no
+    // window in which a queued snapshot can slip past. A hearing that arrives DURING the clear
+    // legitimately re-creates its row: it happened after the operator asked.
+    private List<HeardEntry>? TakePending(Func<HeardEntry, bool> forgotten)
+    {
+        if (writes is null)
+        {
+            return null;
+        }
+        List<HeardEntry>? survivors = null;
+        lock (writeGate)
+        {
+            while (writes.Reader.TryRead(out var snapshot))
+            {
+                if (!forgotten(snapshot))
+                {
+                    (survivors ??= []).Add(snapshot);
+                }
+            }
+        }
+        return survivors;
+    }
+
+    // Apply an operator's store mutation under the STORE gate, so it cannot interleave with an
+    // in-flight batch write, then re-persist the snapshots that survived the take.
+    private void MutateStore(Action<IHeardStore> mutate, List<HeardEntry>? survivors)
+    {
+        if (store is null)
+        {
+            return;
+        }
+        lock (storeGate)
+        {
+            mutate(store);
+            if (survivors is not null)
+            {
+                store.Upsert(survivors);
+            }
+        }
     }
 
     /// <summary>
@@ -413,8 +549,16 @@ public sealed class HeardLog : IDisposable
             }
         }
 
-        // Mirror the prune to the store in one pass (it applies the same policy server-side).
-        store?.Prune(cutoff, maxPerPort);
+        // Mirror the prune to the store in one pass (it applies the same policy server-side),
+        // under the store gate so it cannot interleave with a batch write. Reentrant: the
+        // writer's own opportunistic prune already holds it.
+        if (store is not null)
+        {
+            lock (storeGate)
+            {
+                store.Prune(cutoff, maxPerPort);
+            }
+        }
         return removed;
     }
 

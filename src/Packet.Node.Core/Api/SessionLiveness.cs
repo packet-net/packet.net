@@ -16,20 +16,36 @@ namespace Packet.Node.Core.Api;
 /// item C052, #694).
 /// </para>
 /// <para>
-/// A link counts as live in exactly the two connected-mode states that can still carry data:
-/// <c>Connected</c>, and <c>TimerRecovery</c> (an established link whose T1 is retrying, still
-/// up, just unacknowledged). Everything else, including <c>Disconnected</c> and the transient
-/// handshake states, is not a circuit an operator would call open. This is the discipline
-/// <c>NodeOarcStateSource</c> already used; every other projection now shares it.
+/// The predicate is therefore "anything but <c>Disconnected</c>": <c>Connected</c>,
+/// <c>TimerRecovery</c> (an established link whose T1 is retrying, still up, just
+/// unacknowledged), and the transient <c>AwaitingConnection</c> /
+/// <c>AwaitingV22Connection</c> / <c>AwaitingRelease</c> states all publish. Only the cached
+/// dead peer is filtered out.
+/// </para>
+/// <para>
+/// It admitted only <c>Connected</c> and <c>TimerRecovery</c> when it shipped in node-v0.41.0,
+/// which hid every handshake and release state from <c>GET /sessions</c>, the <c>/status</c>
+/// active-session count and the per-port counts (#727 item 8). A link retrying SABM for
+/// N2 x T1 - minutes on a slow RF path - showed the operator an idle node while the port was
+/// transmitting, and a session wedged waiting for a UA to its DISC could not be found to be
+/// deleted. <c>FindSession</c> never filtered by liveness, so the list and the actions
+/// disagreed: an id the API refused to publish was still actionable. Publishing everything
+/// except <c>Disconnected</c> makes them agree again, and the row's <c>state</c> field is what
+/// tells a human "establishing" from "up".
 /// </para>
 /// </remarks>
 public static class SessionLiveness
 {
-    /// <summary>True when <paramref name="state"/> is an established connected-mode state
-    /// (<c>Connected</c> or <c>TimerRecovery</c>).</summary>
-    public static bool IsLive(string? state) => state is "Connected" or "TimerRecovery";
+    /// <summary>The engine's cached-but-dead state: a peer object the listener keeps so a
+    /// returning station resumes against the same state machine.</summary>
+    private const string DisconnectedState = "Disconnected";
 
-    /// <summary>True when the session is an established connected-mode circuit. See
+    /// <summary>True when <paramref name="state"/> is any state other than
+    /// <c>Disconnected</c> (a null/blank state is not live).</summary>
+    public static bool IsLive(string? state) =>
+        !string.IsNullOrEmpty(state) && !string.Equals(state, DisconnectedState, StringComparison.Ordinal);
+
+    /// <summary>True when the session is anything but a cached <c>Disconnected</c> peer. See
     /// <see cref="IsLive(string?)"/>.</summary>
     public static bool IsLive(Ax25Session session)
     {
