@@ -4,12 +4,11 @@
 // admin) and the implication admin⊃operate⊃read is resolved here by `has()`,
 // mirroring the server's AuthScopes.Satisfies rank model.
 //
-// Persistence: localStorage — the session survives browser restarts; the refresh-token
-// rotation (+ family revocation on reuse) bounds the blast radius of a stolen pair, and
-// the panel is a control
-// panel for a node you actively manage, not a "remember me" consumer app, so a
-// short-lived per-tab token is the safer default. Swap KEY's backing to
-// localStorage if cross-tab persistence is ever wanted.
+// Persistence: localStorage - the session survives browser restarts and is shared across
+// tabs; the refresh-token rotation (+ family revocation on reuse) is what bounds the blast
+// radius of a stolen pair. (This paragraph used to trail off into a leftover sentence about
+// a short-lived PER-TAB token and "swap KEY's backing to localStorage", describing a
+// sessionStorage design that was already gone; #691 C041.)
 //
 // Works in BOTH server modes (the gate, in router.tsx, decides which):
 //   - auth OFF  → requests 200 tokenless; the gate probes /status, gets 200,

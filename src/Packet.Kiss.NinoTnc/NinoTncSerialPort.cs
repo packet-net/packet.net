@@ -294,7 +294,7 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
         payload[1] = (byte)(tag & 0xFF);
         ax25Bytes.Span.CopyTo(payload.AsSpan(2));
 
-        var queuedAt = DateTimeOffset.UtcNow;
+        var queuedAt = clock.GetUtcNow();
         try
         {
             await modem.SendKissAsync(KissCommand.AckMode, payload, cancellationToken).ConfigureAwait(false);
@@ -763,16 +763,48 @@ public sealed class NinoTncSerialPort : IAx25Transport, ITxCompletionTransport, 
         {
             // Complete the waiter with the echo-arrival instant; the sender
             // pairs it with the real submit time to build the TxCompletion.
-            tcs.TrySetResult(DateTimeOffset.UtcNow);
+            // On the injected clock, so the queued/completed pair is coherent.
+            tcs.TrySetResult(clock.GetUtcNow());
             inbound.Writer.TryWrite(frame);
-            FrameReceived?.Invoke(this, frame);
+            RaiseFrameReceived(frame);
             return;
         }
 
-        var typed = NinoTncFrameClassifier.Classify(frame);
+        // The classifier is a pure static with no clock of its own, so the read
+        // pump stamps the arrival instant from the injected TimeProvider rather
+        // than letting the property default read the ambient wall clock.
+        var typed = NinoTncFrameClassifier.Classify(frame) with { ReceivedAt = clock.GetUtcNow() };
         inbound.Writer.TryWrite(frame);
-        FrameReceived?.Invoke(this, frame);
-        InboundEvent?.Invoke(this, typed);
+        RaiseFrameReceived(frame);
+        RaiseInboundEvent(typed);
+    }
+
+    /// <summary>
+    /// Raise the inbound events one subscriber at a time, swallowing a fault per
+    /// handler.
+    /// </summary>
+    /// <remarks>
+    /// These invocations sit inside the dispatch loop's try, whose generic catch
+    /// completes the inbound channel with the exception and faults every pending
+    /// ACKMODE waiter - so one buggy subscriber killed the port and took the
+    /// in-flight sends with it (packet-net/packet.net#696).
+    /// </remarks>
+    private void RaiseFrameReceived(KissFrame frame) => SafeInvoke(FrameReceived, frame);
+
+    private void RaiseInboundEvent(KissInboundEvent typed) => SafeInvoke(InboundEvent, typed);
+
+    private void SafeInvoke<T>(EventHandler<T>? handler, T args)
+    {
+        if (handler is null)
+        {
+            return;
+        }
+
+        foreach (var del in handler.GetInvocationList())
+        {
+            try { ((EventHandler<T>)del).Invoke(this, args); }
+            catch (Exception) { /* swallowed; see the remarks above */ }
+        }
     }
 
     private void FailPendingAcks(Exception cause)

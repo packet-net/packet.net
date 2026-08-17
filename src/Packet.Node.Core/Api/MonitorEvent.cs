@@ -70,6 +70,19 @@ public sealed record MonitorEvent(
     /// <summary>The channel-idle noise floor the radio source was tracking when this frame arrived,
     /// in dBm, or <c>null</c> when unavailable. Additive/init-only.</summary>
     public float? NoiseFloorDbm { get; init; }
+
+    /// <summary>Identifies the node process that numbered this frame - stamped by
+    /// <c>NodeTelemetry</c> from a per-instance id minted at construction.</summary>
+    /// <remarks>
+    /// <see cref="Seq"/> is a per-process counter that restarts at 1 on every node boot, so it
+    /// is not a stable identity: a web monitor left open across a node restart saw the new
+    /// boot's frames as already-buffered duplicates and dropped them all (review item C046,
+    /// <see href="https://github.com/packet-net/packet.net/issues/689">#689</see>). The pair
+    /// (<see cref="BootId"/>, <see cref="Seq"/>) IS stable, so a client can tell a restart from
+    /// a duplicate and reset its buffer. Additive/init-only; <c>null</c> when the event was not
+    /// produced by a live telemetry tap (a decoded-in-isolation event in a test).
+    /// </remarks>
+    public string? BootId { get; init; }
 }
 
 /// <summary>

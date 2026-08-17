@@ -593,8 +593,16 @@ public sealed class Ax25ParamsValidator : AbstractValidator<Ax25PortParams>
             .WithMessage("T2Ms must be >= 0 (0 disables the T2 acknowledge delay - ack per frame).");
         RuleFor(p => p.T3Ms!.Value).GreaterThan(0).When(p => p.T3Ms.HasValue).WithMessage("T3Ms must be positive.");
         RuleFor(p => p.N2!.Value).GreaterThan(0).When(p => p.N2.HasValue).WithMessage("N2 must be positive.");
+        // k is a PORT seed applied to every session the port builds. The wire bound is the
+        // session's modulus, not this number: at modulus 8 at most Modulus-1 = 7 I-frames
+        // can be outstanding (section 4.2.4 sizes V(S) mod 8; 6.4.4.1 stops at
+        // V(S) = V(A) + k), and Ax25SessionContext.EffectiveWindow clamps the live value
+        // to Modulus-1 per session (packet-net/packet.net#696, C083). A seed above 7 is
+        // therefore legal (it is what lets a mod-128 / SABME link, which negotiates
+        // min(ours, peer) by XID, run a window wider than 7) but is only reached on
+        // extended links; NodeConfigWarnings.WideWindowSeeds says so on the boot log.
         RuleFor(p => p.WindowSize!.Value).InclusiveBetween(1, 127).When(p => p.WindowSize.HasValue)
-            .WithMessage("WindowSize (k) must be in 1..127.");
+            .WithMessage("WindowSize (k) must be in 1..127 (values above 7 only take effect on mod-128 links; mod-8 sessions clamp to 7).");
         // N1 / PACLEN: a sensible floor (>= 16 — below that an I-frame is almost all
         // header, and the segmenter needs room for a payload) up to the AX.25 v2.2
         // ceiling (256 octets — the XID-default N1 and the largest the spec negotiates).

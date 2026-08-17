@@ -7,12 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <title>pdn — node control</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- No external stylesheet, and nothing else off-box: this panel is served by a node
+         that may have no route to the internet at all. Inter + JetBrains Mono are
+         self-hosted (@font-face in src/index.css, files in public/fonts). #691 C051. -->
   </head>
   <body>
     <div id="root"></div>

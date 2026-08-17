@@ -71,6 +71,21 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     // timeout/cancellation. Both run concurrently, hence the concurrent map.
     private readonly ConcurrentDictionary<ushort, TaskCompletionSource<DateTimeOffset>> pendingAcks = new();
 
+    // One writer at a time. The listener fires per-session sends fire-and-forget
+    // from timer and pump threads, and ReconnectingKissModem delegates without a
+    // gate of its own, so two encoded frames could be in flight on one socket at
+    // once: a stream socket splits a write only when the send buffer fills, but
+    // when it does the two frames interleave and the peer sees garbage between
+    // FENDs. KissSerialModem has always serialised its writes; this brings the TCP
+    // transport in line (packet-net/packet.net#696).
+    //
+    // Deliberately not disposed on teardown: a write can be in flight when the
+    // client is disposed, and disposing the semaphore would turn its finally-Release
+    // into an ObjectDisposedException masking the real IOException the caller should
+    // see. SemaphoreSlim needs disposal only if its AvailableWaitHandle was touched,
+    // which nothing here does.
+    private readonly SemaphoreSlim writeLock = new(1, 1);
+
     // Auto-assigned tag cursor for callers that don't choose their own. Bumped
     // with Interlocked and masked to 16 bits; 0 is skipped so an auto tag is
     // always non-zero (callers may legitimately use 0 explicitly).
@@ -174,8 +189,22 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
     public async Task SendAsync(byte port, KissCommand command, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
         var encoded = KissEncoder.Encode(port, command, payload.Span);
-        await stream.WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
-        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await WriteFramedAsync(encoded, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Write one complete encoded frame, serialised against every other writer.
+    private async Task WriteFramedAsync(ReadOnlyMemory<byte> encoded, CancellationToken cancellationToken)
+    {
+        await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await stream.WriteAsync(encoded, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
     }
 
     /// <summary>
@@ -251,7 +280,9 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
             {
                 // Complete the waiter with the echo-arrival instant; the sender
                 // pairs it with the real submit time to build the TxCompletion.
-                waiter.TrySetResult(DateTimeOffset.UtcNow);
+                // On the injected TimeProvider, like every other instant this
+                // client reads, so a test clock drives the pair coherently.
+                waiter.TrySetResult(time.GetUtcNow());
                 passThrough ??= CopyUpTo(frames, i);
                 continue;
             }
@@ -379,12 +410,11 @@ public sealed class KissTcpClient : IAx25Transport, ITxCompletionTransport, ICsm
             throw new InvalidOperationException($"sequence tag 0x{tag:X4} already has a pending ACK; pick a unique tag");
         }
 
-        var queuedAt = DateTimeOffset.UtcNow;
+        var queuedAt = time.GetUtcNow();
         try
         {
             var wire = KissAckMode.BuildSendFrame(port: 0, sequenceTag: tag, ax25Bytes.Span);
-            await stream.WriteAsync(wire, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await WriteFramedAsync(wire, cancellationToken).ConfigureAwait(false);
         }
         catch
         {

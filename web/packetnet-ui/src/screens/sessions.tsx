@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 import { api, useQuery, subscribeSessionOutput } from "@/lib/api";
 import { useAuth } from "@/app/auth";
-import { PORTS_LIST, fmtUptime, fmtBytes } from "@/lib/mock";
+import { fmtUptime, fmtBytes } from "@/lib/catalogue";
 import type { SessionInfo, SessionRole } from "@/lib/types";
 
 const ROLE_BADGE: Record<SessionRole, BadgeVariant> = {
@@ -33,6 +33,9 @@ export function Sessions() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openSession, setOpenSession] = useState<SessionInfo | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+  // Bumped on every open; it keys ConnectOut, so each open remounts the modal against the
+  // hand-off (if any) it was opened with.
+  const [connectSeq, setConnectSeq] = useState(0);
   const [params, setParams] = useSearchParams();
   // A banner-style notice for a failed action (mirrors the Ports/Config screens — there is
   // no toast primitive). Cleared on the next successful action.
@@ -45,20 +48,33 @@ export function Sessions() {
     if (data) setSessions(data);
   }, [data]);
 
-  // Routes → Sessions hand-off: ?connect=<call>&port=<portId> auto-opens
-  // the connect-out modal prefilled, then clears the params.
+  // Routes → Sessions hand-off: ?connect=<call>&port=<portId> auto-opens the connect-out
+  // modal prefilled, then clears the params. The hand-off is CAPTURED INTO STATE first:
+  // clearing the params re-renders with connect=null, and the modal used to be re-seeded
+  // from those nulls on the very next render, so the operator saw an empty form (#691 C042).
+  const [handoff, setHandoff] = useState<{ call: string; port: string | null } | null>(null);
   const connectCall = params.get("connect");
   const connectPort = params.get("port");
+
+  // The one way the modal opens: with the hand-off it is opening for (null = a bare
+  // header Connect), and a sequence bump so it remounts against it.
+  const openConnect = (h: { call: string; port: string | null } | null) => {
+    setHandoff(h);
+    setConnectSeq((n) => n + 1);
+    setConnectOpen(true);
+  };
+
   useEffect(() => {
-    if (connectCall) {
-      setConnectOpen(true);
-      const next = new URLSearchParams(params);
-      next.delete("connect");
-      next.delete("port");
-      setParams(next, { replace: true });
-    }
+    if (!connectCall) return;
+    openConnect({ call: connectCall, port: connectPort });
+    const next = new URLSearchParams(params);
+    next.delete("connect");
+    next.delete("port");
+    setParams(next, { replace: true });
+    // `params`/`setParams` are recreated per render; keying the effect on the hand-off
+    // itself is what makes it run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectCall]);
+  }, [connectCall, connectPort]);
 
   // Disconnect: call the live API, drop the row optimistically, then reload to reflect the
   // server's truth. A failure surfaces in the notice banner (the row is left in place).
@@ -93,7 +109,7 @@ export function Sessions() {
         title="Sessions"
         subtitle="Active AX.25 L2 + NET/ROM L4 circuits"
         actions={
-          <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Connecting out requires the operate scope"} onClick={() => setConnectOpen(true)}>
+          <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Connecting out requires the operate scope"} onClick={() => openConnect(null)}>
             <Icon name="link" size={14} /> Connect
           </Button>
         }
@@ -198,11 +214,14 @@ export function Sessions() {
         onDrop={async (id) => { await drop(id); setOpenSession(null); }}
         onNotice={setNotice}
       />
+      {/* keyed on the open sequence: every open REMOUNTS the modal against the hand-off it
+          was opened with, so a later prop change (the query params being cleared) cannot
+          reset the form the operator is looking at (#691 C042, same pattern as #690 C036) */}
       <ConnectOut
+        key={connectSeq}
         open={connectOpen}
-        initialCall={connectCall ?? ""}
-        // TODO: derive default via-port from live config; the ConnectOut <Select> options already do.
-        initialPort={connectPort ?? PORTS_LIST[0]}
+        initialCall={handoff?.call ?? ""}
+        initialPort={handoff?.port ?? null}
         onClose={() => setConnectOpen(false)}
         // Sysop interactive connect-out — opens the session on the node and drops into
         // its drawer (no console-bridge / received-data stream in v1 — the monitor shows
@@ -241,8 +260,15 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
     // bare CR (BPQ does), and some send CRLF — but the pre-wrap pane only breaks on
     // LF, so without this every CR-terminated line collapses onto one row. Fold both
     // CRLF and lone CR to LF; the wire stream itself stays untouched.
-    const unsubscribe = subscribeSessionOutput(session.id, (chunk) =>
-      setBuffer((b) => b + chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n")),
+    //
+    // The node replays the session's whole backlog on EVERY subscription (including the
+    // stream helper's silent reconnect after a token rotation or a node restart), as a
+    // `backlog` event. onReset fires just before it is written: empty the buffer so the
+    // replay REPLACES the history rather than appending a second copy (C045, #689).
+    const unsubscribe = subscribeSessionOutput(
+      session.id,
+      (chunk) => setBuffer((b) => b + chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n")),
+      { onReset: () => setBuffer("") },
     );
     return unsubscribe;
   }, [session]);
@@ -332,26 +358,33 @@ function Stat({ k, v }: { k: string; v: string }) {
 }
 
 // ---- Connect-out modal (alias autocomplete from the routes list) ----
+// Mounted fresh per open (the parent keys it on the open sequence), so the initial props
+// ARE the form's initial state - there is no re-seeding effect to fight with.
 function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
   open: boolean;
   onClose: () => void;
   onConnect: (call: string, port: string) => void;
   initialCall: string;
-  initialPort: string;
+  /** The port the Routes hand-off named, or null for a bare Connect. */
+  initialPort: string | null;
 }) {
   const { data: routes } = useQuery(api.routes);
-  const { data: config } = useQuery(api.config);
-  // Via-port options come from the live config; fall back to the mock list.
-  const portIds = config?.ports.map((p) => p.id) ?? PORTS_LIST;
-  const [target, setTarget] = useState("");
-  const [port, setPort] = useState(initialPort);
+  const { data: config, error: configError } = useQuery(api.config);
+  // Via-port options are THIS node's ports, with no fixture fallback. The default used to
+  // be the mock's first port ("vhf-1") while the select showed the node's real first port,
+  // so the form displayed one port and POSTed another - a 404 from /sessions (#691 C021).
+  const portIds = config?.ports.map((p) => p.id) ?? [];
+  const [target, setTarget] = useState(initialCall);
+  const [port, setPort] = useState(initialPort ?? "");
 
+  // Settle the via-port when /config resolves: keep the hand-off's port if this node has
+  // it, else fall back to the node's first port. Until then `port` is "" and Connect is
+  // disabled - there is no port worth POSTing yet.
   useEffect(() => {
-    if (open) {
-      setTarget(initialCall);
-      setPort(initialPort);
-    }
-  }, [open, initialCall, initialPort]);
+    const ids = config?.ports.map((p) => p.id) ?? [];
+    if (ids.length === 0) return;
+    setPort((p) => (ids.includes(p) ? p : ids[0]));
+  }, [config]);
 
   // Suggest matching alias/callsign from both destinations and neighbours.
   const candidates = useMemo(() => {
@@ -377,7 +410,12 @@ function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" disabled={!target.trim()} onClick={() => onConnect(target.trim().toUpperCase(), port)}>
+          <Button
+            size="sm"
+            disabled={!target.trim() || !port}
+            title={port ? undefined : "Waiting for the node's port list"}
+            onClick={() => onConnect(target.trim().toUpperCase(), port)}
+          >
             <Icon name="link" size={14} /> Connect
           </Button>
         </>
@@ -412,8 +450,13 @@ function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
             )}
           </div>
         </Field>
-        <Field label="Via port">
-          <Select value={port} onChange={(e) => setPort(e.target.value)}>
+        <Field
+          label="Via port"
+          hint={configError
+            ? `Couldn't load this node's ports: ${configError}`
+            : portIds.length === 0 ? "Loading this node's ports…" : undefined}
+        >
+          <Select value={port} onChange={(e) => setPort(e.target.value)} disabled={portIds.length === 0}>
             {portIds.map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
         </Field>

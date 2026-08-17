@@ -9,11 +9,36 @@
 // ============================================================
 
 // ---- 6.1 NodeConfig tree -----------------------------------
-export type TransportKind = "kiss-tcp" | "serial-kiss" | "nino-tnc" | "axudp" | "axudp-multipoint" | "soundmodem";
+// Every `kind:` the server's TransportKinds declares (server:
+// Packet.Node.Core.Configuration.TransportKinds - all EIGHT arms). The two kinds the
+// Ports editor does not author (nino-tnc-tcp, tait-transparent) are still typed here:
+// they are created elsewhere (head-end adopt / the YAML file), and a port carrying one
+// must round-trip through the editor untouched rather than be dropped on save.
+export type TransportKind =
+  | "kiss-tcp" | "serial-kiss" | "nino-tnc" | "nino-tnc-tcp"
+  | "axudp" | "axudp-multipoint" | "tait-transparent" | "soundmodem";
+
+// The kinds a UI form can AUTHOR. nino-tnc-tcp is created by the head-end adopt flow (it binds a
+// device from a head-end's inventory) and tait-transparent by the config file, so no form offers
+// them - but a port carrying one is still edited, and saved, by the Ports screen.
+export type AuthorableTransportKind = Exclude<TransportKind, "nino-tnc-tcp" | "tait-transparent">;
 
 export interface KissTcpTransport { kind: "kiss-tcp"; host: string; port: number }
 export interface SerialKissTransport { kind: "serial-kiss"; device: string; baud: number }
 export interface NinoTncTransport { kind: "nino-tnc"; device: string; baud: number; mode: number }
+// A full-control NinoTNC reached over a split-station head-end's raw TCP pipe (server:
+// NinoTncTcpTransport). Created by the head-end adopt flow (POST /headends/{id}/adopt),
+// not by the Ports editor: the modem is picked from the head-end's device inventory.
+export interface NinoTncTcpTransport { kind: "nino-tnc-tcp"; headEndId: string; deviceId: string; mode: number }
+// A Tait TM8100/TM8200 radio in Transparent mode used AS the modem (server:
+// TaitTransparentTransportConfig). Three mutually-exclusive bindings - local device path,
+// CCDI serial, or a head-end device - plus the baud/airtime model. Config-file authored;
+// the editor carries it through untouched.
+export interface TaitTransparentTransport {
+  kind: "tait-transparent";
+  device?: string; serial?: string; headEndId?: string; deviceId?: string;
+  baud?: number; transparentBaud?: number; ffskBaud?: number; leadInMs?: number;
+}
 export interface AxudpTransport { kind: "axudp"; host: string; port: number; localPort: number }
 // One multipoint-AXUDP partner - a BPQ `MAP <call> <ip> UDP <port> [B]` line
 // (server: Packet.Node.Core.Configuration.AxudpPeerConfig). `call` is the routing
@@ -49,8 +74,10 @@ export type TransportConfig =
   | KissTcpTransport
   | SerialKissTransport
   | NinoTncTransport
+  | NinoTncTcpTransport
   | AxudpTransport
   | AxudpMultipointTransport
+  | TaitTransparentTransport
   | SoundModemTransport;
 
 export interface Ax25PortParams {
@@ -89,12 +116,20 @@ export interface PortCompatConfig {
 // the modem's. When present, every inbound frame carries per-frame RSSI/SNR sampled from the radio's
 // control channel (the signal data KISS can't provide). Pin which radio EITHER by CCDI serial
 // (preferred/stable - survives /dev/ttyUSB* renumbering and shared-USB-serial ambiguity) OR by device
-// path: exactly one of `serial`/`port`. Only valid on the serial-modem transport kinds (serial-kiss,
-// nino-tnc). Null/absent = no radio attached.
+// path OR by a head-end device (headEndId + deviceId, the split-station binding the head-end adopt
+// flow writes): exactly one binding mode. A local (serial/port) radio is valid only on the
+// serial-modem transport kinds (serial-kiss, nino-tnc); a head-end-bound one pairs with the
+// co-located nino-tnc-tcp modem; a `rig`-kind radio re-presents the port's rig: daemon and pairs with
+// any transport (server: PortConfigValidator's pairing rules). Null/absent = no radio attached.
 export interface RadioConfig {
-  kind: "tait-ccdi";
+  kind: "tait-ccdi" | "rig";
   serial?: string;
   port?: string;
+  // Split-station binding: the head-end instance + the stable device id of the radio's serial
+  // port on it. Written by the head-end adopt flow; the editor never authors it but must carry
+  // it through untouched (dropping it silently detaches the radio from an adopted port).
+  headEndId?: string;
+  deviceId?: string;
   baud?: number;
   // How often (seconds) the health monitor samples the radio; null/absent = driver default (10 s).
   // Not surfaced by the editor - carried through untouched so a YAML-set value survives a save.
@@ -147,6 +182,11 @@ export interface PortConfig {
   // ~28..256. Large NODES tables fragment into frames no larger than this. Null = no cap
   // (the structural 11-entries limit). See Packet.Node.Core.Configuration.PortConfig.NodesPaclen.
   nodesPaclen?: number | null;
+  // Label feeding the {instance} segment of this port's kissproxy MQTT topics; null = the
+  // port id. Written by the head-end adopt flow (the radio's amateur band) and by hand in
+  // the config file; no screen edits it, so it must ride through every port save untouched
+  // (server: Packet.Node.Core.Configuration.PortConfig.MqttInstance).
+  mqttInstance?: string | null;
 }
 // The system-default ID beacon (Packet.Node.Core.Configuration.BeaconConfig).
 // enabled defaults false (a node that never beaconed keeps not beaconing).
@@ -742,9 +782,14 @@ export interface TuningEvent {
 }
 
 // ---- 6.3 monitor event (derived from FrameTraced) ----------
+// Every value the server's decoder puts in MonitorEvent.type (server:
+// Packet.Node.Core/Api/MonitorEvent.cs FrameKind). TEST is a real U-frame - it is
+// what POST /ping transmits - and the bare "U"/"S" are the decoder's fallbacks for a
+// control octet it does not name. All three reached the table but were missing here
+// and from the type filter, so they could not be isolated (#691 C050).
 export type FrameType =
   | "UI" | "SABM" | "SABME" | "I" | "RR" | "RNR" | "REJ" | "SREJ"
-  | "FRMR" | "UA" | "DISC" | "DM" | "XID";
+  | "FRMR" | "UA" | "DISC" | "DM" | "XID" | "TEST" | "U" | "S";
 export type FrameClass = "I" | "U" | "S";
 export type FrameDirection = "in" | "out";
 export interface MonitorEvent {
@@ -774,6 +819,9 @@ export interface MonitorEvent {
   snrDb?: number | null;
   // The channel-idle noise floor (dBm) the radio was tracking when this frame arrived, or null.
   noiseFloorDbm?: number | null;
+  // Identifies the node PROCESS that numbered this frame. `seq` restarts at 1 on every node
+  // boot, so (bootId, seq) is the stable identity a client dedupes on - see mergeLiveFrame.
+  bootId?: string;
 }
 
 // ---- operator-facing helper models (UI layer) --------------
@@ -792,11 +840,11 @@ export interface PortHealth {
   level: "good" | "degraded" | "faulted";
   reason?: string;
 }
-export interface NinoTest {
-  portId: string; receivedAt: string; firmware: string;
-  mode: number; modeLabel: string; txdelaySource: string;
-  softwareControl: boolean; rssiDbm: number; crcOk: boolean;
-}
+// (NinoTest went with the Ports screen's NinoTNC test-frame banner in #691. It typed a
+// fixture, not a wire record - no endpoint or SSE event ever carried one - and the banner
+// it fed had been disabled behind `false &&` since it would otherwise have announced the
+// mock's test frame on a node with no NinoTNC. Reinstate it from the server's shape if a
+// real test-frame event is ever added.)
 // A per-port beacon override (Packet.Node.Core.Configuration.PortBeaconConfig).
 // enabled is authoritative for the port; null intervalMinutes / text inherit the
 // system default (BeaconConfig).

@@ -71,26 +71,34 @@ public static class PdnPortsApi
         var v1 = app.MapGroup("/api/v1").RequireAuthorization(PdnAuthPolicies.Operate);
 
         // Add a port: append it to the live Ports list. A duplicate id is caught by the
-        // validator's unique-id rule → 422 (no separate guard needed here).
-        v1.MapPost("/ports", (PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
+        // validator's unique-id rule → 422 (no separate guard needed here). ?dryRun=true
+        // validates + previews without persisting (and without auditing - nothing happened).
+        v1.MapPost("/ports", (PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
-            audit.RecordRest(ctx, clock, "add_port", port.Id ?? "", "requested", "");
+            if (!dryRun)
+            {
+                audit.RecordRest(ctx, clock, "add_port", port.Id ?? "", "requested", "");
+            }
             var candidate = cfg.Current with { Ports = [.. cfg.Current.Ports, port] };
-            return ApplyCandidate(cfg, candidate);
+            return ApplyCandidate(cfg, candidate, dryRun);
         });
 
         // Edit a port: replace the port carrying {id}. Unknown id → 404. Renaming the id
         // in the body (Id != {id}) reads as "edit the {id} entry" — the route id is the key.
-        v1.MapPut("/ports/{id}", (string id, PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock) =>
+        // ?dryRun=true validates + previews without persisting.
+        v1.MapPut("/ports/{id}", (string id, PortConfig port, HttpContext ctx, IWritableConfigProvider cfg, IAuditLog audit, TimeProvider clock, bool dryRun = false) =>
         {
             if (!cfg.Current.Ports.Any(p => p.Id == id))
             {
                 return Results.NotFound();
             }
-            audit.RecordRest(ctx, clock, "edit_port", id, "requested", "");
+            if (!dryRun)
+            {
+                audit.RecordRest(ctx, clock, "edit_port", id, "requested", "");
+            }
             var ports = cfg.Current.Ports.Select(p => p.Id == id ? port : p).ToArray();
             var candidate = cfg.Current with { Ports = ports };
-            return ApplyCandidate(cfg, candidate);
+            return ApplyCandidate(cfg, candidate, dryRun);
         });
 
         // Remove a port. Unknown id → 404.
@@ -183,8 +191,15 @@ public static class PdnPortsApi
     /// <c>before</c>, validate the candidate (422 on failure without touching the node),
     /// build the from→to <see cref="ReconcilePreview"/>, persist via <c>TryApply</c>, and
     /// return the <see cref="ReconcileResult"/>. Same three steps as <see cref="PdnConfigApi"/>.
+    /// <para>
+    /// With <paramref name="dryRun"/> the last step is skipped: the candidate is validated and
+    /// previewed and the node is left untouched (<c>Applied: false</c>) - the same contract
+    /// <c>PUT /config?dryRun=true</c> offers, so the web port editor can tell the operator what a
+    /// save would disrupt using the node's own reconcile classification rather than a re-derived
+    /// copy of it in the browser.
+    /// </para>
     /// </summary>
-    internal static IResult ApplyCandidate(IWritableConfigProvider cfg, NodeConfig candidate)
+    internal static IResult ApplyCandidate(IWritableConfigProvider cfg, NodeConfig candidate, bool dryRun = false)
     {
         var before = cfg.Current;
 
@@ -195,6 +210,12 @@ public static class PdnPortsApi
         }
 
         var preview = ReconcilePreviewBuilder.Build(before, candidate);
+
+        if (dryRun)
+        {
+            return Results.Ok(new ReconcileResult(
+                preview.Valid, preview.Live, preview.PortRestart, preview.NodeReset, Applied: false));
+        }
 
         // Defensive: TryApply re-validates, so after a clean Validate it should always
         // succeed — but honour its verdict rather than assume.

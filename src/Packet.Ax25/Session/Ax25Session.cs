@@ -105,6 +105,14 @@ public sealed class Ax25Session
     /// triggering event into <see cref="PostEvent"/>. Keep handlers
     /// fast — long-running work belongs on a different task.
     /// </para>
+    /// <para>
+    /// Each subscriber is invoked in isolation: a handler that throws is logged by
+    /// nothing and swallowed, and the remaining subscribers still run. That is not
+    /// politeness, it is a safety property - these signals are raised from inside
+    /// the transition's action chain, so an escaping exception would trip the #225
+    /// rollback and undo state and timers for a transition whose frames are already
+    /// on the wire.
+    /// </para>
     /// </remarks>
     public event EventHandler<DataLinkSignal>? DataLinkSignalEmitted;
 
@@ -138,7 +146,38 @@ public sealed class Ax25Session
             {
                 buffered.Add(signal);
             }
-            DataLinkSignalEmitted?.Invoke(this, signal);
+            SafeInvokeSignal(signal);
+        }
+    }
+
+    /// <summary>
+    /// Invoke each <see cref="DataLinkSignalEmitted"/> subscriber independently,
+    /// swallowing a fault per handler.
+    /// </summary>
+    /// <remarks>
+    /// This runs inside the dispatch try that implements the #225 rollback: the
+    /// dispatcher's <c>sendUpward</c> raises the upward signals from inside
+    /// <c>SdlLoopExecutor.Execute</c>. An application handler that threw therefore
+    /// used to unwind into that catch and roll the transition back - restoring the
+    /// timers and the previous state <em>after</em> the transition's frames were
+    /// already on the wire, leaving the peer connected and this end Disconnected and
+    /// silent (packet-net/packet.net#696). A consumer's bug cannot be allowed to
+    /// rewrite link state, so the isolation matches
+    /// <c>Ax25Listener.SafeInvoke</c> (SessionAccepted / FrameTraced) and
+    /// <see cref="TransitionFired"/>, which is deliberately raised outside the try.
+    /// </remarks>
+    private void SafeInvokeSignal(DataLinkSignal signal)
+    {
+        var handler = DataLinkSignalEmitted;
+        if (handler is null)
+        {
+            return;
+        }
+
+        foreach (var del in handler.GetInvocationList())
+        {
+            try { ((EventHandler<DataLinkSignal>)del).Invoke(this, signal); }
+            catch (Exception) { /* swallowed; see the remarks above */ }
         }
     }
 

@@ -1,31 +1,37 @@
 // ============================================================
-// pdn — mock data + domain models + help copy + formatters.
-// Typed port of the design handoff's pdn/data.jsx; field names match the
-// real records (see types.ts / docs/node-ui-design.md §6). Used by the API
-// client's mock backend (lib/api.ts) until the Slice-3 endpoints are live.
+// pdn - the FAKE NODE: fixture data + the behaviour behind VITE_API_MODE=mock.
+// Typed port of the design handoff's pdn/data.jsx; field names match the real
+// records (see types.ts / docs/node-ui-design.md §6).
+//
+// NOTHING outside api.ts's mock branch and the tests may import this file. It
+// describes a node that does not exist (GB7RDG, ports vhf-1/uhf-2/link-dn), and
+// every screen that reached in here for a default or a loading-state fallback was
+// showing the operator that invented node instead of their own (#691 C021/C022).
+// An eslint `no-restricted-imports` rule enforces it; the operator-facing copy,
+// presets, help tables and unit helpers the screens DO need live in catalogue.ts.
 // ============================================================
 import type {
   NodeConfig, NetRomRoutingSnapshot, NodeStatus, PortStatus, SessionInfo,
-  LinkStats, PeerCapability, MonitorEvent, FrameType, ApplyImpact, NinoMode, RadioProfile,
-  ChannelMode, LinkDifficulty, PortSetup, ParamHelp, NinoTest,
-  User, LogLine, ToggleHelp, FieldHelp, NodeApp, AppPackage, AvailableApp,
-  TailscaleStatus, SystemInfo, NetRomRouting,
+  LinkStats, PeerCapability, MonitorEvent, FrameType,
+  User, LogLine, NodeApp, AppPackage, AvailableApp,
+  TailscaleStatus, SystemInfo,
   RadioStatus, RadioScanResult, HeardStation, HeadEndScan, HeadEndKeyupResult,
   DoctorReport, DoctorProbe,
   TuningStartRequest, TuningSessionInfo, TuningEvent, TuningAdvice,
   RigStatus, RigScan, RigModelCatalogue, SoundModemQualitySnapshot,
 } from "./types";
+import { FRAME_TYPES, PIDS } from "./catalogue";
 
 // 6.1 NodeConfig tree ----------------------------------------
 export const NODE_CONFIG: NodeConfig = {
   schemaVersion: 3,
   identity: { callsign: "GB7RDG", alias: "RDGGW", grid: "IO91nl" },
   ports: [
-    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: "fast-il2p-1200", ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
+    { id: "vhf-1", enabled: true, transport: { kind: "nino-tnc", device: "/dev/ttyACM0", baud: 57600, mode: 4 }, profile: null, ax25: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 30, persistence: 63, slotTime: 10, txTail: 5 }, beacon: { enabled: true, intervalMinutes: null, text: null }, radio: { kind: "tait-ccdi", serial: "19925328", baud: 28800 }, rig: { kind: "flrig", host: "127.0.0.1", port: 12345 } },
     { id: "uhf-2", enabled: true, transport: { kind: "kiss-tcp", host: "127.0.0.1", port: 8001 }, profile: "slow-afsk1200", ax25: { t1Ms: 4000, t2Ms: 500, t3Ms: 180000, n2: 10, windowSize: 4, maxCachedPeers: 64 }, kiss: { txDelay: 40, persistence: 63, slotTime: 10, txTail: 8 }, beacon: { enabled: true, intervalMinutes: 15, text: "{node}:{call} UHF 9k6 data gateway QRV" } },
     { id: "link-dn", enabled: true, transport: { kind: "axudp", host: "44.131.91.2", port: 10093, localPort: 10093 }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: { enabled: false, intervalMinutes: null, text: null } },
     { id: "mp-net", enabled: true, transport: { kind: "axudp-multipoint", localPort: 10093, peers: [{ call: "N0CALL-1", host: "44.131.10.1", port: 10093, broadcast: true }, { call: "N0CALL-7", host: "44.131.10.2", port: 10094, broadcast: false }] }, profile: null, ax25: { t1Ms: 2000, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 7, maxCachedPeers: 32 }, kiss: null, beacon: null, netRomMinQuality: 100, nodesPaclen: 160 },
-    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "robust-hf", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 25, persistence: 32, slotTime: 10, txTail: 10 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
+    { id: "hf-300", enabled: false, transport: { kind: "serial-kiss", device: "/dev/ttyUSB1", baud: 38400 }, profile: "slow-afsk1200", ax25: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, maxCachedPeers: 16 }, kiss: { txDelay: 25, persistence: 32, slotTime: 10, txTail: 10 }, beacon: null, radio: { kind: "tait-ccdi", port: "/dev/ttyUSB2", baud: 28800 }, rig: { kind: "hamlib", host: "127.0.0.1", port: 4532 } },
   ],
   services: { banner: "{node}:{call} — Reading & District packet gateway", prompt: "{node}:{call}}" },
   management: {
@@ -76,26 +82,6 @@ export const TAILSCALE_STATUS: TailscaleStatus = {
   enabled: true, state: "running", fqdn: "pdn.tail-scale.ts.net", authUrl: null, funnel: false,
 };
 
-// field apply-impact map (hot vs disruptive) → per-field badges + reconcile
-export const APPLY_IMPACT: Record<string, ApplyImpact> = {
-  "identity.callsign": "node-reset",
-  "identity.alias": "node-reset",
-  "identity.grid": "live",
-  "port.transport": "port-restart",
-  "port.ax25": "live",
-  "port.kiss": "live",
-  "port.enabled": "port-restart",
-  "netRom": "live",
-  "services": "live",
-  "oarc": "live",
-  "management.http": "node-reset",
-  "management.telnet": "port-restart",
-  // Node-level soundmodem services: like the audio-device-owning soundmodem port transport
-  // (port.transport) and the auxiliary telnet listener, editing these opens/closes an audio device
-  // + a TCP listener — a bounded restart of that service, not a hot apply.
-  "ardop": "port-restart",
-  "paging": "port-restart",
-};
 
 // 6.2 NET/ROM routing snapshot -------------------------------
 export const NETROM: NetRomRoutingSnapshot = {
@@ -142,16 +128,22 @@ export const SESSIONS: SessionInfo[] = [
 ];
 
 // 6.3 monitor frame generation ------------------------------
-export const FRAME_TYPES: FrameType[] = ["UI", "SABM", "SABME", "I", "RR", "RNR", "REJ", "SREJ", "FRMR", "UA", "DISC", "DM", "XID"];
 export const CALLS = ["M0LTE", "2E0XYZ", "G4APL-1", "G8PZT-7", "GB7BNS", "GB7CIP", "MB7UWS", "G1MNW-2", "M7ABC", "GB7RDG", "2E1FOX", "G0HWC"];
 export const PORTS_LIST = ["vhf-1", "uhf-2", "link-dn"];
-export const PIDS: Record<string, string> = { "0xF0": "No layer 3", "0xCF": "NET/ROM", "0xCC": "ARPA IP", "0x08": "Segmentation" };
 
 export function randItem<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
 
+// What the fake stream emits. The filter's FRAME_TYPES also carries the decoder's bare
+// "U"/"S" fallbacks, which are what the server calls a control octet it cannot name - not
+// a frame anything would deliberately send, so the generator leaves them out.
+const GENERATED_FRAME_TYPES: FrameType[] = FRAME_TYPES.filter((t) => t !== "U" && t !== "S");
+
 let _frameSeq = 9000;
+// The mock stands in for one node process, so every frame it makes carries one boot id (the
+// live node stamps a real one per process - see MonitorEvent.bootId).
+const _bootId = "mock-boot";
 export function makeFrame(now: Date): MonitorEvent {
-  const type = randItem(FRAME_TYPES);
+  const type = randItem(GENERATED_FRAME_TYPES);
   const dir: "in" | "out" = Math.random() > 0.5 ? "in" : "out";
   const port = randItem(PORTS_LIST);
   let source = randItem(CALLS);
@@ -159,7 +151,7 @@ export function makeFrame(now: Date): MonitorEvent {
   if (dir === "out") source = "GB7RDG";
   if (source === dest) dest = randItem(CALLS);
   const isI = type === "I";
-  const isU = ["UI", "SABM", "SABME", "UA", "DISC", "DM", "XID", "FRMR"].includes(type);
+  const isU = ["UI", "SABM", "SABME", "UA", "DISC", "DM", "XID", "FRMR", "TEST"].includes(type);
   const pidKey = isI || type === "UI" ? randItem(Object.keys(PIDS)) : null;
   const ns = isI ? Math.floor(Math.random() * 8) : null;
   const nr = ["I", "RR", "RNR", "REJ", "SREJ"].includes(type) ? Math.floor(Math.random() * 8) : null;
@@ -175,6 +167,7 @@ export function makeFrame(now: Date): MonitorEvent {
   else if (type === "DM") summary = "DM (disconnected mode)";
   else if (type === "FRMR") summary = "FRMR (frame reject)";
   else if (type === "XID") summary = "XID (parameter negotiation)";
+  else if (type === "TEST") summary = "TEST (loopback echo)";
   else summary = type;
 
   const raw: number[] = [];
@@ -199,7 +192,7 @@ export function makeFrame(now: Date): MonitorEvent {
     pid: pidKey, pidName: pidKey ? PIDS[pidKey] : null,
     ns, nr, pf, command: dir === "out", length, summary, raw,
     path: Math.random() > 0.7 ? [randItem(["GB7BNS", "GB7CIP", "MB7UWS"])] : [],
-    rssiDbm, snrDb, noiseFloorDbm,
+    rssiDbm, snrDb, noiseFloorDbm, bootId: _bootId,
   };
 }
 export function seedFrames(n: number): MonitorEvent[] {
@@ -701,152 +694,5 @@ export const AVAILABLE_APPS: AvailableApp[] = [
   { id: "convers", name: "Convers", version: "0.1.2", description: "Classic CONVERS multi-user conference bridge.", icon: "users", capabilities: ["network", "web"], homepage: "https://github.com/packet-net/pdn-convers", kind: "deb", installed: false, installedVersion: null, updateAvailable: false, installable: false },
 ];
 
-// formatters -------------------------------------------------
-// Rig-dial frequency grouping: 14_074_000 Hz → "14.074.000" (MHz.kHz.Hz, how transceivers
-// render the dial). Callers add the unit suffix.
-export function fmtRigFrequency(hz: number): string {
-  const mhz = Math.floor(hz / 1_000_000);
-  const khz = Math.floor(hz / 1_000) % 1_000;
-  const rem = hz % 1_000;
-  return `${mhz}.${String(khz).padStart(3, "0")}.${String(rem).padStart(3, "0")}`;
-}
 
-export function fmtUptime(s: number): string {
-  const d = Math.floor(s / 86400); s %= 86400;
-  const h = Math.floor(s / 3600); s %= 3600;
-  const m = Math.floor(s / 60);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-export function fmtBytes(n: number): string {
-  if (n < 1024) return n + " B";
-  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
-  return (n / 1048576).toFixed(1) + " MB";
-}
-export function hex(n: number, w?: number): string { return n.toString(16).toUpperCase().padStart(w || 2, "0"); }
 
-// operator-facing config model ------------------------------
-export const KIND_LABEL: Record<string, string> = { "kiss-tcp": "kiss-tcp", "serial-kiss": "serial-kiss", "nino-tnc": "ninotnc", "axudp": "axudp", "axudp-multipoint": "axudp-mp", "soundmodem": "soundmodem" };
-// soundmodem carries native AX.25 frames over a shared CSMA channel — the KISS TXDELAY/PERSIST/
-// SLOTTIME knobs drive the modem's own p-persistent channel access (server: ICsmaChannelParams),
-// so it uses the KISS param block like the other RF transports (true), unlike the UDP tunnels.
-export const KIND_USES_KISS: Record<string, boolean> = { "kiss-tcp": true, "serial-kiss": true, "nino-tnc": true, "axudp": false, "axudp-multipoint": false, "soundmodem": true };
-
-// The in-process soundmodem's accepted modem modes — mirrors the server's SoundModemValidator.
-// KnownModes (ModemCatalog.KnownModes minus bpsk1200-multi). The bpsk*/qpsk* modes expose the
-// diversity-bank + PSK-detector knobs; bpsk300 is the differential frequency-diversity bank,
-// bpsk1200 stays the legacy single-carrier modem.
-export const SOUNDMODEM_MODES: string[] = [
-  "afsk1200", "afsk1200-fx25", "afsk1200-fx25rx", "afsk1200-multi", "afsk1200-il2p", "afsk1200-il2p-nocrc",
-  "afsk300", "afsk300-il2p", "afsk300-il2pc",
-  "bpsk300", "bpsk300-multi", "bpsk300-nocrc", "bpsk1200",
-  "qpsk600", "qpsk2400", "qpsk3600",
-  "fsk9600", "fsk9600-il2p", "fsk4800-il2p",
-  "c4fsk9600", "c4fsk19200",
-  "freedv-datac0", "freedv-datac1", "freedv-datac3", "freedv-datac4", "freedv-datac13", "freedv-datac14",
-  "ms110d-wn0", "ms110d-wn1", "ms110d-wn2", "ms110d-wn3", "ms110d-wn4", "ms110d-wn5", "ms110d-wn6", "ms110d-wn13",
-];
-
-export const NINO_MODES: NinoMode[] = [
-  { mode: 0, label: "300 baud · AFSK · AX.25 (HF/NBEMS)" },
-  { mode: 1, label: "1200 baud · AFSK · AX.25" },
-  { mode: 2, label: "1200 baud · AFSK · IL2P" },
-  { mode: 3, label: "2400 baud · AFSK · IL2P" },
-  { mode: 4, label: "9600 baud · GFSK · IL2P" },
-  { mode: 5, label: "9600 baud · GFSK · AX.25 (G3RUH)" },
-  { mode: 6, label: "4800 baud · GFSK · IL2P" },
-  { mode: 7, label: "19200 baud · GFSK · IL2P" },
-  { mode: 8, label: "38400 baud · GFSK · IL2P" },
-];
-
-export const RADIO_PROFILES: RadioProfile[] = [
-  { id: "vhf-fm-1200", name: "VHF FM · 1200 AFSK", ninoMode: 1, baseline: { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 } },
-  { id: "vhf-fm-9600", name: "VHF FM · 9600 G3RUH", ninoMode: 5, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
-  { id: "uhf-data-9600", name: "UHF data · 9600 GFSK IL2P", ninoMode: 4, baseline: { t1Ms: 2500, t2Ms: 200, t3Ms: 180000, n2: 8, windowSize: 4, txDelay: 15, slotTime: 10, txTail: 3, persistence: 63 } },
-  { id: "hf-robust-300", name: "HF robust · 300 AFSK", ninoMode: 0, baseline: { t1Ms: 8000, t2Ms: 1500, t3Ms: 300000, n2: 12, windowSize: 2, txDelay: 25, slotTime: 10, txTail: 10, persistence: 32 } },
-];
-export const CHANNEL_MODES: ChannelMode[] = [
-  { id: "shared", name: "Shared", help: "Several stations share this RF channel. pdn listens before transmitting and backs off (CSMA) to avoid collisions." },
-  { id: "dedicated", name: "Dedicated", help: "A point-to-point link with no other users. Faster turnaround — minimal back-off and TX delay." },
-];
-export const LINK_DIFFICULTY: LinkDifficulty[] = [
-  { id: "easy", name: "Easy", help: "Strong, reliable path. Fewer retries and shorter timers for snappy recovery." },
-  { id: "moderate", name: "Moderate", help: "Occasional loss. Balanced retries and timers." },
-  { id: "hard", name: "Marginal", help: "Weak or noisy path. More retries, longer timers, smaller window to ride out fades." },
-];
-export const PORT_SETUP: Record<string, PortSetup> = {
-  "vhf-1": { radio: "uhf-data-9600", channel: "shared", difficulty: "moderate", custom: false },
-  "uhf-2": { radio: "vhf-fm-1200", channel: "shared", difficulty: "moderate", custom: true },
-  "link-dn": { radio: null, channel: "dedicated", difficulty: "easy", custom: false },
-  "hf-300": { radio: "hf-robust-300", channel: "shared", difficulty: "hard", custom: false },
-};
-export const PARAM_HELP: Record<string, ParamHelp> = {
-  t1Ms: { label: "Ack timeout", unit: "ms", help: "How long pdn waits for the other station to acknowledge a frame before sending it again. Too short wastes airtime on needless resends; too long is slow to recover from a lost frame. (Protocol name: T1.)" },
-  t2Ms: { label: "Reply delay", unit: "ms", help: "A short pause before replying, so several received frames can be acknowledged together rather than one at a time. (Protocol name: T2.)" },
-  t3Ms: { label: "Keep-alive poll", unit: "ms", help: "When a connected link goes quiet, how long before pdn pokes the other station to check it's still there. (Protocol name: T3.)" },
-  n2: { label: "Retries", unit: "", help: "How many times pdn resends a frame with no acknowledgement before giving up and dropping the link. (Protocol name: N2.)" },
-  windowSize: { label: "Window", unit: "frames", help: "How many frames may be in flight (sent but not yet acknowledged) at once. Bigger = more throughput on a clean link; smaller is safer on a lossy one." },
-  n1: { label: "Max frame (PACLEN)", unit: "bytes", help: "Largest information-field a frame carries (PACLEN / N1). Smaller frames are shorter on the air and recover faster on a noisy/slow medium — set ~80 on an HF port; leave it at 256 on VHF/UHF. The far station can negotiate it lower via XID but never higher." },
-  netRomQuality: { label: "NET/ROM quality", unit: "", help: "Route quality this port advertises for a directly-heard neighbour (0–255). Higher = a better link the network prefers. Leave blank to inherit the node-wide default. Set per port on a mixed-grade node (e.g. 191 on one link, 192 on another)." },
-  netRomMinQuality: { label: "NET/ROM min quality", unit: "", help: "The worst route quality (0–255) a route learned on this port may have and still be kept (BPQ MINQUAL). Leave blank to inherit the node-wide minimum. Set a high floor on a busy or poor port (e.g. 100 on RF) so only good routes survive there." },
-  nodesPaclen: { label: "NODES PACLEN", unit: "bytes", help: "Cap on the size of each NET/ROM NODES-broadcast frame (~28–256, BPQ NODESPACLEN). A large routing table fragments into several smaller frames so the broadcast stays robust on a slow or shared channel. Leave blank for no cap. Distinct from the connected-mode PACLEN (N1) above." },
-  txDelay: { label: "TX delay", unit: "ms", help: "Silence held after keying the transmitter before data starts, giving the far radio's receiver time to lock on. In software-control mode pdn sets this on the modem." },
-  txTail: { label: "TX tail", unit: "ms", help: "Extra carrier held after the last byte before the transmitter unkeys, so the final bits aren't clipped." },
-  slotTime: { label: "Slot time", unit: "ms", help: "The back-off slot length used when sharing the channel — how long pdn waits between 'is the channel free?' checks." },
-  persistence: { label: "Persistence", unit: "%", help: "When the channel is free, the chance pdn transmits in each slot. Lower is more polite on a busy shared channel; 100% is fine on a dedicated link. (Stored as a 0–255 byte.)" },
-};
-export const AX25_DEFAULTS: Record<string, number> = { t1Ms: 3000, t2Ms: 300, t3Ms: 180000, n2: 8, windowSize: 4, n1: 256 };
-// KISS TXDELAY/SLOTTIME/TXTAIL are single BYTES in units of 10 ms on the wire (that is the
-// KISS protocol, and the server types them `byte?`) — so these are 300 ms, 100 ms, 50 ms.
-// They are STORED in wire units here and everywhere in the editor draft, and converted for
-// display by the ms<->units pair below, exactly as persistence is stored as a 0-255 byte and
-// shown as a percentage. Writing milliseconds into these fields is what made every panel-created
-// port POST `txDelay: 300` into a byte and get an opaque 400 back.
-export const KISS_DEFAULTS: Record<string, number> = { txDelay: 30, slotTime: 10, txTail: 5, persistence: 63 };
-
-export function persistPct(v: number): number { return Math.round((v / 255) * 100); }
-export function pctToPersist(p: number): number { return Math.round((p / 100) * 255); }
-
-/** A KISS 10 ms-unit byte as milliseconds, for display. */
-export function tenMsToMs(units: number): number { return units * 10; }
-/** Milliseconds back to a KISS 10 ms-unit byte, clamped to the 0..255 the wire allows
- *  (255 = 2.55 s, the longest TXDELAY/TXTAIL/SLOTTIME KISS can express). */
-export function msToTenMs(ms: number): number { return Math.min(255, Math.max(0, Math.round(ms / 10))); }
-
-export const NINO_TEST: NinoTest = {
-  portId: "vhf-1", receivedAt: "just now", firmware: "NinoTNC A3 · fw 2.3.1",
-  mode: 4, modeLabel: "9600 baud · GFSK · IL2P",
-  txdelaySource: "hardware DIP switches", softwareControl: false, rssiDbm: -71, crcOk: true,
-};
-
-export const NETROM_TOGGLE_HELP: Record<string, ToggleHelp> = {
-  enabled: { label: "NET/ROM networking", desc: "The layer that lets your node route across the wider packet network, not just direct AX.25 links. Turn this off and the node only handles point-to-point connections." },
-  broadcast: { label: "Advertise my routes", desc: "Tell neighbours which destinations your node can reach, so they'll route through you. Turn off to be a silent leaf that uses the network but doesn't carry others' traffic." },
-  compress: { label: "Compress circuit data", desc: "Offer LinBPQ-style payload compression on NET/ROM circuits (BPQ L4Compress). It's negotiated per link, so a peer that doesn't support it transparently gets uncompressed data. Off by default — turn on only for links to compression-capable BPQ neighbours." },
-};
-// The single routing-role control (replaces the old connect + forward toggles, which
-// had an inert combination). Each option is a clean escalation of how much routing work
-// the node does. `routing` is the picker's own label/help; the rest are the per-option copy.
-export const NETROM_ROUTING_HELP: { label: string; help: string; options: { value: NetRomRouting; label: string; desc: string }[] } = {
-  label: "Routing role",
-  help: "How much your node takes part in routing across the network. Hearing routes (above) is always on; this controls whether your node opens links to other nodes and relays traffic.",
-  options: [
-    { value: "None", label: "Listen only", desc: "Passive — your node learns the network's routes but opens no links to other nodes and carries no traffic. The safe default." },
-    { value: "Endpoint", label: "Connect out", desc: "Your node may open links so you can connect <alias> to a distant node across the network — but it won't relay other stations' traffic." },
-    { value: "Transit", label: "Full router", desc: "Your node opens links AND relays other stations' traffic onward toward its destination. This is what makes you a useful relay rather than just an endpoint." },
-  ],
-};
-export const NETROM_FIELD_HELP: Record<string, FieldHelp> = {
-  defaultNeighbourQuality: { label: "New-neighbour quality", unit: "0–255", help: "The starting quality score given to a neighbour you've just heard, before its path has been measured. Higher = more willing to route through unproven neighbours." },
-  minQuality: { label: "Minimum usable quality", unit: "0–255", help: "Routes scoring below this are ignored — a noise floor that keeps poor, unreliable paths out of your routing table." },
-  sweepIntervalSeconds: { label: "Routing sweep", unit: "seconds", help: "How often the node re-checks its routing table and ages out routes it hasn't heard about recently." },
-  timeToLive: { label: "Hop limit", unit: "hops", help: "The most nodes a frame may cross before the network gives up on it. Stops traffic looping around the network forever. (Protocol name: TTL.)" },
-  window: { label: "Transport window", unit: "frames", help: "How many NET/ROM frames may be in flight (unacknowledged) on a circuit at once. Bigger = more throughput on a clean path." },
-};
-export const INP3_FIELD_HELP: Record<string, FieldHelp> = {
-  l3RttInterval: { label: "Time-probe interval", unit: "seconds", help: "How often the node measures the real round-trip time to its neighbours." },
-  l3RttResetWindow: { label: "Probe reset window", unit: "seconds", help: "How long a neighbour may go without answering a time-probe before its measured time is treated as unknown again. Must be longer than the probe interval." },
-  rifInterval: { label: "Share-timing interval", unit: "seconds", help: "How often your node passes its measured route timings on to neighbours, so the whole network's time map stays current." },
-  positiveDebounce: { label: "Switch-route patience", unit: "seconds", help: "How long good news ('this route got faster') is batched up before the node passes it on, so a burst of improvements becomes one update instead of several, which stops it flapping on momentary blips. Bad news is always passed on straight away." },
-};

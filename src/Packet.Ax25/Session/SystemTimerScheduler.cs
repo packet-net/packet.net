@@ -26,8 +26,14 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
     // the deadline so TimeRemaining can answer without poking at the
     // ITimer. Deadlines are absolute on TimeProvider's clock so they
     // tick correctly under FakeTimeProvider too.
-    private readonly Dictionary<string, (ITimer Timer, DateTimeOffset Deadline, Action OnExpiry)> timers =
+    private readonly Dictionary<string, (ITimer Timer, DateTimeOffset Deadline, Action OnExpiry, long Generation)> timers =
         new(StringComparer.Ordinal);
+
+    // Monotonic arming counter, guarded by `gate`. Each armed timer captures its
+    // own generation in its callback closure so a callback that was already in
+    // flight when its timer was cancelled and the name re-armed can recognise that
+    // the entry under that name is no longer its own, and stay silent.
+    private long generationCursor;
 
     /// <summary>
     /// Create a scheduler. <paramref name="time"/> controls how durations are
@@ -150,15 +156,30 @@ public sealed class SystemTimerScheduler : ITimerScheduler, IDisposable
             timers.Remove(name);
         }
         var deadline = time.GetUtcNow() + duration;
+        var generation = ++generationCursor;
         var timer = time.CreateTimer(_ =>
         {
             lock (gate)
             {
+                // Identity check, not just presence. Disposing an ITimer suppresses a
+                // merely-queued callback, but a callback already past that check and
+                // waiting on `gate` still runs, and by then the dispatch thread may
+                // have done Stop T1 + Start T1 (the SDL does exactly that, e.g. on
+                // an I-frame send). Without this test the stale callback removed the
+                // FRESHLY armed entry and posted its own expiry: the SDL saw a
+                // spurious T1 expiry, the new timer was orphaned (IsRunning false,
+                // TimeRemaining zero, Cancel unable to dispose it) and fired later
+                // while the figures believed T1 was stopped
+                // (packet-net/packet.net#696).
+                if (!timers.TryGetValue(name, out var current) || current.Generation != generation)
+                {
+                    return;
+                }
                 timers.Remove(name);
             }
             onExpiry();
         }, state: null, dueTime: duration, period: Timeout.InfiniteTimeSpan);
-        timers[name] = (timer, deadline, onExpiry);
+        timers[name] = (timer, deadline, onExpiry, generation);
     }
 
     /// <inheritdoc/>

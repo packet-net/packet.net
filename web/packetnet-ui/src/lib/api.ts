@@ -448,10 +448,13 @@ export const api = {
 
   // ---- port management (Slice-3 step 3) ----
   // Each mutation flows through the same config-write reconcile path as putConfig:
-  // a 422 throws ConfigRejected; success returns the ReconcileResult.
-  addPort: (p: PortConfig) => writePort("/ports", "POST", JSON.stringify(p)),
-  editPort: (id: string, p: PortConfig) =>
-    writePort(`/ports/${encodeURIComponent(id)}`, "PUT", JSON.stringify(p)),
+  // a 422 throws ConfigRejected; success returns the ReconcileResult. dryRun validates +
+  // previews the reconcile WITHOUT applying it (the same flag PUT /config takes) - how the
+  // port editor asks the node what a save would disrupt before the operator commits.
+  addPort: (p: PortConfig, opts: { dryRun?: boolean } = {}) =>
+    writePort("/ports", "POST", JSON.stringify(p), opts.dryRun ?? false),
+  editPort: (id: string, p: PortConfig, opts: { dryRun?: boolean } = {}) =>
+    writePort(`/ports/${encodeURIComponent(id)}`, "PUT", JSON.stringify(p), opts.dryRun ?? false),
   removePort: (id: string) =>
     writePort(`/ports/${encodeURIComponent(id)}`, "DELETE"),
   // Bring a port up/down/restart (persisted via the config seam for up/down; restart
@@ -1135,13 +1138,13 @@ export class PortLifecycleUnavailable extends Error {
 
 // Add/edit/remove a port through the config-write reconcile path. 404 (unknown id) and
 // 422 (rejected candidate) map to ConfigRejected/Error; success returns the
-// ReconcileResult. Mirrors writeConfig — the server reuses the same seam.
-async function writePort(path: string, method: string, body?: string): Promise<ReconcileResult> {
+// ReconcileResult. Mirrors writeConfig - the server reuses the same seam, dryRun included.
+async function writePort(path: string, method: string, body?: string, dryRun = false): Promise<ReconcileResult> {
   if (MODE === "mock") {
     await new Promise((r) => setTimeout(r, 80));
-    return mockReconcile(true);
+    return mockReconcile(!dryRun);
   }
-  const res = await authFetch(path, {
+  const res = await authFetch(`${path}${dryRun ? "?dryRun=true" : ""}`, {
     method,
     headers: body
       ? { "content-type": "application/json", accept: "application/json" }
@@ -1490,44 +1493,154 @@ export function useQuery<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Qu
   return { data, loading, error, reload: () => setTick((t) => t + 1) };
 }
 
+// ---- the shared SSE plumbing -------------------------------
+// Every live feed opens through openStream(), which fixes three things a bare
+// `new EventSource(url)` gets wrong (review item C023, #689):
+//
+//  1. THE TOKEN IS READ FRESH AT EACH (RE)CONNECT. An EventSource URL is frozen for the
+//     life of the object, and EventSource has no header API, so the JWT rides in the query
+//     string. Access tokens expire (60 min by default) while auth is ON by default: a
+//     stream opened before a rotation keeps replaying the DEAD token on the browser's own
+//     auto-reconnect, the node 401s, and per the SSE spec a non-200 closes the EventSource
+//     FOR GOOD. The feed then dies silently under an unchanged "live" dot.
+//  2. A CLOSED STREAM IS RE-OPENED HERE, after a silent token renew, with capped
+//     exponential backoff - so an expiry, a node restart or a dropped WLAN heals itself
+//     instead of needing the operator to navigate away and back.
+//  3. onStatus(connected) lets a screen show whether its "live" dot is telling the truth.
+
+/** Optional hooks every subscribe* takes as its last argument. Purely additive - callers
+ *  that pass nothing behave exactly as they did. */
+export interface StreamOptions {
+  /** Called with true each time the feed connects and false each time it drops, so a
+   *  screen can render a live dot that reflects reality. */
+  onStatus?: (connected: boolean) => void;
+  /** Called when the server replays its history as a `backlog` event, BEFORE that text
+   *  reaches onChunk - the consumer resets its terminal / drawer buffer so a reconnect
+   *  re-renders the history instead of appending a second copy (console + session feeds;
+   *  review item C045). */
+  onReset?: () => void;
+}
+
+// Reconnect backoff: 1s, 2s, 4s ... capped at 30s, plus a little jitter so a node restart
+// doesn't bring every open panel back in lockstep. Reset on a successful open.
+const RECONNECT_BASE_MS = 1000;
+const RECONNECT_CAP_MS = 30_000;
+// The session-scoped feeds (console, tuning, spectrum) have an onError seam meaning "this
+// stream is over" - a small retry budget keeps that meaningful: an auth failure heals on the
+// first retry, while a stream the node genuinely ended still reaches the screen promptly.
+const SESSION_STREAM_RETRIES = 3;
+
+interface StreamSpec {
+  /** Path under /api/v1 - the access token is appended fresh at each connect. */
+  path: string;
+  /** Named SSE event -> handler. */
+  events: Record<string, (e: MessageEvent) => void>;
+  onStatus?: (connected: boolean) => void;
+  /** Called once when the helper stops trying: the feed is gone for good. */
+  onGone?: () => void;
+  /** Consecutive failed reconnects before onGone. Infinite by default (an always-on panel
+   *  should come back whenever the node does). */
+  maxRetries?: number;
+}
+
+/** Open an SSE feed that survives token rotation and node restarts. Returns an unsubscribe
+ *  that stops reconnecting as well as closing the current stream. */
+function openStream(spec: StreamSpec): () => void {
+  const maxRetries = spec.maxRetries ?? Number.POSITIVE_INFINITY;
+  let current: EventSource | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let attempts = 0;
+  let stopped = false;
+
+  const connect = () => {
+    if (stopped) return;
+    // token() is read HERE (via withTokenParam), never captured - so a rotation between
+    // attempts is picked up by the next connect.
+    const es = new EventSource(withTokenParam(`${BASE}${spec.path}`));
+    current = es;
+    es.addEventListener("open", () => { attempts = 0; spec.onStatus?.(true); });
+    for (const [name, handler] of Object.entries(spec.events)) {
+      es.addEventListener(name, handler as EventListener);
+    }
+    es.addEventListener("error", () => {
+      // A transient drop leaves readyState CONNECTING - the browser is already re-dialling
+      // (with the frozen URL), so leave it be. CLOSED is terminal for that object and ours
+      // to recover from.
+      if (es.readyState !== EventSource.CLOSED) return;
+      es.close();
+      if (current === es) current = null;
+      spec.onStatus?.(false);
+      if (stopped) return;
+      if (attempts >= maxRetries) { spec.onGone?.(); return; }
+      const delay = Math.min(RECONNECT_CAP_MS, RECONNECT_BASE_MS * 2 ** attempts)
+        + Math.floor(Math.random() * 250);
+      attempts += 1;
+      timer = setTimeout(() => {
+        // The likeliest reason a live feed 401s is an expired access token, so renew before
+        // re-opening. This is the SAME shared, cross-tab-locked rotation the fetch path uses
+        // (no double-spend of the one-time-use refresh token) and it never throws - a failed
+        // renew just means we re-dial with what we have and try again on the next tick.
+        void refreshIfExpiringSoon().then(connect, connect);
+      }, delay);
+    });
+  };
+
+  connect();
+
+  return () => {
+    stopped = true;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    current?.close();
+    current = null;
+  };
+}
+
 // ---- the live frame stream (SSE `frame` events) ------------
 // onFrame is called per arriving MonitorEvent. Returns an unsubscribe.
-export function subscribeFrames(onFrame: (f: MonitorEvent) => void): () => void {
+export function subscribeFrames(
+  onFrame: (f: MonitorEvent) => void,
+  opts?: StreamOptions,
+): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     const id = setInterval(() => {
       const burst = 1 + Math.floor(Math.random() * 2);
       for (let i = 0; i < burst; i++) onFrame(mock.makeFrame(new Date()));
     }, 700);
     return () => clearInterval(id);
   }
-  // EventSource can't set an Authorization header, so the token rides as a query
-  // param (?access_token=<jwt>); the backend reads it. Tokenless (auth off) just omits it.
-  const es = new EventSource(withTokenParam(`${BASE}/events`));
-  const handler = (e: MessageEvent) => {
-    try { onFrame(JSON.parse(e.data) as MonitorEvent); } catch { /* ignore malformed */ }
-  };
-  es.addEventListener("frame", handler as EventListener);
-  return () => { es.removeEventListener("frame", handler as EventListener); es.close(); };
+  return openStream({
+    path: "/events",
+    events: {
+      frame: (e) => { try { onFrame(JSON.parse(e.data) as MonitorEvent); } catch { /* ignore malformed */ } },
+    },
+    onStatus: opts?.onStatus,
+  });
 }
 
 // Live rig poll ticks (SSE /rigs/events, `event: rig`): one full RigStatus per attached rig per
 // tick — REPLACE per portId, don't append (unlike the frame stream). Idle rigs tick at the poll
 // cadence (~5 s); a keyed transmitter ticks at the meter cadence (~1 s) so SWR/power are live
 // during a transmission. EventSource auto-reconnects; heartbeat comments are ignored natively.
-export function subscribeRigs(onRig: (r: RigStatus) => void): () => void {
+export function subscribeRigs(
+  onRig: (r: RigStatus) => void,
+  opts?: StreamOptions,
+): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     const id = setInterval(() => {
       const rig = mock.RIGS[0];
       if (rig?.attached) onRig({ ...structuredClone(rig), sampledAt: new Date().toISOString() });
     }, 5000);
     return () => clearInterval(id);
   }
-  const es = new EventSource(withTokenParam(`${BASE}/rigs/events`));
-  const handler = (e: MessageEvent) => {
-    try { onRig(JSON.parse(e.data) as RigStatus); } catch { /* skip a malformed tick */ }
-  };
-  es.addEventListener("rig", handler as EventListener);
-  return () => { es.removeEventListener("rig", handler as EventListener); es.close(); };
+  return openStream({
+    path: "/rigs/events",
+    events: {
+      rig: (e) => { try { onRig(JSON.parse(e.data) as RigStatus); } catch { /* skip a malformed tick */ } },
+    },
+    onStatus: opts?.onStatus,
+  });
 }
 
 /** Seed the monitor with a recent backlog (mock only; live seeds from the stream). */
@@ -1541,8 +1654,13 @@ export function seedFrames(n: number): MonitorEvent[] {
 // first, then streams live. onChunk is called per decoded chunk. Returns an unsubscribe.
 // Mock mode synthesises a fake banner + a line or two on a timer so the console drawer
 // demos with no node (mirrors subscribeFrames).
-export function subscribeSessionOutput(id: string, onChunk: (text: string) => void): () => void {
+export function subscribeSessionOutput(
+  id: string,
+  onChunk: (text: string) => void,
+  opts?: StreamOptions,
+): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     onChunk(`GB7RDG:GB7RDG} Welcome to the mock node — session ${id}.\r\n`);
     let n = 0;
     const lines = [
@@ -1555,13 +1673,20 @@ export function subscribeSessionOutput(id: string, onChunk: (text: string) => vo
     }, 1500);
     return () => clearInterval(timer);
   }
-  // Token as a query param (see subscribeFrames) — EventSource has no header API.
-  const es = new EventSource(withTokenParam(`${BASE}/sessions/${encodeURIComponent(id)}/stream`));
-  const handler = (e: MessageEvent) => {
+  const write = (e: MessageEvent) => {
     try { onChunk(JSON.parse(e.data) as string); } catch { /* ignore malformed */ }
   };
-  es.addEventListener("output", handler as EventListener);
-  return () => { es.removeEventListener("output", handler as EventListener); es.close(); };
+  return openStream({
+    path: `/sessions/${encodeURIComponent(id)}/stream`,
+    events: {
+      // The node replays its whole backlog on EVERY subscription, so it arrives named apart
+      // from live output: reset the drawer buffer first, then write the replay into the
+      // fresh buffer. Without this a silent reconnect appended a second copy of the history.
+      backlog: (e) => { opts?.onReset?.(); write(e); },
+      output: write,
+    },
+    onStatus: opts?.onStatus,
+  });
 }
 
 // ---- the live node-command-console output stream (SSE `output`) --
@@ -1574,23 +1699,30 @@ export function subscribeConsoleOutput(
   id: string,
   onChunk: (text: string) => void,
   onError?: () => void,
+  opts?: StreamOptions,
 ): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     onChunk("Welcome to LONDON (M0LTE-1)  [Packet.NET mock]\r\nM0LTE-1> ");
     return () => {};
   }
-  // Token as a query param (see subscribeFrames) — EventSource has no header API.
-  const es = new EventSource(withTokenParam(`${BASE}/console/${encodeURIComponent(id)}/stream`));
-  const handler = (e: MessageEvent) => {
+  const write = (e: MessageEvent) => {
     try { onChunk(JSON.parse(e.data) as string); } catch { /* ignore malformed */ }
   };
-  es.addEventListener("output", handler as EventListener);
-  // EventSource fires `error` on a transient drop (it auto-reconnects) AND on a terminal close.
-  // The node ends the response when the console exits (Bye) or is closed; surface that to the UI.
-  es.addEventListener("error", () => {
-    if (es.readyState === EventSource.CLOSED) onError?.();
+  return openStream({
+    path: `/console/${encodeURIComponent(id)}/stream`,
+    events: {
+      // Replayed history (sent on every subscription) - reset the terminal, then write it.
+      backlog: (e) => { opts?.onReset?.(); write(e); },
+      output: write,
+    },
+    onStatus: opts?.onStatus,
+    // The node ends the response when the console exits (Bye) or is closed. A dead stream is
+    // retried a few times first (an expired token heals on the first retry); when the budget
+    // is spent the stream really is over, and the screen shows its "closed" state.
+    onGone: onError,
+    maxRetries: SESSION_STREAM_RETRIES,
   });
-  return () => { es.removeEventListener("output", handler as EventListener); es.close(); };
 }
 
 // ---- the live tuning-session stream (SSE `tuning` events) --
@@ -1603,45 +1735,75 @@ export function subscribeTune(
   id: string,
   onEvent: (e: TuningEvent) => void,
   onError?: () => void,
+  opts?: StreamOptions,
 ): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     return mock.driveTuneStream(id, onEvent, onError);
   }
-  // Token as a query param (see subscribeFrames) — EventSource has no header API.
-  const es = new EventSource(withTokenParam(`${BASE}/ports/${encodeURIComponent(id)}/tuning/events`));
-  const handler = (e: MessageEvent) => {
-    try { onEvent(JSON.parse(e.data) as TuningEvent); } catch { /* ignore malformed */ }
-  };
-  es.addEventListener("tuning", handler as EventListener);
-  es.addEventListener("error", () => {
-    if (es.readyState === EventSource.CLOSED) onError?.();
+  return openStream({
+    path: `/ports/${encodeURIComponent(id)}/tuning/events`,
+    events: {
+      tuning: (e) => { try { onEvent(JSON.parse(e.data) as TuningEvent); } catch { /* ignore malformed */ } },
+    },
+    onStatus: opts?.onStatus,
+    // A new subscriber is sent the session's history first, so a reconnect re-renders the
+    // trend rather than losing it. onError means "the session is over" - after the retries.
+    onGone: onError,
+    maxRetries: SESSION_STREAM_RETRIES,
   });
-  return () => { es.removeEventListener("tuning", handler as EventListener); es.close(); };
 }
 
 export function subscribeSpectrum(
   id: string,
   onLine: (bins: Uint8Array, binHz: number) => void,
   onError?: () => void,
+  opts?: StreamOptions,
 ): () => void {
   if (MODE === "mock") {
+    opts?.onStatus?.(true);
     return mock.driveSpectrumStream(id, onLine);
   }
-  const es = new EventSource(withTokenParam(`${BASE}/ports/${encodeURIComponent(id)}/spectrum/events`));
-  const handler = (e: MessageEvent) => {
-    try {
-      const evt = JSON.parse(e.data) as SpectrumEvent;
-      const raw = atob(evt.bins);
-      const bins = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bins[i] = raw.charCodeAt(i);
-      onLine(bins, evt.binHz);
-    } catch { /* ignore malformed */ }
-  };
-  es.addEventListener("spectrum", handler as EventListener);
-  es.addEventListener("error", () => {
-    if (es.readyState === EventSource.CLOSED) onError?.();
+  return openStream({
+    path: `/ports/${encodeURIComponent(id)}/spectrum/events`,
+    events: {
+      spectrum: (e) => {
+        try {
+          const evt = JSON.parse(e.data) as SpectrumEvent;
+          const raw = atob(evt.bins);
+          const bins = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) bins[i] = raw.charCodeAt(i);
+          onLine(bins, evt.binHz);
+        } catch { /* ignore malformed */ }
+      },
+    },
+    onStatus: opts?.onStatus,
+    onGone: onError,
+    maxRetries: SESSION_STREAM_RETRIES,
   });
-  return () => { es.removeEventListener("spectrum", handler as EventListener); es.close(); };
+}
+
+/** Fold one live frame into the monitor's newest-first ring buffer.
+ *
+ *  `seq` is a PER-PROCESS counter on the node: it restarts at 1 on every boot, so it is not a
+ *  stable frame identity. A monitor left open across a node restart therefore saw the new
+ *  boot's frames as ones it already held and dropped every one of them, silently (review item
+ *  C046, #689). `bootId` (additive on MonitorEvent) is what makes the identity stable: a
+ *  different boot means a fresh buffer. When it is absent on either side we fall back to the
+ *  shape of the evidence - a seq at or below the newest buffered one that is NOT byte-for-byte
+ *  a frame we hold can only be a restart, whereas the bootstrap/live overlap this hook has
+ *  always deduped repeats the same (seq, timestamp) pair. */
+export function mergeLiveFrame(prev: MonitorEvent[], f: MonitorEvent, cap: number): MonitorEvent[] {
+  const newest = prev[0];
+  if (!newest) return [f];
+  const sameFrame = (p: MonitorEvent) =>
+    p.seq === f.seq && String(p.timestamp) === String(f.timestamp);
+  const restarted = f.bootId && newest.bootId
+    ? f.bootId !== newest.bootId
+    : f.seq <= newest.seq && !prev.some(sameFrame);
+  if (restarted) return [f];
+  if (prev.some((p) => p.seq === f.seq)) return prev;   // the bootstrap/live overlap
+  return [f, ...prev].slice(0, cap);
 }
 
 // A small live frames-buffer hook for the monitor (ring buffer, newest first).
@@ -1650,9 +1812,11 @@ export function useFrameStream(cap = 500): {
   paused: boolean;
   setPaused: (p: boolean) => void;
   clear: () => void;
+  connected: boolean;
 } {
   const [frames, setFrames] = useState<MonitorEvent[]>([]);
   const [paused, setPaused] = useState(false);
+  const [connected, setConnected] = useState(false);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   // Bootstrap with recent history so the table isn't empty on open: fetch the ring
@@ -1671,12 +1835,12 @@ export function useFrameStream(cap = 500): {
     }).catch(() => { /* live-only fallback */ });
     return () => { alive = false; };
   }, [cap]);
-  // Live stream; dedupe the bootstrap/live overlap by seq.
+  // Live stream; dedupe the bootstrap/live overlap and flush on a node restart (mergeLiveFrame).
   useEffect(() => {
     return subscribeFrames((f) => {
       if (pausedRef.current) return;
-      setFrames((prev) => (prev.some((p) => p.seq === f.seq) ? prev : [f, ...prev].slice(0, cap)));
-    });
+      setFrames((prev) => mergeLiveFrame(prev, f, cap));
+    }, { onStatus: setConnected });
   }, [cap]);
-  return { frames, paused, setPaused, clear: () => setFrames([]) };
+  return { frames, paused, setPaused, clear: () => setFrames([]), connected };
 }

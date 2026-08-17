@@ -408,9 +408,16 @@ public class Ax25ListenerRejectAndEdgeTests
         // to us forwards the response first.
         var digi1 = new Callsign("GB7CIP", 0);
         var digi2 = new Callsign("MB7UR", 0);
-        var sabmViaDigis = Ax25Frame.Sabm(LocalCall, PeerCallA, digipeaters: new[] { digi1, digi2 });
+        var sabmViaDigis = Ax25Frame.Sabm(LocalCall, PeerCallA, digipeaters: new[] { digi1, digi2 })
+            .ToBytes().ToArray();
+        // Mark both repeater slots has-been-repeated (§3.12.4): this is the copy the
+        // last digi put on the air, i.e. the one actually addressed to us. A copy
+        // with H=0 is still in transit and is monitor-only (see
+        // Ax25ListenerDigipeaterHBitTests).
+        sabmViaDigis[(2 * Ax25Address.EncodedLength) + 6] |= 0x80;
+        sabmViaDigis[(3 * Ax25Address.EncodedLength) + 6] |= 0x80;
 
-        modem.InjectInbound(sabmViaDigis);
+        modem.InjectInboundRaw(sabmViaDigis);
 
         var session = await accepted.Task.WithTimeout(TimeSpan.FromSeconds(2));
         session.Context.Remote.Should().Be(PeerCallA,

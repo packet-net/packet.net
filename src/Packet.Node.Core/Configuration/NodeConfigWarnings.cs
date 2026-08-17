@@ -31,4 +31,24 @@ public static class NodeConfigWarnings
                 "If that is not intended, give each port a distinct mqttInstance.")
             .ToArray();
     }
+
+    /// <summary>
+    /// Ports whose AX.25 window seed (k) exceeds 7. Legal, but only a mod-128 (SABME) link
+    /// can use it: a mod-8 session clamps the live window to Modulus-1 = 7
+    /// (Ax25SessionContext.EffectiveWindow), so on a port that only ever answers plain
+    /// SABM the extra is inert. Surfaced so an operator who meant "wider window" on a
+    /// mod-8 link learns why it never gets wider (packet-net/packet.net#696, C083).
+    /// </summary>
+    public static IReadOnlyList<string> WideWindowSeeds(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        return config.Ports
+            .Where(p => p.Ax25?.WindowSize is > 7)
+            .Select(p =>
+                $"port '{p.Id}' sets ax25.windowSize {p.Ax25!.WindowSize} - a window wider than 7 " +
+                "only takes effect on mod-128 (SABME) links; mod-8 (SABM) sessions on this port " +
+                "clamp to 7 outstanding I-frames.")
+            .ToArray();
+    }
 }

@@ -148,12 +148,17 @@ jobs:
       - name: install
         run: npm ci
 
-      - name: typecheck + build + test
-        # `npm run build` is `tsc --noEmit && vite build`; then the vitest screen
+      - name: lint + typecheck + build + test
+        # `npm run lint` is eslint over the whole SPA with --max-warnings 0; it went
+        # years without a config file, so the script could only fail and CI never ran
+        # it (#691 C009) - which is how react-hooks disables piled up against a rule
+        # nothing enforced, and how screens came to import the mock fixtures. The
+        # no-restricted-imports rule in eslint.config.js is the gate that keeps them
+        # out. `npm run build` is `tsc --noEmit && vite build`; then the vitest screen
         # smoke suite. Shared (reader) box-wide flock, same discipline as the .NET
         # test job: coexist with other readers across all 4 org runners, never
         # overlap a CPU-heavy EXCLUSIVE workflow (interop / fuzz / deb-smoke).
-        run: flock -s /tmp/pdn-ci-heavy.lock bash -c 'npm run build && npm run test'
+        run: flock -s /tmp/pdn-ci-heavy.lock bash -c 'npm run lint && npm run build && npm run test'
 
   dependency-scan:
     name: dependency-scan

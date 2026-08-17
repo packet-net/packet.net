@@ -15,7 +15,7 @@ import { useAuth } from "@/app/auth";
 import { api, Unauthorized } from "@/lib/api";
 import { passkeysAvailable } from "@/lib/secureContext";
 
-function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
       {/* quiet technical backdrop */}
@@ -32,7 +32,6 @@ function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNo
           <p className="mt-3 text-xs text-muted-foreground">amateur packet radio node</p>
         </div>
         {children}
-        {footer}
       </div>
     </div>
   );
@@ -109,8 +108,15 @@ export function Login() {
     }
   };
 
+  // No footer identity line. It used to read "GB7RDG · 127.0.0.1:8080" - a design-mock
+  // callsign and a loopback address, printed on every real node's sign-in page (#691 C041).
+  // Nothing pdn serves before authentication carries the node's identity: /healthz answers
+  // {status:"ok"}, /setup/state answers {needsSetup}, and /config + /status are both gated.
+  // An honest footer needs the node to publish its callsign pre-auth, which is an
+  // auth-surface decision (#693); until then the page says nothing rather than something
+  // false.
   return (
-    <AuthFrame footer={<p className="mt-6 text-center text-[11px] text-muted-foreground">GB7RDG · 127.0.0.1:8080</p>}>
+    <AuthFrame>
       <Card className="p-6">
         <h1 className="text-lg font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted-foreground">Authenticate to manage this node.</p>

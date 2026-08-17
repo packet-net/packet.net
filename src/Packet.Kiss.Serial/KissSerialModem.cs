@@ -206,6 +206,33 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
         return WriteAsync(encoded, cancellationToken);
     }
 
+    /// <summary>
+    /// Raise <see cref="FrameReceived"/>, one subscriber at a time, swallowing a
+    /// fault per handler.
+    /// </summary>
+    /// <remarks>
+    /// The invocation sits inside the read pump's try, whose generic catch records a
+    /// terminal exception and completes the inbound channel with it - so a single
+    /// subscriber throw was indistinguishable from a dead serial port and made this
+    /// modem permanently deaf (packet-net/packet.net#696). A driver is
+    /// infrastructure: a buggy consumer must not be able to take the port down, and
+    /// the AX.25 listener has always isolated its own handlers this way.
+    /// </remarks>
+    private void RaiseFrameReceived(KissFrame frame)
+    {
+        var handler = FrameReceived;
+        if (handler is null)
+        {
+            return;
+        }
+
+        foreach (var del in handler.GetInvocationList())
+        {
+            try { ((EventHandler<KissFrame>)del).Invoke(this, frame); }
+            catch (Exception) { /* swallowed; see the remarks above */ }
+        }
+    }
+
     private async Task WriteAsync(byte[] bytes, CancellationToken cancellationToken)
     {
         await writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -243,7 +270,7 @@ public sealed class KissSerialModem : IAx25Transport, ICsmaChannelParams, IAsync
                 foreach (var frame in decoder.Push(buffer.AsSpan(0, read)))
                 {
                     inbound.Writer.TryWrite(frame);
-                    FrameReceived?.Invoke(this, frame);
+                    RaiseFrameReceived(frame);
                 }
             }
         }

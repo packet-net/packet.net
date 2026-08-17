@@ -260,7 +260,7 @@ public static class PdnSessionsApi
         // fixed (the frontend builds to it): each output chunk is one `output` SSE event
         // whose `data:` is the chunk JSON-encoded as a string — JSON-encoding is REQUIRED so
         // embedded CR/LF survive SSE's line framing (a raw \n in data: would break the event).
-        // On subscribe we replay the backlog first (one `output` event), then stream live
+        // On subscribe we replay the backlog first (one `backlog` event), then stream live
         // chunks; a `: ping` heartbeat keeps the stream warm. If the id is not managed → 404
         // (checked BEFORE writing any bytes, since once the response body has started we can
         // no longer return a result).
@@ -284,10 +284,13 @@ public static class PdnSessionsApi
             ctx.Response.Headers["X-Accel-Buffering"] = "no";
             ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
-            // Replay the backlog first (the banner/prompt the browser missed) as one `output`
-            // event, then stream live chunks. Even an empty backlog is sent so the client's
-            // onopen-driven render has a deterministic first event and the headers flush.
-            await WriteOutputAsync(ctx, backlog, ct).ConfigureAwait(false);
+            // Replay the backlog first (the banner/prompt the browser missed) as one `backlog`
+            // event, NOT `output`: the replay is sent on every subscription, so a client that
+            // appended it as live output duplicated the whole history on each silent EventSource
+            // reconnect (C045). The distinct name lets the client reset its buffer first.
+            // Even an empty backlog is sent so the client's onopen-driven render has a
+            // deterministic first event and the headers flush.
+            await WriteBacklogAsync(ctx, backlog, ct).ConfigureAwait(false);
 
             try
             {
@@ -323,7 +326,10 @@ public static class PdnSessionsApi
                 // The client went away (RequestAborted). Normal SSE teardown — the
                 // using-scoped subscription unsubscribes + completes its channel.
             }
-        });
+        })
+          // A browser EventSource can't set an Authorization header - this marker is what
+          // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
+          .WithMetadata(AcceptsQueryAccessToken.Instance);
 
         // Connectionless TEST ping ("axping"): validate the station + port, capture the
         // port's listener, and run AxPinger over it. The pinger only reads frames + sends
@@ -465,9 +471,19 @@ public static class PdnSessionsApi
     // event early. A plain string serializes identically under any options, so the default
     // serializer is used.
     private static Task WriteOutputAsync(HttpContext ctx, string chunk, CancellationToken ct)
+        => WriteChunkAsync(ctx, "output", chunk, ct);
+
+    // The replayed history, as a DISTINCT `backlog` event. Every subscription (including the
+    // browser's silent EventSource auto-reconnect) starts with the whole snapshot, so a client
+    // that appended it as `output` rewrote its history on each reconnect (review item C045,
+    // #689). Naming the replay lets the client reset its drawer buffer before writing it.
+    private static Task WriteBacklogAsync(HttpContext ctx, string chunk, CancellationToken ct)
+        => WriteChunkAsync(ctx, "backlog", chunk, ct);
+
+    private static Task WriteChunkAsync(HttpContext ctx, string eventName, string chunk, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(chunk);
-        return WriteRawAsync(ctx, $"event: output\ndata: {json}\n\n", ct);
+        return WriteRawAsync(ctx, $"event: {eventName}\ndata: {json}\n\n", ct);
     }
 
     // Write a UTF-8 SSE chunk and flush it immediately. A mid-write cancellation or
