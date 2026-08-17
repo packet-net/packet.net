@@ -22,6 +22,9 @@ namespace Packet.Radio;
 /// radio, a frame is attributed to the transmission window that contains its arrival (delivery
 /// trails end-of-RF by the modem's decode+serial latency — windows stay open for
 /// <see cref="RssiTaggingOptions.WindowAttributionSlack"/> past carrier-fall to absorb that).
+/// The next station keying inside that slack does not steal the frame: where the just-closed
+/// and the freshly-opened window are both eligible, the frame's estimated airtime decides, and
+/// it stays with the closed one unless it could have fitted on air since the new rise.
 /// Without carrier-sense, attribution falls back to a threshold-over-noise-floor filter across
 /// <see cref="RssiTaggingOptions.AttributionLookback"/>; window-derived fields stay null.
 /// Frames with no qualifying sample get <c>null</c> metadata rather than a guess.
@@ -145,7 +148,7 @@ public sealed class RssiTaggingTransport : IAx25Transport, IAsyncDisposable
 
             if (radio.Capabilities.HasFlag(RadioCapabilities.CarrierSense))
             {
-                var window = FindWindow(receivedAt);
+                var window = FindWindow(receivedAt, airtime);
                 if (window is null)
                 {
                     return BuildThresholdAttribution(receivedAt, floor, airtime);
@@ -213,23 +216,40 @@ public sealed class RssiTaggingTransport : IAx25Transport, IAsyncDisposable
             EstimatedAirtime: airtime);
     }
 
-    private CarrierWindow? FindWindow(DateTimeOffset receivedAt)
+    private CarrierWindow? FindWindow(DateTimeOffset receivedAt, TimeSpan? airtime)
     {
-        // The frame belongs to the window containing its arrival; delivery trails carrier-fall
-        // by the modem's decode+serial latency, so closed windows stay eligible for a slack.
-        if (currentWindow is { } open && open.RiseAt <= receivedAt)
-        {
-            return open;
-        }
-        CarrierWindow? best = null;
+        // The frame belongs to the window whose carrier carried it. Delivery trails carrier-fall
+        // by the modem's decode+serial latency, so closed windows stay eligible for a slack, and
+        // the next station may well key inside that slack: scan the closed windows FIRST, so a
+        // window that only opened after the frame was already on air cannot claim it. Windows
+        // are enqueued in fall order, so the last match is the most recent one.
+        CarrierWindow? closed = null;
         foreach (var w in windows)
         {
             if (w.RiseAt <= receivedAt && receivedAt <= w.FallAt!.Value + options.WindowAttributionSlack)
             {
-                best = w;
+                closed = w;
             }
         }
-        return best;
+
+        if (currentWindow is not { } open || open.RiseAt > receivedAt)
+        {
+            return closed;
+        }
+        if (closed is null)
+        {
+            return open;
+        }
+
+        // Both are eligible: the frame arrived after the open window rose, while the previous
+        // window was still inside its slack. The frame's own airtime settles it. Its RF started
+        // at receivedAt minus airtime at the latest (decode+serial lag and the sender's TXDELAY
+        // only push that start earlier), so a start before the open window's rise means the open
+        // window cannot have carried it. With no bit rate there is no airtime and so no evidence,
+        // and the window we know was on air over the frame keeps it. An overlap (the closed
+        // window fell after the open one rose) is not a late delivery, so the open window stands.
+        bool fitsSinceTheOpenRise = airtime is { } air && receivedAt - air >= open.RiseAt;
+        return closed.FallAt!.Value > open.RiseAt || fitsSinceTheOpenRise ? open : closed;
     }
 
     private (float Median, float Min, float Max, int Count)? RssiStatistics(DateTimeOffset from, DateTimeOffset to)
