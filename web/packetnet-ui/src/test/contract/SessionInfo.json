@@ -3,6 +3,7 @@
     "id": "vhf-1:M0LTE",
     "portId": "vhf-1",
     "peer": "M0LTE",
+    "local": "GB7RDG-1",
     "role": "console",
     "state": "Connected",
     "vs": 12,
@@ -17,6 +18,7 @@
     "id": "link-dn:G8PZT-7",
     "portId": "link-dn",
     "peer": "G8PZT-7",
+    "local": "GB7RDG-1",
     "role": "interlink",
     "state": "TimerRecovery",
     "vs": 401,
@@ -26,5 +28,20 @@
     "bytesIn": 2104882,
     "bytesOut": 1988401,
     "lastActivity": "0:00:00"
+  },
+  {
+    "id": "vhf-1:M0LTE\u003EGB7RDG-4",
+    "portId": "vhf-1",
+    "peer": "M0LTE",
+    "local": "GB7RDG-4",
+    "role": "console",
+    "state": "Connected",
+    "vs": 3,
+    "vr": 2,
+    "window": 4,
+    "uptimeSeconds": 96,
+    "bytesIn": 512,
+    "bytesOut": 2048,
+    "lastActivity": "0:00:01"
   }
 ]

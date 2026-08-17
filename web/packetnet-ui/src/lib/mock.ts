@@ -157,10 +157,13 @@ export const PORT_STATUS: Record<string, PortStatus> = {
 
 // 6.4 sessions ----------------------------------------------
 export const SESSIONS: SessionInfo[] = [
-  { id: "s1", portId: "vhf-1", peer: "M0LTE", role: "console", state: "Connected", vs: 12, vr: 11, window: 4, uptimeSeconds: 842, bytesIn: 4821, bytesOut: 19233, lastActivity: "0:00:02" },
-  { id: "s2", portId: "vhf-1", peer: "2E0XYZ", role: "console", state: "TimerRecovery", vs: 3, vr: 7, window: 4, uptimeSeconds: 121, bytesIn: 980, bytesOut: 1422, lastActivity: "0:00:09" },
-  { id: "s3", portId: "uhf-2", peer: "G4APL-1", role: "bridge", state: "Connected", vs: 88, vr: 90, window: 4, uptimeSeconds: 5403, bytesIn: 71204, bytesOut: 60891, lastActivity: "0:00:01" },
-  { id: "s4", portId: "link-dn", peer: "G8PZT-7", role: "interlink", state: "Connected", vs: 401, vr: 398, window: 7, uptimeSeconds: 91244, bytesIn: 2104882, bytesOut: 1988401, lastActivity: "0:00:00" },
+  // The ids are the node's real convention (packet.net#723): `port:peer` for a circuit to the
+  // node's own callsign, `port:peer>local` for one answered as an application callsign - which
+  // is what the third row here is, and why the table can show the identity a caller reached.
+  { id: "vhf-1:M0LTE", portId: "vhf-1", peer: "M0LTE", local: "GB7RDG", role: "console", state: "Connected", vs: 12, vr: 11, window: 4, uptimeSeconds: 842, bytesIn: 4821, bytesOut: 19233, lastActivity: "0:00:02" },
+  { id: "vhf-1:2E0XYZ", portId: "vhf-1", peer: "2E0XYZ", local: "GB7RDG", role: "console", state: "TimerRecovery", vs: 3, vr: 7, window: 4, uptimeSeconds: 121, bytesIn: 980, bytesOut: 1422, lastActivity: "0:00:09" },
+  { id: "uhf-2:G4APL-1>M0ABC-3", portId: "uhf-2", peer: "G4APL-1", local: "M0ABC-3", role: "bridge", state: "Connected", vs: 88, vr: 90, window: 4, uptimeSeconds: 5403, bytesIn: 71204, bytesOut: 60891, lastActivity: "0:00:01" },
+  { id: "link-dn:G8PZT-7", portId: "link-dn", peer: "G8PZT-7", local: "GB7RDG", role: "interlink", state: "Connected", vs: 401, vr: 398, window: 7, uptimeSeconds: 91244, bytesIn: 2104882, bytesOut: 1988401, lastActivity: "0:00:00" },
 ];
 
 // 6.3 monitor frame generation ------------------------------

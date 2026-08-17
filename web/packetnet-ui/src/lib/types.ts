@@ -626,7 +626,15 @@ export type SessionRole = "console" | "interlink" | "bridge";
  *  and beacons included). A reconnecting peer therefore shows running totals, not a fresh zero.
  *  The per-circuit truth is state / vs / vr / window. See packet.net#694 (C063). */
 export interface SessionInfo {
-  id: string; portId: string; peer: string; role: SessionRole; state: string;
+  /** OPAQUE. `port:peer` for a circuit to the node's own callsign, `port:peer>local` for one to
+   *  an application callsign or alias - the engine keys a session on (local, remote), so one
+   *  station can hold both at once and each must be separately addressable by DELETE / send /
+   *  stream. Pass it back verbatim; never parse it (packet.net#723). Render `local` instead. */
+  id: string; portId: string; peer: string;
+  /** The LOCAL callsign this circuit is answered as: the node's own, or an application callsign
+   *  the node binds on that port. */
+  local: string;
+  role: SessionRole; state: string;
   vs: number; vr: number; window: number;
   uptimeSeconds: number; bytesIn: number; bytesOut: number; lastActivity: string;
 }

@@ -19,12 +19,21 @@ public sealed class PdnAuthCliTests : IDisposable
 {
     private readonly string dir;
     private readonly string dbPath;
+    private readonly string? savedPacketNetDb;
 
     public PdnAuthCliTests()
     {
         dir = TestPaths.NewPath("pdn-authcli");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
+
+        // The resolution under test is "no --db and no PACKETNET_DB": an explicit environment
+        // variable is honoured verbatim and short-circuits the whole state-dir/cwd walk. Assembly
+        // parallelisation is off, but the process is shared, and several host-boot test classes
+        // set PACKETNET_DB in their constructors and never clear it - so whether these cases saw
+        // an ambient one came down to class ORDER. Clear it for the duration and put it back.
+        savedPacketNetDb = Environment.GetEnvironmentVariable("PACKETNET_DB");
+        Environment.SetEnvironmentVariable("PACKETNET_DB", null);
     }
 
     [Fact]
@@ -116,6 +125,7 @@ public sealed class PdnAuthCliTests : IDisposable
 
     public void Dispose()
     {
+        Environment.SetEnvironmentVariable("PACKETNET_DB", savedPacketNetDb);
         try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
     }
 }

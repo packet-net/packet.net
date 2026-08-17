@@ -78,11 +78,21 @@ public sealed record PortStatus(
 /// silently wrong (review item C063, #694): the engine's <c>Ax25Session</c> carries no
 /// per-session byte tally to report instead.
 /// </para>
+/// <para>
+/// <b><see cref="Id"/> carries the engine's full session key.</b> The AX.25 engine keys a session
+/// on <c>(Local, Remote)</c>, so one station can hold a link to the node console and another to a
+/// bound application callsign at the same moment. The id is minted (and parsed back) by
+/// <see cref="SessionIds"/>: <c>{portId}:{peer}</c> when <see cref="Local"/> is the node's own
+/// callsign, <c>{portId}:{peer}&gt;{local}</c> otherwise. It is <b>opaque</b> - clients pass it
+/// back verbatim and never parse it - and <see cref="Local"/> is the field to render if a client
+/// wants to show which identity a circuit reached (packet.net#723).
+/// </para>
 /// </remarks>
 public sealed record SessionInfo(
-    string Id,
+    string Id,               // portId:peer, or portId:peer>local when local is not the node's own call
     string PortId,
     string Peer,
+    string Local,            // the LOCAL callsign this circuit is answered as (the node's own, or an app callsign)
     string Role,             // "console" | "interlink" | "bridge"
     string State,            // Connected, TimerRecovery, …
     int Vs,

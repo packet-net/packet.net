@@ -104,7 +104,7 @@ describe("Sessions — connect-out", () => {
 // ---- the via port: auto (the node routes it) vs a named port (a direct AX.25 dial) ----
 // A session the connect returns, so the parent can open its drawer (mock-leak's idiom).
 const CONNECTED: SessionInfo = {
-  id: "vhf-1:GB7CIP", portId: "vhf-1", peer: "GB7CIP", role: "console", state: "Connected",
+  id: "vhf-1:GB7CIP", portId: "vhf-1", peer: "GB7CIP", local: "GB7RDG-1", role: "console", state: "Connected",
   vs: 0, vr: 0, window: 4, uptimeSeconds: 0, bytesIn: 0, bytesOut: 0, lastActivity: "0:00:00",
 };
 

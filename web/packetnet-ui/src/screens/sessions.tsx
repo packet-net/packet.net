@@ -30,6 +30,10 @@ export function Sessions() {
   const { has } = useAuth();
   const canOperate = has("operate"); // connect/disconnect is operate-scoped
   const { data, loading, error, reload } = useQuery(api.sessions);
+  // The node's own callsign, so a circuit answered as something ELSE (an application callsign
+  // the node binds) can say so. The station is the same; the identity it reached is not, and
+  // since packet.net#723 those are two separately addressable rows.
+  const { data: status } = useQuery(api.status, []);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [openSession, setOpenSession] = useState<SessionInfo | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
@@ -182,6 +186,11 @@ export function Sessions() {
                 <tr key={s.id} className="border-b border-border/60 hover:bg-accent/40">
                   <Td>
                     <button onClick={() => setOpenSession(s)} className="font-mono font-semibold hover:text-primary">{s.peer}</button>
+                    {status && s.local && s.local !== status.callsign && (
+                      <div className="font-mono text-[11px] text-muted-foreground" title="This circuit is answered as an application callsign, not the node's own">
+                        &rarr; {s.local}
+                      </div>
+                    )}
                   </Td>
                   <Td className="font-mono text-xs text-muted-foreground">{s.portId}</Td>
                   <Td><Badge variant={ROLE_BADGE[s.role]}>{s.role}</Badge></Td>
@@ -316,7 +325,7 @@ function SessionConsole({ session, canOperate, onClose, onDrop, onNotice }: {
       open={!!session}
       onClose={onClose}
       title={session ? `Session — ${session.peer}` : ""}
-      subtitle={session ? `${session.portId} · ${session.role} · ${session.state}` : undefined}
+      subtitle={session ? `${session.portId} · ${session.local} · ${session.role} · ${session.state}` : undefined}
       width="max-w-2xl"
       footer={session && (
         <>

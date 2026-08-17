@@ -232,6 +232,11 @@ public static class PdnReadApi
         var ctx = session.Context;
         var peer = ctx.Remote.ToString();
         var role = neighbours.Contains(peer) ? "interlink" : "console";
+        // The LOCAL half of the engine's session key. A circuit to an application callsign is a
+        // different circuit from one to the node's own call, even from the same station on the
+        // same port - so it gets its own id (#723 item 5).
+        var local = ctx.Local.ToString();
+        var nodeCall = NodeCallOn(host, portId);
 
         // The (port, peer) telemetry LINK backs the byte/uptime/last-activity fields, and a
         // link outlives any one session: it is keyed on the peer callsign, counts every frame
@@ -252,9 +257,10 @@ public static class PdnReadApi
         string lastActivity = link is null ? "-" : RelativeAgo(now, link.LastActivity);
 
         return new SessionInfo(
-            Id: $"{portId}:{peer}",
+            Id: SessionIds.Format(portId, peer, local, nodeCall),
             PortId: portId,
             Peer: peer,
+            Local: local,
             Role: role,
             State: session.CurrentState,
             Vs: ctx.VS,
@@ -264,6 +270,18 @@ public static class PdnReadApi
             BytesIn: bytesIn,
             BytesOut: bytesOut,
             LastActivity: lastActivity);
+    }
+
+    /// <summary>
+    /// The callsign the port's listener answers as (its <c>MyCall</c>) - the "is this the node's
+    /// own identity" side of the session-id convention. Falls back to the configured node
+    /// identity when the port is not serving (a projection racing a teardown), and null when
+    /// neither is available, which <see cref="SessionIds.Format"/> reads as "assume node call".
+    /// </summary>
+    internal static string? NodeCallOn(NodeHostedService host, string portId)
+    {
+        var myCall = host.Supervisor?.GetPort(portId)?.Listener.MyCall;
+        return myCall?.ToString() ?? host.Config.Current.Identity.Callsign;
     }
 
     /// <summary>

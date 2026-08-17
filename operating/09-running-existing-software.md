@@ -187,4 +187,5 @@ to new outbound connects only; nothing restarts and no session drops.
 
 ---
 
-Return to the [operating guide index](index.md).
+Next: [10. Your ports, in order &rarr;](10-your-ports-in-order.md), or return to the
+[operating guide index](index.md).

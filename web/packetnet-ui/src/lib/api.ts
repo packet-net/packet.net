@@ -609,6 +609,7 @@ async function connectSession(target: string, portId?: string): Promise<SessionI
     const via = portId || mock.NODE_CONFIG.ports[0]?.id || "vhf";
     return {
       id: `${via}:${target}`, portId: via, peer: target,
+      local: mock.NODE_CONFIG.identity.callsign,
       role: "console", state: "Connected", vs: 0, vr: 0, window: 4,
       uptimeSeconds: 0, bytesIn: 0, bytesOut: 0, lastActivity: "0:00:00",
     };

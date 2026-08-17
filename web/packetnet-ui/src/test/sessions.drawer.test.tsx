@@ -19,7 +19,7 @@ import type { NodeConfig, SessionInfo } from "@/lib/types";
 const { api } = apiModule;
 
 const SESSION: SessionInfo = {
-  id: "vhf-1:M0LTE", portId: "vhf-1", peer: "M0LTE", role: "console", state: "Connected",
+  id: "vhf-1:M0LTE", portId: "vhf-1", peer: "M0LTE", local: "GB7RDG-1", role: "console", state: "Connected",
   vs: 12, vr: 11, window: 4, uptimeSeconds: 842, bytesIn: 4821, bytesOut: 19_233,
   lastActivity: "0:00:02",
 };

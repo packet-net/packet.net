@@ -40,7 +40,7 @@ public sealed class LiveNodeMcpBackend(
     {
         IReadOnlyList<McpSessionInfo> sessions = PdnReadApi.BuildSessions(host, clock)
             .Select(s => new McpSessionInfo(
-                s.Id, s.PortId, s.Peer, s.Role, s.State, s.Vs, s.Vr, s.Window,
+                s.Id, s.PortId, s.Peer, s.Local, s.Role, s.State, s.Vs, s.Vr, s.Window,
                 s.UptimeSeconds, s.BytesIn, s.BytesOut, s.LastActivity))
             .ToList();
         return Task.FromResult(sessions);

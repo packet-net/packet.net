@@ -64,7 +64,7 @@ const NO_ROUTES: NetRomRoutingSnapshot = {
 };
 
 const SESSION: SessionInfo = {
-  id: "s1", portId: "radio-a", peer: "GB7CIP", role: "console", state: "Connected",
+  id: "radio-a:GB7CIP", portId: "radio-a", peer: "GB7CIP", local: "GB7RDG-1", role: "console", state: "Connected",
   vs: 0, vr: 0, window: 4, uptimeSeconds: 1, bytesIn: 0, bytesOut: 0, lastActivity: "0:00:00",
 };
 
