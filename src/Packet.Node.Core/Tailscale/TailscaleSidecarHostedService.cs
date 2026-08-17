@@ -497,7 +497,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     }
 
     /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
-    /// to a group SIGKILL when a grandchild is holding the pipes open — C076), dispose the process
+    /// to a group SIGKILL when a grandchild is holding the pipes open - C076), dispose the process
     /// handle, and delete the temp auth-key file. Used by both the graceful-stop (cancellation)
     /// and unexpected-exit paths of <see cref="RunChildAsync"/>.</summary>
     private async Task CleanupChildAsync(

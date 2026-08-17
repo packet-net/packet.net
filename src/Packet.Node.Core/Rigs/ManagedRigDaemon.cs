@@ -400,7 +400,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     }
 
     /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
-    /// to a group SIGKILL when a grandchild is holding the pipes open — C076), then dispose the
+    /// to a group SIGKILL when a grandchild is holding the pipes open - C076), then dispose the
     /// process handle.</summary>
     private async Task CleanupChildAsync(
         Process process, Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader)
