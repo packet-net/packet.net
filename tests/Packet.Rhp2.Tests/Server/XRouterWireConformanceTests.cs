@@ -437,6 +437,6 @@ public sealed class XRouterWireConformanceTests : IAsyncDisposable
         Assert.Equal("openReply", openType);
         var (statusType, statusJson) = await client.ReadRawAsync();
         Assert.Equal("status", statusType);
-        return (Parse<OpenReplyMessage>(openJson).Handle, openJson, statusJson);
+        return (Parse<OpenReplyMessage>(openJson).Handle!.Value, openJson, statusJson);
     }
 }

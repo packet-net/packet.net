@@ -5,4 +5,10 @@
     <ProjectReference Include="..\..\src\Packet.Rhp2.Server\Packet.Rhp2.Server.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- FakeTimeProvider: the in-frame read timeout runs on an injected clock (plan.md 2.7),
+         so the slowloris/idle tests advance time instead of waiting in real time. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
 </Project>

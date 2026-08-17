@@ -96,9 +96,39 @@ public static class RhpFraming
     /// The peer started a frame but did not finish it within
     /// <paramref name="inFrameTimeout"/>.
     /// </exception>
-    public static async Task<byte[]?> ReadFrameAsync(Stream input, TimeSpan inFrameTimeout, CancellationToken ct = default)
+    public static Task<byte[]?> ReadFrameAsync(Stream input, TimeSpan inFrameTimeout, CancellationToken ct = default)
+        => ReadFrameAsync(input, inFrameTimeout, TimeProvider.System, ct);
+
+    /// <summary>
+    /// Reads one length-prefixed frame, bounding how long a peer may take
+    /// <em>once a frame has started</em>, against an injected clock.
+    /// </summary>
+    /// <param name="input">The stream to read from.</param>
+    /// <param name="inFrameTimeout">
+    /// Maximum time the rest of a frame may take to arrive after its first byte;
+    /// see <see cref="ReadFrameAsync(Stream, TimeSpan, CancellationToken)"/>.
+    /// </param>
+    /// <param name="timeProvider">
+    /// The clock the in-frame deadline runs on. Production passes
+    /// <see cref="TimeProvider.System"/>; a test passes a fake provider and advances
+    /// it, so the slowloris drop is asserted without a real wait.
+    /// </param>
+    /// <param name="ct">Cancellation for the whole read.</param>
+    /// <returns>
+    /// The payload bytes (possibly empty for a zero-length frame), or
+    /// <see langword="null"/> at a clean end of stream between frames.
+    /// </returns>
+    /// <exception cref="EndOfStreamException">
+    /// The stream ended part-way through a header or body.
+    /// </exception>
+    /// <exception cref="TimeoutException">
+    /// The peer started a frame but did not finish it within
+    /// <paramref name="inFrameTimeout"/>.
+    /// </exception>
+    public static async Task<byte[]?> ReadFrameAsync(Stream input, TimeSpan inFrameTimeout, TimeProvider timeProvider, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(timeProvider);
 
         // First byte of the header is NOT time-bounded: an idle multiplexed
         // connection may wait here arbitrarily long. A zero-byte read is the
@@ -111,14 +141,17 @@ public static class RhpFraming
         }
 
         // A frame has started. From here the rest of the header and the whole
-        // body must arrive within inFrameTimeout.
+        // body must arrive within inFrameTimeout. The deadline runs on the injected
+        // clock (docs/plan.md §2.7). Two sources rather than CancelAfter, so the
+        // catch below can still tell "the deadline fired" from "the caller cancelled".
         CancellationTokenSource? timeoutCts = null;
+        CancellationTokenSource? linkedCts = null;
         var readCt = ct;
         if (inFrameTimeout != System.Threading.Timeout.InfiniteTimeSpan)
         {
-            timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(inFrameTimeout);
-            readCt = timeoutCts.Token;
+            timeoutCts = new CancellationTokenSource(inFrameTimeout, timeProvider);
+            linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+            readCt = linkedCts.Token;
         }
 
         try
@@ -157,6 +190,7 @@ public static class RhpFraming
         }
         finally
         {
+            linkedCts?.Dispose();
             timeoutCts?.Dispose();
         }
     }

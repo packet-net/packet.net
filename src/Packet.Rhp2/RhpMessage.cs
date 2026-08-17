@@ -58,18 +58,26 @@ public sealed class UnknownMessage : RhpMessage
 
         // Surface the correlation fields so generic reply-matching logic
         // can still route unknown messages without poking at the JSON.
-        if (raw["id"] is JsonNode idNode)
-        {
-            Id = idNode.GetValue<int>();
-        }
-
-        if (raw["seqno"] is JsonNode seqnoNode)
-        {
-            Seqno = seqnoNode.GetValue<int>();
-        }
+        // Lifted defensively: a non-integer id/seqno on an unknown type is
+        // just an uncorrelatable message, NOT a codec failure. GetValue<int>()
+        // used to throw InvalidOperationException here, a type this codec never
+        // declares (Deserialize declares only RhpProtocolException), so a server
+        // dropped the whole session on a malformed id instead of answering the
+        // graceful {type}Reply errCode 2 (packet.net#698 RM-1).
+        Id = LiftInt(raw["id"]);
+        Seqno = LiftInt(raw["seqno"]);
     }
 
     /// <summary>The complete original JSON object, untouched.</summary>
     [JsonIgnore]
     public JsonObject Raw { get; }
+
+    /// <summary>The node's value as an int32, or null if it is absent, not a
+    /// JSON number, or a number that doesn't fit (e.g. 1.5, 2^40, "7").</summary>
+    private static int? LiftInt(JsonNode? node)
+        => node is JsonValue value
+           && value.GetValueKind() == System.Text.Json.JsonValueKind.Number
+           && value.TryGetValue<int>(out var lifted)
+            ? lifted
+            : null;
 }
