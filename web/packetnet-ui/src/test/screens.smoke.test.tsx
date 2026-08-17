@@ -4,7 +4,7 @@
 // type-check can't — the verification gate in lieu of headless-browser screenshots
 // (the host LXC blocks Chrome's network sockets, so visual screenshotting isn't
 // possible in CI here).
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/app/auth";
@@ -34,6 +34,18 @@ function mount(node: ReactElement, route = "/"): RenderResult {
     </MemoryRouter>,
   );
 }
+
+// Seed the persisted session AuthProvider rehydrates from, for the screens whose controls are
+// scope-gated (the behaviour suites' idiom). Cleared after every test so the default here stays
+// "no session" - which is what most of these smoke mounts assert against.
+function seedScope(scope: "read" | "operate" | "admin") {
+  localStorage.setItem(
+    "pdn.session",
+    JSON.stringify({ token: "test.jwt", refreshToken: null, username: "tom", scope }),
+  );
+}
+
+afterEach(() => localStorage.clear());
 
 describe("screens render without crashing", () => {
   it("Dashboard surfaces node status", async () => {
@@ -368,6 +380,8 @@ describe("screens render without crashing", () => {
   });
 
   it("LinkTuner starts a deviation session and streams live rounds gated by 'Next round'", async () => {
+    // Start/Next/Stop are admin-gated (the /tuning endpoints are Admin-only, #702 C047).
+    seedScope("admin");
     mount(<LinkTuner />, "/tools/tuner?port=vhf-1");
     await waitFor(() => expect(screen.getByText(/Deviation tuning/i)).toBeInTheDocument());
 

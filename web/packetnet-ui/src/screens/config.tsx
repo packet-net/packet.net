@@ -108,6 +108,37 @@ export function Config() {
     }
   };
 
+  // Adopt the Tailscale FQDN as the passkey RP id INTO THE DRAFT. The write itself has
+  // already happened server-side (api.useFqdnForPasskeys PUTs the live config), so this is
+  // the client catching up: merging just that block keeps every other unsaved edit alive,
+  // where the old reload() re-seeded cfg from the refetched /config and silently threw the
+  // operator's in-flight edits away while `dirty` still claimed they were pending (#702
+  // C039). Not marked dirty - it is persisted already - but merged so a later Apply PUTs the
+  // new RP id back rather than the pre-adopt one the draft was holding.
+  const adoptFqdnIntoDraft = (fqdn: string) => {
+    const origin = `https://${fqdn}`;
+    setCfg((c) => {
+      if (!c) return c;
+      const webAuthn = c.management.auth.webAuthn;
+      return {
+        ...c,
+        management: {
+          ...c.management,
+          auth: {
+            ...c.management.auth,
+            webAuthn: {
+              ...webAuthn,
+              relyingPartyId: fqdn,
+              allowedOrigins: webAuthn.allowedOrigins.includes(origin)
+                ? webAuthn.allowedOrigins
+                : [...webAuthn.allowedOrigins, origin],
+            },
+          },
+        },
+      };
+    });
+  };
+
   // record a changed path (impact comes from APPLY_IMPACT) - dedup by path
   const touch = (path: string, impact: ApplyImpact) =>
     setDirty((d) => (d.some((x) => x.path === path) ? d : [...d, { path, impact }]));
@@ -240,7 +271,7 @@ export function Config() {
                     <Field label="Port"><Input type="number" value={cfg.management.telnet.port} onChange={(e) => set("management.telnet.port", +e.target.value, "port-restart")} className="font-mono" /></Field>
                   </div>
                 </div>
-                <RemoteAccessSection cfg={cfg} canAdmin={canAdmin} onAdopted={reload} />
+                <RemoteAccessSection cfg={cfg} canAdmin={canAdmin} onAdopted={adoptFqdnIntoDraft} />
                 <SystemPanel canAdmin={canAdmin} />
               </section>
             )}
@@ -276,8 +307,10 @@ export function Config() {
 //   - running with an FQDN → "Reachable at https://<fqdn>".
 //   - fqdn set AND ≠ the current WebAuthn RP id → an admin-gated "Use <fqdn> for passkeys"
 //     button that writes relyingPartyId = fqdn + adds https://<fqdn> to allowedOrigins.
-//     Operator-initiated only - never automatic (it invalidates existing passkeys).
-function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; canAdmin: boolean; onAdopted: () => void }) {
+//     Operator-initiated only - never automatic (it invalidates existing passkeys). The write
+//     is applied server-side immediately; `onAdopted(fqdn)` hands the adopted hostname back so
+//     the screen can merge it into the draft (NOT reload it - that discarded unsaved edits).
+function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; canAdmin: boolean; onAdopted: (fqdn: string) => void }) {
   const [status, setStatus] = useState<TailscaleStatus | null>(null);
   const [adopting, setAdopting] = useState(false);
   const [adoptError, setAdoptError] = useState<string | null>(null);
@@ -301,7 +334,7 @@ function RemoteAccessSection({ cfg, canAdmin, onAdopted }: { cfg: NodeConfig; ca
     setAdoptError(null);
     try {
       await api.useFqdnForPasskeys(fqdn);
-      onAdopted();   // refetch /config → the RP id now matches; the button hides
+      onAdopted(fqdn);   // merge into the draft → the RP id now matches; the button hides
     } catch (e) {
       setAdoptError(e instanceof ConfigRejected ? e.problem.errors.map((x) => x.message).join("; ") : String((e as Error)?.message ?? e));
     } finally {

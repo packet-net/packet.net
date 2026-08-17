@@ -33,9 +33,16 @@ export function Monitor() {
   // glide the container up via a custom easeOutCubic rAF tween (~520ms) — not
   // CSS scroll-behavior, which is too steppy at this cadence. When the operator
   // has scrolled down to read (scrollTop > 140) we disengage follow and preserve
-  // their position by offsetting scrollTop by the added row height.
+  // their position by offsetting scrollTop by the height that went in above them.
+  //
+  // That offset is measured from an ANCHOR ROW (the row that was on top last time)
+  // rather than from a scrollHeight delta, and the effect is keyed on the newest row's
+  // identity rather than on the row COUNT. Both had to change together: the frame ring
+  // holds 500 and is filled to the cap by the bootstrap fetch on a busy node, after
+  // which every arriving frame evicts one at the tail, so the count never changes again
+  // (the effect stopped running) and the height delta is ~0 anyway (#702 C049).
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevHeightRef = useRef(0);
+  const anchorRef = useRef<{ key: string; offsetTop: number } | null>(null);
   const followRef = useRef(true);
   const firstRef = useRef(true);
   const tweenRef = useRef(0);
@@ -70,35 +77,40 @@ export function Monitor() {
         f.dest.includes(fCall.toUpperCase())),
   );
 
+  // The identity of the topmost VISIBLE row: what the prepend effect keys on.
+  const newestKey = filtered.length > 0 ? frameKey(filtered[0]) : "";
+
+  // Re-baseline the anchor on a filter change so the next arriving frame doesn't lurch: the
+  // list is rebuilt wholesale there, which is not a prepend. Declared BEFORE the prepend
+  // effect so it wins the commit they share (layout effects run in declaration order).
+  useLayoutEffect(() => {
+    anchorRef.current = topRow(scrollRef.current);
+  }, [fPort, fType, fCall]);
+
   // glide on new rows; preserve position when scrolled away to read
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (firstRef.current) {
       firstRef.current = false;
-      prevHeightRef.current = el.scrollHeight;
+      anchorRef.current = topRow(el);
       return;
     }
-    const added = el.scrollHeight - prevHeightRef.current;
+    // How far the anchor row moved down IS the height that went in above it. A row evicted
+    // at the tail can't move it, so this keeps working at the ring cap; if the anchor itself
+    // was evicted (a burst bigger than the viewport backlog) we simply don't compensate.
+    const anchor = anchorRef.current;
+    const now = anchor ? rowOffsetTop(el, anchor.key) : null;
+    const added = anchor && now !== null ? now - anchor.offsetTop : 0;
     if (added > 0) {
-      if (followRef.current) {
-        el.scrollTop = el.scrollTop + added; // hold the visual frame…
-        glideToTop(el); // …then ease back to the top
-      } else {
-        el.scrollTop = el.scrollTop + added; // keep the row being read still
-      }
+      el.scrollTop = el.scrollTop + added; // hold the visual frame / keep the read row still…
+      if (followRef.current) glideToTop(el); // …then, in follow mode, ease back to the top
     }
-    prevHeightRef.current = el.scrollHeight;
-  }, [filtered.length]);
+    anchorRef.current = topRow(el);
+  }, [newestKey, filtered.length]);
 
   // tear the tween down on unmount
   useLayoutEffect(() => () => cancelAnimationFrame(tweenRef.current), []);
-
-  // re-baseline height on filter changes so the next frame doesn't lurch
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el) prevHeightRef.current = el.scrollHeight;
-  }, [fPort, fType, fCall]);
 
   const newestSeq = frames[0]?.seq;
 
@@ -197,6 +209,7 @@ export function Monitor() {
               {filtered.map((f) => (
                 <tr
                   key={f.seq}
+                  data-frame={frameKey(f)}
                   onClick={() => setSelected(f)}
                   className={cn(
                     "cursor-pointer border-b border-border/60 font-mono text-xs hover:bg-accent/50",
@@ -249,6 +262,23 @@ export function Monitor() {
       </Sheet>
     </Page>
   );
+}
+
+// A frame's stable identity: `seq` restarts at 1 on every node boot, so it is (bootId, seq),
+// the same pair api.ts's mergeLiveFrame dedupes on. Stamped on each row as `data-frame` so the
+// smooth-prepend effect can find its anchor row again after a prepend.
+const frameKey = (f: MonitorEvent): string => `${f.bootId ?? ""}:${f.seq}`;
+
+/** The top row's identity + where it currently sits, or null when the table is empty. */
+function topRow(el: HTMLDivElement | null): { key: string; offsetTop: number } | null {
+  const row = el?.querySelector<HTMLElement>("tbody tr[data-frame]");
+  return row ? { key: row.dataset.frame ?? "", offsetTop: row.offsetTop } : null;
+}
+
+/** Where the row with `key` sits now, or null when it has been filtered out / evicted. */
+function rowOffsetTop(el: HTMLDivElement, key: string): number | null {
+  const row = el.querySelector<HTMLElement>(`tbody tr[data-frame="${key}"]`);
+  return row ? row.offsetTop : null;
 }
 
 // A muted em-dash for absent radio metadata (never render a bare 0 for a null reading).

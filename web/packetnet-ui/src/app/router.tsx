@@ -34,7 +34,9 @@ import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
 // for the api.ts "unauthorized" event). Mock mode skips the probe and enters
 // directly (no real auth → every screen renders for the vitest smoke test).
 // ============================================================
-function RequireAuth() {
+// Exported for the gate test (src/test/router.gate.test.tsx), which drives the probe path
+// directly rather than standing the whole browser router up.
+export function RequireAuth() {
   const auth = useAuth();
   const [phase, setPhase] = useState<"probing" | "app" | "login" | "setup">(
     () => (auth.authed ? "app" : "probing"),
@@ -60,10 +62,12 @@ function RequireAuth() {
       try {
         await api.status(); // probes the stored token (if any)
         if (!live) return;
-        // 200: auth off (tokenless) or a valid token. If we already have a token
-        // the provider state survives (carry the refresh token through too); otherwise
-        // enter anonymously (auth-off lab).
-        if (auth.token) { auth.login(auth.token, auth.scope ?? "admin", auth.username ?? "", auth.refreshToken); }
+        // 200: auth off (tokenless) or a valid token. If we already have a token, RESUME:
+        // re-read the persisted session and write nothing back. The probe above can silently
+        // rotate the token pair (api.ts renews on a 401 and persists to localStorage only), so
+        // re-saving the mount-time React copy here would replay a consumed refresh token
+        // (#702 C035). Otherwise enter anonymously (auth-off lab).
+        if (auth.token) { auth.resume(); }
         else { auth.enterAnonymous("admin"); }
       } catch (e) {
         if (!live) return;

@@ -17,6 +17,7 @@ import { Page } from "@/components/layout/shell";
 import { Button, Card, Field, Input, Select, Icon } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { api, useQuery, subscribeTune } from "@/lib/api";
+import { useAuth } from "@/app/auth";
 import type { TuningRole, TuningState, TuningEvent, TuningSessionInfo } from "@/lib/types";
 
 function clamp(n: number, a: number, b: number): number { return Math.max(a, Math.min(b, n)); }
@@ -39,6 +40,12 @@ const ADVICE_STYLE: Record<string, { chip: string; icon: "arrowUp" | "arrowDown"
 
 export function LinkTuner() {
   const [searchParams] = useSearchParams();
+  const { has } = useAuth();
+  // /tuning/session, /next, /stop and /txdelay-min are all RequireAuthorization(Admin) - the
+  // session TRANSMITS and pauses the port. The controls used to render ungated, so a read or
+  // operate operator got a 403 on click with nothing explaining why (#702 C047). Only the
+  // /tuning/events feed is Read-scoped, so the live trend keeps rendering for everyone.
+  const canAdmin = has("admin");
   const { data: config } = useQuery(api.config, []);
   const ports = useMemo(() => config?.ports ?? [], [config]);
   const urlPort = searchParams.get("port");
@@ -126,7 +133,8 @@ export function LinkTuner() {
 
   const active = session !== null;
   const awaiting = active && role === "tuned" && state === "awaiting-adjustment";
-  const canStart = portId.length > 0 && peerSdmId.length === 8 && !busy;
+  const canStart = canAdmin && portId.length > 0 && peerSdmId.length === 8 && !busy;
+  const adminHint = "Deviation tuning requires the admin scope";
 
   return (
     <Page>
@@ -192,13 +200,14 @@ export function LinkTuner() {
                     className="font-mono"
                   />
                 </Field>
-                <Button onClick={start} disabled={!canStart}>
+                <Button onClick={start} disabled={!canStart} title={canAdmin ? undefined : adminHint}>
                   <Icon name="play" size={14} />{busy ? "Starting…" : "Start tuning"}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 Needs a NinoTNC + a Tait radio with SDM enabled on the port. Starting <b>keys the radio</b> and
                 pauses the port's normal traffic for the session.
+                {!canAdmin && <> Tuning is <b>admin-scoped</b>: you can watch a session in progress, but not start or steer one.</>}
               </p>
             </div>
           ) : (
@@ -212,10 +221,11 @@ export function LinkTuner() {
                 role <span className="font-mono">{session!.role}</span> · peer <span className="font-mono">{session!.peerSdmId}</span>
               </span>
               <div className="ml-auto flex items-center gap-2">
-                <Button onClick={next} disabled={!awaiting} title={role === "meter" ? "Rounds are driven by the remote tuned end" : "Run the next measurement round"}>
+                <Button onClick={next} disabled={!awaiting || !canAdmin}
+                  title={!canAdmin ? adminHint : role === "meter" ? "Rounds are driven by the remote tuned end" : "Run the next measurement round"}>
                   <Icon name="arrowUp" size={14} />Next round — I've adjusted the pot
                 </Button>
-                <Button variant="outline" onClick={stop} disabled={busy}>
+                <Button variant="outline" onClick={stop} disabled={busy || !canAdmin} title={canAdmin ? undefined : adminHint}>
                   <Icon name="power" size={14} />Stop
                 </Button>
               </div>

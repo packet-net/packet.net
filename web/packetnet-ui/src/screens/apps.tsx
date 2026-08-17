@@ -526,8 +526,12 @@ function IdentityForm({ pkg, onClose, onSave }: {
 }) {
   const [command, setCommand] = useState(pkg.command ?? "");
   // Only a PINNED callsign round-trips through this field; an auto-assigned one shows as a
-  // placeholder so the owner sees what the node chose without it looking like a pin.
-  const [callsign, setCallsign] = useState("");
+  // placeholder so the owner sees what the node chose without it looking like a pin. The seed
+  // is `pinnedCallsign` (the owner's literal pin), NOT `callsign` (the node-RESOLVED value):
+  // PUT /identity is a full replace, so seeding "" and always sending it back cleared the pin
+  // whenever the owner edited only the verb or the alias (#702 C043), and seeding the resolved
+  // value instead would pin an auto-assignment the node is meant to keep choosing.
+  const [callsign, setCallsign] = useState(pkg.pinnedCallsign ?? "");
   const [netromAlias, setNetromAlias] = useState(pkg.netromAlias ?? "");
   const [netromQuality, setNetromQuality] = useState(pkg.netromQuality != null ? String(pkg.netromQuality) : "");
 

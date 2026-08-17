@@ -997,8 +997,14 @@ export interface AppPackage {
    *  app declares no verb (reachable only by callsign / NET/ROM alias). */
   command?: string | null;
   /** The node-resolved on-air callsign this app binds - a pin or an auto-assigned
-   *  `<node-base>-N`. Null when the app binds no callsign (a pure session app with no pin). */
+   *  `<node-base>-N`. Null when the app binds no callsign (a pure session app with no pin).
+   *  Display only: it is the RESOLVED value, so it must never be sent back as the pin. */
   callsign?: string | null;
+  /** The owner's literal `callsign` pin, verbatim (including the bare `-N` SSID form), or null
+   *  when the resolved callsign above was auto-assigned. This is the field the identity editor
+   *  seeds from and sends back: PUT /identity is a full replace, so a form that always sent
+   *  null cleared an existing pin on any verb/alias edit (#702 C043). */
+  pinnedCallsign?: string | null;
   /** The opt-in NET/ROM alias the node advertises → this app's callsign. Null = not advertised. */
   netromAlias?: string | null;
   /** The quality the NET/ROM alias is advertised at (only meaningful with `netromAlias`). */

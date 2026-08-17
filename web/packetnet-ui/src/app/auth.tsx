@@ -49,6 +49,9 @@ interface AuthState extends Session {
   /** Record a successful login (access + refresh token + granted scope + username) and
    *  enter the app. */
   login: (token: string, scope: string, username: string, refreshToken: string | null) => void;
+  /** Enter the app on an ALREADY-PERSISTED session, re-reading localStorage and writing
+   *  nothing back (see the implementation for why the gate must not re-save). */
+  resume: () => void;
   /** Enter the app WITHOUT a token — auth-off probe succeeded, or mock mode. */
   enterAnonymous: (scope?: Scope) => void;
   /** Clear the session (best-effort revoking the refresh token server-side) and drop
@@ -198,6 +201,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const s: Session = { token, refreshToken, username, scope: (scope as Scope) ?? null };
       save(s);
       setSession(s);
+      setAuthed(true);
+    },
+    resume: () => {
+      // Enter the app on the session that is ALREADY persisted: no save(). The gate calls
+      // this after its /status probe, and that probe may have silently rotated the token pair
+      // (api.ts's 401 path writes the new pair to localStorage only, never to React state).
+      // Re-saving the mount-time copy would put the expired JWT and the CONSUMED one-time-use
+      // refresh token back, so the next renew replays it: a doubled 401+retry inside the
+      // server's 10 s reuse leeway, and a burnt token family (logged out) past it (#702 C035).
+      // So: re-read localStorage and adopt whatever is there now.
+      const stored = load();
+      if (stored.token) setSession(stored);
       setAuthed(true);
     },
     enterAnonymous: (scope: Scope = "admin") => {
