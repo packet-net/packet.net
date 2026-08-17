@@ -432,6 +432,10 @@ public static class PdnReadApi
             routes = d.Routes.Select(r => new
             {
                 neighbour = r.Neighbour.ToString(),
+                // The route's next hop is the ADJACENCY (port, neighbour), so the port travels
+                // with it - two routes to one destination via the same callsign on different
+                // ports are distinct rows and the panel has to be able to tell them apart (#725).
+                portId = r.PortId,
                 quality = (int)r.Quality,
                 obsolescence = r.Obsolescence,
                 inp3 = r.Inp3 is { } m

@@ -59,11 +59,21 @@ public static class NetRomForwarding
 
     /// <summary>The outcome of a forwarding decision. When
     /// <see cref="ForwardOutcome.ForwardTo"/>, <see cref="Packet"/> carries the
-    /// rewritten (TTL-decremented) datagram to send to <see cref="NextHop"/>.</summary>
-    public readonly record struct ForwardDecision(ForwardOutcome Outcome, NetRomPacket Packet, Callsign NextHop)
+    /// rewritten (TTL-decremented) datagram to send to <see cref="NextHop"/> on
+    /// <see cref="NextHopPortId"/>.</summary>
+    /// <remarks>
+    /// The port is part of the decision because a neighbour is an adjacency, not a station: the
+    /// selected route names <b>which link</b> to that callsign carries the datagram, and the
+    /// caller looks its interlink up by <see cref="NextHopKey"/>. Empty on every drop outcome.
+    /// </remarks>
+    public readonly record struct ForwardDecision(
+        ForwardOutcome Outcome, NetRomPacket Packet, Callsign NextHop, string NextHopPortId = "")
     {
         /// <summary>True if the datagram should be forwarded.</summary>
         public bool ShouldForward => Outcome == ForwardOutcome.ForwardTo;
+
+        /// <summary>The next hop as the composite adjacency key the host resolves an interlink by.</summary>
+        public NeighbourKey NextHopKey => new(NextHopPortId, NextHop);
     }
 
     /// <summary>
@@ -130,7 +140,7 @@ public static class NetRomForwarding
         //    otherwise (knob off, or no usable INP3 route) the quality next-hop, exactly
         //    as today.
         var resolved = routing.Destinations.FirstOrDefault(d => d.Destination.Equals(network.Destination));
-        Callsign? nextHop = null;
+        NetRomRoute? nextHop = null;
         if (resolved is not null)
         {
             if (preferInp3Routes)
@@ -145,12 +155,17 @@ public static class NetRomForwarding
             return new ForwardDecision(ForwardOutcome.DropNoRoute, packet, default);
         }
 
-        return new ForwardDecision(ForwardOutcome.ForwardTo, packet with { Network = network }, nextHop.Value);
+        return new ForwardDecision(
+            ForwardOutcome.ForwardTo, packet with { Network = network }, nextHop.Neighbour, nextHop.PortId);
     }
 
-    // The next-hop neighbour for a destination under the active mode, excluding the
+    // The next-hop route for a destination under the active mode, excluding routes back to the
     // neighbour the datagram arrived from. The routes list is best-first.
-    private static Callsign? SelectNextHop(
+    //
+    // Exclusion is by CALLSIGN, not by adjacency: bouncing a datagram back to the station it
+    // came from is a bounce-back whichever band it leaves on, so a second route to that same
+    // station on another port is not an escape hatch (it is the same node).
+    private static NetRomRoute? SelectNextHop(
         IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom, NetRomForwardMode mode, NetRomPacket packet)
         => mode == NetRomForwardMode.PerFlow
             ? SelectWeighted(routes, receivedFrom, FlowHash(packet))
@@ -164,7 +179,7 @@ public static class NetRomForwarding
     // time-routes would defeat the measurement), so PerFlow/BestRoute is moot here. Returns
     // null when the destination holds no usable INP3 route (every time-route is the way it
     // came, or there are none), at which point Decide falls back to the quality next-hop.
-    private static Callsign? SelectInp3NextHop(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom)
+    private static NetRomRoute? SelectInp3NextHop(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom)
     {
         NetRomRoute? best = null;
         foreach (var route in routes)
@@ -178,34 +193,43 @@ public static class NetRomForwarding
                 || m.TargetTimeMs < b.TargetTimeMs
                 || (m.TargetTimeMs == b.TargetTimeMs && m.HopCount < b.HopCount)
                 || (m.TargetTimeMs == b.TargetTimeMs && m.HopCount == b.HopCount
-                    && string.CompareOrdinal(route.Neighbour.ToString(), best!.Neighbour.ToString()) < 0);
+                    && CompareKeys(route, best!) < 0);
             if (better)
             {
                 best = route;
             }
         }
-        return best?.Neighbour;
+        return best;
     }
 
     // The single best usable route — the first in the best-first list that isn't the
     // way the datagram came.
-    private static Callsign? SelectBest(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom)
+    private static NetRomRoute? SelectBest(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom)
     {
         foreach (var route in routes)
         {
             if (!route.Neighbour.Equals(receivedFrom))
             {
-                return route.Neighbour;
+                return route;
             }
         }
         return null;
+    }
+
+    // The deterministic adjacency tie-break: neighbour callsign ordinal, then port id ordinal.
+    // (The table's own canonical port order already decided the list ORDER; this only has to be
+    // total and identical across the C#/TS/Rust ports.)
+    private static int CompareKeys(NetRomRoute a, NetRomRoute b)
+    {
+        int byCall = string.CompareOrdinal(a.Neighbour.ToString(), b.Neighbour.ToString());
+        return byCall != 0 ? byCall : string.CompareOrdinal(a.PortId, b.PortId);
     }
 
     // A per-flow, quality-weighted pick among the eligible routes (not the way it
     // came, quality &gt; 0): all datagrams of one circuit hash to the same route (so
     // L4 ordering is preserved end-to-end), while distinct circuits spread across the
     // kept routes in proportion to quality. Stateless — no per-flow table.
-    private static Callsign? SelectWeighted(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom, uint flowHash)
+    private static NetRomRoute? SelectWeighted(IReadOnlyList<NetRomRoute> routes, Callsign receivedFrom, uint flowHash)
     {
         uint total = 0;
         foreach (var route in routes)
@@ -229,7 +253,7 @@ public static class NetRomForwarding
             }
             if (target < route.Quality)
             {
-                return route.Neighbour;
+                return route;
             }
             target -= route.Quality;
         }

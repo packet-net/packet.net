@@ -84,8 +84,17 @@ public sealed class NetRomL3L4IntegrationTests
     /// to a distinct transport endpoint (<c>kiss-tcp:{base}:{port}</c>) backed by the
     /// supplied modem.
     /// </summary>
-    private static async Task<Node> StartBridgeNodeAsync(
+    private static Task<Node> StartBridgeNodeAsync(
         Callsign call, string alias, params (string PortId, int Port, IAx25Transport Modem)[] ports)
+        => StartBridgeNodeAsync(call, alias, [.. ports.Select(p => (p.PortId, p.Port, p.Modem, (int?)null))]);
+
+    /// <summary>
+    /// As above, but each port may declare its own NET/ROM <c>QUALITY</c> (BPQ's per-port
+    /// <c>QUALITY</c>) - the knob that makes one band genuinely better than another, and so the
+    /// only way to test that the better port wins for a station audible on both.
+    /// </summary>
+    private static async Task<Node> StartBridgeNodeAsync(
+        Callsign call, string alias, (string PortId, int Port, IAx25Transport Modem, int? Quality)[] ports)
     {
         var nodeConfig = new NodeConfig
         {
@@ -103,6 +112,7 @@ public sealed class NetRomL3L4IntegrationTests
                 Enabled = true,
                 Transport = new KissTcpTransport { Host = call.Base, Port = p.Port },
                 Ax25 = new Ax25PortParams { N2 = TestAx25Timing.NodeN2 },
+                NetRomQuality = p.Quality,
             })],
         };
 
@@ -322,6 +332,79 @@ public sealed class NetRomL3L4IntegrationTests
         await Wait.ForAsync(() => c.NetRom.Circuits!.Circuits.Count > 0, "node C holds the accepted circuit", generous);
         b.NetRom.Circuits!.Circuits.Should().BeEmpty(
             "node B is a transit node — it forwarded the circuit's datagrams between its two channels without terminating one");
+    }
+
+    [Fact]
+    public async Task A_remote_audible_on_two_ports_is_two_adjacencies_and_the_better_one_carries_the_circuit()
+    {
+        // The dual-homed backbone peer PC4 (#725) exists for. B bridges two channels; C sits on
+        // BOTH of them, so B hears one callsign on two ports. B's ports declare different
+        // NET/ROM QUALITY (200 on p1, 150 on p2) - which, before PC4, whichever broadcast landed
+        // last simply overwrote, so the route quality (and therefore B's own NODES advert)
+        // flapped, and C got exactly ONE interlink on whichever port won the race.
+        var ch1 = new SharedRadioBus();
+        var ch2 = new SharedRadioBus();
+
+        await using var b = await StartBridgeNodeAsync(BNodeCall, "BNODE",
+            [("p1", 1, ch1.Attach(), 200), ("p2", 2, ch2.Attach(), 150)]);
+        await using var c = await StartBridgeNodeAsync(CNodeCall, "CNODE",
+            [("c1", 1, ch1.Attach(), null), ("c2", 2, ch2.Attach(), null)]);
+
+        var generous = TimeSpan.FromSeconds(60);
+
+        // Which of C's ports accepts an interlink from B tells us which band B dialled on.
+        var acceptedOn = new System.Collections.Concurrent.ConcurrentBag<string>();
+        foreach (var portId in new[] { "c1", "c2" })
+        {
+            var port = c.Supervisor.GetPort(portId);
+            port.Should().NotBeNull();
+            port!.Listener.SessionAccepted += (_, e) =>
+            {
+                if (e.Session.Context.Remote.Equals(BNodeCall))
+                {
+                    acceptedOn.Add(portId);
+                }
+            };
+        }
+
+        c.NetRom.BroadcastNodes();
+        await Wait.ForAsync(
+            () => b.NetRom.Snapshot().Neighbours.Count(n => n.Neighbour.Equals(CNodeCall)) == 2,
+            "B holds ONE neighbour row per port it heard C on - two adjacencies to one callsign", generous);
+
+        var rows = b.NetRom.Snapshot().Neighbours.Where(n => n.Neighbour.Equals(CNodeCall)).ToList();
+        rows.Single(n => n.PortId == "p1").PathQuality.Should().Be(200);
+        rows.Single(n => n.PortId == "p2").PathQuality.Should().Be(150,
+            "each adjacency keeps ITS OWN port's QUALITY - no overwrite");
+
+        // The better port carries the circuit: the route B follows names p1, so the SABM does too.
+        var destViaBest = b.NetRom.Snapshot().ResolveDestination("CNODE")!;
+        destViaBest.BestRoute!.PortId.Should().Be("p1", "the higher-quality port wins route selection");
+        await using (var conn = await b.NetRom.ConnectCircuitAsync(destViaBest, UserCall))
+        {
+            await Wait.ForAsync(() => acceptedOn.Contains("c1"),
+                "the circuit leaves on p1 (channel 1), so C accepts it on c1", generous);
+        }
+        acceptedOn.Should().NotContain("c2", "the worse band was not dialled while the better one was up");
+
+        // Now the better port goes away. DetachPortAsync drops that port's adjacencies and the
+        // routes over them (MarkPortDown) - and nothing else: C is still audible on p2.
+        await b.NetRom.DetachPortAsync("p1");
+
+        var afterDetach = b.NetRom.Snapshot();
+        afterDetach.Neighbours.Should().NotContain(n => n.PortId == "p1", "the detached port's adjacencies are gone");
+        afterDetach.Neighbours.Should().ContainSingle(n => n.Neighbour.Equals(CNodeCall) && n.PortId == "p2",
+            "the same station is still a neighbour on the surviving band");
+
+        var destAfter = afterDetach.ResolveDestination("CNODE");
+        destAfter.Should().NotBeNull("losing one band must not lose the destination");
+        destAfter!.BestRoute!.PortId.Should().Be("p2", "routing failed over to the surviving port");
+
+        await using (var conn2 = await b.NetRom.ConnectCircuitAsync(destAfter, UserCall))
+        {
+            await Wait.ForAsync(() => acceptedOn.Contains("c2"),
+                "the next circuit leaves on p2 - the failover the port key exists to make possible", generous);
+        }
     }
 
     [Fact]

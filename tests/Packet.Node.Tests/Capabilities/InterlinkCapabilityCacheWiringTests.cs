@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25.Session;
 using Packet.Ax25.Transport;
 using Packet.Core;
+using Packet.NetRom.Routing;
 using Packet.Node.Core.Capabilities;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.NetRom;
@@ -81,7 +82,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
             return Task.FromResult(session);
         };
 
-        await svc.EnsureInterlinkForTestAsync(Neighbour);
+        await svc.EnsureInterlinkForTestAsync(new NeighbourKey(PortId, Neighbour));
 
         captured.Extended.Should().BeTrue(
             "a neighbour learned extended-capable must be dialled SABME, overriding the conservative interlink default");
@@ -114,7 +115,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
             return Task.FromResult(session);
         };
 
-        await svc.EnsureInterlinkForTestAsync(Neighbour);
+        await svc.EnsureInterlinkForTestAsync(new NeighbourKey(PortId, Neighbour));
 
         captured.Extended.Should().BeFalse("the neighbour is not known-extended, so the interlink stays mod-8");
         captured.PreConnectXid.Should().BeFalse("a learned non-XID-answerer must have its pre-connect XID skipped");
@@ -144,7 +145,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
 
         svc.OpenInterlink = (_, _, _, _) => Task.FromResult(session);
 
-        await svc.EnsureInterlinkForTestAsync(Neighbour);
+        await svc.EnsureInterlinkForTestAsync(new NeighbourKey(PortId, Neighbour));
 
         var rec = cache.All().Single();
         rec.PortId.Should().Be(PortId);
@@ -169,7 +170,7 @@ public sealed class InterlinkCapabilityCacheWiringTests
         // The dial throws — no link of either version, so it carries no capability signal.
         svc.OpenInterlink = (_, _, _, _) => throw new IOException("neighbour did not answer");
 
-        Func<Task> dial = async () => await svc.EnsureInterlinkForTestAsync(Neighbour);
+        Func<Task> dial = async () => await svc.EnsureInterlinkForTestAsync(new NeighbourKey(PortId, Neighbour));
         await dial.Should().ThrowAsync<IOException>();
 
         cache.All().Should().BeEmpty("a dial that throws must NOT record an outcome (the correctness hinge)");

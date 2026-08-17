@@ -18,6 +18,10 @@ public sealed class NetRomPersistenceTests : IDisposable
 {
     private readonly string dbPath = TestPaths.NewPath("pdn-svc", ".db");
 
+    // The port these adjacencies are on: a neighbour row and a route both key by
+    // (port, callsign) since #725.
+    private const string Port = "vhf";
+
     private static readonly Callsign Nbr = new("GB7RDG", 0);
     private static readonly Callsign Dest = new("GB7SOT", 0);
     private static readonly DateTimeOffset T0 = new(2026, 6, 6, 12, 0, 0, TimeSpan.Zero);
@@ -25,10 +29,10 @@ public sealed class NetRomPersistenceTests : IDisposable
     private static NetRomRoutingSnapshot Sample(DateTimeOffset at, int obs = 6) => new(
         new List<NetRomDestination>
         {
-            new(Dest, "SOT", new List<NetRomRoute> { new(Nbr, 200, obs) }),
-            new(Nbr, "RDGBPQ", new List<NetRomRoute> { new(Nbr, 192, obs) }),
+            new(Dest, "SOT", new List<NetRomRoute> { new(Nbr, Port, 200, obs) }),
+            new(Nbr, "RDGBPQ", new List<NetRomRoute> { new(Nbr, Port, 192, obs) }),
         },
-        new List<NetRomNeighbour> { new(Nbr, "RDGBPQ", "p1", 192, at) },
+        new List<NetRomNeighbour> { new(Nbr, "RDGBPQ", Port, 192, at) },
         at);
 
     private NetRomService NewService(FakeTimeProvider clock, bool enabled = true) => new(

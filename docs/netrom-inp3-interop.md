@@ -172,6 +172,12 @@ Both models produce **identical routing tables when both ends use the same one**
 4. Update `netrom-inp3-i3-design.md` §2.3, `netrom-inp3-i4-design.md` §1.1/§2 (invariants (M) and (Source): the own node becomes `1 / link cost`, never `0/0`), and the property tests that pin them.
 5. Land it in `packet.net`, `ax25-ts` and `pico-node` together, and re-run the 3-stack harness before any BPQ tier runs.
 
+### 6.4 Not a divergence: per-port neighbour keying (#725)
+
+Since port-concept PC4 a NET/ROM neighbour is the **(port, callsign)** pair, and `NetRomRoutingTable.IngestRif` files a RIF's time-routes under the adjacency it arrived on ([`netrom-multiport-neighbours.md`](netrom-multiport-neighbours.md)). Unlike §6.1 this is **not** a fleet-consistency question: no port appears in a RIP or a NODES entry, so each stack can adopt it independently and a mixed fleet is unaffected throughout.
+
+What it does change for INP3 is one interim rule. `Inp3Engine` and `Inp3UpdateScheduler` are still keyed by callsign, and SNTT is a per-*link* measurement - blending two links to one station would corrupt exactly the number INP3 exists to carry. So INP3 runs on a neighbour's **selected link** only (`NetRomService.SelectedInp3Port`: the port of its best adjacency, else its best live interlink); a RIF or L3RTT arriving on any other link to that station is dropped with a log line, and an L4 datagram is never gated by the rule. Keying the engine and the scheduler per (port, callsign) - which is what BPQ does, storing `SRTT`/`RTTIncrement` on the `ROUTE` - is [#733](https://github.com/packet-net/packet.net/issues/733), and it is a three-stack change for a default-off feature, which is why it is not folded in here.
+
 ---
 
 ## 7. References

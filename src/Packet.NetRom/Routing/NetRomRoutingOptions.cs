@@ -73,6 +73,41 @@ public sealed record NetRomRoutingOptions
     /// </summary>
     public int MaxDestinations { get; init; } = 1024;
 
+    /// <summary>
+    /// The node's <b>canonical port ordering</b>, as a rank function: lower rank wins a tie.
+    /// Since a neighbour is keyed <b>(port, callsign)</b>, one destination can hold two routes
+    /// of identical quality via the same callsign on different ports, and something has to
+    /// break that tie deterministically or the selected next hop flaps with dictionary order.
+    /// </summary>
+    /// <remarks>
+    /// The library cannot know configuration order, so the host supplies it (the node host
+    /// wires this to <c>PortSupervisor.CanonicalServingPortIds()</c>, i.e. configuration
+    /// order). <c>null</c> - the default - ranks by port id <b>ordinal</b>, which is stable and
+    /// deterministic but arbitrary. The rank is only ever a <em>tie-break</em>: quality (or, in
+    /// the INP3 space, target time) always decides first, so wiring it can never demote a
+    /// better route.
+    /// </remarks>
+    public Func<string, int>? PortRank { get; init; }
+
     /// <summary>The canonical defaults.</summary>
     public static NetRomRoutingOptions Default { get; } = new();
+
+    /// <summary>
+    /// Compare two port ids by the configured <see cref="PortRank"/>, falling back to ordinal
+    /// port-id order (which is also the whole comparison when no rank is wired). The single
+    /// tie-break used by route ordering, the route cap and the advertisement pick, so all
+    /// three agree on which of two equal-quality per-port routes is "the" route.
+    /// </summary>
+    public int ComparePorts(string portA, string portB)
+    {
+        if (PortRank is { } rank)
+        {
+            int a = rank(portA), b = rank(portB);
+            if (a != b)
+            {
+                return a.CompareTo(b);
+            }
+        }
+        return string.CompareOrdinal(portA, portB);
+    }
 }

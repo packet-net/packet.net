@@ -72,8 +72,11 @@ function NeighboursTable({ data }: { data: NetRomRoutingSnapshot }) {
             </tr>
           </thead>
           <tbody>
+            {/* A neighbour is an ADJACENCY, keyed (port, callsign): one station audible on two
+                ports is two rows. Keying this map on the callsign alone gave React duplicate
+                keys and dropped a row. */}
             {data.neighbours.map((n) => (
-              <tr key={n.neighbour} className="border-b border-border/60 hover:bg-accent/40">
+              <tr key={`${n.portId}:${n.neighbour}`} className="border-b border-border/60 hover:bg-accent/40">
                 <Td className="font-mono font-semibold">{n.neighbour}</Td>
                 <Td className="font-mono text-xs text-muted-foreground">{n.alias}</Td>
                 <Td><Badge variant="muted">{n.portId}</Badge></Td>
@@ -97,14 +100,11 @@ function DestinationsTable({ data, navigate }: {
   data: NetRomRoutingSnapshot;
   navigate: (to: string) => void;
 }) {
-  // Resolve the port the best route's neighbour is heard on (fall back to the first
-  // neighbour's port), used for the per-row Ping, which is a connectionless TEST frame to
-  // the NEIGHBOUR and so does name a port. The Connect hand-off deliberately does NOT use
-  // it; see the Connect button below.
-  const portOfNeighbour = (neighbour: string): string => {
-    const nb = data.neighbours.find((x) => x.neighbour === neighbour);
-    return nb?.portId ?? data.neighbours[0]?.portId ?? "";
-  };
+  // The port a route leaves on now travels WITH the route (it is half of the next hop's
+  // identity), so the old first-match-by-callsign lookup over the neighbours list is gone -
+  // it answered the wrong port whenever a station was audible on more than one. The port is
+  // used for the per-row Ping, a connectionless TEST frame to the NEIGHBOUR, which does name
+  // a port. The Connect hand-off deliberately does NOT use it; see the Connect button below.
 
   return (
     <Card className="overflow-hidden p-0">
@@ -115,6 +115,12 @@ function DestinationsTable({ data, navigate }: {
               <Th>Destination</Th>
               <Th>Alias</Th>
               <Th>Best via</Th>
+              <Th>
+                <span className="inline-flex items-center gap-1">
+                  Port
+                  <InfoHint text="The port the best route leaves on. A neighbour heard on two ports is two separate routes, each with its own quality - this says which one this row is." />
+                </span>
+              </Th>
               <Th>
                 <span className="inline-flex items-center gap-1">
                   Quality
@@ -145,7 +151,7 @@ function DestinationsTable({ data, navigate }: {
           <tbody>
             {data.destinations.map((d) => {
               const r = d.routes[d.bestRoute];
-              const viaPort = portOfNeighbour(r.neighbour);
+              const viaPort = r.portId;
               const altCount = d.routes.length - 1;
               return (
                 <tr key={d.destination} className="border-b border-border/60 hover:bg-accent/40">
@@ -155,6 +161,7 @@ function DestinationsTable({ data, navigate }: {
                     {r.neighbour}
                     {altCount > 0 && <span className="ml-1 text-muted-foreground">+{altCount}</span>}
                   </Td>
+                  <Td><Badge variant="muted">{viaPort}</Badge></Td>
                   <Td><QualityBar value={r.quality} /></Td>
                   <Td className="tnum text-right font-mono text-xs text-muted-foreground">{r.obsolescence}</Td>
                   <Td className="text-right font-mono text-xs">

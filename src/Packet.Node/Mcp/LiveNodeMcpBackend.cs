@@ -121,7 +121,7 @@ public sealed class LiveNodeMcpBackend(
             .Select(d => new McpDestination(
                 d.Destination.ToString(),
                 string.IsNullOrEmpty(d.Alias) ? null : d.Alias,
-                d.Routes.Select(r => new McpRoute(r.Neighbour.ToString(), r.Quality, r.Obsolescence)).ToList()))
+                d.Routes.Select(r => new McpRoute(r.Neighbour.ToString(), r.PortId, r.Quality, r.Obsolescence)).ToList()))
             .ToList();
 
         return Task.FromResult(new McpNetworkTopology(snapshot.GeneratedAt, neighbours, destinations));

@@ -22,6 +22,9 @@ namespace Packet.Node.Tests.NetRom;
 [Trait("Category", "Node")]
 public sealed class NetRomServiceInp3EndToEndTests
 {
+    // The port every node in this fleet exchanges interlink frames on.
+    private const string Port = "vhf";
+
     private static readonly Callsign A = new("GB7AAA", 0);
     private static readonly Callsign B = new("GB7BBB", 0);
     private static readonly Callsign C = new("GB7CCC", 0);
@@ -58,7 +61,7 @@ public sealed class NetRomServiceInp3EndToEndTests
             var svc = new NetRomService(Config(), Clock, NullLogger<NetRomService>.Instance);
             svc.interlinkSendSinkForTest = (to, bytes) =>
             {
-                wire.Add((to, call, (byte[])bytes.Clone()));
+                wire.Add((to.Callsign, call, (byte[])bytes.Clone()));
                 return true;
             };
             svc.SetInp3LocalNodeForTest(call);
@@ -78,7 +81,7 @@ public sealed class NetRomServiceInp3EndToEndTests
             {
                 if (nodes.TryGetValue(to.ToString(), out var svc))
                 {
-                    svc.IngestInterlinkForTest(from, bytes);
+                    svc.IngestInterlinkForTest(Port, from, bytes);
                 }
             }
             return batch.Count;
@@ -114,8 +117,8 @@ public sealed class NetRomServiceInp3EndToEndTests
         /// neighbour it has observed 0xCF from. Reflections land on the wire; cleared by the caller.</summary>
         public void Observe(Callsign x, Callsign y)
         {
-            Node(x).IngestInterlinkForTest(y, Inp3L3RttFrame.Build(y).ToBytes());
-            Node(y).IngestInterlinkForTest(x, Inp3L3RttFrame.Build(x).ToBytes());
+            Node(x).IngestInterlinkForTest(Port, y, Inp3L3RttFrame.Build(y).ToBytes());
+            Node(y).IngestInterlinkForTest(Port, x, Inp3L3RttFrame.Build(x).ToBytes());
         }
 
         public void Dispose()

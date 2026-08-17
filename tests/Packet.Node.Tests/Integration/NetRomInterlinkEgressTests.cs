@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Ax25;
 using Packet.Ax25.Transport;
 using Packet.Core;
+using Packet.NetRom.Routing;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
 using Packet.Node.Core.NetRom;
@@ -10,18 +11,26 @@ using Packet.Node.Tests.Support;
 namespace Packet.Node.Tests.Integration;
 
 /// <summary>
-/// Which port a NET/ROM interlink actually leaves on (packet-net/packet.net#723 item 4). The
-/// rule is: the port we last HEARD the neighbour on, else the first attached port in the node's
-/// canonical (configuration) order - and it is logged either way, because otherwise the only
-/// record of the choice is a frame trace.
+/// Which port a NET/ROM interlink actually leaves on. Since PC4
+/// (packet-net/packet.net#725) this is not a choice at all: an interlink is keyed by the
+/// <see cref="NeighbourKey"/> - the (port, callsign) adjacency - and the caller reached it by
+/// following a route, which names its own port. The SABM therefore goes out on the band the
+/// route was learned on, every time.
 /// </summary>
 /// <remarks>
-/// It used to be <c>attachments.Values.FirstOrDefault()</c> over a <c>ConcurrentDictionary</c>,
-/// reached whenever the neighbour had not been heard or its port was not attached. So a
-/// connect-out to a neighbour we have no NODES from picked an arbitrary port: the SABM could go
-/// out on the wrong band, and it seeded the per-(port, peer) capability cache for a port the link
-/// will not normally use. The three ports here are named so configuration order and id order
-/// disagree - config says <c>vhf</c> first, the alphabet says <c>hf</c>.
+/// <para>
+/// The history is worth keeping. It was first <c>attachments.Values.FirstOrDefault()</c> over a
+/// <c>ConcurrentDictionary</c>, so a connect-out to a neighbour we had no NODES from picked an
+/// arbitrary port: the SABM could go out on the wrong band, and it seeded the per-(port, peer)
+/// capability cache for a port the link would not use. PC2 (#723 item 4) made that deterministic
+/// as an interim - last-heard port, else the first attached port in configuration order. PC4
+/// removes the guess entirely, so the interim rule is gone rather than layered on top.
+/// </para>
+/// <para>
+/// The three ports are named so configuration order and id order disagree - config says
+/// <c>vhf</c> first, the alphabet says <c>hf</c> - so a test that passes only because the two
+/// coincide is visible.
+/// </para>
 /// </remarks>
 [Trait("Category", "Node")]
 public sealed class NetRomInterlinkEgressTests
@@ -77,14 +86,15 @@ public sealed class NetRomInterlinkEgressTests
     }
 
     [Fact]
-    public async Task An_unheard_neighbour_is_dialled_on_the_first_port_in_config_order()
+    public async Task The_interlink_leaves_on_the_port_named_in_the_key()
     {
         var lab = await StartAsync();
         await using var supervisor = lab.Supervisor;
         using var netRom = lab.NetRom;
 
-        // The neighbour is reachable on every channel; only the node's CHOICE decides which
-        // one hears the SABM. Id order would pick 'hf'; config order picks 'vhf'.
+        // The neighbour is reachable on every channel, so only the KEY decides which one hears
+        // the SABM. 'uhf' is neither first by alphabet ('hf') nor first by config order ('vhf'),
+        // so a dial that lands there can only have come from the key.
         await using var onVhf = new EchoStation(lab.Vhf.Attach(), Neighbour, reply: "VHF\r");
         await using var onHf = new EchoStation(lab.Hf.Attach(), Neighbour, reply: "HF\r");
         await using var onUhf = new EchoStation(lab.Uhf.Attach(), Neighbour, reply: "UHF\r");
@@ -92,37 +102,63 @@ public sealed class NetRomInterlinkEgressTests
         await onHf.StartAsync();
         await onUhf.StartAsync();
 
-        await netRom.EnsureInterlinkForTestAsync(Neighbour);
+        await netRom.EnsureInterlinkForTestAsync(new NeighbourKey("uhf", Neighbour));
 
-        onVhf.SawConnect.Should().BeTrue("an unheard neighbour is dialled on the first attached port in config order");
-        onHf.SawConnect.Should().BeFalse("'hf' is only first by ALPHABET, which is not the node's ordering");
-        onUhf.SawConnect.Should().BeFalse();
+        onUhf.SawConnect.Should().BeTrue("the interlink leaves on the port named in its key - the port of the route being followed");
+        onVhf.SawConnect.Should().BeFalse("'vhf' is only first by CONFIG order, which no longer decides an egress port");
+        onHf.SawConnect.Should().BeFalse("'hf' is only first by ALPHABET, which never decided anything");
     }
 
     [Fact]
-    public async Task A_heard_neighbour_is_dialled_on_the_port_it_was_heard_on()
+    public async Task A_key_naming_an_unattached_port_fails_rather_than_dialling_another_band()
     {
         var lab = await StartAsync();
         await using var supervisor = lab.Supervisor;
         using var netRom = lab.NetRom;
 
-        // The neighbour broadcasts NODES on 'hf' only, so that is where we know it lives -
-        // last-heard beats the config-order fallback.
-        var broadcaster = lab.Hf.Attach();
-        await BroadcastNodesAsync(broadcaster, Neighbour, BuildNodesInfo("RDGBPQ"));
+        await using var onVhf = new EchoStation(lab.Vhf.Attach(), Neighbour, reply: "VHF\r");
+        await using var onHf = new EchoStation(lab.Hf.Attach(), Neighbour, reply: "HF\r");
+        await using var onUhf = new EchoStation(lab.Uhf.Attach(), Neighbour, reply: "UHF\r");
+        await onVhf.StartAsync();
+        await onHf.StartAsync();
+        await onUhf.StartAsync();
+
+        Func<Task> dial = async () =>
+            await netRom.EnsureInterlinkForTestAsync(new NeighbourKey("satellite", Neighbour));
+
+        await dial.Should().ThrowAsync<InvalidOperationException>(
+            "a route over a port that is not attached cannot be followed");
+        onVhf.SawConnect.Should().BeFalse("silently dialling another band would put the SABM on a channel the peer may not be on");
+        onHf.SawConnect.Should().BeFalse();
+        onUhf.SawConnect.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task One_station_audible_on_two_ports_gets_two_interlinks()
+    {
+        var lab = await StartAsync();
+        await using var supervisor = lab.Supervisor;
+        using var netRom = lab.NetRom;
+
+        // The neighbour broadcasts NODES on BOTH vhf and hf, so the table holds two adjacencies
+        // to one callsign - the dual-homed backbone peer PC4 exists for.
+        await BroadcastNodesAsync(lab.Vhf.Attach(), Neighbour, BuildNodesInfo("RDGBPQ"));
+        await BroadcastNodesAsync(lab.Hf.Attach(), Neighbour, BuildNodesInfo("RDGBPQ"));
         await Wait.ForAsync(
-            () => netRom.Snapshot().Neighbours.Any(n => n.Neighbour == Neighbour && n.PortId == "hf"),
-            "the node hears the neighbour on hf");
+            () => netRom.Snapshot().Neighbours.Count(n => n.Neighbour == Neighbour) == 2,
+            "the node holds one neighbour row per port it heard the station on");
 
         await using var onVhf = new EchoStation(lab.Vhf.Attach(), Neighbour, reply: "VHF\r");
         await using var onHf = new EchoStation(lab.Hf.Attach(), Neighbour, reply: "HF\r");
         await onVhf.StartAsync();
         await onHf.StartAsync();
 
-        await netRom.EnsureInterlinkForTestAsync(Neighbour);
+        await netRom.EnsureInterlinkForTestAsync(new NeighbourKey("vhf", Neighbour));
+        await netRom.EnsureInterlinkForTestAsync(new NeighbourKey("hf", Neighbour));
 
-        onHf.SawConnect.Should().BeTrue("the neighbour's last-heard port wins over the config-order fallback");
-        onVhf.SawConnect.Should().BeFalse();
+        onVhf.SawConnect.Should().BeTrue("each adjacency carries its own interlink");
+        onHf.SawConnect.Should().BeTrue(
+            "the second port is NOT shut out by the first - one interlink per station was the defect (#725)");
     }
 
     // --- the NODES wire helpers (mirrors NetRomAwareIntegrationTests; the production

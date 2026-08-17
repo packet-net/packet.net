@@ -144,7 +144,7 @@ public static class PdnMetricsApi
         w.Type(Ns + "sessions", "gauge");
         w.Sample(Ns + "sessions", status.SessionCount);
 
-        w.Help(Ns + "netrom_neighbours", "Directly-heard NET/ROM neighbours.");
+        w.Help(Ns + "netrom_neighbours", "Directly-heard NET/ROM neighbour adjacencies - one per (port, callsign), so a station audible on two ports counts twice.");
         w.Type(Ns + "netrom_neighbours", "gauge");
         w.Sample(Ns + "netrom_neighbours", status.Netrom.Neighbours);
 

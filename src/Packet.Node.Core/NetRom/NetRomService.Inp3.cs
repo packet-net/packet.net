@@ -37,13 +37,25 @@ public sealed partial class NetRomService
     /// existing L4 dispatch, returned via <paramref name="l4Packet"/> so it is not re-parsed.</item>
     /// </list>
     /// </summary>
+    /// <remarks>
+    /// <b>The selected-link rule</b> (<c>docs/netrom-multiport-neighbours.md</c> §4). Since PC4 a
+    /// neighbour can be adjacent on several ports, but <see cref="Inp3Engine"/> is still keyed by
+    /// callsign, and SNTT is a per-<em>link</em> measurement - blending two links would corrupt
+    /// it. So INP3 runs on exactly <b>one</b> link per station, its <em>selected</em> interlink
+    /// (<see cref="SelectedInp3Port"/>), and an INP3 frame arriving on any other link to that
+    /// station is dropped with a log line. L4 datagrams are unaffected: they are dispatched from
+    /// whichever link they arrive on. The follow-up that keys the engine per (port, callsign) is
+    /// packet-net/packet.net#733.
+    /// </remarks>
+    /// <param name="portId">The port the frame arrived on.</param>
     /// <param name="fromNeighbour">The interlink neighbour the frame arrived on.</param>
     /// <param name="info">The 0xCF I-frame info field.</param>
     /// <param name="l4Packet">On return, a parsed non-INP3 <see cref="NetRomPacket"/> the caller
     /// should dispatch to L4 (only when this returns false); null otherwise.</param>
-    /// <returns><c>true</c> if the frame was consumed as INP3 (or dropped as a malformed RIF) —
-    /// the caller must not touch L4; <c>false</c> if it is not an INP3 frame.</returns>
-    private bool DispatchInp3(Callsign fromNeighbour, ReadOnlyMemory<byte> info, out NetRomPacket? l4Packet)
+    /// <returns><c>true</c> if the frame was consumed as INP3 (or dropped as a malformed RIF, or
+    /// dropped by the selected-link rule) - the caller must not touch L4; <c>false</c> if it is
+    /// not an INP3 frame.</returns>
+    private bool DispatchInp3(string portId, Callsign fromNeighbour, ReadOnlyMemory<byte> info, out NetRomPacket? l4Packet)
     {
         l4Packet = null;
         var host = inp3;
@@ -52,19 +64,35 @@ public sealed partial class NetRomService
             return false;   // overlay off — never reached (caller guards), but keep total.
         }
 
+        // The selected-link rule. A null selection means we have no basis to prefer another link
+        // (no NODES row, no other interlink), which is the single-port case - then this link IS
+        // the selected one and the behaviour is byte-for-byte what it was before PC4.
+        var selected = SelectedInp3Port(fromNeighbour);
+        bool onSelectedLink = selected is null || string.Equals(selected, portId, StringComparison.Ordinal);
+
         // Any neighbour we hear ANYTHING 0xCF from becomes a probe target (idempotent refresh,
         // cheap). Optimistic probing of unknown-capability neighbours is on by default, so even
-        // a neighbour that only ever sent an L4 datagram gets probed (design §3 neighbour-obs).
-        host.ObserveNeighbour(fromNeighbour);
+        // a neighbour that only ever sent an L4 datagram gets probed (design §3 neighbour-obs) -
+        // but only from its selected link, so we never probe one station twice.
+        if (onSelectedLink)
+        {
+            host.ObserveNeighbour(fromNeighbour);
+        }
 
         var span = info.Span;
 
         // (A) RIF? — the 0xFF signature is a single-byte, total, unambiguous discriminator.
         if (span.Length >= 1 && span[0] == Inp3Rif.Signature)
         {
+            if (!onSelectedLink)
+            {
+                var fromText = fromNeighbour.ToString();   // local: not evaluated when the trace is off (CA1873)
+                LogInp3NonSelectedLink(fromText, portId, selected!, "RIF");
+                return true;
+            }
             if (Inp3Rif.TryParse(span, out var rif))
             {
-                host.IngestRif(fromNeighbour, rif);
+                host.IngestRif(fromNeighbour, portId, rif);
             }
             // Consumed either way: a 0xFF-led-but-unparseable frame is a malformed RIF, dropped
             // — NEVER retried as an L4 datagram (the "never mis-fed" guarantee made total).
@@ -76,10 +104,17 @@ public sealed partial class NetRomService
         {
             if (Inp3L3RttFrame.IsL3Rtt(packet!))
             {
+                if (!onSelectedLink)
+                {
+                    var fromText = fromNeighbour.ToString();   // local (CA1873)
+                    LogInp3NonSelectedLink(fromText, portId, selected!, "L3RTT");
+                    return true;
+                }
                 host.OnL3Rtt(fromNeighbour, packet!);   // times our reflection, or reflects a peer probe
                 return true;
             }
             // A normal L4 datagram — hand the already-parsed packet back to the caller for L4.
+            // NOT gated by the selected-link rule: L4 rides whichever link it arrived on.
             l4Packet = packet;
             return false;
         }
@@ -87,6 +122,49 @@ public sealed partial class NetRomService
         // info didn't parse as a NetRomPacket and wasn't a RIF → drop (today's behaviour for an
         // unparseable interlink frame). Consumed so the caller does not re-attempt the parse.
         return true;
+    }
+
+    /// <summary>
+    /// The port of a neighbour's <b>selected INP3 link</b>: the port of its best adjacency in the
+    /// routing table (highest path quality, ties by port order), else the best live interlink to
+    /// it, else <c>null</c> when we know of no link at all. The one place the selected-link rule
+    /// is decided, so ingest, probing and advertisement all agree on the same link.
+    /// </summary>
+    internal string? SelectedInp3Port(Callsign neighbour)
+    {
+        // BestNeighbourPort, not Snapshot().BestNeighbourFor: this runs on EVERY inbound
+        // interlink frame when the overlay is on, and a full snapshot would materialise the
+        // whole table per frame.
+        if (table.BestNeighbourPort(neighbour) is { } port)
+        {
+            return port;
+        }
+        var live = LiveInterlinksTo(neighbour);
+        return live.Count > 0 ? live[0].PortId : null;
+    }
+
+    // The adjacency INP3 sends to a neighbour over. An unknown selection yields an empty port,
+    // which no interlink is keyed by, so TrySendOverInterlinkBytes reports "no link up" and the
+    // INP3 cold-interlink policy (drop, don't dial) applies unchanged.
+    private NeighbourKey Inp3KeyFor(Callsign neighbour) => new(SelectedInp3Port(neighbour) ?? string.Empty, neighbour);
+
+    // The INP3 180 s reflection timeout, scoped honestly: INP3 only ever ran on the neighbour's
+    // SELECTED link, so only that adjacency's routes are dropped. A station still audible on
+    // another port keeps that port's routes - INP3 never probed that link, so its silence says
+    // nothing about it. With no selection known (the single-port / test case) every adjacency to
+    // the station goes, which is what the pre-PC4 call did.
+    private int MarkInp3NeighbourDown(Callsign neighbour)
+    {
+        if (SelectedInp3Port(neighbour) is { } port)
+        {
+            return table.MarkNeighbourDown(new NeighbourKey(port, neighbour));
+        }
+        int dropped = 0;
+        foreach (var adjacency in table.Snapshot().NeighboursOf(neighbour))
+        {
+            dropped += table.MarkNeighbourDown(new NeighbourKey(adjacency.PortId, neighbour));
+        }
+        return dropped;   // no adjacency known: nothing to drop, so this is 0 in practice
     }
 
     // ─── INP3: test seams (InternalsVisibleTo Packet.Node.Tests) ───
@@ -105,14 +183,15 @@ public sealed partial class NetRomService
     /// <paramref name="fromNeighbour"/> — the session-free path the deterministic node tests use
     /// to exercise <see cref="OnInterlinkData"/>'s dispatch (RIF/L3RTT peel + L4 fallthrough)
     /// without a real Ax25Session. Behaves exactly as the live tap: INP3 on ⇒ DispatchInp3 then
-    /// L4; INP3 off ⇒ today's parse-then-DispatchL4.</summary>
-    internal void IngestInterlinkForTest(Callsign fromNeighbour, ReadOnlyMemory<byte> info)
+    /// L4; INP3 off ⇒ today's parse-then-DispatchL4. <paramref name="portId"/> is the arrival
+    /// port - the selected-link rule and the per-(port, neighbour) RIF ingest both need it.</summary>
+    internal void IngestInterlinkForTest(string portId, Callsign fromNeighbour, ReadOnlyMemory<byte> info)
     {
         try
         {
             if (inp3 is not null)
             {
-                if (DispatchInp3(fromNeighbour, info, out var l4Packet))
+                if (DispatchInp3(portId, fromNeighbour, info, out var l4Packet))
                 {
                     return;
                 }
@@ -208,7 +287,7 @@ public sealed partial class NetRomService
             // TrySendOverInterlinkBytes returns false when no link is up; we just don't probe.
             engine.SendL3Rtt = (neighbour, frame) =>
             {
-                if (!owner.TrySendOverInterlinkBytes(neighbour, frame.ToBytes()))
+                if (!owner.TrySendOverInterlinkBytes(owner.Inp3KeyFor(neighbour), frame.ToBytes()))
                 {
                     var neighbourText = neighbour.ToString();   // local: not evaluated when the trace is off (CA1873)
                     owner.LogInp3SendDropped(neighbourText, "L3RTT");
@@ -220,7 +299,7 @@ public sealed partial class NetRomService
             // (the SAME one the L4 dial-failure path calls) rather than inventing a teardown (§4.3).
             engine.NeighbourDown += (_, e) =>
             {
-                int dropped = owner.table.MarkNeighbourDown(e.Neighbour);
+                int dropped = owner.MarkInp3NeighbourDown(e.Neighbour);
                 var downText = e.Neighbour.ToString();   // local (CA1873)
                 owner.LogInp3NeighbourDown(downText, e.SilentForMs, dropped);
                 // The engine has already removed the neighbour's state before raising this (and
@@ -242,7 +321,7 @@ public sealed partial class NetRomService
             scheduler.Advertise = intent =>
             {
                 var rif = owner.table.BuildRif(owner.nodeCall, intent.Neighbour, currentRoundWithdrawn);
-                if (!owner.TrySendOverInterlinkBytes(intent.Neighbour, rif.ToBytes()))
+                if (!owner.TrySendOverInterlinkBytes(owner.Inp3KeyFor(intent.Neighbour), rif.ToBytes()))
                 {
                     var neighbourText = intent.Neighbour.ToString();   // local (CA1873)
                     owner.LogInp3SendDropped(neighbourText, "RIF");
@@ -259,8 +338,9 @@ public sealed partial class NetRomService
         /// <summary>Register/refresh awareness of an interlink neighbour so the engine probes it.</summary>
         public void ObserveNeighbour(Callsign neighbour) => engine.ObserveNeighbour(neighbour);
 
-        /// <summary>Ingest a parsed RIF into the shared table (the second metric space), supplying
-        /// the engine's measured SNTT for the carrying link. Any destination that lost its last INP3
+        /// <summary>Ingest a parsed RIF into the shared table (the second metric space) under the
+        /// <b>(port, neighbour)</b> key it arrived on, supplying the engine's measured SNTT for
+        /// the carrying link. Any destination that lost its last INP3
         /// route during ingest (a horizon RIP withdrew it) lands in the table's recently-withdrawn
         /// set; it is NOT escalated here — the next <see cref="TickOnce"/> (≤ 1 s) DRAINS the set,
         /// marks each NEGATIVE, and fans it out, so this pump-thread path never touches the scheduler
@@ -269,9 +349,9 @@ public sealed partial class NetRomService
         /// ride the periodic RIF this slice (IngestRif returns void, so the host cannot classify
         /// new/improved per-destination — design §6.5 flagged gap; the correctness-critical
         /// NEGATIVE/withdrawal path IS wired, via the drain).</summary>
-        public void IngestRif(Callsign from, Inp3Rif rif)
+        public void IngestRif(Callsign from, string portId, Inp3Rif rif)
         {
-            owner.table.IngestRif(from, owner.nodeCall, engine.SnttMs(from) ?? Inp3Sntt.Unset, rif, options.HopLimit);
+            owner.table.IngestRif(from, portId, owner.nodeCall, engine.SnttMs(from) ?? Inp3Sntt.Unset, rif, options.HopLimit);
         }
 
         /// <summary>Feed an inbound L3RTT frame to the engine (it reflects a peer probe via the
@@ -383,4 +463,8 @@ public sealed partial class NetRomService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "NET/ROM INP3: host tick faulted (continuing).")]
     private partial void LogInp3TickFault(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "NET/ROM INP3: dropped a {Kind} from {Neighbour} on port {PortId} - INP3 runs on its selected link '{SelectedPortId}' only.")]
+    private partial void LogInp3NonSelectedLink(string neighbour, string portId, string selectedPortId, string kind);
 }

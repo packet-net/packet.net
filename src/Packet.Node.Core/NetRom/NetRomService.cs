@@ -99,8 +99,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // run on the reconcile worker while FrameTraced fires on listener pump threads.
     private readonly ConcurrentDictionary<string, Attachment> attachments = new(StringComparer.Ordinal);
 
-    // Interlink sessions to neighbours, keyed by neighbour callsign.
-    private readonly ConcurrentDictionary<Callsign, Interlink> interlinks = new();
+    // Interlink sessions to neighbours, keyed by the ADJACENCY - (port, callsign). A station
+    // audible on two ports gets two interlinks, each carrying the routes learned on its own port,
+    // which is what gives a dual-homed backbone peer port diversity and failover (#725). It also
+    // removes the guesswork: the port an interlink leaves on comes from the route being followed,
+    // never from a first-match scan.
+    private readonly ConcurrentDictionary<NeighbourKey, Interlink> interlinks = new();
 
     // Sessions we have already tapped for inbound 0xCF (so we attach the tap once).
     private readonly ConcurrentDictionary<Ax25Session, byte> tapped = new();
@@ -198,10 +202,37 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// The node's <b>canonical port order</b> (configuration order, serving ports only) - set by
     /// the <c>PortSupervisor</c>. Null on a bare service (unit tests, an embedder with no
     /// supervisor), in which case attached ports are ordered by id, which is at least stable.
-    /// Used wherever this service has to pick "a port" rather than "the port": the interlink
-    /// egress fallback and the NODES broadcast walk (packet-net/packet.net#723 items 3 + 4).
+    /// Used wherever this service has to pick "a port" rather than "the port": the NODES
+    /// broadcast walk (packet-net/packet.net#723 item 3) and the routing table's per-port
+    /// route tie-break (<see cref="NetRomRoutingOptions.PortRank"/>, #725).
+    /// <para>
+    /// #723 item 4's interim interlink-egress fallback is <b>gone</b>: since PC4 the egress port
+    /// is the port of the route being followed, so there is nothing left to guess.
+    /// </para>
     /// </summary>
     public Func<IReadOnlyList<string>>? PortOrder { get; set; }
+
+    // The canonical rank of a port, for the routing table's tie-break between two equal-quality
+    // routes via one callsign on different ports. Read per comparison (not captured), so a config
+    // reorder reaches the next decision. No supervisor wired => every port ranks 0 and the table
+    // falls back to ordinal port id, which is at least stable; a port not in the canonical list
+    // (a read racing a detach) sorts last rather than first.
+    private int PortRankOf(string portId)
+    {
+        var canonical = PortOrder?.Invoke();
+        if (canonical is null)
+        {
+            return 0;
+        }
+        for (int i = 0; i < canonical.Count; i++)
+        {
+            if (string.Equals(canonical[i], portId, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+        return int.MaxValue;
+    }
 
     // The attached port ids in canonical order. Falls back to id order when no supervisor wired
     // the seam; a port that is attached but absent from the canonical list (a read racing a
@@ -275,7 +306,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         this.store = store;
         this.capabilityCache = capabilityCache;
 
-        routingOptions = ResolveRoutingOptions(config);
+        // PortRank is wired to this service's PortOrder seam (the supervisor's canonical
+        // configuration order) - the table breaks a per-port route tie by it. The delegate is
+        // read lazily, so wiring it here, before PortOrder is set, is correct.
+        routingOptions = ResolveRoutingOptions(config) with { PortRank = PortRankOf };
         circuitOptions = ResolveCircuitOptions(config);
         table = new NetRomRoutingTable(routingOptions, this.timeProvider);
 
@@ -463,9 +497,12 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         }
     }
 
-    /// <summary>Stop hearing NODES on a port and unsubscribe its taps. Learned routes
-    /// survive. Interlinks on the port are <b>disconnected</b> (a best-effort DISC is
-    /// posted so the neighbour doesn't keep a half-open AX.25 link) and dropped. For a
+    /// <summary>Stop hearing NODES on a port and unsubscribe its taps. Interlinks on the port
+    /// are <b>disconnected</b> (a best-effort DISC is posted so the neighbour doesn't keep a
+    /// half-open AX.25 link) and dropped, and the port's adjacencies + the routes that ran over
+    /// them leave the routing table at once (<see cref="NetRomRoutingTable.MarkPortDown"/>) -
+    /// routes on <em>other</em> ports, including ones to the very same stations, are untouched,
+    /// so a dual-homed destination fails over to the surviving band on the next decision. For a
     /// clean DISC/UA round-trip on the wire before the listener is disposed, prefer
     /// <see cref="DetachPortAsync"/>.</summary>
     public void DetachPort(string portId)
@@ -479,15 +516,33 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             // Drop interlinks running on this port, posting a best-effort DISC first
             // so the neighbour tears its half of the AX.25 link down (otherwise it is
             // left with a half-open session it polls — channel noise / interop flake).
-            foreach (var (nbr, link) in interlinks)
+            foreach (var (key, link) in interlinks)
             {
-                if (string.Equals(link.PortId, portId, StringComparison.Ordinal))
+                if (string.Equals(key.PortId, portId, StringComparison.Ordinal))
                 {
                     RequestInterlinkDisconnect(link);
-                    interlinks.TryRemove(nbr, out Interlink? _);
+                    interlinks.TryRemove(key, out Interlink? _);
                 }
             }
+            DropPortRoutes(portId);
             LogDetached(portId);
+        }
+    }
+
+    // The routing half of a detach: this port's adjacencies and the routes over them leave the
+    // table now, rather than aging out over a whole broadcast interval during which forwarding
+    // and connect-routing would keep choosing a link that no longer exists. Other ports' rows
+    // survive - that is the point of keying neighbours per (port, callsign).
+    private void DropPortRoutes(string portId)
+    {
+        if (!config.Enabled)
+        {
+            return;
+        }
+        int dropped = table.MarkPortDown(portId);
+        if (dropped > 0)
+        {
+            LogPortRoutesDropped(portId, dropped);
         }
     }
 
@@ -497,7 +552,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// for each to reach Disconnected so the DISC/UA round-trips on the wire — before
     /// the caller disposes the listener. Use this on port teardown / reconfigure so a
     /// neighbour is never left with a half-open interlink it polls (the #309
-    /// contamination class). Learned routes survive.
+    /// contamination class). This port's routes leave the table (see
+    /// <see cref="DetachPort"/>); other ports' routes survive.
     /// </summary>
     public async Task DetachPortAsync(string portId, CancellationToken ct = default)
     {
@@ -510,13 +566,14 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         attachment.Listener.SessionAccepted -= attachment.SessionHandler;
 
         var onPort = interlinks
-            .Where(kv => string.Equals(kv.Value.PortId, portId, StringComparison.Ordinal))
+            .Where(kv => string.Equals(kv.Key.PortId, portId, StringComparison.Ordinal))
             .ToArray();
-        foreach (var (nbr, link) in onPort)
+        foreach (var (key, link) in onPort)
         {
-            interlinks.TryRemove(nbr, out Interlink? _);
+            interlinks.TryRemove(key, out Interlink? _);
             await CloseInterlinkAsync(link, ct).ConfigureAwait(false);
         }
+        DropPortRoutes(portId);
         LogDetached(portId);
     }
 
@@ -812,6 +869,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
         var listener = attachments.TryGetValue(portId, out var a) ? a.Listener : null;
         var peer = session.Context.Remote;
+        // The interlink is keyed by the ADJACENCY this session runs on, so the same station
+        // calling in on a second port opens a second interlink instead of losing the race to
+        // whichever port carried the first 0xCF datagram.
+        var key = new NeighbourKey(portId, peer);
 
         // The tap is declared as a self-referencing local so it can DETACH itself on
         // disconnect. A cached Ax25Session is reused across disconnect/reconnect (the
@@ -832,24 +893,24 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 // outbound datagrams to this neighbour reuse it.
                 if (listener is not null)
                 {
-                    interlinks.TryAdd(peer, new Interlink(portId, listener, session));
+                    interlinks.TryAdd(key, new Interlink(listener, session));
                 }
-                OnInterlinkData(session, di.Info);
+                OnInterlinkData(portId, session, di.Info);
             }
             else if (sig is DataLinkDisconnectIndication or DataLinkDisconnectConfirm)
             {
                 session.DataLinkSignalEmitted -= tap;
                 tapped.TryRemove(session, out byte _);
-                if (interlinks.TryGetValue(peer, out var link) && ReferenceEquals(link.Session, session))
+                if (interlinks.TryGetValue(key, out var link) && ReferenceEquals(link.Session, session))
                 {
-                    interlinks.TryRemove(peer, out Interlink? _);
+                    interlinks.TryRemove(key, out Interlink? _);
                 }
             }
         };
         session.DataLinkSignalEmitted += tap;
     }
 
-    private void OnInterlinkData(Ax25Session session, ReadOnlyMemory<byte> info)
+    private void OnInterlinkData(string portId, Ax25Session session, ReadOnlyMemory<byte> info)
     {
         var fromNeighbour = session.Context.Remote;
         try
@@ -862,7 +923,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
             //    (no double-parse). See docs/netrom-inp3-host-integration-design.md §3.2.
             if (inp3 is not null)
             {
-                if (DispatchInp3(fromNeighbour, info, out var l4Packet))
+                if (DispatchInp3(portId, fromNeighbour, info, out var l4Packet))
                 {
                     return;   // consumed as a RIF or an L3RTT (or dropped as malformed) — never L4.
                 }
@@ -964,7 +1025,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 return;
         }
 
-        var neighbour = decision.NextHop;
+        // The decision names the ADJACENCY, not just the station: the selected route's port is
+        // the link this datagram leaves on, so the interlink lookup is exact.
+        var neighbour = decision.NextHopKey;
         var forwarded = decision.Packet;
 
         // Count the forward once the decision resolved a next hop — the datagram is on its way
@@ -986,7 +1049,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         _ = ForwardOverColdInterlinkAsync(forwarded, neighbour);
     }
 
-    private async Task ForwardOverColdInterlinkAsync(NetRomPacket forwarded, Callsign neighbour)
+    private async Task ForwardOverColdInterlinkAsync(NetRomPacket forwarded, NeighbourKey neighbour)
     {
         var neighbourText = neighbour.ToString();
         try
@@ -1008,9 +1071,9 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         }
     }
 
-    /// <summary>Send an encoded datagram over an existing interlink to
+    /// <summary>Send an encoded datagram over the existing interlink to the adjacency
     /// <paramref name="neighbour"/>. Returns <c>false</c> if no interlink is up.</summary>
-    private bool TrySendOverInterlink(Callsign neighbour, NetRomPacket packet)
+    private bool TrySendOverInterlink(NeighbourKey neighbour, NetRomPacket packet)
         => TrySendOverInterlinkBytes(neighbour, packet.ToBytes());
 
     /// <summary>
@@ -1024,7 +1087,7 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     /// this round," not a failure). A test seam (<see cref="interlinkSendSinkForTest"/>)
     /// captures the bytes instead of touching a real listener when set.
     /// </summary>
-    private bool TrySendOverInterlinkBytes(Callsign neighbour, byte[] info)
+    private bool TrySendOverInterlinkBytes(NeighbourKey neighbour, byte[] info)
     {
         if (interlinkSendSinkForTest is { } sink)
         {
@@ -1038,19 +1101,38 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         return false;
     }
 
+    // Every live interlink to `neighbour`, best first: the routing table's preference (its best
+    // adjacency to that station) leads, then any remaining live links in canonical port order.
+    // Used where the caller genuinely means "the station", not "this link" - replying to a peer
+    // over the session its datagram arrived on, and the INP3 selected-link rule.
+    private List<NeighbourKey> LiveInterlinksTo(Callsign neighbour)
+    {
+        var keys = interlinks.Keys.Where(k => k.Callsign.Equals(neighbour)).ToList();
+        if (keys.Count <= 1)
+        {
+            return keys;
+        }
+        var preferred = table.BestNeighbourPort(neighbour);
+        return keys
+            .OrderByDescending(k => string.Equals(k.PortId, preferred, StringComparison.Ordinal))
+            .ThenBy(k => PortRankOf(k.PortId))
+            .ThenBy(k => k.PortId, StringComparer.Ordinal)
+            .ToList();
+    }
+
     // Test seam (InternalsVisibleTo Packet.Node.Tests): when set, every interlink send
     // (L4 and INP3) is captured here instead of being posted to a real Ax25Session, so a
     // deterministic node test can drive the INP3 host on a FakeTimeProvider and assert what
     // went on the wire without standing up real AX.25 handshakes. Returns the "did it send"
     // result TrySendOverInterlinkBytes would have returned (true = an interlink was up).
-    internal Func<Callsign, byte[], bool>? interlinkSendSinkForTest;
+    internal Func<NeighbourKey, byte[], bool>? interlinkSendSinkForTest;
 
     // Test seam (InternalsVisibleTo Packet.Node.Tests): drive ONE interlink dial directly,
     // exercising the capability-cache wiring in EnsureInterlinkAsync (PlanDial → the dial →
     // RecordOutcome-on-return / no-record-on-throw) without standing up the full L4 circuit
     // machinery a public ConnectCircuitAsync would pull in. Behaviour-identical to the dial
     // ConnectCircuitAsync performs; it just stops once the interlink is up (or rethrows).
-    internal Task EnsureInterlinkForTestAsync(Callsign neighbour, CancellationToken ct = default)
+    internal Task EnsureInterlinkForTestAsync(NeighbourKey neighbour, CancellationToken ct = default)
         => EnsureInterlinkAsync(neighbour, ct);
 
     // The shared neighbour-down path. With INP3 off (inp3 == null) this is EXACTLY today's
@@ -1059,10 +1141,18 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     // destination that just lost its last INP3 route to the scheduler (NEGATIVE → immediate
     // fan-out), so an L4 dial failure also propagates the INP3 withdrawal promptly. The 180 s
     // INP3 reflection-timeout uses Inp3Host's own NeighbourDown handler (which calls this too).
-    private int MarkNeighbourDownShared(Callsign neighbour)
+    // Takes the ADJACENCY: a dial that fails on one band drops that link's routes only, so the
+    // very next selection can pick the same station on another port. The INP3 engine is still
+    // keyed by callsign (the deliberate interim, docs/netrom-multiport-neighbours.md §4), so its
+    // per-neighbour timing state is dropped only when NO link to that station survives - a
+    // failover between bands must not throw away a measured SNTT that is still valid.
+    private int MarkNeighbourDownShared(NeighbourKey neighbour)
     {
         int dropped = table.MarkNeighbourDown(neighbour);
-        inp3?.OnNeighbourGone(neighbour);
+        if (inp3 is not null && table.BestNeighbourPort(neighbour.Callsign) is null)
+        {
+            inp3.OnNeighbourGone(neighbour.Callsign);
+        }
         return dropped;
     }
 
@@ -1139,15 +1229,18 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
 
             try
             {
-                // Ensure the interlink to the best neighbour is up before originating.
-                await EnsureInterlinkAsync(best.Neighbour, ct).ConfigureAwait(false);
+                // Ensure the interlink to the best route's ADJACENCY is up before originating -
+                // the route names both the station and the port, so the SABM leaves on the band
+                // the route was learned on.
+                await EnsureInterlinkAsync(best.Key, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // EnsureInterlinkAsync marked the neighbour down already; loop to the
-                // next-best route. If that was the last route, the next ResolveDestination
-                // returns null → the throw above surfaces the no-route failure.
-                var failedNeighbour = best.Neighbour.ToString();
+                // EnsureInterlinkAsync marked that adjacency down already; loop to the
+                // next-best route - which may be the SAME station on another port. If that was
+                // the last route, the next ResolveDestination returns null → the throw above
+                // surfaces the no-route failure.
+                var failedNeighbour = best.Key.ToString();
                 var failedDest = destCall.ToString();
                 LogConnectFailoverRetry(failedNeighbour, failedDest, ex);
                 continue;
@@ -1187,43 +1280,33 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         return connection;
     }
 
-    private async Task EnsureInterlinkAsync(Callsign neighbour, CancellationToken ct)
+    private async Task EnsureInterlinkAsync(NeighbourKey key, CancellationToken ct)
     {
-        if (interlinks.TryGetValue(neighbour, out var existing) && existing.Session is { } s &&
+        if (interlinks.TryGetValue(key, out var existing) && existing.Session is { } s &&
             !string.Equals(s.CurrentState, "Disconnected", StringComparison.Ordinal))
         {
             return;   // already up
         }
 
-        // Which port this interlink leaves on, deterministically (#723 item 4): the port we last
-        // HEARD this neighbour on, else the first attached port in the node's canonical
-        // (configuration) order. It used to be `attachments.Values.FirstOrDefault()` over a
-        // ConcurrentDictionary, so a connect-out to a neighbour we have not yet heard NODES from
-        // picked an arbitrary port - the SABM could go out on the wrong band, and it poisoned the
-        // per-(port, peer) capability cache with an entry for a port the link will not use. The
-        // choice and its REASON are logged, because "which port did that interlink leave on" is
-        // otherwise only recoverable from a frame trace.
-        var nbr = table.Snapshot().NeighbourFor(neighbour);
-        Attachment? attachment = null;
-        string reason;
-        if (nbr is not null && attachments.TryGetValue(nbr.PortId, out var a))
+        var neighbour = key.Callsign;
+
+        // Which port this interlink leaves on is not a choice any more: it is in the KEY. The
+        // caller reached here by following a route, and a route names its adjacency, so the SABM
+        // leaves on the band that route was learned on. PC2's interim rule (last-heard port, else
+        // the first attached port in canonical order) is superseded and gone - there is nothing
+        // left to guess, and nothing left to log a "reason" for.
+        //
+        // A key naming a port that is not attached FAILS the dial rather than silently dialling
+        // another band: dialling elsewhere would put the SABM on a channel the peer may not be
+        // on, and would seed the per-(port, peer) capability cache for a port the link never used.
+        // The caller's failover loop then tries the next route, which may be the same station on
+        // a port that IS attached.
+        if (!attachments.TryGetValue(key.PortId, out var attachment))
         {
-            attachment = a;
-            reason = "last heard there";
+            throw new InvalidOperationException(
+                $"NET/ROM port '{key.PortId}' is not attached; cannot open an interlink to {neighbour} on it.");
         }
-        else
-        {
-            var ordered = AttachedPortIdsInOrder();
-            attachment = ordered.Count == 0 ? null : attachments.GetValueOrDefault(ordered[0]);
-            reason = nbr is null
-                ? "never heard from this neighbour - first attached port in configuration order"
-                : $"last heard on port '{nbr.PortId}', which is not attached - first attached port in configuration order";
-        }
-        if (attachment is null)
-        {
-            throw new InvalidOperationException("no NET/ROM port available to open an interlink.");
-        }
-        LogInterlinkEgress(neighbour, attachment.PortId, reason);
+        LogInterlinkEgress(neighbour, attachment.PortId);
 
         // Consult the port's declared link policy, then the per-peer capability cache, for this
         // dial. The default (all-auto, no cache) preserves today's behaviour exactly:
@@ -1264,8 +1347,10 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            int dropped = MarkNeighbourDownShared(neighbour);
-            var downText = neighbour.ToString();
+            // Only THIS adjacency is down. The same station on another port keeps its routes,
+            // so the caller's failover can pick it up on the next attempt.
+            int dropped = MarkNeighbourDownShared(key);
+            var downText = key.ToString();
             LogNeighbourDown(downText, dropped);
             throw;
         }
@@ -1280,8 +1365,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         // Tap the session for inbound NET/ROM (the tap is idempotent — TryAdd guards
         // it — so OnSessionAccepted firing for the dial too is harmless).
         OnSessionAccepted(attachment.PortId, session);
-        interlinks[neighbour] = new Interlink(attachment.PortId, attachment.Listener, session);
-        var neighbourText = neighbour.ToString();
+        interlinks[key] = new Interlink(attachment.Listener, session);
+        var neighbourText = key.ToString();
         LogInterlinkUp(neighbourText);
     }
 
@@ -1293,15 +1378,18 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         {
             var dest = packet.Network.Destination;
 
-            // Find the next-hop neighbour. Order: (1) a direct interlink to the
-            // destination node itself — this covers replying to a peer over the very
-            // session its datagram arrived on, even one that never broadcast NODES
-            // (e.g. a pure client); (2) the best route in the routing table; (3) the
-            // destination as a directly-heard neighbour.
-            Callsign? neighbour = null;
-            if (interlinks.ContainsKey(dest))
+            // Find the next-hop adjacency. Order: (1) a direct interlink to the destination node
+            // itself - this covers replying to a peer over the very session its datagram arrived
+            // on, even one that never broadcast NODES (e.g. a pure client); with the node
+            // dual-homed there can be two such links, so we take the best by the routing table's
+            // own preference, then canonical port order; (2) the best route in the routing table,
+            // which names its own port; (3) the destination as a directly-heard neighbour, on its
+            // best adjacency.
+            NeighbourKey? neighbour = null;
+            var direct = LiveInterlinksTo(dest);
+            if (direct.Count > 0)
             {
-                neighbour = dest;
+                neighbour = direct[0];
             }
             else
             {
@@ -1309,11 +1397,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
                 var resolved = snap.Destinations.FirstOrDefault(d => d.Destination.Equals(dest));
                 if ((resolved is null ? null : SelectActiveRoute(resolved)) is { } route)
                 {
-                    neighbour = route.Neighbour;
+                    neighbour = route.Key;
                 }
-                else if (snap.NeighbourFor(dest) is not null)
+                else if (snap.BestNeighbourFor(dest) is { } adjacency)
                 {
-                    neighbour = dest;
+                    neighbour = new NeighbourKey(adjacency.PortId, dest);
                 }
             }
 
@@ -1414,7 +1502,8 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
         EventHandler<Ax25FrameEventArgs> FrameHandler, EventHandler<Ax25SessionEventArgs> SessionHandler,
         int? NeighbourQuality, int? MinQuality, int? NodesPaclen);
 
-    private sealed record Interlink(string PortId, Ax25Listener? Listener, Ax25Session? Session);
+    // The port is in the interlinks dictionary KEY (NeighbourKey), so it is not repeated here.
+    private sealed record Interlink(Ax25Listener? Listener, Ax25Session? Session);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: listening for NODES on port {PortId} (as {Callsign}).")]
     private partial void LogAttached(string portId, string callsign);
@@ -1422,8 +1511,11 @@ public sealed partial class NetRomService : INetRomRoutingView, IDisposable, IAs
     [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: stopped listening on port {PortId}.")]
     private partial void LogDetached(string portId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: opening interlink to {Neighbour} on port {PortId} ({Reason}).")]
-    private partial void LogInterlinkEgress(Callsign neighbour, string portId, string reason);
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: port {PortId} went away - dropped {Dropped} route(s) that ran over it; other ports are unaffected.")]
+    private partial void LogPortRoutesDropped(string portId, int dropped);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "NET/ROM: opening interlink to {Neighbour} on port {PortId} (the port of the route being followed).")]
+    private partial void LogInterlinkEgress(Callsign neighbour, string portId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NET/ROM: heard NODES from {Originator} (alias {Alias}) on {PortId} with {EntryCount} entr(ies).")]
     private partial void LogHeard(string portId, string originator, string alias, int entryCount);

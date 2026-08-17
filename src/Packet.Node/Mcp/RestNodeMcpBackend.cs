@@ -132,7 +132,7 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
             .ToList();
         var destinations = (topo.Destinations ?? [])
             .Select(d => new McpDestination(d.Destination, d.Alias,
-                (d.Routes ?? []).Select(r => new McpRoute(r.Neighbour, r.Quality, r.Obsolescence)).ToList()))
+                (d.Routes ?? []).Select(r => new McpRoute(r.Neighbour, r.PortId ?? "?", r.Quality, r.Obsolescence)).ToList()))
             .ToList();
         return new McpNetworkTopology(topo.GeneratedAt, neighbours, destinations);
     }
@@ -321,7 +321,7 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
 
     private sealed record RestDestination(string Destination, string? Alias, List<RestRoute>? Routes);
 
-    private sealed record RestRoute(string Neighbour, int Quality, int Obsolescence);
+    private sealed record RestRoute(string Neighbour, string? PortId, int Quality, int Obsolescence);
 
     private sealed record RestRig(
         string PortId, bool Attached, string? Kind, string? Endpoint, string? Backend,

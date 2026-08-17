@@ -32,28 +32,49 @@ namespace Packet.Node.Core.NetRom;
 /// </remarks>
 public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
 {
-    private const int SchemaVersion = 1;
+    // v2 (#725): a neighbour is keyed (port_id, callsign), and a route carries the port of the
+    // adjacency it runs over. v1's callsign-only keys physically could not hold the same station
+    // twice, so the schema and the in-memory key HAD to move together - with v1's schema under a
+    // PC4 table every Save throws a UNIQUE violation, which this class swallows and logs
+    // (persistence silently stops).
+    private const int SchemaVersion = 2;
     private const string SavedAtKey = "saved_at_utc";
 
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS neighbour (
-            callsign       TEXT PRIMARY KEY,
-            alias          TEXT NOT NULL,
             port_id        TEXT NOT NULL,
+            callsign       TEXT NOT NULL,
+            alias          TEXT NOT NULL,
             path_quality   INTEGER NOT NULL,
-            last_heard_utc TEXT NOT NULL);
+            last_heard_utc TEXT NOT NULL,
+            PRIMARY KEY (port_id, callsign));
         CREATE TABLE IF NOT EXISTS destination (
             callsign TEXT PRIMARY KEY,
             alias    TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS route (
             dest_callsign TEXT NOT NULL,
+            port_id       TEXT NOT NULL,
             via_neighbour TEXT NOT NULL,
             quality       INTEGER NOT NULL,
             obsolescence  INTEGER NOT NULL,
-            PRIMARY KEY (dest_callsign, via_neighbour));
+            PRIMARY KEY (dest_callsign, port_id, via_neighbour));
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL);
+        """;
+
+    // The v1 -> v2 migration. EnsureSchema is a version STAMP, not a runner, and
+    // CREATE TABLE IF NOT EXISTS no-ops on an existing table - so bumping the version alone would
+    // leave v1's callsign-PK tables in place wearing a v2 stamp. Drop and recreate: this table is
+    // a CACHE, fully re-learnt within one NODESINTERVAL (60 s at GB7RDG), on a node that has just
+    // restarted anyway. The same argument the code already makes for not persisting INP3 metrics
+    // at all (NetRomRoutingModel.cs). `meta` is dropped too so the saved-at stamp cannot outlive
+    // the rows it described.
+    private const string DropSql = """
+        DROP TABLE IF EXISTS route;
+        DROP TABLE IF EXISTS destination;
+        DROP TABLE IF EXISTS neighbour;
+        DROP TABLE IF EXISTS meta;
         """;
 
     private readonly string connectionString;
@@ -86,8 +107,18 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             var version = conn.ExecuteScalar<long>("PRAGMA user_version;");
             if (version < SchemaVersion)
             {
-                conn.Execute(SchemaSql);
-                conn.Execute($"PRAGMA user_version={SchemaVersion};");
+                // Drop first: on a fresh file these are no-ops, and on a v1 file they are the
+                // migration (see DropSql). Both statements plus the stamp run in one transaction
+                // so a half-migrated database cannot survive a crash here.
+                using var tx = conn.BeginTransaction();
+                conn.Execute(DropSql, transaction: tx);
+                conn.Execute(SchemaSql, transaction: tx);
+                conn.Execute($"PRAGMA user_version={SchemaVersion};", transaction: tx);
+                tx.Commit();
+                if (version > 0)
+                {
+                    LogSchemaMigrated(version, SchemaVersion);
+                }
             }
         }
         catch (SqliteException ex)
@@ -117,7 +148,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             var destRows = conn.Query<DestRow>(
                 "SELECT callsign AS Callsign, alias AS Alias FROM destination;").ToList();
             var routeRows = conn.Query<RouteRow>(
-                "SELECT dest_callsign AS DestCallsign, via_neighbour AS ViaNeighbour, " +
+                "SELECT dest_callsign AS DestCallsign, port_id AS PortId, via_neighbour AS ViaNeighbour, " +
                 "quality AS Quality, obsolescence AS Obsolescence FROM route;").ToList();
 
             var neighbours = new List<NetRomNeighbour>(neighbourRows.Count);
@@ -148,7 +179,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
                     {
                         if (Callsign.TryParse(r.ViaNeighbour, out var via))
                         {
-                            routes.Add(new NetRomRoute(via, (byte)r.Quality, (int)r.Obsolescence));
+                            routes.Add(new NetRomRoute(via, r.PortId, (byte)r.Quality, (int)r.Obsolescence));
                         }
                     }
                 }
@@ -181,8 +212,8 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             foreach (var n in snapshot.Neighbours)
             {
                 conn.Execute(
-                    "INSERT INTO neighbour (callsign, alias, port_id, path_quality, last_heard_utc) " +
-                    "VALUES (@c, @a, @p, @q, @h);",
+                    "INSERT INTO neighbour (port_id, callsign, alias, path_quality, last_heard_utc) " +
+                    "VALUES (@p, @c, @a, @q, @h);",
                     new
                     {
                         c = n.Neighbour.ToString(),
@@ -203,11 +234,12 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
                 foreach (var r in d.Routes)
                 {
                     conn.Execute(
-                        "INSERT INTO route (dest_callsign, via_neighbour, quality, obsolescence) " +
-                        "VALUES (@d, @v, @q, @o);",
+                        "INSERT INTO route (dest_callsign, port_id, via_neighbour, quality, obsolescence) " +
+                        "VALUES (@d, @p, @v, @q, @o);",
                         new
                         {
                             d = d.Destination.ToString(),
+                            p = r.PortId,
                             v = r.Neighbour.ToString(),
                             q = (int)r.Quality,
                             o = r.Obsolescence,
@@ -248,6 +280,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
     private sealed class RouteRow
     {
         public string DestCallsign { get; set; } = string.Empty;
+        public string PortId { get; set; } = string.Empty;
         public string ViaNeighbour { get; set; } = string.Empty;
         public long Quality { get; set; }
         public long Obsolescence { get; set; }
@@ -256,6 +289,10 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "NET/ROM routing store: could not initialise the schema ({Db}); persistence is disabled for this run.")]
     private partial void LogSchemaFailed(Exception ex, string db);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "NET/ROM routing store: schema v{From} -> v{To}; the persisted routing table was recreated and will re-learn from the next NODES broadcast.")]
+    private partial void LogSchemaMigrated(long from, int to);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "NET/ROM routing store: could not load persisted routes ({Db}); starting with an empty table.")]

@@ -521,12 +521,17 @@ export interface ValidationProblem { errors: ConfigValidationError[] }
 
 // ---- 6.2 NET/ROM routing snapshot --------------------------
 export interface Inp3RouteMetric { targetTimeMs: number; hopCount: number }
+/** One route to a destination. The next hop is the (portId, neighbour) pair - the ADJACENCY -
+ *  so a destination can hold two routes via the same callsign on different ports, each with its
+ *  own quality. Key React rows on both halves. Server: NetRomRoute. */
 export interface NetRomRoute {
-  neighbour: string; quality: number; obsolescence: number; inp3: Inp3RouteMetric | null;
+  neighbour: string; portId: string; quality: number; obsolescence: number; inp3: Inp3RouteMetric | null;
 }
 export interface NetRomDestination {
   destination: string; alias: string; bestRoute: number; routes: NetRomRoute[];
 }
+/** A directly-heard neighbour ADJACENCY: one row per (portId, neighbour), so a station audible
+ *  on two ports appears twice with each port's own pathQuality. Server: NetRomNeighbour. */
 export interface NetRomNeighbour {
   neighbour: string; alias: string; portId: string; pathQuality: number; lastHeard: string;
 }

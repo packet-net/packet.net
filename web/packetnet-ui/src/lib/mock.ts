@@ -117,19 +117,22 @@ export const TAILSCALE_STATUS: TailscaleStatus = {
 // 6.2 NET/ROM routing snapshot -------------------------------
 export const NETROM: NetRomRoutingSnapshot = {
   generatedAt: "2026-06-08T14:21:07Z",
+  // GB7BNS is dual-homed: audible on vhf-1 AND uhf-2, so it is two adjacencies with their own
+  // path qualities - a neighbour is keyed (port, callsign).
   neighbours: [
     { neighbour: "GB7BNS", alias: "BNSGW", portId: "vhf-1", pathQuality: 203, lastHeard: "0:00:14" },
+    { neighbour: "GB7BNS", alias: "BNSGW", portId: "uhf-2", pathQuality: 168, lastHeard: "0:00:31" },
     { neighbour: "MB7UWS", alias: "UWSNOD", portId: "vhf-1", pathQuality: 168, lastHeard: "0:01:52" },
     { neighbour: "GB7CIP", alias: "CIPGW", portId: "uhf-2", pathQuality: 188, lastHeard: "0:00:41" },
     { neighbour: "G8PZT-7", alias: "KIDDER", portId: "link-dn", pathQuality: 222, lastHeard: "0:00:03" },
   ],
   destinations: [
-    { destination: "GB7BNS", alias: "BNSGW", bestRoute: 0, routes: [{ neighbour: "GB7BNS", quality: 203, obsolescence: 6, inp3: { targetTimeMs: 240, hopCount: 1 } }] },
-    { destination: "GB7CIP", alias: "CIPGW", bestRoute: 0, routes: [{ neighbour: "GB7CIP", quality: 188, obsolescence: 6, inp3: { targetTimeMs: 410, hopCount: 1 } }, { neighbour: "GB7BNS", quality: 142, obsolescence: 4, inp3: { targetTimeMs: 980, hopCount: 2 } }] },
-    { destination: "G1MNW-2", alias: "READNG", bestRoute: 0, routes: [{ neighbour: "G8PZT-7", quality: 199, obsolescence: 6, inp3: { targetTimeMs: 180, hopCount: 1 } }] },
-    { destination: "GB7MAX", alias: "MAXGW", bestRoute: 0, routes: [{ neighbour: "G8PZT-7", quality: 176, obsolescence: 5, inp3: { targetTimeMs: 620, hopCount: 3 } }, { neighbour: "GB7CIP", quality: 151, obsolescence: 4, inp3: null }] },
-    { destination: "MB7UWS", alias: "UWSNOD", bestRoute: 0, routes: [{ neighbour: "MB7UWS", quality: 168, obsolescence: 6, inp3: null }] },
-    { destination: "GB7SAN", alias: "SANGW", bestRoute: 0, routes: [{ neighbour: "GB7BNS", quality: 133, obsolescence: 3, inp3: { targetTimeMs: 1340, hopCount: 4 } }] },
+    { destination: "GB7BNS", alias: "BNSGW", bestRoute: 0, routes: [{ neighbour: "GB7BNS", portId: "vhf-1", quality: 203, obsolescence: 6, inp3: { targetTimeMs: 240, hopCount: 1 } }, { neighbour: "GB7BNS", portId: "uhf-2", quality: 168, obsolescence: 6, inp3: null }] },
+    { destination: "GB7CIP", alias: "CIPGW", bestRoute: 0, routes: [{ neighbour: "GB7CIP", portId: "uhf-2", quality: 188, obsolescence: 6, inp3: { targetTimeMs: 410, hopCount: 1 } }, { neighbour: "GB7BNS", portId: "vhf-1", quality: 142, obsolescence: 4, inp3: { targetTimeMs: 980, hopCount: 2 } }] },
+    { destination: "G1MNW-2", alias: "READNG", bestRoute: 0, routes: [{ neighbour: "G8PZT-7", portId: "link-dn", quality: 199, obsolescence: 6, inp3: { targetTimeMs: 180, hopCount: 1 } }] },
+    { destination: "GB7MAX", alias: "MAXGW", bestRoute: 0, routes: [{ neighbour: "G8PZT-7", portId: "link-dn", quality: 176, obsolescence: 5, inp3: { targetTimeMs: 620, hopCount: 3 } }, { neighbour: "GB7CIP", portId: "uhf-2", quality: 151, obsolescence: 4, inp3: null }] },
+    { destination: "MB7UWS", alias: "UWSNOD", bestRoute: 0, routes: [{ neighbour: "MB7UWS", portId: "vhf-1", quality: 168, obsolescence: 6, inp3: null }] },
+    { destination: "GB7SAN", alias: "SANGW", bestRoute: 0, routes: [{ neighbour: "GB7BNS", portId: "vhf-1", quality: 133, obsolescence: 3, inp3: { targetTimeMs: 1340, hopCount: 4 } }] },
   ],
 };
 
@@ -139,7 +142,7 @@ export const NODE_STATUS: NodeStatus = {
   version: "0.7.0-rc2 (b57f327)",
   uptimeSeconds: 1987260,
   portsUp: 3, portsTotal: 4, sessionCount: 4,
-  netrom: { neighbours: 4, destinations: 6, inp3Enabled: true },
+  netrom: { neighbours: 5, destinations: 6, inp3Enabled: true },
   traffic: { enabled: true, dropped: 0 },
 };
 

@@ -69,6 +69,16 @@ neighbour + quality). `NetRomRoutingTable.Ingest` folds the advertisement into
 the table, combining the advertised quality with your link quality to the
 neighbour and applying NET/ROM's obsolescence rules.
 
+`portId` is not decoration: **a neighbour is the `(port, callsign)` pair**
+(`NeighbourKey`), the way LinBPQ's `ROUTE` and the Linux kernel's `nr_neigh` both
+key one. So a station audible on two ports is two adjacencies, each with its own
+path quality, its own routes, its own interlink and its own liveness - and a route
+carries the port it forwards over (`NetRomRoute.PortId`). Look one up with
+`snapshot.NeighbourFor(key)`, or ask for every link to a station with
+`NeighboursOf(callsign)` / `BestNeighbourFor(callsign)`. Nothing about this
+reaches the wire: a NODES entry has no port field, so a mixed fleet is unaffected.
+See [`docs/netrom-multiport-neighbours.md`](../docs/netrom-multiport-neighbours.md).
+
 To use the table, take a `Snapshot()` — an immutable, point-in-time view safe to
 read from any thread — and resolve a destination by alias or callsign:
 
@@ -76,7 +86,7 @@ read from any thread — and resolve a destination by alias or callsign:
 NetRomRoutingSnapshot snap = routing.Snapshot();
 NetRomDestination? dest = snap.ResolveDestination("GB7ABC");
 if (dest?.BestRoute is { } route)
-    Console.WriteLine($"Best next hop for GB7ABC: {route.Neighbour} (quality {route.Quality})");
+    Console.WriteLine($"Best next hop for GB7ABC: {route.Neighbour} on {route.PortId} (quality {route.Quality})");
 ```
 
 A node that *advertises* (rather than only listening) periodically builds its own

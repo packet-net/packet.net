@@ -593,7 +593,11 @@ public sealed partial class NodeCommandService : INodeApplication
                 sb.Append('\n').Append("  ").Append(Label(d.Alias, d.Destination)).Append(':');
                 foreach (var r in d.Routes)
                 {
-                    sb.Append(" via ").Append(r.Neighbour)
+                    // "via CALL/port(quality,obs)" - the port is part of the route's next hop
+                    // (one callsign can be the next hop on two ports, at two qualities), which
+                    // is what BPQ's own `NODES <call>` prints as "quality obscount port
+                    // neighbour". Without it two route lines read as duplicates.
+                    sb.Append(" via ").Append(r.Neighbour).Append('/').Append(r.PortId)
                       .Append('(').Append(r.Quality).Append(',').Append(r.Obsolescence).Append(')');
                     // Surface the INP3 measured-time metric when the overlay has learned one for
                     // this route (a RIF time-route) — the time-space companion to the quality pair.

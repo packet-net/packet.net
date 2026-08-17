@@ -123,8 +123,13 @@ public static class Inp3RouteSelector
             return c.HopCount < i.HopCount;             // tie-break: fewest hops.
         }
 
-        // Final tie-break: neighbour callsign ordinal, for a deterministic winner across
-        // the C#/TS/Rust ports (mirrors the quality-space callsign tie-break).
-        return string.CompareOrdinal(candidate.Neighbour.ToString(), incumbent.Neighbour.ToString()) < 0;
+        // Final tie-break: the adjacency - neighbour callsign ordinal, then port id ordinal -
+        // for a deterministic winner across the C#/TS/Rust ports (mirrors the quality-space
+        // tie-break). The port is needed because one station audible on two ports now yields two
+        // routes that can be identical in the whole time metric.
+        int byCall = string.CompareOrdinal(candidate.Neighbour.ToString(), incumbent.Neighbour.ToString());
+        return byCall != 0
+            ? byCall < 0
+            : string.CompareOrdinal(candidate.PortId, incumbent.PortId) < 0;
     }
 }

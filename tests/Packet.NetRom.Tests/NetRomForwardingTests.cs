@@ -14,6 +14,10 @@ namespace Packet.NetRom.Tests;
 /// </summary>
 public sealed class NetRomForwardingTests
 {
+    // Every route here is on one port; a route's next hop is the (port, callsign) adjacency,
+    // so the port travels with it.
+    private const string Port = "vhf";
+
     private static readonly Callsign Me = new("GB7BBB", 0);     // the forwarding (transit) node
     private static readonly Callsign Source = new("GB7AAA", 0); // the datagram's origin
     private static readonly Callsign Dest = new("GB7CCC", 0);   // the destination (not us)
@@ -39,7 +43,7 @@ public sealed class NetRomForwardingTests
     private static NetRomRoutingSnapshot RoutesTo(Callsign dest, params (Callsign neighbour, byte quality)[] routes)
     {
         // Routes are passed best-first (Decide trusts the snapshot's ordering).
-        var list = routes.Select(r => new NetRomRoute(r.neighbour, r.quality, 6)).ToList();
+        var list = routes.Select(r => new NetRomRoute(r.neighbour, Port, r.quality, 6)).ToList();
         return new NetRomRoutingSnapshot([new NetRomDestination(dest, "DEST", list)], [], DateTimeOffset.UnixEpoch);
     }
 
@@ -224,7 +228,7 @@ public sealed class NetRomForwardingTests
         Callsign dest, params (Callsign neighbour, byte quality, int targetTimeMs, byte hop)[] routes)
     {
         var list = routes
-            .Select(r => new NetRomRoute(r.neighbour, r.quality, 6, new Inp3RouteMetric(r.targetTimeMs, r.hop)))
+            .Select(r => new NetRomRoute(r.neighbour, Port, r.quality, 6, new Inp3RouteMetric(r.targetTimeMs, r.hop)))
             .ToList();
         return new NetRomRoutingSnapshot([new NetRomDestination(dest, "DEST", list)], [], DateTimeOffset.UnixEpoch);
     }
@@ -299,8 +303,8 @@ public sealed class NetRomForwardingTests
         var routing = new NetRomRoutingSnapshot(
             [new NetRomDestination(Dest, "DEST",
             [
-                new NetRomRoute(FromNbr, 100, 6, new Inp3RouteMetric(50, 1)),   // INP3, but the way it came
-                new NetRomRoute(AltNbr, 200, 6),                                // quality-only alternate
+                new NetRomRoute(FromNbr, Port, 100, 6, new Inp3RouteMetric(50, 1)),   // INP3, but the way it came
+                new NetRomRoute(AltNbr, Port, 200, 6),                          // quality-only alternate
             ])],
             [], DateTimeOffset.UnixEpoch);
 

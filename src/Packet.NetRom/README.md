@@ -37,11 +37,12 @@ if (NodesBroadcast.TryParse(frames[0], out var broadcast))
 }
 ```
 
-Call `table.Sweep()` at the broadcast interval to age routes out, `BuildAdvertisement(obsoleteMinimum)` to originate your own NODES, and `MarkNeighbourDown(neighbour)` for immediate link-down failover. For L4 circuits, mint one with `CircuitManager.OpenCircuit(remoteNode)`, wire its `SendPacket` sink to your interlink, then `Connect` / `Send` / `Disconnect`.
+Call `table.Sweep()` at the broadcast interval to age routes out, `BuildAdvertisement(obsoleteMinimum)` to originate your own NODES, and `MarkNeighbourDown(new NeighbourKey(portId, neighbour))` for immediate link-down failover (or `MarkPortDown(portId)` when a whole port goes away). For L4 circuits, mint one with `CircuitManager.OpenCircuit(remoteNode)`, wire its `SendPacket` sink to your interlink, then `Connect` / `Send` / `Disconnect`.
 
 ## Key types
 - `NetRomRoutingTable` — the learned L3 routing table: ingests NODES broadcasts, derives per-hop qualities, keeps best routes per destination with obsolescence decay, hands out immutable snapshots.
 - `NetRomRoutingSnapshot` / `NetRomDestination` / `NetRomRoute` — the immutable read-only routing view (with `ResolveDestination` for `connect <alias>`).
+- `NeighbourKey` - a neighbour is the **(port, callsign)** pair, not the callsign: one station audible on two ports is two adjacencies, each with its own path quality, its own routes and its own link. `NetRomRoute` carries the port; `NetRomRoutingSnapshot` gives you `NeighbourFor(key)`, `NeighboursOf(callsign)` and `BestNeighbourFor(callsign)`. See [`docs/netrom-multiport-neighbours.md`](https://github.com/packet-net/packet.net/blob/main/docs/netrom-multiport-neighbours.md).
 - `CircuitManager` — owns the L4 circuit table: mints circuits, demultiplexes inbound datagrams, accepts/refuses inbound connects, drives retransmit timers.
 - `NetRomCircuit` — one end of an L4 virtual circuit: sliding-window transport with negotiated window, choke flow control, NAK retransmit, and 236-byte fragment/reassembly.
 - `NetRomForwarding` — the pure L3 forwarding decision for a transit node (TTL decrement, loop guard, best/per-flow next-hop selection).

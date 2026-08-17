@@ -60,12 +60,22 @@ public sealed record Inp3RouteMetric(int TargetTimeMs, byte HopCount);
 /// </para>
 /// </remarks>
 /// <param name="Neighbour">The neighbour we forward through for this route.</param>
+/// <param name="PortId">The port that neighbour is adjacent on - the second half of the
+/// route's next-hop identity (<see cref="NeighbourKey"/>). One destination can hold two
+/// routes via the <em>same</em> callsign on different ports, each with its own quality and
+/// obsolescence, exactly as BPQ's <c>NRROUTE[]</c> can point at two <c>ROUTE</c>s for one
+/// neighbour callsign.</param>
 /// <param name="Quality">Our derived quality for this route (0..255), best first within a destination.</param>
 /// <param name="Obsolescence">Obsolescence count; decremented each sweep, purged at 0.</param>
 /// <param name="Inp3">The optional INP3 metric (target time + hop count) for this
 /// route, or <c>null</c> if the route was not learned from an INP3 RIF. Present iff
 /// the route is INP3-learned; never persisted (re-learnt from RIF).</param>
-public sealed record NetRomRoute(Callsign Neighbour, byte Quality, int Obsolescence, Inp3RouteMetric? Inp3 = null);
+public sealed record NetRomRoute(Callsign Neighbour, string PortId, byte Quality, int Obsolescence, Inp3RouteMetric? Inp3 = null)
+{
+    /// <summary>This route's next hop as the composite <see cref="NeighbourKey"/> - what the
+    /// host looks the interlink up by.</summary>
+    public NeighbourKey Key => new(PortId, Neighbour);
+}
 
 /// <summary>
 /// A destination known to the table — its callsign + alias and its kept routes
@@ -88,6 +98,12 @@ public sealed record NetRomDestination(Callsign Destination, string Alias, IRead
 /// to what read-only ingest can know (we don't probe links, so quality is the
 /// assumed default-port quality, and there are no digipeaters or lock state).
 /// </summary>
+/// <remarks>
+/// One row per <see cref="NeighbourKey"/>, i.e. per <b>(port, callsign)</b> - so a station
+/// audible on two ports appears twice, each row carrying that port's own
+/// <see cref="PathQuality"/>, exactly as BPQ's <c>ROUTES</c> prints one line per
+/// <c>(port, call)</c>. <see cref="Neighbour"/> + <see cref="PortId"/> together are the key.
+/// </remarks>
 /// <param name="Neighbour">The neighbour's callsign.</param>
 /// <param name="Alias">The neighbour's alias / mnemonic, as it announced (may be empty).</param>
 /// <param name="PortId">The node-host port id we heard it on.</param>
@@ -153,9 +169,33 @@ public sealed record NetRomRoutingSnapshot(
             string.Equals(d.Destination.ToString(), needle, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The directly-heard neighbour entry for <paramref name="neighbour"/>,
-    /// or <c>null</c> if it is not a known neighbour. Used to find the port an
-    /// interlink to that neighbour should run on.</summary>
-    public NetRomNeighbour? NeighbourFor(Callsign neighbour)
-        => Neighbours.FirstOrDefault(n => n.Neighbour.Equals(neighbour));
+    /// <summary>The directly-heard neighbour entry for the exact adjacency
+    /// <paramref name="key"/> - <b>(port, callsign)</b> - or <c>null</c> if we hold no such
+    /// row. This is the lookup an interlink uses: the port is chosen by the route being
+    /// followed, never guessed from the callsign.</summary>
+    public NetRomNeighbour? NeighbourFor(NeighbourKey key)
+        => Neighbours.FirstOrDefault(n =>
+            n.Neighbour.Equals(key.Callsign) && string.Equals(n.PortId, key.PortId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// <b>Every</b> adjacency we hold to <paramref name="neighbour"/> - one per port it is
+    /// audible on - best first (highest path quality, ties by port id ordinal). Empty when it
+    /// is not a known neighbour. The multi-port replacement for the old first-match-by-callsign
+    /// scan: a caller that genuinely wants "any link to that node" iterates this in order.
+    /// </summary>
+    public IReadOnlyList<NetRomNeighbour> NeighboursOf(Callsign neighbour)
+        => Neighbours
+            .Where(n => n.Neighbour.Equals(neighbour))
+            .OrderByDescending(n => n.PathQuality)
+            .ThenBy(n => n.PortId, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>The best adjacency to <paramref name="neighbour"/> (highest path quality, ties
+    /// by port id ordinal), or <c>null</c> if it is not a known neighbour. The single-answer
+    /// form of <see cref="NeighboursOf"/>.</summary>
+    public NetRomNeighbour? BestNeighbourFor(Callsign neighbour)
+    {
+        var all = NeighboursOf(neighbour);
+        return all.Count > 0 ? all[0] : null;
+    }
 }

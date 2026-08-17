@@ -459,9 +459,14 @@ public sealed class ClientContractFixtureTests
     private static object SampleRoutes() => new
     {
         generatedAt = At,
+        // GB7BNS is DUAL-HOMED: audible on vhf-1 and uhf-2, so it is two neighbour rows with
+        // their own path qualities (a neighbour is keyed (port, callsign) - #725). A client that
+        // keys neighbour rows on the callsign alone renders duplicates, so the fixture carries
+        // the case.
         neighbours = new[]
         {
             new { neighbour = "GB7BNS", alias = "BNSGW", portId = "vhf-1", pathQuality = 203, lastHeard = "0:00:14" },
+            new { neighbour = "GB7BNS", alias = "BNSGW", portId = "uhf-2", pathQuality = 168, lastHeard = "0:00:31" },
         },
         destinations = new[]
         {
@@ -472,8 +477,11 @@ public sealed class ClientContractFixtureTests
                 bestRoute = 0,
                 routes = new[]
                 {
-                    new { neighbour = "GB7CIP", quality = 188, obsolescence = 6, inp3 = (object?)new { targetTimeMs = 410, hopCount = 1 } },
-                    new { neighbour = "GB7BNS", quality = 142, obsolescence = 4, inp3 = (object?)null },
+                    new { neighbour = "GB7CIP", portId = "vhf-1", quality = 188, obsolescence = 6, inp3 = (object?)new { targetTimeMs = 410, hopCount = 1 } },
+                    // The same next-hop CALLSIGN on two ports: two distinct routes, each with the
+                    // quality its own port's QUALITY derived.
+                    new { neighbour = "GB7BNS", portId = "vhf-1", quality = 142, obsolescence = 4, inp3 = (object?)null },
+                    new { neighbour = "GB7BNS", portId = "uhf-2", quality = 118, obsolescence = 4, inp3 = (object?)null },
                 },
             },
         },
