@@ -536,7 +536,10 @@ public sealed partial class NodeHostedService : BackgroundService
         // Adopt the user-end into the manager: it starts a read pump capturing the console's
         // banner/prompt/output into a backlog and fanning it out to SSE subscribers, and owns the
         // user-end's lifetime from here (CloseAsync disposes it → app-end sees EOF → service exits).
-        console.Open(id, userEnd);
+        // reapWhenIdle: a browser that closes/crashes without DELETEing this console must not
+        // leave the command service running forever - the manager sweeps it once it has had no
+        // SSE subscriber and no typed input for the configured idle timeout (C062, #694).
+        console.Open(id, userEnd, reapWhenIdle: true);
         return id;
     }
 

@@ -50,6 +50,14 @@ namespace Packet.Node.Api;
 /// so its projection reflects the just-restarted state.)
 /// </para>
 /// <para>
+/// <b>Optimistic concurrency.</b> Every mutating route accepts the optional <c>If-Match</c>
+/// carrying the config version <c>GET /api/v1/config</c> serves as an <c>ETag</c>: because a
+/// port edit is a read-modify-write of the whole document, two overlapping editors would
+/// otherwise silently drop one edit and both get a 200. With the header, the loser gets a
+/// <c>412</c> naming the live version (review item C065, #694); without it, last-writer-wins
+/// as before. See <see cref="ConfigCas"/>.
+/// </para>
+/// <para>
 /// Auth is a later step — like the read API, the SSE feed, and the config write API,
 /// these are unauthenticated and the node binds 127.0.0.1 by default. No wall-clock here
 /// (repo rule §2.7): the config path needs no clock at all.
@@ -80,7 +88,7 @@ public static class PdnPortsApi
                 audit.RecordRest(ctx, clock, "add_port", port.Id ?? "", "requested", "");
             }
             var candidate = cfg.Current with { Ports = [.. cfg.Current.Ports, port] };
-            return ApplyCandidate(cfg, candidate, dryRun);
+            return ApplyCandidate(cfg, candidate, dryRun, ctx);
         });
 
         // Edit a port: replace the port carrying {id}. Unknown id → 404. Renaming the id
@@ -98,7 +106,7 @@ public static class PdnPortsApi
             }
             var ports = cfg.Current.Ports.Select(p => p.Id == id ? port : p).ToArray();
             var candidate = cfg.Current with { Ports = ports };
-            return ApplyCandidate(cfg, candidate, dryRun);
+            return ApplyCandidate(cfg, candidate, dryRun, ctx);
         });
 
         // Remove a port. Unknown id → 404.
@@ -110,7 +118,7 @@ public static class PdnPortsApi
             }
             audit.RecordRest(ctx, clock, "delete_port", id, "requested", "");
             var candidate = cfg.Current with { Ports = [.. cfg.Current.Ports.Where(p => p.Id != id)] };
-            return ApplyCandidate(cfg, candidate);
+            return ApplyCandidate(cfg, candidate, dryRun: false, ctx);
         });
 
         // up/down: flip Enabled and apply through the config seam. restart: drive the
@@ -138,12 +146,14 @@ public static class PdnPortsApi
                     var ports = cfg.Current.Ports
                         .Select(p => p.Id == id ? p with { Enabled = enabled } : p)
                         .ToArray();
-                    // Re-validate + apply through the seam. A flip can in principle be
-                    // rejected (e.g. enabling a port whose endpoint now collides) — honour
-                    // that as a 422 rather than assume it always succeeds.
-                    if (!cfg.TryApply(cfg.Current with { Ports = ports }, out var errors))
+                    // Re-validate + apply through the seam, under the caller's If-Match if it
+                    // sent one. A flip can in principle be rejected (e.g. enabling a port whose
+                    // endpoint now collides), so honour that as a 422 rather than assume it always
+                    // succeeds, and a stale If-Match as a 412.
+                    var flipped = cfg.Apply(cfg.Current with { Ports = ports }, ConfigCas.ExpectedVersion(ctx, cfg));
+                    if (ConfigCas.Refusal(ctx, flipped) is { } refused)
                     {
-                        return Results.UnprocessableEntity(new ValidationProblem(errors));
+                        return refused;
                     }
                     // Best-effort projection: reconcile is async, so the port may not have
                     // finished coming up the instant we read it (see type remarks).
@@ -198,8 +208,13 @@ public static class PdnPortsApi
     /// save would disrupt using the node's own reconcile classification rather than a re-derived
     /// copy of it in the browser.
     /// </para>
+    /// <para>
+    /// Pass <paramref name="ctx"/> to honour an <c>If-Match</c> precondition (and to stamp the
+    /// resulting <c>ETag</c>); omitting it is the last-writer-wins path (C065).
+    /// </para>
     /// </summary>
-    internal static IResult ApplyCandidate(IWritableConfigProvider cfg, NodeConfig candidate, bool dryRun = false)
+    internal static IResult ApplyCandidate(
+        IWritableConfigProvider cfg, NodeConfig candidate, bool dryRun = false, HttpContext? ctx = null)
     {
         var before = cfg.Current;
 
@@ -217,11 +232,19 @@ public static class PdnPortsApi
                 preview.Valid, preview.Live, preview.PortRestart, preview.NodeReset, Applied: false));
         }
 
-        // Defensive: TryApply re-validates, so after a clean Validate it should always
-        // succeed — but honour its verdict rather than assume.
-        if (!cfg.TryApply(candidate, out var applyErrors))
+        // Defensive: Apply re-validates, so after a clean Validate only a CAS refusal or a
+        // store fault should stop it, but honour its verdict rather than assume.
+        var applied = cfg.Apply(candidate, ctx is null ? null : ConfigCas.ExpectedVersion(ctx, cfg));
+        if (ctx is not null)
         {
-            return Results.UnprocessableEntity(new ValidationProblem(applyErrors));
+            if (ConfigCas.Refusal(ctx, applied) is { } refused)
+            {
+                return refused;
+            }
+        }
+        else if (!applied.Applied)
+        {
+            return Results.UnprocessableEntity(new ValidationProblem(applied.Errors));
         }
 
         return Results.Ok(new ReconcileResult(
@@ -257,7 +280,10 @@ public static class PdnPortsApi
         else if (running is { Started: true })
         {
             state = "up";
-            sessions = running.Listener.ActiveSessions.Count;
+            // Live sessions only: ActiveSessions is the listener's peer cache and keeps
+            // Disconnected entries until LRU eviction (review item C052, #694). Mirrors
+            // PdnReadApi.BuildPorts through the shared SessionLiveness predicate.
+            sessions = running.Listener.ActiveSessions.Count(SessionLiveness.IsLive);
         }
         else
         {

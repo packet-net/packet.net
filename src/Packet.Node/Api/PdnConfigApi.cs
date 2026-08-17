@@ -30,6 +30,14 @@ namespace Packet.Node.Api;
 /// apply.
 /// </para>
 /// <para>
+/// <b>Optimistic concurrency.</b> Both PUTs accept an <c>If-Match</c> carrying the version
+/// token <c>GET /config</c> (and <c>GET /config/raw</c>) serve as an <c>ETag</c>. It is
+/// compared inside the provider's write lock, so an edit built on a document another writer
+/// has since replaced is refused with <c>412 Precondition Failed</c> instead of silently
+/// overwriting it (review item C065, #694). No header = last-writer-wins, exactly as before.
+/// A successful apply answers with the new version's <c>ETag</c>. See <see cref="ConfigCas"/>.
+/// </para>
+/// <para>
 /// Auth is a later step — like the read API and SSE feed, these are unauthenticated
 /// and the node binds 127.0.0.1 by default. No wall-clock here (repo rule §2.7):
 /// the config path needs no clock at all.
@@ -68,11 +76,13 @@ public static class PdnConfigApi
                 return Results.Ok(ToResult(preview, applied: false));
             }
 
-            // Defensive: TryApply re-validates, so after a clean Validate it should
-            // always succeed — but honour its verdict rather than assume.
-            if (!cfg.TryApply(candidate, out var applyErrors))
+            // Apply under the caller's If-Match (null = last-writer-wins). Defensive: Apply
+            // re-validates, so after a clean Validate only a CAS refusal or a store fault
+            // should stop it, but honour its verdict rather than assume.
+            var applied = cfg.Apply(candidate, ConfigCas.ExpectedVersion(ctx, cfg));
+            if (ConfigCas.Refusal(ctx, applied) is { } refused)
             {
-                return Results.UnprocessableEntity(new ValidationProblem(applyErrors));
+                return refused;
             }
             // Audit the applied config write (not dry-runs, not rejected candidates).
             audit.RecordRest(ctx, clock, "PUT /config", "config", "ok",
@@ -80,10 +90,13 @@ public static class PdnConfigApi
             return Results.Ok(ToResult(preview, applied: true));
         }).RequireAuthorization(PdnAuthPolicies.Operate);   // a config write is `operate`
 
-        // The advanced editor reads the live config as raw YAML to edit by hand.
-        v1.MapGet("/config/raw", (IWritableConfigProvider cfg) =>
-            Results.Text(NodeConfigYaml.Serialize(cfg.Current), "text/plain"))
-            .RequireAuthorization(PdnAuthPolicies.Read);    // reading config is `read`
+        // The advanced editor reads the live config as raw YAML to edit by hand. The ETag is
+        // the document version to send back as If-Match on the PUT (C065).
+        v1.MapGet("/config/raw", (HttpContext ctx, IWritableConfigProvider cfg) =>
+        {
+            ConfigCas.SetETag(ctx, cfg);
+            return Results.Text(NodeConfigYaml.Serialize(cfg.Current), "text/plain");
+        }).RequireAuthorization(PdnAuthPolicies.Read);    // reading config is `read`
 
         // Raw-YAML edit: the request body IS the YAML. A parse failure is a 422 with
         // a single (yaml)-path error; otherwise the same validate→preview→apply flow.
@@ -117,9 +130,10 @@ public static class PdnConfigApi
                 return Results.Ok(ToResult(preview, applied: false));
             }
 
-            if (!cfg.TryApply(candidate, out var applyErrors))
+            var applied = cfg.Apply(candidate, ConfigCas.ExpectedVersion(ctx, cfg));
+            if (ConfigCas.Refusal(ctx, applied) is { } refused)
             {
-                return Results.UnprocessableEntity(new ValidationProblem(applyErrors));
+                return refused;
             }
             audit.RecordRest(ctx, clock, "PUT /config/raw", "config", "ok",
                 $"portRestart={preview.PortRestart} nodeReset={preview.NodeReset}");

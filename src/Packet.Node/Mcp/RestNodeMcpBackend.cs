@@ -15,9 +15,30 @@ namespace Packet.Node.Mcp;
 /// report honestly that they're SSE-transport-only. <c>decode_frame</c> is pure and
 /// never reaches here. See docs/mcp-design.md.
 /// </summary>
-public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
+/// <remarks>
+/// <para>
+/// <b>Auth.</b> The token rides on the injected <see cref="HttpClient"/>'s default headers
+/// (set at the composition point, <see cref="McpStdioEntry"/>). This class does not mint or
+/// read tokens; it only turns the node's 401/403 into <see cref="AuthRequiredMessage"/> so a
+/// token-less bridge says what to do instead of throwing a raw
+/// <see cref="HttpRequestException"/> at the MCP client (review item C061, #694).
+/// </para>
+/// <para>
+/// <b>Clock.</b> The <c>sinceSeconds</c> cut-off rides the injected
+/// <see cref="TimeProvider"/>, never <c>DateTimeOffset.UtcNow</c> (repo rule §2.7 / C015).
+/// </para>
+/// </remarks>
+public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : INodeMcpBackend
 {
+    /// <summary>What every tool says when the node answers 401/403: the operator has to give
+    /// the bridge a token. Kept as one constant so the read path (which throws it) and the
+    /// write paths (which return it in their result records) say the same thing.</summary>
+    public const string AuthRequiredMessage =
+        "node requires auth: set PDN_NODE_TOKEN (mint one with POST /api/v1/mcp/token), " +
+        "or pass --token / PDN_NODE_TOKEN_FILE to `pdn mcp`.";
+
     private readonly HttpClient http = http;
+    private readonly TimeProvider clock = clock;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ---- read ----
@@ -59,7 +80,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         }
         if (filter.SinceSeconds is { } secs && secs > 0)
         {
-            var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromSeconds(secs);
+            var cutoff = clock.GetUtcNow() - TimeSpan.FromSeconds(secs);
             q = q.Where(f => f.Timestamp >= cutoff);
         }
 
@@ -117,6 +138,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         {
             return [];
         }
+        ThrowIfUnauthorized(resp);
         resp.EnsureSuccessStatusCode();
         var rig = await resp.Content.ReadFromJsonAsync<RestRig>(Json, ct).ConfigureAwait(false);
         return rig is null ? [] : [ToMcpRigStatus(rig)];
@@ -145,6 +167,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
             HttpStatusCode.OK => new PortActionResult(true, portId, $"port '{portId}' restarted."),
             HttpStatusCode.NotFound => new PortActionResult(false, portId, $"no such port '{portId}'."),
             HttpStatusCode.Conflict => new PortActionResult(false, portId, $"port '{portId}' is disabled (enable it first)."),
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new PortActionResult(false, portId, AuthRequiredMessage),
             _ => new PortActionResult(false, portId, $"restart failed ({(int)resp.StatusCode})."),
         };
     }
@@ -159,6 +182,7 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         {
             HttpStatusCode.NoContent => new SessionResult(true, sessionId, "disconnect requested."),
             HttpStatusCode.NotFound => new SessionResult(false, sessionId, "no such session."),
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new SessionResult(false, sessionId, AuthRequiredMessage),
             _ => new SessionResult(false, sessionId, $"disconnect failed ({(int)resp.StatusCode})."),
         };
     }
@@ -210,6 +234,10 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         {
             return $"no such port '{portId}'.";
         }
+        if (IsAuthFailure(resp))
+        {
+            return AuthRequiredMessage;
+        }
         try
         {
             var err = await resp.Content.ReadFromJsonAsync<RestError>(Json, ct).ConfigureAwait(false);
@@ -225,8 +253,33 @@ public sealed class RestNodeMcpBackend(HttpClient http) : INodeMcpBackend
         return $"rig command failed ({(int)resp.StatusCode}).";
     }
 
+    // Every read goes through here so the auth verdict is checked in exactly one place: a
+    // GetFromJsonAsync would throw a bare "Response status code does not indicate success:
+    // 401 (Unauthorized)" at the MCP client, which says nothing about what to do about it.
     private async Task<T?> GetAsync<T>(string path, CancellationToken ct)
-        => await http.GetFromJsonAsync<T>(path, Json, ct).ConfigureAwait(false);
+    {
+        using var resp = await http.GetAsync(path, ct).ConfigureAwait(false);
+        ThrowIfUnauthorized(resp);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<T>(Json, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>True when the node refused the request for want of a (good enough) token.</summary>
+    private static bool IsAuthFailure(HttpResponseMessage resp)
+        => resp.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
+
+    // 401 = no/expired token; 403 = a token without the scope this call needs. Both are the
+    // operator's to fix, and both read the same from a tool's point of view.
+    private static void ThrowIfUnauthorized(HttpResponseMessage resp)
+    {
+        if (IsAuthFailure(resp))
+        {
+            throw new InvalidOperationException(
+                resp.StatusCode == HttpStatusCode.Forbidden
+                    ? $"{AuthRequiredMessage} (the node answered 403: the token lacks the scope this tool needs)"
+                    : AuthRequiredMessage);
+        }
+    }
 
     // ---- REST wire shapes (camelCase via the node's STJ web defaults) ----
 

@@ -129,6 +129,29 @@ public sealed class ReadApiTests : IDisposable
         doc.RootElement.GetProperty("destinations").ValueKind.Should().Be(JsonValueKind.Array);
     }
 
+    [Fact]
+    public async Task Log_serves_the_nodes_own_recent_lines()
+    {
+        // C008, #694: this was a permanent empty array while node-api.yaml and the dashboard
+        // card presented it as live. It is now the in-process log ring the NodeLogRingProvider
+        // fills, newest first, with the {t, lvl, msg} shape the card renders.
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/api/v1/log?limit=25");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.ValueKind.Should().Be(JsonValueKind.Array);
+        doc.RootElement.GetArrayLength().Should().BeGreaterThan(0, "the node logs while it boots");
+        doc.RootElement.GetArrayLength().Should().BeLessThanOrEqualTo(25, "?limit= bounds the tail");
+
+        var line = doc.RootElement[0];
+        line.GetProperty("t").GetString().Should().NotBeNullOrWhiteSpace();
+        line.GetProperty("lvl").GetString().Should().BeOneOf("info", "warn", "error");
+        line.GetProperty("msg").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
     public void Dispose()
     {
         GC.SuppressFinalize(this);

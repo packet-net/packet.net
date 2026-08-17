@@ -158,22 +158,42 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
     /// <inheritdoc/>
     public bool TryApply(NodeConfig candidate, out IReadOnlyList<ConfigValidationError> errors)
     {
+        var result = Apply(candidate, expectedVersion: null);
+        errors = result.Errors;
+        return result.Applied;
+    }
+
+    /// <inheritdoc/>
+    public string CurrentVersion => ConfigVersion.Of(Current);
+
+    /// <inheritdoc/>
+    public ConfigApplyResult Apply(NodeConfig candidate, string? expectedVersion)
+    {
         ArgumentNullException.ThrowIfNull(candidate);
 
         var result = validator.Validate(candidate);
         if (!result.IsValid)
         {
-            errors = ToErrors(result);
-            return false;   // rejected — nothing persisted, Current unchanged, no event
+            // Rejected: nothing persisted, Current unchanged, no event.
+            return new ConfigApplyResult(ConfigApplyOutcome.Invalid, ToErrors(result), CurrentVersion);
         }
-        errors = [];
 
         var text = NodeConfigYaml.Serialize(candidate);
         lock (gate)
         {
             if (disposed)
             {
-                return false;
+                return new ConfigApplyResult(ConfigApplyOutcome.StoreFailed,
+                    [new ConfigValidationError("(store)",
+                        "the config provider is shutting down; the edit was not persisted.")],
+                    ConfigVersion.Of(current));
+            }
+            // Compare-and-swap inside the gate: a writer whose base document has since been
+            // overwritten is refused rather than clobbering the newer one (C065, #694).
+            var live = ConfigVersion.Of(current);
+            if (expectedVersion is not null && !string.Equals(expectedVersion, live, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ConfigApplyResult(ConfigApplyOutcome.VersionMismatch, [], live);
             }
             // Persist atomically (write a sibling temp + rename) so a reader — the
             // watcher, or a fresh boot — never sees a half-written file. Record the
@@ -185,7 +205,7 @@ public sealed partial class FileConfigProvider : IWritableConfigProvider, IDispo
         LogApplied(path, candidate.Identity.Callsign, candidate.Ports.Count);
         WarnOnConfigQuirks(candidate);
         RaiseOnChange(candidate);
-        return true;
+        return new ConfigApplyResult(ConfigApplyOutcome.Applied, [], ConfigVersion.Of(candidate));
     }
 
     private void WriteAtomic(string text)

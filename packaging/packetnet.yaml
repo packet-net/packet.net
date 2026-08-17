@@ -106,6 +106,13 @@ management:
                            # auth.enabled below; narrow this to 127.0.0.1 if you turn
                            # auth off. Read at process start: changing it needs a restart.
     port: 8080
+  # The browser's node command console (the panel's Console screen). Each open console owns a
+  # running command service, torn down when the browser closes it; a browser that crashes or
+  # loses the network never sends that, so the node reaps a console with no viewer and no typed
+  # input after this many minutes. 0 disables reaping (sessions then live until closed or the
+  # node restarts).
+  # console:
+  #   idleTimeoutMinutes: 30
   # LAN discovery: advertise this node over mDNS / DNS-SD (_pdn._tcp) so the pdn mobile app
   # (and other DNS-SD browsers) find it without typing an address. Off by default. REQUIRES
   # http.bind above to be a LAN address (e.g. 0.0.0.0) - with the loopback default the advert

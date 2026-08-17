@@ -83,8 +83,14 @@ public static class PdnReadApi
         v1.MapGet("/netrom/routes", (NodeHostedService host, TimeProvider clock)
             => Results.Ok(BuildNetRomRoutes(host, clock)));
 
-        v1.MapGet("/config", (IConfigProvider config)
-            => Results.Json(config.Current));
+        // The ETag is the config document's version token: echo it back as If-Match on a
+        // PUT /config (or any port edit) to get compare-and-swap instead of last-writer-wins
+        // (review item C065, #694 - see ConfigCas).
+        v1.MapGet("/config", (HttpContext ctx, IConfigProvider config, IWritableConfigProvider writable) =>
+        {
+            ConfigCas.SetETag(ctx, writable);
+            return Results.Json(config.Current);
+        });
 
         // Per-link rollup (frame/byte/REJ/SREJ counters) from the telemetry tap.
         v1.MapGet("/links", (NodeHostedService host) => Results.Ok(BuildLinks(host)));
@@ -120,8 +126,11 @@ public static class PdnReadApi
                 ? Array.Empty<TrafficFrame>()
                 : store.Query(port, since, until, Math.Clamp(limit ?? 250, 1, 1000))));
 
-        // TODO step 1b: log tail comes with the SSE feed (GET /events) — empty for now.
-        v1.MapGet("/log", () => Results.Ok(Array.Empty<LogLine>()));
+        // The node's own recent log lines, newest first, from the bounded in-memory ring the
+        // NodeLogRingProvider fills (this process since start; not journald - see NodeLogRing).
+        // `?limit=` clamps to the ring. This was an empty stub until #694 (review item C008).
+        v1.MapGet("/log", (NodeLogRing ring, int? limit)
+            => Results.Ok(ring.Recent(limit ?? NodeLogRing.DefaultTail)));
     }
 
     internal static NodeStatus BuildStatus(
@@ -132,7 +141,10 @@ public static class PdnReadApi
         var running = RunningPorts(supervisor);
 
         int portsUp = running.Count(p => p.Started);
-        int sessionCount = running.Sum(p => p.Listener.ActiveSessions.Count);
+        // Live sessions only: ActiveSessions is the listener's LRU peer CACHE, which keeps a
+        // Disconnected session object until eviction, so summing it made "Active sessions" climb
+        // forever (review item C052, #694). SessionLiveness is the shared predicate.
+        int sessionCount = running.Sum(p => p.Listener.ActiveSessions.Count(SessionLiveness.IsLive));
 
         var snapshot = SnapshotOf(host);
         var netrom = new NetRomSummary(
@@ -174,7 +186,8 @@ public static class PdnReadApi
             else if (running is { Started: true })
             {
                 state = "up";
-                sessions = running.Listener.ActiveSessions.Count;
+                // Live sessions only, same reason as BuildStatus (C052).
+                sessions = running.Listener.ActiveSessions.Count(SessionLiveness.IsLive);
             }
             else
             {
@@ -214,6 +227,14 @@ public static class PdnReadApi
         {
             foreach (var session in port.Listener.ActiveSessions)
             {
+                // The listener's ActiveSessions is a peer CACHE that keeps Disconnected entries
+                // until LRU eviction; only established circuits belong in the API view, so a
+                // DELETE /sessions/{id} that really did tear the link down stops showing a row
+                // (review item C052, #694). The engine keeps its cache untouched.
+                if (!SessionLiveness.IsLive(session))
+                {
+                    continue;
+                }
                 sessions.Add(ProjectSession(host, port.Id, session, neighbours, now));
             }
         }
@@ -240,10 +261,16 @@ public static class PdnReadApi
         var peer = ctx.Remote.ToString();
         var role = neighbours.Contains(peer) ? "interlink" : "console";
 
-        // The (port, peer) telemetry link backs the session's byte/uptime/
-        // last-activity fields. The link is keyed on the peer callsign, so a
-        // session with no traffic yet (or whose link snapshot is absent) keeps
-        // the zero/"—" placeholders rather than fabricating numbers.
+        // The (port, peer) telemetry LINK backs the byte/uptime/last-activity fields, and a
+        // link outlives any one session: it is keyed on the peer callsign, counts every frame
+        // heard from or sent to that peer (UI/beacons included, not just this circuit's
+        // I-frames), stamps FirstSeen once, and is only cleared when the port detaches or the
+        // node restarts. So on a reconnect these three read as "this peer on this port since
+        // first heard", NOT "since this circuit came up" (review item C063, #694). That is the
+        // documented contract of the fields (see SessionInfo in ReadModels.cs and the
+        // node-api.yaml description) rather than a per-session counter, because there is no
+        // per-session byte tally on the engine's Ax25Session to read one from. A session with
+        // no link snapshot at all keeps the zero / not-known placeholders rather than fabricating.
         var link = host.Telemetry.Link(portId, peer);
         long bytesIn = link?.BytesIn ?? 0;
         long bytesOut = link?.BytesOut ?? 0;

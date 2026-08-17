@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Mcp;
 using Packet.Node.Mcp;
 
@@ -26,8 +27,86 @@ public class RestNodeMcpBackendTests
         }
     }
 
-    private static RestNodeMcpBackend Backend(StubHandler handler)
-        => new(new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8080") });
+    private static RestNodeMcpBackend Backend(StubHandler handler, TimeProvider? clock = null)
+        => new(new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8080") },
+               clock ?? TimeProvider.System);
+
+    // The bridge's HttpClient carries the bearer token as a default header (McpStdioEntry sets
+    // it); this handler records what actually reached the wire.
+    private sealed class AuthRecordingHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        public string? Authorization { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Authorization = request.Headers.Authorization?.ToString();
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    [Fact]
+    public async Task Every_call_carries_the_clients_bearer_token()
+    {
+        // C061, #694: the stdio bridge sent no Authorization header at all, so with the node's
+        // default auth-on every tool call 401'd.
+        var handler = new AuthRecordingHandler(HttpStatusCode.OK, "[]");
+        using var http = new HttpClient(handler);
+        McpStdioEntry.ConfigureClient(http, McpStdioEntry.DefaultNodeUrl, "test-token");
+        var backend = new RestNodeMcpBackend(http, TimeProvider.System);
+
+        await backend.ListPortsAsync();
+
+        handler.Authorization.Should().Be("Bearer test-token");
+    }
+
+    [Fact]
+    public async Task A_401_says_how_to_fix_it_rather_than_throwing_a_bare_http_error()
+    {
+        var handler = new AuthRecordingHandler(HttpStatusCode.Unauthorized, "");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8080") };
+        var backend = new RestNodeMcpBackend(http, TimeProvider.System);
+
+        var act = async () => await backend.ListPortsAsync();
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*PDN_NODE_TOKEN*");
+    }
+
+    [Fact]
+    public async Task A_401_on_a_write_tool_is_reported_in_the_result_not_thrown()
+    {
+        var handler = new AuthRecordingHandler(HttpStatusCode.Unauthorized, "");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:8080") };
+        var backend = new RestNodeMcpBackend(http, TimeProvider.System);
+
+        var result = await backend.ResetPortAsync("vhf", McpCaller.LocalStdio);
+
+        result.Accepted.Should().BeFalse();
+        result.Message.Should().Contain("PDN_NODE_TOKEN");
+    }
+
+    [Fact]
+    public async Task The_since_seconds_cutoff_rides_the_injected_clock()
+    {
+        // C015, #694: this filter read DateTimeOffset.UtcNow, so no test could pin the cut-off.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 13, 12, 0, 0, TimeSpan.Zero));
+        var handler = new StubHandler(new()
+        {
+            ["GET /api/v1/monitor/recent?limit=250"] = (HttpStatusCode.OK,
+                """
+                [{"seq":1,"timestamp":"2026-06-13T11:58:00Z","portId":"vhf","direction":"in","source":"A","dest":"B","type":"UI","length":20},
+                 {"seq":2,"timestamp":"2026-06-13T11:59:50Z","portId":"vhf","direction":"in","source":"A","dest":"B","type":"UI","length":20}]
+                """),
+        });
+
+        // 60 s before the FAKE now (12:00:00) keeps only the 11:59:50 frame.
+        var frames = await Backend(handler, clock).RecentFramesAsync(new FrameFilter(SinceSeconds: 60));
+
+        frames.Should().ContainSingle().Which.Seq.Should().Be(2);
+    }
 
     [Fact]
     public async Task List_ports_maps_the_rest_json()

@@ -147,46 +147,14 @@ public static class PdnRigsApi
         {
             var ct = ctx.RequestAborted;
 
-            ctx.Response.Headers.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-cache";
-            ctx.Response.Headers["X-Accel-Buffering"] = "no";
-            ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
-
+            SseWriter.Begin(ctx);
             using var sub = host.RigTelemetry.Subscribe(out var reader);
 
             // Flush headers so the client's onopen fires promptly.
-            await WriteAsync(ctx, ": connected\n\n", ct);
+            await SseWriter.CommentAsync(ctx, "connected", ct);
 
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    var waitRead = reader.WaitToReadAsync(ct).AsTask();
-                    var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
-                    var done = await Task.WhenAny(waitRead, heartbeat);
-
-                    if (done == heartbeat)
-                    {
-                        await WriteAsync(ctx, ": ping\n\n", ct);
-                        continue;
-                    }
-
-                    if (!await waitRead)
-                    {
-                        break;
-                    }
-
-                    while (reader.TryRead(out var status))
-                    {
-                        var json = JsonSerializer.Serialize(status, JsonSerializerOptions.Web);
-                        await WriteAsync(ctx, $"event: rig\ndata: {json}\n\n", ct);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Client went away (RequestAborted) — normal SSE teardown.
-            }
+            await SseWriter.PumpAsync(ctx, reader, clock, "rig",
+                status => JsonSerializer.Serialize(status, JsonSerializerOptions.Web), ct);
         })
           // A browser EventSource can't set an Authorization header - this marker is what
           // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
@@ -242,16 +210,4 @@ public static class PdnRigsApi
         }
     }
 
-    private static async Task WriteAsync(HttpContext ctx, string s, CancellationToken ct)
-    {
-        try
-        {
-            await ctx.Response.WriteAsync(s, ct);
-            await ctx.Response.Body.FlushAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // Mid-write disconnect — the loop's cancellation check ends the stream.
-        }
-    }
 }
