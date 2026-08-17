@@ -128,7 +128,7 @@ public sealed record SessionResult(bool Accepted, string SessionId, string Messa
 public sealed record SetKissParamRequest(
     [property: Description("Port whose KISS parameter to set.")] string Port,
     [property: Description("Parameter name, e.g. txdelay, persist, slottime, txtail.")] string Param,
-    [property: Description("Parameter value (0..255 for the byte params).")] int Value);
+    [property: Description("Parameter value (0..255 for the byte params), applied as the raw KISS byte. For txdelay, slottime and txtail that byte is in units of 10 ms, so 30 means 300 ms and 255 (2.55 s) is the longest KISS can express; do not send milliseconds. For persist it is the p-persistence byte, where 255 = always transmit when the channel is clear.")] int Value);
 
 /// <summary>
 /// Result of <c>set_kiss_param</c>. <paramref name="RequiresRestart"/> tells the
