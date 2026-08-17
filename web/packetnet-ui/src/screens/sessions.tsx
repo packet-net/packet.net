@@ -40,6 +40,10 @@ export function Sessions() {
   // A banner-style notice for a failed action (mirrors the Ports/Config screens — there is
   // no toast primitive). Cleared on the next successful action.
   const [notice, setNotice] = useState<string | null>(null);
+  // The connect-out dial is in flight. POST /sessions awaits ConnectAsync with a 30 s dial
+  // timeout and the node de-dups nothing per target, so an impatient second click on an
+  // unchanged button used to start a SECOND outbound dial to the same station (#702 C048).
+  const [connecting, setConnecting] = useState(false);
 
   // Sync the local working copy when the query resolves. Connect/disconnect call the live
   // API and then reload(), which refetches /sessions; the local copy keeps the table
@@ -90,7 +94,11 @@ export function Sessions() {
   };
 
   // Connect out: open the session via the API, surface it, drop into its drawer, reload.
+  // Single-flight: the modal stays open for the whole dial (it only closes on success), so the
+  // in-flight guard + the disabled button are what keep one Connect click to one dial.
   const connect = async (target: string, port: string) => {
+    if (connecting) return;
+    setConnecting(true);
     try {
       const sess = await api.connectSession(target, port);
       setNotice(null);
@@ -100,6 +108,8 @@ export function Sessions() {
       reload();
     } catch (e) {
       setNotice(String((e as Error)?.message ?? e) || `Could not connect to ${target}.`);
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -196,7 +206,9 @@ export function Sessions() {
                       <Button variant="ghost" size="iconSm" title="Open" onClick={() => setOpenSession(s)}>
                         <Icon name="external" size={14} />
                       </Button>
-                      <Button variant="ghost" size="iconSm" title="Disconnect" onClick={() => drop(s.id)}>
+                      <Button variant="ghost" size="iconSm" disabled={!canOperate}
+                        title={canOperate ? "Disconnect" : "Disconnecting requires the operate scope"}
+                        onClick={() => drop(s.id)}>
                         <Icon name="power" size={14} className="text-danger" />
                       </Button>
                     </div>
@@ -210,6 +222,7 @@ export function Sessions() {
 
       <SessionConsole
         session={openSession}
+        canOperate={canOperate}
         onClose={() => setOpenSession(null)}
         onDrop={async (id) => { await drop(id); setOpenSession(null); }}
         onNotice={setNotice}
@@ -223,6 +236,7 @@ export function Sessions() {
         initialCall={handoff?.call ?? ""}
         initialPort={handoff?.port ?? null}
         onClose={() => setConnectOpen(false)}
+        busy={connecting}
         // Sysop interactive connect-out — opens the session on the node and drops into
         // its drawer (no console-bridge / received-data stream in v1 — the monitor shows
         // the frames; the drawer's send is a one-line affordance).
@@ -239,8 +253,11 @@ export function Sessions() {
 // Typed lines are sent via api.sendSessionLine and echoed optimistically into the buffer so
 // the operator sees what they sent. Closing the drawer only unsubscribes — it does NOT
 // disconnect the session (that's the separate Disconnect action).
-function SessionConsole({ session, onClose, onDrop, onNotice }: {
+function SessionConsole({ session, canOperate, onClose, onDrop, onNotice }: {
   session: SessionInfo | null;
+  /** Whether the session is scoped to act. /sessions is Operate end to end, so Disconnect
+   *  and Send are gated + explained here exactly as the header's Connect is (#702 C048). */
+  canOperate: boolean;
   onClose: () => void;
   onDrop: (id: string) => void;
   onNotice: (msg: string | null) => void;
@@ -282,7 +299,7 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
   // optimistically into the buffer (prefixed) so the operator sees what they sent; a
   // failure surfaces in the screen's notice banner.
   const send = async () => {
-    if (!session || !draft.trim()) return;
+    if (!session || !canOperate || !draft.trim()) return;
     const echo = draft;
     setDraft("");
     setBuffer((b) => `${b}» ${echo}\n`);
@@ -303,7 +320,9 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
       width="max-w-2xl"
       footer={session && (
         <>
-          <Button variant="destructive" size="sm" onClick={() => onDrop(session.id)}>
+          <Button variant="destructive" size="sm" disabled={!canOperate}
+            title={canOperate ? undefined : "Disconnecting requires the operate scope"}
+            onClick={() => onDrop(session.id)}>
             <Icon name="x" size={14} /> Disconnect
           </Button>
           <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
@@ -334,11 +353,15 @@ function SessionConsole({ session, onClose, onDrop, onNotice }: {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") send(); }}
-                placeholder="type a command and press Enter…"
+                placeholder={canOperate ? "type a command and press Enter…" : "read-only, sending requires the operate scope"}
                 className="font-mono text-xs"
+                disabled={!canOperate}
                 autoFocus
               />
-              <Button size="sm" onClick={send}><Icon name="send" size={14} /> Send</Button>
+              <Button size="sm" onClick={send} disabled={!canOperate}
+                title={canOperate ? undefined : "Sending into a session requires the operate scope"}>
+                <Icon name="send" size={14} /> Send
+              </Button>
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">Lines you send go onto the link (CR-terminated by the node). The pane shows the remote's live output, with your sent lines echoed (»).</p>
           </div>
@@ -360,10 +383,13 @@ function Stat({ k, v }: { k: string; v: string }) {
 // ---- Connect-out modal (alias autocomplete from the routes list) ----
 // Mounted fresh per open (the parent keys it on the open sequence), so the initial props
 // ARE the form's initial state - there is no re-seeding effect to fight with.
-function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
+function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }: {
   open: boolean;
   onClose: () => void;
   onConnect: (call: string, port: string) => void;
+  /** A dial is already in flight (the parent's single-flight guard); the button disables and
+   *  says so, because the modal stays open for the whole 30 s dial. */
+  busy: boolean;
   initialCall: string;
   /** The port the Routes hand-off named, or null for a bare Connect. */
   initialPort: string | null;
@@ -412,11 +438,11 @@ function ConnectOut({ open, onClose, onConnect, initialCall, initialPort }: {
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button
             size="sm"
-            disabled={!target.trim() || !port}
-            title={port ? undefined : "Waiting for the node's port list"}
+            disabled={!target.trim() || !port || busy}
+            title={busy ? "Dialling, this can take up to 30 s" : port ? undefined : "Waiting for the node's port list"}
             onClick={() => onConnect(target.trim().toUpperCase(), port)}
           >
-            <Icon name="link" size={14} /> Connect
+            <Icon name="link" size={14} /> {busy ? "Connecting…" : "Connect"}
           </Button>
         </>
       }

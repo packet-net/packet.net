@@ -5,12 +5,13 @@
 // the server is the real gate, this is the light-touch UI mirror.
 //
 // Each user carries a single granted scope (read/operate/admin; admin⊃operate⊃read).
-// Passkeys (node-passkeys): a user manages their OWN passkeys (enrol + list + delete)
-// from their own row — the server scopes every WebAuthn call to the authenticated
-// principal, so the "Add passkey" / list affordance only lights up on the signed-in
-// user's row. The over-RF sysop code (TOTP, node-sysop-totp) is the same shape: a user
-// enrols / inspects / removes their OWN rolling code from their own row, wired to the real
-// /auth/totp/enroll endpoints.
+// Passkeys (node-passkeys): a user manages their OWN passkeys (enrol + list + delete) in the
+// "Your account" card at the top: the server scopes every WebAuthn call to the authenticated
+// principal, and those endpoints are Read-gated while the /users list is Admin-gated, so the
+// card is rendered from the SESSION and not from the list (a read/operate operator has no
+// list, and used to have no way to enrol at all). The over-RF sysop code (TOTP,
+// node-sysop-totp) is the same shape, wired to the real /auth/totp/enroll endpoints. The
+// per-user rows below only ever show a static "self-service" indicator.
 // ============================================================
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -29,7 +30,7 @@ const SCOPES: Scope[] = ["read", "operate", "admin"];
 export function Users() {
   const auth = useAuth();
   const isAdmin = auth.has("admin");
-  const { data, loading, reload } = useQuery(api.usersList, []);
+  const { data, loading, error: listError, reload } = useQuery(api.usersList, []);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +72,42 @@ export function Users() {
         </Card>
       )}
 
-      {loading && users.length === 0 && (
+      {/* Your own account: passkey + over-RF enrolment, rendered from the SESSION and not
+          from the operator list. /users is admin-gated as a whole while WebAuthn register and
+          TOTP enroll are Read ("any authenticated user may add a passkey"), so a read/operate
+          user used to get an empty list and NO enrolment path at all - the self-service rows
+          only existed inside a per-user card the list built (#702 C044). The list rows below
+          now always show the static "self-service" indicator, so there is exactly one place to
+          manage your own credentials. */}
+      {auth.username && (
+        <Card className="mb-3 p-4" data-testid="self-account">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-sm font-semibold uppercase text-primary">{auth.username.slice(0, 2)}</span>
+            <div>
+              <div className="flex items-center gap-2"><span className="font-medium">Your account</span>{auth.scope && <Badge variant="default">{auth.scope}</Badge>}</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">signed in as <span className="font-mono">{auth.username}</span></p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2 border-t border-border pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Web login</p>
+            <AuthMethod icon="key" title="Password" sub="Argon2id" enabled />
+            <Passkeys isSelf />
+            <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On-air auth</p>
+            <OverRfTotp isSelf />
+          </div>
+        </Card>
+      )}
+
+      {/* The list's own failure is the operator's to see: a non-admin 403 (or a node that is
+          down) used to render as a silent empty list under the "you can view operators" card. */}
+      {listError && (
+        <Card className="mb-3 flex items-start gap-2 p-3 text-sm text-danger">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>Couldn&apos;t load the operator list: {listError}</span>
+        </Card>
+      )}
+
+      {loading && users.length === 0 && !listError && (
         <Card className="p-4 text-sm text-muted-foreground">Loading users…</Card>
       )}
 
@@ -103,10 +139,13 @@ export function Users() {
                   call for one, so it was an enabled control that did nothing (#691 C025).
                   Whether pdn grows PUT /users/{username}/password is #693's (WP6's) call. */}
               <AuthMethod icon="key" title="Password" sub="Argon2id" enabled />
-              <Passkeys isSelf={auth.username === u.username} />
+              {/* Always the static indicator here, including on your own row: your own
+                  credentials are managed in the "Your account" card above, which is the one
+                  surface that exists for every scope (#702 C044). */}
+              <Passkeys isSelf={false} />
 
               <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On-air auth</p>
-              <OverRfTotp isSelf={auth.username === u.username} />
+              <OverRfTotp isSelf={false} />
             </div>
           </Card>
         ))}
@@ -197,8 +236,8 @@ function AuthMethod({ icon, title, sub, enabled, action }: {
 }
 
 // The passkeys row. A user manages their OWN passkeys (the server scopes every WebAuthn
-// call to the authenticated principal), so the affordances only activate on the
-// signed-in user's row (`isSelf`). Other rows show a static "passkeys" indicator. The
+// call to the authenticated principal), so the affordances only activate in the signed-in
+// user's own card (`isSelf`). Other users' rows show a static "passkeys" indicator. The
 // "Add passkey" button runs a real WebAuthn enrolment ceremony (api.passkeyRegister);
 // it is disabled outside a secure context (HTTPS / localhost) or in mock mode.
 function Passkeys({ isSelf }: { isSelf: boolean }) {
@@ -251,7 +290,7 @@ function Passkeys({ isSelf }: { isSelf: boolean }) {
     }
   };
 
-  // Other users' rows: a static, non-actionable indicator (you only manage your own).
+  // A list row: a static, non-actionable indicator (you only manage your own, above).
   if (!isSelf) {
     return <AuthMethod icon="fingerprint" title="Passkeys" sub="managed by the user themselves" enabled={false}
       action={<span className="text-[10px] text-muted-foreground">self-service</span>} />;
@@ -296,7 +335,7 @@ function Passkeys({ isSelf }: { isSelf: boolean }) {
 
 // The over-RF sysop code (TOTP) row. Like Passkeys, a user manages their OWN code (the
 // server scopes every /auth/totp/enroll call to the authenticated principal), so the
-// affordances only activate on the signed-in user's row (`isSelf`); other rows show a
+// affordances only activate in the signed-in user's own card (`isSelf`); other rows show a
 // static self-service indicator. "Enrol authenticator" opens the real begin→confirm flow;
 // the enrolled state (callsign + Remove) reflects GET /auth/totp/enroll.
 function OverRfTotp({ isSelf }: { isSelf: boolean }) {
@@ -333,7 +372,7 @@ function OverRfTotp({ isSelf }: { isSelf: boolean }) {
     }
   };
 
-  // Other users' rows: a static, non-actionable indicator (you only manage your own).
+  // A list row: a static, non-actionable indicator (you only manage your own, above).
   if (!isSelf) {
     return <AuthMethod icon="signal" title="Authenticator (TOTP)" sub="managed by the user themselves" enabled={false}
       action={<span className="text-[10px] text-muted-foreground">self-service</span>} />;

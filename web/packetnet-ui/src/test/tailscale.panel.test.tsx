@@ -104,6 +104,33 @@ describe("Config — Remote access (Tailscale) panel", () => {
     await waitFor(() => expect(adopt).toHaveBeenCalledWith("pdn.example.ts.net"));
   });
 
+  it("adopting the fqdn keeps unsaved edits and merges the new RP id into the draft", async () => {
+    // #702 C039: the adopt used to call reload(), which refetched /config and re-seeded the
+    // draft from it - silently discarding every in-flight edit while `dirty` still claimed
+    // they were pending. The write is already applied server-side, so the client merges just
+    // that block instead.
+    const adopt = vi.spyOn(api, "useFqdnForPasskeys").mockResolvedValue(
+      { valid: true, live: [], portRestart: [], nodeReset: [], applied: true });
+    await mountManagement({
+      enabled: true, state: "running",
+      fqdn: "pdn.example.ts.net", authUrl: null, funnel: false,
+    });
+
+    // An unsaved edit in the same tab: the management HTTP port.
+    fireEvent.change(screen.getByDisplayValue("8080"), { target: { value: "8090" } });
+    expect(screen.getByDisplayValue("8090")).toBeInTheDocument();
+
+    fireEvent.click(await within(panel()).findByRole("button", { name: /for passkeys/i }));
+    await waitFor(() => expect(adopt).toHaveBeenCalledWith("pdn.example.ts.net"));
+
+    // The adopted RP id landed in the draft (the button has nothing left to offer)…
+    await waitFor(() => expect(within(panel()).queryByRole("button", { name: /for passkeys/i })).toBeNull());
+    // …and the edit is still there, still counted as pending.
+    expect(screen.getByDisplayValue("8090")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /Review & apply/i })).getByText("1"))
+      .toBeInTheDocument();
+  });
+
   it("disables the RP-id button for a non-admin (read) scope", async () => {
     await mountManagement({
       enabled: true, state: "running",
