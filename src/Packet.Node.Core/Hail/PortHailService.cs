@@ -260,14 +260,17 @@ public sealed partial class PortHailService : BackgroundService
         }
 
         // Desired resident responders: radio-attached, hail-responder-enabled, NinoTNC + Tait ports.
-        var desired = new Dictionary<string, RunningPort>(StringComparer.Ordinal);
+        var desired = new Dictionary<string, (RunningPort Running, PortRadioConfig Radio)>(StringComparer.Ordinal);
         foreach (string portId in supervisor.RunningPortIds)
         {
             var running = supervisor.GetPort(portId);
+            // The port's config baseline lives on the supervisor's port owner, not on the
+            // RunningPort - there is exactly one answer to "what is this port running on" (#722).
+            var radioConfig = supervisor.GetPortConfig(portId)?.Radio;
             if (running is not null && RadioControls.LiveTait(running.Radio) is not null && running.NinoTnc is not null &&
-                running.Config.Radio is { HailResponder: true, HailResponderPeer.Length: TaitSdmSideChannel.IdentityLength })
+                radioConfig is { HailResponder: true, HailResponderPeer.Length: TaitSdmSideChannel.IdentityLength })
             {
-                desired[portId] = running;
+                desired[portId] = (running, radioConfig);
             }
         }
 
@@ -278,9 +281,9 @@ public sealed partial class PortHailService : BackgroundService
         // driver behind the stable facade, not the facade itself.
         foreach (var (portId, resident) in residents.ToArray())
         {
-            bool stillWanted = desired.TryGetValue(portId, out var running)
-                && string.Equals(running!.Config.Radio!.HailResponderPeer, resident.Peer, StringComparison.Ordinal)
-                && ReferenceEquals(RadioControls.LiveTait(running.Radio), resident.Radio);
+            bool stillWanted = desired.TryGetValue(portId, out var wanted)
+                && string.Equals(wanted.Radio.HailResponderPeer, resident.Peer, StringComparison.Ordinal)
+                && ReferenceEquals(RadioControls.LiveTait(wanted.Running.Radio), resident.Radio);
             if (!stillWanted)
             {
                 await StopResidentAsync(portId, force: false).ConfigureAwait(false);
@@ -298,15 +301,15 @@ public sealed partial class PortHailService : BackgroundService
         }
 
         // Start responders newly wanted.
-        foreach (var (portId, running) in desired)
+        foreach (var (portId, wanted) in desired)
         {
             if (residents.ContainsKey(portId) || !ResidentAttemptDue(portId))
             {
                 continue;
             }
-            if (RadioControls.LiveTait(running.Radio) is { } tait && running.NinoTnc is not null)
+            if (RadioControls.LiveTait(wanted.Running.Radio) is { } tait && wanted.Running.NinoTnc is not null)
             {
-                await StartResidentAsync(portId, running.Config.Radio!.HailResponderPeer, tait, running.NinoTnc, cancellationToken)
+                await StartResidentAsync(portId, wanted.Radio.HailResponderPeer, tait, wanted.Running.NinoTnc, cancellationToken)
                     .ConfigureAwait(false);
             }
         }

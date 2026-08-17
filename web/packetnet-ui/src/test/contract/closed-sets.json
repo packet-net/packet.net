@@ -59,6 +59,16 @@
     "Faulted",
     "External"
   ],
+  "portStates": [
+    "configured",
+    "disabled",
+    "starting",
+    "up",
+    "degraded",
+    "faulted",
+    "retrying",
+    "stopping"
+  ],
   "netRomRouting": [
     "None",
     "Endpoint",

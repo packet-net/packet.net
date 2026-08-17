@@ -63,6 +63,17 @@ shapes are read from the types that define them.
   as before.
 - **Dry runs**: `POST` and `PUT /api/v1/ports` take `?dryRun=true`, which returns the
   reconcile plan (what would restart) without applying it.
+- **Port state**: `GET /api/v1/ports`, `GET /api/v1/ports/{id}` and the lifecycle responses
+  all carry the SAME `PortStatus`, projected once from the supervisor's per-port state model
+  (packet-net/packet.net#722). `state` is one of `configured` (in config, not attempted yet or
+  between a teardown and its bring-up), `disabled`, `starting`, `up`, `degraded` (serving,
+  with a non-data-path component missing), `faulted`, `retrying` (faulted with a
+  bounded-backoff bring-up retry armed) or `stopping`. `up` and `degraded` are the serving
+  states. `lastError` says why the port last failed or died - it is retained after a recovery,
+  so a port that is up again still shows what happened - and `degraded` lists the missing
+  components (`radio` / `rig` / `rigctld` / `transport`). `since` is when the port entered its
+  current state. A reconcile is asynchronous, so the status returned straight after a
+  `lifecycle up` may still read `configured` or `starting`: that is honest, not a failure.
 
 ## The route inventory
 

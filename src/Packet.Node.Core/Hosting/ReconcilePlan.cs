@@ -68,6 +68,20 @@ public sealed record ReconcilePlan
     /// by the new config.</summary>
     public IReadOnlyList<PortConfig> NetRomQualityChanged { get; init; } = [];
 
+    /// <summary>Ports whose per-port ID-beacon override (<see cref="PortConfig.Beacon"/>)
+    /// changed but nothing restart-class did → the beacon timers re-arm from the live config
+    /// (<c>BeaconService.Reapply</c>), no restart, no session disturbed. Its own arm because a
+    /// beacon edit arms or disarms a periodic transmitter: with no arm the plan was a genuine
+    /// no-op, so the operator's pre-apply preview said "nothing will change" and the node then
+    /// started keying up on a timer (#722). Keyed by the new config.</summary>
+    public IReadOnlyList<PortConfig> BeaconChanged { get; init; } = [];
+
+    /// <summary>Ports whose kissproxy MQTT instance label (<see cref="PortConfig.MqttInstance"/>)
+    /// changed → the emitter reads it live per frame, so nothing restarts; the arm exists so the
+    /// change is not invisible to <see cref="IsNoOp"/> and the preview. Keyed by the new
+    /// config.</summary>
+    public IReadOnlyList<PortConfig> MqttInstanceChanged { get; init; } = [];
+
     /// <summary>True if the telnet console bind/port/enabled changed → restart
     /// just the telnet listener.</summary>
     public bool TelnetChanged { get; init; }
@@ -83,5 +97,5 @@ public sealed record ReconcilePlan
         ToBringUp.Count == 0 && ToTearDown.Count == 0 && ToRestart.Count == 0 &&
         ToDisable.Count == 0 && ToEnable.Count == 0 &&
         KissParamsChanged.Count == 0 && Ax25ParamsChanged.Count == 0 && CompatChanged.Count == 0 &&
-        LinkChanged.Count == 0 && NetRomQualityChanged.Count == 0;
+        LinkChanged.Count == 0 && NetRomQualityChanged.Count == 0 && BeaconChanged.Count == 0 && MqttInstanceChanged.Count == 0;
 }

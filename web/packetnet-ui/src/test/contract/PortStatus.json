@@ -7,6 +7,8 @@
     "lastError": null,
     "framesIn": 184213,
     "framesOut": 95120,
+    "degraded": [],
+    "since": "2026-08-17T12:00:00+00:00",
     "channelBusy": false
   },
   {
@@ -17,16 +19,34 @@
     "lastError": "serial: /dev/ttyUSB1 not present",
     "framesIn": 0,
     "framesOut": 0,
+    "degraded": [],
+    "since": "2026-08-17T12:00:00+00:00",
     "channelBusy": null
   },
   {
     "id": "link-dn",
     "enabled": false,
-    "state": "down",
+    "state": "disabled",
     "sessionCount": 0,
     "lastError": null,
     "framesIn": 0,
     "framesOut": 0,
+    "degraded": [],
+    "since": "2026-08-17T12:00:00+00:00",
     "channelBusy": true
+  },
+  {
+    "id": "hf-300",
+    "enabled": true,
+    "state": "degraded",
+    "sessionCount": 1,
+    "lastError": "radio (tait-ccdi on /dev/ttyUSB2): open failed",
+    "framesIn": 12,
+    "framesOut": 8,
+    "degraded": [
+      "radio"
+    ],
+    "since": "2026-08-17T12:00:00+00:00",
+    "channelBusy": null
   }
 ]

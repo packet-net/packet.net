@@ -552,15 +552,29 @@ export interface NodeStatus {
   netrom: { neighbours: number; destinations: number; inp3Enabled: boolean };
   traffic: TrafficLogStatus;
 }
-export type PortState = "up" | "down" | "faulted";
+/** The server's port lifecycle states (Packet.Node.Core.Hosting.PortStates). `up` and
+ *  `degraded` are the SERVING states - a degraded port is on the air with a piece missing
+ *  (see PortStatus.degraded). Everything else is not carrying traffic. */
+export type PortState =
+  | "configured" | "disabled" | "starting" | "up" | "degraded" | "faulted" | "retrying" | "stopping";
 export interface PortStatus {
   id: string; enabled: boolean; state: PortState;
-  sessionCount: number; lastError: string | null;
+  sessionCount: number;
+  /** Why the port last failed to come up or died; null if it never has. Retained across a
+   *  recovery, so a port that is up again still shows what happened. */
+  lastError: string | null;
   framesIn: number; framesOut: number;
+  /** Components a `degraded` port is running without: radio | rig | rigctld | transport. */
+  degraded: string[];
+  /** When the port entered `state` (ISO-8601 UTC). */
+  since: string;
   /** Port-level carrier sense (radio DCD or a channel-sensing transport such as the
    *  in-process soundmodem): true=busy, false=clear, null=no source / not running. */
   channelBusy: boolean | null;
 }
+
+/** The two states in which a port is actually carrying traffic. */
+export const PORT_SERVING_STATES: PortState[] = ["up", "degraded"];
 
 /** One waterfall line from a soundmodem port's spectrum SSE feed. */
 export interface SpectrumEvent {

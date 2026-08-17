@@ -12,10 +12,12 @@ namespace Packet.Mcp;
 public sealed record McpPortStatus(
     [property: Description("Port id (the config key).")] string Id,
     [property: Description("Whether the port is enabled in config.")] bool Enabled,
-    [property: Description("Live state: up | down | faulted.")] string State,
+    [property: Description("Live state: configured | disabled | starting | up | degraded | faulted | retrying | stopping. up and degraded are the serving states.")] string State,
     [property: Description("Active AX.25 sessions on the port.")] int SessionCount,
     [property: Description("Frames received on the port since start.")] long FramesIn,
-    [property: Description("Frames transmitted on the port since start.")] long FramesOut);
+    [property: Description("Frames transmitted on the port since start.")] long FramesOut,
+    [property: Description("Why the port last failed to come up or died; null if it never has.")] string? LastError = null,
+    [property: Description("Components a degraded port is running without: radio | rig | rigctld | transport.")] IReadOnlyList<string>? Degraded = null);
 
 /// <summary>One live AX.25 session (the <c>list_sessions</c> projection).</summary>
 public sealed record McpSessionInfo(

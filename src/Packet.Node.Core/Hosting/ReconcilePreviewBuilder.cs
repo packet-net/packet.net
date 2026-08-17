@@ -106,6 +106,18 @@ public static class ReconcilePreviewBuilder
             live.Add(new ReconcileChange($"ports.{p.Id}.netRom", Live,
                 $"Port '{p.Id}' NET/ROM settings (quality / minQuality / nodesPaclen) applied live (the next NODES ingest/broadcast on this port uses them)."));
         }
+        foreach (var p in plan.BeaconChanged)
+        {
+            // Spell out what a beacon edit means on the air: it arms or disarms a periodic
+            // transmitter, and the preview is the operator's safety contract before an apply.
+            live.Add(new ReconcileChange($"ports.{p.Id}.beacon", Live,
+                $"Port '{p.Id}' ID beacon {(p.Beacon?.Enabled == true ? "armed" : "changed")} - the beacon timer re-arms from the new settings (no session is disturbed; an enabled beacon TRANSMITS a UI frame on this port every interval)."));
+        }
+        foreach (var p in plan.MqttInstanceChanged)
+        {
+            live.Add(new ReconcileChange($"ports.{p.Id}.mqttInstance", Live,
+                $"Port '{p.Id}' MQTT topic label - the next published frame uses it (labelling only; no on-air change)."));
+        }
 
         if (plan.TelnetChanged)
         {

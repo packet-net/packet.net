@@ -1193,7 +1193,7 @@ async function portLifecycle(
     await new Promise((r) => setTimeout(r, 80));
     const base = mock.PORT_STATUS[id] ?? Object.values(mock.PORT_STATUS)[0];
     if (action === "restart") return { ...base, id };
-    return { ...base, id, enabled: action === "up", state: action === "up" ? "up" : "down" };
+    return { ...base, id, enabled: action === "up", state: action === "up" ? "up" : "disabled" };
   }
   const res = await authFetch(`/ports/${encodeURIComponent(id)}/lifecycle`, {
     method: "POST",

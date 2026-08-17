@@ -6,6 +6,7 @@ using Packet.Core;
 using Packet.Node.Core.Applications;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Capabilities;
+using Packet.Node.Core.Hosting;
 
 namespace Packet.Node.Core.Console;
 
@@ -412,18 +413,31 @@ public sealed partial class NodeCommandService : INodeApplication
             return "Ports: (none configured)";
         }
 
+        // The LIVE state, from the supervisor's port state model - the same derivation /ports,
+        // the metrics and the MCP backend project (packet-net/packet.net#722). This used to
+        // print [up] purely from the config's `enabled` flag, so a port that never came up, or
+        // that died on the air, still listed as up to every station that typed PORTS. Null
+        // (an older call site or a test with no supervisor wired) falls back to the config
+        // flag, which is exactly the old behaviour and is labelled as configured-only.
+        var health = env.PortHealth?.Snapshot();
+
         var sb = new StringBuilder();
         // The leading number is the 1-indexed config-order port number — the same one CONNECT
         // takes to dial out a specific port (C <n> <call>); see PortSupervisor's router
-        // (ports[n-1]) and ConnectCommand.Port.
+        // (ports[n-1]) and ConnectCommand.Port. Snapshot() is in that same config order.
         sb.Append("Ports:  (the number is for C <n> <call>)");
         for (int i = 0; i < ports.Count; i++)
         {
             var p = ports[i];
+            var state = health?.FirstOrDefault(h => string.Equals(h.Id, p.Id, StringComparison.Ordinal));
             sb.Append('\n').Append("  ").Append(i + 1)
               .Append("  ").Append(p.Id)
-              .Append(' ').Append(p.Enabled ? "[up]" : "[down]")
+              .Append(" [").Append(state?.StateName ?? (p.Enabled ? PortStates.Configured : PortStates.Disabled)).Append(']')
               .Append(' ').Append(p.Transport.DescribeEndpoint());
+            if (state is { Degraded.Count: > 0 })
+            {
+                sb.Append(" (no ").Append(string.Join('/', state.Degraded)).Append(')');
+            }
         }
         return sb.ToString();
     }

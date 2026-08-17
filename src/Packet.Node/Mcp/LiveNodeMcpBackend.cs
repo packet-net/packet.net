@@ -30,7 +30,8 @@ public sealed class LiveNodeMcpBackend(
     public Task<IReadOnlyList<McpPortStatus>> ListPortsAsync(CancellationToken ct = default)
     {
         IReadOnlyList<McpPortStatus> ports = PdnReadApi.BuildPorts(host, config)
-            .Select(p => new McpPortStatus(p.Id, p.Enabled, p.State, p.SessionCount, p.FramesIn, p.FramesOut))
+            .Select(p => new McpPortStatus(
+                p.Id, p.Enabled, p.State, p.SessionCount, p.FramesIn, p.FramesOut, p.LastError, p.Degraded))
             .ToList();
         return Task.FromResult(ports);
     }
@@ -158,7 +159,9 @@ public sealed class LiveNodeMcpBackend(
         {
             return new SendResult(false, $"'{req.Dest}' is not a valid callsign.");
         }
-        if (host.Supervisor?.GetPort(req.Port) is not { Started: true } port)
+        // GetPort only answers for a SERVING port, and IsAlive re-checks that a teardown has
+        // not started underneath us since (#722).
+        if (host.Supervisor?.GetPort(req.Port) is not { IsAlive: true } port)
         {
             return new SendResult(false, $"port '{req.Port}' is not up.");
         }
@@ -227,7 +230,7 @@ public sealed class LiveNodeMcpBackend(
         // ICsmaChannelParams setter, which emits the KISS command frame on the wire.
         return await host.RunExclusiveAsync(async () =>
         {
-            if (supervisor.GetPort(req.Port) is not { Started: true } port)
+            if (supervisor.GetPort(req.Port) is not { IsAlive: true } port)
             {
                 return new KissParamResult(false, false, $"port '{req.Port}' is not up.");
             }

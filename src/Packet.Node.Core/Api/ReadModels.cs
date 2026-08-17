@@ -26,19 +26,36 @@ public sealed record NetRomSummary(int Neighbours, int Destinations, bool Inp3En
 /// never the radio path's).</summary>
 public sealed record TrafficLogStatus(bool Enabled, long Dropped);
 
-/// <summary>Live state of one configured port.</summary>
+/// <summary>
+/// Live state of one configured port - the single projection of the supervisor's port state
+/// model (<c>PortHealth</c>), built by <c>PortStatusProjector</c> and served by
+/// <c>/ports</c>, <c>/ports/{id}</c>, the metrics endpoint and the MCP backend
+/// (packet-net/packet.net#722; it used to be derived twice, verbatim, with a third
+/// vocabulary in the console and a fourth in the browser).
+/// </summary>
+/// <param name="State">The port's lifecycle state, one of <c>PortStates.All</c>:
+/// <c>configured</c> | <c>disabled</c> | <c>starting</c> | <c>up</c> | <c>degraded</c> |
+/// <c>faulted</c> | <c>retrying</c> | <c>stopping</c>. <c>up</c> and <c>degraded</c> are the
+/// serving states.</param>
+/// <param name="LastError">Why the port last failed to come up or died, or null if it never
+/// has. Retained after a recovery, so a port that is up again still shows what happened.</param>
+/// <param name="Degraded">The components a <c>degraded</c> port is running without
+/// (<c>radio</c> / <c>rig</c> / <c>rigctld</c> / <c>transport</c>); empty otherwise.</param>
+/// <param name="Since">When the port entered <paramref name="State"/> (UTC).</param>
 /// <param name="ChannelBusy">Port-level carrier sense, from whichever source feeds the
 /// listener's gate (radio hardware DCD, or a channel-sensing transport such as the
 /// in-process soundmodem): true = busy, false = clear, null = the port has no
-/// carrier-sense source (or is not running).</param>
+/// carrier-sense source (or is not serving).</param>
 public sealed record PortStatus(
     string Id,
     bool Enabled,
-    string State,            // "up" | "down" | "faulted"
+    string State,
     int SessionCount,
     string? LastError,
     long FramesIn,
     long FramesOut,
+    IReadOnlyList<string> Degraded,
+    DateTimeOffset Since,
     bool? ChannelBusy = null);
 
 /// <summary>

@@ -87,6 +87,38 @@ channel. You'll see the same channel-busy state reflected in the dashboard's
 i.e. it transmits rather than jamming up — so a control-channel glitch never wedges
 the port.)
 
+## Is the port actually on the air? (port state)
+
+Every configured port carries a **state** the node itself keeps, and the same answer
+appears everywhere: the Ports screen and the dashboard, `GET /api/v1/ports`, the
+`pdn_port_state` metric, and the `PORTS` command over the air or on telnet.
+
+| State | What it means |
+|---|---|
+| `up` | Serving: the listener is running and everything the port asked for is attached. |
+| `degraded` | Serving, with a piece missing - the port still carries traffic, but its radio, its rig, its node-managed `rigctld`, or its (self-healing) network transport is not there. The missing pieces are listed, with the reason. |
+| `disabled` | Switched off in config. Not running by design. |
+| `configured` | In config and wanted, but not attempted yet - during boot, or between a teardown and the bring-up that follows it. |
+| `starting` | A bring-up is in flight. |
+| `faulted` | Not serving: the bring-up failed, or a running port died. The reason is on the port. |
+| `retrying` | Faulted, with a retry armed: the node is trying to bring it back on its own, every 5 s backing off to every 60 s, for as long as it takes. |
+| `stopping` | A teardown is in flight. |
+
+Two things follow from this that are worth knowing:
+
+- **A port that dies is noticed.** If a TNC is unplugged, or a port's receive pump
+  otherwise faults, the node sees it within a few seconds, says so (`faulted`, with the
+  reason), tears that one port down and keeps trying to bring it back. No other port is
+  disturbed, and you do not have to notice the silence yourself.
+- **A late device is not a manual job.** A serial TNC that enumerates a few seconds after
+  the node, or a softmodem that is not listening yet, is retried automatically. A port only
+  stays down for good if it stops being wanted.
+
+`degraded` is the one to read carefully: the packet channel is fine, so the port keeps
+working - but something you configured is not there. Attaching a radio that will not open
+leaves the port `degraded` with `radio` named, and you lose per-frame RSSI and the
+carrier-sense gate while the port carries on regardless.
+
 ## Next
 
 Seeing a bad link? Ask the doctor what's wrong:
