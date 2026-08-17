@@ -36,6 +36,16 @@
     "default",
     "strictly-faithful"
   ],
+  "linkDial": [
+    "Auto",
+    "V22",
+    "V20"
+  ],
+  "linkPreConnectXid": [
+    "Auto",
+    "On",
+    "Off"
+  ],
   "headEndDeviceKinds": [
     "nino-tnc",
     "tait-ccdi",

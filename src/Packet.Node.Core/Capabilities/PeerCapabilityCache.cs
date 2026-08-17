@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Packet.Node.Core.Configuration;
 
 namespace Packet.Node.Core.Capabilities;
 
@@ -47,31 +48,109 @@ public sealed class PeerCapabilityCache
     }
 
     /// <summary>
-    /// Decide how to dial <paramref name="peer"/> on <paramref name="portId"/>. A miss or a stale record
-    /// falls back to the optimistic <paramref name="policy"/> default; a fresh learned positive is honoured
-    /// (offer SABME); a fresh learned negative is skipped (mod-8, and skip the pre-connect XID if the peer
-    /// is a known non-answerer).
+    /// Decide how to dial <paramref name="peer"/> on <paramref name="portId"/> with no declared per-port
+    /// link policy (all-auto). A miss or a stale record falls back to the optimistic
+    /// <paramref name="policy"/> default; a fresh learned positive is honoured (offer SABME); a fresh
+    /// learned negative is skipped (mod-8, and skip the pre-connect XID if the peer is a known
+    /// non-answerer).
     /// </summary>
     public PeerDialPlan PlanDial(string portId, string peer, PeerDialPolicy policy)
+        => PlanDial(portId, peer, policy, PortLinkConfig.Default);
+
+    /// <summary>
+    /// Decide how to dial <paramref name="peer"/> on <paramref name="portId"/>, honouring the port's
+    /// <b>declared</b> link policy first and what has been learned about the peer second.
+    /// </summary>
+    /// <remarks>
+    /// The precedence is the whole point of the port's policy: an operator who says
+    /// <c>link.dial: v20</c> has told us this port's stations are v2.0, so no learned or optimistic
+    /// SABME is offered on it; <c>v22</c> pins the other way and never degrades. Only
+    /// <see cref="LinkDialPreference.Auto"/> leaves the decision to the cache - which is where every
+    /// port started before the policy existed, so a null/absent <c>link:</c> block is byte-for-byte
+    /// today's behaviour.
+    /// </remarks>
+    /// <param name="portId">The port the dial will use.</param>
+    /// <param name="peer">The neighbour to dial.</param>
+    /// <param name="policy">Why we are dialling (sets the optimistic default under <c>auto</c>).</param>
+    /// <param name="link">The port's declared link policy (null ⇒ all-auto).</param>
+    public PeerDialPlan PlanDial(string portId, string peer, PeerDialPolicy policy, PortLinkConfig? link)
     {
         ArgumentNullException.ThrowIfNull(portId);
         ArgumentNullException.ThrowIfNull(peer);
 
         var rec = Lookup(portId, peer);
+        return Plan(
+            policy,
+            link,
+            learnedExtended: Fresh(rec, rec?.SupportsExtended) ? rec!.SupportsExtended : null,
+            learnedSrejViaXid: Fresh(rec, rec?.SupportsSrejViaXid) ? rec!.SupportsSrejViaXid : null);
+    }
 
-        // Extended: a fresh learned answer wins; otherwise the policy's optimistic default
-        // (UserConnect offers SABME, Interlink stays mod-8 until proven extended).
-        bool extended = Fresh(rec, rec?.SupportsExtended)
-            ? rec!.SupportsExtended!.Value
-            : policy == PeerDialPolicy.UserConnect;
+    /// <summary>
+    /// The plan a node with <b>no</b> capability cache dials - the port's declared policy over the
+    /// bare <paramref name="policy"/> defaults. Shared with <see cref="PlanDial(string, string,
+    /// PeerDialPolicy, PortLinkConfig?)"/> so a cache-less path (an embedder with no <c>pdn.db</c>,
+    /// or the NET/ROM service before a cache is wired) can never disagree with a cached one about
+    /// what a declared policy means.
+    /// </summary>
+    public static PeerDialPlan PlanWithoutCache(PeerDialPolicy policy, PortLinkConfig? link)
+        => Plan(policy, link, learnedExtended: null, learnedSrejViaXid: null);
 
-        // Pre-connect XID: moot on the extended path (XID negotiation rides the SABME setup). Off the
-        // extended path, send the XID unless we have freshly learned this peer does NOT answer it.
-        bool preConnectXid = !extended
-            && !(Fresh(rec, rec?.SupportsSrejViaXid) && rec!.SupportsSrejViaXid == false);
+    /// <summary>
+    /// The pre-connect-XID decision alone, for a dial whose version is <b>already settled</b> as
+    /// mod-8 - the v2.0 retry the connector makes after a SABME drew no answer. Going back through
+    /// <see cref="PlanDial(string, string, PeerDialPolicy, PortLinkConfig?)"/> would re-decide the
+    /// version (and, on the extended branch, report the XID probe as the moot <c>false</c>), so the
+    /// two decisions are separable here and share one rule.
+    /// </summary>
+    public bool PlanPreConnectXid(string portId, string peer, PortLinkConfig? link)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        ArgumentNullException.ThrowIfNull(peer);
+
+        var rec = Lookup(portId, peer);
+        return PreConnectXidFor(link, Fresh(rec, rec?.SupportsSrejViaXid) ? rec!.SupportsSrejViaXid : null);
+    }
+
+    /// <summary>The cache-less form of <see cref="PlanPreConnectXid"/> - the port's declaration
+    /// with nothing learned to refine it.</summary>
+    public static bool PlanPreConnectXidWithoutCache(PortLinkConfig? link)
+        => PreConnectXidFor(link, learnedSrejViaXid: null);
+
+    // The one dial decision. `learned*` are the FRESH learned values (null = nothing usable
+    // learned in this dimension), so freshness/staleness is settled by the caller and this stays
+    // a pure function of (why we dial, what the port declares, what we know).
+    private static PeerDialPlan Plan(
+        PeerDialPolicy policy, PortLinkConfig? link, bool? learnedExtended, bool? learnedSrejViaXid)
+    {
+        var declared = PortLinkConfig.Resolve(link);
+
+        // Extended: the port's declaration wins outright; under `auto`, a fresh learned answer
+        // wins; otherwise the reason-for-dialling default (UserConnect offers SABME, Interlink
+        // stays mod-8 until proven extended - a stalled SABME costs the whole backbone a retry
+        // cycle). NET/ROM interlinks therefore stay mod-8 unless the PORT says v22.
+        bool extended = declared.Dial switch
+        {
+            LinkDialPreference.V22 => true,
+            LinkDialPreference.V20 => false,
+            _ => learnedExtended ?? (policy == PeerDialPolicy.UserConnect),
+        };
+
+        // Pre-connect XID: moot on the extended path (XID negotiation rides the SABME setup).
+        bool preConnectXid = !extended && PreConnectXidFor(link, learnedSrejViaXid);
 
         return new PeerDialPlan(extended, preConnectXid);
     }
+
+    // The pre-connect-XID rule for a MOD-8 dial: the port's declaration wins, then the learned
+    // answer - send the XID unless we have freshly learned this peer does NOT answer one.
+    private static bool PreConnectXidFor(PortLinkConfig? link, bool? learnedSrejViaXid)
+        => PortLinkConfig.Resolve(link).PreConnectXid switch
+        {
+            LinkPreConnectXid.On => true,
+            LinkPreConnectXid.Off => false,
+            _ => learnedSrejViaXid != false,
+        };
 
     /// <summary>
     /// Record what a returned dial observed. <b>Plan-aware</b>: a dimension is only updated when the dial
@@ -111,6 +190,51 @@ public sealed class PeerCapabilityCache
 
         var updated = new PeerCapabilityRecord(
             portId, peer, supportsExtended, supportsSrejViaXid, now, lastRefused);
+
+        hot[(portId, peer)] = updated;
+        store?.Upsert(updated);
+    }
+
+    /// <summary>
+    /// Record that an extended (SABME) dial to <paramref name="peer"/> on <paramref name="portId"/>
+    /// drew <b>no answer at all</b>: the dial failed without that station sending back a single
+    /// frame - no UA, no DM, no FRMR. This is the negative the cache previously could not learn:
+    /// only a RETURNED dial reached <see cref="RecordOutcome"/>, so a peer that ignores SABME rather
+    /// than rejecting it was dialled with SABME on every attempt forever (the GB7RDG cutover
+    /// signature - 44 SABMEs, 0 SABMs on air). The caller
+    /// (<c>Ax25OutboundConnector</c>) establishes the "not a single frame" part by watching the
+    /// port's frame trace across the dial; the exception type alone cannot, because the SDL's own
+    /// give-up at RC == N2 surfaces as the same teardown a DM refusal does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only the extended dimension is written; <see cref="PeerCapabilityRecord.SupportsSrejViaXid"/>
+    /// is carried forward untouched (a SABME dial sends no pre-connect XID, so it probes nothing
+    /// there). <see cref="PeerCapabilityRecord.LastRefused"/> is stamped, as for a degrade.
+    /// </para>
+    /// <para>
+    /// <b>When the caller records it.</b> "No answer to a SABME" is equally explained by "the
+    /// station is off air", so the connector records this negative only once the peer has PROVED
+    /// it is on air by answering the mod-8 retry (a UA, or even a DM refusal). Silence to both
+    /// versions teaches nothing and records nothing: leading with a SABM would cost a v2.2-capable
+    /// peer its mod-128 window and SREJ for the whole <see cref="StaleAfter"/> window. A port that
+    /// must never degrade sets <c>link.dial: v22</c>, under which this is never called.
+    /// </para>
+    /// </remarks>
+    public void RecordSilentToExtended(string portId, string peer)
+    {
+        ArgumentNullException.ThrowIfNull(portId);
+        ArgumentNullException.ThrowIfNull(peer);
+
+        var now = time.GetUtcNow();
+        var existing = Lookup(portId, peer);
+
+        var updated = new PeerCapabilityRecord(
+            portId, peer,
+            SupportsExtended: false,
+            SupportsSrejViaXid: existing?.SupportsSrejViaXid,
+            LastProbed: now,
+            LastRefused: now);
 
         hot[(portId, peer)] = updated;
         store?.Upsert(updated);

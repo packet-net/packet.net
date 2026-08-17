@@ -162,6 +162,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             this.netRom.RunInboundConsole = RunNodeConsoleAsync;
             this.netRom.OpenInterlink = OpenInterlinkAsync;
+            // The port's declared link policy, so an interlink dial honours a `dial: v22` port
+            // (auto and v20 both keep the conservative mod-8 interlink default).
+            this.netRom.PortLinkPolicy = LinkPolicyOf;
         }
     }
 
@@ -282,7 +285,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     {
         var port = TryGetRunning(portId);
 
-        return port is null ? null : new Ax25OutboundConnector(port.Id, port.Listener, r => ClaimOutbound(r), localOverride, capabilityCache);
+        return port is null
+            ? null
+            : new Ax25OutboundConnector(
+                port.Id, port.Listener, r => ClaimOutbound(r), localOverride, capabilityCache, LinkPolicyFor(port.Id));
     }
 
     /// <summary>
@@ -489,7 +495,11 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         {
             first = ports.Values.OrderBy(p => p.Id, StringComparer.Ordinal).FirstOrDefault();
         }
-        var ax25 = first is null ? null : new Ax25OutboundConnector(first.Id, first.Listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache);
+        var ax25 = first is null
+            ? null
+            : new Ax25OutboundConnector(
+                first.Id, first.Listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache,
+                linkPolicy: LinkPolicyFor(first.Id));
 
         // A telnet dial-in has no callsign of its own; a NET/ROM-routed `connect`
         // originates on behalf of this node. Wrap with NET/ROM routing when enabled
@@ -691,6 +701,17 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             if (!plan.Ax25ParamsChanged.Contains(port))
             {
                 ApplyCompat(port);
+            }
+        }
+
+        // Link-policy changes ride the same reseed (the rebuilt parameter record carries the
+        // listener's dial defaults; the connector reads the live policy per dial). Skipped when
+        // one of the loops above already reseeded this port with the same MapAx25Params call.
+        foreach (var port in plan.LinkChanged)
+        {
+            if (!plan.Ax25ParamsChanged.Contains(port) && !plan.CompatChanged.Contains(port))
+            {
+                ApplyLinkPolicy(port);
             }
         }
 
@@ -1014,7 +1035,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             effectiveAx25, port.Compat, myCall,
             restartT1OnTxComplete: effectiveKiss?.T1FromTxComplete == true,
             carrierSense: carrierSense,
-            portName: endpointText);
+            portName: endpointText,
+            link: port.Link);
         // The transport speaks the neutral IAx25Transport seam the listener consumes directly.
         var listener = new Ax25Listener(transport, options, timeProvider, loggerFactory.CreateLogger<Ax25Listener>());
 
@@ -1024,8 +1046,10 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // has no N1 — so reseed once now with the full MapAx25Params (which carries N1)
         // so this freshly-built listener's NEW sessions pick up the configured PACLEN. A
         // null N1 leaves the context default (256) — byte-for-byte today's behaviour.
-        listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat));
-        var connector = new Ax25OutboundConnector(port.Id, listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache);
+        listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
+        var connector = new Ax25OutboundConnector(
+            port.Id, listener, r => ClaimOutbound(r), localOverride: null, cache: capabilityCache,
+            linkPolicy: LinkPolicyFor(port.Id));
         listener.SessionAccepted += (_, e) => OnSessionAccepted(listener, connector, e.Session);
 
         try
@@ -1346,7 +1370,7 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
         // Live-reseed: new sessions on this listener pick up the new AX.25 params;
         // existing sessions keep their identity and their in-flight state.
-        running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat));
+        running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         RebaselineConfig(port);
         LogAx25ParamsApplied(port.Id);
     }
@@ -1364,9 +1388,29 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         // Same live reseed as ApplyAx25Params — the parameter record carries the
         // compat values. Parse options apply from the next inbound frame; quirks
         // seed sessions built from now on. Existing sessions untouched.
-        running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat));
+        running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
         RebaselineConfig(port);
         LogCompatApplied(port.Id);
+    }
+
+    private void ApplyLinkPolicy(PortConfig port)
+    {
+        var running = TryGetRunning(port.Id);
+        if (running is null)
+        {
+            return;   // not up (e.g. faulted) - the next bring-up reads the new config
+        }
+
+        var (effectiveAx25, _) = ChannelProfiles.Resolve(port);
+
+        // Same live reseed as ApplyAx25Params - the parameter record carries the listener's dial
+        // defaults. The connector reads the policy itself per dial (LinkPolicyFor), so this reseed
+        // is what covers the paths that dial the listener directly. Existing sessions untouched:
+        // the policy gates what a FUTURE connect offers, not a link already negotiated.
+        running.Listener.UpdateSessionParameters(MapAx25Params(effectiveAx25, port.Compat, port.Link));
+        RebaselineConfig(port);
+        var declared = PortLinkConfig.Resolve(port.Link);
+        LogLinkPolicyApplied(port.Id, declared.Dial, declared.PreConnectXid);
     }
 
     private static async Task ApplyKissParamsToModemAsync(IAx25Transport transport, KissParams? kiss, CancellationToken ct)
@@ -1438,12 +1482,21 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         }
     }
 
+    // A live reader for one port's declared link policy (PortConfig.Link). Handed to every
+    // Ax25OutboundConnector so a hot `link:` edit reaches the long-lived connector the bring-up
+    // built, and to NetRomService for its interlink dials. Reads the CURRENT config rather than a
+    // captured snapshot, so it needs no reconcile of its own beyond the listener reseed.
+    private Func<PortLinkConfig?> LinkPolicyFor(string portId) => () => LinkPolicyOf(portId);
+
+    private PortLinkConfig? LinkPolicyOf(string portId) =>
+        config.Current.Ports.FirstOrDefault(p => string.Equals(p.Id, portId, StringComparison.Ordinal))?.Link;
+
     private static Ax25ListenerOptions BuildListenerOptions(
         Ax25PortParams? ax25, PortCompatConfig? compat, Callsign myCall,
         bool restartT1OnTxComplete = false, ICarrierSense? carrierSense = null,
-        string? portName = null)
+        string? portName = null, PortLinkConfig? link = null)
     {
-        var p = MapAx25Params(ax25, compat);
+        var p = MapAx25Params(ax25, compat, link);
         return new Ax25ListenerOptions
         {
             MyCall = myCall,
@@ -1456,6 +1509,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
             MaxCachedPeers = p.MaxCachedPeers,
             ParseOptions = p.ParseOptions,
             Quirks = p.Quirks,
+            // The port's declared link policy, seeded onto the listener's own dial defaults so a
+            // path that bypasses Ax25OutboundConnector (a bare listener.ConnectAsync) still
+            // honours a `dial: v20` / `preConnectXid: off` port. Both are existing, parity-tracked
+            // Ax25ListenerOptions members - no new library flag.
+            PreferExtendedConnect = p.PreferExtendedConnect,
+            PreConnectXidNegotiatesSrej = p.PreConnectXidNegotiatesSrej,
             RestartT1OnTxComplete = restartT1OnTxComplete,
             // Native carrier-sense CSMA (OQ-012): the radio-attached port's DCD, or null
             // (always-clear gate) when no carrier-sense-capable radio is attached.
@@ -1467,7 +1526,8 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
     // live-reseedable parameter record. The single definition both BringUp
     // (construction-time seed) and the hot reconcile paths (UpdateSessionParameters)
     // share, so the paths can never drift.
-    private static Ax25SessionParameters MapAx25Params(Ax25PortParams? ax25, PortCompatConfig? compat) => new()
+    private static Ax25SessionParameters MapAx25Params(
+        Ax25PortParams? ax25, PortCompatConfig? compat, PortLinkConfig? link = null) => new()
     {
         T1V = ax25?.T1Ms is { } t1 ? TimeSpan.FromMilliseconds(t1) : null,
         T2 = ax25?.T2Ms is { } t2 ? TimeSpan.FromMilliseconds(t2) : null,
@@ -1478,6 +1538,12 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
         MaxCachedPeers = ax25?.MaxCachedPeers ?? 64,
         ParseOptions = Ax25CompatPresets.ResolveParseOptions(compat),
         Quirks = Ax25CompatPresets.ResolveQuirks(compat),
+        // Per-port link policy → the listener's dial defaults. Null / all-auto resolves to the
+        // engine's own defaults (prefer v2.2, pre-connect XID on), so an absent link: block is
+        // byte-for-byte today's behaviour. Live-reseedable like the rest of this record: it gates
+        // FUTURE dials only, never a link already up.
+        PreferExtendedConnect = PortLinkConfig.Resolve(link).PrefersExtendedConnect,
+        PreConnectXidNegotiatesSrej = PortLinkConfig.Resolve(link).PreConnectXidNegotiatesSrej,
     };
 
     private void OnSessionAccepted(Ax25Listener listener, Ax25OutboundConnector connector, Ax25Session session)
@@ -1679,6 +1745,9 @@ public sealed partial class PortSupervisor : IAsyncDisposable, Applications.ILoc
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: AX.25 compatibility profile applied live - inbound parsing from the next frame, session quirks for new sessions (existing sessions untouched).")]
     private partial void LogCompatApplied(string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: link policy applied live - dial {Dial}, pre-connect XID {PreConnectXid}; the next outbound connect uses it (links already up untouched).")]
+    private partial void LogLinkPolicyApplied(string id, LinkDialPreference dial, LinkPreConnectXid preConnectXid);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Port {Id}: NET/ROM route quality applied live; the next NODES broadcast on this port uses it.")]
     private partial void LogNetRomQualityApplied(string id);

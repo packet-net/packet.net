@@ -22,12 +22,13 @@ public sealed class ReconfigDeltaIntegrationTests
     private static readonly Callsign SecondCall = new("REMOTE", 2);
 
     private static PortConfig Port(string id, int memPort, bool enabled = true,
-        KissParams? kiss = null, Ax25PortParams? ax25 = null) => new()
+        KissParams? kiss = null, Ax25PortParams? ax25 = null, PortLinkConfig? link = null) => new()
         {
             Id = id,
             Enabled = enabled,
             Transport = new KissTcpTransport { Host = "mem", Port = memPort },
             Kiss = kiss,
+            Link = link,
             // Default to a bounded connect budget (small N2; the in-memory channel is
             // instant) so a starved handshake can't burn the 66 s spec default under CI
             // load (#47); a test that cares about the AX.25 params passes them explicitly.
@@ -41,6 +42,52 @@ public sealed class ReconfigDeltaIntegrationTests
         Identity = new Identity { Callsign = NodeCall.ToString() },
         Ports = ports,
     };
+
+    [Fact]
+    public async Task A_ports_link_policy_seeds_its_listener_and_hot_reloads_per_port()
+    {
+        // The per-port half of #724: two ports on one node, only one of them declared v2.0.
+        // The policy reaches the LISTENER's own dial defaults (so a path that bypasses the
+        // outbound connector still honours it), it is genuinely per port, and editing it is a
+        // live reseed - the same listener object, no restart.
+        var busA = new SharedRadioBus();
+        var busB = new SharedRadioBus();
+        var before = Config(
+            Port("bpq-hf", 1, link: new PortLinkConfig { Dial = LinkDialPreference.V20, PreConnectXid = LinkPreConnectXid.On }),
+            Port("vhf", 2));
+        var config = new TestConfigProvider(before);
+        var factory = new FakeTransportFactory()
+            .Provide(Endpoint(1), busA.Attach())
+            .Provide(Endpoint(2), busB.Attach());
+
+        await using var supervisor = new PortSupervisor(config, factory, TimeProvider.System, NullLoggerFactory.Instance);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("bpq-hf") && supervisor.RunningPortIds.Contains("vhf"), "both ports up");
+
+        var hf = supervisor.GetPort("bpq-hf")!.Listener;
+        var vhf = supervisor.GetPort("vhf")!.Listener;
+
+        hf.CurrentSessionParameters.PreferExtendedConnect.Should().BeFalse("dial: v20 seeds the listener mod-8");
+        hf.CurrentSessionParameters.PreConnectXidNegotiatesSrej.Should().BeTrue("preConnectXid: on keeps the SREJ probe");
+        vhf.CurrentSessionParameters.PreferExtendedConnect.Should().BeTrue("the undeclared port keeps the v2.2-first default");
+        vhf.CurrentSessionParameters.PreConnectXidNegotiatesSrej.Should().BeTrue();
+
+        // Hot edit: turn the HF port's XID probe off and leave everything else alone.
+        var after = Config(
+            Port("bpq-hf", 1, link: new PortLinkConfig { Dial = LinkDialPreference.V20, PreConnectXid = LinkPreConnectXid.Off }),
+            Port("vhf", 2));
+        var plan = ReconcilePlanner.Plan(before, after);
+        plan.LinkChanged.Select(p => p.Id).Should().Equal("bpq-hf");
+        plan.ToRestart.Should().BeEmpty();
+
+        config.Apply(after);
+        await supervisor.ApplyAsync(plan, after);
+
+        supervisor.GetPort("bpq-hf")!.Listener.Should().BeSameAs(hf, "a link-policy edit is a live reseed, not a restart");
+        hf.CurrentSessionParameters.PreConnectXidNegotiatesSrej.Should().BeFalse("the reseed carried the new policy");
+        hf.CurrentSessionParameters.PreferExtendedConnect.Should().BeFalse();
+        vhf.CurrentSessionParameters.PreConnectXidNegotiatesSrej.Should().BeTrue("the other port was not in the plan and must not move");
+    }
 
     [Fact]
     public async Task Adding_a_port_brings_it_up_without_touching_the_existing_one()

@@ -600,6 +600,11 @@ public sealed partial class NodeHostedService : BackgroundService
             parts.Add($"{p.CompatChanged.Count} compat-live");
         }
 
+        if (p.LinkChanged.Count > 0)
+        {
+            parts.Add($"{p.LinkChanged.Count} link-live");
+        }
+
         if (p.TelnetChanged)
         {
             parts.Add("telnet restart");

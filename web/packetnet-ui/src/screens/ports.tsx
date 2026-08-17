@@ -15,12 +15,14 @@ import { PingButton } from "@/components/ping";
 import { DoctorButton } from "@/components/doctor";
 import type {
   PortConfig, PortStatus, TransportConfig, TransportKind, AuthorableTransportKind, AxudpPeer, Ax25PortParams, KissParams, PortSetup, PortBeacon,
-  PortCompatConfig, CompatPreset, RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
+  PortCompatConfig, CompatPreset, PortLinkConfig, LinkDialPreference, LinkPreConnectXid,
+  RadioConfig, RadioScanResult, ReconcileResult, ValidationProblem,
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
 } from "@/lib/types";
 import {
   RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PARAM_HELP,
+  LINK_DIAL_OPTIONS, LINK_DIAL_HELP, LINK_XID_OPTIONS, LINK_XID_HELP,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
 } from "@/lib/catalogue";
 import { portHealth } from "@/lib/health";
@@ -71,6 +73,11 @@ export interface PortDraft {
   // AX.25 compatibility profile. The editor only drives the preset dropdown;
   // YAML-set flag overrides / quirks are carried through untouched.
   compat: PortCompatConfig | null;
+  // How this port dials OUT (which AX.25 version it offers first, and whether a 2.0 dial leads
+  // with an XID to negotiate SREJ). The editor drives BOTH halves of the policy; one that says
+  // nothing beyond the default (Auto + Auto) collapses back to null, so an untouched port stores
+  // no link block at all. Null = the server's Auto + Auto, today's dial behaviour exactly.
+  link: PortLinkConfig | null;
   // Per-port radio-control attachment (RSSI/health). Null = no radio attached.
   radio: RadioConfig | null;
   // Per-port rig-control (CAT) attachment. Null = no rig attached. Unlike radio, valid on
@@ -123,11 +130,21 @@ function transportDesc(t: TransportConfig): string {
   }
 }
 
-// True when the port carries any explicitly-set AX.25 / KISS parameter - i.e. it is tuned away
-// from the engine defaults. Drives the card's setup line and whether the editor opens with the
-// advanced section expanded. An empty ({}) block counts as untuned: it says nothing.
-function hasTunedParams(p: { ax25?: Ax25PortParams | null; kiss?: KissParams | null }): boolean {
-  return Object.keys(p.ax25 ?? {}).length > 0 || Object.keys(p.kiss ?? {}).length > 0;
+// A link policy that says something beyond the default. The editor collapses an all-Auto policy
+// back to null, but a config file may spell the defaults out, so the values decide - not presence.
+function hasTunedLink(link: PortLinkConfig | null | undefined): boolean {
+  return !!link && (link.dial !== "Auto" || link.preConnectXid !== "Auto");
+}
+
+// True when the port carries any explicitly-set AX.25 / KISS parameter, or a link policy beyond
+// the default - i.e. it is tuned away from the engine defaults. Drives the card's setup line and
+// whether the editor opens with the advanced section expanded (so an operator who set a dial
+// preference can see it). An empty ({}) block counts as untuned: it says nothing.
+function hasTunedParams(p: {
+  ax25?: Ax25PortParams | null; kiss?: KissParams | null; link?: PortLinkConfig | null;
+}): boolean {
+  return Object.keys(p.ax25 ?? {}).length > 0 || Object.keys(p.kiss ?? {}).length > 0
+    || hasTunedLink(p.link);
 }
 
 // ---- setup summary line, derived from the PORT'S OWN fields ----
@@ -173,6 +190,8 @@ export function portDraftToConfig(d: PortDraft): PortConfig {
     // a brand-new port inherits the system default.
     beacon: d.beacon ?? null,
     compat: d.compat,
+    // The outbound-dial policy, as the editor's two dropdowns left it (null = Auto + Auto).
+    link: d.link,
     // The radio-control attachment (RSSI/health) and the rig-control (CAT) attachment, both
     // round-tripped intact - including the head-end binding the adopt flow writes, which no
     // control on this screen authors.
@@ -296,6 +315,7 @@ export function Ports() {
     setup: { radio: null, channel: "shared", difficulty: "moderate", custom: false },
     beacon: null,
     compat: null,
+    link: null,
     radio: null,
     rig: null,
     netRomQuality: null,
@@ -318,6 +338,7 @@ export function Ports() {
       setup: { radio: null, channel: "shared", difficulty: "moderate", custom: hasTunedParams(p) },
       beacon: p.beacon,
       compat: p.compat ?? null,
+      link: p.link ?? null,
       radio: p.radio ?? null,
       rig: p.rig ?? null,
       netRomQuality: p.netRomQuality ?? null,
@@ -641,6 +662,20 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
         next.allowInfoOnSupervisoryFrames == null && next.allowCommandFrameAsResponse == null && !next.quirks;
       return { ...d, compat: isDefault ? null : next };
     });
+  // The two Link setup dropdowns. Each writes ONE half of the policy, defaulting the half it does
+  // not own to Auto, and a policy that says nothing beyond the default collapses back to null so
+  // the stored config stays minimal (absent = Auto + Auto, today's dial behaviour exactly).
+  const setLink = (patch: Partial<PortLinkConfig>) =>
+    edit((d) => {
+      const next: PortLinkConfig = {
+        dial: d.link?.dial ?? "Auto",
+        preConnectXid: d.link?.preConnectXid ?? "Auto",
+        ...patch,
+      };
+      return { ...d, link: hasTunedLink(next) ? next : null };
+    });
+  const setLinkDial = (dial: LinkDialPreference) => setLink({ dial });
+  const setLinkPreConnectXid = (preConnectXid: LinkPreConnectXid) => setLink({ preConnectXid });
   const setRadio = (radio: RadioConfig | null) => edit((d) => ({ ...d, radio }));
   const setRig = (rig: RigConfig | null) => edit((d) => ({ ...d, rig }));
 
@@ -670,7 +705,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
 
   // ---- what this save would do ----
   // The LOCAL estimate mirrors ReconcilePlanner's restart classes exactly (transport / profile /
-  // radio / rig / kiss.ackMode restart the one port; ax25 / kiss / compat / NET/ROM knobs go live;
+  // radio / rig / kiss.ackMode restart the one port; ax25 / kiss / compat / link / NET/ROM go live;
   // a rename is a teardown + bring-up of THAT port, never a node reset - that is callsign-only).
   // In live mode a dry-run write replaces it with the node's own verdict (#690 C038).
   const orig = draft;
@@ -702,6 +737,7 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
     disrupt = { tone: "warning", text: `Port ${before.id} will restart.${sessionText}` };
   } else if (
     !same(saved.ax25, before.ax25) || !same(saved.kiss, before.kiss) || !same(saved.compat, before.compat) ||
+    !same(saved.link, before.link) ||
     !same(saved.netRomQuality, before.netRomQuality) || !same(saved.netRomMinQuality, before.netRomMinQuality) ||
     !same(saved.nodesPaclen, before.nodesPaclen)
   ) {
@@ -1047,6 +1083,31 @@ function PortEditor({ draft, onClose, onSave, onPreview, statusById }: {
                       onChange={(v) => setAx(k, v)}
                     />
                   ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Link setup</p>
+                <p className="mb-2 text-[11px] text-muted-foreground">
+                  How this port calls OUT. Incoming calls are always answered in whatever version the caller
+                  used, and a change here applies to the next call your node makes: nothing restarts, no session drops.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Outgoing call version" info={LINK_DIAL_HELP}>
+                    <Select
+                      value={model.link?.dial ?? "Auto"}
+                      onChange={(e) => setLinkDial(e.target.value as LinkDialPreference)}
+                    >
+                      {LINK_DIAL_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Ask for SREJ before a 2.0 call" info={LINK_XID_HELP}>
+                    <Select
+                      value={model.link?.preConnectXid ?? "Auto"}
+                      onChange={(e) => setLinkPreConnectXid(e.target.value as LinkPreConnectXid)}
+                    >
+                      {LINK_XID_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </Select>
+                  </Field>
                 </div>
               </div>
               {usesKiss && (

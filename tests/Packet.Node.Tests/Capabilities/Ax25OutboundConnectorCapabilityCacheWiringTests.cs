@@ -101,7 +101,7 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
     }
 
     [Fact]
-    public async Task A_dial_that_throws_leaves_the_cache_unchanged()
+    public async Task An_extended_dial_that_times_out_with_no_answer_to_either_version_records_nothing()
     {
         var cache = new PeerCapabilityCache();
 
@@ -112,9 +112,13 @@ public sealed class Ax25OutboundConnectorCapabilityCacheWiringTests
         var connector = new Ax25OutboundConnector(PortId, caller, claim: null, localOverride: null, cache: cache);
 
         Func<Task> dial = async () => await connector.ConnectAsync(Target);
-        await dial.Should().ThrowAsync<Exception>("no peer answers, so the connect exhausts its budget and throws");
+        await dial.Should().ThrowAsync<Exception>("no peer answers either version, so both the SABME and the v2.0 retry exhaust their budgets");
 
-        cache.All().Should().BeEmpty("a dial that throws must NOT record an outcome (no link ⇒ no signal)");
+        // A dial that never linked proves nothing: not about SREJ-via-XID, and not about the
+        // peer's AX.25 version either. The silent-to-SABME negative (#724) is learned only when
+        // the peer then ANSWERS the mod-8 retry (see SilentSabmePeerDialTests); silence to both
+        // versions is "off air", and must not demote a v2.2-capable peer for the re-probe window.
+        cache.All().Should().BeEmpty("no answer to either version teaches nothing about the peer");
 
         await caller.DisposeAsync();
     }

@@ -76,6 +76,9 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
         When(p => p.Compat is not null, () =>
             RuleFor(p => p.Compat!).SetValidator(new PortCompatValidator()));
 
+        When(p => p.Link is not null, () =>
+            RuleFor(p => p.Link!).SetValidator(new PortLinkValidator()));
+
         // Optional radio-control attachment. Its own fields are validated by PortRadioValidator;
         // additionally the block must pair with a transport that has a co-located radio:
         //  - a LOCAL radio (port/serial) needs a local serial-modem transport (serial-kiss /
@@ -385,6 +388,29 @@ public sealed class PortCompatValidator : AbstractValidator<PortCompatConfig>
             .WithMessage(c =>
                 $"compat.quirks '{c.Quirks}' is not a known session-quirks selector " +
                 $"(expected one of: {string.Join(", ", Ax25CompatPresets.QuirksNames)} - or omit it for default).");
+    }
+}
+
+/// <summary>
+/// Validates a per-port link policy (<see cref="PortLinkConfig"/>). Both members are enums, so
+/// a typo'd YAML/JSON <em>name</em> is already rejected at parse time (the candidate config is
+/// thrown out whole); what survives to here is a numeric value outside the declared set - which
+/// the JSON enum converter accepts on read - so an out-of-range <c>dial: 99</c> is answered with
+/// a named 422 rather than silently resolving as some default.
+/// </summary>
+public sealed class PortLinkValidator : AbstractValidator<PortLinkConfig>
+{
+    public PortLinkValidator()
+    {
+        RuleFor(l => l.Dial).IsInEnum()
+            .WithMessage(l =>
+                $"link.dial '{(int)l.Dial}' is not a known dial preference " +
+                $"(expected one of: {string.Join(", ", Enum.GetNames<LinkDialPreference>())} - or omit it for auto).");
+
+        RuleFor(l => l.PreConnectXid).IsInEnum()
+            .WithMessage(l =>
+                $"link.preConnectXid '{(int)l.PreConnectXid}' is not a known pre-connect-XID preference " +
+                $"(expected one of: {string.Join(", ", Enum.GetNames<LinkPreConnectXid>())} - or omit it for auto).");
     }
 }
 

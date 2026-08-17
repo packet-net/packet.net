@@ -35,6 +35,18 @@ ports: []
 #      t1Ms: 3000
 #      n2: 10
 #      windowSize: 4
+#    link:                 # optional - per-port OUTBOUND link policy, applied live (inbound is
+#                          # untouched: the node answers whatever version the caller offers).
+#      dial: auto          # which AX.25 version this port's connects offer first:
+#                          #   auto (default) - offer v2.2, and retry as v2.0 for a peer that
+#                          #                    never answers a SABME (learned per peer)
+#                          #   v22            - always v2.2, never fall back
+#                          #   v20            - always plain v2.0 (SABM / mod-8). Pick this for
+#                          #                    a BPQ / LinBPQ neighbour: many IGNORE a SABME
+#                          #                    rather than rejecting it, so a v2.2 dial just
+#                          #                    times out. (bpq32.cfg tell: MAXFRAME <= 7.)
+#      preConnectXid: auto # lead a v2.0 dial with an XID to negotiate SREJ: auto (default) |
+#                          # on | off. No effect on a v2.2 dial.
 #    kiss:                 # optional - applied live, no restart
 #      txDelay: 30         # units of 10 ms
 #      persistence: 63

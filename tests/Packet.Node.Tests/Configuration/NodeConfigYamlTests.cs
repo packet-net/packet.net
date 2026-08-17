@@ -1001,4 +1001,86 @@ public class NodeConfigYamlTests
         reparsed.Applications.Should().BeEquivalentTo(original.Applications);
         reparsed.Apps.Should().BeEquivalentTo(original.Apps);
     }
+
+    [Fact]
+    public void Port_link_policy_parses_case_insensitively_and_round_trips()
+    {
+        // Two ports, two policies: the BPQ-facing one pinned to v2.0, the other left implicit.
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: hf
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8001
+                link:
+                  dial: v20
+                  preConnectXid: on
+              - id: vhf
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8002
+            """;
+
+        var config = NodeConfigYaml.Parse(yaml);
+        config.Ports[0].Link!.Dial.Should().Be(LinkDialPreference.V20, "enum names parse case-insensitively, as netRom.routing: does");
+        config.Ports[0].Link!.PreConnectXid.Should().Be(LinkPreConnectXid.On);
+        config.Ports[1].Link.Should().BeNull("an absent link: block stays absent - it is not materialised on load");
+
+        var reparsed = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(config));
+        reparsed.Ports[0].Link.Should().Be(config.Ports[0].Link);
+        reparsed.Ports[1].Link.Should().BeNull();
+    }
+
+    [Fact]
+    public void Port_link_policy_defaults_to_all_auto_when_the_block_is_partial()
+    {
+        const string yaml = """
+            identity:
+              callsign: M0LTE-1
+            ports:
+              - id: hf
+                transport:
+                  kind: kiss-tcp
+                  host: 127.0.0.1
+                  port: 8001
+                link:
+                  dial: v22
+            """;
+
+        var link = NodeConfigYaml.Parse(yaml).Ports[0].Link!;
+        link.Dial.Should().Be(LinkDialPreference.V22);
+        link.PreConnectXid.Should().Be(LinkPreConnectXid.Auto, "an unstated half keeps the record default");
+        link.IsDefault.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Port_link_policy_round_trips_through_the_canonical_json_dialect()
+    {
+        // The DB blob + the structured PUT /config body share one dialect (NodeConfigJson), and
+        // enums cross it as their member NAMES - the shape docs/node-api.md and types.ts model.
+        var original = new NodeConfig
+        {
+            Identity = new Identity { Callsign = "M0LTE-1" },
+            Ports =
+            [
+                new PortConfig
+                {
+                    Id = "hf",
+                    Transport = new KissTcpTransport { Host = "127.0.0.1", Port = 8001 },
+                    Link = new PortLinkConfig { Dial = LinkDialPreference.V20, PreConnectXid = LinkPreConnectXid.Off },
+                },
+            ],
+        };
+
+        var json = NodeConfigJson.Serialize(original);
+        json.Should().Contain("\"dial\":\"V20\"", "enums cross the config dialect as their member names")
+            .And.Contain("\"preConnectXid\":\"Off\"")
+            .And.NotContain("isDefault", "the derived projections are not part of the wire contract");
+
+        NodeConfigJson.Deserialize(json).Ports[0].Link.Should().Be(original.Ports[0].Link);
+    }
 }

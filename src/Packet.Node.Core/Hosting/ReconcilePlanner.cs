@@ -29,6 +29,9 @@ namespace Packet.Node.Core.Hosting;
 /// object identity and in-flight state. (Slice 1 deferred this to the next
 /// bring-up because the engine seeded options at construction only; the engine
 /// now exposes a live reseed, so this class is HOT — non-disrupting.)</item>
+/// <item><b>Link policy changed</b> (only) → live-reseed via the same mechanism: the
+/// reseeded record carries the listener's dial defaults, and the connector reads the new
+/// policy on its next dial. Future dials only; no restart.</item>
 /// <item><b>Compat profile changed</b> (only) → live-reseed via the same
 /// mechanism: the reseeded parameter record carries the parse options (read
 /// per inbound frame, so they apply to the very next frame) and the session
@@ -79,6 +82,7 @@ public static class ReconcilePlanner
         var kissChanged = new List<PortConfig>();
         var ax25Changed = new List<PortConfig>();
         var compatChanged = new List<PortConfig>();
+        var linkChanged = new List<PortConfig>();
         var netRomQualityChanged = new List<PortConfig>();
 
         // Removed ports.
@@ -168,6 +172,13 @@ public static class ReconcilePlanner
             {
                 compatChanged.Add(newPort);
             }
+            // Per-port link policy (dial preference / pre-connect XID): hot, like compat. It
+            // decides what the NEXT outbound dial offers; a session already up keeps the version
+            // it negotiated, so nothing needs restarting.
+            if (!Equals(oldPort.Link, newPort.Link))
+            {
+                linkChanged.Add(newPort);
+            }
             // Per-port NET/ROM awareness knobs (QUALITY / MINQUAL / NODESPACLEN): a hot edit
             // (NET/ROM awareness + advertisement is read-only — it never disturbs a session),
             // applied by swapping the port's attachment quality/minqual/paclen. Any of the
@@ -190,6 +201,7 @@ public static class ReconcilePlanner
             KissParamsChanged = kissChanged,
             Ax25ParamsChanged = ax25Changed,
             CompatChanged = compatChanged,
+            LinkChanged = linkChanged,
             NetRomQualityChanged = netRomQualityChanged,
             TelnetChanged = telnetChanged,
             ServicesChanged = servicesChanged,

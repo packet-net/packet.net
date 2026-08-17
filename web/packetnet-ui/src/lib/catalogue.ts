@@ -13,8 +13,8 @@
 // (api.ts + types.ts); if it is copy, a preset or a conversion, it belongs here.
 // ============================================================
 import type {
-  ApplyImpact, ChannelMode, FieldHelp, FrameType, LinkDifficulty, NetRomRouting,
-  NinoMode, ParamHelp, RadioProfile, ToggleHelp,
+  ApplyImpact, ChannelMode, FieldHelp, FrameType, LinkDialPreference, LinkDifficulty,
+  LinkPreConnectXid, NetRomRouting, NinoMode, ParamHelp, RadioProfile, ToggleHelp,
 } from "./types";
 
 // field apply-impact map (hot vs disruptive) → per-field badges + reconcile
@@ -184,6 +184,41 @@ export function tenMsToMs(units: number): number { return units * 10; }
 /** Milliseconds back to a KISS 10 ms-unit byte, clamped to the 0..255 the wire allows
  *  (255 = 2.55 s, the longest TXDELAY/TXTAIL/SLOTTIME KISS can express). */
 export function msToTenMs(ms: number): number { return Math.min(255, Math.max(0, Math.round(ms / 10))); }
+
+// per-port link setup: how a port dials OUT -----------------
+// Operator copy for PortConfig.link (server: PortLinkConfig) - the two dropdowns the Ports editor
+// renders under "Link setup". Each list pairs the server enum's member names, which are what cross
+// the wire, with the words an operator chooses between. Both knobs only ever affect connects THIS
+// node makes: an incoming call is always answered in whatever version the caller offered. Both are
+// live - the next outgoing call uses the new setting, nothing restarts and no session drops.
+export const LINK_DIAL_OPTIONS: { id: LinkDialPreference; label: string }[] = [
+  { id: "Auto", label: "Automatic - try AX.25 2.2, remember what each station answers (default)" },
+  { id: "V22", label: "AX.25 2.2 only - never fall back" },
+  { id: "V20", label: "AX.25 2.0 only - for BPQ / LinBPQ and older TNCs" },
+];
+export const LINK_DIAL_HELP =
+  "Which version of AX.25 this port offers first when your node calls another station. Automatic offers 2.2 " +
+  "(SABME, the 128-frame window) and learns per station: one that never answers a 2.2 call is dialled as 2.0 " +
+  "from then on, and the node retries in 2.0 straight away so the first call still connects. AX.25 2.2 only " +
+  "always offers 2.2 and neither falls back nor learns, for a port where every station is known to speak it. " +
+  "AX.25 2.0 only always makes a plain 2.0 call (SABM, the 8-frame window): pick it for a port facing BPQ / " +
+  "LinBPQ or older TNCs, many of which ignore a 2.2 call outright instead of refusing it, so offering 2.2 first " +
+  "just times out. A BPQ port set to MAXFRAME 7 or lower is the tell. Incoming calls are unaffected either way; " +
+  "the node answers in whatever version the caller used. Applied live: it changes the next call your node makes, " +
+  "nothing restarts and no session drops.";
+export const LINK_XID_OPTIONS: { id: LinkPreConnectXid; label: string }[] = [
+  { id: "Auto", label: "Automatic - ask unless this station has ignored it before (default)" },
+  { id: "On", label: "Always ask" },
+  { id: "Off", label: "Never ask" },
+];
+export const LINK_XID_HELP =
+  "Whether an AX.25 2.0 call opens with an XID exchange to agree Selective Reject (SREJ) before the connect " +
+  "frame. SREJ lets a station ask again for just the one frame it missed rather than everything sent after it, " +
+  "which is a large saving on a lossy path. Automatic sends the XID unless the node has learned this station " +
+  "does not answer one; Always sends it every time; Never skips it. It does nothing on a 2.2 call, which agrees " +
+  "XID once the link is already up. LinBPQ needs the up-front XID to do SREJ at 8-frame numbering, and a station " +
+  "that ignores XID simply costs a short wait before the call goes out. Applied live: it changes the next call " +
+  "your node makes, nothing restarts and no session drops.";
 
 // NET/ROM + INP3 operator copy -------------------------------
 export const NETROM_TOGGLE_HELP: Record<string, ToggleHelp> = {

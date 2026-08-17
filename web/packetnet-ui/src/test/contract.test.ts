@@ -291,6 +291,8 @@ describe("contract: the server's JSON satisfies types.ts", () => {
 const CLOSED_SETS: Record<string, string> = {
   transportKinds: "TransportKind",
   compatPresets: "CompatPreset",
+  linkDial: "LinkDialPreference",
+  linkPreConnectXid: "LinkPreConnectXid",
   netRomRouting: "NetRomRouting",
   netRomForwardMode: "NetRomForwardMode",
   appPackageStates: "AppPackageState",
