@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Packet.Radio;
 using Packet.Radio.Tait.Ccdi;
 
@@ -8,6 +9,24 @@ public class TaitCcdiRadioTests
     // The exact CCDI wire commands, computed by the real codec so the checksum is never guessed.
     private static string EnterTransparent() => new CcdiFrame('t', "+0").Encode();
     private static string ModelQuery() => new CcdiFrame('q', "").Encode();
+
+    /// <summary>Options with both watchdog duties off, so nothing but the test writes to the
+    /// wire (the fake-clock tests advance time far enough to trip them otherwise).</summary>
+    private static TaitCcdiRadioOptions Quiet() =>
+        new() { KeepAliveInterval = null, StaleBusyRevalidateAfter = null };
+
+    /// <summary>Walk <paramref name="clock"/> forward in fake-time steps until
+    /// <paramref name="inflight"/> settles, so a virtualised deadline fires without a real wait.</summary>
+    private static async Task AdvanceUntilSettledAsync(FakeTimeProvider clock, Task inflight)
+    {
+        for (int i = 0; i < 40 && !inflight.IsCompleted; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(5);
+        }
+
+        inflight.IsCompleted.Should().BeTrue("the operation's deadline must run on the injected clock");
+    }
 
     [Fact]
     public async Task EscapeAndVerify_Recovers_When_A_Model_Query_Answers()
@@ -150,6 +169,79 @@ public class TaitCcdiRadioTests
         await radio.DisposeAsync();
 
         io.WrittenAscii.Should().EndWith("f0290CF\r");
+    }
+
+    [Fact]
+    public async Task Dispose_Unkeys_A_Transmitter_Whose_Key_Command_Timed_Out()
+    {
+        var clock = new FakeTimeProvider();
+        var io = new FakeSerialIo();
+        // Nothing answers the key: the radio takes the 'f91' bytes and never prompts, so the
+        // command fails with the transmitter quite possibly keyed (#698).
+        var radio = TaitCcdiRadio.OpenForTest(io, Quiet() with { TransactionTimeout = TimeSpan.FromSeconds(2) }, clock);
+
+        var keying = radio.SetTransmitterAsync(true).AsTask();
+        await AdvanceUntilSettledAsync(clock, keying);
+        var act = () => keying;
+        await act.Should().ThrowAsync<TimeoutException>();
+
+        await radio.DisposeAsync();
+
+        io.WrittenAscii.Should().Contain("f0291CE\r", "the key bytes reach the radio before the deadline can expire");
+        io.WrittenAscii.Should().EndWith(
+            "f0290CF\r",
+            "FUNCTION 9 keying never expires by itself, so a key command that failed after writing " +
+            "its bytes must still be unkeyed on the way out");
+    }
+
+    [Fact]
+    public async Task EscapeAndVerify_Bounds_Its_Verify_Wait_On_The_Injected_Clock()
+    {
+        var clock = new FakeTimeProvider();
+        using var io = new FakeSerialIo();
+        io.RespondTo(EnterTransparent(), ".");
+        // No MODEL answer, and a transaction deadline far beyond the verify budget: only the
+        // verify budget can end the attempt, and only if it runs on the injected clock.
+        await using var radio = TaitCcdiRadio.OpenForTest(
+            io,
+            Quiet() with { PromptErrorGrace = TimeSpan.Zero, TransactionTimeout = TimeSpan.FromMinutes(10) },
+            clock);
+        await radio.EnterTransparentModeAsync();
+
+        var escaping = radio.EscapeAndVerifyTransparentAsync(
+            attempts: 1, guardTime: TimeSpan.FromSeconds(2), verifyTimeout: TimeSpan.FromSeconds(30));
+        await AdvanceUntilSettledAsync(clock, escaping);
+
+        (await escaping).Should().BeFalse("an unanswered MODEL query means the radio is wedged in Transparent");
+        io.WrittenAscii.Should().Contain("+++", "the escape must be attempted before declaring the radio wedged");
+    }
+
+    [Fact]
+    public async Task TransactRaw_Refuses_Parameters_Longer_Than_A_Two_Digit_Size()
+    {
+        using var io = new FakeSerialIo();
+        await using var radio = TaitCcdiRadio.OpenForTest(io, Quiet());
+
+        var act = async () => await radio.TransactRawAsync('q', new string('A', 256));
+
+        (await act.Should().ThrowAsync<ArgumentException>()).WithMessage("*two hex digits*");
+        io.WrittenAscii.Should().BeEmpty("a frame no CCDI receiver could parse must never reach the wire");
+    }
+
+    [Theory]
+    [InlineData('\r')]
+    [InlineData('\n')]
+    [InlineData('\u0011')]
+    [InlineData('\u0013')]
+    public async Task TransactRaw_Refuses_Parameters_That_Would_Corrupt_Line_Framing(char forbidden)
+    {
+        using var io = new FakeSerialIo();
+        await using var radio = TaitCcdiRadio.OpenForTest(io, Quiet());
+
+        var act = async () => await radio.TransactRawAsync('q', $"AB{forbidden}CD");
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        io.WrittenAscii.Should().BeEmpty("the modelled commands refuse these bytes; the escape hatch must too");
     }
 
     [Fact]

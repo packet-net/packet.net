@@ -317,12 +317,32 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// so this driver unkeys on dispose if the transmitter was left keyed through it.</remarks>
     public async ValueTask SetTransmitterAsync(bool transmit, CancellationToken cancellationToken = default)
     {
+        if (transmit)
+        {
+            // Latch BEFORE the command goes out (#698): the 'f91' frame is written to the port
+            // first and only then does this await wait for the prompt, so a transaction timeout
+            // can leave a keyed transmitter behind a latch that was never set. Latching first
+            // makes every uncertain outcome resolve toward sending the unkey on dispose, which
+            // is the harmless direction: FUNCTION 9 keying never expires by itself, and an
+            // 'f90' to a radio that never keyed is a no-op.
+            lock (stateGate)
+            {
+                weKeyedTransmitter = true;
+            }
+        }
+
         await TransactAsync(
             new CcdiFrame('f', transmit ? "91" : "90"), matches: null, minCount: 0,
             completeOnPrompt: true, quietTime: null, cancellationToken).ConfigureAwait(false);
-        lock (stateGate)
+
+        if (!transmit)
         {
-            weKeyedTransmitter = transmit;
+            // Cleared only once the radio has acknowledged the unkey; a key-off that faulted
+            // leaves the latch set so the dispose path tries again.
+            lock (stateGate)
+            {
+                weKeyedTransmitter = false;
+            }
         }
     }
 
@@ -902,8 +922,11 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
             {
                 mode = TaitProtocolMode.Command;
             }
-            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            attemptCts.CancelAfter(verify);
+            // The verify budget runs on the driver's clock (plan 2.7), like the guard delays
+            // either side of it, so a FakeTimeProvider test can drive the whole escape dance.
+            using var verifyCts = new CancellationTokenSource(verify, clock);
+            using var attemptCts =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, verifyCts.Token);
             try
             {
                 _ = await ExpectOneAsync<CcdiModelMessage>(new CcdiFrame('q', ""), attemptCts.Token)
@@ -985,10 +1008,23 @@ public sealed class TaitCcdiRadio : IRadioControl, IDisposable
     /// with nothing new (checksum and framing are handled for you). Unsolicited PROGRESS
     /// messages still route to events, not to the returned list.
     /// </summary>
+    /// <param name="ident">The CCDI IDENT character of the command.</param>
+    /// <param name="parameters">The PARAMETERS field, at most
+    /// <see cref="CcdiFrame.MaxParameterLength"/> characters (SIZE is two hex digits, §1.8.3).
+    /// CR, LF and XON/XOFF are refused: they would break the framing of the line this command
+    /// is written on, exactly as they are on the modelled SDM commands.</param>
+    /// <param name="quietTime">How long the radio must stay silent before the response is
+    /// considered complete; null uses 150 ms.</param>
+    /// <param name="cancellationToken">Cancels waiting for the response.</param>
+    /// <exception cref="ArgumentException"><paramref name="parameters"/> is too long or holds a
+    /// character that would corrupt CCDI line framing.</exception>
     public Task<IReadOnlyList<CcdiMessage>> TransactRawAsync(
         char ident, string parameters, TimeSpan? quietTime = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parameters);
+        // #698: unlike the modelled commands, this one takes its parameters straight from the
+        // caller - bound them here so an unrenderable frame is refused before it reaches the wire.
+        CcdiFrame.ValidateParameters(parameters);
         return TransactAsync(
             new CcdiFrame(ident, parameters), m => m is not CcdiProgressMessage, minCount: 0,
             completeOnPrompt: true, quietTime: quietTime ?? TimeSpan.FromMilliseconds(150), cancellationToken);
