@@ -305,8 +305,9 @@ public static class PdnAppPackagesApi
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>The whole inventory: discovered packages (catalog order), then the inline
-    /// <c>applications:</c> entries (config order). The node-resolved callsign map is computed
-    /// once (the node is the callsign authority) and threaded into every row's projection.</summary>
+    /// <c>applications:</c> entries (config order), then the configured-but-not-installed
+    /// <c>apps:</c> overrides. The node-resolved callsign map is computed once (the node is the
+    /// callsign authority) and threaded into every row's projection.</summary>
     private static List<AppPackageEntry> BuildInventory(
         NodeConfig config, IAppPackageCatalog catalog, IAppServiceSupervisor? supervisor)
     {
@@ -320,6 +321,16 @@ public static class PdnAppPackagesApi
         foreach (var inline in config.Applications)
         {
             entries.Add(ProjectInline(inline, callsigns));
+        }
+
+        // Config says these apps exist; no root holds their package. Surfacing them is the
+        // whole point (#738 item 2): the panel used to say "No app packages" for a node with
+        // four enabled-but-payload-less apps, so a lost payload looked like a healthy node.
+        // They project as `installed: false` rows, keeping the owner's trust switch visible so
+        // the app can be turned off (or the package reinstalled) from the screen that told them.
+        foreach (var missing in AppPackageCatalog.ConfiguredButNotInstalled(config, discovered))
+        {
+            entries.Add(ProjectNotInstalled(missing));
         }
         return entries;
     }
@@ -345,13 +356,20 @@ public static class PdnAppPackagesApi
         var override_ = config.Apps.FirstOrDefault(a =>
             string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
         var resolvedCall = callsigns.TryGetValue(id, out var rc) ? rc.Callsign.ToString() : null;
-        return new AppPackageEntry(
-            Id: id, Name: id, Version: null, Description: null, Icon: null,
-            Capabilities: [], Enabled: override_?.Enabled ?? false, Source: "package",
-            Error: null, Service: "none", State: null, Pid: null, Detail: null, Forwards: [],
-            Command: override_?.Command, Callsign: resolvedCall, PinnedCallsign: override_?.Callsign,
-            NetromAlias: override_?.Netrom?.Alias, NetromQuality: override_?.Netrom?.Quality);
+        return ProjectNotInstalled(override_ ?? new AppOverrideConfig { Id = id }, resolvedCall);
     }
+
+    /// <summary>One configured-but-not-installed app: an <c>apps:</c> override naming a package
+    /// no root holds. <c>installed: false</c> is the whole signal: there is no manifest, so
+    /// there is no name, version, capability list or service to report, and the owner's
+    /// identity overrides are surfaced verbatim so they round-trip if the package lands
+    /// later.</summary>
+    private static AppPackageEntry ProjectNotInstalled(AppOverrideConfig app, string? resolvedCallsign = null) =>
+        new(Id: app.Id, Name: app.Id, Version: null, Description: null, Icon: null,
+            Capabilities: [], Enabled: app.Enabled, Source: "package", Installed: false,
+            Error: null, Service: "none", State: null, Pid: null, Detail: null, Forwards: [],
+            Command: app.Command, Callsign: resolvedCallsign, PinnedCallsign: app.Callsign,
+            NetromAlias: app.Netrom?.Alias, NetromQuality: app.Netrom?.Quality);
 
     private static AppPackageEntry ProjectPackage(
         DiscoveredAppPackage package, IAppServiceSupervisor? supervisor,
@@ -406,6 +424,7 @@ public static class PdnAppPackagesApi
             Capabilities: AppCapabilities.NormalizeAll(manifest?.Capabilities),
             Enabled: package.Enabled,
             Source: "package",
+            Installed: true,
             Error: package.Error,
             Service: service,
             State: state,
@@ -436,6 +455,9 @@ public static class PdnAppPackagesApi
         Capabilities: AppCapabilities.NormalizeAll(inline.Capabilities),
         Enabled: inline.Enabled,
         Source: "inline",
+        // An inline entry IS its own payload (an executable/socket named in config), so there
+        // is no package to be missing, so always installed.
+        Installed: true,
         Error: null,
         Service: "none",
         State: null,
@@ -456,7 +478,9 @@ public static class PdnAppPackagesApi
         packages.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>One inventory row (the <c>/api/v1/apps/packages</c> shape — camelCase on the
-    /// wire). <c>Source</c> is <c>package</c>|<c>inline</c>; <c>Service</c> is
+    /// wire). <c>Source</c> is <c>package</c>|<c>inline</c>; <c>Installed</c> is false only for
+    /// a configured <c>apps:</c> override whose package no root holds (there is no manifest, so
+    /// no name, version, capability list or service; #738 item 2); <c>Service</c> is
     /// <c>none</c>|<c>managed</c>|<c>external</c>; <c>State</c> is an
     /// <see cref="AppServiceState"/> name, or null when there is no service. <c>Forwards</c> is
     /// the manifest's declared tailnet port forwards (empty for inline entries / no
@@ -484,6 +508,7 @@ public static class PdnAppPackagesApi
         IReadOnlyList<string> Capabilities,
         bool Enabled,
         string Source,
+        bool Installed,
         string? Error,
         string Service,
         string? State,

@@ -77,6 +77,21 @@ public sealed partial class AppServiceSupervisor(
         {
             var current = config.Current;
             var discovered = catalog.Discover(current);
+
+            // Say the silent failure out loud (#738 item 2): an apps: entry the owner ENABLED
+            // whose package is not installed can never be in the desired set below, and nothing
+            // else reports it: the catalog only warns about packages it FOUND and could not
+            // parse. On the rehearsed CT129 config that meant four enabled apps, no payloads,
+            // and a node that looked perfectly healthy. Bring-up and every config apply come
+            // through here, so the warning repeats exactly as often as the reconcile does.
+            foreach (var app in AppPackageCatalog.ConfiguredButNotInstalled(current, discovered))
+            {
+                if (app.Enabled)
+                {
+                    LogConfiguredAppNotInstalled(app.Id, string.Join(", ", AppPackageCatalog.RootsFor(current)));
+                }
+            }
+
             // The node is the callsign authority — resolve every enabled packet app's callsign
             // once per reconcile so the PDN_APP_CALLSIGN we inject is consistent across the set.
             var callsigns = AppCallsignResolver.Resolve(current, discovered);
@@ -692,6 +707,10 @@ public sealed partial class AppServiceSupervisor(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App service '{Id}' is no longer desired; stopping it.")]
     private partial void LogStoppingSurplus(string id);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "App '{Id}' is enabled in config but no package is installed (scanned {Roots}); it is not running. Install it, or remove its apps: entry.")]
+    private partial void LogConfiguredAppNotInstalled(string id, string roots);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "App service '{Id}' spawn changed; restarting it.")]
     private partial void LogRestartingChanged(string id);

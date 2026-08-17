@@ -27,6 +27,40 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
 
     private const string StateRootDir = "/var/lib/packetnet/apps";
 
+    /// <summary>The roots <see cref="Discover"/> would scan for <paramref name="config"/>: the
+    /// config's <c>appPackageRoots:</c> when set, else <see cref="DefaultRoots"/>. Exposed so
+    /// the "you configured an app that is not installed" report can say where we looked.</summary>
+    public static IReadOnlyList<string> RootsFor(NodeConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        return config.AppPackageRoots ?? DefaultRoots;
+    }
+
+    /// <summary>
+    /// The owner's <c>apps:</c> overrides that name a package no root holds, in config order:
+    /// a configured app whose payload is not installed.
+    /// </summary>
+    /// <remarks>
+    /// Nothing used to say this out loud: <see cref="Discover"/> only reports what it FOUND, the
+    /// inventory only projects discovered packages plus inline entries, and the panel therefore
+    /// said "No app packages" for a node with four enabled apps whose payloads had gone missing
+    /// (#738 item 2; a lost payload looked exactly like a healthy idle node). The supervisor
+    /// warns per enabled entry on every bring-up and reconcile, and the API projects the whole
+    /// set as not-installed rows. An id that matches an inline <c>applications:</c> entry is not
+    /// missing; it is that entry (the catalog flags the collision separately).
+    /// </remarks>
+    public static IReadOnlyList<AppOverrideConfig> ConfiguredButNotInstalled(
+        NodeConfig config, IReadOnlyList<DiscoveredAppPackage> discovered)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(discovered);
+
+        return [.. config.Apps.Where(app =>
+            !string.IsNullOrWhiteSpace(app.Id)
+            && !discovered.Any(p => string.Equals(p.Id, app.Id, StringComparison.OrdinalIgnoreCase))
+            && !config.Applications.Any(a => string.Equals(a.Id, app.Id, StringComparison.OrdinalIgnoreCase)))];
+    }
+
     /// <summary>The tailnet listen port reserved for the web reverse-proxy (the sidecar's own
     /// <c>ListenTLS(":443")</c>) — an app's <c>forward.listen</c> may not claim it.</summary>
     private const int ReservedWebPort = 443;

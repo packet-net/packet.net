@@ -1148,7 +1148,9 @@ export interface NodeApp {
 // ---- app packages (GET /api/v1/apps/packages) ---------------
 // One discovered app package - or inline config-authored app - with its manifest
 // summary + supervisor state (mirrors PdnAppPackagesApi.AppPackageEntry, camelCase
-// on the wire). `error` non-null = a broken package (unreadable/invalid manifest);
+// on the wire) - or a configured app whose package is not installed at all
+// (`installed: false`, no manifest behind it). `error` non-null = a broken package
+// (unreadable/invalid manifest);
 // it can never be enabled. `state` is null exactly when service === "none" (there
 // is nothing to run); `pid` is set only while a managed process is alive; `detail`
 // carries supervisor context (e.g. the crash-loop detail behind a Faulted state).
@@ -1192,6 +1194,10 @@ export interface AppPackage {
   capabilities: string[];
   enabled: boolean;
   source: AppPackageSource;
+  /** False for a configured `apps:` entry whose package no root holds - the app the node knows
+   *  about but cannot run. There is no manifest behind it, so name/version/capabilities/service
+   *  carry nothing: render the row from this flag (packet.net#738 item 2). */
+  installed: boolean;
   error: string | null;
   service: AppPackageService;
   state: AppPackageState | null;

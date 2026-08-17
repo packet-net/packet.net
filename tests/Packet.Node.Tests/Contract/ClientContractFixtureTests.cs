@@ -281,13 +281,22 @@ public sealed class ClientContractFixtureTests
         ["AppPackage.json"] = new[]
         {
             new PdnAppPackagesApi.AppPackageEntry("wall", "WALL", "1.2.0", "Shared message wall",
-                "message-square", ["session", "web"], Enabled: true, Source: "package", Error: null,
+                "message-square", ["session", "web"], Enabled: true, Source: "package",
+                Installed: true, Error: null,
                 Service: "managed", State: "Running", Pid: 4711, Detail: null,
                 Forwards: [new PdnAppPackagesApi.AppForwardEntry(993, "127.0.0.1:1430", "terminate")],
                 Command: "WALL", Callsign: "M0LTE-1", PinnedCallsign: "M0LTE-1",
                 NetromAlias: "RDGWAL", NetromQuality: 255),
             new PdnAppPackagesApi.AppPackageEntry("wx", "wx", null, null, null, [], Enabled: false,
-                Source: "inline", Error: "pdn-app.yaml: missing required field 'command'",
+                Source: "inline", Installed: true, Error: "pdn-app.yaml: missing required field 'command'",
+                Service: "none", State: null, Pid: null, Detail: null, Forwards: [],
+                Command: null, Callsign: null, PinnedCallsign: null,
+                NetromAlias: null, NetromQuality: null),
+            // The configured-but-not-installed row (#738 item 2): an apps: override naming a
+            // package no root holds. No manifest, so no name/version/capabilities - the client
+            // has to render it from `installed: false` alone.
+            new PdnAppPackagesApi.AppPackageEntry("ghost", "ghost", null, null, null, [],
+                Enabled: true, Source: "package", Installed: false, Error: null,
                 Service: "none", State: null, Pid: null, Detail: null, Forwards: [],
                 Command: null, Callsign: null, PinnedCallsign: null,
                 NetromAlias: null, NetromQuality: null),
