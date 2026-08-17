@@ -1,10 +1,10 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Core;
 using Packet.NetRom.Routing;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.NetRom;
 
@@ -109,7 +109,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             {
                 return null;   // never saved
             }
-            var savedAt = ParseStamp(savedRaw);
+            var savedAt = SqliteStamps.ParseStamp(savedRaw);
 
             var neighbourRows = conn.Query<NeighbourRow>(
                 "SELECT callsign AS Callsign, alias AS Alias, port_id AS PortId, " +
@@ -126,7 +126,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
                 if (Callsign.TryParse(n.Callsign, out var call))
                 {
                     neighbours.Add(new NetRomNeighbour(
-                        call, n.Alias, n.PortId, (byte)n.PathQuality, ParseStamp(n.LastHeardUtc)));
+                        call, n.Alias, n.PortId, (byte)n.PathQuality, SqliteStamps.ParseStamp(n.LastHeardUtc)));
                 }
             }
 
@@ -189,7 +189,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
                         a = n.Alias,
                         p = n.PortId,
                         q = (int)n.PathQuality,
-                        h = Stamp(n.LastHeard),
+                        h = SqliteStamps.Stamp(n.LastHeard),
                     },
                     tx);
             }
@@ -219,7 +219,7 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             conn.Execute(
                 "INSERT INTO meta (key, value) VALUES (@k, @v) " +
                 "ON CONFLICT(key) DO UPDATE SET value = @v;",
-                new { k = SavedAtKey, v = Stamp(savedAt) }, tx);
+                new { k = SavedAtKey, v = SqliteStamps.Stamp(savedAt) }, tx);
 
             tx.Commit();
         }
@@ -228,11 +228,6 @@ public sealed partial class SqliteNetRomRoutingStore : INetRomRoutingStore
             LogSaveFailed(ex, connectionString);
         }
     }
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     // Dapper row DTOs (mutable so Dapper's setter mapping binds them).
     private sealed class NeighbourRow

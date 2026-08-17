@@ -180,10 +180,19 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
     {
         ArgumentNullException.ThrowIfNull(config);
 
+        // Belt-and-braces with the validator's 1..CurrentSchemaVersion bound: the store
+        // stamps the version IT targets, never the caller's. A row is only ever written by
+        // this build, so it is by construction readable by this build; a stale or typo'd
+        // caller stamp can no longer be persisted and brick the next boot. The payload is
+        // normalised to the same number so the blob and the schema_ver column agree.
+        var stamped = config.SchemaVersion == targetSchemaVersion
+            ? config
+            : config with { SchemaVersion = targetSchemaVersion };
+
         string payload;
         try
         {
-            payload = NodeConfigJson.Serialize(config);
+            payload = NodeConfigJson.Serialize(stamped);
         }
         catch (JsonException ex)
         {
@@ -203,7 +212,7 @@ public sealed partial class SqliteConfigStore : ISqliteConfigStore
                 "schema_ver = @ver, format = @fmt, payload = @payload, updated_utc = @updated;",
                 new
                 {
-                    ver = config.SchemaVersion,
+                    ver = targetSchemaVersion,
                     fmt = JsonFormat,
                     payload,
                     updated = Stamp(clock.GetUtcNow()),

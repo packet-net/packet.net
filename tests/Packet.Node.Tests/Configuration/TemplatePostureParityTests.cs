@@ -30,6 +30,23 @@ public sealed class TemplatePostureParityTests
         inCode.Management.Telnet.Port.Should().Be(packaged.Management.Telnet.Port);
     }
 
+    /// <summary>
+    /// C069: both templates seed a FIRST-BOOT config, so both must stamp the version this
+    /// build actually produces. They said 1 while <see cref="NodeConfig.CurrentSchemaVersion"/>
+    /// was 2, so every fresh install persisted a stale row and re-ran the migration chain on
+    /// every boot. Bumping CurrentSchemaVersion without bumping the templates now fails here.
+    /// </summary>
+    [Fact]
+    public void Both_templates_stamp_the_schema_version_this_build_produces()
+    {
+        var inCode = NodeConfigYaml.Parse(NodeConfigTemplate.Yaml);
+        var packaged = NodeConfigYaml.Parse(
+            File.ReadAllText(Path.Combine(RepoRoot(), "packaging", "packetnet.yaml")));
+
+        inCode.SchemaVersion.Should().Be(NodeConfig.CurrentSchemaVersion);
+        packaged.SchemaVersion.Should().Be(NodeConfig.CurrentSchemaVersion);
+    }
+
     /// <summary>Walk up from the test assembly to the repo root (the directory that has
     /// <c>packaging/packetnet.yaml</c>), same approach as <c>ShippedManifestsTests</c>.</summary>
     private static string RepoRoot()

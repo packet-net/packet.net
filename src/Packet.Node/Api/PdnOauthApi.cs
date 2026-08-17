@@ -180,6 +180,11 @@ public static class PdnOauthApi
                 return Results.NotFound();
             }
 
+            // Opportunistic cleanup, fault-swallowed (the same discipline as the refresh-token
+            // prune on /auth/login). Consume only deletes codes that come back to /token, so an
+            // abandoned authorize would otherwise leave its row behind for ever.
+            codes.PruneExpired(clock.GetUtcNow());
+
             var form = await ctx.Request.ReadFormAsync();
             var req = AuthorizeRequest.FromForm(form);
 
@@ -208,7 +213,7 @@ public static class PdnOauthApi
 
             if (throttle is not null && (throttle.IsLocked(userKey) || throttle.IsLocked(ipKey)))
             {
-                return Results.Content(ConsentPage(client.ClientName, req, "Too many attempts — try again later."), "text/html", Encoding.UTF8, StatusCodes.Status429TooManyRequests);
+                return Results.Content(ConsentPage(client.ClientName, req, "Too many attempts - try again later."), "text/html", Encoding.UTF8, StatusCodes.Status429TooManyRequests);
             }
 
             var user = users.FindByUsername(username);

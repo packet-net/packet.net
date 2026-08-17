@@ -34,7 +34,7 @@ internal static class HeadEndProbeGate
         {
             throw new TimeoutException(
                 $"the {action} waited {MaxWait.TotalSeconds:0}s for another head-end probe action " +
-                "(scan or keyup pairing) to finish — one is still running.");
+                "(scan or keyup pairing) to finish - one is still running.");
         }
     }
 

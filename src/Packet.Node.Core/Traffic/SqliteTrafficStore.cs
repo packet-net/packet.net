@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Api;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Traffic;
 
@@ -143,7 +144,7 @@ public sealed partial class SqliteTrafficStore
                     "VALUES (@ts, @port, @dir, @src, @dst, @kind, @ns, @nr, @pf, @ctl, @pid, @len, @raw, @rssi, @snr, @noise);",
                     new
                     {
-                        ts = Stamp(r.TimestampUtc),
+                        ts = SqliteStamps.Stamp(r.TimestampUtc),
                         port = r.PortId,
                         dir = r.Direction,
                         src = r.Source,
@@ -193,8 +194,8 @@ public sealed partial class SqliteTrafficStore
                 new
                 {
                     port = portId,
-                    since = sinceUtc is { } s ? Stamp(s) : null,
-                    until = untilUtc is { } u ? Stamp(u) : null,
+                    since = sinceUtc is { } s ? SqliteStamps.Stamp(s) : null,
+                    until = untilUtc is { } u ? SqliteStamps.Stamp(u) : null,
                     limit,
                 });
             return rows.Select(ToFrame).ToArray();
@@ -213,7 +214,7 @@ public sealed partial class SqliteTrafficStore
         try
         {
             using var conn = Open();
-            int rows = conn.Execute("DELETE FROM traffic WHERE ts_utc < @c;", new { c = Stamp(cutoffUtc) });
+            int rows = conn.Execute("DELETE FROM traffic WHERE ts_utc < @c;", new { c = SqliteStamps.Stamp(cutoffUtc) });
             if (rows > 0)
             {
                 conn.Execute("PRAGMA incremental_vacuum;");
@@ -317,7 +318,7 @@ public sealed partial class SqliteTrafficStore
         }
         return new TrafficFrame(
             Id: row.Id,
-            Timestamp: ParseStamp(row.TsUtc),
+            Timestamp: SqliteStamps.ParseStamp(row.TsUtc),
             PortId: row.Port,
             Direction: row.Direction,
             Source: row.Source,
@@ -336,12 +337,6 @@ public sealed partial class SqliteTrafficStore
             SnrDb: row.SnrDb is { } sn ? (float?)sn : null,
             NoiseFloorDbm: row.NoiseFloorDbm is { } nf ? (float?)nf : null);
     }
-
-    private static string Stamp(DateTimeOffset value)
-        => value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value)
-        => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     // Dapper row DTO (mutable so Dapper's setter mapping binds it).
     private sealed class Row

@@ -1,3 +1,4 @@
+using Packet.SoundModem.FlexRadio;
 using Packet.SoundModem.Modems;
 
 namespace Packet.Node.Core.Configuration;
@@ -32,9 +33,18 @@ public abstract record TransportConfig
     /// constants on <see cref="TransportKinds"/>.</summary>
     public abstract string Kind { get; }
 
-    /// <summary>A short, human-readable description of the transport endpoint —
-    /// used for log lines and the duplicate-endpoint validation key.</summary>
+    /// <summary>A short, human-readable description of the transport endpoint,
+    /// for log lines and operator output.</summary>
     public abstract string DescribeEndpoint();
+
+    /// <summary>
+    /// The key the duplicate-endpoint rule dedupes ports on: the EXCLUSIVE resource this
+    /// transport takes, which is not always what <see cref="DescribeEndpoint"/> displays.
+    /// Defaults to the display text (right for every transport whose description names
+    /// exactly its device / socket); a transport whose description carries extra
+    /// non-exclusive detail overrides it. Compared case-insensitively.
+    /// </summary>
+    public virtual string EndpointKey => DescribeEndpoint();
 }
 
 /// <summary>The canonical <c>kind:</c> discriminator strings.</summary>
@@ -404,6 +414,22 @@ public sealed record SoundModemTransportConfig : TransportConfig
 
     /// <inheritdoc/>
     public override string DescribeEndpoint() => $"soundmodem:{Device}/{Mode}";
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// C074: the exclusive resource is the AUDIO DEVICE, not (device, mode). Keying the
+    /// duplicate-endpoint rule on the display text let two ports open the same ALSA device
+    /// with different modes: on an exclusive device the second port faults visibly at open,
+    /// but a shared dmix/dsnoop <c>default</c> silently runs two modems on one soundcard,
+    /// each keying the same radio. A <c>flex:</c> device is different: one radio string
+    /// serves several independent DAX slices, so the claimed DAX channel is part of the
+    /// resource (<see cref="SoundModemFlexConfig.DaxChannel"/>, defaulting to 1) and
+    /// device-only keying would over-reject a legitimate two-slice setup.
+    /// </remarks>
+    public override string EndpointKey =>
+        FlexDevice.IsFlex(Device)
+            ? $"soundmodem:{Device}/dax{Flex?.DaxChannel ?? "1"}"
+            : $"soundmodem:{Device}";
 }
 
 /// <summary>FlexRadio slice tuning for a <c>flex:</c> soundmodem device (headless slice control).

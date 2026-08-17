@@ -386,10 +386,10 @@ public sealed class PortTuningSession : IAsyncDisposable, IPortTuningSession
         roundCount++;
         string note = advice is { } a
             ? DeviationAdvisor.Describe(a)
-            : "advice unknown — the peer sent an unrecognised token";
+            : "advice unknown - the peer sent an unrecognised token";
         if (report is not null && DeviationAdvisor.DescribeLevel(report, previousRoundReport) is { } levelNote)
         {
-            note += " — " + levelNote;
+            note += " - " + levelNote;
         }
 
         var evt = new TuningEvent(

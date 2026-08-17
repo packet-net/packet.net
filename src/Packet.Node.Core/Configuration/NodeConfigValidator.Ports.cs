@@ -21,7 +21,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
             .Must(ChannelProfiles.IsKnown)
             .WithMessage(p =>
                 $"Port.Profile '{p.Profile}' is not a known channel profile " +
-                $"(expected one of: {string.Join(", ", ChannelProfiles.Names)} — or omit it for spec defaults).");
+                $"(expected one of: {string.Join(", ", ChannelProfiles.Names)} - or omit it for spec defaults).");
 
         // Discriminated-union dispatch: validate the concrete transport arm.
         // A `kind:` the deserialiser didn't recognise never reaches here — it
@@ -106,7 +106,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                 RuleFor(p => p.Rig)
                     .NotNull()
                     .WithMessage(
-                        "radio: kind rig requires a rig: block on the same port — it is the " +
+                        "radio: kind rig requires a rig: block on the same port - it is the " +
                         "rig's DCD/strength/PTT re-presented as the port's radio."));
 
             When(p => !RadioKinds.Is(p.Radio!.Kind, RadioKinds.Rig), () =>
@@ -118,7 +118,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                         .Must(t => t is SerialKissTransport or NinoTncTransport)
                         .WithMessage(p =>
                             $"a local radio (port/serial) is only valid on a serial-modem transport " +
-                            $"({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) — a '{p.Transport?.Kind}' port has no " +
+                            $"({TransportKinds.SerialKiss}, {TransportKinds.NinoTnc}) - a '{p.Transport?.Kind}' port has no " +
                             "locally-cabled radio control channel."));
 
                 When(p => p.Radio!.IsHeadEndBound, () =>
@@ -127,7 +127,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                         .Must(t => t is NinoTncTcpTransport)
                         .WithMessage(p =>
                             $"a head-end-bound radio pairs with a '{TransportKinds.NinoTncTcp}' transport (the co-located " +
-                            $"full-control NinoTNC on the same head-end) — not a '{p.Transport?.Kind}' port.");
+                            $"full-control NinoTNC on the same head-end) - not a '{p.Transport?.Kind}' port.");
 
                     // "Same head-end" means SAME head-end: the transport-TYPE rule above admits a
                     // nino-tnc-tcp transport on instance A beside a radio on instance B, which is a
@@ -141,7 +141,7 @@ public sealed class PortConfigValidator : AbstractValidator<PortConfig>
                         .WithMessage(p =>
                             $"a head-end-bound radio must live on the SAME head-end as its port's transport " +
                             $"(radio headEndId '{p.Radio!.HeadEndId}' != transport headEndId " +
-                            $"'{(p.Transport as NinoTncTcpTransport)?.HeadEndId}') — the modem+radio pair is " +
+                            $"'{(p.Transport as NinoTncTcpTransport)?.HeadEndId}') - the modem+radio pair is " +
                             "co-located on one instance.");
                 });
             });
@@ -181,7 +181,7 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 .WithMessage(
                     "radio: kind rig has no control channel of its own (it dials the port's rig: " +
                     "daemon over a dedicated connection), so `port`, `serial`, `headEndId` and " +
-                    "`deviceId` must not be set — they describe a tait-ccdi link."));
+                    "`deviceId` must not be set - they describe a tait-ccdi link."));
 
         When(r => !RadioKinds.Is(r.Kind, RadioKinds.Rig), () =>
         {
@@ -192,7 +192,7 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 .Must(ExactlyOneBindingMode)
                 .WithMessage(
                     "radio requires exactly one binding mode: `port` (the control-channel device, e.g. " +
-                    "/dev/ttyUSB0), `serial` (the CCDI serial — the stable identity that survives device " +
+                    "/dev/ttyUSB0), `serial` (the CCDI serial - the stable identity that survives device " +
                     "renumbering), or `headEndId`+`deviceId` (a Tait CCDI device on a split-station head-end); " +
                     "set one mode, not several, not none.");
 
@@ -202,7 +202,7 @@ public sealed class PortRadioValidator : AbstractValidator<PortRadioConfig>
                 .When(r => HasNonEmptyHeadEndId(r) || HasNonEmptyDeviceId(r))
                 .WithMessage(
                     "a head-end-bound radio requires BOTH `headEndId` (the head-end instance id) and " +
-                    "`deviceId` (the device id on it) — set both, not one.");
+                    "`deviceId` (the device id on it) - set both, not one.");
         });
 
         RuleFor(r => r.Baud).GreaterThan(0).WithMessage("radio baud must be positive.");
@@ -282,34 +282,34 @@ public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
             RuleFor(r => r.Model)
                 .NotNull()
                 .WithMessage(
-                    "a node-managed rig (`device` set) requires `model` — the hamlib rig model " +
+                    "a node-managed rig (`device` set) requires `model` - the hamlib rig model " +
                     "number rigctld is launched with (see `rigctl -l` for the list).");
 
             RuleFor(r => r)
                 .Must(r => RigKinds.Is(r.Kind, RigKinds.Hamlib))
                 .WithMessage(
-                    "a node-managed rig (`device` set) must be kind `hamlib` — the node spawns " +
+                    "a node-managed rig (`device` set) must be kind `hamlib` - the node spawns " +
                     "rigctld itself. flrig is a GUI application the node cannot spawn; run it " +
                     "yourself and bind by `host`/`port` instead.");
 
             RuleFor(r => r.Port)
                 .Null()
                 .WithMessage(
-                    "a node-managed rig (`device` set) must not set `port` — the node spawns " +
+                    "a node-managed rig (`device` set) must not set `port` - the node spawns " +
                     "rigctld on a loopback port it allocates itself. Set `host`/`port` (without " +
                     "`device`) to point at a daemon you run yourself.");
 
             RuleFor(r => r.Host)
                 .Must(h => string.IsNullOrWhiteSpace(h) || h == "127.0.0.1")
                 .WithMessage(
-                    "a node-managed rig (`device` set) must not set a remote `host` — the node " +
+                    "a node-managed rig (`device` set) must not set a remote `host` - the node " +
                     "spawns rigctld locally on 127.0.0.1. Set `host`/`port` (without `device`) " +
                     "to point at a daemon running elsewhere.");
         });
 
         RuleFor(r => r.Model!.Value).GreaterThan(0)
             .When(r => r.Model.HasValue)
-            .WithMessage("rig.model must be positive (a hamlib rig model number — see `rigctl -l`).");
+            .WithMessage("rig.model must be positive (a hamlib rig model number - see `rigctl -l`).");
 
         RuleFor(r => r.SerialSpeed!.Value).GreaterThan(0)
             .When(r => r.SerialSpeed.HasValue)
@@ -322,14 +322,14 @@ public sealed class PortRigValidator : AbstractValidator<PortRigConfig>
             RuleFor(r => r.Model)
                 .Null()
                 .WithMessage(
-                    "rig.model only applies to a node-managed rig — set `device` (the rig's " +
+                    "rig.model only applies to a node-managed rig - set `device` (the rig's " +
                     "serial device path) with it, or drop it for the `host`/`port` shape (your " +
                     "own daemon already knows its rig).");
 
             RuleFor(r => r.SerialSpeed)
                 .Null()
                 .WithMessage(
-                    "rig.serialSpeed only applies to a node-managed rig — set `device` (the " +
+                    "rig.serialSpeed only applies to a node-managed rig - set `device` (the " +
                     "rig's serial device path) with it, or drop it for the `host`/`port` shape.");
         });
 
@@ -378,13 +378,13 @@ public sealed class PortCompatValidator : AbstractValidator<PortCompatConfig>
             .Must(Ax25CompatPresets.IsKnownPreset)
             .WithMessage(c =>
                 $"compat.preset '{c.Preset}' is not a known AX.25 parse preset " +
-                $"(expected one of: {string.Join(", ", Ax25CompatPresets.PresetNames)} — or omit it for lenient).");
+                $"(expected one of: {string.Join(", ", Ax25CompatPresets.PresetNames)} - or omit it for lenient).");
 
         RuleFor(c => c.Quirks)
             .Must(Ax25CompatPresets.IsKnownQuirks)
             .WithMessage(c =>
                 $"compat.quirks '{c.Quirks}' is not a known session-quirks selector " +
-                $"(expected one of: {string.Join(", ", Ax25CompatPresets.QuirksNames)} — or omit it for default).");
+                $"(expected one of: {string.Join(", ", Ax25CompatPresets.QuirksNames)} - or omit it for default).");
     }
 }
 
@@ -409,19 +409,19 @@ public sealed class KissParamsValidator : AbstractValidator<KissParams>
     {
         RuleFor(k => k.TxDelay!.Value).InclusiveBetween(0, 255)
             .When(k => k.TxDelay.HasValue)
-            .WithMessage(k => $"kiss.txDelay must be in 0..255 ({TenMs}) — got {k.TxDelay}.");
+            .WithMessage(k => $"kiss.txDelay must be in 0..255 ({TenMs}) - got {k.TxDelay}.");
 
         RuleFor(k => k.Persistence!.Value).InclusiveBetween(0, 255)
             .When(k => k.Persistence.HasValue)
-            .WithMessage(k => $"kiss.persistence must be in 0..255 (the KISS p-persistence byte; 255 = always transmit when the channel is clear) — got {k.Persistence}.");
+            .WithMessage(k => $"kiss.persistence must be in 0..255 (the KISS p-persistence byte; 255 = always transmit when the channel is clear) - got {k.Persistence}.");
 
         RuleFor(k => k.SlotTime!.Value).InclusiveBetween(0, 255)
             .When(k => k.SlotTime.HasValue)
-            .WithMessage(k => $"kiss.slotTime must be in 0..255 ({TenMs}) — got {k.SlotTime}.");
+            .WithMessage(k => $"kiss.slotTime must be in 0..255 ({TenMs}) - got {k.SlotTime}.");
 
         RuleFor(k => k.TxTail!.Value).InclusiveBetween(0, 255)
             .When(k => k.TxTail.HasValue)
-            .WithMessage(k => $"kiss.txTail must be in 0..255 ({TenMs}) — got {k.TxTail}.");
+            .WithMessage(k => $"kiss.txTail must be in 0..255 ({TenMs}) - got {k.TxTail}.");
     }
 }
 
@@ -489,7 +489,7 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
             .Must(ExactlyOneBindingMode)
             .WithMessage(
                 "tait-transparent transport requires exactly one binding mode: `device` (the radio's " +
-                "serial device path), `serial` (the CCDI serial — the stable identity that survives " +
+                "serial device path), `serial` (the CCDI serial - the stable identity that survives " +
                 "device renumbering), or `headEndId`+`deviceId` (the radio's serial port on a " +
                 "split-station head-end); set one mode, not several, not none.");
 
@@ -499,7 +499,7 @@ public sealed class TaitTransparentValidator : AbstractValidator<TaitTransparent
             .When(t => HasNonEmptyHeadEndId(t) || HasNonEmptyDeviceId(t))
             .WithMessage(
                 "a head-end-bound tait-transparent transport requires BOTH `headEndId` (the head-end " +
-                "instance id) and `deviceId` (the device id on it) — set both, not one.");
+                "instance id) and `deviceId` (the device id on it) - set both, not one.");
 
         RuleFor(t => t.Baud).GreaterThan(0).WithMessage("tait-transparent baud must be positive.");
         RuleFor(t => t.TransparentBaud).GreaterThan(0).WithMessage("tait-transparent transparentBaud must be positive.");
@@ -649,7 +649,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
         RuleFor(t => t.Frequency)
             .Must(f => f == 0 || (f >= 300 && f <= 3300))
             .When(t => ModemCatalog.AcceptsCentreFrequency(t.Mode.ToLowerInvariant()))
-            .WithMessage("soundmodem `frequency` must be 0 (mode default) or 300–3300 Hz (the audio passband).");
+            .WithMessage("soundmodem `frequency` must be 0 (mode default) or 300-3300 Hz (the audio passband).");
 
         // The baseband fsk*/c4fsk* modes run DC-to-Nyquist and have no settable carrier; reject
         // a non-zero frequency rather than silently ignoring it (matches the daemon and
@@ -685,7 +685,7 @@ public sealed class SoundModemValidator : AbstractValidator<SoundModemTransportC
         RuleFor(t => t.Ptt)
             .Must(string.IsNullOrEmpty)
             .When(t => FlexDevice.IsFlex(t.Device))
-            .WithMessage("soundmodem `ptt` must be empty for a `flex:` device — the radio keys itself.");
+            .WithMessage("soundmodem `ptt` must be empty for a `flex:` device - the radio keys itself.");
     }
 
     private static int DspRate(string mode) => ModemCatalog.DspRateFor(mode.ToLowerInvariant());

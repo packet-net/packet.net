@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
@@ -7,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Hosting;
 
 namespace Packet.Node.Core.Tailscale;
 
@@ -53,33 +53,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     /// sidecar script).</summary>
     public const string BinaryPathEnvVar = "PDN_TSNET_BIN";
 
-    /// <summary>Backoff doubles per consecutive failed start, capped here.</summary>
-    private static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
-
-    private const int Sighup = 1;
-    private const int Sigterm = 15;
-    private const int Sigkill = 9;
-
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
-
-    // setsid(1) execs the target in-place when the child is not already a group leader (it never
-    // is — just forked from the node), so the tracked PID IS the child's PID and pid == pgid:
-    // kill(-pid, …) reaches the whole tree.
-    private static readonly Lazy<string?> SetsidPath = new(() =>
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-        foreach (var candidate in new[] { "/usr/bin/setsid", "/bin/setsid" })
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return null;
-    });
 
     /// <summary>The file name (under the sidecar's state dir) the supervisor writes the collected
     /// forwards JSON to and hands the child via <c>--forwards-file</c>.</summary>
@@ -359,7 +333,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
 
         // SIGHUP the child (or its group, mirroring the SIGTERM target). A non-zero return means the
         // pid was already gone — fall back to a restart.
-        if (SysKill(groupLeader ? -pid : pid, Sighup) != 0)
+        if (ProcessSupervision.Signal(groupLeader ? -pid : pid, ProcessSupervision.Sighup) != 0)
         {
             return false;
         }
@@ -425,11 +399,12 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                 Process? process = null;
                 string? spawnError = null;
                 var groupLeader = false;
+                var startedAt = timeProvider.GetUtcNow();
                 try
                 {
                     var (args, keyFile) = BuildArgs(ts, forwards);
                     tempKeyFile = keyFile;
-                    (process, groupLeader) = Spawn(binaryPath, args);
+                    (process, groupLeader) = ProcessSupervision.Spawn(binaryPath, args);
                 }
                 catch (Exception ex)
                 {
@@ -449,9 +424,12 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                     // Publish the live pid so a forwards-only reconcile can SIGHUP this child for a
                     // live forwards reload (cleared in every exit path below).
                     PublishChildPid(process.Id, groupLeader);
+                    // Cancellable pumps tied to this run's stop (C076).
+                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var pid = process.Id;
                     var pumps = Task.WhenAll(
-                        PumpStdoutAsync(process.StandardOutput, ts.Funnel),
-                        PumpAsync(process.StandardError, line => SidecarLog.Stderr(childLogger, line)));
+                        PumpStdoutAsync(process.StandardOutput, ts.Funnel, pumpStop.Token),
+                        ProcessSupervision.PumpAsync(process.StandardError, line => SidecarLog.Stderr(childLogger, line), pumpStop.Token));
                     try
                     {
                         process.StandardInput.Close();
@@ -470,18 +448,25 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                         // Stop requested (disable / reconfigure / shutdown): graceful teardown.
                         ClearChildPid(process.Id);
                         await GracefulStopAsync(process, groupLeader).ConfigureAwait(false);
-                        await CleanupChildAsync(process, pumps, tempKeyFile).ConfigureAwait(false);
+                        await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader, tempKeyFile).ConfigureAwait(false);
                         return;
                     }
 
                     ClearChildPid(process.Id);
                     var exitCode = process.ExitCode;
-                    await CleanupChildAsync(process, pumps, tempKeyFile).ConfigureAwait(false);
                     LogExited(exitCode);
+                    await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader, tempKeyFile).ConfigureAwait(false);
                     // The child exited on its own (it should only exit on SIGTERM). Surface the
                     // unexpected exit as an error and back off into a respawn.
                     status.Update(TailscaleStatusSnapshot.Faulted(
                         $"the Tailscale sidecar exited unexpectedly (code {exitCode}); retrying", ts.Funnel));
+
+                    // A run that lasted counts as healthy: reset the backoff so one failure
+                    // after hours of uptime is not punished at the crash-loop rate.
+                    if (ProcessSupervision.WasHealthyRun(timeProvider.GetUtcNow() - startedAt))
+                    {
+                        delay = backoffBase;
+                    }
                 }
 
                 // Backoff before the next attempt (spawn failure or unexpected exit both retry).
@@ -493,7 +478,7 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
                 {
                     return;
                 }
-                delay = delay + delay > BackoffCap ? BackoffCap : delay + delay;
+                delay = ProcessSupervision.NextBackoff(delay);
             }
         }
         catch (Exception ex)
@@ -511,12 +496,19 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         }
     }
 
-    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps, dispose the process
+    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
+    /// to a group SIGKILL when a grandchild is holding the pipes open — C076), dispose the process
     /// handle, and delete the temp auth-key file. Used by both the graceful-stop (cancellation)
     /// and unexpected-exit paths of <see cref="RunChildAsync"/>.</summary>
-    private static async Task CleanupChildAsync(Process process, Task pumps, string? tempKeyFile)
+    private async Task CleanupChildAsync(
+        Process process, Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader, string? tempKeyFile)
     {
-        await SwallowAsync(pumps).ConfigureAwait(false);
+        var drained = await ProcessSupervision.DrainPumpsAsync(
+            pumps, pumpStop, pid, groupLeader, ProcessSupervision.DefaultDrainGrace, timeProvider).ConfigureAwait(false);
+        if (!drained)
+        {
+            LogDrainAbandoned(pid);
+        }
         process.Dispose();
         DeleteTempKey(tempKeyFile);
     }
@@ -703,116 +695,46 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         }
     }
 
-    /// <summary>Spawn the sidecar: stdout+stderr captured, and — where the platform allows — as
-    /// a new process group (Linux <c>setsid</c>) so a stop can signal the whole tree.</summary>
-    private static (Process Process, bool GroupLeader) Spawn(string command, IReadOnlyList<string> args)
-    {
-        var setsid = SetsidPath.Value;
-        var psi = new ProcessStartInfo
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,           // no shell — args pass verbatim, no injection
-            CreateNoWindow = true,
-            StandardOutputEncoding = Utf8NoBom,
-            StandardErrorEncoding = Utf8NoBom,
-        };
-        if (setsid is not null)
-        {
-            psi.FileName = setsid;
-            psi.ArgumentList.Add(command);
-        }
-        else
-        {
-            psi.FileName = command;
-        }
-        foreach (var arg in args)
-        {
-            psi.ArgumentList.Add(arg);
-        }
-
-        var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Process.Start returned null.");
-        return (process, setsid is not null);
-    }
-
-    /// <summary>Graceful stop, mirroring the app supervisor: SIGTERM the group (or the child,
-    /// when no group was available) → grace → SIGKILL the group + kill the tree.</summary>
+    /// <summary>Graceful stop: SIGTERM the group (or the child, when no group was available)
+    /// → grace → SIGKILL the group + kill the tree. The mechanics live in
+    /// <see cref="Hosting.ProcessSupervision"/>; only the log line is ours.</summary>
     private async Task GracefulStopAsync(Process process, bool groupLeader)
     {
+        int pid;
         try
         {
-            if (process.HasExited)
-            {
-                return;
-            }
-            var pid = process.Id;
-            if (OperatingSystem.IsWindows())
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            _ = SysKill(groupLeader ? -pid : pid, Sigterm);
-            using var grace = new CancellationTokenSource(stopGrace, timeProvider);
-            try
-            {
-                await process.WaitForExitAsync(grace.Token).ConfigureAwait(false);
-                LogStopped(pid);
-            }
-            catch (OperationCanceledException)
-            {
-                // TERM ignored within the grace — kill the whole group, then the tree.
-                LogKilled(pid);
-                if (groupLeader)
-                {
-                    _ = SysKill(-pid, Sigkill);
-                }
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                try
-                {
-                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Reaped elsewhere — nothing left to wait for.
-                }
-            }
+            pid = process.Id;
         }
         catch (InvalidOperationException)
         {
-            // No process associated (already torn down) — nothing to do.
+            return;   // already torn down
+        }
+
+        var outcome = await ProcessSupervision
+            .GracefulStopAsync(process, groupLeader, stopGrace, timeProvider).ConfigureAwait(false);
+        switch (outcome)
+        {
+            case ProcessSupervision.StopOutcome.Terminated:
+                LogStopped(pid);
+                break;
+            case ProcessSupervision.StopOutcome.Killed:
+                LogKilled(pid);
+                break;
+            default:
+                break;   // already exited
         }
     }
-
-    // ---- status pumps ---------------------------------------------------------------------
 
     /// <summary>Read the child's stdout line by line; each line is one JSON status object —
     /// parse it and update <see cref="ITailscaleStatus"/>. A malformed line is logged and
     /// ignored (never disturbs supervision). Carries <paramref name="funnel"/> through so the
     /// snapshot reflects the configured exposure.</summary>
-    private async Task PumpStdoutAsync(StreamReader reader, bool funnel)
+    private async Task PumpStdoutAsync(StreamReader reader, bool funnel, CancellationToken ct)
     {
         try
         {
             string? line;
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
+            while ((line = await reader.ReadLineAsync(ct).ConfigureAwait(false)) is not null)
             {
                 if (line.Length == 0)
                 {
@@ -874,37 +796,6 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
             ? el.GetString()
             : null;
 
-    private static async Task PumpAsync(StreamReader reader, Action<string> sink)
-    {
-        try
-        {
-            string? line;
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
-            {
-                if (line.Length > 0)
-                {
-                    sink(line);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Best-effort log capture only — never disturbs supervision.
-        }
-    }
-
-    private static async Task SwallowAsync(Task task)
-    {
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Handled in-pump; ignore here.
-        }
-    }
-
     /// <inheritdoc/>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -912,6 +803,14 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// C053: order matters. <c>base.Dispose()</c> is what CANCELS the BackgroundService stopping
+    /// token, which unblocks a parked <see cref="ExecuteAsync"/> and sends it into its finally,
+    /// whose first act is <c>StopChildAsync</c> -> <c>gate.WaitAsync()</c>. Disposing the gate
+    /// before that ran (the old order) faulted the ExecuteTask with an ObjectDisposedException
+    /// on any disposal while ExecuteAsync was still parked, i.e. a failed host start. So: cancel
+    /// FIRST, let ExecuteAsync finish its own teardown, and only then dispose what it uses.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (disposed)
@@ -921,19 +820,20 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
         disposed = true;
         changeSubscription?.Dispose();
         changeSubscription = null;
+
+        base.Dispose();   // cancels the stopping token; does not dispose anything of ours
+        if (ExecuteTask is { } running)
+        {
+            await ProcessSupervision.SwallowAsync(running).ConfigureAwait(false);
+        }
+
+        // Idempotent: ExecuteAsync's finally normally did this already, but a host that never
+        // started us has no ExecuteTask, so the child (if any) is stopped here.
         await StopChildAsync().ConfigureAwait(false);
         lifetime?.Dispose();
         gate.Dispose();
-        base.Dispose();
         GC.SuppressFinalize(this);
     }
-
-    // Classic DllImport (not LibraryImport): the source-generated marshaller demands
-    // AllowUnsafeBlocks project-wide, which this one int-only syscall does not justify.
-#pragma warning disable SYSLIB1054
-    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int SysKill(int pid, int signal);
-#pragma warning restore SYSLIB1054
 
     /// <summary>One entry in the <c>--forwards-file</c> JSON array (the pinned sidecar contract:
     /// <c>[{"listen":993,"target":"127.0.0.1:1430","tls":"terminate"}]</c>). Serialised camelCase;
@@ -978,11 +878,15 @@ public sealed partial class TailscaleSidecarHostedService : BackgroundService, I
     private partial void LogReconfiguring();
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "Tailscale forwards changed; live-reloading the sidecar (pid {Pid}) via SIGHUP — {Count} forward(s), no restart.")]
+        Message = "Tailscale forwards changed; live-reloading the sidecar (pid {Pid}) via SIGHUP - {Count} forward(s), no restart.")]
     private partial void LogForwardsReloaded(int pid, int count);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Tailscale reconcile faulted.")]
     private partial void LogReconcileFault(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Tailscale sidecar (pid {Pid}) exited but its output pipes stayed open (a background grandchild still holds them); abandoning the log tail.")]
+    private partial void LogDrainAbandoned(int pid);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Tailscale sidecar run loop faulted.")]
     private partial void LogRunLoopFault(Exception ex);

@@ -2,11 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Hosting;
 
 namespace Packet.Node.Core.Rigs;
 
@@ -51,35 +50,8 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     /// <summary>The default <see cref="WaitUntilReadyAsync"/> budget the port supervisor uses.</summary>
     public static readonly TimeSpan DefaultReadyBudget = TimeSpan.FromSeconds(10);
 
-    /// <summary>Backoff doubles per consecutive child exit / failed spawn, capped here.</summary>
-    private static readonly TimeSpan BackoffCap = TimeSpan.FromSeconds(60);
-
     /// <summary>How often <see cref="WaitUntilReadyAsync"/> re-probes the listener.</summary>
     private static readonly TimeSpan ReadyPollInterval = TimeSpan.FromMilliseconds(150);
-
-    private const int Sigterm = 15;
-    private const int Sigkill = 9;
-
-    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
-
-    // setsid(1) execs the target in-place when the child is not already a group leader (it never
-    // is — just forked from the node), so the tracked PID IS the child's PID and pid == pgid:
-    // kill(-pid, …) reaches the whole tree. (Mirrors TailscaleSidecarHostedService.)
-    private static readonly Lazy<string?> SetsidPath = new(() =>
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-        foreach (var candidate in new[] { "/usr/bin/setsid", "/bin/setsid" })
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-        return null;
-    });
 
     private readonly string portId;
     private readonly PortRigConfig config;
@@ -180,7 +152,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         if (!config.IsNodeManaged || config.Model is null)
         {
             throw new ArgumentException(
-                "ManagedRigDaemon needs a node-managed rig config (device + model set) — " +
+                "ManagedRigDaemon needs a node-managed rig config (device + model set) - " +
                 "validated config always carries both, so this is a wiring bug at the call site.",
                 nameof(config));
         }
@@ -257,10 +229,11 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                 Process? process = null;
                 string? spawnError = null;
                 var groupLeader = false;
+                var startedAt = clock.GetUtcNow();
                 try
                 {
                     EnsureLaunchable(binaryPath);
-                    (process, groupLeader) = Spawn(binaryPath, BuildArgs());
+                    (process, groupLeader) = ProcessSupervision.Spawn(binaryPath, BuildArgs());
                 }
                 catch (Exception ex)
                 {
@@ -278,9 +251,12 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                 {
                     LogStarted(portId, binaryPath, process.Id, Port);
                     PublishChildPid(process.Id);
+                    // Cancellable pumps tied to this run's stop (C076).
+                    using var pumpStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var pid = process.Id;
                     var pumps = Task.WhenAll(
-                        PumpAsync(process.StandardOutput, line => DaemonLog.Stdout(childLogger, line)),
-                        PumpAsync(process.StandardError, line => DaemonLog.Stderr(childLogger, line)));
+                        ProcessSupervision.PumpAsync(process.StandardOutput, line => DaemonLog.Stdout(childLogger, line), pumpStop.Token),
+                        ProcessSupervision.PumpAsync(process.StandardError, line => DaemonLog.Stderr(childLogger, line), pumpStop.Token));
                     try
                     {
                         process.StandardInput.Close();
@@ -299,17 +275,25 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                         // Stop requested (port teardown / dispose): graceful teardown.
                         ClearChildPid(process.Id);
                         await GracefulStopAsync(process, groupLeader).ConfigureAwait(false);
-                        await CleanupChildAsync(process, pumps).ConfigureAwait(false);
+                        await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader).ConfigureAwait(false);
                         return;
                     }
 
                     ClearChildPid(process.Id);
                     var exitCode = process.ExitCode;
-                    await CleanupChildAsync(process, pumps).ConfigureAwait(false);
                     // The child exited on its own (a crash, or the USB device vanished from under
                     // it). Respawn after the backoff — same port, so the re-dialling clients
-                    // recover without reconfiguration when the device comes back.
+                    // recover without reconfiguration when the device comes back. The drain is
+                    // BOUNDED (C076): a grandchild holding the pipes must not wedge this loop.
                     LogExited(portId, exitCode, delay.TotalSeconds);
+                    await CleanupChildAsync(process, pumps, pumpStop, pid, groupLeader).ConfigureAwait(false);
+
+                    // A run that lasted counts as healthy: reset the backoff so one failure
+                    // after hours of uptime is not punished at the crash-loop rate.
+                    if (ProcessSupervision.WasHealthyRun(clock.GetUtcNow() - startedAt))
+                    {
+                        delay = backoffBase;
+                    }
                 }
 
                 // Backoff before the next attempt (spawn failure or unexpected exit both retry).
@@ -321,7 +305,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
                 {
                     return;
                 }
-                delay = delay + delay > BackoffCap ? BackoffCap : delay + delay;
+                delay = ProcessSupervision.NextBackoff(delay);
             }
         }
         catch (Exception ex)
@@ -385,137 +369,49 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         }
     }
 
-    /// <summary>Spawn the daemon: stdout+stderr captured, and — where the platform allows — as
-    /// a new process group (Linux <c>setsid</c>) so a stop can signal the whole tree. A bare
-    /// binary name resolves via <c>PATH</c> (Process.Start's normal Unix resolution).</summary>
-    private static (Process Process, bool GroupLeader) Spawn(string command, IReadOnlyList<string> args)
-    {
-        var setsid = SetsidPath.Value;
-        var psi = new ProcessStartInfo
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,           // no shell — args pass verbatim, no injection
-            CreateNoWindow = true,
-            StandardOutputEncoding = Utf8NoBom,
-            StandardErrorEncoding = Utf8NoBom,
-        };
-        if (setsid is not null)
-        {
-            psi.FileName = setsid;
-            psi.ArgumentList.Add(command);
-        }
-        else
-        {
-            psi.FileName = command;
-        }
-        foreach (var arg in args)
-        {
-            psi.ArgumentList.Add(arg);
-        }
-
-        var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Process.Start returned null.");
-        return (process, setsid is not null);
-    }
-
-    /// <summary>Graceful stop, mirroring the tsnet supervisor: SIGTERM the group (or the child,
-    /// when no group was available) → grace → SIGKILL the group + kill the tree.</summary>
+    /// <summary>Graceful stop: SIGTERM the group (or the child, when no group was available)
+    /// → grace → SIGKILL the group + kill the tree. The mechanics live in
+    /// <see cref="Hosting.ProcessSupervision"/>; only the log line is ours.</summary>
     private async Task GracefulStopAsync(Process process, bool groupLeader)
     {
+        int pid;
         try
         {
-            if (process.HasExited)
-            {
-                return;
-            }
-            var pid = process.Id;
-            if (OperatingSystem.IsWindows())
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                return;
-            }
-
-            _ = SysKill(groupLeader ? -pid : pid, Sigterm);
-            using var grace = new CancellationTokenSource(stopGrace, clock);
-            try
-            {
-                await process.WaitForExitAsync(grace.Token).ConfigureAwait(false);
-                LogStopped(portId, pid);
-            }
-            catch (OperationCanceledException)
-            {
-                // TERM ignored within the grace — kill the whole group, then the tree.
-                LogKilled(portId, pid);
-                if (groupLeader)
-                {
-                    _ = SysKill(-pid, Sigkill);
-                }
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Race: already gone.
-                }
-                try
-                {
-                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // Reaped elsewhere — nothing left to wait for.
-                }
-            }
+            pid = process.Id;
         }
         catch (InvalidOperationException)
         {
-            // No process associated (already torn down) — nothing to do.
+            return;   // already torn down
+        }
+
+        var outcome = await ProcessSupervision
+            .GracefulStopAsync(process, groupLeader, stopGrace, clock).ConfigureAwait(false);
+        switch (outcome)
+        {
+            case ProcessSupervision.StopOutcome.Terminated:
+                LogStopped(portId, pid);
+                break;
+            case ProcessSupervision.StopOutcome.Killed:
+                LogKilled(portId, pid);
+                break;
+            default:
+                break;   // already exited
         }
     }
 
-    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps, dispose the process
-    /// handle.</summary>
-    private static async Task CleanupChildAsync(Process process, Task pumps)
+    /// <summary>The shared post-exit cleanup: drain the stdout/stderr pumps (BOUNDED, escalating
+    /// to a group SIGKILL when a grandchild is holding the pipes open — C076), then dispose the
+    /// process handle.</summary>
+    private async Task CleanupChildAsync(
+        Process process, Task pumps, CancellationTokenSource pumpStop, int pid, bool groupLeader)
     {
-        try
+        var drained = await ProcessSupervision.DrainPumpsAsync(
+            pumps, pumpStop, pid, groupLeader, ProcessSupervision.DefaultDrainGrace, clock).ConfigureAwait(false);
+        if (!drained)
         {
-            await pumps.ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            // Handled in-pump; ignore here.
+            LogDrainAbandoned(portId, pid);
         }
         process.Dispose();
-    }
-
-    private static async Task PumpAsync(StreamReader reader, Action<string> sink)
-    {
-        try
-        {
-            string? line;
-            while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
-            {
-                if (line.Length > 0)
-                {
-                    sink(line);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Best-effort log capture only — never disturbs supervision.
-        }
     }
 
     private void PublishChildPid(int pid)
@@ -557,13 +453,6 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
         stopping.Dispose();
     }
 
-    // Classic DllImport (not LibraryImport): the source-generated marshaller demands
-    // AllowUnsafeBlocks project-wide, which this one int-only syscall does not justify.
-#pragma warning disable SYSLIB1054
-    [DllImport("libc", EntryPoint = "kill", SetLastError = true)]
-    private static extern int SysKill(int pid, int signal);
-#pragma warning restore SYSLIB1054
-
     /// <summary>The daemon's own output, logged under the <c>rigctld:&lt;portId&gt;</c>
     /// category: stderr at Warning, stdout at Debug (rigctld chatters).</summary>
     private static partial class DaemonLog
@@ -584,7 +473,7 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     private partial void LogSpawnFailed(string id, string command, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "Port {Id}: node-managed rigctld exited (code {ExitCode}); respawning in {Seconds}s (same port — clients recover on their next dial).")]
+        Message = "Port {Id}: node-managed rigctld exited (code {ExitCode}); respawning in {Seconds}s (same port - clients recover on their next dial).")]
     private partial void LogExited(string id, int exitCode, double seconds);
 
     [LoggerMessage(Level = LogLevel.Information,
@@ -594,6 +483,10 @@ public sealed partial class ManagedRigDaemon : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Port {Id}: node-managed rigctld (pid {Pid}) ignored SIGTERM; killed its process tree.")]
     private partial void LogKilled(string id, int pid);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Port {Id}: node-managed rigctld (pid {Pid}) exited but its output pipes stayed open (a background grandchild still holds them); abandoning the log tail.")]
+    private partial void LogDrainAbandoned(string id, int pid);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Port {Id}: node-managed rigctld supervisor faulted.")]
     private partial void LogRunLoopFault(Exception ex, string id);

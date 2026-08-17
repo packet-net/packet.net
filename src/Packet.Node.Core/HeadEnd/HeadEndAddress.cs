@@ -57,7 +57,7 @@ public static class HeadEndAddress
         if (!TryParse(address, out var host, out var port))
         {
             throw new FormatException(
-                $"'{address}' is not a valid head-end address — expected host:port (e.g. 192.168.1.10:7300).");
+                $"'{address}' is not a valid head-end address - expected host:port (e.g. 192.168.1.10:7300).");
         }
         return new Uri($"http://{host}:{port}/", UriKind.Absolute);
     }

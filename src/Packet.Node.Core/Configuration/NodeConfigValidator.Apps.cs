@@ -22,7 +22,7 @@ public sealed class ApplicationConfigValidator : AbstractValidator<ApplicationCo
             .NotEmpty().WithMessage("application.command (the launch verb) is required.")
             .Must(NotABuiltInVerb)
             .WithMessage(a => $"application.command '{a.Command}' collides with a built-in console verb " +
-                "(CONNECT/BYE/NODES/INFO/HELP/SYSOP/SESSIONS/KICK/PORT/RELOAD or an abbreviation) — pick another.");
+                "(CONNECT/BYE/NODES/INFO/HELP/SYSOP/SESSIONS/KICK/PORT/RELOAD or an abbreviation) - pick another.");
 
         RuleFor(a => a.Executable)
             .NotEmpty().WithMessage("application.executable is required for a process application.")

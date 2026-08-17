@@ -122,6 +122,36 @@ public sealed class NetRomL3L4IntegrationTests
         return new Node(supervisor, netRom);
     }
 
+    /// <summary>
+    /// C070: the reconcile preview promises identity.alias applies live, but the alias in
+    /// our own NODES broadcast was captured at construction and no plan arm restarted
+    /// anything for an alias-only edit, so the new name never reached the air until the
+    /// process restarted. With NodeAliasSource wired to the live config, the very next
+    /// broadcast carries it and the neighbour can route to the new name.
+    /// </summary>
+    [Fact]
+    public async Task An_alias_edit_reaches_the_next_NODES_broadcast_without_a_restart()
+    {
+        var bus = new SharedRadioBus();
+        await using var a = await StartNodeAsync(bus, ANodeCall, "ANODE");
+        await using var b = await StartNodeAsync(bus, BNodeCall, "BNODE");
+        var generous = TimeSpan.FromSeconds(60);
+
+        a.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("ANODE") is not null,
+            "node B should learn node A under its original name", generous);
+
+        // The config edit: identity.alias changes, nothing restarts. (Six chars max: the
+        // NET/ROM alias field on the wire is six bytes, so a longer name is truncated.)
+        var liveAlias = "ANODE";
+        a.NetRom.NodeAliasSource = () => liveAlias;
+        liveAlias = "RDG";
+
+        a.NetRom.BroadcastNodes();
+        await Wait.ForAsync(() => b.NetRom.Snapshot().ResolveDestination("RDG") is not null,
+            "the next broadcast must carry the edited alias, with no node restart", generous);
+    }
+
     [Fact]
     public async Task Two_nodes_exchange_NODES_and_a_user_routes_across_an_L4_circuit_to_the_distant_node()
     {

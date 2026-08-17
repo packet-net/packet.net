@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Audit;
 
@@ -91,7 +91,7 @@ public sealed partial class SqliteAuditLog : IAuditLog
                 """,
                 new
                 {
-                    Ts = entry.TimestampUtc.ToString("O", CultureInfo.InvariantCulture),
+                    Ts = SqliteStamps.Stamp(entry.TimestampUtc),
                     entry.Actor,
                     entry.Source,
                     entry.Action,
@@ -158,7 +158,7 @@ public sealed partial class SqliteAuditLog : IAuditLog
     {
         public AuditEntry ToEntry() => new(
             Id,
-            DateTimeOffset.Parse(TimestampUtcRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            SqliteStamps.ParseStamp(TimestampUtcRaw),
             Actor, Source, Action, Target, Outcome, Detail, ClientIp);
     }
 

@@ -32,6 +32,93 @@ public class NodeConfigValidatorTests
         Validator.Validate(Valid(TcpPort("vhf"))).IsValid.Should().BeTrue();
     }
 
+    // C074: the duplicate-endpoint key must be the EXCLUSIVE RESOURCE, not the display
+    // text. `soundmodem:{device}/{mode}` let two ports claim one audio device just by
+    // naming different modes; on a shared dmix/dsnoop `default` that silently runs two
+    // modems on one soundcard, both keying the same radio.
+    [Fact]
+    public void Rejects_two_soundmodem_ports_on_the_same_audio_device()
+    {
+        var a = SoundModemPort("vhf", "plughw:1,0", "afsk1200");
+        var b = SoundModemPort("uhf", "plughw:1,0", "il2p1200");
+
+        var result = Validator.Validate(Valid(a, b));
+
+        result.IsValid.Should().BeFalse("one soundcard cannot serve two ports");
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("device", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Accepts_two_soundmodem_ports_on_different_audio_devices()
+    {
+        Validator.Validate(Valid(
+            SoundModemPort("vhf", "plughw:1,0", "afsk1200"),
+            SoundModemPort("uhf", "plughw:2,0", "afsk1200"))).IsValid.Should().BeTrue();
+    }
+
+    // A flex: device string names a RADIO, and one radio serves several independent DAX
+    // slices - so device-only keying would over-reject a legitimate two-slice station.
+    [Fact]
+    public void Accepts_two_flex_soundmodem_ports_on_different_dax_channels()
+    {
+        var a = SoundModemPort("hf-a", "flex:radio1", "afsk1200") with { };
+        var b = SoundModemPort("hf-b", "flex:radio1", "afsk1200") with { };
+
+        Validator.Validate(Valid(
+            WithFlex(a, "1"),
+            WithFlex(b, "2"))).IsValid.Should().BeTrue("two DAX slices on one radio are two resources");
+
+        Validator.Validate(Valid(
+            WithFlex(a, "3"),
+            WithFlex(b, "3"))).IsValid.Should().BeFalse("the same DAX slice is one resource");
+    }
+
+    private static PortConfig SoundModemPort(string id, string device, string mode) => new()
+    {
+        Id = id,
+        Enabled = true,
+        Transport = new SoundModemTransportConfig { Device = device, Mode = mode },
+    };
+
+    private static PortConfig WithFlex(PortConfig port, string daxChannel) => port with
+    {
+        Transport = (port.Transport as SoundModemTransportConfig)! with
+        {
+            Flex = new SoundModemFlexConfig { DaxChannel = daxChannel },
+        },
+    };
+
+    // C069: schemaVersion is bounded at BOTH ends. It used to require only > 0, so a
+    // typo'd future value passed validation, SqliteConfigStore.Save stamped it, and the
+    // next boot died in the provider constructor (the migration chain throws on from > to
+    // and nothing catches it) with no shipped recovery - `pdn config import/export` boot
+    // the same provider. A future stamp must be a 422 at the door instead.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(NodeConfig.CurrentSchemaVersion + 1)]
+    [InlineData(NodeConfig.CurrentSchemaVersion + 99)]
+    public void Rejects_a_schema_version_this_build_cannot_read(int version)
+    {
+        var result = Validator.Validate(Valid() with { SchemaVersion = version });
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle()
+            .Which.ErrorMessage.Should()
+                .Contain("schemaVersion").And
+                .Contain(version.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void Accepts_every_schema_version_this_build_understands()
+    {
+        for (var v = 1; v <= NodeConfig.CurrentSchemaVersion; v++)
+        {
+            Validator.Validate(Valid() with { SchemaVersion = v }).IsValid
+                .Should().BeTrue($"schemaVersion {v} is within 1..{NodeConfig.CurrentSchemaVersion}");
+        }
+    }
+
     // #672: every KISS knob is a byte on the wire (0..255). They are int? on the config
     // record so an out-of-range value is a NAMED validation failure — a 422 carrying the
     // field and its units — instead of the bare 400 a byte? produced when JSON model

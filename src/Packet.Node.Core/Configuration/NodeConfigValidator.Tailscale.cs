@@ -24,7 +24,7 @@ public sealed class TailscaleConfigValidator : AbstractValidator<TailscaleConfig
         // non-empty value is constrained to the legal label charset.
         RuleFor(t => t.Hostname)
             .Must(BeEmptyOrLegalTailnetHostname)
-            .WithMessage("tailscale.hostname, when set, must match ^[a-z0-9-]+$ (lowercase letters, digits, hyphens) — leave it empty to derive <callsign>-pdn.")
+            .WithMessage("tailscale.hostname, when set, must match ^[a-z0-9-]+$ (lowercase letters, digits, hyphens) - leave it empty to derive <callsign>-pdn.")
             .When(t => t.Enabled);
 
         RuleFor(t => t.Target)
@@ -40,7 +40,7 @@ public sealed class TailscaleConfigValidator : AbstractValidator<TailscaleConfig
         // not it is currently enabled). Either, or neither (neither → interactive login).
         RuleFor(t => t)
             .Must(t => !(HasValue(t.AuthKey) && HasValue(t.AuthKeyFile)))
-            .WithMessage("tailscale.authKey and tailscale.authKeyFile must not both be set — supply one (authKeyFile preferred), or neither for interactive login.");
+            .WithMessage("tailscale.authKey and tailscale.authKeyFile must not both be set - supply one (authKeyFile preferred), or neither for interactive login.");
     }
 
     private static bool HasValue(string? s) => !string.IsNullOrWhiteSpace(s);

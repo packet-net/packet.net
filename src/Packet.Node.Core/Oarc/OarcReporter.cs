@@ -689,7 +689,7 @@ public sealed partial class OarcReporter : BackgroundService
     private partial void LogDisabled();
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "OARC reporting is on but the node has no valid Maidenhead grid (Identity.Grid) — node will not appear on the map until a valid grid is set.")]
+        Message = "OARC reporting is on but the node has no valid Maidenhead grid (Identity.Grid) - node will not appear on the map until a valid grid is set.")]
     private partial void LogNoLocator();
 
     [LoggerMessage(Level = LogLevel.Debug,
@@ -697,7 +697,7 @@ public sealed partial class OarcReporter : BackgroundService
     private partial void LogGaveUp(string endpoint, int attempts);
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "OARC reporter: {New} events dropped under backpressure since last report ({Total} total) — the collector is slow or unreachable.")]
+        Message = "OARC reporter: {New} events dropped under backpressure since last report ({Total} total) - the collector is slow or unreachable.")]
     private partial void LogDropped(long @new, long total);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "OARC reporter: a poll tick faulted ({Reason}); skipped this tick.")]

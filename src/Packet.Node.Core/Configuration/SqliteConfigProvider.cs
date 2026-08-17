@@ -320,7 +320,7 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
             var stamp = clock.GetUtcNow().ToString("o", System.Globalization.CultureInfo.InvariantCulture);
             var verb = kind == MigrationKind.Migrated ? "migrated" : "seeded";
             File.WriteAllText(marker,
-                $"# pdn config {verb} into pdn.db on first boot — informational only.{Environment.NewLine}" +
+                $"# pdn config {verb} into pdn.db on first boot - informational only.{Environment.NewLine}" +
                 $"# The DB row is the authority; this file is safe to delete.{Environment.NewLine}" +
                 $"# The source below is left in place (do not delete on rollback grounds).{Environment.NewLine}" +
                 $"source: {sourcePath}{Environment.NewLine}" +

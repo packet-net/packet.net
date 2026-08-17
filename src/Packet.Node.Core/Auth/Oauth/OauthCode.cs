@@ -37,4 +37,11 @@ public interface IOauthCodeStore
     /// existed and has not expired as of <paramref name="now"/>; otherwise null. A second
     /// call for the same code returns null (single-use).</summary>
     OauthCode? Consume(string code, DateTimeOffset now);
+
+    /// <summary>Delete every code that expired before <paramref name="now"/>, returning how many
+    /// rows went. <see cref="Consume"/> only removes codes that are actually presented at the token
+    /// endpoint, so an abandoned authorize (the client never comes back) would otherwise leave its
+    /// row behind for ever; this is the sweep for those. Called opportunistically off the authorize
+    /// path, so it degrades to 0 on a store fault rather than throwing.</summary>
+    int PruneExpired(DateTimeOffset now);
 }

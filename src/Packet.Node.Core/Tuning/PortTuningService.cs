@@ -412,7 +412,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
         {
             throw new TuningStartException(
                 TuningStartError.BadRequest,
-                "SDM is disabled in the radio's programming — enable SDM + auto-acks with the Tait programming app");
+                "SDM is disabled in the radio's programming - enable SDM + auto-acks with the Tait programming app");
         }
     }
 
@@ -421,7 +421,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
             ? parsed
             : Callsign.Parse("N0CALL");
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "tuning[{Port}] session armed — role={Role} peer={Peer} burst={Burst}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "tuning[{Port}] session armed - role={Role} peer={Peer} burst={Burst}")]
     private partial void LogSessionArmed(string port, string role, string peer, int burst);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "tuning[{Port}] {Note}")]

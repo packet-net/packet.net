@@ -211,6 +211,38 @@ public sealed class SysopElevationTests : IDisposable
         Assert.Equal(1, ops.ListSessionsCalls);
     }
 
+    [Fact]
+    public async Task Help_and_the_elevation_banner_omit_RELOAD_when_the_config_cannot_be_reloaded()
+    {
+        // The shipped shape: config lives in pdn.db, so there is nothing to re-read.
+        var store = StoreWithSysop(AuthScopes.Admin);
+        var ops = new RecordingSysopOps { SupportsReload = false };
+        var svc = BuildService(store, ops);
+        var conn = new ScriptedConnection("M0LTE-7", NodeTransportKind.Ax25, [$"SYSOP {CurrentCode()}", "HELP", "B"]);
+
+        await svc.RunAsync(conn);
+
+        Assert.Contains("Sysop (elevated):", conn.Text, StringComparison.Ordinal);
+        Assert.Contains("CAP CLEAR <id>", conn.Text, StringComparison.Ordinal);
+        Assert.Contains("Commands: SESSIONS, KICK, PORT.", conn.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("RELOAD", conn.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Help_and_the_elevation_banner_list_RELOAD_on_a_reloadable_node()
+    {
+        // A conffile node (FileConfigProvider): RELOAD really does re-read the file.
+        var store = StoreWithSysop(AuthScopes.Admin);
+        var ops = new RecordingSysopOps { SupportsReload = true };
+        var svc = BuildService(store, ops);
+        var conn = new ScriptedConnection("M0LTE-7", NodeTransportKind.Ax25, [$"SYSOP {CurrentCode()}", "HELP", "B"]);
+
+        await svc.RunAsync(conn);
+
+        Assert.Contains("Commands: SESSIONS, KICK, PORT, RELOAD.", conn.Text, StringComparison.Ordinal);
+        Assert.Contains("RELOAD             re-read the config file", conn.Text, StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, i = 0;
@@ -222,6 +254,10 @@ public sealed class SysopElevationTests : IDisposable
     // reach) the action, without standing up a real host/supervisor.
     private sealed class RecordingSysopOps : ISysopOperations
     {
+        /// <summary>Whether this node's config source can be re-read at all (a conffile node).
+        /// Defaults to false, the shipped pdn.db shape.</summary>
+        public bool SupportsReload { get; init; }
+
         public IReadOnlyList<string> Sessions { get; init; } = [];
         public int ListSessionsCalls { get; private set; }
         public int KickCalls { get; private set; }

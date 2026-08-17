@@ -93,9 +93,10 @@ public sealed class HeardPreDataCarrierTests : IDisposable
         var log = new HeardLog(store, clock);
         log.Record("vhf", "GB7XXX", T0, preDataCarrierMs: 400f);
         log.Record("vhf", "GB7XXX", T0.AddMinutes(1), preDataCarrierMs: 420f);
+        log.Dispose();   // store writes are asynchronous (C077); dispose stops the writer and flushes
 
         // A fresh log hydrated from the same store sees the persisted median/count.
-        var rehydrated = new HeardLog(new SqliteHeardStore(dbPath), clock);
+        using var rehydrated = new HeardLog(new SqliteHeardStore(dbPath), clock);
         var entry = rehydrated.ForPort("vhf").Single();
         entry.MedianPreDataCarrierMs.Should().Be(410f);
         entry.PreDataCarrierSamples.Should().Be(2);
@@ -106,9 +107,11 @@ public sealed class HeardPreDataCarrierTests : IDisposable
     {
         var clock = new FakeTimeProvider(T0.AddMinutes(2));
         var store = new SqliteHeardStore(dbPath);
-        new HeardLog(store, clock).Record("vhf", "GB7XXX", T0, preDataCarrierMs: 400f);
+        var first = new HeardLog(store, clock);
+        first.Record("vhf", "GB7XXX", T0, preDataCarrierMs: 400f);
+        first.Dispose();   // flushes the queued write (C077)
 
-        var rehydrated = new HeardLog(new SqliteHeardStore(dbPath), clock);
+        using var rehydrated = new HeardLog(new SqliteHeardStore(dbPath), clock);
         rehydrated.Record("vhf", "GB7XXX", T0.AddMinutes(1), preDataCarrierMs: 200f);
 
         var entry = rehydrated.ForPort("vhf").Single();

@@ -48,8 +48,20 @@ public interface ISysopOperations
     /// Ports API uses). Returns the outcome + a message for the console.</summary>
     Task<SysopActionResult> SetPortEnabledAsync(string portId, bool enabled, CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether <see cref="ReloadAsync"/> can actually do anything on this node, i.e. whether
+    /// config comes from a re-readable source (a conffile). False on a node whose config lives in
+    /// <c>pdn.db</c> (every shipped node since v0.17; see <c>docs/config-in-db.md</c>), where a
+    /// write applies immediately and there is nothing to re-read. The console gates the
+    /// <c>RELOAD</c> line in HELP and in the elevation banner on this, so the verb is never
+    /// advertised where it cannot work.
+    /// </summary>
+    bool SupportsReload { get; }
+
     /// <summary>Re-read the on-disk conffile (the same reload the file-watcher triggers),
-    /// applying any change through the reconcile path. Returns the outcome + a message.</summary>
+    /// applying any change through the reconcile path. Returns the outcome + a message. When
+    /// <see cref="SupportsReload"/> is false this returns a failure explaining where config
+    /// actually lives.</summary>
     Task<SysopActionResult> ReloadAsync(CancellationToken ct = default);
 }
 

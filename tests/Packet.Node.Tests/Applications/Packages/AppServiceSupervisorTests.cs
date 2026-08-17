@@ -38,6 +38,96 @@ public sealed class AppServiceSupervisorTests
     private static int CountRuns(string runsFile) =>
         File.Exists(runsFile) ? File.ReadAllLines(runsFile).Length : 0;
 
+    // ---- C076: a pipe-holding grandchild must not wedge the supervisor ---------------------
+
+    /// <summary>
+    /// The trap: the DIRECT child exits at once, but a grandchild it backgrounded inherited
+    /// stdout/stderr and holds those pipes for five minutes. <c>WaitForExitAsync</c> returns
+    /// immediately (manual reads, not BeginOutputReadLine), so an unbounded
+    /// <c>await pumps</c> then parked the run loop waiting for an EOF that never comes -
+    /// taking the restart policy, <c>ReconcileAsync</c> (which holds the gate) and
+    /// <c>DisposeAsync</c> with it. The drain is now bounded and escalates to SIGKILL of the
+    /// process group, so the exit is observed, the state leaves Running, and both reconcile
+    /// and disposal complete promptly.
+    /// </summary>
+    [Fact]
+    public async Task A_backgrounded_grandchild_holding_the_pipes_does_not_wedge_the_supervisor()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var pkg = new TempAppPackage("forker");
+        pkg.WriteScript("run.sh", """
+            sleep 300 &
+            exit 0
+            """);
+        var catalog = new FakeAppPackageCatalog();
+        catalog.Set(pkg.Service("run.sh", restart: AppServiceRestart.Never));
+        var supervisor = NewSupervisor(catalog);
+
+        await supervisor.ReconcileAsync();
+
+        // The exit is OBSERVED: the entry must not sit in Running with a dead pid while the
+        // drain is in progress, and the restart policy must actually run.
+        await Wait.ForAsync(
+            () => StatusOf(supervisor, "forker")?.State == AppServiceState.Stopped,
+            "the natural exit is observed and the policy (Never) settles the service");
+        StatusOf(supervisor, "forker")!.Pid.Should().BeNull("a stopped service reports no pid");
+
+        // The gate is free: a second reconcile completes instead of queuing behind the drain.
+        await WithinAsync(supervisor.ReconcileAsync(), "reconcile must not queue behind the drain");
+
+        // And so does teardown, which used to await the same never-completing pumps.
+        await WithinAsync(supervisor.DisposeAsync().AsTask(), "disposal must not wait on a pipe nobody closes");
+    }
+
+    /// <summary>
+    /// The other half of C076: with the drain unbounded the restart policy never ran at all,
+    /// because the run loop was parked on the pipes before it ever got to the policy. The
+    /// bounded drain escalates to SIGKILL of the process group - which is what actually
+    /// releases a grandchild's grip on stdout/stderr - so an <c>always</c> service is
+    /// respawned as it should be.
+    /// </summary>
+    [Fact]
+    public async Task A_pipe_holding_grandchild_does_not_stop_the_restart_policy_running()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var pkg = new TempAppPackage("forker2");
+        pkg.WriteScript("run.sh", """
+            echo run >> "$PDN_APP_STATE/runs.txt"
+            sleep 300 &
+            exit 0
+            """);
+        var catalog = new FakeAppPackageCatalog();
+        catalog.Set(pkg.Service("run.sh", restart: AppServiceRestart.Always));
+        var supervisor = NewSupervisor(catalog);
+
+        await supervisor.ReconcileAsync();
+
+        await Wait.ForAsync(
+            () => CountRuns(pkg.StatePath("runs.txt")) >= 2,
+            "a service whose grandchild holds the pipes open must still be respawned",
+            TimeSpan.FromSeconds(30));
+
+        await WithinAsync(supervisor.DisposeAsync().AsTask(), "disposal must stay bounded here too");
+    }
+
+    /// <summary>Fail loudly (rather than hanging the whole run) if an operation that must be
+    /// bounded is not. The bound is generous next to the 300 s the old code would have waited.</summary>
+    private static async Task WithinAsync(Task operation, string because)
+    {
+        var budget = TimeSpan.FromSeconds(30);
+        var finished = await Task.WhenAny(operation, Task.Delay(budget));
+        ReferenceEquals(finished, operation).Should().BeTrue($"{because} (waited {budget.TotalSeconds:0}s)");
+        await operation;
+    }
+
     // ---- the spawn contract ---------------------------------------------------------------
 
     [Fact]

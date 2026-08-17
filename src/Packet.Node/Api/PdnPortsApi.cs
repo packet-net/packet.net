@@ -163,7 +163,7 @@ public static class PdnPortsApi
                         // unknown id was already caught by the config existence check above.
                         // A disabled port can't be restarted; bring it up first (use up).
                         return Results.Json(
-                            new { error = $"Port '{id}' is disabled — bring it up before restarting it." },
+                            new { error = $"Port '{id}' is disabled - bring it up before restarting it." },
                             statusCode: StatusCodes.Status409Conflict);
                     }
                     return Results.Ok(ProjectPort(host, cfg, id));

@@ -620,8 +620,13 @@ public sealed partial class NodeCommandService : INodeApplication
               .Append("  SESSIONS           list active sessions\n")
               .Append("  KICK <id>          disconnect a session\n")
               .Append("  PORT <id> UP|DOWN  enable/disable a port\n")
-              .Append("  CAP CLEAR <id>     forget a peer capability\n")
-              .Append("  RELOAD             re-read the config file");
+              .Append("  CAP CLEAR <id>     forget a peer capability");
+            // RELOAD only exists on a conffile node. Where config lives in pdn.db it applies as
+            // it is written, so advertising the verb would promise something that cannot work.
+            if (env.Sysop!.Operations.SupportsReload)
+            {
+                sb.Append("\n  RELOAD             re-read the config file");
+            }
         }
         else if (available)
         {
@@ -708,8 +713,10 @@ public sealed partial class NodeCommandService : INodeApplication
         sysop.ElevatedUntil = now + ttl;
         sysop.Scope = user.Scope;
         LogSysopElevated(subject, user.Scope, peer);
+        // Same gate as HELP: name RELOAD only where the config source can actually be re-read.
+        string verbs = ctx.Operations.SupportsReload ? "SESSIONS, KICK, PORT, RELOAD" : "SESSIONS, KICK, PORT";
         await WriteLineAsync(connection,
-            $"Elevated as {user.Username} ({user.Scope}) for {(int)ttl.TotalMinutes} min. Commands: SESSIONS, KICK, PORT, RELOAD.",
+            $"Elevated as {user.Username} ({user.Scope}) for {(int)ttl.TotalMinutes} min. Commands: {verbs}.",
             ct).ConfigureAwait(false);
     }
 
@@ -798,7 +805,10 @@ public sealed partial class NodeCommandService : INodeApplication
         string peer = clear.Target[(sep + 1)..];
 
         bool forgotten = cache.Forget(portId, peer);
-        LogSysopCommand("CAP-CLEAR", clear.Target);
+        // The audit line names the ISSUING connection (like every other sysop command) and
+        // carries the cleared target as its own field; passing the target as the PeerId would
+        // read as if the forgotten peer had run the command.
+        LogSysopTargetCommand("CAP-CLEAR", clear.Target, connection.PeerId);
         await WriteLineAsync(connection,
             forgotten
                 ? $"Forgot capability for {portId}:{peer}."
@@ -883,4 +893,9 @@ public sealed partial class NodeCommandService : INodeApplication
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sysop command {Command} run over {PeerId}.")]
     private partial void LogSysopCommand(string command, string peerId);
+
+    // Same audit line for the commands that act on a named target (CAP CLEAR): the target is its
+    // own field so {PeerId} always means the connection the command was issued over.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Sysop command {Command} ({Target}) run over {PeerId}.")]
+    private partial void LogSysopTargetCommand(string command, string target, string peerId);
 }

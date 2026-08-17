@@ -1,6 +1,12 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
+using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hail;
+using Packet.Node.Core.Hosting;
+using Packet.Node.Tests.Support;
 using Packet.Tune.Core;
 
 namespace Packet.Node.Tests.Hail;
@@ -11,6 +17,12 @@ namespace Packet.Node.Tests.Hail;
 /// name), and the no-reply / link-failure outcomes map to the classified
 /// <see cref="HailException"/> the API turns into 504 / 502. Driven over an in-memory link pair —
 /// no port, no radio.
+/// <para>
+/// Plus the resident-responder retry discipline: a port whose responder cannot start logs its
+/// reason ONCE (again only when the reason changes) and backs off on a widening per-port interval,
+/// driven on a <see cref="FakeTimeProvider"/> with a capturing logger so the assertions are on the
+/// RENDERED line, not merely that a call happened.
+/// </para>
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class PortHailServiceTests
@@ -74,6 +86,130 @@ public sealed class PortHailServiceTests
             .WaitAsync(Timeout);
 
         (await act.Should().ThrowAsync<HailException>()).Which.Error.Should().Be(HailError.Timeout);
+    }
+
+    // ─── Resident-responder retry discipline (reconcile seam, fake clock) ───
+
+    private const string SdmDisabled =
+        "SDM is disabled in the radio's programming - enable SDM + auto-acknowledgements with the Tait programming app";
+
+    // A bare node config: these tests construct a host with no supervisor (nothing running) and
+    // drive the resident failure/backoff seam directly, rather than racing the reconcile loop.
+    private static TestConfigProvider NewConfig() =>
+        new(new NodeConfig { Identity = new Identity { Callsign = "M0LTE-1" }, Ports = [] });
+
+    [Fact]
+    public void A_standing_resident_failure_is_logged_once_not_every_reconcile()
+    {
+        var clock = new FakeTimeProvider();
+        var log = new CapturingLogger<PortHailService>();
+        var config = NewConfig();
+        using var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
+        using var svc = new PortHailService(host, config, log, clock);
+
+        // Five reconcile cycles' worth of the same refusal (the radio's SDM is off).
+        for (int i = 0; i < 5; i++)
+        {
+            svc.NoteResidentSkipped("vhf", SdmDisabled);
+            clock.Advance(TimeSpan.FromMinutes(10));
+        }
+
+        var lines = log.Messages.FindAll(m => m.Text.Contains("not armed", StringComparison.Ordinal));
+        lines.Should().ContainSingle("a standing fault logs on the transition, not once per cycle");
+        lines[0].Level.Should().Be(LogLevel.Warning);
+        lines[0].Text.Should().Be($"hail[vhf] resident responder not armed: {SdmDisabled} (retrying in 10s)");
+    }
+
+    [Fact]
+    public void A_changed_resident_failure_reason_logs_again()
+    {
+        var clock = new FakeTimeProvider();
+        var log = new CapturingLogger<PortHailService>();
+        var config = NewConfig();
+        using var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
+        using var svc = new PortHailService(host, config, log, clock);
+
+        svc.NoteResidentSkipped("vhf", SdmDisabled);
+        svc.NoteResidentSkipped("vhf", SdmDisabled);
+        svc.NoteResidentSkipped("vhf", "the radio stopped answering CCDI");
+
+        var lines = log.Messages.FindAll(m => m.Text.Contains("not armed", StringComparison.Ordinal));
+        lines.Should().HaveCount(2, "a NEW reason is news; a repeat is not");
+        lines[1].Text.Should().Be("hail[vhf] resident responder not armed: the radio stopped answering CCDI (retrying in 40s)");
+    }
+
+    [Fact]
+    public void A_resident_start_fault_is_logged_once_with_its_retry_interval()
+    {
+        var clock = new FakeTimeProvider();
+        var log = new CapturingLogger<PortHailService>();
+        var config = NewConfig();
+        using var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
+        using var svc = new PortHailService(host, config, log, clock);
+
+        svc.NoteResidentStartFailed("vhf", new IOException("serial port closed"));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        svc.NoteResidentStartFailed("vhf", new IOException("serial port closed"));
+
+        var lines = log.Messages.FindAll(m => m.Text.Contains("failed to start", StringComparison.Ordinal));
+        lines.Should().ContainSingle();
+        lines[0].Level.Should().Be(LogLevel.Error);
+        lines[0].Text.Should().Be("hail[vhf] resident responder failed to start (retrying in 10s)");
+    }
+
+    [Fact]
+    public void A_failing_port_backs_off_and_is_retried_when_the_interval_elapses()
+    {
+        var clock = new FakeTimeProvider();
+        var config = NewConfig();
+        using var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
+        using var svc = new PortHailService(host, config, new CapturingLogger<PortHailService>(), clock);
+
+        svc.ResidentAttemptDue("vhf").Should().BeTrue("a port with no failure history is always due");
+
+        // First failure: retried one reconcile interval later, not on the very next cycle boundary
+        // before it (and certainly not forever at 10 s once the interval has grown).
+        svc.NoteResidentSkipped("vhf", SdmDisabled);
+        svc.ResidentAttemptDue("vhf").Should().BeFalse();
+        clock.Advance(TimeSpan.FromSeconds(10));
+        svc.ResidentAttemptDue("vhf").Should().BeTrue("the first retry is one reconcile interval out");
+
+        // Second consecutive failure: the wait doubles to 20 s.
+        svc.NoteResidentSkipped("vhf", SdmDisabled);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        svc.ResidentAttemptDue("vhf").Should().BeFalse("the retry interval doubled");
+        clock.Advance(TimeSpan.FromSeconds(10));
+        svc.ResidentAttemptDue("vhf").Should().BeTrue();
+
+        // A responder that finally arms clears the history, so the next fault starts fresh.
+        svc.NoteResidentSkipped("vhf", SdmDisabled);
+        svc.ResidentAttemptDue("vhf").Should().BeFalse();
+        svc.ClearResidentFailure("vhf");
+        svc.ResidentAttemptDue("vhf").Should().BeTrue();
+    }
+
+    /// <summary>An in-memory ILogger recording the level + RENDERED text of every entry, so the
+    /// assertions read the line an operator would see (capturing-logger discipline).</summary>
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Text)> Messages { get; } = new();
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add((logLevel, formatter(state, exception)));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose()
+            {
+            }
+        }
     }
 
     private sealed class FakeProvider(StationStatus status) : IStationStatusProvider

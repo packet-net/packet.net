@@ -79,10 +79,20 @@ public sealed class HailException : Exception
 /// to the requested peer for the duration of the call.</para>
 /// <para>The SDM-enabled fail-fast preflight (the capability doctor's wildcard-SDM probe) runs on the
 /// transient path; on the shared path the responder's link already proved SDM works.</para>
+/// <para><b>Quiet, backing-off retries.</b> A responder that cannot start (SDM disabled in the
+/// radio's programming, a CCDI/IO fault) is retried on a per-port interval that doubles from the
+/// reconcile cadence up to <see cref="MaxRetryInterval"/>, and its reason is logged only when it
+/// CHANGES, the same transition-logging convention as <c>HeadEndHealthMonitor</c>. A standing fault
+/// costs one line and a slow re-probe, not a warning every reconcile cycle forever.</para>
 /// </remarks>
 public sealed partial class PortHailService : BackgroundService
 {
     private static readonly TimeSpan ReconcileInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>Ceiling on the per-port resident-start retry interval. A radio with SDM
+    /// switched off in its programming never becomes a responder without an operator, so the
+    /// probe settles to once every few minutes rather than every reconcile cycle.</summary>
+    private static readonly TimeSpan MaxRetryInterval = TimeSpan.FromMinutes(5);
 
     private static readonly StationHailerOptions NodeHailerOptions = new()
     {
@@ -92,12 +102,20 @@ public sealed partial class PortHailService : BackgroundService
 
     private readonly NodeHostedService host;
     private readonly IConfigProvider config;
+    private readonly TimeProvider timeProvider;
     private readonly ILogger<PortHailService> logger;
     private readonly ConcurrentDictionary<string, ResidentResponder> residents = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> portLocks = new(StringComparer.Ordinal);
 
-    /// <summary>Create the service.</summary>
-    public PortHailService(NodeHostedService host, IConfigProvider config, ILogger<PortHailService> logger)
+    // Per-port resident-start failure state: the last reason (so a repeat is silent and only a
+    // CHANGED reason logs again) plus the backoff schedule. Written only by the reconcile loop.
+    private readonly ConcurrentDictionary<string, ResidentFailure> residentFailures = new(StringComparer.Ordinal);
+
+    /// <summary>Create the service. <paramref name="timeProvider"/> drives the reconcile
+    /// cadence and the per-port retry backoff (tests pass a fake clock); null is the system
+    /// clock, so existing call sites are unaffected.</summary>
+    public PortHailService(
+        NodeHostedService host, IConfigProvider config, ILogger<PortHailService> logger, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(config);
@@ -105,6 +123,7 @@ public sealed partial class PortHailService : BackgroundService
         this.host = host;
         this.config = config;
         this.logger = logger;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -126,7 +145,7 @@ public sealed partial class PortHailService : BackgroundService
         if (RadioControls.LiveTait(running.Radio) is not { } tait)
         {
             throw new HailException(HailError.BadRequest,
-                "this port has no Tait CCDI radio attached — a hail needs the radio's SDM side channel");
+                "this port has no Tait CCDI radio attached - a hail needs the radio's SDM side channel");
         }
         if (string.IsNullOrEmpty(peerSdmId) || peerSdmId.Length != TaitSdmSideChannel.IdentityLength)
         {
@@ -182,7 +201,7 @@ public sealed partial class PortHailService : BackgroundService
                 {
                     LogReconcileFailed(ex);
                 }
-                await Task.Delay(ReconcileInterval, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(ReconcileInterval, timeProvider, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -268,10 +287,20 @@ public sealed partial class PortHailService : BackgroundService
             }
         }
 
+        // Forget the failure/backoff state of ports that are no longer wanted, so a port that
+        // comes back (re-enabled, reconfigured) starts from a clean slate.
+        foreach (string portId in residentFailures.Keys)
+        {
+            if (!desired.ContainsKey(portId))
+            {
+                residentFailures.TryRemove(portId, out _);
+            }
+        }
+
         // Start responders newly wanted.
         foreach (var (portId, running) in desired)
         {
-            if (residents.ContainsKey(portId))
+            if (residents.ContainsKey(portId) || !ResidentAttemptDue(portId))
             {
                 continue;
             }
@@ -304,8 +333,11 @@ public sealed partial class PortHailService : BackgroundService
             }
             catch (HailException ex)
             {
-                LogResidentSkipped(portId, ex.Message);
-                return; // a responder that cannot reply is pointless — try again next cycle
+                // A responder that cannot reply is pointless. Record the reason (logged only
+                // when it CHANGES) and back off, so a radio with SDM disabled costs one
+                // warning and a widening retry, not a warning every 10 s forever.
+                NoteResidentSkipped(portId, ex.Message);
+                return;
             }
 
             var link = new FanOutTuningLink(SdmTuningLink.Create(tait, peer, extendedSdm: true));
@@ -317,16 +349,93 @@ public sealed partial class PortHailService : BackgroundService
             var cts = new CancellationTokenSource();
             var task = responder.RunAsync(cts.Token);
             residents[portId] = new ResidentResponder(peer, tait, link, cts, task);
+            ClearResidentFailure(portId);
             LogResidentArmed(portId, peer);
         }
         catch (Exception ex) when (ex is TaitCcdiException or IOException or InvalidOperationException)
         {
-            LogResidentStartFailed(ex, portId);
+            NoteResidentStartFailed(portId, ex);
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Is this port due another resident-start attempt? A port whose last attempt failed waits
+    /// out its backoff instead of re-probing the radio every reconcile cycle. Internal as the
+    /// deterministic test seam (InternalsVisibleTo <c>Packet.Node.Tests</c>).
+    /// </summary>
+    internal bool ResidentAttemptDue(string portId) =>
+        !residentFailures.TryGetValue(portId, out var failure) || timeProvider.GetUtcNow() >= failure.NextAttempt;
+
+    /// <summary>
+    /// Record a resident-start refusal (the SDM preflight said no) and log it ONLY when the
+    /// reason changed, the transition-logging convention <c>HeadEndHealthMonitor</c> uses, so a
+    /// standing fault is one warning, not one per cycle. Internal test seam.
+    /// </summary>
+    internal void NoteResidentSkipped(string portId, string reason)
+    {
+        if (RecordResidentFailure(portId, reason, out var retry))
+        {
+            LogResidentSkipped(portId, reason, (int)retry.TotalSeconds);
+        }
+    }
+
+    /// <summary>
+    /// Record a resident-start fault (radio/IO) and log it only when the reason changed.
+    /// Internal test seam.
+    /// </summary>
+    internal void NoteResidentStartFailed(string portId, Exception ex)
+    {
+        if (RecordResidentFailure(portId, $"{ex.GetType().Name}: {ex.Message}", out var retry))
+        {
+            LogResidentStartFailed(ex, portId, (int)retry.TotalSeconds);
+        }
+    }
+
+    /// <summary>Forget a port's failure state: the responder armed, so the next fault starts
+    /// from a clean slate (first reason logs, backoff restarts). Internal test seam.</summary>
+    internal void ClearResidentFailure(string portId) => residentFailures.TryRemove(portId, out _);
+
+    // Update the port's failure state; returns true when this reason is NEW (i.e. worth a log
+    // line). The retry interval doubles per consecutive failure from the reconcile cadence up
+    // to MaxRetryInterval. Called only from the reconcile loop (and the tests), so the
+    // read-modify-write needs no extra interlocking.
+    private bool RecordResidentFailure(string portId, string reason, out TimeSpan retry)
+    {
+        if (!residentFailures.TryGetValue(portId, out var failure))
+        {
+            failure = new ResidentFailure();
+            residentFailures[portId] = failure;
+        }
+        bool changed = failure.Count == 0 || !string.Equals(failure.Reason, reason, StringComparison.Ordinal);
+        failure.Reason = reason;
+        failure.Count++;
+        retry = RetryInterval(failure.Count);
+        failure.NextAttempt = timeProvider.GetUtcNow() + retry;
+        return changed;
+    }
+
+    // 10 s, 20 s, 40 s ... capped at MaxRetryInterval. The exponent is clamped too, so a port
+    // that has been failing all day cannot push the doubling to infinity.
+    private static TimeSpan RetryInterval(int consecutiveFailures)
+    {
+        double seconds = ReconcileInterval.TotalSeconds * Math.Pow(2, Math.Min(consecutiveFailures - 1, 10));
+        return TimeSpan.FromSeconds(Math.Min(seconds, MaxRetryInterval.TotalSeconds));
+    }
+
+    /// <summary>One port's standing resident-start failure: the last reason (compared so only a
+    /// CHANGE logs), how many consecutive failures (drives the backoff), and when the next
+    /// attempt is due.</summary>
+    private sealed class ResidentFailure
+    {
+        public string Reason { get; set; } = string.Empty;
+
+        public int Count { get; set; }
+
+        public DateTimeOffset NextAttempt { get; set; }
     }
 
     /// <summary>Stop and dispose a port's resident responder under its lock. When
@@ -374,7 +483,7 @@ public sealed partial class PortHailService : BackgroundService
         catch (TaitCcdiException ex) when (ex.Error is { Category: '0', ErrorNumber: 0x06 })
         {
             throw new HailException(HailError.BadRequest,
-                "SDM is disabled in the radio's programming — enable SDM + auto-acknowledgements with the Tait programming app");
+                "SDM is disabled in the radio's programming - enable SDM + auto-acknowledgements with the Tait programming app");
         }
     }
 
@@ -421,11 +530,13 @@ public sealed partial class PortHailService : BackgroundService
     [LoggerMessage(Level = LogLevel.Information, Message = "hail[{Port}] resident responder stopped")]
     private partial void LogResidentStopped(string port);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "hail[{Port}] resident responder not armed: {Reason}")]
-    private partial void LogResidentSkipped(string port, string reason);
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "hail[{Port}] resident responder not armed: {Reason} (retrying in {RetrySeconds}s)")]
+    private partial void LogResidentSkipped(string port, string reason, int retrySeconds);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "hail[{Port}] resident responder failed to start")]
-    private partial void LogResidentStartFailed(Exception ex, string port);
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "hail[{Port}] resident responder failed to start (retrying in {RetrySeconds}s)")]
+    private partial void LogResidentStartFailed(Exception ex, string port, int retrySeconds);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "hail[{Port}] sdm-link: {Line}")]
     private partial void LogSdm(string port, string line);

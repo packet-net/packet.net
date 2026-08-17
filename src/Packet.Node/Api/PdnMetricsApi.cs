@@ -376,14 +376,14 @@ public static class PdnMetricsApi
             w.Sample(Ns + "port_fec_frames_total", s.Frames, ("port", portId));
         }
 
-        w.Help(Ns + "port_fec_corrected_bytes_total", "Cumulative bytes forward-error-correction repaired on inbound frames — an honest byte-error floor, NOT a bit-error rate. 0 on a clean/HDLC link.");
+        w.Help(Ns + "port_fec_corrected_bytes_total", "Cumulative bytes forward-error-correction repaired on inbound frames - an honest byte-error floor, NOT a bit-error rate. 0 on a clean/HDLC link.");
         w.Type(Ns + "port_fec_corrected_bytes_total", "counter");
         foreach (var (portId, s) in rows)
         {
             w.Sample(Ns + "port_fec_corrected_bytes_total", s.CumulativeCorrectedBytes, ("port", portId));
         }
 
-        w.Help(Ns + "port_fec_corrected_frames_total", "Inbound frames that needed at least one byte of FEC repair — the link spending its error budget before frames start dropping.");
+        w.Help(Ns + "port_fec_corrected_frames_total", "Inbound frames that needed at least one byte of FEC repair - the link spending its error budget before frames start dropping.");
         w.Type(Ns + "port_fec_corrected_frames_total", "counter");
         foreach (var (portId, s) in rows)
         {
@@ -395,7 +395,7 @@ public static class PdnMetricsApi
         var withLast = rows.Where(r => r.Snapshot.LastFrameCorrectedBytes is not null).ToList();
         if (withLast.Count > 0)
         {
-            w.Help(Ns + "port_fec_last_frame_corrected_bytes", "Bytes FEC repaired on the most recent inbound frame. Absent when the last frame carried no FEC count (HDLC) — distinct from 0, a clean FEC frame.");
+            w.Help(Ns + "port_fec_last_frame_corrected_bytes", "Bytes FEC repaired on the most recent inbound frame. Absent when the last frame carried no FEC count (HDLC) - distinct from 0, a clean FEC frame.");
             w.Type(Ns + "port_fec_last_frame_corrected_bytes", "gauge");
             foreach (var (portId, s) in withLast)
             {
@@ -528,7 +528,7 @@ public static class PdnMetricsApi
             "Offset-corrected reverse-power detector reading, in mV (a TREND, not a power measurement).", "gauge",
             r => r.Health?.ReverseTrendMillivolts);
         RadioMetric(w, attached, "radio_reverse_forward_ratio",
-            "Offset-corrected reverse/forward detector ratio (a per-station TREND, never VSWR — alert on change).", "gauge",
+            "Offset-corrected reverse/forward detector ratio (a per-station TREND, never VSWR - alert on change).", "gauge",
             r => r.Health?.ReverseForwardRatio);
     }
 
@@ -715,7 +715,7 @@ public static class PdnMetricsApi
         }
 
         w.Help(Ns + "link_predata_carrier_ms",
-            "Rolling median carrier-rise-to-data lead (ms) of frames heard from a link partner — its effective TXDELAY as heard — by port and remote callsign.");
+            "Rolling median carrier-rise-to-data lead (ms) of frames heard from a link partner - its effective TXDELAY as heard - by port and remote callsign.");
         w.Type(Ns + "link_predata_carrier_ms", "gauge");
         foreach (var e in rows)
         {

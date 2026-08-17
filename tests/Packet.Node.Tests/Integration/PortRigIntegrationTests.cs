@@ -127,6 +127,58 @@ public sealed class PortRigIntegrationTests
         await act.Should().NotThrowAsync();
     }
 
+    /// <summary>
+    /// C068: a hot apply (KISS params, AX.25 params, compat, NET/ROM quality) only
+    /// rebaselines the stored <c>PortConfig</c>. It used to do that by rebuilding the whole
+    /// <see cref="RunningPort"/> member by member, which dropped the three it forgot -
+    /// Rig / RigStatus / RigDaemon - so a txDelay edit silently detached a rig-attached
+    /// port's rig: attached:false in the API, 409 on every rig command, and a leaked
+    /// poller + CAT connection that teardown could no longer dispose.
+    /// </summary>
+    [Fact]
+    public async Task A_hot_kiss_only_apply_keeps_the_ports_rig_attached()
+    {
+        var bus = new SharedRadioBus();
+        var before = PortWithRig("hf", "/dev/pty-hf") with { Kiss = new KissParams { TxDelay = 30 } };
+        var config = new TestConfigProvider(Config(before));
+        var transports = new FakeTransportFactory().Provide("serial-kiss:/dev/pty-hf", bus.Attach());
+        var disposal = new List<string>();
+        var rig = new FakeRigControl(disposal, "rig") { FrequencyHz = 14_074_000 };
+        var rigs = new FakeRigControlFactory().Provide(rig);
+
+        var supervisor = new PortSupervisor(
+            config, transports, TimeProvider.System, NullLoggerFactory.Instance,
+            rigFactory: rigs, rigTelemetry: new RigTelemetry());
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up");
+
+        var running = supervisor.GetPort("hf")!;
+        running.Rig.Should().BeSameAs(rig);
+        var monitor = running.RigStatus;
+        monitor.Should().NotBeNull("an attached rig gets a status poller");
+
+        // A KISS-only edit: the planner must classify it hot (no restart), which is exactly
+        // the class that used to lose the rig.
+        var after = before with { Kiss = new KissParams { TxDelay = 40 } };
+        var newConfig = Config(after);
+        var plan = ReconcilePlanner.Plan(config.Current, newConfig);
+        plan.KissParamsChanged.Should().ContainSingle().Which.Id.Should().Be("hf");
+        plan.ToRestart.Should().BeEmpty("a KISS-param edit is a hot apply, not a port restart");
+
+        await supervisor.ApplyAsync(plan, newConfig);
+
+        var rebaselined = supervisor.GetPort("hf")!;
+        rebaselined.Should().BeSameAs(running, "rebaselining mutates the live port, it does not clone it");
+        rebaselined.Config.Kiss!.TxDelay.Should().Be(40, "the baseline must carry the applied value");
+        rebaselined.Rig.Should().BeSameAs(rig, "a hot apply must not detach the rig");
+        rebaselined.RigStatus.Should().BeSameAs(monitor, "a hot apply must not drop the status poller");
+        rebaselined.RigDaemon.Should().BeNull("this port dials a BYO daemon; there is none to keep");
+        RigReadModels.ForPort(supervisor, newConfig, "hf")!.Attached.Should().BeTrue();
+
+        await supervisor.DisposeAsync();
+        rig.Disposed.Should().BeTrue("teardown must still own and dispose the rig after a hot apply");
+    }
+
     // ---- the node-managed shape (device + model → the supervisor spawns rigctld) ----------
 
     private static PortConfig PortWithManagedRig(string id, string device, PortRigConfig rig) => new()

@@ -1,8 +1,8 @@
-using System.Globalization;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Packet.Node.Core.Storage;
 
 namespace Packet.Node.Core.Heard;
 
@@ -99,6 +99,52 @@ public sealed partial class SqliteHeardStore : IHeardStore
         }
     }
 
+    private const string UpsertSql =
+        "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count, last_rssi_dbm, last_snr_db, predata_median_ms, predata_samples) " +
+        "VALUES (@p, @c, @first, @last, @count, @rssi, @snr, @pre, @preN) " +
+        "ON CONFLICT(port_id, callsign) DO UPDATE SET " +
+        "first_heard_utc = @first, last_heard_utc = @last, count = @count, last_rssi_dbm = @rssi, last_snr_db = @snr, " +
+        "predata_median_ms = @pre, predata_samples = @preN;";
+
+    private static object Bind(HeardEntry entry) => new
+    {
+        p = entry.PortId,
+        c = entry.Callsign,
+        first = SqliteStamps.Stamp(entry.FirstHeard),
+        last = SqliteStamps.Stamp(entry.LastHeard),
+        count = entry.Count,
+        rssi = entry.LastRssiDbm is { } v ? (double?)v : null,
+        snr = entry.LastSnrDb is { } s ? (double?)s : null,
+        pre = entry.MedianPreDataCarrierMs is { } m ? (double?)m : null,
+        preN = entry.PreDataCarrierSamples,
+    };
+
+    /// <inheritdoc/>
+    /// <remarks>One transaction for the whole batch: the HeardLog writer drains a coalesced
+    /// batch per pass (C077), so this is one commit per drain instead of one per frame.</remarks>
+    public void Upsert(IReadOnlyList<HeardEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        if (entries.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            foreach (var entry in entries)
+            {
+                conn.Execute(UpsertSql, Bind(entry), tx);
+            }
+            tx.Commit();
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+        }
+    }
+
     /// <inheritdoc/>
     public void Upsert(HeardEntry entry)
     {
@@ -106,24 +152,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
         try
         {
             using var conn = Open();
-            conn.Execute(
-                "INSERT INTO heard_log (port_id, callsign, first_heard_utc, last_heard_utc, count, last_rssi_dbm, last_snr_db, predata_median_ms, predata_samples) " +
-                "VALUES (@p, @c, @first, @last, @count, @rssi, @snr, @pre, @preN) " +
-                "ON CONFLICT(port_id, callsign) DO UPDATE SET " +
-                "first_heard_utc = @first, last_heard_utc = @last, count = @count, last_rssi_dbm = @rssi, last_snr_db = @snr, " +
-                "predata_median_ms = @pre, predata_samples = @preN;",
-                new
-                {
-                    p = entry.PortId,
-                    c = entry.Callsign,
-                    first = Stamp(entry.FirstHeard),
-                    last = Stamp(entry.LastHeard),
-                    count = entry.Count,
-                    rssi = entry.LastRssiDbm is { } v ? (double?)v : null,
-                    snr = entry.LastSnrDb is { } s ? (double?)s : null,
-                    pre = entry.MedianPreDataCarrierMs is { } m ? (double?)m : null,
-                    preN = entry.PreDataCarrierSamples,
-                });
+            conn.Execute(UpsertSql, Bind(entry));
         }
         catch (SqliteException ex)
         {
@@ -197,7 +226,7 @@ public sealed partial class SqliteHeardStore : IHeardStore
             // 1) Age-out: rows last heard before the cutoff.
             deleted += conn.Execute(
                 "DELETE FROM heard_log WHERE last_heard_utc < @cutoff;",
-                new { cutoff = Stamp(olderThan) });
+                new { cutoff = SqliteStamps.Stamp(olderThan) });
 
             // 2) Per-port cap: for each port over the cap, delete the oldest-heard rows down to it.
             // Done with a correlated subquery that keeps the newest @max rows per port (the rowids
@@ -232,8 +261,8 @@ public sealed partial class SqliteHeardStore : IHeardStore
     private static HeardEntry ToEntry(HeardRow row) => new(
         row.PortId,
         row.Callsign,
-        ParseStamp(row.FirstHeardUtc),
-        ParseStamp(row.LastHeardUtc),
+        SqliteStamps.ParseStamp(row.FirstHeardUtc),
+        SqliteStamps.ParseStamp(row.LastHeardUtc),
         row.Count,
         // Stored as REAL (8-byte double); narrow back to the float the 0.1 dB source used so it
         // renders cleanly (e.g. -95.3, not -95.30000305).
@@ -241,11 +270,6 @@ public sealed partial class SqliteHeardStore : IHeardStore
         row.LastSnrDb is { } s ? (float?)s : null,
         row.PreDataMedianMs is { } m ? (float?)m : null,
         (int)row.PreDataSamples);
-
-    private static string Stamp(DateTimeOffset value) => value.ToString("o", CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset ParseStamp(string value) =>
-        DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
     // Dapper row DTO (mutable so Dapper's setter mapping binds it).
     private sealed class HeardRow

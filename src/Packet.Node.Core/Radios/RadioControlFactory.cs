@@ -77,7 +77,7 @@ public sealed class RadioControlFactory : IRadioControlFactory
             {
                 throw new InvalidOperationException(
                     "radio kind 'rig' needs the port's rig: block (the CAT daemon its dedicated " +
-                    "connection dials), but none was supplied — validated config always carries " +
+                    "connection dials), but none was supplied - validated config always carries " +
                     "one, so this is a wiring bug at the call site.");
             }
             var rigControl = await rigFactory.CreateAsync(rig, timeProvider, cancellationToken).ConfigureAwait(false);
@@ -172,6 +172,6 @@ public sealed class RadioControlFactory : IRadioControlFactory
 
         throw new InvalidOperationException(
             $"no tait-ccdi radio with CCDI serial '{radio.Serial}' found among {found.Count} " +
-            $"probed port(s) at {radio.Baud} baud — is it plugged in and powered?");
+            $"probed port(s) at {radio.Baud} baud - is it plugged in and powered?");
     }
 }

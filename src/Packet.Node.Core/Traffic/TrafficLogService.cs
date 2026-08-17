@@ -205,7 +205,7 @@ public sealed partial class TrafficLogService : BackgroundService
     internal void PruneNow() => PruneOnce();
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "Traffic log: dropped {Dropped} frame(s) (writer behind — slow disk?); {Total} dropped since start. The radio path is unaffected.")]
+        Message = "Traffic log: dropped {Dropped} frame(s) (writer behind - slow disk?); {Total} dropped since start. The radio path is unaffected.")]
     private partial void LogDropped(long dropped, long total);
 
     [LoggerMessage(Level = LogLevel.Information,

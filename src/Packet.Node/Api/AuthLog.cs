@@ -35,7 +35,7 @@ internal static partial class AuthLog
     public static partial void RefreshRejected(ILogger logger, string reason, string ip);
 
     [LoggerMessage(EventId = 4006, Level = LogLevel.Warning,
-        Message = "auth: refresh REUSE-DETECTED — revoking token family user={User} ip={Ip}")]
+        Message = "auth: refresh REUSE-DETECTED - revoking token family user={User} ip={Ip}")]
     public static partial void RefreshReuseDetected(ILogger logger, string user, string ip);
 
     [LoggerMessage(EventId = 4007, Level = LogLevel.Information,
@@ -59,7 +59,7 @@ internal static partial class AuthLog
     public static partial void PasskeyAssertionFailed(ILogger logger, string ip, string reason);
 
     [LoggerMessage(EventId = 4012, Level = LogLevel.Warning,
-        Message = "auth: passkey CLONE DETECTED — signature counter regressed user={User} ip={Ip}")]
+        Message = "auth: passkey CLONE DETECTED - signature counter regressed user={User} ip={Ip}")]
     public static partial void PasskeyCloneDetected(ILogger logger, string user, string ip);
 
     [LoggerMessage(EventId = 4013, Level = LogLevel.Information,

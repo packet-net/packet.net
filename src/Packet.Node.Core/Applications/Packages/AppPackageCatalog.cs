@@ -61,7 +61,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
                 var others = string.Join(", ", group.Where(o => !ReferenceEquals(o, draft))
                     .Select(o => $"'{o.Id}'"));
                 draft.Problems.Add(
-                    $"command verb '{draft.EffectiveVerb}' collides with package(s) {others} — " +
+                    $"command verb '{draft.EffectiveVerb}' collides with package(s) {others} - " +
                     "override apps[].command to disambiguate.");
             }
         }
@@ -83,7 +83,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
                 var others = string.Join(", ", ids.Where(o => !ReferenceEquals(o, draft))
                     .Select(o => $"'{o.Id}'"));
                 draft.Problems.Add(
-                    $"forward listen port {port} collides with package(s) {others} — " +
+                    $"forward listen port {port} collides with package(s) {others} - " +
                     "a tailnet port can be exposed by only one app.");
             }
         }
@@ -263,13 +263,13 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             }
             else if (fwd.Listen == ReservedWebPort)
             {
-                problems.Add($"forward[{i}].listen: {ReservedWebPort} is reserved for the web reverse-proxy — pick another port.");
+                problems.Add($"forward[{i}].listen: {ReservedWebPort} is reserved for the web reverse-proxy - pick another port.");
             }
 
             if (!IsLoopbackHostPort(fwd.Target))
             {
                 problems.Add($"forward[{i}].target: '{fwd.Target}' must be a loopback host:port " +
-                    "(127.0.0.1 / ::1 / localhost, port 1..65535) — pdn never proxies the tailnet to a non-loopback host.");
+                    "(127.0.0.1 / ::1 / localhost, port 1..65535) - pdn never proxies the tailnet to a non-loopback host.");
             }
 
             if (!Enum.IsDefined(fwd.Tls))
@@ -284,7 +284,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             string.Equals(a.Id, dirName, StringComparison.OrdinalIgnoreCase));
         if (inlineIdClash is not null)
         {
-            problems.Add($"id: '{dirName}' collides with the inline applications: entry '{inlineIdClash.Id}' — remove one.");
+            problems.Add($"id: '{dirName}' collides with the inline applications: entry '{inlineIdClash.Id}' - remove one.");
         }
 
         // The effective command verb (owner override wins over the manifest packet.command) —
@@ -299,7 +299,7 @@ public sealed partial class AppPackageCatalog(ILoggerFactory loggerFactory) : IA
             if (NodeCommandParser.Parse(verb) is not (UnknownCommand or EmptyCommand))
             {
                 problems.Add($"command verb '{verb}' collides with a built-in console verb " +
-                    "(CONNECT/BYE/NODES/INFO/HELP/SYSOP/SESSIONS/KICK/PORT/RELOAD or an abbreviation) — pick another.");
+                    "(CONNECT/BYE/NODES/INFO/HELP/SYSOP/SESSIONS/KICK/PORT/RELOAD or an abbreviation) - pick another.");
             }
 
             var inlineVerbClash = config.Applications.FirstOrDefault(a =>

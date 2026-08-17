@@ -60,7 +60,7 @@ public static class MdnsAdvert
         var bind = config.Management.Http.Bind;
         if (IsLoopback(bind))
         {
-            skipReason = $"management.http.bind '{bind}' is loopback — bind a LAN address for discovery";
+            skipReason = $"management.http.bind '{bind}' is loopback - bind a LAN address for discovery";
             return null;
         }
 

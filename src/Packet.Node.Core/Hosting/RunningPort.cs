@@ -17,9 +17,20 @@ public sealed class RunningPort : IAsyncDisposable
 {
     public required string Id { get; init; }
 
-    /// <summary>The config snapshot this port was brought up from — the baseline
-    /// the next reconcile diffs against to classify the change.</summary>
-    public required PortConfig Config { get; init; }
+    private PortConfig config = null!;
+
+    /// <summary>The config snapshot this port was brought up from - the baseline
+    /// the next reconcile diffs against to classify the change. Settable (not
+    /// init-only) so a hot apply can rebaseline this ONE member in place: the
+    /// supervisor used to rebuild the whole RunningPort and silently dropped every
+    /// member the copy forgot (the rig trio), detaching a rig-attached port's rig on
+    /// a KISS-only apply. Volatile because reconcile writes it under the ports lock
+    /// while readers (read models, SSE projections) take no lock.</summary>
+    public required PortConfig Config
+    {
+        get => Volatile.Read(ref config);
+        set => Volatile.Write(ref config, value);
+    }
 
     /// <summary>The neutral AX.25 transport this port runs over (a native KISS transport,
     /// optionally wrapped in the reconnect / pacing decorators; an AXUDP modem via the

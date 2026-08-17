@@ -216,7 +216,7 @@ public static class PdnRigsApi
         }
         if (!rig.Capabilities.HasFlag(required))
         {
-            return Results.Conflict(new { error = $"the attached rig does not advertise {required} — nothing was changed." });
+            return Results.Conflict(new { error = $"the attached rig does not advertise {required} - nothing was changed." });
         }
 
         try

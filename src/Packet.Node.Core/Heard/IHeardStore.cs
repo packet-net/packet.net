@@ -17,6 +17,22 @@ public interface IHeardStore
     /// <see cref="HeardEntry.Callsign"/>) key. A store fault is swallowed + logged.</summary>
     void Upsert(HeardEntry entry);
 
+    /// <summary>
+    /// Insert or update a whole batch, ideally in ONE transaction. The <see cref="HeardLog"/>
+    /// writer hands work over in coalesced batches (C077), so a busy channel costs one commit
+    /// per drain rather than one per frame. The default implementation just loops, which keeps
+    /// every existing store (and test fake) correct without change; a real store overrides it.
+    /// A store fault is swallowed + logged, as for the single-entry form.
+    /// </summary>
+    void Upsert(IReadOnlyList<HeardEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        foreach (var entry in entries)
+        {
+            Upsert(entry);
+        }
+    }
+
     /// <summary>Every persisted row (used to hydrate the hot log on construction).
     /// Returns an empty list on fault.</summary>
     IReadOnlyList<HeardEntry> All();

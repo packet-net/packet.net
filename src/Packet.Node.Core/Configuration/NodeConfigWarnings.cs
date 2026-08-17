@@ -27,7 +27,7 @@ public static class NodeConfigWarnings
             .Where(g => g.Count() > 1)
             .Select(g =>
                 $"ports {string.Join(", ", g.Select(x => $"'{x.Port.Id}'"))} share the MQTT instance label " +
-                $"'{g.Key}' — their kissproxy topic streams will merge under one {{instance}} segment. " +
+                $"'{g.Key}' - their kissproxy topic streams will merge under one {{instance}} segment. " +
                 "If that is not intended, give each port a distinct mqttInstance.")
             .ToArray();
     }

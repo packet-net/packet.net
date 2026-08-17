@@ -4,8 +4,9 @@ namespace Packet.Node.Tests.Heard;
 
 /// <summary>
 /// Round-trips the SQLite heard store (#454) on a temp db: upsert/All, the INSERT..ON CONFLICT
-/// update path, Clear/ClearAll, the Prune age-out + per-port cap, persistence across a reopen, and
-/// the degrade-not-throw resilience of a broken store. Same shape as the capability-store test.
+/// update path, Clear/ClearAll, the Prune age-out + per-port cap, the UTC normalisation those two
+/// queries depend on, persistence across a reopen, and the degrade-not-throw resilience of a broken
+/// store. Same shape as the capability-store test.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class SqliteHeardStoreTests : IDisposable
@@ -118,6 +119,53 @@ public sealed class SqliteHeardStoreTests : IDisposable
 
         removed.Should().Be(1);
         store.All().Select(e => e.Callsign).Should().BeEquivalentTo(["B", "C", "D"]);
+    }
+
+    // last_heard_utc is a TEXT column that Prune range-compares (`< @cutoff`) and ranks
+    // (`ORDER BY last_heard_utc DESC`) in SQL. Those only agree with chronological order if
+    // every value is normalised to UTC before it is written, which is what SqliteStamps does.
+    // The three below feed the store a caller-supplied non-UTC offset: with a raw offset
+    // persisted, the stored digits are local wall-clock and both queries answer backwards.
+
+    [Fact]
+    public void Prune_ages_out_by_instant_not_by_the_offset_the_caller_used()
+    {
+        var store = Open();
+        // 11:30Z written as 12:30+01:00: lexically LATER than the 12:00Z cutoff, actually earlier.
+        store.Upsert(Entry("vhf", "STALE", new DateTimeOffset(2026, 6, 1, 12, 30, 0, TimeSpan.FromHours(1))));
+        // 12:50Z written as 11:50-01:00: lexically EARLIER than the cutoff, actually later.
+        store.Upsert(Entry("vhf", "FRESH", new DateTimeOffset(2026, 6, 1, 11, 50, 0, TimeSpan.FromHours(-1))));
+
+        int removed = store.Prune(olderThan: T0, maxPerPort: 1000);   // T0 is 12:00Z
+
+        removed.Should().Be(1);
+        store.All().Should().ContainSingle(e => e.Callsign == "FRESH");
+    }
+
+    [Fact]
+    public void Prune_caps_a_port_by_instant_across_mixed_offsets()
+    {
+        var store = Open();
+        store.Upsert(Entry("vhf", "OLDEST", new DateTimeOffset(2026, 6, 1, 12, 30, 0, TimeSpan.FromHours(1))));    // 11:30Z
+        store.Upsert(Entry("vhf", "MIDDLE", new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero)));             // 12:00Z
+        store.Upsert(Entry("vhf", "NEWEST", new DateTimeOffset(2026, 6, 1, 11, 50, 0, TimeSpan.FromHours(-1))));   // 12:50Z
+
+        // Age-out cutoff far in the past, so only the per-port cap can delete anything.
+        int removed = store.Prune(olderThan: T0.AddYears(-1), maxPerPort: 2);
+
+        removed.Should().Be(1);
+        store.All().Select(e => e.Callsign).Should().BeEquivalentTo(["MIDDLE", "NEWEST"]);
+    }
+
+    [Fact]
+    public void A_non_utc_stamp_reads_back_as_the_same_instant_in_utc()
+    {
+        var offsetLocal = new DateTimeOffset(2026, 6, 1, 13, 0, 0, TimeSpan.FromHours(1));   // 12:00Z
+        Open().Upsert(Entry("vhf", "M0LTE-1", offsetLocal));
+
+        var e = Open().All().Single();
+        e.LastHeard.Offset.Should().Be(TimeSpan.Zero);
+        e.LastHeard.UtcDateTime.Should().Be(offsetLocal.UtcDateTime);
     }
 
     [Fact]
