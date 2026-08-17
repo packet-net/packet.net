@@ -46,7 +46,23 @@ public class LinbpqListenerScenarios
     private const int BpqTelnetPort = 8010;
     private static readonly Callsign OurCall = new("PNTEST", 0);
 
-    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(30);
+    // BPQ requires an explicit port number for downlink connects: "C <port> <callsign>".
+    // Bare "C PNTEST" returns "Downlink connect needs port number - C P CALLSIGN".
+    //
+    // Port numbering follows the PORT-block order in docker/linbpq/bpq32.cfg:
+    //   1 Telnet   (sysop)
+    //   2 AXIP     (UDP listener)
+    //   3 netsim   (KISS-TCP - the one with a route to net-sim node a)
+    //
+    // The PORTS command output confirms this (verified at test-write time). If the cfg
+    // order ever changes, this number must follow.
+    private const int NetsimPortNumber = 3;
+
+    // Long enough to outlast BPQ's own L2 retry budget for this port (RETRIES=10 x
+    // FRACK=3000 = 30 s in docker/linbpq/bpq32.cfg) plus margin, so a SABM that only gets
+    // through on BPQ's last retry still counts, and a genuine "BPQ gave up" is reported as
+    // such rather than being cut off mid-retry.
+    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(30);
 
     // Headroom for a local state mutation to settle after the signal that
@@ -61,6 +77,11 @@ public class LinbpqListenerScenarios
     // send credentials into a not-yet-ready prompt. Generous and harmless —
     // ReadUntilAsync returns as soon as the needle is seen.
     private static readonly TimeSpan TelnetReadBudget = TimeSpan.FromSeconds(15);
+
+    // How long to listen for BPQ's immediate answer to the connect command. A command BPQ
+    // accepts produces nothing here (it reports on the air, and later on this session), so
+    // this budget is always spent in full - keep it short.
+    private static readonly TimeSpan CommandEchoBudget = TimeSpan.FromSeconds(2);
 
     [Fact]
     public async Task Listener_Accepts_Connect_From_Linbpq()
@@ -101,11 +122,22 @@ public class LinbpqListenerScenarios
         // the unnecessary retry budget burn.
         await Task.Delay(500, cts.Token);
 
-        // Drive BPQ via its node-prompt telnet listener.
-        await DriveBpqConnectAsync(OurCall, cts.Token);
+        // Drive BPQ via its node-prompt telnet listener. The driver stays open for the
+        // rest of the test, draining BPQ's side of the conversation into a transcript:
+        // when the SABM doesn't arrive, what BPQ said is the whole diagnosis, and
+        // closing the socket 1.5 s after typing the command threw it away (this test
+        // failed once on CI with nothing but "A task was canceled" to go on - see
+        // packet-net/packet.net#611).
+        await using var bpq = await BpqNodeSession.LoginAsync(cts.Token);
+        await bpq.ConnectDownlinkAsync(NetsimPortNumber, OurCall, cts.Token);
 
         // BPQ now SABMs us; the listener accepts and goes Connected.
-        var session = await accepted.Task.WaitAsync(cts.Token);
+        var acceptedInTime = await Task.WhenAny(accepted.Task, Delay(ConnectBudget, cts.Token)) == accepted.Task;
+        acceptedInTime.Should().BeTrue(
+            $"BPQ's 'C {NetsimPortNumber} {OurCall}' must reach our listener as a SABM within "
+            + $"{ConnectBudget.TotalSeconds:F0} s. BPQ's node session said: {bpq.Transcript}");
+        var session = await accepted.Task;
+
         await WaitUntil(() => session.CurrentState == "Connected", StateSettleBudget, cts.Token);
         session.CurrentState.Should().Be("Connected");
 
@@ -133,80 +165,185 @@ public class LinbpqListenerScenarios
     }
 
     /// <summary>
-    /// Telnet into BPQ's sysop port, log in, and type
-    /// <c>C &lt;callsign&gt;</c> to initiate an outbound L2 connect on
-    /// BPQ's KISS-TCP port (netsim node c, port 8102 inside docker).
+    /// A logged-in LinBPQ node session over telnet, used to make BPQ dial US. It keeps its
+    /// socket open and keeps reading for as long as the test holds it, so everything BPQ
+    /// says - the command's answer AND anything it reports later, e.g. its
+    /// "Failure with &lt;call&gt;" once the L2 retry budget runs out - lands in
+    /// <see cref="Transcript"/> and can be quoted in an assertion message.
     /// </summary>
-    private static async Task DriveBpqConnectAsync(Callsign target, CancellationToken ct)
+    /// <remarks>
+    /// Every step waits for the prompt that says BPQ is ready for it, rather than sleeping.
+    /// The previous version typed the connect command 500 ms after sending the password,
+    /// with no check that the login had completed and no look at what came back: a BPQ that
+    /// was slow to finish logging us in could swallow the command, and the test's only
+    /// symptom was a cancelled task 90 s later with nothing to diagnose it from.
+    /// </remarks>
+    private sealed class BpqNodeSession : IAsyncDisposable
     {
-        using var telnet = new TcpClient();
-        await telnet.ConnectAsync(Host, BpqTelnetPort, ct).ConfigureAwait(false);
-        var stream = telnet.GetStream();
+        private readonly TcpClient telnet;
+        private readonly NetworkStream stream;
+        private readonly StringBuilder transcript = new();
+        private readonly CancellationTokenSource drainCts = new();
+        private Task? drainTask;
 
-        // BPQ's telnet listener emits "user:" then "password:" prompts.
-        // It accepts the answers terminated by \r. The configured
-        // credentials in docker/linbpq/bpq32.cfg are admin/admin
-        // (sysop).
-        await ReadUntilAsync(stream, "user", TelnetReadBudget, ct);
-        await WriteLineAsync(stream, "admin", ct);
-        await ReadUntilAsync(stream, "password", TelnetReadBudget, ct);
-        await WriteLineAsync(stream, "admin", ct);
-
-        // After login, BPQ shows the node banner + a "PN0TST}" or
-        // "Cmd:" style prompt. We don't need to wait for the exact
-        // text — typing the C command at any point is accepted.
-        // Settle briefly so BPQ has finished printing the banner.
-        await Task.Delay(500, ct);
-
-        // BPQ requires explicit port number for downlink connects:
-        // "C <port> <callsign>". Bare "C PNTEST" returns
-        // "Downlink connect needs port number — C P CALLSIGN".
-        //
-        // Port numbering follows the PORT-block order in bpq32.cfg:
-        //   1 Telnet   (sysop)
-        //   2 AXIP     (UDP listener)
-        //   3 netsim   (KISS-TCP — the one with a route to net-sim node a)
-        //
-        // The PORTS command output confirms this (verified at test-write
-        // time). If the cfg order ever changes, this number must follow.
-        await WriteLineAsync(stream, $"C 3 {target}", ct);
-
-        // Keep the telnet socket open for a beat so BPQ doesn't
-        // abandon the command; then close. BPQ's outbound L2 session
-        // is independent of the telnet session that initiated it.
-        await Task.Delay(1500, ct);
-    }
-
-    /// <summary>Read from the stream until a substring is observed (case-insensitive).</summary>
-    private static async Task ReadUntilAsync(NetworkStream stream, string needle, TimeSpan budget, CancellationToken ct)
-    {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(budget);
-        var sb = new StringBuilder();
-        var buf = new byte[256];
-        while (!cts.IsCancellationRequested)
+        private BpqNodeSession(TcpClient telnet, NetworkStream stream)
         {
-            int n;
-            try { n = await stream.ReadAsync(buf, cts.Token).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
-            if (n <= 0)
+            this.telnet = telnet;
+            this.stream = stream;
+        }
+
+        /// <summary>Everything BPQ has sent on this session, quoted for an assertion message.</summary>
+        public string Transcript
+        {
+            get
             {
-                return;
+                lock (transcript)
+                {
+                    return "\"" + transcript.ToString().Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
+                }
+            }
+        }
+
+        /// <summary>
+        /// Connect to BPQ's telnet listener and log in as the configured sysop user
+        /// (admin/admin, see docker/linbpq/bpq32.cfg), waiting for each prompt in turn and
+        /// finally for the node prompt ("PNTST:PN0TST}") that means BPQ is ready for a command.
+        /// </summary>
+        public static async Task<BpqNodeSession> LoginAsync(CancellationToken ct)
+        {
+            var telnet = new TcpClient();
+            await telnet.ConnectAsync(Host, BpqTelnetPort, ct).ConfigureAwait(false);
+            var session = new BpqNodeSession(telnet, telnet.GetStream());
+
+            (await session.ReadUntilAsync("user", TelnetReadBudget, ct)).Should().BeTrue(
+                $"BPQ's telnet listener must offer its user prompt. Saw: {session.Transcript}");
+            await session.WriteLineAsync("admin", ct);
+            (await session.ReadUntilAsync("password", TelnetReadBudget, ct)).Should().BeTrue(
+                $"BPQ must offer its password prompt after the username. Saw: {session.Transcript}");
+            await session.WriteLineAsync("admin", ct);
+
+            // "Connected to PN0TST's Telnet Server" is BPQ's login-complete banner, and the
+            // observable that says the next line will be read by its command interpreter
+            // rather than by its login handler. Note it does NOT print its node prompt
+            // ("PNTST:PN0TST}") here - that only follows a command - so the banner is the
+            // signal to wait for. This is what the old fixed 500 ms sleep was standing in for.
+            (await session.ReadUntilAsync(TelnetReadBudget, ct, "telnet server", "}")).Should().BeTrue(
+                $"BPQ must finish the sysop login and be ready for a command. Saw: {session.Transcript}");
+            return session;
+        }
+
+        /// <summary>
+        /// Issue <c>C &lt;port&gt; &lt;callsign&gt;</c> - an outbound L2 connect on one of BPQ's
+        /// ports - and assert BPQ did not refuse the command outright.
+        /// </summary>
+        public async Task ConnectDownlinkAsync(int port, Callsign target, CancellationToken ct)
+        {
+            await WriteLineAsync($"C {port} {target}", ct);
+
+            // BPQ answers a command it won't run immediately ("Downlink connect needs port
+            // number", "Invalid callsign", "Port not available", "Node busy"); a command it
+            // WILL run stays silent here and reports later, so an empty read is the good
+            // case. Give it a moment, then check what came back before starting the long
+            // wait for a SABM that a refused command can never produce.
+            await ReadUntilAsync("\u0000never\u0000", CommandEchoBudget, ct);
+            var answer = Transcript;
+            answer.Should().NotContainAny(["needs port number", "Invalid", "not available", "Busy from"],
+                $"BPQ must accept the downlink connect command. It answered: {answer}");
+
+            // Keep reading in the background for the rest of the test: a connect that fails
+            // on the air reports "Failure with <call>" here ~30 s later (RETRIES x FRACK),
+            // which is the difference between "BPQ never dialled" and "BPQ dialled and got
+            // no answer" when this test next goes red.
+            drainTask = Task.Run(() => DrainAsync(drainCts.Token), CancellationToken.None);
+        }
+
+        private async Task DrainAsync(CancellationToken ct)
+        {
+            var buf = new byte[256];
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    int n = await stream.ReadAsync(buf, ct).ConfigureAwait(false);
+                    if (n <= 0)
+                    {
+                        return;
+                    }
+
+                    Append(Encoding.ASCII.GetString(buf, 0, n));
+                }
+            }
+            catch (Exception)
+            {
+                // Socket closed / cancelled during teardown - the transcript keeps whatever
+                // it had. A diagnostic reader must never fail the test it is diagnosing.
+            }
+        }
+
+        private Task<bool> ReadUntilAsync(string needle, TimeSpan budget, CancellationToken ct)
+            => ReadUntilAsync(budget, ct, needle);
+
+        /// <summary>Read until any of the substrings is observed (case-insensitive). True if one was.</summary>
+        private async Task<bool> ReadUntilAsync(TimeSpan budget, CancellationToken ct, params string[] needles)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(budget);
+            var buf = new byte[256];
+            while (!cts.IsCancellationRequested)
+            {
+                int n;
+                try { n = await stream.ReadAsync(buf, cts.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return false; }
+                if (n <= 0)
+                {
+                    return false;
+                }
+
+                var seen = Append(Encoding.ASCII.GetString(buf, 0, n));
+                if (needles.Any(needle => seen.Contains(needle, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
             }
 
-            sb.Append(Encoding.ASCII.GetString(buf, 0, n));
-            if (sb.ToString().Contains(needle, StringComparison.OrdinalIgnoreCase))
+            return false;
+        }
+
+        private string Append(string text)
+        {
+            lock (transcript)
             {
-                return;
+                transcript.Append(text);
+                return transcript.ToString();
             }
+        }
+
+        private async Task WriteLineAsync(string line, CancellationToken ct)
+        {
+            var bytes = Encoding.ASCII.GetBytes(line + "\r");
+            await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
+            await stream.FlushAsync(ct).ConfigureAwait(false);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await drainCts.CancelAsync().ConfigureAwait(false);
+            if (drainTask is { } t)
+            {
+                try { await t.ConfigureAwait(false); } catch (Exception) { /* teardown */ }
+            }
+
+            drainCts.Dispose();
+            stream.Dispose();
+            telnet.Dispose();
         }
     }
 
-    private static async Task WriteLineAsync(NetworkStream stream, string line, CancellationToken ct)
+    /// <summary>A cancellable delay that completes (rather than throwing) on cancellation -
+    /// so a <c>Task.WhenAny</c> race resolves to "the other thing didn't happen".</summary>
+    private static async Task Delay(TimeSpan budget, CancellationToken ct)
     {
-        var bytes = Encoding.ASCII.GetBytes(line + "\r");
-        await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
-        await stream.FlushAsync(ct).ConfigureAwait(false);
+        try { await Task.Delay(budget, ct).ConfigureAwait(false); } catch (OperationCanceledException) { }
     }
 
     private static async Task WaitUntil(Func<bool> condition, TimeSpan budget, CancellationToken outer)

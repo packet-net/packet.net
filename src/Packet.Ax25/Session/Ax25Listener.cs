@@ -1140,7 +1140,23 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         bool wasDisconnected = cached.Session.CurrentState == "Disconnected";
         bool isReconnectSabm = wasDisconnected && (cachedClassified is SabmReceived or SabmeReceived);
 
-        cached.Session.PostEvent(cachedClassified);
+        // A CACHED session sitting in Disconnected is the same figc4.1 situation as a peer we
+        // have never seen: the figure's per-frame-type inputs cover DISC / UI / UA / SABM(E),
+        // and everything else falls to the t05 / t06 catch-alls. The classifier's specific
+        // events (RrReceived, IFrameReceived, ...) have no transition in Disconnected, so
+        // posting them raw made the session silently swallow the frame - no DM. That is
+        // observable on the air: a peer whose link we have already torn down (its DISC/our UA
+        // lost, or we restarted) polls us with RR(P) and gets silence, so it burns its whole
+        // retry budget (LinBPQ: RETRIES x FRACK = 30 s of pointless polling) instead of
+        // clearing the link on the first DM. Sessions survive disconnect in this cache, so
+        // this was the COMMON case, while a peer we had evicted got the correct DM.
+        // Reclassify exactly as the no-cached-session path does, so a peer's experience does
+        // not depend on whether it happens to still be in our LRU.
+        var toPost = wasDisconnected
+            ? ReclassifyForDisconnectedCatchAll(cachedClassified, frame)
+            : cachedClassified;
+
+        cached.Session.PostEvent(toPost);
 
         if (isReconnectSabm && cached.Session.CurrentState == "Connected")
         {
@@ -1174,8 +1190,9 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         //      its own t13 (DM); UI has t11/t12 (UI_Check + DM on P=1);
         //      UA has t10 (DL_ERROR_indication C/D); everything else
         //      (RR/RNR/REJ/SREJ/I/FRMR/XID) falls to t05
-        //      (all_other_commands → DM). We re-post the latter cluster
-        //      as AllOtherCommands so t05's chain fires — the classifier
+        //      (all_other_commands → DM) when it is a command, or t06
+        //      (discard) when it is a response. We re-post the latter
+        //      cluster accordingly so the chain fires - the classifier
         //      produces specific event types (RrReceived etc.) which are
         //      correct for *cached* sessions in Connected/etc. but have
         //      no transition in Disconnected. The catch-all is named
@@ -1259,9 +1276,10 @@ public sealed partial class Ax25Listener : IAsyncDisposable
         // Transient fall-through:
         //   SABM-shape with AcceptIncoming=false → figc4.1 t15 emits DM.
         //   DISC/UI/UA unknown peer            → specific Disconnected transition.
-        //   RR/RNR/REJ/SREJ/I/FRMR/XID         → reclassify as AllOtherCommands
-        //                                          so t05 fires DM. (TEST is
-        //                                          intercepted connectionlessly
+        //   RR/RNR/REJ/SREJ/I/FRMR/XID command → reclassify as AllOtherCommands
+        //                                          so t05 fires DM; the same shapes
+        //                                          as a RESPONSE go to t06 (discard).
+        //                                          (TEST is intercepted connectionlessly
         //                                          above and never arrives here.)
         //
         // Build, post, dispose. No cache write, no SessionAccepted
@@ -1331,20 +1349,28 @@ public sealed partial class Ax25Listener : IAsyncDisposable
     /// Map an inbound classified event to the event the Disconnected
     /// SDL knows how to handle. Specific events handled in Disconnected
     /// (DISC/UI/UA/SABM/SABME) pass through unchanged; everything else
-    /// (RR/RNR/REJ/SREJ/I/FRMR/XID) becomes <see cref="AllOtherCommands"/>
-    /// so the SDL's t05 catch-all emits DM. (TEST is connectionless and never
-    /// routed into a session — see the intercept in <see cref="DispatchInbound"/>.)
-    /// See figc4.1 — the catch-all
-    /// is named "all other commands" precisely for this case (the
-    /// figure's per-frame-type column doesn't list RR/I-frame handling
-    /// in Disconnected; they fall to the rightmost catch-all column).
+    /// (RR/RNR/REJ/SREJ/I/FRMR/XID) falls to a figc4.1 catch-all - which one
+    /// depends on the command/response bit:
+    /// <list type="bullet">
+    /// <item>a <b>command</b> becomes <see cref="AllOtherCommands"/>, so t05 answers DM
+    /// (F:=P) - the polite "I don't have this link" that lets the peer clear it
+    /// immediately;</item>
+    /// <item>a <b>response</b> becomes <see cref="AllOtherPrimitivesFromLowerLayer"/>, so
+    /// t06 discards it. The figure has no DM-emitting input for a response, and answering
+    /// one would be worse than noise: a DM is itself a response, so two disconnected
+    /// stations that both answered would trade DMs forever.</item>
+    /// </list>
+    /// (TEST is connectionless and never routed into a session - see the intercept in
+    /// <see cref="DispatchInbound"/>.) See figc4.1: the figure's per-frame-type column
+    /// doesn't list RR/I-frame handling in Disconnected; they fall to the catch-alls.
     /// </summary>
     private static Ax25Event ReclassifyForDisconnectedCatchAll(Ax25Event classified, Ax25Frame frame)
         => classified switch
         {
             DiscReceived or UiReceived or UaReceived
                 or SabmReceived or SabmeReceived => classified,
-            _ => new AllOtherCommands(frame),
+            _ when frame.IsCommand => new AllOtherCommands(frame),
+            _ => new AllOtherPrimitivesFromLowerLayer(),
         };
 
     /// <summary>
