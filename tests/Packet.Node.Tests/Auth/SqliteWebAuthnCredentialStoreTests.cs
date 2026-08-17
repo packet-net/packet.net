@@ -1,4 +1,5 @@
 using Packet.Node.Core.Auth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Auth;
 
@@ -16,7 +17,7 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
 
     public SqliteWebAuthnCredentialStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-wastore-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-wastore");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

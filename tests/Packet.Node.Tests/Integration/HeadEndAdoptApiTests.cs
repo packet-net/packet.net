@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Radios;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -24,7 +25,7 @@ public sealed class HeadEndAdoptApiTests : IDisposable
 
     public HeadEndAdoptApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-headendapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-headendapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

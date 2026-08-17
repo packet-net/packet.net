@@ -3,7 +3,6 @@
   <ItemGroup>
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="System.IO.Ports" />
-    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>

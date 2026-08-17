@@ -25,7 +25,7 @@ public sealed class RigMutationApiTests : IDisposable
 
     public RigMutationApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-rigmut-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-rigmut");
         Directory.CreateDirectory(dir);
         var configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

@@ -5,9 +5,6 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <!-- Boots the real Packet.Node composition root for the host component test. -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
-    <!-- [SkippableFact] for the DAPPS manifest tests — they assert against the cached
-         release asset, which exists only after a build-deb.sh run (see CLAUDE.md). -->
-    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>

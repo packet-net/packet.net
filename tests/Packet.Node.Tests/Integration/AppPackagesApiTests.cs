@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Packet.Node.Core.Applications.Catalog;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Audit;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -34,7 +35,7 @@ public sealed class AppPackagesApiTests : IDisposable
 
     public AppPackagesApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-pkgapi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-pkgapi");
         packagesRoot = Path.Combine(dir, "apps");
         Directory.CreateDirectory(packagesRoot);
 

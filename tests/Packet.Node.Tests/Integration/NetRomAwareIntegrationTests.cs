@@ -284,7 +284,7 @@ public sealed class NetRomAwareIntegrationTests
         // The marquee persistence proof: a node hears a NODES broadcast, learns the
         // routes, and shuts down (flushing the table to its pdn.db store); a fresh node
         // over the SAME store hydrates those routes at startup instead of going blind.
-        var dbPath = Path.Combine(Path.GetTempPath(), "pdn-restart-" + Guid.NewGuid().ToString("N") + ".db");
+        var dbPath = TestPaths.NewPath("pdn-restart", ".db");
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 6, 12, 0, 0, TimeSpan.Zero));
         try
         {

@@ -1,6 +1,7 @@
 using Packet.Core;
 using Packet.NetRom.Routing;
 using Packet.Node.Core.NetRom;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.NetRom;
 
@@ -13,7 +14,7 @@ namespace Packet.Node.Tests.NetRom;
 [Trait("Category", "Node")]
 public sealed class SqliteNetRomRoutingStoreTests : IDisposable
 {
-    private readonly string dbPath = Path.Combine(Path.GetTempPath(), "pdn-store-" + Guid.NewGuid().ToString("N") + ".db");
+    private readonly string dbPath = TestPaths.NewPath("pdn-store", ".db");
 
     private static readonly Callsign Nbr = new("GB7RDG", 0);
     private static readonly Callsign Dest = new("GB7SOT", 0);
@@ -93,7 +94,7 @@ public sealed class SqliteNetRomRoutingStoreTests : IDisposable
         // A db path whose parent directory does not exist: schema init fails, but
         // construction must not throw, Load returns null, and Save is a no-op —
         // persistence is simply disabled for the run, the node keeps running.
-        var bad = Path.Combine(Path.GetTempPath(), "no-such-dir-" + Guid.NewGuid().ToString("N"), "pdn.db");
+        var bad = Path.Combine(TestPaths.NewPath("no-such-dir"), "pdn.db");
 
         var construct = () => new SqliteNetRomRoutingStore(bad);
         construct.Should().NotThrow();

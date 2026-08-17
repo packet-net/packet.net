@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Heard;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Heard;
 
@@ -20,7 +21,7 @@ public sealed class HeardLogTests : IDisposable
 
     public HeardLogTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-heardlog-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-heardlog");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

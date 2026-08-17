@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Packet.Node.Api;
 using Packet.Node.Core.Console;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -35,7 +36,7 @@ public sealed class SessionsApiTests : IDisposable
 
     public SessionsApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-sessionsapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-sessionsapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // No ports + telnet off: the WAF host binds no fixed TCP port and has no running

@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
+using Packet.Tests.Shared;
 
 namespace Packet.Kiss.NinoTnc.Tests;
 
@@ -115,7 +115,7 @@ public class NinoTncSetModeVerifyTests
             ReadBackTimeout = Timeout,
         });
 
-        await WaitUntil(() => io.SetHwCount(11) == 1, "the SETHW goes out immediately");
+        await TestWait.ForAsync(() => io.SetHwCount(11) == 1, "the SETHW goes out immediately");
         await Task.Delay(50);
         io.GetAllCount.Should().Be(0, "the readback waits — the modem needs a moment after a mode change");
 
@@ -183,19 +183,6 @@ public class NinoTncSetModeVerifyTests
 
         io.SetHwCount(15).Should().Be(1);
         io.GetAllCount.Should().Be(0, "verifying 'set from KISS' would be comparing against a placeholder");
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, string because, int timeoutMs = 5000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (sw.ElapsedMilliseconds > timeoutMs)
-            {
-                throw new TimeoutException($"condition not met within the deadline: {because}");
-            }
-            await Task.Delay(10);
-        }
     }
 
     /// <summary>

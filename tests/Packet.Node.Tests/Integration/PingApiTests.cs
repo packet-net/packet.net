@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -18,47 +18,14 @@ namespace Packet.Node.Tests.Integration;
 public sealed class PingApiTests : IDisposable
 {
     private const string Callsign = "M0LTE-1";
-    private readonly string configPath;
 
-    public PingApiTests()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-pingapi-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        configPath = Path.Combine(dir, "node.yaml");
-        // One disabled port: it's configured (so the config is valid) but not brought up, so
-        // its id never names a *running* port — exactly the 404 case for ping.
-        File.WriteAllText(configPath, $"""
-            schemaVersion: 1
-            identity:
-              callsign: {Callsign}
-              alias: LONDON
-            ports:
-              - id: vhf
-                enabled: false
-                transport:
-                  kind: kiss-tcp
-                  host: 127.0.0.1
-                  port: 8101
-            management:
-              auth:
-                enabled: false
-              telnet:
-                enabled: false
-              http:
-                bind: 127.0.0.1
-                port: 8080
-            """);
-        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", configPath);
-        Environment.SetEnvironmentVariable("PACKETNET_DB", Path.Combine(dir, "pdn.db"));
-    }
-
-    private sealed class NodeAppFactory : WebApplicationFactory<Program>;
+    private readonly NodeHostFixture node = new(
+        NodeYaml.Build(callsign: Callsign, ports: [NodeYaml.DisabledKissTcpPort("vhf", 8101)]), "pingapi");
 
     [Fact]
     public async Task Ping_unknown_port_is_404()
     {
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         var resp = await client.PostAsJsonAsync("/api/v1/ping", new
         {
@@ -73,8 +40,7 @@ public sealed class PingApiTests : IDisposable
     [Fact]
     public async Task Ping_disabled_port_is_404()
     {
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         // 'vhf' is configured but disabled — not a running port, so ping can't send on it.
         var resp = await client.PostAsJsonAsync("/api/v1/ping", new
@@ -90,8 +56,7 @@ public sealed class PingApiTests : IDisposable
     [Fact]
     public async Task Ping_unparseable_station_is_400()
     {
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         var resp = await client.PostAsJsonAsync("/api/v1/ping", new
         {
@@ -106,8 +71,7 @@ public sealed class PingApiTests : IDisposable
     [Fact]
     public async Task Ping_missing_station_is_400()
     {
-        await using var factory = new NodeAppFactory();
-        using var client = factory.CreateClient();
+        var client = node.CreateClient();
 
         var resp = await client.PostAsJsonAsync("/api/v1/ping", new
         {
@@ -121,19 +85,7 @@ public sealed class PingApiTests : IDisposable
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable("PACKETNET_CONFIG", null);
-        Environment.SetEnvironmentVariable("PACKETNET_DB", null);
-        try
-        {
-            var dir = Path.GetDirectoryName(configPath);
-            if (dir is not null && Directory.Exists(dir))
-            {
-                Directory.Delete(dir, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // Best-effort temp cleanup; a locked SQLite handle on a slow box isn't a failure.
-        }
+        GC.SuppressFinalize(this);
+        node.Dispose();
     }
 }

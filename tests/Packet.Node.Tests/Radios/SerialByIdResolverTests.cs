@@ -1,4 +1,5 @@
 using Packet.Node.Core.Radios;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Radios;
 
@@ -16,7 +17,7 @@ public sealed class SerialByIdResolverTests : IDisposable
 
     public SerialByIdResolverTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-byid-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-byid");
         byIdDir = Path.Combine(dir, "by-id");
         devDir = Path.Combine(dir, "dev");
         Directory.CreateDirectory(byIdDir);

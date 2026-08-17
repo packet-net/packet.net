@@ -25,7 +25,7 @@ public sealed class SetupFailClosedTests : IDisposable
 
     public SetupFailClosedTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-setupfailclosed-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-setupfailclosed");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // A db under a path segment that is a FILE, not a directory: SQLite cannot open it, so

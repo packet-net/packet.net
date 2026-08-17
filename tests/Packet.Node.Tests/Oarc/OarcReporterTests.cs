@@ -63,27 +63,6 @@ public sealed class OarcReporterTests
         }
     }
 
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        private readonly object gate = new();
-        public List<(LogLevel Level, string Text)> Messages { get; } = new();
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? ex, Func<TState, Exception?, string> fmt)
-        { lock (gate)
-            {
-                Messages.Add((level, fmt(state, ex)));
-            }
-        }
-        public bool Has(LogLevel level, string contains)
-        { lock (gate)
-            {
-                return Messages.Any(m => m.Level == level && m.Text.Contains(contains));
-            }
-        }
-        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
-    }
-
     private static NodeConfig Cfg(OarcConfig oarc, string? grid = "IO91wm", string call = "M0LTE-1") =>
         new() { Identity = new Identity { Callsign = call, Alias = "TESTND", Grid = grid }, Oarc = oarc };
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -19,7 +20,7 @@ public sealed class PortHailApiTests : IDisposable
 
     public PortHailApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-hailapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-hailapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

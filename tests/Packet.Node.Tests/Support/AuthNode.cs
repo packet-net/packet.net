@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Support;
 
@@ -32,7 +33,7 @@ public sealed class AuthNode : IDisposable
     /// directory recognisable when a test leaves one behind.</summary>
     public AuthNode(string name)
     {
-        dir = Path.Combine(Path.GetTempPath(), $"pdn-{name}-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath($"pdn-{name}");
         Directory.CreateDirectory(dir);
         ConfigPath = Path.Combine(dir, "node.yaml");
         DbPath = Path.Combine(dir, "pdn.db");

@@ -1,4 +1,5 @@
 using Packet.Node.Core.Auth.Oauth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Auth;
 
@@ -18,7 +19,7 @@ public sealed class SqliteOauthCodeStoreTests : IDisposable
 
     public SqliteOauthCodeStoreTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-oauthcode-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-oauthcode");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

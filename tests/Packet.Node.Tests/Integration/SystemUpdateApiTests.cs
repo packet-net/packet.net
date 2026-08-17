@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.SelfUpdate;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -29,7 +30,7 @@ public sealed class SystemUpdateApiTests : IDisposable
 
     public SystemUpdateApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-sysupd-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-sysupd");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "packetnet.yaml");
         dbPath = Path.Combine(dir, "pdn.db");

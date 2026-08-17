@@ -1,5 +1,6 @@
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Applications.Packages;
 
@@ -43,7 +44,7 @@ internal sealed class TempAppPackage : IDisposable
     public TempAppPackage(string id)
     {
         Id = id;
-        Root = Path.Combine(Path.GetTempPath(), "pdn-pkg-tests", Guid.NewGuid().ToString("N"));
+        Root = TestPaths.NewPath("pdn-pkg");
         PackageDir = Path.Combine(Root, id);
         StateDir = Path.Combine(Root, "state", id);
         Directory.CreateDirectory(PackageDir);

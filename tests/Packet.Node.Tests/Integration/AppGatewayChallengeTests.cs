@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -28,7 +29,7 @@ public sealed class AppGatewayChallengeTests : IDisposable
 
     public AppGatewayChallengeTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-gw-chal-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-gw-chal");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         dbPath = Path.Combine(dir, "pdn.db");

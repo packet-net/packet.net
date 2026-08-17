@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -22,7 +23,7 @@ public sealed class HostBootTests : IDisposable
         // telnet disabled so the WAF-hosted node doesn't bind a fixed TCP port
         // (which could clash across parallel test classes). The first-start
         // template path is covered separately by FileConfigProviderTests.
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-host-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-host");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

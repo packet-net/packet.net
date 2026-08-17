@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Kiss;
 using Packet.Kiss.Serial;
+using Packet.Tests.Shared;
 
 namespace Packet.Kiss.NinoTnc.Tests;
 
@@ -46,7 +46,7 @@ public class NinoTncSerialPortTests
         var sendTask = nino.SendFrameWithAckAsync(new byte[] { 0xAA, 0xBB }, Timeout, sequenceTag: 0x1234);
 
         // Once the ACKMODE frame is on the wire, the pending-ack for 0x1234 is registered.
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(KissAckMode.BuildSendFrame(0, 0x1234, [0xAA, 0xBB]));
 
         // The TNC echoes command 0x0C with the 2-byte tag once the frame keyed the air.
@@ -76,7 +76,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var first = nino.SendFrameWithAckAsync(new byte[] { 0x01 }, Timeout, sequenceTag: 0x77);
-        await WaitUntil(() => io.Writes.Length >= 1);   // first is registered
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);   // first is registered
 
         var act = async () => await nino.SendFrameWithAckAsync(new byte[] { 0x02 }, Timeout, sequenceTag: 0x77);
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -94,7 +94,7 @@ public class NinoTncSerialPortTests
         var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var sendTask = nino.SendFrameWithAckAsync(new byte[] { 0x01 }, TimeSpan.FromSeconds(30), sequenceTag: 0x55);
-        await WaitUntil(() => io.Writes.Length >= 1);   // pending ack registered
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);   // pending ack registered
 
         // Dispose awaits the dispatch loop, whose finally runs FailPendingAcks — so by the
         // time DisposeAsync returns the pending send is already faulted (no hang).
@@ -112,7 +112,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetVersionAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildGetVersionKissFrame());
 
         // The firmware replies with the bare ASCII version on raw command
@@ -130,7 +130,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetRssiAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildGetRssiKissFrame());
 
         io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, "RSSI:-62.54"u8.ToArray()));
@@ -146,7 +146,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetSerialNumberAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildGetSerialNumberKissFrame());
 
         io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, "PDN00001"u8.ToArray()));
@@ -163,7 +163,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetSerialNumberAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
 
         io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data, new byte[8]));
 
@@ -180,7 +180,7 @@ public class NinoTncSerialPortTests
         await nino.SetSerialNumberAsync("PDN00001");
         await nino.ClearSerialNumberAsync();
 
-        await WaitUntil(() => io.Writes.Length >= 2);
+        await TestWait.ForAsync(() => io.Writes.Length >= 2);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildSetSerialNumberKissFrame("PDN00001"));
         io.Writes[1].Should().Equal(NinoTncCommands.BuildClearSerialNumberKissFrame());
     }
@@ -193,7 +193,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetAllAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildGetAllKissFrame());
 
         io.FeedBytes(KissEncoder.Encode(14, KissCommand.Data,
@@ -215,7 +215,7 @@ public class NinoTncSerialPortTests
         await using var nino = NinoTncSerialPort.OpenForTest(modem);
 
         var task = nino.GetAllAsync(Timeout);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
 
         io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data,
             "=00:3.41=01:\0\0\0\0\0\0\0\0=02:000003E8=0B:00000016=0D:0000F4F6"u8.ToArray()));
@@ -248,7 +248,7 @@ public class NinoTncSerialPortTests
         await nino.StopTxAsync();
         await nino.SetBeaconIntervalAsync(minutes: 5);
 
-        await WaitUntil(() => io.Writes.Length >= 2);
+        await TestWait.ForAsync(() => io.Writes.Length >= 2);
         io.Writes[0].Should().Equal(NinoTncCommands.BuildStopTxKissFrame());
         io.Writes[1].Should().Equal(NinoTncCommands.BuildSetBeaconIntervalKissFrame(5));
     }
@@ -263,7 +263,7 @@ public class NinoTncSerialPortTests
         var source = new Packet.Core.Callsign("M0LTE", 1);
         await nino.ArmCqBeepResponderAsync(source);
 
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.Writes[0].Should().Equal(
             KissEncoder.Encode(0, KissCommand.Data, NinoTncCqBeep.BuildArmingFrame(source).ToBytes()));
     }
@@ -285,7 +285,7 @@ public class NinoTncSerialPortTests
 
         var queuedAt = clock.GetUtcNow();
         var send = nino.SendFrameWithAckAsync(new byte[] { 0xAA, 0xBB }, Timeout, sequenceTag: 0x1234);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
 
         // Only virtual time passes between the submit and the TX-completion echo.
         clock.Advance(TimeSpan.FromSeconds(7));
@@ -349,26 +349,13 @@ public class NinoTncSerialPortTests
         io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data, [0x01]));
         io.FeedBytes(KissEncoder.Encode(0, KissCommand.Data, [0x02]));
 
-        await WaitUntil(() => { lock (gate) { return seen.Count == 2; } });
+        await TestWait.ForAsync(() => { lock (gate) { return seen.Count == 2; } });
 
         // ...and ACKMODE still works afterwards: the loop was never torn down.
         var send = nino.SendFrameWithAckAsync(new byte[] { 0xAA }, Timeout, sequenceTag: 0x0999);
-        await WaitUntil(() => io.Writes.Length >= 1);
+        await TestWait.ForAsync(() => io.Writes.Length >= 1);
         io.FeedBytes(KissEncoder.Encode(0, KissCommand.AckMode, [0x09, 0x99]));
         await send;
-    }
-
-    private static async Task WaitUntil(Func<bool> condition, int timeoutMs = 5000)
-    {
-        var sw = Stopwatch.StartNew();
-        while (!condition())
-        {
-            if (sw.ElapsedMilliseconds > timeoutMs)
-            {
-                throw new TimeoutException("condition not met within the deadline");
-            }
-            await Task.Delay(10);
-        }
     }
 
     /// <summary>

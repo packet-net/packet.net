@@ -7,6 +7,7 @@ using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Rigs;
 using Packet.Node.Core.SelfUpdate;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -28,7 +29,7 @@ public sealed class RigsApiTests : IDisposable
 
     public RigsApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-rigsapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-rigsapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -21,7 +22,7 @@ public sealed class PortTuningApiTests : IDisposable
 
     public PortTuningApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-tuningapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-tuningapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         // One disabled port: a valid config whose id never names a *running* port.

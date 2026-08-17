@@ -1,5 +1,6 @@
 using Packet.Node.Cli;
 using Packet.Node.Core.Auth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Auth;
 
@@ -21,7 +22,7 @@ public sealed class PdnAuthCliTests : IDisposable
 
     public PdnAuthCliTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-authcli-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-authcli");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

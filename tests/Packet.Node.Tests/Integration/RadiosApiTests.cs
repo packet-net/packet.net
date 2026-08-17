@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Radios;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -22,7 +23,7 @@ public sealed class RadiosApiTests : IDisposable
 
     public RadiosApiTests()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "packetnet-radiosapi-" + Guid.NewGuid().ToString("N"));
+        var dir = TestPaths.NewPath("packetnet-radiosapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

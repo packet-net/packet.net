@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Auth.Oauth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -23,7 +24,7 @@ public sealed class OauthApiTests : IDisposable
 
     public OauthApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-oauth-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-oauth");
         Directory.CreateDirectory(dir);
         var configPath = Path.Combine(dir, "node.yaml");
         File.WriteAllText(configPath, """

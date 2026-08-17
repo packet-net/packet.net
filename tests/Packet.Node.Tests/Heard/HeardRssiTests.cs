@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Packet.Node.Core.Heard;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Heard;
 
@@ -18,7 +19,7 @@ public sealed class HeardRssiTests : IDisposable
 
     public HeardRssiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-heardrssi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-heardrssi");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
     }

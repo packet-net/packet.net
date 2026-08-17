@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Auth;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -34,7 +35,7 @@ public sealed class TotpApiTests : IDisposable
 
     public TotpApiTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "packetnet-totpapi-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("packetnet-totpapi");
         Directory.CreateDirectory(dir);
         configPath = Path.Combine(dir, "node.yaml");
         dbPath = Path.Combine(dir, "pdn.db");

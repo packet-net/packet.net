@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Configuration;
 
@@ -20,7 +21,7 @@ public sealed class SqliteConfigProviderTests : IDisposable
 
     public SqliteConfigProviderTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-cfgprovider-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-cfgprovider");
         Directory.CreateDirectory(dir);
         dbPath = Path.Combine(dir, "pdn.db");
         yamlPath = Path.Combine(dir, "packetnet.yaml");
@@ -320,26 +321,5 @@ public sealed class SqliteConfigProviderTests : IDisposable
         public (NodeConfig Config, int SchemaVer)? Load() => null;
 
         public bool Save(NodeConfig config) => false;   // wedged db: every persist fails
-    }
-
-    /// <summary>An in-memory ILogger recording the rendered message + level of every entry,
-    /// so a test asserts the RENDERED migration line (capturing-logger discipline), not just
-    /// the persisted value.</summary>
-    internal sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public List<(LogLevel Level, string Text)> Messages { get; } = new();
-
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) =>
-            Messages.Add((logLevel, formatter(state, exception)));
-
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
-            public void Dispose() { }
-        }
     }
 }
