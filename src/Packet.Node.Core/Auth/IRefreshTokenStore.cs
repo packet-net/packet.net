@@ -32,8 +32,11 @@ public interface IRefreshTokenStore
     /// the revoke time when this is an ordinary one-time-use rotation consume (which
     /// makes the token leeway-eligible — a brief replay by the racing legitimate
     /// client is benign, not theft); pass <c>null</c> for a hard revoke (expiry) that
-    /// must never be leeway-eligible. Returns <c>true</c> if a row changed,
-    /// <c>false</c> if absent or on fault.</summary>
+    /// must never be leeway-eligible. The revoke is CONDITIONAL: only a live
+    /// (not-yet-revoked) token is transitioned, so the return doubles as the outcome
+    /// of a concurrent consume race - <c>true</c> means this call performed the
+    /// revoke, <c>false</c> means the token was absent OR already revoked by someone
+    /// else (a concurrent rotation won the race) OR a store fault.</summary>
     bool Revoke(string tokenHash, DateTimeOffset? consumedAtUtc);
 
     /// <summary>Revoke every token in a family — the theft response (a replayed,

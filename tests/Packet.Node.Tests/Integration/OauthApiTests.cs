@@ -228,6 +228,107 @@ public sealed class OauthApiTests : IDisposable
     }
 
     [Fact]
+    public async Task The_consent_post_rejects_a_missing_wrong_or_replayed_csrf_token()
+    {
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "pw-pw-pw-pw-pw-pw", AuthScopes.Operate);
+        using var client = NoRedirect(factory);
+        var clientId = await RegisterClientAsync(client);
+        var challenge = OauthPkce.ChallengeFor("verifier-csrf-ffffffffffffffffffffffffffffff");
+
+        Dictionary<string, string> Form(string? csrf)
+        {
+            var d = new Dictionary<string, string>
+            {
+                ["response_type"] = "code",
+                ["client_id"] = clientId,
+                ["redirect_uri"] = RedirectUri,
+                ["scope"] = "mcp:read",
+                ["state"] = "st",
+                ["code_challenge"] = challenge,
+                ["code_challenge_method"] = "S256",
+                ["action"] = "approve",
+                ["username"] = "op",
+                ["password"] = "pw-pw-pw-pw-pw-pw",
+            };
+            if (csrf is not null)
+            {
+                d["csrf"] = csrf;
+            }
+            return d;
+        }
+
+        // No token at all (a cross-site forge has none) → 400, no redirect to the client.
+        (await client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(Form(null))))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // A token the server never minted → 400.
+        (await client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(Form("deadbeefdeadbeefdeadbeefdeadbeef"))))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // The real token works exactly once (single-use)...
+        var csrf = await FetchCsrfAsync(client, clientId, challenge, "mcp:read");
+        (await client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(Form(csrf))))
+            .StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        // ...and its replay is rejected (no second consent off one rendered page).
+        (await client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(Form(csrf))))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task The_consent_page_is_frame_protected()
+    {
+        await using var factory = new NodeAppFactory();
+        using var client = factory.CreateClient();
+        var clientId = await RegisterClientAsync(client);
+        var challenge = OauthPkce.ChallengeFor("verifier-frame-00000000000000000000000000");
+
+        var resp = await client.GetAsync(AuthorizeUrl(clientId, challenge, "mcp:operate"));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The one-click operate-scope consent must never be iframed (clickjacking).
+        Header(resp, "Content-Security-Policy").Should().Be("frame-ancestors 'none'");
+        Header(resp, "X-Frame-Options").Should().Be("DENY");
+
+        static string? Header(HttpResponseMessage r, string name) =>
+            r.Headers.TryGetValues(name, out var v) ? v.First()
+            : r.Content.Headers.TryGetValues(name, out var c) ? c.First() : null;
+    }
+
+    [Fact]
+    public async Task The_credential_guess_budget_is_shared_with_auth_login()
+    {
+        // Splitting guesses across /auth/login and the OAuth consent POST must not
+        // double the per-window password budget: both endpoints key the SAME throttle
+        // namespace per username and per source IP.
+        await using var factory = new NodeAppFactory();
+        SeedUser(factory, "op", "the-right-password", AuthScopes.Operate);
+        using var client = NoRedirect(factory);
+        var clientId = await RegisterClientAsync(client);
+        var challenge = OauthPkce.ChallengeFor("verifier-budget-1111111111111111111111111");
+
+        // Three failures on /auth/login...
+        for (int i = 0; i < 3; i++)
+        {
+            (await client.PostAsJsonAsync("/api/v1/auth/login", new { username = "op", password = "wrong" }, Web))
+                .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+        // ...plus two on the OAuth consent POST reach the shared 5-failure threshold...
+        for (int i = 0; i < 2; i++)
+        {
+            (await PostApproveAsync(client, clientId, challenge, "op", "wrong", "mcp:read"))
+                .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+        // ...and the next attempt is locked out on BOTH endpoints, even with the right
+        // password.
+        (await client.PostAsJsonAsync("/api/v1/auth/login", new { username = "op", password = "the-right-password" }, Web))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await PostApproveAsync(client, clientId, challenge, "op", "the-right-password", "mcp:read"))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
     public async Task Endpoints_are_404_when_oauth_is_disabled()
     {
         // A second config with OAuth off → the routes must not be exposed.
@@ -264,9 +365,26 @@ public sealed class OauthApiTests : IDisposable
         return null;
     }
 
-    private static Task<HttpResponseMessage> PostApproveAsync(HttpClient client, string clientId, string challenge, string user, string pw, string scope) =>
-        client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(new Dictionary<string, string>
+    private static string AuthorizeUrl(string clientId, string challenge, string scope) =>
+        $"/oauth/authorize?response_type=code&client_id={clientId}&redirect_uri={Uri.EscapeDataString(RedirectUri)}"
+        + $"&code_challenge={challenge}&code_challenge_method=S256&scope={Uri.EscapeDataString(scope)}&state=st";
+
+    // The consent POST is CSRF-protected: it only accepts the single-use token the GET
+    // minted into the rendered consent page. Extract it from the hidden field.
+    private static async Task<string> FetchCsrfAsync(HttpClient client, string clientId, string challenge, string scope)
+    {
+        var html = await client.GetStringAsync(AuthorizeUrl(clientId, challenge, scope));
+        var match = System.Text.RegularExpressions.Regex.Match(html, "name=\"csrf\" value=\"([^\"]+)\"");
+        match.Success.Should().BeTrue("the consent page must embed its single-use CSRF token");
+        return match.Groups[1].Value;
+    }
+
+    private static async Task<HttpResponseMessage> PostApproveAsync(HttpClient client, string clientId, string challenge, string user, string pw, string scope)
+    {
+        var csrf = await FetchCsrfAsync(client, clientId, challenge, scope);
+        return await client.PostAsync("/oauth/authorize", new FormUrlEncodedContent(new Dictionary<string, string>
         {
+            ["csrf"] = csrf,
             ["response_type"] = "code",
             ["client_id"] = clientId,
             ["redirect_uri"] = RedirectUri,
@@ -278,6 +396,7 @@ public sealed class OauthApiTests : IDisposable
             ["username"] = user,
             ["password"] = pw,
         }));
+    }
 
     public void Dispose()
     {

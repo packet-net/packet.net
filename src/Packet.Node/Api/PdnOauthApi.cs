@@ -29,7 +29,10 @@ namespace Packet.Node.Api;
 /// (the connector re-runs authorize on expiry); refresh is a documented follow-up.</para>
 /// <para><b>Hardening:</b> PKCE S256 mandatory; exact redirect-URI match (no wildcards);
 /// single-use, short-TTL codes bound to client+redirect+challenge+user; explicit consent by a
-/// logged-in owner; login throttled; everything audited (source <c>oauth</c>).</para>
+/// logged-in owner; the consent POST must echo a single-use anti-forgery token and the
+/// consent page ships <c>frame-ancestors 'none'</c> (no login-CSRF, no clickjacked consent);
+/// login throttled on the same credential-guess budget as /auth/login; everything audited
+/// (source <c>oauth</c>).</para>
 /// </remarks>
 public static class PdnOauthApi
 {
@@ -143,7 +146,7 @@ public static class PdnOauthApi
 
         // ---- Authorize (GET: consent screen) ------------------------------------
 
-        app.MapGet("/oauth/authorize", (HttpContext ctx, IConfigProvider config, IOauthClientStore clients) =>
+        app.MapGet("/oauth/authorize", (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, [FromServices] OauthCsrfCache? csrf) =>
         {
             if (!Enabled(config))
             {
@@ -158,7 +161,7 @@ public static class PdnOauthApi
             var client = clients.Find(req.ClientId);
             if (client is null || !client.RedirectUris.Contains(req.RedirectUri, StringComparer.Ordinal))
             {
-                return Results.Content(ErrorPage("Unknown client or redirect URI."), "text/html", Encoding.UTF8, StatusCodes.Status400BadRequest);
+                return ConsentHtml(ctx, ErrorPage("Unknown client or redirect URI."), StatusCodes.Status400BadRequest);
             }
 
             // From here, parameter errors redirect back to the (validated) redirect_uri.
@@ -168,12 +171,18 @@ public static class PdnOauthApi
                 return Results.Redirect(RedirectWithError(req.RedirectUri, paramError, req.State));
             }
 
-            return Results.Content(ConsentPage(client.ClientName, req), "text/html", Encoding.UTF8);
+            if (csrf is null)
+            {
+                // Fail closed: a consent page without an anti-forgery token must not render.
+                return ConsentHtml(ctx, ErrorPage("Consent is not available."), StatusCodes.Status503ServiceUnavailable);
+            }
+
+            return ConsentHtml(ctx, ConsentPage(csrf.Mint(), client.ClientName, req));
         });
 
         // ---- Authorize (POST: owner login + consent decision) -------------------
 
-        app.MapPost("/oauth/authorize", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IOauthCodeStore codes, IUserStore users, IAuditLog audit, [FromServices] LoginThrottle? throttle, TimeProvider clock) =>
+        app.MapPost("/oauth/authorize", async (HttpContext ctx, IConfigProvider config, IOauthClientStore clients, IOauthCodeStore codes, IUserStore users, IAuditLog audit, [FromServices] LoginThrottle? throttle, [FromServices] OauthCsrfCache? csrf, TimeProvider clock) =>
         {
             if (!Enabled(config))
             {
@@ -186,12 +195,24 @@ public static class PdnOauthApi
             codes.PruneExpired(clock.GetUtcNow());
 
             var form = await ctx.Request.ReadFormAsync();
+
+            // CSRF: the POST must echo the single-use token minted into the rendered consent
+            // page. Without it a third-party site could drive the victim's browser into posting
+            // a login + approve (login CSRF) against the one-click operate-scope consent.
+            // Reject before touching anything else; fail closed when the cache is absent.
+            if (csrf is null || !csrf.Consume(form["csrf"].ToString()))
+            {
+                return ConsentHtml(ctx, ErrorPage(
+                    "The consent form is missing its verification token. Go back, reload the authorization page, and try again."),
+                    StatusCodes.Status400BadRequest);
+            }
+
             var req = AuthorizeRequest.FromForm(form);
 
             var client = clients.Find(req.ClientId);
             if (client is null || !client.RedirectUris.Contains(req.RedirectUri, StringComparer.Ordinal))
             {
-                return Results.Content(ErrorPage("Unknown client or redirect URI."), "text/html", Encoding.UTF8, StatusCodes.Status400BadRequest);
+                return ConsentHtml(ctx, ErrorPage("Unknown client or redirect URI."), StatusCodes.Status400BadRequest);
             }
             var paramError = req.Validate();
             if (paramError is not null)
@@ -208,12 +229,16 @@ public static class PdnOauthApi
 
             string username = form["username"].ToString();
             string password = form["password"].ToString();
-            string ipKey = "oauth-ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "?");
-            string userKey = "oauth-user:" + username;
+            // SAME credential-guess key namespace as /auth/login (LoginThrottle.IpKey /
+            // UserKey): splitting guesses across the two endpoints must not double the
+            // per-window password budget. The "unknown" fallback matches PdnAuthApi's
+            // ClientIp so a missing RemoteIpAddress keys identically on both routes.
+            string ipKey = LoginThrottle.IpKey(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            string userKey = LoginThrottle.UserKey(username);
 
             if (throttle is not null && (throttle.IsLocked(userKey) || throttle.IsLocked(ipKey)))
             {
-                return Results.Content(ConsentPage(client.ClientName, req, "Too many attempts - try again later."), "text/html", Encoding.UTF8, StatusCodes.Status429TooManyRequests);
+                return ConsentHtml(ctx, ConsentPage(csrf.Mint(), client.ClientName, req, "Too many attempts - try again later."), StatusCodes.Status429TooManyRequests);
             }
 
             var user = users.FindByUsername(username);
@@ -228,7 +253,7 @@ public static class PdnOauthApi
                 throttle?.RecordFailure(userKey);
                 throttle?.RecordFailure(ipKey);
                 audit.RecordRest(ctx, clock, "oauth_authorize", req.ClientId, "denied", $"bad credentials user={username}");
-                return Results.Content(ConsentPage(client.ClientName, req, "Incorrect username or password."), "text/html", Encoding.UTF8, StatusCodes.Status401Unauthorized);
+                return ConsentHtml(ctx, ConsentPage(csrf.Mint(), client.ClientName, req, "Incorrect username or password."), StatusCodes.Status401Unauthorized);
             }
 
             // Map the requested OAuth scope to a node scope, and enforce the user actually holds it.
@@ -360,9 +385,21 @@ public static class PdnOauthApi
         $"<body style=\"font-family:system-ui;max-width:32rem;margin:4rem auto\"><h1>Authorization error</h1>" +
         $"<p>{WebUtility.HtmlEncode(message)}</p></body></html>";
 
+    // Serve a consent/authorize HTML page with frame protection: the one-click
+    // operate-scope consent (and the node login it embeds) must never be embeddable in
+    // a foreign iframe, or an attacker page could clickjack the Approve click.
+    private static IResult ConsentHtml(HttpContext ctx, string html, int status = StatusCodes.Status200OK)
+    {
+        ctx.Response.Headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+        ctx.Response.Headers.XFrameOptions = "DENY";
+        return Results.Content(html, "text/html", Encoding.UTF8, status);
+    }
+
     // A minimal, self-contained consent + login page. All authorize params ride as hidden
     // fields so the POST reconstructs the request; everything user-facing is HTML-encoded.
-    private static string ConsentPage(string clientName, AuthorizeRequest req, string? error = null)
+    // The single-use anti-forgery token (csrfToken) rides as a hidden field too, and the
+    // POST rejects unless it echoes back (login-CSRF protection).
+    private static string ConsentPage(string csrfToken, string clientName, AuthorizeRequest req, string? error = null)
     {
         string Enc(string? s) => WebUtility.HtmlEncode(s ?? string.Empty);
         string hidden(string n, string? v) => $"<input type=\"hidden\" name=\"{n}\" value=\"{Enc(v)}\">";
@@ -380,6 +417,7 @@ public static class PdnOauthApi
                  <strong>{scopeText}</strong>.</p>
               {errBlock}
               <form method="post" action="/oauth/authorize">
+                {hidden("csrf", csrfToken)}
                 {hidden("response_type", req.ResponseType)}{hidden("client_id", req.ClientId)}
                 {hidden("redirect_uri", req.RedirectUri)}{hidden("scope", req.Scope)}
                 {hidden("state", req.State)}{hidden("code_challenge", req.CodeChallenge)}

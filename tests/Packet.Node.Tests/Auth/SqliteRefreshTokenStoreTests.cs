@@ -67,6 +67,24 @@ public sealed class SqliteRefreshTokenStoreTests : IDisposable
     }
 
     [Fact]
+    public void Revoke_is_a_conditional_consume_a_second_consume_matches_zero_rows()
+    {
+        // The atomicity core of rotation: only a LIVE token is revoked, so two
+        // concurrent rotations of the same token can't both consume it - the second
+        // UPDATE matches 0 rows and must NOT overwrite the winner's leeway stamp.
+        var store = Open();
+        store.Insert(NewToken("hash-1", "famA")).Should().BeTrue();
+
+        var winnerStamp = new DateTimeOffset(2026, 6, 12, 8, 0, 0, TimeSpan.Zero);
+        store.Revoke("hash-1", winnerStamp).Should().BeTrue();
+
+        store.Revoke("hash-1", null).Should().BeFalse();
+        var row = store.FindByHash("hash-1")!;
+        row.Revoked.Should().BeTrue();
+        row.RevokedUtc.Should().Be(winnerStamp);   // the winner's stamp survives
+    }
+
+    [Fact]
     public void HasLiveToken_tracks_whether_a_family_still_has_an_unrevoked_token()
     {
         var store = Open();

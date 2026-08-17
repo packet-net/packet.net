@@ -295,6 +295,11 @@ var webAuthnStore = new SqliteWebAuthnCredentialStore(dbPath, bootstrapLoggers.C
 builder.Services.AddSingleton<IWebAuthnCredentialStore>(webAuthnStore);
 builder.Services.AddSingleton(new WebAuthnChallengeCache(TimeProvider.System));
 
+// OAuth consent anti-forgery: the consent page's hidden CSRF token lives here
+// (server-generated, single-use, expiring - the same discipline as the challenge
+// cache above). Unconditional like the throttle: pure in-memory + the clock.
+builder.Services.AddSingleton(new Packet.Node.Core.Auth.Oauth.OauthCsrfCache(TimeProvider.System));
+
 // Over-RF sysop-code (TOTP) enrolment (auth part 4, enrolment half, default-off behind
 // management.auth.enabled). The per-user secret + callsign + replay counter live on the
 // existing user store (pdn.db) - added additively, degrade-safe like the rest. The

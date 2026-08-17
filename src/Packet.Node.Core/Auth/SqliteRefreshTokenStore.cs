@@ -152,8 +152,11 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
         try
         {
             using var conn = Open();
+            // Conditional consume: only a LIVE token is revoked, and the rowcount tells
+            // the caller whether it won the race. Two concurrent rotations of the same
+            // token can no longer both consume it (the second UPDATE matches 0 rows).
             int rows = conn.Execute(
-                "UPDATE refresh_token SET revoked = 1, revoked_utc = @ru WHERE token_hash = @h;",
+                "UPDATE refresh_token SET revoked = 1, revoked_utc = @ru WHERE token_hash = @h AND revoked = 0;",
                 new { h = tokenHash, ru = consumedAtUtc is { } ru ? SqliteStamps.Stamp(ru) : null });
             return rows > 0;
         }
