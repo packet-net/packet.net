@@ -39,6 +39,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
     private readonly ITuningLink link;
     private readonly IModeCoordStation station;
     private readonly ModeCoordOptions options;
+    private readonly TimeProvider clock;
     private readonly Channel<TuningTelegram> inbox = Channel.CreateUnbounded<TuningTelegram>();
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
@@ -46,13 +47,23 @@ public sealed class ModeCoordinator : IAsyncDisposable
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>
-    public ModeCoordinator(ITuningLink link, IModeCoordStation station, ModeCoordOptions? options = null)
+    /// <param name="link">The (mode-agnostic) coordination link.</param>
+    /// <param name="station">The rig this end drives.</param>
+    /// <param name="options">Session knobs; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the settle waits and the reply
+    /// timeouts; null = system.</param>
+    public ModeCoordinator(
+        ITuningLink link,
+        IModeCoordStation station,
+        ModeCoordOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         ArgumentNullException.ThrowIfNull(station);
         this.link = link;
         this.station = station;
         this.options = options ?? new ModeCoordOptions();
+        clock = timeProvider ?? TimeProvider.System;
         CurrentMode = this.options.HomeMode;
         CurrentChannel = this.options.HomeChannel;
         pumpLoop = Task.Run(() => PumpAsync(pumpCts.Token));
@@ -214,7 +225,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
         ModeProbeCell? rToC = null;
         try
         {
-            await Task.Delay(options.SwitchSettle, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(options.SwitchSettle, clock, cancellationToken).ConfigureAwait(false);
             using var counter = station.BeginProbeCount(attemptTag);
 
             Log?.Invoke($"coord: transmitting {options.ProbeFrames} probe frames (tag a{attemptTag})");
@@ -254,7 +265,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
                 return Fail(ModeCoordOutcome.LinkFailed, why, reverted: true, homeAlive: alive,
                     cToR: cToR);
             }
-            await Task.Delay(options.ArrivalGrace, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(options.ArrivalGrace, clock, cancellationToken).ConfigureAwait(false);
             int peerCount = peerSent.Value.Message.Count ?? options.ProbeFrames;
             rToC = new ModeProbeCell(counter.Count, peerCount,
                 peerSent.Value.Message.MeanTxMs);
@@ -409,7 +420,7 @@ public sealed class ModeCoordinator : IAsyncDisposable
         // Home verify: one-way probe burst tagged with the revert telegram's seq.
         try
         {
-            await Task.Delay(options.SwitchSettle, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(options.SwitchSettle, clock, cancellationToken).ConfigureAwait(false);
             var tx = await station.TransmitProbesAsync(revertTag, options.HomeVerifyProbeFrames, cancellationToken)
                 .ConfigureAwait(false);
             await SendModeAsync(
@@ -473,8 +484,8 @@ public sealed class ModeCoordinator : IAsyncDisposable
     private async Task<TuningTelegram?> WaitAsync(
         Func<TuningTelegram, bool> match, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
+        using var deadline = new CancellationTokenSource(timeout, clock);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             while (true)

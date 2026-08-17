@@ -49,6 +49,10 @@ public sealed record TuningSessionOptions
     /// (bench-observed). Default 2.5 s.
     /// </summary>
     public TimeSpan PreBurstDelay { get; init; } = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Clock used for timeout scheduling. Tests inject <c>FakeTimeProvider</c>;
+    /// production leaves the system clock.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
 
 /// <summary>
@@ -194,7 +198,7 @@ public static class TuningSession
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await TrySendByeAsync(link, seq).ConfigureAwait(false);
+            await TrySendByeAsync(link, seq, opts.TimeProvider).ConfigureAwait(false);
             return 0;
         }
 
@@ -252,7 +256,7 @@ public static class TuningSession
                         // Leave the channel clear for the coordination radio's
                         // SDM auto-ack before keying the burst (see
                         // TuningSessionOptions.PreBurstDelay).
-                        await Task.Delay(opts.PreBurstDelay, cancellationToken).ConfigureAwait(false);
+                        await Task.Delay(opts.PreBurstDelay, opts.TimeProvider, cancellationToken).ConfigureAwait(false);
                         await output.WriteLineAsync(string.Create(
                             CultureInfo.InvariantCulture, $"tuned: transmitting {frames}-frame burst..."))
                             .ConfigureAwait(false);
@@ -314,7 +318,7 @@ public static class TuningSession
                                 await output.WriteLineAsync(
                                     $"tuned: ready signal unconfirmed ({ex.Message}) — retrying once")
                                     .ConfigureAwait(false);
-                                await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
+                                await Task.Delay(TimeSpan.FromSeconds(3), opts.TimeProvider, cancellationToken).ConfigureAwait(false);
                             }
                             catch (TuningLinkException ex)
                             {
@@ -337,7 +341,7 @@ public static class TuningSession
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await TrySendByeAsync(link, seq).ConfigureAwait(false);
+            await TrySendByeAsync(link, seq, opts.TimeProvider).ConfigureAwait(false);
             return 0;
         }
 
@@ -380,11 +384,11 @@ public static class TuningSession
     private static string FmtRssi(double? value) =>
         value?.ToString("0.0", CultureInfo.InvariantCulture) ?? "n/a";
 
-    private static async Task TrySendByeAsync(ITuningLink link, int seq)
+    private static async Task TrySendByeAsync(ITuningLink link, int seq, TimeProvider clock)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15), clock);
             await link.SendAsync(new TuningTelegram(seq, TuningVerb.Bye, string.Empty), cts.Token)
                 .ConfigureAwait(false);
         }

@@ -41,6 +41,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
     private readonly ITuningLink link;
     private readonly ITxDelayMinStation station;
     private readonly TxDelayMinOptions options;
+    private readonly TimeProvider clock;
     private readonly Channel<TuningTelegram> inbox = Channel.CreateUnbounded<TuningTelegram>();
     private readonly CancellationTokenSource pumpCts = new();
     private readonly Task pumpLoop;
@@ -48,13 +49,23 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>
-    public TxDelayMinimizer(ITuningLink link, ITxDelayMinStation station, TxDelayMinOptions? options = null)
+    /// <param name="link">The (mode-agnostic) coordination link.</param>
+    /// <param name="station">The rig this end sweeps.</param>
+    /// <param name="options">Sweep knobs; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the pre-key guard and the reply
+    /// timeouts; null = system.</param>
+    public TxDelayMinimizer(
+        ITuningLink link,
+        ITxDelayMinStation station,
+        TxDelayMinOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         ArgumentNullException.ThrowIfNull(station);
         this.link = link;
         this.station = station;
         this.options = options ?? new TxDelayMinOptions();
+        clock = timeProvider ?? TimeProvider.System;
         pumpLoop = Task.Run(() => PumpAsync(pumpCts.Token));
     }
 
@@ -346,7 +357,7 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
 
         // Wedge guard: the meter radio's auto-ack of the announce is in flight — the
         // settle frame the TXDELAY set transmits must not race our own radio's RX ack.
-        await Task.Delay(options.PreKeyDelay, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(options.PreKeyDelay, clock, cancellationToken).ConfigureAwait(false);
 
         // Set + settle FIRST (the settle keying still pays the OLD preamble; it carries
         // no probe marker so the meter never counts it), then the tagged probes.
@@ -426,8 +437,8 @@ public sealed class TxDelayMinimizer : IAsyncDisposable
     private async Task<(int Sequence, TxDelayMinMessage Message)?> WaitForAsync(
         Func<TxDelayMinMessage, bool> match, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
+        using var deadline = new CancellationTokenSource(timeout, clock);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             while (true)

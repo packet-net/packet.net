@@ -63,12 +63,14 @@ public static class TxDelayControlCheck
     /// <param name="source">Source callsign for the probe frames.</param>
     /// <param name="bitRateHz">The running mode's bit rate (for the register-path arithmetic).</param>
     /// <param name="log">Optional progress sink (one line per measurement).</param>
+    /// <param name="timeProvider">Time source for the inter-keying settle waits; null = system.</param>
     /// <param name="cancellationToken">Cancels the check.</param>
     public static async Task<TxDelayControlResult> RunAsync(
         NinoTncSerialPort tnc,
         Callsign source,
         int bitRateHz,
         Action<string>? log = null,
+        TimeProvider? timeProvider = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(tnc);
@@ -83,7 +85,8 @@ public static class TxDelayControlCheck
         await tnc.SetSlotTimeAsync(0, cancellationToken).ConfigureAwait(false);
         try
         {
-            return await MeasureAsync(tnc, source, bitRateHz, log, cancellationToken).ConfigureAwait(false);
+            return await MeasureAsync(tnc, source, bitRateHz, log, timeProvider ?? TimeProvider.System, cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -108,6 +111,7 @@ public static class TxDelayControlCheck
         Callsign source,
         int bitRateHz,
         Action<string>? log,
+        TimeProvider clock,
         CancellationToken cancellationToken)
     {
         var points = new List<TestPoint>();
@@ -132,7 +136,7 @@ public static class TxDelayControlCheck
                 // sends chain into ONE keying train with a single preamble
                 // (bench-observed: chained frames echo in a constant ~430 ms
                 // regardless of TXDELAY), which would measure nothing.
-                await Task.Delay(750, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(750), clock, cancellationToken).ConfigureAwait(false);
 
                 var completion = await tnc
                     .SendFrameWithAckAsync(ProbeFrame(source, 2 + sample), TimeSpan.FromSeconds(20), null, cancellationToken)
@@ -145,7 +149,7 @@ public static class TxDelayControlCheck
                     CultureInfo.InvariantCulture,
                     $"  sample {sample + 1}/{SamplesPerPoint}: ACKMODE echo after {completion.Elapsed.TotalMilliseconds:0} ms"));
             }
-            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(250), clock, cancellationToken).ConfigureAwait(false);
             var after = await tnc.GetAllAsync(null, cancellationToken).ConfigureAwait(false);
 
             var delta = NinoTncStatusDelta.Between(before, after);

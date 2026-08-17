@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using Packet.Core;
 using Packet.Kiss;
@@ -32,6 +31,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
     private readonly NinoTncSerialPort tnc;
     private readonly TaitCcdiRadio radio;
     private readonly Callsign source;
+    private readonly TimeProvider clock;
     private byte currentMode;
 
     /// <summary>Create over an open TNC + radio pair (lifetimes stay the caller's).</summary>
@@ -40,13 +40,21 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
     /// <param name="source">Source callsign for settle/probe frames.</param>
     /// <param name="initialMode">The mode the TNC is in now (scales probe TX timeouts
     /// until the first <see cref="ApplyModeAsync"/>).</param>
-    public NinoTncModeCoordStation(NinoTncSerialPort tnc, TaitCcdiRadio radio, Callsign source, byte initialMode = 6)
+    /// <param name="timeProvider">Time source for the settle/gap waits and the probe
+    /// TX-latency measurement; null = system.</param>
+    public NinoTncModeCoordStation(
+        NinoTncSerialPort tnc,
+        TaitCcdiRadio radio,
+        Callsign source,
+        byte initialMode = 6,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(tnc);
         ArgumentNullException.ThrowIfNull(radio);
         this.tnc = tnc;
         this.radio = radio;
         this.source = source;
+        clock = timeProvider ?? TimeProvider.System;
         currentMode = initialMode;
     }
 
@@ -78,7 +86,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
         // Let the SETHW settle before the settle frame: sending it immediately races the TNC's
         // SETHW processing and the ACKMODE echo is dropped ~60% of the time (#591); this delay
         // takes that to ~0. The mode is already applied — this only steadies the echo path.
-        await Task.Delay(SethwSettleDelay, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(SethwSettleDelay, clock, cancellationToken).ConfigureAwait(false);
 
         // Settle frame: the changed mode applies from the SECOND frame. With the settling delay
         // above the ACKMODE echo now lands reliably; a rare miss is still logged and tolerated
@@ -138,12 +146,12 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
         for (int i = 1; i <= count; i++)
         {
             byte[] wire = ModeProbe.BuildFrame(source, attemptTag, i, count).ToBytes();
-            var stopwatch = Stopwatch.StartNew();
+            long started = clock.GetTimestamp();
             try
             {
                 await tnc.SendFrameWithAckAsync(wire, txTimeout, cancellationToken: cancellationToken).ConfigureAwait(false);
                 confirmed++;
-                latencies.Add(stopwatch.Elapsed.TotalMilliseconds);
+                latencies.Add(clock.GetElapsedTime(started).TotalMilliseconds);
             }
             catch (TimeoutException)
             {
@@ -152,7 +160,7 @@ public sealed class NinoTncModeCoordStation : IModeCoordStation
                 // count is the verdict that matters.
                 Log?.Invoke($"station: probe {i}/{count} TX-completion not echoed within {txTimeout.TotalSeconds:0} s");
             }
-            await Task.Delay(InterProbeGap, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(InterProbeGap, clock, cancellationToken).ConfigureAwait(false);
         }
         return new ModeProbeTxStats(count, confirmed, latencies.Count == 0 ? null : latencies.Average());
     }

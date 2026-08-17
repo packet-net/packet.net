@@ -26,6 +26,7 @@ public sealed class ModeResponder
     private readonly ITuningLink link;
     private readonly IModeCoordStation station;
     private readonly ModeCoordOptions options;
+    private readonly TimeProvider clock;
     private int sequence = TuningTelegram.NewSessionSequenceBase();
 
     // Session state.
@@ -35,17 +36,28 @@ public sealed class ModeResponder
     private bool homeVerifyOnly;
     private byte currentMode;
     private int currentChannel;
-    private DateTimeOffset lastHeard = DateTimeOffset.UtcNow;
+    private DateTimeOffset lastHeard;
 
     /// <summary>Create over a link + station pair. The link's and station's lifetimes
     /// stay the caller's.</summary>
-    public ModeResponder(ITuningLink link, IModeCoordStation station, ModeCoordOptions? options = null)
+    /// <param name="link">The (mode-agnostic) coordination link.</param>
+    /// <param name="station">The rig this end drives.</param>
+    /// <param name="options">Session knobs; null = defaults.</param>
+    /// <param name="timeProvider">Time source for the guard waits and the idle
+    /// watchdog; null = system.</param>
+    public ModeResponder(
+        ITuningLink link,
+        IModeCoordStation station,
+        ModeCoordOptions? options = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         ArgumentNullException.ThrowIfNull(station);
         this.link = link;
         this.station = station;
         this.options = options ?? new ModeCoordOptions();
+        clock = timeProvider ?? TimeProvider.System;
+        lastHeard = clock.GetUtcNow();
         currentMode = this.options.HomeMode;
         currentChannel = this.options.HomeChannel;
     }
@@ -91,9 +103,9 @@ public sealed class ModeResponder
             while (true)
             {
                 TuningTelegram telegram;
-                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                using (var pollCts = new CancellationTokenSource(WatchdogPollInterval(), clock))
+                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, pollCts.Token))
                 {
-                    readCts.CancelAfter(WatchdogPollInterval());
                     try
                     {
                         telegram = await inbox.Reader.ReadAsync(readCts.Token).ConfigureAwait(false);
@@ -111,7 +123,7 @@ public sealed class ModeResponder
                     }
                 }
 
-                lastHeard = DateTimeOffset.UtcNow;
+                lastHeard = clock.GetUtcNow();
                 if (telegram.Verb == TuningVerb.Bye)
                 {
                     Log?.Invoke("responder: coordinator said BY — session over");
@@ -135,7 +147,7 @@ public sealed class ModeResponder
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            using var homeCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            using var homeCts = new CancellationTokenSource(TimeSpan.FromSeconds(60), clock);
             await EnsureHomeAsync(homeCts.Token).ConfigureAwait(false);
             return 0;
         }
@@ -197,7 +209,7 @@ public sealed class ModeResponder
                 // Wedge guard: our radio's auto-ack of this very telegram is in
                 // flight — the settle frame the mode apply transmits must not
                 // race it.
-                await Task.Delay(options.PreProbeDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.PreProbeDelay, clock, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     await station.ApplyModeAsync(message.Mode!.Value, cancellationToken).ConfigureAwait(false);
@@ -232,7 +244,7 @@ public sealed class ModeResponder
                     Log?.Invoke("responder: 'sent' with no probe window open — ignoring");
                     return;
                 }
-                await Task.Delay(options.ArrivalGrace, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.ArrivalGrace, clock, cancellationToken).ConfigureAwait(false);
                 int decoded = counter.Count;
                 int announced = message.Count ?? options.ProbeFrames;
                 Log?.Invoke($"responder: {decoded}/{announced} probe frames decoded — reporting");
@@ -250,7 +262,7 @@ public sealed class ModeResponder
 
                 // Reverse probes: same tag, our own burst.
                 int attemptTag = activeTag;
-                await Task.Delay(options.PreProbeDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.PreProbeDelay, clock, cancellationToken).ConfigureAwait(false);
                 Log?.Invoke($"responder: transmitting {options.ProbeFrames} probe frames back (tag a{attemptTag})");
                 var tx = await station.TransmitProbesAsync(attemptTag, options.ProbeFrames, cancellationToken)
                     .ConfigureAwait(false);
@@ -288,7 +300,7 @@ public sealed class ModeResponder
                 activeTag = telegramSequence;
                 homeVerifyOnly = true;
                 // Guard: the auto-ack of the revert telegram is in flight.
-                await Task.Delay(options.PreProbeDelay, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.PreProbeDelay, clock, cancellationToken).ConfigureAwait(false);
                 await ApplyHomeAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -358,7 +370,7 @@ public sealed class ModeResponder
         {
             return;
         }
-        if (DateTimeOffset.UtcNow - lastHeard < options.ResponderIdleRevert)
+        if (clock.GetUtcNow() - lastHeard < options.ResponderIdleRevert)
         {
             return;
         }
@@ -368,7 +380,7 @@ public sealed class ModeResponder
         counter?.Dispose();
         counter = null;
         await ApplyHomeAsync(cancellationToken).ConfigureAwait(false);
-        lastHeard = DateTimeOffset.UtcNow; // don't re-fire every poll
+        lastHeard = clock.GetUtcNow(); // don't re-fire every poll
     }
 
     private async Task TrySendModeAsync(ModeCoordMessage message, CancellationToken cancellationToken) =>

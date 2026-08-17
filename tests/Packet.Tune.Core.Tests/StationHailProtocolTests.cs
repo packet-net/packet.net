@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Packet.Tune.Core.Tests;
 
@@ -8,6 +9,8 @@ namespace Packet.Tune.Core.Tests;
 /// an undeliverable hail reports a link failure, and — the node property — a resident
 /// responder and an on-demand hailer coexist on one <see cref="FanOutTuningLink"/> without
 /// stealing each other's telegrams.
+/// <para>The two no-reply tests turn on the hailer's reply timeout expiring, so they run it
+/// on a <see cref="FakeTimeProvider"/> and advance virtual time rather than waiting.</para>
 /// </summary>
 public class StationHailProtocolTests
 {
@@ -56,9 +59,11 @@ public class StationHailProtocolTests
     public async Task A_hail_with_no_responder_times_out_as_no_reply()
     {
         var (a, _) = InMemoryTuningLink.CreatePair();
-        await using var hailer = new StationHailer(a, "M0ABC", FastOptions);
+        var clock = new FakeTimeProvider();
+        await using var hailer = new StationHailer(a, "M0ABC", FastOptions, clock);
 
-        var result = await hailer.HailAsync().WaitAsync(Timeout);
+        var result = await VirtualTime.AdvanceUntilAsync(
+            clock, hailer.HailAsync(), FastOptions.ReplyTimeout);
 
         result.Success.Should().BeFalse();
         result.Outcome.Should().Be(StationHailOutcome.NoReply);
@@ -69,9 +74,11 @@ public class StationHailProtocolTests
     public async Task An_undeliverable_hail_reports_a_link_failure()
     {
         await using var link = new SendThrowsLink();
-        await using var hailer = new StationHailer(link, "M0ABC", FastOptions);
+        var clock = new FakeTimeProvider();
+        await using var hailer = new StationHailer(link, "M0ABC", FastOptions, clock);
 
-        var result = await hailer.HailAsync().WaitAsync(Timeout);
+        var result = await VirtualTime.AdvanceUntilAsync(
+            clock, hailer.HailAsync(), FastOptions.ReplyTimeout);
 
         result.Outcome.Should().Be(StationHailOutcome.LinkFailed);
         result.Detail.Should().Contain("undelivered", "the send never got a receipt");
@@ -115,9 +122,11 @@ public class StationHailProtocolTests
 
         using var cts = new CancellationTokenSource();
         ITuningLink shared = fan;
+        // Both consumers are already subscribed here: CollectFirstAsync runs on the calling
+        // thread up to its first incomplete await, which is inside the fan-out's first
+        // MoveNextAsync, and the fan-out registers the subscription before it parks.
         var first = CollectFirstAsync(shared, cts.Token);
         var second = CollectFirstAsync(shared, cts.Token);
-        await Task.Delay(50, cts.Token); // let both subscriptions register
 
         await b.SendAsync(new TuningTelegram(5, TuningVerb.Hail, "PEER"));
 

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using Packet.Core;
 using Packet.Kiss;
@@ -75,7 +74,8 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
     /// <param name="radio">The paired radio's control channel, when one is attached —
     /// only its carrier-sense events are used, and only by the meter-side counter.</param>
     /// <param name="options">Timing knobs; null = bench defaults.</param>
-    /// <param name="timeProvider">Time source for pre-data arithmetic; null = system.</param>
+    /// <param name="timeProvider">Time source for the unkey gaps, the probe TX-latency
+    /// measurement and the pre-data arithmetic; null = system.</param>
     public NinoTncTxDelayMinStation(
         NinoTncSerialPort tnc,
         Callsign source,
@@ -152,7 +152,7 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
         }
 
         // Let the transmitter unkey — the next send must be its own keying.
-        await Task.Delay(options.UnkeyGap, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(options.UnkeyGap, clock, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -167,16 +167,16 @@ public sealed class NinoTncTxDelayMinStation : ITxDelayMinStation
             // unkey, or this probe chains into its train and pays no preamble of its own.
             if (i > 1)
             {
-                await Task.Delay(options.UnkeyGap, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(options.UnkeyGap, clock, cancellationToken).ConfigureAwait(false);
             }
             byte[] wire = TxDelayProbe.BuildFrame(source, stepTag, i, count).ToBytes();
-            var stopwatch = Stopwatch.StartNew();
+            long started = clock.GetTimestamp();
             try
             {
                 await tnc.SendFrameWithAckAsync(wire, options.ProbeTxTimeout, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 confirmed++;
-                latencies.Add(stopwatch.Elapsed.TotalMilliseconds);
+                latencies.Add(clock.GetElapsedTime(started).TotalMilliseconds);
             }
             catch (TimeoutException)
             {

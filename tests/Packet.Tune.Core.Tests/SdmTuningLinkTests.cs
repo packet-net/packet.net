@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Time.Testing;
 using Packet.Radio;
 
 namespace Packet.Tune.Core.Tests;
@@ -8,6 +9,9 @@ namespace Packet.Tune.Core.Tests;
 /// the default receipt-tolerant send (completes on radio-accept) and the strict
 /// opt-in receipt-gated retries, DCD-busy send deferral, prompt event-triggered
 /// buffer reads, sequence-number dedupe, and the side channel's payload budget.
+/// <para>The waits the link owns (post-receive guard, channel-clear deadline) run on an
+/// injected <see cref="FakeTimeProvider"/> and are proven by advancing virtual time; the
+/// arrival path is driven by the fake channel's drain signal, so no test sleeps.</para>
 /// </summary>
 public class SdmTuningLinkTests
 {
@@ -83,10 +87,15 @@ public class SdmTuningLinkTests
     public async Task Sending_waits_for_the_channel_to_clear_and_gives_up_if_it_never_does()
     {
         var channel = new FakeSdmChannel { AckPlan = [true], Busy = true };
-        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions);
+        var clock = new FakeTimeProvider();
+        await using var link = new SdmTuningLink(channel, "PDN00001", FastOptions, clock);
 
-        var act = async () => await link.SendAsync(new TuningTelegram(4, TuningVerb.Hello, "meter")).WaitAsync(Timeout);
+        // The send parks on the DCD poll; only virtual time past the clear timeout ends it.
+        var send = link.SendAsync(new TuningTelegram(4, TuningVerb.Hello, "meter"));
+        send.IsCompleted.Should().BeFalse("the channel is busy, so the send is still waiting");
+        clock.Advance(FastOptions.ChannelClearTimeout + TimeSpan.FromMilliseconds(10));
 
+        var act = async () => await send.WaitAsync(Timeout);
         await act.Should().ThrowAsync<TuningLinkException>().WithMessage("*busy*");
         channel.Sent.Should().BeEmpty("the link must never transmit over a busy channel");
     }
@@ -108,9 +117,9 @@ public class SdmTuningLinkTests
     public async Task An_arrival_event_triggers_a_prompt_buffer_read_and_a_telegram()
     {
         var channel = new FakeSdmChannel();
-        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions);
+        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions, new FakeTimeProvider());
 
-        channel.Deliver("V1|7|RQ|5");
+        await channel.DeliverAsync("V1|7|RQ|5");
 
         var received = new List<TuningTelegram>();
         await foreach (var telegram in link.ReceiveAsync().WithTimeout(Timeout))
@@ -125,13 +134,13 @@ public class SdmTuningLinkTests
     public async Task Duplicate_sequence_numbers_are_deduped()
     {
         var channel = new FakeSdmChannel();
-        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions);
+        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions, new FakeTimeProvider());
 
-        channel.Deliver("V1|7|RQ|5");   // original
-        await Task.Delay(150);
-        channel.Deliver("V1|7|RQ|5");   // transport retry (receipt was lost)
-        await Task.Delay(150);
-        channel.Deliver("V1|8|AD|OK");  // next real telegram
+        // Each DeliverAsync returns once the link has taken the message out of the
+        // one-deep buffer, so a following delivery cannot overwrite an unread one.
+        await channel.DeliverAsync("V1|7|RQ|5");   // original
+        await channel.DeliverAsync("V1|7|RQ|5");   // transport retry (receipt was lost)
+        await channel.DeliverAsync("V1|8|AD|OK");  // next real telegram
 
         var received = new List<TuningTelegram>();
         await foreach (var telegram in link.ReceiveAsync().WithTimeout(Timeout))
@@ -155,21 +164,25 @@ public class SdmTuningLinkTests
         // half-duplex etiquette holds sends back for the guard interval after every
         // arrival, not keying over the ack in flight (politeness, not the refractory).
         var channel = new FakeSdmChannel { AckPlan = [true] };
+        var clock = new FakeTimeProvider();
         var options = FastOptions with { PostReceiveGuard = TimeSpan.FromMilliseconds(400) };
-        await using var link = new SdmTuningLink(channel, "PDN00001", options);
+        await using var link = new SdmTuningLink(channel, "PDN00001", options, clock);
 
-        channel.Deliver("V1|5|RQ|3");
+        await channel.DeliverAsync("V1|5|RQ|3");
         await foreach (var _ in link.ReceiveAsync().WithTimeout(Timeout))
         {
             break; // arrival processed
         }
 
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        await link.SendAsync(new TuningTelegram(1, TuningVerb.Hello, "tuned")).WaitAsync(Timeout);
-        stopwatch.Stop();
+        // On virtual time the guard is provable both ways: nothing keys before it elapses,
+        // and the send completes as soon as it does. (A stopwatch could only bound it below.)
+        var send = link.SendAsync(new TuningTelegram(1, TuningVerb.Hello, "tuned"));
+        send.IsCompleted.Should().BeFalse("the send waits out the guard after an arrival");
+        channel.Sent.Should().BeEmpty("keying now would pre-empt the radio's auto-ack in flight");
 
-        stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(200),
-            "the send must wait for the radio's auto-ack of the just-received telegram");
+        clock.Advance(options.PostReceiveGuard);
+
+        await send.WaitAsync(Timeout);
         channel.Sent.Should().HaveCount(1);
     }
 
@@ -177,11 +190,10 @@ public class SdmTuningLinkTests
     public async Task Non_telegram_sdm_traffic_is_ignored()
     {
         var channel = new FakeSdmChannel();
-        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions);
+        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions, new FakeTimeProvider());
 
-        channel.Deliver("WEATHER AT THE CLUBHOUSE: FINE");
-        await Task.Delay(150);
-        channel.Deliver("V1|1|HI|tuned");
+        await channel.DeliverAsync("WEATHER AT THE CLUBHOUSE: FINE");
+        await channel.DeliverAsync("V1|1|HI|tuned");
 
         var received = new List<TuningTelegram>();
         await foreach (var telegram in link.ReceiveAsync().WithTimeout(Timeout))
@@ -228,13 +240,11 @@ public class SdmTuningLinkTests
         // #590: two coordinator sessions (distinct random bases) must both get through a
         // still-running responder's dedupe; only a same-base transport retry is dropped.
         var channel = new FakeSdmChannel();
-        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions);
+        await using var link = new SdmTuningLink(channel, "PDN00002", FastOptions, new FakeTimeProvider());
 
-        channel.Deliver("V1|1000001|HI|sessA");   // session A (base ~1e6)
-        await Task.Delay(150);
-        channel.Deliver("V1|9000001|HI|sessB");   // session B — distinct base, same relative seq
-        await Task.Delay(150);
-        channel.Deliver("V1|1000001|HI|sessA");   // A's transport retry — deduped
+        await channel.DeliverAsync("V1|1000001|HI|sessA");   // session A (base ~1e6)
+        await channel.DeliverAsync("V1|9000001|HI|sessB");   // session B: distinct base, same relative seq
+        await channel.DeliverAsync("V1|1000001|HI|sessA");   // A's transport retry, deduped
 
         var received = new List<TuningTelegram>();
         await foreach (var telegram in link.ReceiveAsync().WithTimeout(Timeout))
@@ -256,6 +266,7 @@ public class SdmTuningLinkTests
     {
         private readonly ConcurrentQueue<bool> ackPlan = new();
         private string? buffered;
+        private TaskCompletionSource? drained;
 
         public IReadOnlyList<bool> AckPlan
         {
@@ -303,13 +314,27 @@ public class SdmTuningLinkTests
             return Task.CompletedTask;
         }
 
-        public Task<string?> ReadBufferedAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Interlocked.Exchange(ref buffered, null));
-
-        public void Deliver(string message)
+        public Task<string?> ReadBufferedAsync(CancellationToken cancellationToken = default)
         {
+            string? message = Interlocked.Exchange(ref buffered, null);
+            if (message is not null)
+            {
+                Interlocked.Exchange(ref drained, null)?.TrySetResult();
+            }
+            return Task.FromResult(message);
+        }
+
+        /// <summary>Deliver an inbound message the way the radio does (into the one-deep
+        /// buffer, then the arrival event) and complete once the link has read it out.
+        /// Waiting on the read is what makes back-to-back deliveries safe: the real buffer
+        /// overwrites on arrival, so an unread message would be lost.</summary>
+        public async Task DeliverAsync(string message)
+        {
+            var read = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Interlocked.Exchange(ref drained, read);
             Interlocked.Exchange(ref buffered, message);
             DatagramArrived?.Invoke(this, EventArgs.Empty);
+            await read.Task.WaitAsync(Timeout);
         }
     }
 }
