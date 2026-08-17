@@ -3,7 +3,6 @@ using Packet.Core;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Hosting;
-using Packet.Node.Core.Radios;
 using Packet.Radio.Tait;
 using Packet.Tune.Core;
 
@@ -74,7 +73,8 @@ public sealed class TuningStartException : Exception
 /// </remarks>
 public sealed partial class PortTuningService : IAsyncDisposable
 {
-    private readonly NodeHostedService host;
+    private readonly ITuningPortGateway gateway;
+    private readonly ITuningLinkFactory links;
     private readonly IConfigProvider config;
     private readonly TimeProvider clock;
     private readonly ILogger<PortTuningService> logger;
@@ -92,11 +92,33 @@ public sealed partial class PortTuningService : IAsyncDisposable
         IConfigProvider config,
         ILogger<PortTuningService> logger,
         TimeProvider? clock = null)
+        : this(NodeHostTuningGateway.For(host), SdmTuningLinkFactory.Instance, config, logger, clock)
     {
-        ArgumentNullException.ThrowIfNull(host);
+    }
+
+    /// <summary>
+    /// Test seam (InternalsVisibleTo <c>Packet.Node.Tests</c>): the same service over a fake port
+    /// gateway and link factory, so the arm / pause / restore orchestration is drivable without a
+    /// node host, a listener or a radio. The public constructor is exactly this over the live host.
+    /// </summary>
+    /// <param name="gateway">Port lookup + restore (production: the node host's supervisor).</param>
+    /// <param name="links">Opens the SDM coordination link (production: <see cref="SdmTuningLink"/>).</param>
+    /// <param name="config">Live config (the node callsign for burst frames).</param>
+    /// <param name="logger">Logger for restore failures / diagnostics.</param>
+    /// <param name="clock">Time source for session timestamps; null = system.</param>
+    internal PortTuningService(
+        ITuningPortGateway gateway,
+        ITuningLinkFactory links,
+        IConfigProvider config,
+        ILogger<PortTuningService> logger,
+        TimeProvider? clock = null)
+    {
+        ArgumentNullException.ThrowIfNull(gateway);
+        ArgumentNullException.ThrowIfNull(links);
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(logger);
-        this.host = host;
+        this.gateway = gateway;
+        this.links = links;
         this.config = config;
         this.logger = logger;
         this.clock = clock ?? TimeProvider.System;
@@ -121,7 +143,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
         string portId, TuningRole role, string peerSdmId, int burstFrames, CancellationToken cancellationToken = default)
     {
         int frames = Math.Clamp(burstFrames, 1, 50);
-        return ArmSessionAsync(portId, peerSdmId, async (running, tait, link, restore) =>
+        return ArmSessionAsync(portId, peerSdmId, async (port, link, restore) =>
         {
             var options = new TuningSessionOptions { BurstFrames = frames };
             var source = ParseCallsign(config.Current.Identity.Callsign);
@@ -130,11 +152,11 @@ public sealed partial class PortTuningService : IAsyncDisposable
             IBurstMeter? meter = null;
             if (role == TuningRole.Tuned)
             {
-                stimulus = new NinoTncBurstStimulus(running.NinoTnc!, source);
+                stimulus = new NinoTncBurstStimulus(port.Tnc!, source);
             }
             else
             {
-                var burstMeter = new NinoTncBurstMeter(running.NinoTnc!, tait);
+                var burstMeter = new NinoTncBurstMeter(port.Tnc!, port.Tait!);
                 // Probe the (firmware-3.41-era) GETRSSI level fast path once; captures the idle
                 // baseline. A no-op query on newer firmware — never fatal.
                 try
@@ -184,10 +206,10 @@ public sealed partial class PortTuningService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return ArmSessionAsync(portId, peerSdmId, (running, tait, link, restore) =>
+        return ArmSessionAsync(portId, peerSdmId, (port, link, restore) =>
         {
             var session = BuildTxDelaySession(
-                running, tait, link, restore, portId, peerSdmId,
+                port, link, restore, portId, peerSdmId,
                 coordinator ? TxDelayMinMode.SweepCoordinator : TxDelayMinMode.Meter,
                 options);
             return Task.FromResult<IPortTuningSession>(session);
@@ -216,23 +238,23 @@ public sealed partial class PortTuningService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(txDelayMs);
-        return ArmSessionAsync(portId, peerSdmId, (running, tait, link, restore) =>
+        return ArmSessionAsync(portId, peerSdmId, (port, link, restore) =>
         {
             var session = BuildTxDelaySession(
-                running, tait, link, restore, portId, peerSdmId, TxDelayMinMode.Apply, options,
+                port, link, restore, portId, peerSdmId, TxDelayMinMode.Apply, options,
                 txDelayMs, persist);
             return Task.FromResult<IPortTuningSession>(session);
         }, s => ((TxDelayMinPortSession)s).Start(), cancellationToken);
     }
 
     private TxDelayMinPortSession BuildTxDelaySession(
-        RunningPort running, TaitCcdiRadio tait, SdmTuningLink link,
+        ITuningPortHandle port, ITuningLink link,
         Func<IPortTuningSession, CancellationToken, ValueTask> restore,
         string portId, string peerSdmId, TxDelayMinMode mode, TxDelayMinOptions options,
         int applyTxDelayMs = 0, Func<int, CancellationToken, Task<bool>>? persist = null)
     {
         var source = ParseCallsign(config.Current.Identity.Callsign);
-        var station = new NinoTncTxDelayMinStation(running.NinoTnc!, source, tait)
+        var station = new NinoTncTxDelayMinStation(port.Tnc!, source, port.Tait!)
         {
             Log = line => LogSessionNote(portId, line),
         };
@@ -256,22 +278,26 @@ public sealed partial class PortTuningService : IAsyncDisposable
     /// register + start the session — and restore the port if anything fails before the
     /// session takes ownership of restore.
     /// </summary>
-    private async Task<TuningSessionInfo> ArmSessionAsync(
+    /// <remarks>Internal (InternalsVisibleTo <c>Packet.Node.Tests</c>) as the orchestration test
+    /// seam: the three public <c>Start…</c> verbs are this method plus a one-expression session
+    /// factory, so a test factory exercises the identical arm/pause/restore path with no
+    /// hardware.</remarks>
+    internal async Task<TuningSessionInfo> ArmSessionAsync(
         string portId,
         string peerSdmId,
-        Func<RunningPort, TaitCcdiRadio, SdmTuningLink, Func<IPortTuningSession, CancellationToken, ValueTask>, Task<IPortTuningSession>> factory,
+        Func<ITuningPortHandle, ITuningLink, Func<IPortTuningSession, CancellationToken, ValueTask>, Task<IPortTuningSession>> factory,
         Action<IPortTuningSession> start,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(portId);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
 
-        var running = host.Supervisor?.GetPort(portId)
+        // The handle resolves the port's LIVE Tait driver once, for this arm: a head-end-bound
+        // radio sits behind the reconnect facade (#576), so it is never cached beyond an operation.
+        var port = gateway.GetPort(portId)
             ?? throw new TuningStartException(TuningStartError.NotFound, $"port '{portId}' is not running");
-        // Resolve the LIVE driver: a head-end-bound radio sits behind the reconnect facade
-        // (#576), so the concrete Tait handle must be re-resolved per operation, never cached.
-        var tait = RadioControls.LiveTait(running.Radio);
-        if (!TuningPreflight.CanArm(running.NinoTnc is not null, tait is not null, peerSdmId, out var reason))
+        var radio = port.Radio;
+        if (!TuningPreflight.CanArm(port.HasNinoTnc, radio is not null, peerSdmId, out var reason))
         {
             throw new TuningStartException(TuningStartError.BadRequest, reason!);
         }
@@ -286,24 +312,21 @@ public sealed partial class PortTuningService : IAsyncDisposable
             }
 
             // Pause normal AX.25 traffic (serialised against reconciles by the supervisor gate).
-            await host.RunExclusiveAsync(
-                async () => await running.Listener.StopAsync().ConfigureAwait(false),
-                cancellationToken).ConfigureAwait(false);
+            await port.PauseAsync(cancellationToken).ConfigureAwait(false);
 
             bool startedOk = false;
             try
             {
                 // PROGRESS carries DCD / delivery receipts the SDM link and the SDM check both need.
-                await tait!.SetProgressMessagesAsync(true, cancellationToken).ConfigureAwait(false);
+                await radio!.SetProgressMessagesAsync(true, cancellationToken).ConfigureAwait(false);
 
                 // Fail-fast SDM-enabled check (the capability doctor's probe): a wildcard SDM the
                 // radio rejects with 0/06 when its programming disables short data messages.
-                await CheckSdmEnabledAsync(tait, cancellationToken).ConfigureAwait(false);
+                await CheckSdmEnabledAsync(radio, cancellationToken).ConfigureAwait(false);
 
-                var link = SdmTuningLink.Create(tait, peerSdmId);
-                link.Log = line => LogSdmLink(portId, line);
+                var link = links.Create(port, peerSdmId, line => LogSdmLink(portId, line));
 
-                var session = await factory(running, tait, link, (s, c) => RestoreAsync(s, c))
+                var session = await factory(port, link, (s, c) => RestoreAsync(s, c))
                     .ConfigureAwait(false);
                 registry.TryAdd(session);
                 start(session);
@@ -392,9 +415,7 @@ public sealed partial class PortTuningService : IAsyncDisposable
     {
         try
         {
-            await host.RunExclusiveAsync(
-                () => host.Supervisor is { } sup ? sup.RestartPortAsync(portId, cancellationToken) : Task.FromResult(false),
-                cancellationToken).ConfigureAwait(false);
+            await gateway.RestartAsync(portId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -402,11 +423,11 @@ public sealed partial class PortTuningService : IAsyncDisposable
         }
     }
 
-    private static async Task CheckSdmEnabledAsync(TaitCcdiRadio radio, CancellationToken cancellationToken)
+    private static async Task CheckSdmEnabledAsync(ITuningRadio radio, CancellationToken cancellationToken)
     {
         try
         {
-            await radio.SendSdmAsync("********", "PDNTUNE", leadInDelay: null, cancellationToken).ConfigureAwait(false);
+            await radio.SendSdmAsync("********", "PDNTUNE", cancellationToken).ConfigureAwait(false);
         }
         catch (TaitCcdiException ex) when (ex.Error is { Category: '0', ErrorNumber: 0x06 })
         {
