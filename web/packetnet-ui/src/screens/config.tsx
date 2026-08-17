@@ -18,7 +18,7 @@ import { api, useQuery, ConfigRejected } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 import {
   APPLY_IMPACT, NETROM_TOGGLE_HELP, NETROM_ROUTING_HELP, NETROM_FIELD_HELP, INP3_FIELD_HELP,
-} from "@/lib/mock";
+} from "@/lib/catalogue";
 
 // a pending change, identified by its dotted config path + apply impact
 interface DirtyEntry { path: string; impact: ApplyImpact }

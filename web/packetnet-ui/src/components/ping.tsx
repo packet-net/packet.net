@@ -12,21 +12,34 @@
 // that doesn't implement TEST never answers → every reply times out and
 // lossPct is 100 — that renders as a clear "no response" state, not an error.
 // ============================================================
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Modal, Field, Input, Select, Icon, type ButtonVariant, type ButtonSize } from "@/components/ui";
-import { PORTS_LIST } from "@/lib/mock";
-import { api, PingUnavailable } from "@/lib/api";
+import { api, useQuery, PingUnavailable } from "@/lib/api";
 import type { PingResult } from "@/lib/types";
 
-function Ax25Ping({ station, portId, onClose }: { station: string; portId?: string; onClose: () => void }) {
+function Ax25Ping({ station, portId, onClose }: { station?: string; portId?: string; onClose: () => void }) {
+  // The via-port options are THIS node's ports. They used to come from the mock's
+  // PORTS_LIST, so on any real node every ping named a port the node does not have and
+  // the server answered 404 "Port 'vhf-1' is not running" (#691 C021).
+  const { data: config } = useQuery(api.config, []);
+  const portIds = config?.ports.map((p) => p.id) ?? [];
   const [call, setCall] = useState(station ?? "");
-  const [via, setVia] = useState(portId ?? PORTS_LIST[0]);
+  const [via, setVia] = useState(portId ?? "");
   const [count, setCount] = useState(5);
   const [result, setResult] = useState<PingResult | null>(null);
   const [running, setRunning] = useState(false);
   // A node that hasn't implemented TEST ping returns 501 → PingUnavailable; surface that
   // message gracefully. A genuine transport error (404 port, etc.) surfaces here too.
   const [error, setError] = useState<string | null>(null);
+
+  // Settle the via-port once /config resolves: keep the caller's port if the node still
+  // has it (Routes hands one in), else fall back to the node's first port. Before that
+  // there is no port worth naming, so the select is empty and Send is disabled.
+  useEffect(() => {
+    const ids = config?.ports.map((p) => p.id) ?? [];
+    if (ids.length === 0) return;
+    setVia((v) => (ids.includes(v) ? v : ids[0]));
+  }, [config]);
 
   const run = async () => {
     if (!call.trim()) return;
@@ -50,7 +63,7 @@ function Ax25Ping({ station, portId, onClose }: { station: string; portId?: stri
   return (
     <Modal open onClose={onClose} width="max-w-lg" title="AX.25 ping" footer={<>
       <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
-      <Button size="sm" onClick={run} disabled={running || !call.trim()}>
+      <Button size="sm" onClick={run} disabled={running || !call.trim() || !via}>
         <Icon name={running ? "pause" : "signal"} size={14} />{running ? "Pinging…" : "Send TEST frames"}
       </Button>
     </>}>
@@ -62,7 +75,7 @@ function Ax25Ping({ station, portId, onClose }: { station: string; portId?: stri
 
         <div className="grid grid-cols-[1fr_auto_auto] gap-2">
           <Field label="Station"><Input value={call} onChange={(e) => setCall(e.target.value.toUpperCase())} placeholder="GB7CIP" className="font-mono" autoFocus /></Field>
-          <Field label="Via port" className="w-32"><Select value={via} onChange={(e) => setVia(e.target.value)}>{PORTS_LIST.map((p) => <option key={p} value={p}>{p}</option>)}</Select></Field>
+          <Field label="Via port" className="w-32"><Select value={via} onChange={(e) => setVia(e.target.value)}>{portIds.map((p) => <option key={p} value={p}>{p}</option>)}</Select></Field>
           <Field label="Count" className="w-20"><Input type="number" value={count} onChange={(e) => setCount(Math.max(1, Math.min(20, +e.target.value)))} className="font-mono" /></Field>
         </div>
 
@@ -108,7 +121,9 @@ function Ax25Ping({ station, portId, onClose }: { station: string; portId?: stri
 // Drop-in trigger: a button that opens the ping modal, optionally pre-targeted.
 // Signature is a contract depended on by Routes + Ports.
 export function PingButton({ station, portId, label, size, variant }: {
-  station: string;
+  /** Pre-targeted station, when the caller knows one (Routes does). Blank elsewhere -
+   *  a header ping has no target until the operator types one. */
+  station?: string;
   portId?: string;
   label?: string;
   size?: ButtonSize;

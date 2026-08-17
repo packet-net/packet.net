@@ -1,13 +1,13 @@
 // ============================================================
-// pdn — Ports (§7): profile-first port editor + NinoTNC test-frame banner +
-// save-confirm. Port of the design handoff's screens-manage.jsx Ports/
-// PortEditor/NinoTestFlash, wired to the typed API client + mock domain models.
+// pdn - Ports (§7): profile-first port editor + save-confirm. Port of the design
+// handoff's screens-manage.jsx Ports/PortEditor, wired to the typed API client and
+// the UI catalogue (lib/catalogue.ts).
 // ============================================================
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button, Badge, Card, StatusDot, Input, Field, Label, Tooltip,
-  Slider, Select, Switch, Modal, Sheet, Icon,
+  Slider, Select, Switch, Modal, Sheet, EmptyState, Icon,
 } from "@/components/ui";
 import { Page, PageHeader } from "@/components/layout/shell";
 import { cn } from "@/lib/utils";
@@ -19,10 +19,10 @@ import type {
   RigConfig, RigScan, RigScanDevice, RigModelCatalogue,
 } from "@/lib/types";
 import {
-  NODE_CONFIG, PORT_STATUS, RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
+  RADIO_PROFILES, NINO_MODES, SOUNDMODEM_MODES, CHANNEL_MODES,
   LINK_DIFFICULTY, PARAM_HELP,
-  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs, NINO_TEST,
-} from "@/lib/mock";
+  KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
+} from "@/lib/catalogue";
 import { portHealth } from "@/lib/health";
 import { api, apiMode, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
@@ -240,7 +240,7 @@ export function Ports() {
   const navigate = useNavigate();
   const { has } = useAuth();
   const canOperate = has("operate"); // port add/edit/lifecycle is operate-scoped
-  const { data: config, reload: reloadConfig } = useQuery(api.config, []);
+  const { data: config, loading: configLoading, error: configError, reload: reloadConfig } = useQuery(api.config, []);
   const { data: portStatus, reload: reloadPorts } = useQuery(api.ports, []);
   const { data: links } = useQuery(api.linkStats, []);
 
@@ -250,7 +250,6 @@ export function Ports() {
   // row (both keyed "true") or two edits of the same port, leaving the previous scribbles in the
   // form (#690 C036).
   const [editSeq, setEditSeq] = useState(0);
-  const [testDismissed, setTestDismissed] = useState(false);
   // A banner-style notice for a rejected/failed mutation, a deferred action, or the reconcile
   // the node reported after an apply (mirrors the config screen's `problem` surface - there is
   // no toast primitive).
@@ -260,9 +259,14 @@ export function Ports() {
   // applied state (no local mock list — the server is the source of truth in live mode).
   const reloadAll = () => { reloadConfig(); reloadPorts(); };
 
-  const list = config?.ports ?? NODE_CONFIG.ports;
+  // THIS node's ports, or nothing. There used to be a `?? NODE_CONFIG.ports` /
+  // `?? PORT_STATUS` fallback here, which painted the mock's five GB7RDG ports (hf-300
+  // faulted and all) while /config loaded, and permanently if it failed - with Edit /
+  // Remove / Tune / bring-up wired to the real API for ids this node has never had
+  // (#691 C022). Loading and error are rendered as themselves instead.
+  const list = config?.ports ?? [];
   const statusById: Record<string, PortStatus> = {};
-  for (const st of portStatus ?? Object.values(PORT_STATUS)) statusById[st.id] = st;
+  for (const st of portStatus ?? []) statusById[st.id] = st;
 
   // Turn any caught error into a human banner (a 422 carries per-field problems).
   const showError = (e: unknown, fallback: string) => {
@@ -380,7 +384,9 @@ export function Ports() {
         subtitle="Each RF or network port pdn talks through"
         actions={
           <div className="flex items-center gap-2">
-            <PingButton station={NODE_CONFIG.identity.callsign} label="AX.25 ping" variant="outline" size="sm" />
+            {/* No pre-target: the header ping is "ping a station", and the station box
+                used to be prefilled with the MOCK's callsign (#691 C021). */}
+            <PingButton label="AX.25 ping" variant="outline" size="sm" />
             <Button size="sm" disabled={!canOperate} title={canOperate ? undefined : "Adding a port requires the operate scope"} onClick={() => open(newPort())}><Icon name="plus" size={14} /> Add port</Button>
           </div>
         }
@@ -399,18 +405,20 @@ export function Ports() {
         </div>
       )}
 
-      {/* NinoTNC test-frame banner HIDDEN for now: it's mock-sourced (no live
-          endpoint yet — see the TODO in NinoTestFlash), so it shows spuriously on
-          a node with no NinoTNC. Re-enable once it's wired to a real nino-tnc-port
-          test-frame event (follow-up: "Fix false NinoTNC test frame received banner"). */}
-      {false && !testDismissed && (
-        <NinoTestFlash
-          onDismiss={() => setTestDismissed(true)}
-          onConfigure={() => {
-            const p = list.find((x) => x.id === NINO_TEST.portId);
-            if (p) openEdit(p);
-          }}
-        />
+      {/* (The NinoTNC test-frame banner is gone. It was permanently disabled behind
+          `false &&` because its only source was a mock fixture, so on a node with no
+          NinoTNC it announced a test frame that never arrived. There is still no
+          test-frame event on the wire; when one exists the banner comes back reading
+          that, not a fixture.) */}
+
+      {configError && (
+        <EmptyState icon="alert" title="Couldn't load this node's ports" body={configError} />
+      )}
+      {!configError && configLoading && list.length === 0 && (
+        <div className="py-10 text-center text-sm text-muted-foreground">Loading ports…</div>
+      )}
+      {!configError && !configLoading && list.length === 0 && (
+        <EmptyState icon="ports" title="No ports configured" body="Add a port to give this node a way onto the air." />
       )}
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -516,45 +524,6 @@ export function Ports() {
         statusById={statusById}
       />
     </Page>
-  );
-}
-
-// ---- NinoTNC hardware "test button" decode, flashed on the Ports screen ----
-function NinoTestFlash({ onDismiss, onConfigure }: { onDismiss: () => void; onConfigure: () => void }) {
-  // TODO: live endpoint (beacons / nino-test) — no API endpoint yet, mock-sourced.
-  const test = NINO_TEST;
-  return (
-    <Card className={cn("mb-4 overflow-hidden p-0", test.softwareControl ? "border-success/40" : "border-primary/40")}>
-      <div className="flex items-start gap-3 p-4">
-        <div className={cn("mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md", test.softwareControl ? "bg-success/15 text-success" : "bg-primary/15 text-primary")}>
-          <Icon name="radio" size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold">NinoTNC test frame received</span>
-            <Badge variant="muted">{test.portId}</Badge>
-            <span className="text-xs text-muted-foreground">{test.receivedAt}</span>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            <span className="font-mono text-foreground/80">{test.firmware}</span> · mode {test.mode}{" "}
-            <span className="text-foreground/80">{test.modeLabel}</span> · RSSI {test.rssiDbm} dBm · CRC {test.crcOk ? "OK" : "FAIL"}
-          </p>
-          {!test.softwareControl && (
-            <div className="mt-2.5 flex items-start gap-2 rounded-md bg-primary/10 px-2.5 py-2 text-xs text-primary">
-              <Icon name="info" size={14} className="mt-px shrink-0" />
-              <span>
-                This modem is in <strong>hardware control</strong> — TX delay and mode are set by its DIP switches. Switch it
-                to <strong>software-control mode</strong> so pdn can set them remotely (the two parameters that matter most for a healthy link).
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {!test.softwareControl && <Button variant="outline" size="sm" onClick={onConfigure}>How to enable</Button>}
-          <Button variant="ghost" size="iconSm" onClick={onDismiss}><Icon name="x" size={15} /></Button>
-        </div>
-      </div>
-    </Card>
   );
 }
 

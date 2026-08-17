@@ -185,7 +185,6 @@ export function Console() {
       termRef.current = null;
       term.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt, canOpen]);
 
   return (
