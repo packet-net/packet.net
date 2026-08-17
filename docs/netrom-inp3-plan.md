@@ -30,7 +30,7 @@ It stays **PID 0xCF** and is "drop-in compatible": an INP3 node and a vanilla no
 
 ## 2. Interop reality — the targets, ranked
 
-Per [§1.5 of the research](../../netrom-research.md) and `docs/strict-vs-pragmatic-audit.md` discipline: **implementations are interop targets, not reference truth.** For INP3 specifically:
+Per §1.5 of the grounding research (`netrom-research.md`, not in this repo) and `docs/strict-vs-pragmatic-audit.md` discipline: **implementations are interop targets, not reference truth.** For INP3 specifically:
 
 | Target | Status | How we treat it |
 |---|---|---|

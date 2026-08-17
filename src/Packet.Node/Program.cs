@@ -826,15 +826,21 @@ totpGroup.RequireAuthorization(PdnAuthPolicies.Read);
 
 // Slice 3 control API (read endpoints). Mapped BEFORE the SPA fallback so /api/*
 // and /healthz win; everything else falls through to index.html for the React
-// client router. (Auth is a later step - these are read-only and the node binds
-// 127.0.0.1 by default. The live SSE feed for the monitor is step 1b.)
+// client router. (The whole group is Read-scoped - PdnReadApi gates it with
+// PdnAuthPolicies.Read; the gate passes through when management.auth.enabled is off,
+// which is NOT the default. The live SSE feed for the monitor is step 1b.)
 app.MapPdnReadApi();
 
-// Prometheus exporter (GET /metrics, #457): the same listener, the same Read scope
-// gate as the REST read surface (so unauthenticated when management.auth.enabled is
-// off - localhost-scrape posture - and read-scoped once on). Hand-rolled exposition
-// text derived from the SAME live counters /api/v1/links projects; bounded label
-// cardinality (per-port only). See docs/observability.md.
+// Prometheus exporter (GET /metrics, #457): the same listener, but ALWAYS anonymous.
+// PdnMetricsApi maps it .AllowAnonymous() and nothing re-gates it, so it stays open
+// with management.auth.enabled ON as well as off - deliberate, because a Prometheus
+// agent carries a static config, not a login, and the access tokens live 60 minutes.
+// The trade is exposure: the exposition carries heard callsigns, per-peer SNR, port
+// and radio health, and the running version, so it is readable by anyone who can
+// reach management.http.bind. An operator who doesn't want that binds the panel to
+// loopback, keeps the node tailnet-only, or fronts it with an authenticating proxy.
+// Hand-rolled exposition text derived from the SAME live counters /api/v1/links
+// projects; bounded label cardinality (per-port only). See docs/observability.md.
 app.MapPdnMetrics();
 
 // Slice 3 step 1b: the live SSE frame feed the web monitor's EventSource
@@ -845,15 +851,16 @@ app.MapPdnEvents();
 // Slice 3 step 2: the write-side config API (PUT /config + /config/raw + the
 // raw-YAML GET) the web editor persists edits through. Mapped after the read API
 // and before the catch-all; the specific routes win over /api/{**rest} regardless
-// of order. (Auth is a later step - unauthenticated, node binds 127.0.0.1.)
+// of order. (Scopes: the writes - PUT /config and PUT /config/raw - are Operate; the
+// raw-YAML GET is Read. Gated per-route inside PdnConfigApi, not as one group.)
 app.MapPdnConfigApi();
 
 // Slice 3 step 3: the port-management API (POST/PUT/DELETE /ports + the
 // /ports/{id}/lifecycle up/down) the web Ports screen mutates ports through. Every
 // change is a config edit persisted through the same write seam as PUT /config.
 // Mapped after the config API and before the catch-all; the specific routes win over
-// /api/{**rest} regardless of order. (Auth is a later step - unauthenticated, node
-// binds 127.0.0.1.)
+// /api/{**rest} regardless of order. (Every port mutation is Operate-scoped - the
+// group gate in PdnPortsApi.)
 app.MapPdnPortsApi();
 
 // Radio-control read surface: per-port radio status/health (GET /api/v1/radios,
@@ -884,8 +891,8 @@ app.MapPdnPortHailApi();
 // (POST /sessions/{id}/send), and the connectionless TEST /ping (deferred 501).
 // These run under the host's exclusive gate so a web action never races a config
 // reconcile. Mapped after the port API and before the catch-all; the specific routes
-// win over /api/{**rest} regardless of order. (Auth is a later step - unauthenticated,
-// node binds 127.0.0.1.)
+// win over /api/{**rest} regardless of order. (Every session action + ping is
+// Operate-scoped - the group gate in PdnSessionsApi.)
 app.MapPdnSessionsApi();
 
 // The per-peer AX.25 capability-cache action API (operate-gated): DELETE /api/v1/capabilities/{id}

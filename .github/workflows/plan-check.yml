@@ -57,7 +57,7 @@ jobs:
           # "plan-relevant" — paths whose modification typically implies the
           # plan should be updated. tests/, docs/ (other than plan.md), and
           # repo-housekeeping files are intentionally NOT in this list.
-          plan_relevant_re='^(src/|spec-sdl/|tools/|docker/|installers/|\.github/workflows/|Directory\.Build\.props$|Directory\.Packages\.props$|global\.json$|Packet\.NET\.slnx$)'
+          plan_relevant_re='^(src/|tools/|docker/|\.github/workflows/|Directory\.Build\.props$|Directory\.Packages\.props$|global\.json$|Packet\.NET\.slnx$)'
           plan_path='docs/plan.md'
 
           plan_changed=false

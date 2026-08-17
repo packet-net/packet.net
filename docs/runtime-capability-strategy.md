@@ -20,7 +20,7 @@ Drift between runtimes shows up as cross-runtime interop bugs. A frame parsed di
 
 The codegen lints catch the cheapest version of drift automatically: every predicate name referenced in the SDL must be bound in each runtime's bindings file; every action verb (post alias resolution) must have a dispatcher case. Those two checks ship today via `spec-sdl/lint-targets.yaml` ([introduced 2026-05-16](plan.md#17-amendment-log)). What the lints **don't** catch:
 
-- A subroutine that's wired in one runtime and a no-op stub in another (the lint allows the `subroutines:` section to be absent per target, on purpose — see [the lint-targets config](../spec-sdl/lint-targets.yaml)).
+- A subroutine that's wired in one runtime and a no-op stub in another (the lint allows the `subroutines:` section to be absent per target, on purpose — see [the lint-targets config](https://github.com/packet-net/ax25sdl/blob/main/spec-sdl/lint-targets.yaml)).
 - A state page that's transcribed in the SDL but lacks a transcribed *opposite-direction* state. The codegen happily walks `Connected` whose t38/t39 target `TimerRecovery` regardless of whether `TimerRecovery` itself is transcribed.
 - A frame type the codec can encode but not decode (or vice versa).
 - A transport that exists on one runtime and is missing on the other.
@@ -360,7 +360,7 @@ What it IS:
 
 - [`runtime-capability-matrix.md`](runtime-capability-matrix.md) — the current-state snapshot
 - [`plan.md`](plan.md) — project plan; particularly §6 (SDL discipline), §7 (test pyramid), §17 (amendment log)
-- [`../ts-spec/README.md`](../ts-spec/README.md) — TS-runtime narrative; "Not yet transcribed" section is the per-page status companion to the matrix
+- [`ts-spec/README.md` in ax25sdl](https://github.com/packet-net/ax25sdl/blob/main/ts-spec/README.md) - TS-runtime narrative; "Not yet transcribed" section is the per-page status companion to the matrix
 - [`packet-net/ax25-ts: README.md`](https://github.com/packet-net/ax25-ts#readme) — TS-runtime public-API view; scope tables here are the consumer-facing companion
-- [`../spec-sdl/lint-targets.yaml`](../spec-sdl/lint-targets.yaml) — the codegen-time consistency check; catches the cheapest drift automatically
+- [`spec-sdl/lint-targets.yaml` in ax25sdl](https://github.com/packet-net/ax25sdl/blob/main/spec-sdl/lint-targets.yaml) - the codegen-time consistency check; catches the cheapest drift automatically
 - [`../tests/conformance/README.md`](../tests/conformance/README.md) — conformance-suite skeleton (worked example scenario, no executors)

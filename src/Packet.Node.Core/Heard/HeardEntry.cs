@@ -22,7 +22,9 @@ namespace Packet.Node.Core.Heard;
 /// control channel measured it — <c>null</c> when this port has no radio attached, or the newest
 /// frame carried no attributed SNR. Additive (trailing optional), mirroring <see cref="LastRssiDbm"/>:
 /// a heard row without it round-trips exactly as before. This is the per-partner SNR the observability
-/// exporter surfaces, bounded to configured neighbours / active links (see docs/observability.md).</param>
+/// exporter surfaces as <c>pdn_link_snr_db{port,peer}</c>: one of the two deliberately peer-labelled
+/// series, emitted for every station heard with a measured SNR and NOT bounded to configured
+/// neighbours or active links (see docs/observability.md).</param>
 /// <param name="MedianPreDataCarrierMs">Rolling median of the measured carrier-rise→first-data lead
 /// (ms) of this station's transmissions — its effective TXDELAY as heard here (+ a small constant rig
 /// overhead), over the last <see cref="Packet.Tune.Core.PreDataCarrierWindow.DefaultCapacity"/>

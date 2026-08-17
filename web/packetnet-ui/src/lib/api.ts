@@ -6,7 +6,7 @@
 //     timer-driven. Lets every screen render + demo with no node.
 //   - "live": real fetch against /api/v1 + an EventSource on /api/v1/events.
 // Toggle with VITE_API_MODE=live (see vite proxy). The Slice-3 backend (locked
-// in docs/node-api.yaml) lands behind the "live" path with no screen changes.
+// in docs/node-api.md) lands behind the "live" path with no screen changes.
 // ============================================================
 import { useEffect, useRef, useState } from "react";
 import type {

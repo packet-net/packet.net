@@ -717,7 +717,7 @@ export interface PeerCapability {
   lastRefused: string | null;
 }
 
-// ---- connectionless TEST ping (docs/node-api.yaml PingResult) ----
+// ---- connectionless TEST ping (docs/node-api.md PingResult) ----
 // One TEST-frame round trip. `timeout` true ⇒ no echo came back; `rttMs` is null
 // in that case. A peer that doesn't implement TEST simply never answers → every
 // reply times out and lossPct is 100 (a normal result to display, not an error).

@@ -21,7 +21,7 @@ namespace Packet.Node.Core.Configuration;
 /// </para>
 /// <para>
 /// The two shapes that are <em>not</em> the .NET defaults are deliberate, and are what
-/// <c>docs/node-api.yaml</c> and the control panel's <c>src/lib/types.ts</c> have always
+/// <c>docs/node-api.md</c> and the control panel's <c>src/lib/types.ts</c> have always
 /// documented: an enum is its member name (<c>"routing": "Transit"</c>, not <c>2</c>) and
 /// a <see cref="TimeSpan"/> is a number of seconds (<c>"l3RttInterval": 60</c>, not
 /// <c>"00:01:00"</c>). Both converters still <b>read</b> the older form, so config blobs
@@ -55,7 +55,7 @@ public static class NodeConfigJson
         // The polymorphic `transport` union: a `kind`-discriminated read/write.
         options.Converters.Add(new TransportConfigJsonConverter());
         // Enums by member name ("Transit", "PerFlow", "BestRoute"), matching
-        // docs/node-api.yaml and web/packetnet-ui/src/lib/types.ts. Integer values are
+        // docs/node-api.md and web/packetnet-ui/src/lib/types.ts. Integer values are
         // still accepted on read, so blobs persisted before this converter load as-is.
         options.Converters.Add(new JsonStringEnumConverter());
         // Durations as integer seconds; the legacy "hh:mm:ss" string still reads.

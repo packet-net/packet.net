@@ -271,7 +271,7 @@ public static class PdnReadApi
         // node restarts. So on a reconnect these three read as "this peer on this port since
         // first heard", NOT "since this circuit came up" (review item C063, #694). That is the
         // documented contract of the fields (see SessionInfo in ReadModels.cs and the
-        // node-api.yaml description) rather than a per-session counter, because there is no
+        // node-api.md description) rather than a per-session counter, because there is no
         // per-session byte tally on the engine's Ax25Session to read one from. A session with
         // no link snapshot at all keeps the zero / not-known placeholders rather than fabricating.
         var link = host.Telemetry.Link(portId, peer);

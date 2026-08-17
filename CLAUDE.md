@@ -107,13 +107,14 @@ src/Packet.Node*                 the packet-radio node host (web SDK; the deploy
 tests/Packet.*.Tests             one test project per library
 tests/.../Hardware/              hardware-loop-only tests
 tests/Packet.Interop.Tests/      C# interop CI tests against the docker stack
+spec/                            RHPv2 CDDL grammar + wire vectors
 tools/Packet.*.Spike/            scratch experiments
 tools/Packet.Fuzz/               AFL-style fuzzer for the AX.25 / KISS parsers
 sidecar/tsnet/                   embedded Tailscale node (Go; built by build-deb.sh, staged at /usr/lib/packetnet/packetnet-tsnet)
 headend/                         split-station RF head-end daemon (Go; static Pi binary — raw serial↔TCP bridge + inventory/line HTTP + mDNS; touches no .NET code)
 web/packetnet-ui/                the node's React control panel (built into the .deb by build-deb.sh)
 docker/                          interop compose stack (LinBPQ + XRouter + rax25 + netsim) + fixtures
-docs/                            plan, ADRs, runtime capability docs, strict/pragmatic audit
+docs/                            plan, design + research docs, runtime capability docs, strict/pragmatic audit
 guide/ + operating/              developer guide (library API) / operator guide (node + radios + rigs)
 .github/workflows/               CI (ci.yml + interop.yml + plan-check.yml + fuzz/codeql/deb-smoke) + publish-* (libs / node / docker / headend)
 ```

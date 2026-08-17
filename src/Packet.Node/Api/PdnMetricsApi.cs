@@ -33,12 +33,14 @@ namespace Packet.Node.Api;
 /// </para>
 /// <para>
 /// <b>Label cardinality.</b> The primary label is <c>port</c> (one value per <em>configured</em>
-/// port — a closed set the operator controls). Per-link byte/REJ/SREJ counters (keyed by remote
-/// callsign) are <em>aggregated up to the port</em> before export, so a busy channel can never blow
-/// up those series. The <b>one</b> series that carries a <c>peer</c> (remote-callsign) label is the
-/// per-partner <c>pdn_link_snr_db{port,peer}</c> gauge — a deliberate, documented exception: an
+/// port, a closed set the operator controls); the head-end fleet series carry <c>instance</c>, a
+/// closed operator-controlled set bounded the same way. Per-link byte/REJ/SREJ counters (keyed by
+/// remote callsign) are <em>aggregated up to the port</em> before export, so a busy channel can
+/// never blow up those series. <b>Two</b> series carry a <c>peer</c> (remote-callsign) label: the
+/// per-partner <c>pdn_link_snr_db{port,peer}</c> and <c>pdn_link_predata_carrier_ms{port,peer}</c>
+/// gauges. Both are deliberate, documented exceptions resting on the same reasoning: an
 /// amateur-packet node hears a naturally small, slowly-changing set of stations, so the per-callsign
-/// series count stays bounded in practice (Tom's call — see docs/observability.md). Radio per-port
+/// series count stays bounded in practice (Tom's call; see docs/observability.md). Radio per-port
 /// health (<c>pdn_radio_*</c>) stays on the bounded <c>port</c> label. Per-peer RSSI/SNR detail is
 /// also on the bounded-by-request <c>/api/v1/heard</c> / <c>/api/v1/links</c> JSON surfaces.
 /// </para>
@@ -641,18 +643,19 @@ public static class PdnMetricsApi
         }
     }
 
-    // ─── per-partner SNR (the deliberate per-callsign label — see the class remarks + docs) ─────────
+    // ─── per-partner SNR (one of the two deliberate per-callsign labels; see class remarks + docs) ───
 
     /// <summary>
     /// The per-partner SNR gauge <c>pdn_link_snr_db{port,peer}</c> — one sample per (port, remote
     /// callsign) the node has heard <em>with a measured SNR</em>, straight from the heard log's
-    /// last-heard SNR (fed by the per-frame radio metadata). This is the <b>one</b> series that carries
-    /// a <c>peer</c> (remote-callsign) label, a deliberate exception to the exporter's aggregate-to-port
-    /// cardinality policy: an amateur-packet node hears a naturally small, slowly-changing set of
-    /// stations, so the per-callsign series count stays bounded in practice (Tom's call — see
-    /// docs/observability.md). A partner with no measured SNR (a radio-less port, or never heard while a
-    /// radio was attributing SNR) contributes nothing, so the whole bucket is absent on a node with no
-    /// radio telemetry. Exposed (internal) so a test can format a seeded heard log directly.
+    /// last-heard SNR (fed by the per-frame radio metadata). This is <b>one of the two</b> series that
+    /// carry a <c>peer</c> (remote-callsign) label (the other is
+    /// <see cref="WriteLinkPreDataCarrier"/>'s <c>pdn_link_predata_carrier_ms</c>); both are deliberate
+    /// exceptions to the exporter's aggregate-to-port cardinality policy: an amateur-packet node hears
+    /// a naturally small, slowly-changing set of stations, so the per-callsign series count stays
+    /// bounded in practice (Tom's call; see docs/observability.md). A partner with no measured SNR (a
+    /// radio-less port, or never heard while a radio was attributing SNR) contributes nothing, so the
+    /// whole bucket is absent on a node with no radio telemetry. Exposed (internal) so a test can format a seeded heard log directly.
     /// </summary>
     internal static void WriteLinkSnr(PrometheusTextWriter w, HeardLog? heard)
     {

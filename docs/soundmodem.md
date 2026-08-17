@@ -173,5 +173,5 @@ BPQ's `ARDOPPORT`, or Winlink Express's ARDOP TNC session all speak this.
 
 - `packaging/packetnet.yaml` and the first-run template
   (`NodeConfigTemplate.cs`) — commented copies of every block above.
-- `docs/node-api.yaml` — the `SoundModemTransport`, `PagingConfig`, and
+- `docs/node-api.md` and the `TransportConfig` records - the `SoundModemTransport`, `PagingConfig`, and
   `ArdopConfig` schemas the control API exposes.

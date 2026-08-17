@@ -23,7 +23,7 @@ The libraries produce and accept exactly what AX.25 v2.2 / APRS101 / the KISS TN
 
 ## Provenance
 
-`packet-net/packet.net` is the origin of the project. It started life as a monorepo holding everything — .NET libraries, SDL transcriptions plus codegen, the TypeScript library, two terminal apps. On 2026-05-17 it split into five repos along their natural ownership boundaries, each spinoff extracted with history preserved (`git filter-repo`). What is left here is the .NET surface: libraries, node host, and the interop CI matrix.
+`packet-net/packet.net` is the origin of the project. It started life as a monorepo holding everything — .NET libraries, SDL transcriptions plus codegen, the TypeScript library, two terminal apps. On 2026-05-17 it split into five repos along their natural ownership boundaries, each spinoff extracted with history preserved (`git filter-repo`). What is left here is the .NET surface: libraries, node host, and the interop CI matrix. (The split left copies of the generated C/Rust/Python/JSON spec packages behind in this tree; nothing referenced them and they were deleted on 2026-08-17. They live in `ax25sdl`.)
 
 ## Sibling repos
 

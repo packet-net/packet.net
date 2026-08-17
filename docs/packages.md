@@ -27,7 +27,8 @@ The [developer guide](../guide/index.md) walks this surface from a raw frame dum
 | `src/Packet.Mcp/` | MCP server scaffolding | _not yet published_ |
 | `src/Packet.Rhp2/` | RHPv2 (Radio Host Protocol v2) wire codec | [`Packet.Rhp2`](https://www.nuget.org/packages/Packet.Rhp2) |
 | `src/Packet.Rhp2.Server/` | RHPv2 server (node network plane) | n/a — node-internal (depends on `Packet.Node.Core`) |
-| `src/Packet.Node/` + `.Extensions/` | Packet-radio node host (web UI, REST, MCP, plugin shim) | n/a — application |
+| `src/Packet.Node/` | Packet-radio node host (web UI, REST, MCP, app gateway) | not published (application) |
+| `src/Packet.Node.Core/` | Node logic: config, ports, sessions, NET/ROM, apps, auth, self-update | not published (node-internal) |
 
 Every published package is AGPL-3.0, like the repo.
 

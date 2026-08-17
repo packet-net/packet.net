@@ -28,15 +28,15 @@ In-process, **no Prometheus client dependency**. A hand-rolled `PrometheusTextWr
 
 ## Label cardinality — bounded by design
 
-The primary label is **`port`** (one value per *configured* port — a closed set the operator controls), plus a 3-value `reason` label on the forward-drops series. A per-(port, peer) link is keyed by the *remote* callsign, so the **byte / REJ / SREJ / queue-depth / retry** counters are **aggregated up to the port** before export — a busy or hostile channel can never blow up those series' count. Per-peer detail for those stays on the bounded-by-request `GET /api/v1/links` JSON surface, where the client asks for it explicitly.
+The primary label is **`port`** (one value per *configured* port, a closed set the operator controls). Every other label is bounded too: **`instance`** on the head-end fleet series (the operator's configured head-ends, closed the same way as `port`), a 3-value **`reason`** on the forward-drops series, and the constant `version` / `callsign` / `alias` on the single-series `pdn_build_info`. A per-(port, peer) link is keyed by the *remote* callsign, so the **byte / REJ / SREJ / queue-depth / retry** counters are **aggregated up to the port** before export; a busy or hostile channel can never blow up those series' count. Per-peer detail for those stays on the bounded-by-request `GET /api/v1/links` JSON surface, where the client asks for it explicitly.
 
-### The one peer-labelled series: `pdn_link_snr_db`
+### The two peer-labelled series
 
-There is exactly **one** series that carries a `peer` (remote-callsign) label: the per-partner SNR gauge `pdn_link_snr_db{port,peer}`. This is a **deliberate, documented exception** to the aggregate-to-port policy above.
+Exactly **two** series carry a `peer` (remote-callsign) label: the per-partner SNR gauge `pdn_link_snr_db{port,peer}` and the per-partner pre-data-carrier gauge `pdn_link_predata_carrier_ms{port,peer}` (a partner's effective TXDELAY as heard). Both are **deliberate, documented exceptions** to the aggregate-to-port policy above, and both rest on the same reasoning.
 
-The rationale is a judgement call about the real world (Tom's call): **amateur packet radio will never be that popular.** The number of distinct stations a node hears is naturally small and slowly-changing — a per-callsign SNR label is not going to explode Prometheus's series count in practice the way a per-callsign label on a high-churn frame/byte counter could. The operational value of seeing SNR *per link partner* (which neighbour's signal is degrading?) is worth the one closed-eye on cardinality, where the same label on the byte/REJ counters is not (you'd never alert on per-peer byte totals, and they churn with every casual passer-by).
+The rationale is a judgement call about the real world (Tom's call): **amateur packet radio will never be that popular.** The number of distinct stations a node hears is naturally small and slowly-changing, so a per-callsign gauge is not going to explode Prometheus's series count in practice the way a per-callsign label on a high-churn frame/byte counter could. The operational value of seeing SNR and TXDELAY-as-heard *per link partner* (which neighbour's signal is degrading? which one is burning channel time on excess TXDELAY?) is worth the closed eye on cardinality, where the same label on the byte/REJ counters is not (you'd never alert on per-peer byte totals, and they churn with every casual passer-by).
 
-So `pdn_link_snr_db` is emitted for **every** station the node has heard *with a measured SNR* — no bounding to configured neighbours or active links, no top-N cap. A station heard on a port with no radio attached (or heard before any SNR could be attributed) simply has no SNR reading and contributes no series, so the whole bucket is absent on a node with no radio telemetry. The value is the SNR of the newest frame heard from that (port, callsign), read from the same MHeard log (`GET /api/v1/heard`, `lastSnrDb`) — no second source of truth.
+So `pdn_link_snr_db` is emitted for **every** station the node has heard *with a measured SNR*, and `pdn_link_predata_carrier_ms` for every station with a *measured rolling-median carrier lead*: no bounding to configured neighbours or active links, no top-N cap. A station heard on a port with no radio attached (or heard before the reading could be attributed) simply has no reading and contributes no series, so both buckets are absent on a node with no radio telemetry. Both values come from the same MHeard log (`GET /api/v1/heard`, `lastSnrDb` / the rolling pre-data-carrier median) that `GET /api/v1/links` and the panel read; there is no second source of truth.
 
 If a specific deployment ever did prove this wrong (a node parked on an unusually busy channel hearing thousands of distinct calls), the fix is a Prometheus-side `metric_relabel_configs` drop/keep on the `peer` label, or reintroducing a node-side cap — but that is explicitly not built today.
 
@@ -68,6 +68,7 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 |---|---|---|---|
 | `pdn_port_up` | gauge | `port` | Port up (1) / not up (0). |
 | `pdn_port_sessions` | gauge | `port` | Active sessions on the port. |
+| `pdn_port_channel_busy` | gauge | `port` | Port carrier sense: channel busy (1) / clear (0). Emitted only for a port that has a carrier-sense source (radio hardware DCD, or a channel-sensing transport such as the in-process soundmodem); absent otherwise, never a misleading `0`. |
 | `pdn_port_frames_received_total` | counter | `port` | AX.25 frames received on the port. |
 | `pdn_port_frames_transmitted_total` | counter | `port` | AX.25 frames transmitted on the port. |
 | `pdn_port_info_bytes_received_total` | counter | `port` | Information-field bytes received (summed over peers). |
@@ -79,6 +80,19 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 | `pdn_port_tx_queue_depth` | gauge | `port` | Sum of pending (unsent) I-frames queued over the port's live sessions. |
 | `pdn_port_outstanding_iframes` | gauge | `port` | Sum of sent-but-unacknowledged I-frames over the port's live sessions. |
 
+### Soundmodem receive quality (in-process soundmodem ports only)
+
+The Reed-Solomon correction counts the in-process soundmodem's deframers already compute, read off the same rolling quality meter `GET /api/v1/ports/{id}/quality` serves (no second store). Only a port running the in-process soundmodem contributes, so **the whole bucket is absent on a node with no soundmodem ports** (identical output to before it existed) and a KISS / AXUDP / hardware-TNC port never appears in it. The counters are emitted from `0` so `rate()` works from the first scrape.
+
+These are an honest *byte*-error floor, deliberately **not** a bit-error rate: a receiver cannot observe the bits FEC did not have to touch.
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `pdn_port_fec_frames_total` | counter | `port` | Inbound frames on the port that reported receive-quality diagnostics. |
+| `pdn_port_fec_corrected_bytes_total` | counter | `port` | Cumulative bytes forward-error correction repaired on inbound frames. An honest byte-error floor, not a bit-error rate; `0` on a clean or HDLC link. |
+| `pdn_port_fec_corrected_frames_total` | counter | `port` | Inbound frames that needed at least one byte of FEC repair, i.e. the link spending its error budget before frames start dropping outright. |
+| `pdn_port_fec_last_frame_corrected_bytes` | gauge | `port` | Bytes FEC repaired on the most recent inbound frame. Omitted for a port whose last frame carried no FEC count (HDLC), or that has decoded nothing yet, which is distinct from `0`, a clean FEC frame. |
+
 ### Forwarding throughput
 
 | Metric | Type | Labels | Meaning |
@@ -88,6 +102,16 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 | `pdn_netrom_forward_drops_total` | counter | `reason` (`ttl_expired` \| `looped` \| `no_route`) | Transit datagrams dropped on the forward path, by reason. |
 
 The forwarding bucket is all-zero on an endpoint-only or NET/ROM-disabled node (nothing is ever forwarded).
+
+### MQTT frame emitter
+
+Read straight off the live `MqttFrameEmitter` (no second counter store). Emitted from `0` whenever the emitter service is registered, so `rate()` works from the first scrape, and they simply stay at `0` while the MQTT integration is configured off. **The whole bucket is absent only in an embedder that never registered the emitter.** These are node-wide, not per-port, so they carry no labels.
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `pdn_mqtt_published_total` | counter | none | MQTT messages handed to the broker client by the frame emitter (two per frame: unframed + framed). |
+| `pdn_mqtt_publish_failures_total` | counter | none | MQTT publish attempts that faulted. The frame is dropped from the MQTT feed only; the radio path is unaffected. |
+| `pdn_mqtt_pending_messages` | gauge | none | Messages queued in the managed MQTT client awaiting the broker (bounded, drop-oldest). |
 
 ### Per-port radio control (radio-attached ports only)
 
@@ -106,13 +130,14 @@ Emitted **only** for a port whose radio the node currently has open and is polli
 
 **Why no per-port `pdn_radio_snr_db` / `pdn_radio_noise_floor_dbm`.** SNR and noise-floor are *per-frame* concepts (the RSSI-tagging transport tracks an idle-channel noise-floor EMA and derives each frame's SNR from it). The radio's own *health* telemetry — what `RadioHealth` carries and what this bucket reads — samples averaged RSSI, PA temperature and the TX power-detector trends, and does **not** carry a port-level SNR or noise floor. Rather than fabricate a port-level number the API doesn't have, SNR is surfaced **per link partner** below, where the per-frame metadata genuinely provides it.
 
-### Per-partner SNR (the one peer-labelled series)
+### Per-partner SNR and pre-data carrier (the peer-labelled series)
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `pdn_link_snr_db` | gauge | `port`, `peer` | SNR (dB) of the newest frame heard from a link partner, by port + remote callsign. One series per (port, callsign) the node has heard *with a measured SNR*. See [the cardinality note](#the-one-peer-labelled-series-pdn_link_snr_db) — this is the single deliberate peer label. |
+| `pdn_link_snr_db` | gauge | `port`, `peer` | SNR (dB) of the newest frame heard from a link partner, by port + remote callsign. One series per (port, callsign) the node has heard *with a measured SNR*. See [the cardinality note](#the-two-peer-labelled-series); one of the two deliberate peer labels. |
+| `pdn_link_predata_carrier_ms` | gauge | `port`, `peer` | Rolling median carrier-rise-to-data lead (ms) of frames heard from a link partner, its effective TXDELAY as heard, by port + remote callsign. Includes a small constant rig overhead (roughly 40-75 ms at 1200 Bd), so trend it and alert on partners persistently high rather than reading it as the peer's configured TXDELAY. See [the cardinality note](#the-two-peer-labelled-series); the other deliberate peer label. |
 
-Absent entirely on a node with no radio telemetry (no partner has a measured SNR).
+Both are absent entirely on a node with no radio telemetry (no partner has a measured SNR, and none has a measured carrier lead).
 
 ### Head-end fleet (split-station nodes only)
 

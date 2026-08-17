@@ -20,8 +20,8 @@ The first visit lands on the setup wizard - callsign, admin account, first port 
 
 ## Configure
 
-- **Config** lives at `/etc/packetnet/packetnet.yaml` (the `pdn-config` volume). A named volume inherits the baked default on first run; edit it there, or bind-mount your own. Set your **callsign** and add your **ports** (KISS-TCP / serial / AXUDP).
-- **State** (`pdn.db`, TLS cert, per-app state) lives in `/var/lib/packetnet` (the `pdn-state` volume) - keep it to preserve users/keys across upgrades.
+- **Config** lives in `pdn.db`, in the `pdn-state` volume. `/etc/packetnet/packetnet.yaml` (the `pdn-config` volume, seeded from the image's baked default) is only a **first-boot seed**: the node imports it the first time it starts with an empty state volume and never reads it again ([`docs/config-in-db.md`](../../docs/config-in-db.md)). So set your **callsign** and **ports** there - or bind-mount your own file - *before* the first run; after that, edit config from the panel, `PUT /api/v1/config[/raw]`, or `docker exec pdn packetnet config import <file>`.
+- **State** (`pdn.db` - config, users, routing, heard log - plus the TLS cert and per-app state) lives in `/var/lib/packetnet` (the `pdn-state` volume) - keep it to preserve config and users/keys across upgrades.
 - **Health:** `GET /healthz` → `{"status":"ok"}` (used by the container `HEALTHCHECK`).
 
 ## Tags

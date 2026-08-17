@@ -53,22 +53,17 @@ Requires .NET 10 SDK 10.0.203 or later (see `global.json`).
 
 ## Working with SDL diagrams
 
-The AX.25 2.2 specification contains 27 SDL state diagrams that we transcribe
-into a small YAML DSL under `/spec-sdl/`. See `docs/adr/0001-sdl-dsl.md` for
-the rationale and `docs/sdl-primer.md` for the SDL shape reference you'll need
-to read the figures.
+Not here. The AX.25 v2.2 SDL transcriptions, the YAML DSL, the codegen and the
+generated artefacts all live in
+[`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) since the
+2026-05-17 repo split; this repo consumes them as the
+[`Packet.Ax25.Sdl`](https://www.nuget.org/packages/Packet.Ax25.Sdl) NuGet
+package, pinned in `Directory.Packages.props`.
 
-Workflow:
-1. Open a PR titled `sdl(<machine>/<state>): transcribe <figure>` containing
-   ONLY the new/updated `*.sdl.yaml`.
-2. CI regenerates `src/Packet.Ax25.Sdl/*.g.cs` and runs the conformance tests.
-3. The PR comment will show the figure PNG side-by-side with the YAML diff.
-4. A maintainer reviews the YAML against the spec figure.
-5. On merge, CI commits the regenerated `*.g.cs` (or the PR includes them
-   pre-regenerated — `dotnet run --project tools/Packet.Sdl.CodeGen` locally).
-
-Never edit `src/Packet.Ax25.Sdl/*.g.cs` by hand. CI enforces this with
-`git diff --exit-code` after regeneration.
+So: a change to a state machine is a PR against `ax25sdl` (its CONTRIBUTING
+covers the transcribe-review-regenerate workflow), a published package version,
+then a one-line pin bump here. Nothing in this repo regenerates SDL code, and
+there is no `spec-sdl/` tree or codegen tool to run.
 
 ## Commit messages
 

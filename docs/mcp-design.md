@@ -6,31 +6,34 @@
 2. **Auth is the shipped `read`/`operate`/`admin` model**, not the `mcp:invoke`/granular scheme §6 once penciled in (that scheme was never built — see [§17](plan.md#17-amendment-log) and the §6 reconciliation in this doc).
 3. **Full §5.8 surface in the opening slice** — read tools + write tools + both transports — rather than a read-only first cut. (Internal build order below; "one slice" ≠ "one commit".)
 
-This is Slice 4 of the node arc ([plan §5.4](plan.md)) and the home of the deferred link-tuner. Companion to the REST contract in [`node-api.yaml`](node-api.yaml): MCP and REST are two faces of the **same** live node state, never a second copy of it.
+This is Slice 4 of the node arc ([plan §5.4](plan.md)) and the home of the deferred link-tuner. Companion to the REST contract in [`node-api.md`](node-api.md): MCP and REST are two faces of the **same** live node state, never a second copy of it.
 
 ## The shape
 
 `Packet.Mcp` is the **transport-agnostic tool surface** — the tool names, schemas, descriptions, and handlers — written against one seam:
 
 ```csharp
-// Packet.Mcp
+// Packet.Mcp (the live signatures are in src/Packet.Mcp/INodeMcpBackend.cs)
 public interface INodeMcpBackend
 {
     // read
-    Task<IReadOnlyList<PortStatus>>   ListPortsAsync(CancellationToken ct);
-    Task<IReadOnlyList<SessionInfo>>  ListSessionsAsync(CancellationToken ct);
-    Task<IReadOnlyList<MonitorFrame>> RecentFramesAsync(FrameFilter filter, CancellationToken ct);
-    Task<LinkQuality>                 LinkQualityAsync(string remote, string? portId, CancellationToken ct);
-    Task<NetworkTopology>             NetworkTopologyAsync(CancellationToken ct);
+    Task<IReadOnlyList<McpPortStatus>>   ListPortsAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<McpSessionInfo>>  ListSessionsAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<McpMonitorFrame>> RecentFramesAsync(FrameFilter filter, CancellationToken ct = default);
+    Task<McpLinkQuality>                 LinkQualityAsync(string remote, string? portId = null, CancellationToken ct = default);
+    Task<McpNetworkTopology>             NetworkTopologyAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<McpRigStatus>>    RigStatusAsync(string? portId = null, CancellationToken ct = default);
     // write (operate-gated, audited)
-    Task<SendResult>       SendUiFrameAsync(SendUiRequest req, McpCaller caller, CancellationToken ct);
-    Task<PortActionResult> ResetPortAsync(string portId, McpCaller caller, CancellationToken ct);
-    Task<SessionResult>    DisconnectSessionAsync(string sessionId, McpCaller caller, CancellationToken ct);
-    Task<KissParamResult>  SetKissParamAsync(SetKissParamRequest req, McpCaller caller, CancellationToken ct);
+    Task<SendResult>         SendUiFrameAsync(SendUiRequest req, McpCaller caller, CancellationToken ct = default);
+    Task<PortActionResult>   ResetPortAsync(string portId, McpCaller caller, CancellationToken ct = default);
+    Task<SessionResult>      DisconnectSessionAsync(string sessionId, McpCaller caller, CancellationToken ct = default);
+    Task<KissParamResult>    SetKissParamAsync(SetKissParamRequest req, McpCaller caller, CancellationToken ct = default);
+    Task<RigFrequencyResult> SetRigFrequencyAsync(SetRigFrequencyRequest req, McpCaller caller, CancellationToken ct = default);
+    Task<RigModeResult>      SetRigModeAsync(SetRigModeRequest req, McpCaller caller, CancellationToken ct = default);
 }
 ```
 
-`decode_frame(hex)` is **pure** — it parses bytes through `Packet.Ax25` (KISS-unwrap first if framed) and needs no backend at all, so it lives entirely in `Packet.Mcp` and is the natural first tool + golden-test anchor.
+`decode_frame(hex, framing?, extended?)` is **pure**: it parses bytes through `Packet.Ax25` (KISS-unwrap first if framed) and needs no backend at all, so it lives entirely in `Packet.Mcp` and is the natural first tool + golden-test anchor.
 
 Two backends implement the seam:
 
@@ -60,19 +63,21 @@ Use the official C# SDK — **`ModelContextProtocol`** (core, stdio) + **`ModelC
 
 ## Tool catalog
 
+The shipped surface is whatever the `[McpServerTool]`-attributed methods under [`src/Packet.Mcp/Tools/`](../src/Packet.Mcp/Tools/) (`DiagnosticTools`, `ReadTools`, `WriteTools`) declare, returning the DTOs in [`McpModels.cs`](../src/Packet.Mcp/McpModels.cs); this table summarises them, so read the code when the two disagree.
+
 | Tool | Scope | Backend call | Args | Returns |
 |---|---|---|---|---|
-| `decode_frame` | `read` | *(pure — no backend)* | `hex`, `framing?` (`raw`\|`kiss`, default auto) | decoded AX.25: addresses/path, control (incl. mod-128), PID, payload, any APRS/NET-ROM hint |
-| `list_ports` | `read` | `ListPortsAsync` | — | `PortStatus[]` (id, enabled, state, sessions, frames in/out) |
-| `list_sessions` | `read` | `ListSessionsAsync` | — | `SessionInfo[]` (id `port:peer`, role, state, V(s)/V(r)/K, bytes, uptime) |
-| `recent_frames` | `read` | `RecentFramesAsync` | `port?`, `peer?`, `kind?`, `since?`, `limit?` (≤250) | `MonitorFrame[]` from the telemetry ring (oldest→newest) |
-| `link_quality` | `read` | `LinkQualityAsync` | `remote`, `port?` | per-link SRTT, retries, REJ/SREJ, frame/byte counts, T1/T3 (see Monitor-v2) |
-| `network_topology` | `read` | `NetworkTopologyAsync` | — | NET/ROM neighbours + destinations + routes (the `/netrom/routes` shape) |
+| `decode_frame` | `read` | *(pure, no backend)* | `hex`, `framing?` (`Auto`\|`Raw`\|`Kiss`, default `Auto`), `extended?` (bool, default false: decode I/S frames as modulo-128, since the control width isn't derivable from the bytes alone) | `DecodedFrame`: framing + KISS port, source/destination/path, command\|response\|legacy, frame class (I\|S\|U) + frame type, poll/final, modulo (8\|128), N(R)/N(S), PID + PID name, info length/hex/text |
+| `list_ports` | `read` | `ListPortsAsync` | *(none)* | `McpPortStatus[]` (id, enabled, state `up`\|`down`\|`faulted`, sessionCount, framesIn/framesOut) |
+| `list_sessions` | `read` | `ListSessionsAsync` | *(none)* | `McpSessionInfo[]` (id `port:peer`, portId, peer, role, state, V(s)/V(r), window k, uptimeSeconds, bytesIn/bytesOut, lastActivity) |
+| `recent_frames` | `read` | `RecentFramesAsync` | `port?`, `peer?`, `kind?`, `sinceSeconds?`, `limit?` (1..250) | `McpMonitorFrame[]` from the telemetry ring, oldest→newest (seq, timestamp, portId, direction, source, destination, kind, length) |
+| `link_quality` | `read` | `LinkQualityAsync` | `remote`, `port?` | `McpLinkQuality` (portId, peer, smoothedRttMs, retries, rejCount, srejCount, framesIn/framesOut, unknown). No byte counters and no T1/T3; SRTT and retries read 0 unless a connected-mode session backs the link (the Monitor-v2 gap below), and `unknown` is true when no link to that peer is currently known |
+| `network_topology` | `read` | `NetworkTopologyAsync` | *(none)* | `McpNetworkTopology` (generatedAt, NET/ROM neighbours, destinations with their routes; the `/netrom/routes` shape) |
 | `get_rig_status` | `read` | `RigStatusAsync` | `port?` | `McpRigStatus[]` — the `RigStatus` read model with the TX-side meters flattened (all rig-configured ports, or one port; empty = no such port) |
-| `send_ui_frame` | `operate` | `SendUiFrameAsync` | `port`, `dest`, `payload`, `path?`, `pid?` | send result (accepted/queued) |
+| `send_ui_frame` | `operate` | `SendUiFrameAsync` | `port`, `dest`, `payload`, `path?`, `pid?` (default `0xF0`) | `SendResult` (accepted + message; there is no queued state) |
 | `reset_port` | `operate` | `ResetPortAsync` | `port` | port-restart result (maps to the `restart` lifecycle) |
 | `disconnect_session` | `operate` | `DisconnectSessionAsync` | `id` (`port:peer`) | disconnect result |
-| `set_kiss_param` | `operate` | `SetKissParamAsync` | `port`, `param`, `value` (the raw KISS byte; 10 ms units for txdelay/slottime/txtail) | applied/queued, plus whether it took live or needs a restart |
+| `set_kiss_param` | `operate` | `SetKissParamAsync` | `port`, `param`, `value` (the raw KISS byte; 10 ms units for txdelay/slottime/txtail) | `KissParamResult` (accepted + message, plus whether it took live or needs a restart) |
 | `set_rig_frequency` | `operate` | `SetRigFrequencyAsync` | `port`, `frequencyHz` | QSY result with the read-back dial frequency (maps to `POST /ports/{id}/rig/frequency`; capability-gated, audited as `rig_set_frequency`) |
 | `set_rig_mode` | `operate` | `SetRigModeAsync` | `port`, `mode`, `passbandHz?` (null = rig default width) | mode result with the read-back mode/passband (maps to `POST /ports/{id}/rig/mode`; capability-gated, audited as `rig_set_mode`) |
 
