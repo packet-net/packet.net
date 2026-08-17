@@ -20,6 +20,18 @@ namespace Packet.Node.Cli;
 /// services). The <c>--db</c> / <c>--config</c> args + the <c>PACKETNET_*</c> env vars are
 /// honoured exactly as the host honours them, so the CLI reads/writes the very same store.
 /// </summary>
+/// <remarks>
+/// <b>It never creates a database</b> (#738 item 1), the same rule and the same resolution as
+/// <see cref="PdnAuthCli"/> (<see cref="NodeStatePaths.ResolveExistingDbPath"/>): an explicit
+/// <c>--db</c> / <c>PACKETNET_DB</c>, else <c>/var/lib/packetnet/pdn.db</c>, else the working
+/// directory's when it already exists. It used to resolve with the node's CREATING resolver, so
+/// an <c>export</c> run from a shell whose working directory held no <c>pdn.db</c> built one,
+/// seeded the N0CALL template into it, wrote THAT as the operator's pre-upgrade backup and
+/// exited 0 - and an <c>import</c> wrote the config into the same orphan, reporting success as
+/// the literal string <c>pdn.db</c>. This is the backup step of an upgrade, so it refuses and
+/// names the paths it looked at instead, and every success and failure line names the RESOLVED
+/// database so "I backed up the wrong file" is visible at a glance.
+/// </remarks>
 public static class PdnConfigCli
 {
     /// <summary>Run the <c>config</c> subcommand. <paramref name="args"/> is the full argv
@@ -53,18 +65,26 @@ public static class PdnConfigCli
 
     private static int Export(string[] args)
     {
-        var provider = BootProvider(args);
+        if (ResolveExistingDb(args, "export") is not { } dbPath)
+        {
+            return 1;
+        }
+
+        var provider = BootProvider(args, dbPath);
         var yaml = NodeConfigYaml.Serialize(provider.Current);
 
         var outPath = ArgValue(args, "--out");
         if (outPath is { Length: > 0 })
         {
             File.WriteAllText(outPath, yaml);
-            Console.Error.WriteLine($"wrote config to {outPath}");
+            Console.Error.WriteLine($"wrote config from {dbPath} to {outPath}");
         }
         else
         {
+            // The YAML is the stdout payload; the provenance line goes to stderr so a
+            // `pdn config export > backup.yaml` stays a clean document.
             Console.Out.Write(yaml);
+            Console.Error.WriteLine($"exported config from {dbPath}");
         }
         provider.Dispose();
         return 0;
@@ -85,7 +105,12 @@ public static class PdnConfigCli
             return 2;
         }
 
-        var provider = BootProvider(args);
+        if (ResolveExistingDb(args, "import") is not { } dbPath)
+        {
+            return 1;
+        }
+
+        var provider = BootProvider(args, dbPath);
         NodeConfig candidate;
         try
         {
@@ -94,13 +119,14 @@ public static class PdnConfigCli
         catch (Exception ex)
         {
             Console.Error.WriteLine($"pdn config import: {path} did not parse: {ex.Message}");
+            Console.Error.WriteLine($"{dbPath} is unchanged.");
             provider.Dispose();
             return 1;
         }
 
         if (!provider.TryApply(candidate, out var errors))
         {
-            Console.Error.WriteLine($"pdn config import: {path} rejected:");
+            Console.Error.WriteLine($"pdn config import: {path} rejected, {dbPath} is unchanged:");
             foreach (var e in errors)
             {
                 Console.Error.WriteLine($"  - {e.Path}: {e.Message}");
@@ -109,20 +135,58 @@ public static class PdnConfigCli
             return 1;
         }
 
+        // Name the RESOLVED database, not the literal "pdn.db" this used to print: the whole
+        // point of the resolution is that the file it wrote may not be the one the operator
+        // pictured (#738 item 1).
         Console.Error.WriteLine(
-            $"imported {path} into pdn.db (callsign {candidate.Identity.Callsign}, {candidate.Ports.Count} port(s)).");
+            $"imported {path} into {dbPath} (callsign {candidate.Identity.Callsign}, {candidate.Ports.Count} port(s)).");
         provider.Dispose();
         return 0;
     }
 
-    /// <summary>Boot just the config provider over the resolved <c>pdn.db</c> — the same
-    /// store the host uses. Logs to stderr so an export's YAML on stdout stays clean.</summary>
-    private static SqliteConfigProvider BootProvider(string[] args)
+    /// <summary>
+    /// The database this verb operates on, resolved and proven to exist - or null after
+    /// printing the refusal. Identical rules to <c>pdn auth</c>
+    /// (<see cref="NodeStatePaths.ResolveExistingDbPath"/>): neither verb may create a store,
+    /// because a fresh one seeds the N0CALL template and would be exported as a "backup" of a
+    /// node it knows nothing about.
+    /// </summary>
+    private static string? ResolveExistingDb(string[] args, string verb)
+    {
+        if (NodeStatePaths.ResolveExistingDbPath(args) is not { } dbPath)
+        {
+            Console.Error.WriteLine($"pdn config {verb}: no node database found. Looked at:");
+            foreach (var candidate in NodeStatePaths.DefaultCandidates())
+            {
+                Console.Error.WriteLine($"  - {candidate}");
+            }
+            Console.Error.WriteLine("Name the database with --db <path> (or PACKETNET_DB) and run it again.");
+            return null;
+        }
+
+        // An explicit --db / PACKETNET_DB is honoured verbatim even when it is missing, so that
+        // the operator hears about the path THEY named rather than a silent fallback.
+        if (!File.Exists(dbPath))
+        {
+            Console.Error.WriteLine($"pdn config {verb}: '{Path.GetFullPath(dbPath)}' does not exist.");
+            Console.Error.WriteLine(
+                "Refusing to create one: a fresh database is the N0CALL template, not this node's config.");
+            Console.Error.WriteLine(
+                $"The packaged node keeps its store at {NodeStatePaths.DefaultStateDirectory}/{NodeStatePaths.DbFileName}.");
+            return null;
+        }
+
+        return Path.GetFullPath(dbPath);
+    }
+
+    /// <summary>Boot just the config provider over <paramref name="dbPath"/> (already resolved
+    /// and proven to exist by <see cref="ResolveExistingDb"/>): the same store the host uses.
+    /// Logs to stderr so an export's YAML on stdout stays clean.</summary>
+    private static SqliteConfigProvider BootProvider(string[] args, string dbPath)
     {
         using var loggers = LoggerFactory.Create(b =>
             b.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace));
 
-        var dbPath = ResolveDbPath(args);
         var configPath = ResolveConfigPath(args);
         var seedPath = Env("PACKETNET_CONFIG_SEED");
         var templatePath = Env("PACKETNET_CONFIG_TEMPLATE") is { Length: > 0 } t
@@ -158,13 +222,16 @@ public static class PdnConfigCli
         return string.IsNullOrWhiteSpace(v) ? null : v;
     }
 
-    // The CLI resolves --db / --config / PACKETNET_* identically to Program.cs's resolvers
-    // so it operates on the exact same pdn.db + legacy YAML the running host would.
-    // The node's resolution, verbatim (NodeStatePaths is the single definition): --db, then
-    // PACKETNET_DB, then pdn.db in the working directory. `pdn config` may legitimately seed a
-    // first-boot database, so unlike `pdn auth` it does not require the file to exist already.
-    private static string ResolveDbPath(string[] args) => NodeStatePaths.ResolveDbPath(args);
+    /// <summary>The database <c>export</c> / <c>import</c> would operate on: exactly
+    /// <c>pdn auth</c>'s existing-only resolution (<see cref="NodeStatePaths"/>), null when no
+    /// candidate exists. Exposed to the test suite so the resolution is pinned rather than
+    /// inferred.</summary>
+    internal static string? ResolveDbPath(
+        string[] args, string? stateDirectory = null, string? workingDirectory = null) =>
+        NodeStatePaths.ResolveExistingDbPath(args, stateDirectory, workingDirectory);
 
+    // The CLI resolves --config / PACKETNET_CONFIG identically to Program.cs's resolver so it
+    // reads the exact same legacy YAML the running host would.
     private static string ResolveConfigPath(string[] args)
     {
         var v = ArgValue(args, "--config") ?? ArgValue(args, "-c");
