@@ -12,7 +12,7 @@ import {
 import { api, useQuery, subscribeSessionOutput } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 import { fmtUptime, fmtBytes } from "@/lib/catalogue";
-import type { SessionInfo, SessionRole } from "@/lib/types";
+import type { NodeConfig, SessionInfo, SessionRole } from "@/lib/types";
 
 const ROLE_BADGE: Record<SessionRole, BadgeVariant> = {
   console: "default",
@@ -383,6 +383,31 @@ function Stat({ k, v }: { k: string; v: string }) {
 // ---- Connect-out modal (alias autocomplete from the routes list) ----
 // Mounted fresh per open (the parent keys it on the open sequence), so the initial props
 // ARE the form's initial state - there is no re-seeding effect to fight with.
+//
+// The via-port select offers TWO kinds of choice (#727):
+//   auto   - POST /sessions carries no portId at all, so the node dials through its DEFAULT
+//            connector, which is NET/ROM-wrapped when connect routing is on (server:
+//            PortSupervisor.ResolveDefaultConnector + NetRomOutboundConnector).
+//   a port - POST carries portId, which since node-v0.41.0 means a DIRECT AX.25 dial on that
+//            port and never a NET/ROM-routed one (server: PortSupervisor.ResolveConnector).
+// The dialog used to always send a port, so an alias - or a NET/ROM destination handed off
+// from Routes - went out as a raw SABM on an RF port and timed out with a 504 after 30 s.
+//
+// The sentinel for auto is the EMPTY STRING, not the word "auto": api.connectSession already
+// omits portId for a falsy port, so "" needs no special case on the way out.
+const AUTO_PORT = "";
+
+// The UI half of NetRomService.ConnectEnabled (`config.Enabled && Routing is Endpoint or
+// Transit`): whether this node will route a connect over NET/ROM at all. `effectiveRouting`
+// is the server's own resolution of the legacy connect/forward pair, so it is the one to
+// read; a node that omits it falls back to the authored `routing`, as the Config screen does.
+function netRomConnectEnabled(config: NodeConfig | null | undefined): boolean {
+  const nr = config?.netRom;
+  if (!nr?.enabled) return false;
+  const routing = nr.effectiveRouting ?? nr.routing;
+  return routing === "Endpoint" || routing === "Transit";
+}
+
 function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }: {
   open: boolean;
   onClose: () => void;
@@ -401,15 +426,17 @@ function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }
   // so the form displayed one port and POSTed another - a 404 from /sessions (#691 C021).
   const portIds = config?.ports.map((p) => p.id) ?? [];
   const [target, setTarget] = useState(initialCall);
-  const [port, setPort] = useState(initialPort ?? "");
+  const [port, setPort] = useState(initialPort ?? AUTO_PORT);
 
-  // Settle the via-port when /config resolves: keep the hand-off's port if this node has
-  // it, else fall back to the node's first port. Until then `port` is "" and Connect is
-  // disabled - there is no port worth POSTing yet.
+  // Settle the via-port when /config resolves. A hand-off's port is KEPT when this node has
+  // it (naming a port is a deliberate direct dial); otherwise the default is auto on a node
+  // that does NET/ROM connect routing, and the node's first port on one that does not - the
+  // pre-#727 behaviour, unchanged for a node with NET/ROM connect off.
   useEffect(() => {
-    const ids = config?.ports.map((p) => p.id) ?? [];
-    if (ids.length === 0) return;
-    setPort((p) => (ids.includes(p) ? p : ids[0]));
+    if (!config) return;
+    const ids = config.ports.map((p) => p.id);
+    const auto = netRomConnectEnabled(config);
+    setPort((p) => (ids.includes(p) ? p : auto ? AUTO_PORT : ids[0] ?? AUTO_PORT));
   }, [config]);
 
   // Suggest matching alias/callsign from both destinations and neighbours.
@@ -436,10 +463,13 @@ function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          {/* an empty `port` no longer disables the action: it used to double as "waiting for
+              the node's port list", but auto is a legitimate choice and is valid to POST
+              whether or not /config has landed (#727) */}
           <Button
             size="sm"
-            disabled={!target.trim() || !port || busy}
-            title={busy ? "Dialling, this can take up to 30 s" : port ? undefined : "Waiting for the node's port list"}
+            disabled={!target.trim() || busy}
+            title={busy ? "Dialling, this can take up to 30 s" : undefined}
             onClick={() => onConnect(target.trim().toUpperCase(), port)}
           >
             <Icon name="link" size={14} /> {busy ? "Connecting…" : "Connect"}
@@ -450,7 +480,7 @@ function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }
       <div className="space-y-4">
         <Field
           label="Callsign or NET/ROM alias"
-          hint="You're opening an interactive session from this node to the station — the same as a sysop Connect."
+          hint="You're opening an interactive session from this node to the station, the same as a sysop Connect. An alias, or anything only reachable through the routing table, wants the via port left on Auto."
         >
           <div className="relative">
             <Input
@@ -480,9 +510,12 @@ function ConnectOut({ open, onClose, onConnect, busy, initialCall, initialPort }
           label="Via port"
           hint={configError
             ? `Couldn't load this node's ports: ${configError}`
-            : portIds.length === 0 ? "Loading this node's ports…" : undefined}
+            : `Naming a port is a DIRECT AX.25 dial on that port, with no NET/ROM routing. Auto lets the node route the call (NET/ROM) or pick its default port.${portIds.length === 0 ? " Loading this node's ports…" : ""}`}
         >
-          <Select value={port} onChange={(e) => setPort(e.target.value)} disabled={portIds.length === 0}>
+          {/* auto FIRST, and always selectable: it is the only choice available before
+              /config lands, and the only one that reaches a NET/ROM destination (#727) */}
+          <Select value={port} onChange={(e) => setPort(e.target.value)}>
+            <option value={AUTO_PORT}>Auto (NET/ROM routing)</option>
             {portIds.map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
         </Field>

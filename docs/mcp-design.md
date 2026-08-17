@@ -90,7 +90,7 @@ Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` buil
 ## Auth & audit (reconciling §6)
 
 - **Read tools** require `read`; **write tools** require `operate`. The gate is the same `ScopeRequirementHandler` the REST API uses, so it **passes through when `management.auth.enabled` is off** — the default-unauthenticated loopback behaviour is unchanged, exactly like `/api/v1`.
-- **stdio = local user, but it still needs a token when auth is on** (correcting the §6 table row): a process that can exec `pdn mcp` and reach loopback is trusted at the OS level, but the node grants it nothing on that basis: `/api/v1` is gated by `ScopeRequirementHandler`, `management.auth.enabled` defaults to **true**, and there is no loopback exemption. So the bridge attaches an `Authorization: Bearer` header, resolved once at start from, in order: `--token <jwt>`, `PDN_NODE_TOKEN`, or the contents of the file named by `PDN_NODE_TOKEN_FILE`. Mint one with `POST /api/v1/mcp/token`. With no token it still starts (an auth-off node needs none) and any 401/403 is reported as `node requires auth: set PDN_NODE_TOKEN ...` rather than a raw `HttpRequestException`. Until #694 (review item C061) it sent no header at all, so every tool call threw on an out-of-the-box node while this doc claimed otherwise.
+- **stdio = local user, but it still needs a token when auth is on** (correcting the §6 table row): a process that can exec `pdn mcp` and reach loopback is trusted at the OS level, but the node grants it nothing on that basis: `/api/v1` is gated by `ScopeRequirementHandler`, `management.auth.enabled` defaults to **true**, and there is no loopback exemption. So the bridge attaches an `Authorization: Bearer` header, resolved once at start from, in order: `--token <jwt>`, `PDN_NODE_TOKEN`, or the contents of the file named by `PDN_NODE_TOKEN_FILE`. **Mint it with `POST /api/v1/auth/service-token`** (admin; body `{"name":"mcp-bridge","scope":"operate","days":90}`), which issues a bounded-lifetime bearer in the **control-API** audience with `sub` = `service:mcp-bridge`. Not `POST /api/v1/mcp/token`: that mints the `packet.net-mcp` audience, which is right for a client speaking MCP to `/mcp` and wrong for this bridge, because the bridge calls `/api/v1/...` and `ScopeRequirementHandler` refuses a foreign audience with a 403 that reads as a scope problem (packet.net#727 item 2 - node-v0.41.0 shipped the message pointing at the wrong mint, so following it produced a permanent, misdiagnosed 403). With no token it still starts (an auth-off node needs none) and any 401/403 is reported as `node requires auth: set PDN_NODE_TOKEN ...` rather than a raw `HttpRequestException`. Until #694 (review item C061) it sent no header at all, so every tool call threw on an out-of-the-box node while this doc claimed otherwise.
 - **Every write tool is audit-logged** — actor, transport, scope, payload hash — through the same `AuthLog`/`SystemLog` sink §6 mandates for write endpoints. `McpCaller` carries the actor identity (token subject over SSE; `local-stdio` over stdio).
 
 **§6 correction (recorded in the plan):** the granular `frames:read`/`ports:write`/`sessions:write`/`mcp:invoke` scope list in §6 was aspirational and never shipped; the node runs the hierarchical `read`/`operate`/`admin` model (`AuthScopes.cs`). MCP uses the shipped model. The §6 table's `mcp:invoke` cell and scope list are updated to match.
@@ -149,6 +149,15 @@ Tom narrowed the target to **Claude Code (bearer)** over **LAN-direct** or **Tai
 
 The durable credential is an **MCP bearer token**: `POST /api/v1/mcp/token` (admin-gated, audited) mints a long-lived (`mcp.tokenLifetimeDays`, default 90) JWT scoped `read` (default) or `operate`, via the existing `JwtTokenService` — so it validates through the existing JwtBearer middleware unchanged. Login JWTs are too short-lived for a static header; this isn't.
 
+**Two mints, two audiences: pick by which surface you are talking to.** A token carries an audience as well as a scope, and the two are checked independently:
+
+| You are driving | Mint | Audience | Subject |
+|---|---|---|---|
+| `/mcp` (Claude Code over HTTP/SSE) | `POST /api/v1/mcp/token` | `packet.net-mcp` | `mcp:<admin>` |
+| `/api/v1/...` (the `pdn mcp` stdio bridge, scripts, CI) | `POST /api/v1/auth/service-token` | `packet.net-control-api` | `service:<name>` |
+
+They are not interchangeable, and presenting the wrong one is a 403 whose wording blames the scope. The service-token body is `{ "name": "...", "scope": "read" | "operate" | "admin", "days": 90 }`: `scope` defaults to `read` and may not exceed the minting admin's own, `days` defaults to 90 and is clamped to 365, and the mint is audited as `service_token`.
+
 ```sh
 # 1. mint a read-only MCP token (admin token in $ADMIN; omit auth header if auth is off)
 curl -sk -X POST https://node.lan:8443/api/v1/mcp/token \
@@ -158,6 +167,20 @@ curl -sk -X POST https://node.lan:8443/api/v1/mcp/token \
 # 2. register the node as an MCP server in Claude Code (LAN-direct, or a Tailscale name)
 claude mcp add --transport http pdn https://node.lan:8443/mcp \
   --header "Authorization: Bearer <token-from-step-1>"
+```
+
+For the **stdio** bridge instead (`pdn mcp` on the node's own box), the credential is a
+control-API service token, not the MCP token above:
+
+```sh
+# mint a control-API service token for the bridge (admin token in $ADMIN)
+curl -sk -X POST https://node.lan:8443/api/v1/auth/service-token \
+  -H "Authorization: Bearer $ADMIN" -H 'Content-Type: application/json' \
+  -d '{"name":"mcp-bridge","scope":"operate","days":90}'
+# → { "token": "...", "expiresAt": "...", "scope": "operate", "subject": "service:mcp-bridge" }
+
+# register the stdio bridge, handing it that token
+claude mcp add pdn -- env PDN_NODE_TOKEN=<token> pdn mcp
 ```
 
 For Tailscale, the only change is the host (`https://<node-ts-name>/mcp`); the node must be on the tailnet and its web listener bound so the overlay can reach it. For LAN-direct, the web listener must bind a LAN address (`management.http`/`https`), not just loopback — the same requirement as reaching the panel from another machine.

@@ -41,6 +41,12 @@ const LIVE_PORTS: PortConfig[] = [
   },
 ];
 const LIVE_CONFIG: NodeConfig = { ...NODE_CONFIG, ports: LIVE_PORTS };
+// The same node with NET/ROM connect routing off, where a via port (not auto) is still the
+// right default for a dial - the case #727's auto default must leave alone.
+const NO_NETROM_CONFIG: NodeConfig = {
+  ...LIVE_CONFIG,
+  netRom: { ...NODE_CONFIG.netRom, routing: "None", effectiveRouting: "None" },
+};
 
 const LIVE_PORT_STATUS: PortStatus[] = [
   {
@@ -123,16 +129,25 @@ describe("Sessions connect-out - the port it posts is the port it shows (#691 C0
     fireEvent.click(await screen.findByRole("button", { name: /Connect/i }));
     const dialog = await screen.findByRole("dialog");
 
-    // Before /config answers there is no port worth posting, so the action is refused
-    // rather than quietly sending a port id this node may not have.
+    // Before /config answers, the only via-port on offer is auto - which posts no port at
+    // all, so it is safe to act on (#727). What must never happen is a port id from the
+    // fixtures being offered, or posted, for a node that may not have it.
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "GB7CIP" } });
-    expect(within(dialog).getByRole("button", { name: /Connect/i })).toBeDisabled();
+    const loading = within(dialog).getByRole("combobox") as HTMLSelectElement;
+    expect([...loading.options].map((o) => o.value)).toEqual([""]);
+    expectNoFixtureLeak();
 
-    cfg.resolve(LIVE_CONFIG);
+    // This node does no NET/ROM connect routing, so a port IS what a dial means here and
+    // the first live port is the default.
+    cfg.resolve(NO_NETROM_CONFIG);
     await waitFor(() => expect(within(dialog).getByRole("button", { name: /Connect/i })).not.toBeDisabled());
 
     // What the operator sees IS what gets posted - that equality is the whole bug.
-    const select = within(dialog).getByRole("combobox") as HTMLSelectElement;
+    const select = await waitFor(() => {
+      const s = within(dialog).getByRole("combobox") as HTMLSelectElement;
+      expect(s.value).toBe("radio-a");
+      return s;
+    });
     expect(select.value).toBe("radio-a");
     fireEvent.click(within(dialog).getByRole("button", { name: /Connect/i }));
 
@@ -151,12 +166,13 @@ describe("Sessions connect-out - the port it posts is the port it shows (#691 C0
     const dialog = await screen.findByRole("dialog");
     const select = await waitFor(() => {
       const s = within(dialog).getByRole("combobox") as HTMLSelectElement;
-      expect(s.value).toBe("radio-a");
+      // LIVE_CONFIG's node routes connects over NET/ROM, so the default is auto (#727).
+      expect(s.value).toBe("");
       return s;
     });
 
-    // The option list is the node's ports and nothing else.
-    expect([...select.options].map((o) => o.value)).toEqual(["radio-a", "radio-b"]);
+    // The option list is auto plus the node's ports, and nothing else.
+    expect([...select.options].map((o) => o.value)).toEqual(["", "radio-a", "radio-b"]);
 
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "gb7cip" } });
     fireEvent.change(select, { target: { value: "radio-b" } });

@@ -76,11 +76,13 @@ Each screen lists **reads** (data shown — real shapes in §6), **writes** (act
 - **Writes:** **connect out** (`connect <call|alias>` — same as the console command, now from the UI); **disconnect** a session; (maybe) send a line into a session.
 - **Realtime:** session add/remove/state-change.
 - **Notes:** "connect out" needs the NET/ROM destination list (alias resolution) from §4.7's data. → §7.3 (sessions), §7.6 (events).
+- **The via-port picker means something specific.** `POST /sessions` treats a named `portId` as a **direct AX.25 dial on that port** - the same thing the console's `C <port> <call>` means, never NET/ROM-wrapped. Omitting `portId` is what asks the node to route: it resolves its default connector, which is NET/ROM-wrapped when NET/ROM connect routing is on, so an alias or a distant destination goes over the network. The dialog's first option is therefore **Auto (NET/ROM routing)**, with value `""`, and it is the default whenever the loaded config has NET/ROM connect routing on; when it is off the default is the node's first live port, as before. The Routes screen's per-destination Connect hands off with no port for the same reason (a *neighbour* is heard directly, so naming its port would be right there - but only the destinations table carries a Connect button).
+- **Why it is spelled out.** node-v0.41.0 gave `portId` its direct-dial meaning (#694 C060) while the dialog still always sent one, so every NET/ROM connect from the panel became a raw SABM on an RF port the far station was not on, and timed out with a 504 after 30 s (packet.net#727 item 1).
 
 ### 4.7 NET/ROM routes
 - **Purpose:** the network view — what this node knows. The web analogue of the `Nodes` console command we just built (incl. the INP3 metric).
 - **Reads:** `NetRomRoutingSnapshot` — `Neighbours[]` (callsign, alias, port, path-quality, last-heard) and `Destinations[]` (callsign, alias, best route + all routes: via-neighbour, quality, obsolescence, and `Inp3 {targetTimeMs, hopCount}` when present).
-- **Writes:** none in v1 (read-only view); a "connect" affordance per destination hands off to §4.6.
+- **Writes:** none in v1 (read-only view); a "connect" affordance per destination hands off to §4.6 **without a port**, so the dial routes over NET/ROM rather than dialling the via-neighbour's RF port directly (see §4.6).
 - **Realtime:** table refresh on sweep/ingest (low rate — a periodic SSE nudge or poll is fine).
 - **Notes:** show both metric spaces side by side (quality *and* INP3 time) — the dual surfacing the lab demo proved. → §7.7.
 

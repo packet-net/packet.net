@@ -24,6 +24,17 @@ namespace Packet.Node.Mcp;
 /// <see cref="HttpRequestException"/> at the MCP client (review item C061, #694).
 /// </para>
 /// <para>
+/// <b>Which token.</b> Every route here is under <c>api/v1</c>, which is bound to the
+/// <c>packet.net-control-api</c> audience. C061's message pointed the operator at
+/// <c>POST /api/v1/mcp/token</c>, which mints <c>packet.net-mcp</c> - an audience
+/// <c>ScopeRequirementHandler</c> refuses on every one of these routes, and it reports the
+/// refusal as a SCOPE problem, so following the instruction produced a permanent, misdiagnosed
+/// 403 (#727 item 2). The right credential is an admin-minted service token from
+/// <c>POST /api/v1/auth/service-token</c>, which carries the control-API audience and a bounded
+/// lifetime. <c>/mcp</c> itself (the SSE transport) still takes an MCP-audience token; the two
+/// are deliberately not interchangeable.
+/// </para>
+/// <para>
 /// <b>Clock.</b> The <c>sinceSeconds</c> cut-off rides the injected
 /// <see cref="TimeProvider"/>, never <c>DateTimeOffset.UtcNow</c> (repo rule §2.7 / C015).
 /// </para>
@@ -34,8 +45,11 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
     /// the bridge a token. Kept as one constant so the read path (which throws it) and the
     /// write paths (which return it in their result records) say the same thing.</summary>
     public const string AuthRequiredMessage =
-        "node requires auth: set PDN_NODE_TOKEN (mint one with POST /api/v1/mcp/token), " +
-        "or pass --token / PDN_NODE_TOKEN_FILE to `pdn mcp`.";
+        "node requires auth: set PDN_NODE_TOKEN to a CONTROL-API service token " +
+        "(mint one as an admin with POST /api/v1/auth/service-token, body {name, scope, days}), " +
+        "or pass --token / PDN_NODE_TOKEN_FILE to `pdn mcp`. " +
+        "An MCP token from POST /api/v1/mcp/token will NOT work here: it carries the " +
+        "packet.net-mcp audience, and this bridge calls the control API.";
 
     private readonly HttpClient http = http;
     private readonly TimeProvider clock = clock;
