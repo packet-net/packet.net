@@ -75,13 +75,40 @@ public class SrejXidViaNetsim
     private static readonly Callsign RejCall = new("PNXREJ", 0);
 
     // Budgets are generous because these observe REAL LinBPQ behaviour (connect, then the
-    // SREJ/REJ it emits) over a docker net-sim stack on a shared self-hosted runner. Under heavy
-    // runner contention the BPQ round-trip is slow enough that 30 s intermittently missed the
-    // SREJ ("sawSrej == false") — proven a contention flake, not a code regression, by the same
-    // test failing on a docs-only commit. Doubled to absorb that.
-    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan DataBudget = TimeSpan.FromSeconds(60);
+    // SREJ/REJ it emits) over a docker net-sim stack on a shared self-hosted runner. Every one
+    // of them is a CEILING on a wait for a named observable, not a sleep - each helper returns
+    // the moment the thing it waits for happens.
+    private static readonly TimeSpan ConnectBudget = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RecoveryBudget = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan DisconnectBudget = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan TotalBudget = TimeSpan.FromSeconds(240);
     private static readonly TimeSpan AckTimer = TimeSpan.FromMilliseconds(600);
+
+    // "The channel has gone quiet": no frame heard for this long. Used instead of a fixed
+    // sleep before we deliberately create the sequence gap. It matters that we do NOT
+    // transmit while BPQ is transmitting: net-sim models a real half-duplex FM channel
+    // (fm_capture / collision_mode: silence), so a station that is keyed up cannot hear us
+    // - and an I-frame BPQ never receives is a gap BPQ never sees, which is the whole
+    // experiment. Returns as soon as the channel is idle.
+    private static readonly TimeSpan QuietWindow = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan QuietCeiling = TimeSpan.FromSeconds(10);
+
+    // How many times we will negotiate-and-provoke before calling it a failure. LinBPQ
+    // intermittently establishes the link WITHOUT the v2.2 mode it just accepted in its own
+    // XID response, and then answers the gap with REJ (go-back-N) instead of SREJ -
+    // reproduced on the wire locally (1 run in 10 under load, with the full frame trace: our
+    // side transmits the identical XID / SABM / I-frame sequence in the passing and failing
+    // runs; only BPQ's answer differs). That is a peer-side race in how BPQ binds the
+    // XID-negotiated Ver2point2 to the link it then accepts, not something our stack can
+    // steer. A fresh negotiation on a properly released link clears it, so we re-negotiate
+    // rather than assert a peer's coin-flip. What is NOT retried is the meaning of the test:
+    // every attempt still asserts BPQ's XID response selects SREJ, and an attempt that draws
+    // SREJ must draw no REJ. See packet-net/packet.net#611.
+    private const int MaxNegotiationAttempts = 3;
+
+    // Don't start another attempt without enough budget left to finish it - a half-run
+    // attempt would report a timeout rather than what BPQ actually did.
+    private static readonly TimeSpan AttemptFloor = TimeSpan.FromSeconds(60);
 
     // ─── Wire predicates (mod-8 S-frame nibble) ───────────────────────────
     private static bool IsSrej(Ax25Frame f)
@@ -112,84 +139,131 @@ public class SrejXidViaNetsim
     [Fact]
     public async Task Mod8_XidNegotiatesSrej_DroppedIFrameRecoveredViaBpqSrej()
     {
-        using var cts = new CancellationTokenSource(ConnectBudget + DataBudget + TimeSpan.FromSeconds(40));
+        using var cts = new CancellationTokenSource(TotalBudget);
+        var deadline = DateTimeOffset.UtcNow + TotalBudget;
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
 
         var rig = BuildRig(local: SrejCall, remote: BpqCall, kiss: kiss);
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
-        await Task.Delay(500, cts.Token);
-
-        // ── XID command BEFORE the SABM, MSB-first PV (production codec), advertising
-        //    mod-8 + SREJ + SREJ-multiframe — exactly the management-data-link offer. ──
-        var offer = new XidParameters
+        try
         {
-            ClassesOfProcedures = ClassesOfProcedures.HalfDuplexDefault,
-            HdlcOptionalFunctions = new HdlcOptionalFunctions
+            await WaitForChannelQuiet(rig, pumps.Tasks, cts.Token);
+
+            var attemptLog = new List<string>();
+            var sawSrej = false;
+            for (int attempt = 1; attempt <= MaxNegotiationAttempts; attempt++)
             {
-                Reject = RejectMode.SelectiveReject,
-                Modulo128 = false,
-                SrejMultiframe = true,
-            },
-            IFieldLengthRxBits = XidParameters.OctetsToBits(256),
-            WindowSizeRx = 4,
-        };
-        var xid = Ax25Frame.Xid(destination: BpqCall, source: SrejCall,
-            info: XidInfoField.Encode(offer), isCommand: true, pollFinal: true);
+                // Each attempt is a complete, independent proof run: fresh XID, fresh SABM,
+                // fresh gap. Only what THIS attempt heard counts towards its assertions.
+                rig.Observed.Clear();
 
-        var negotiated = await SendUntilObserved(rig, xid.ToBytes(),
-            f => (f.Control & 0xEF) == 0xAF,   // BPQ's XID response (U-frame base 0xAF)
-            attempts: 8, gap: TimeSpan.FromMilliseconds(2000), cts.Token);
-        negotiated.Should().BeTrue(
-            "LinBPQ must answer our MSB-first XID command with an XID response — it does mod-8 SREJ when XID precedes the SABM");
+                // ── XID command BEFORE the SABM, MSB-first PV (production codec), advertising
+                //    mod-8 + SREJ + SREJ-multiframe - exactly the management-data-link offer. ──
+                var offer = new XidParameters
+                {
+                    ClassesOfProcedures = ClassesOfProcedures.HalfDuplexDefault,
+                    HdlcOptionalFunctions = new HdlcOptionalFunctions
+                    {
+                        Reject = RejectMode.SelectiveReject,
+                        Modulo128 = false,
+                        SrejMultiframe = true,
+                    },
+                    IFieldLengthRxBits = XidParameters.OctetsToBits(256),
+                    WindowSizeRx = 4,
+                };
+                var xid = Ax25Frame.Xid(destination: BpqCall, source: SrejCall,
+                    info: XidInfoField.Encode(offer), isCommand: true, pollFinal: true);
 
-        // Confirm BPQ's XID response actually selected SREJ-multi + mod-8.
-        var bpqXid = rig.Observed.First(f => (f.Control & 0xEF) == 0xAF);
-        XidInfoField.TryParse(bpqXid.Info.Span, XidParseOptions.Lenient, out var bpqParams)
-            .Should().BeTrue("BPQ's XID response info field must parse");
-        bpqParams!.HdlcOptionalFunctions!.Reject.Should().Be(RejectMode.SelectiveReject,
-            "BPQ's XID response selects SREJ (its ProcessXIDCommand replies OPSREJMult|OPMod8)");
-        bpqParams.HdlcOptionalFunctions.Modulo128.Should().BeFalse("BPQ negotiates SREJ at mod-8, not mod-128");
+                var negotiated = await SendUntilObserved(rig, xid.ToBytes(),
+                    f => (f.Control & 0xEF) == 0xAF,   // BPQ's XID response (U-frame base 0xAF)
+                    attempts: 8, gap: TimeSpan.FromMilliseconds(2000), cts.Token);
+                negotiated.Should().BeTrue(
+                    "LinBPQ must answer our MSB-first XID command with an XID response - it does mod-8 SREJ when XID precedes the SABM");
 
-        // ── SABM (mod-8). Our side runs SREJ recovery too. ──
-        rig.Session.Context.SrejEnabled = true;
-        rig.Session.Context.ImplicitReject = false;
-        rig.Session.PostEvent(new DlConnectRequest());
-        var cc = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
-        cc.Should().NotBeNull("SABM after the XID exchange must complete a mod-8 connection");
-        rig.Session.CurrentState.Should().Be("Connected");
-        await Task.Delay(3000, cts.Token);   // drain BPQ banner
+                // Confirm BPQ's XID response actually selected SREJ-multi + mod-8. Asserted on
+                // EVERY attempt: the codec contract this test guards is never retried away.
+                var bpqXid = rig.Observed.First(f => (f.Control & 0xEF) == 0xAF);
+                XidInfoField.TryParse(bpqXid.Info.Span, XidParseOptions.Lenient, out var bpqParams)
+                    .Should().BeTrue("BPQ's XID response info field must parse");
+                bpqParams!.HdlcOptionalFunctions!.Reject.Should().Be(RejectMode.SelectiveReject,
+                    "BPQ's XID response selects SREJ (its ProcessXIDCommand replies OPSREJMult|OPMod8)");
+                bpqParams.HdlcOptionalFunctions.Modulo128.Should().BeFalse("BPQ negotiates SREJ at mod-8, not mod-128");
 
-        // ── Drop our N(S)=1 so BPQ sees a gap (0 then 2) and SREJs it. ──
-        var dropped = false;
-        rig.DropOutboundIFrame = f =>
-        {
-            if (dropped || !f.Pid.HasValue || f.Ns != 1)
-            {
-                return false;
+                // ── SABM (mod-8). Our side runs SREJ recovery too. ──
+                rig.Session.Context.SrejEnabled = true;
+                rig.Session.Context.ImplicitReject = false;
+                rig.Session.PostEvent(new DlConnectRequest());
+                var cc = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
+                cc.Should().NotBeNull("SABM after the XID exchange must complete a mod-8 connection");
+                rig.Session.CurrentState.Should().Be("Connected");
+
+                // BPQ's CTEXT banner follows the UA. Wait for the channel to go quiet rather
+                // than sleeping a fixed 3 s: transmitting into BPQ's own transmission on this
+                // half-duplex channel would lose the very I-frame whose absence the experiment
+                // depends on BPQ noticing.
+                await WaitForChannelQuiet(rig, pumps.Tasks, cts.Token);
+
+                // ── Drop our N(S)=1 so BPQ sees a gap (0 then 2) and SREJs it. ──
+                var dropped = false;
+                rig.DropOutboundIFrame = f =>
+                {
+                    if (dropped || !f.Pid.HasValue || f.Ns != 1)
+                    {
+                        return false;
+                    }
+
+                    dropped = true; return true;
+                };
+                var payloads = new[]
+                {
+                    System.Text.Encoding.ASCII.GetBytes("srej-bpq-0\r"),
+                    System.Text.Encoding.ASCII.GetBytes("srej-bpq-1\r"),
+                    System.Text.Encoding.ASCII.GetBytes("srej-bpq-2\r"),
+                };
+                foreach (var p in payloads)
+                {
+                    rig.Session.PostEvent(new DlDataRequest(p, Ax25Frame.PidNoLayer3));
+                }
+
+                // Wait for BPQ's answer to the gap - SREJ (what v2.2 mode does) or REJ (what
+                // it does without) - so a REJ ends the wait immediately instead of burning
+                // the whole budget and reporting nothing but "no SREJ".
+                await WaitForObserved(rig, f => IsSrej(f) || IsRej(f), RecoveryBudget, pumps.Tasks, cts.Token);
+                dropped.Should().BeTrue("the test must have dropped I-frame N(S)=1 for the recovery to be meaningful");
+
+                if (rig.Observed.Any(IsSrej))
+                {
+                    sawSrej = true;
+                    rig.Observed.Any(IsRej).Should().BeFalse(
+                        "the recovery must be selective (SREJ), not go-back-N (REJ)");
+                    (rig.Session.CurrentState is "Connected" or "TimerRecovery").Should().BeTrue(
+                        $"link survives the SREJ recovery (was {rig.Session.CurrentState}; TimerRecovery is a transient post-ack recovery state under load, not a teardown)");
+                    break;
+                }
+
+                attemptLog.Add(rig.Observed.Any(IsRej)
+                    ? $"attempt {attempt}: BPQ answered the gap with REJ (go-back-N) despite its XID response selecting SREJ"
+                    : $"attempt {attempt}: BPQ answered the gap with neither SREJ nor REJ within {RecoveryBudget.TotalSeconds:F0} s (state {rig.Session.CurrentState})");
+
+                // Release the link so the next attempt's XID reaches BPQ's responder: its
+                // ProcessXIDCommand runs only on the no-active-link path, so re-negotiating
+                // over a link BPQ still holds would be ignored (see the class remarks).
+                await DisconnectAsync(rig, pumps.Tasks, cts.Token);
+
+                if (DateTimeOffset.UtcNow + AttemptFloor > deadline)
+                {
+                    break;
+                }
             }
 
-            dropped = true; return true;
-        };
-        var payloads = new[]
-        {
-            System.Text.Encoding.ASCII.GetBytes("srej-bpq-0\r"),
-            System.Text.Encoding.ASCII.GetBytes("srej-bpq-1\r"),
-            System.Text.Encoding.ASCII.GetBytes("srej-bpq-2\r"),
-        };
-        foreach (var p in payloads)
-        {
-            rig.Session.PostEvent(new DlDataRequest(p, Ax25Frame.PidNoLayer3));
+            sawSrej.Should().BeTrue(
+                "LinBPQ must SREJ the gap our dropped I-frame created (Ver2point2 set by the pre-SABM XID) - NOT REJ. "
+                + string.Join(" | ", attemptLog));
         }
-
-        var sawSrej = await WaitForObserved(rig, IsSrej, DataBudget, pumps.Tasks, cts.Token);
-
-        dropped.Should().BeTrue("the test must have dropped I-frame N(S)=1 for the recovery to be meaningful");
-        sawSrej.Should().BeTrue(
-            "LinBPQ must SREJ the gap our dropped I-frame created (Ver2point2 set by the pre-SABM XID) — NOT REJ");
-        rig.Observed.Any(IsRej).Should().BeFalse(
-            "the recovery must be selective (SREJ), not go-back-N (REJ)");
-        (rig.Session.CurrentState is "Connected" or "TimerRecovery").Should().BeTrue(
-            $"link survives the SREJ recovery (was {rig.Session.CurrentState}; TimerRecovery is a transient post-ack recovery state under load, not a teardown)");
+        finally
+        {
+            await TearDownAsync(rig, pumps.Tasks);
+        }
     }
 
     /// <summary>
@@ -200,44 +274,51 @@ public class SrejXidViaNetsim
     [Fact]
     public async Task Mod8_NoXid_DroppedIFrameRecoveredViaBpqRej_GoBackN()
     {
-        using var cts = new CancellationTokenSource(ConnectBudget + DataBudget + TimeSpan.FromSeconds(40));
+        using var cts = new CancellationTokenSource(ConnectBudget + RecoveryBudget + DisconnectBudget + TimeSpan.FromSeconds(40));
         await using var kiss = await KissTcpClient.ConnectAsync(Host, OurKissPort, cts.Token);
 
         var rig = BuildRig(local: RejCall, remote: BpqCall, kiss: kiss);
         await using var pumps = InboundPumpScope.Start(cts.Token, ct => InboundPump(rig, ct));
-        await Task.Delay(500, cts.Token);
-
-        // Plain SABM — no XID first.
-        rig.Session.PostEvent(new DlConnectRequest());
-        var cc = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
-        cc.Should().NotBeNull("plain SABM must connect");
-        await Task.Delay(3000, cts.Token);
-
-        var dropped = false;
-        rig.DropOutboundIFrame = f =>
+        try
         {
-            if (dropped || !f.Pid.HasValue || f.Ns != 1)
+            await WaitForChannelQuiet(rig, pumps.Tasks, cts.Token);
+
+            // Plain SABM - no XID first.
+            rig.Session.PostEvent(new DlConnectRequest());
+            var cc = await WaitForSignal<DataLinkConnectConfirm>(rig.Signals, ConnectBudget, pumps.Tasks, cts.Token);
+            cc.Should().NotBeNull("plain SABM must connect");
+            await WaitForChannelQuiet(rig, pumps.Tasks, cts.Token);
+
+            var dropped = false;
+            rig.DropOutboundIFrame = f =>
             {
-                return false;
+                if (dropped || !f.Pid.HasValue || f.Ns != 1)
+                {
+                    return false;
+                }
+
+                dropped = true; return true;
+            };
+            var payloads = new[]
+            {
+                System.Text.Encoding.ASCII.GetBytes("rej-bpq-0\r"),
+                System.Text.Encoding.ASCII.GetBytes("rej-bpq-1\r"),
+                System.Text.Encoding.ASCII.GetBytes("rej-bpq-2\r"),
+            };
+            foreach (var p in payloads)
+            {
+                rig.Session.PostEvent(new DlDataRequest(p, Ax25Frame.PidNoLayer3));
             }
 
-            dropped = true; return true;
-        };
-        var payloads = new[]
-        {
-            System.Text.Encoding.ASCII.GetBytes("rej-bpq-0\r"),
-            System.Text.Encoding.ASCII.GetBytes("rej-bpq-1\r"),
-            System.Text.Encoding.ASCII.GetBytes("rej-bpq-2\r"),
-        };
-        foreach (var p in payloads)
-        {
-            rig.Session.PostEvent(new DlDataRequest(p, Ax25Frame.PidNoLayer3));
+            var sawRej = await WaitForObserved(rig, IsRej, RecoveryBudget, pumps.Tasks, cts.Token);
+            dropped.Should().BeTrue("the test must have dropped I-frame N(S)=1");
+            sawRej.Should().BeTrue("without the pre-SABM XID, BPQ uses go-back-N (REJ) for the gap");
+            rig.Observed.Any(IsSrej).Should().BeFalse("no SREJ without XID negotiation");
         }
-
-        var sawRej = await WaitForObserved(rig, IsRej, DataBudget, pumps.Tasks, cts.Token);
-        dropped.Should().BeTrue("the test must have dropped I-frame N(S)=1");
-        sawRej.Should().BeTrue("without the pre-SABM XID, BPQ uses go-back-N (REJ) for the gap");
-        rig.Observed.Any(IsSrej).Should().BeFalse("no SREJ without XID negotiation");
+        finally
+        {
+            await TearDownAsync(rig, pumps.Tasks);
+        }
     }
 
     // ─── Rig (mirrors the direwolf SREJ rig: Observed log + DropOutboundIFrame) ──
@@ -335,6 +416,97 @@ public class SrejXidViaNetsim
             }
         }
         return rig.Observed.Any(predicate);
+    }
+
+    /// <summary>
+    /// Return once nothing has been heard on the channel for <see cref="QuietWindow"/>, or
+    /// once <see cref="QuietCeiling"/> is up. Replaces the fixed "drain BPQ's banner" sleeps:
+    /// what those sleeps were really waiting for is an idle channel, and this waits for
+    /// exactly that - returning as soon as it is true (usually well under the old 3 s) and
+    /// still holding off if BPQ is mid-transmission when the old sleep would have expired.
+    /// </summary>
+    private static async Task WaitForChannelQuiet(Rig rig, IReadOnlyList<Task> bg, CancellationToken outer)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(QuietCeiling);
+        var lastCount = -1;
+        var since = DateTimeOffset.UtcNow;
+        while (!cts.IsCancellationRequested)
+        {
+            ThrowIfAnyFaulted(bg);
+            var count = rig.Observed.Count;
+            if (count != lastCount)
+            {
+                lastCount = count;
+                since = DateTimeOffset.UtcNow;
+            }
+            else if (DateTimeOffset.UtcNow - since >= QuietWindow)
+            {
+                return;
+            }
+
+            try { await Task.Delay(100, cts.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>
+    /// Release the link and wait (bounded) for the session to be back in Disconnected.
+    /// </summary>
+    /// <remarks>
+    /// Both cases used to walk away from an established link. That leaves LinBPQ holding a
+    /// link-table entry it then polls with RR(P) for its whole RETRIES x FRACK budget (30 s
+    /// of avoidable traffic on the channel the next scenario is timing itself against), and
+    /// - because BPQ's XID responder runs only on the no-active-link path - makes a
+    /// subsequent pre-SABM XID for the same callsign be ignored outright. Reproduced locally:
+    /// back-to-back runs of this class against one LinBPQ failed every other time, the XID
+    /// going unanswered because the previous run's link was still up.
+    /// </remarks>
+    private static async Task DisconnectAsync(Rig rig, IReadOnlyList<Task> bg, CancellationToken outer)
+    {
+        if (rig.Session.CurrentState == "Disconnected")
+        {
+            return;
+        }
+
+        rig.Session.PostEvent(new DlDisconnectRequest());
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        cts.CancelAfter(DisconnectBudget);
+        while (!cts.IsCancellationRequested)
+        {
+            ThrowIfAnyFaulted(bg);
+            if (rig.Session.CurrentState == "Disconnected")
+            {
+                return;
+            }
+
+            try { await Task.Delay(50, cts.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>
+    /// Teardown for EVERY exit path (pass, assertion failure, timeout): release the link and
+    /// stop the session's timers. Without the timer disposal the abandoned session goes on
+    /// firing T1 for the lifetime of the test process - retransmitting into a KISS socket the
+    /// test has already disposed, from inside whatever scenario happens to be running next.
+    /// Cancellation is deliberately not propagated in here: teardown still has to happen when
+    /// the test failed because its budget ran out.
+    /// </summary>
+    private static async Task TearDownAsync(Rig rig, IReadOnlyList<Task> bg)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(DisconnectBudget);
+            await DisconnectAsync(rig, bg, cts.Token);
+        }
+        catch (Exception)
+        {
+            // Best effort: a link we can't release cleanly (BPQ silent, socket gone) must not
+            // replace the real failure with a teardown exception.
+        }
+        finally
+        {
+            rig.Scheduler.Dispose();
+        }
     }
 
     private static async Task<bool> WaitForObserved(
