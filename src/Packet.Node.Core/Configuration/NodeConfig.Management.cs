@@ -30,6 +30,27 @@ public sealed record ManagementConfig
     /// pdn mobile app (and other LAN tools) can find it on the local network. Default-OFF; see
     /// <see cref="MdnsConfig"/>.</summary>
     public MdnsConfig Mdns { get; init; } = new();
+
+    /// <summary>The browser's node command console (<c>POST /api/v1/console</c>): how long an
+    /// abandoned session may live. See <see cref="SysopConsoleConfig"/>.</summary>
+    public SysopConsoleConfig Console { get; init; } = new();
+}
+
+/// <summary>
+/// The browser-facing node command console.
+/// </summary>
+/// <remarks>
+/// Each open console owns a running node command service and a loopback connection pair, torn
+/// down by <c>DELETE /api/v1/console/{id}</c>. A browser that is closed, crashes, or loses the
+/// network never sends that DELETE, so the manager reaps sessions that have had no SSE
+/// subscriber and no typed input for <see cref="IdleTimeoutMinutes"/> (review item C062, #694).
+/// </remarks>
+public sealed record SysopConsoleConfig
+{
+    /// <summary>Minutes an open console may sit with no SSE subscriber attached and no typed
+    /// input before the node closes it. <c>0</c> disables reaping (sessions then live until
+    /// closed or the host shuts down, the pre-#694 behaviour). Default 30.</summary>
+    public int IdleTimeoutMinutes { get; init; } = 30;
 }
 
 /// <summary>

@@ -460,6 +460,15 @@ builder.Services.AddSingleton(TimeProvider.System);
 // configured). Mutated by PUT /api/v1/system/loglevel (admin); read by GET (read). See
 // DynamicLogLevelOverrides + PdnSystemApi.
 builder.Services.AddSingleton<DynamicLogLevelOverrides>();
+// GET /api/v1/log + the dashboard's "Recent activity" card are fed by a bounded in-memory ring
+// of this process's own log lines: a logger provider tees whatever MEL emits (after the
+// configured filters, including a live override above) into the ring. Before #694 (C008) the
+// endpoint was a permanent empty array while the docs and the card claimed it was live. Not a
+// journald reader on purpose - the node must behave the same in a container, a dev run, and
+// under systemd, with no privileged socket. See NodeLogRing.
+var nodeLogRing = new NodeLogRing();
+builder.Services.AddSingleton(nodeLogRing);
+builder.Logging.AddProvider(new NodeLogRingProvider(nodeLogRing, TimeProvider.System));
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IConfigureOptions<Microsoft.Extensions.Logging.LoggerFilterOptions>>(
     sp => sp.GetRequiredService<DynamicLogLevelOverrides>());
 builder.Services.AddSingleton<Microsoft.Extensions.Options.IOptionsChangeTokenSource<Microsoft.Extensions.Logging.LoggerFilterOptions>>(
@@ -548,7 +557,18 @@ builder.Services.AddSingleton<Packet.Node.Core.Applications.Catalog.IAppInstalle
 // Holds operator-initiated connect-out sessions as interactive consoles (the web
 // Sessions drawer reads their output over SSE + types into them). Disposed on host
 // shutdown (IAsyncDisposable) → each adopted connection gets a clean DISC.
-builder.Services.AddSingleton<SysopConsoleManager>();
+// The idle timeout is management.console.idleTimeoutMinutes (default 30, 0 = never):
+// a browser that vanishes without a DELETE would otherwise leak a running node command
+// service forever (review item C062, #694). Read once at construction - a live config
+// edit takes effect on the next restart, which is honest for a reaper cadence.
+builder.Services.AddSingleton(sp =>
+{
+    var minutes = sp.GetRequiredService<IConfigProvider>().Current.Management.Console.IdleTimeoutMinutes;
+    return new SysopConsoleManager(
+        sp.GetRequiredService<ILogger<SysopConsoleManager>>(),
+        sp.GetRequiredService<TimeProvider>(),
+        minutes > 0 ? TimeSpan.FromMinutes(minutes) : TimeSpan.Zero);
+});
 // The ID-beacon service: a singleton over the live config + clock. The hosted service
 // injects it (and passes it to the supervisor, which attaches it per port) - it is
 // inert until a port whose effective beacon is enabled comes up (default-off).

@@ -33,6 +33,20 @@ namespace Packet.Node.Core.Console;
 /// (<see cref="INodeConnection.ReadAsync"/> returns empty) or on
 /// <see cref="CloseAsync"/>.
 /// </para>
+/// <para>
+/// <b>The idle reaper.</b> A node command console adopted here (an <c>Open(..., reapWhenIdle:
+/// true)</c> session, i.e. every <c>console:&lt;guid&gt;</c> the browser opens) keeps a node
+/// command service and a loopback pair alive for as long as it is managed. A browser that is
+/// closed, crashes, or loses the network never sends the DELETE, so before #694 (review item
+/// C062) those sessions leaked until host shutdown. A <see cref="TimeProvider"/>-driven sweep
+/// now closes any reapable session that has had NO subscriber and NO typed input for the idle
+/// timeout (<c>management.console.idleTimeoutMinutes</c>, default 30; 0 disables the reaper).
+/// An attached SSE subscriber counts as activity for the whole time it is attached, so a
+/// watched-but-quiet console is never reaped. Adopted connect-out sessions
+/// (<c>{portId}:{peer}</c>) are deliberately NOT reaped: those are real RF links an operator
+/// may leave up on purpose, and the peer-gone path already tears them down when the far end
+/// drops.
+/// </para>
 /// </remarks>
 public sealed partial class SysopConsoleManager : IAsyncDisposable
 {
@@ -40,24 +54,67 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
     // sees context (the banner/prompt it missed), without unbounded memory growth.
     private const int BacklogCap = 16 * 1024;
 
+    /// <summary>The idle timeout used when the host doesn't configure one.</summary>
+    public static readonly TimeSpan DefaultIdleTimeout = TimeSpan.FromMinutes(30);
+
+    // How often the reaper looks: half the timeout, but never more often than every 5 s and
+    // never less often than once a minute. A sweep is a walk of a handful of dictionary
+    // entries, so the cost is nil either way.
+    private static readonly TimeSpan MinSweepInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan MaxSweepInterval = TimeSpan.FromMinutes(1);
+
     private readonly ILogger<SysopConsoleManager> logger;
     private readonly ConcurrentDictionary<string, ConsoleSession> sessions = new(StringComparer.Ordinal);
+    private readonly TimeProvider clock;
+    private readonly TimeSpan idleTimeout;
+    private readonly ITimer? reaper;
     private int disposed;
 
-    public SysopConsoleManager(ILogger<SysopConsoleManager>? logger = null)
-        => this.logger = logger ?? NullLogger<SysopConsoleManager>.Instance;
+    /// <summary>
+    /// Construct the manager. <paramref name="idleTimeout"/> is how long a reapable session may
+    /// sit with no SSE subscriber and no typed input before it is closed; null uses
+    /// <see cref="DefaultIdleTimeout"/>, and zero (or negative) disables the reaper entirely.
+    /// The sweep rides <paramref name="clock"/>, never the wall clock (repo rule 2.7).
+    /// </summary>
+    public SysopConsoleManager(
+        ILogger<SysopConsoleManager>? logger = null,
+        TimeProvider? clock = null,
+        TimeSpan? idleTimeout = null)
+    {
+        this.logger = logger ?? NullLogger<SysopConsoleManager>.Instance;
+        this.clock = clock ?? TimeProvider.System;
+        this.idleTimeout = idleTimeout ?? DefaultIdleTimeout;
+
+        if (this.idleTimeout > TimeSpan.Zero)
+        {
+            var sweep = SweepInterval(this.idleTimeout);
+            reaper = this.clock.CreateTimer(_ => ReapIdle(), null, sweep, sweep);
+        }
+    }
+
+    private static TimeSpan SweepInterval(TimeSpan timeout)
+    {
+        var half = timeout / 2;
+        return half < MinSweepInterval ? MinSweepInterval
+            : half > MaxSweepInterval ? MaxSweepInterval
+            : half;
+    }
 
     /// <summary>
     /// Adopt an operator-initiated connection under the session id and start draining
     /// its output. If the id is already managed (or the manager is disposed) the new
     /// connection is disposed instead (no duplicate adoption).
+    /// <paramref name="reapWhenIdle"/> opts the session into the idle reaper: true for the
+    /// browser's node command consoles (a lost browser must not leak a command service),
+    /// false (the default) for adopted AX.25 connect-outs, which are real links the operator
+    /// owns. See the type remarks.
     /// </summary>
-    public void Open(string id, INodeConnection connection)
+    public void Open(string id, INodeConnection connection, bool reapWhenIdle = false)
     {
         ArgumentNullException.ThrowIfNull(id);
         ArgumentNullException.ThrowIfNull(connection);
 
-        var session = new ConsoleSession(connection);
+        var session = new ConsoleSession(connection, reapWhenIdle, clock.GetUtcNow());
         if (Volatile.Read(ref disposed) != 0 || !sessions.TryAdd(id, session))
         {
             DisposeInBackground(connection);
@@ -76,6 +133,9 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
     {
         if (sessions.TryGetValue(id, out var session))
         {
+            // Typed input is activity: it holds the idle reaper off even with no SSE
+            // subscriber attached (a client that posts input without streaming).
+            session.MarkActive(clock.GetUtcNow());
             await session.Connection.WriteAsync(bytes, ct).ConfigureAwait(false);
         }
     }
@@ -90,7 +150,36 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
     {
         backlog = string.Empty;
         reader = null;
-        return sessions.TryGetValue(id, out var session) ? session.Subscribe(out backlog, out reader) : null;
+        return sessions.TryGetValue(id, out var session)
+            ? session.Subscribe(clock, out backlog, out reader)
+            : null;
+    }
+
+    /// <summary>
+    /// Close every reapable session that has had no subscriber and no input for the idle
+    /// timeout. Driven by the <see cref="TimeProvider"/> timer; public so a test (or a future
+    /// admin endpoint) can sweep deterministically instead of racing the timer.
+    /// </summary>
+    public void ReapIdle()
+    {
+        if (idleTimeout <= TimeSpan.Zero || Volatile.Read(ref disposed) != 0)
+        {
+            return;
+        }
+
+        var now = clock.GetUtcNow();
+        foreach (var (id, session) in sessions)
+        {
+            if (!session.IsIdle(now, idleTimeout))
+            {
+                continue;
+            }
+            if (sessions.TryRemove(id, out var removed))
+            {
+                DisposeInBackground(removed);
+                LogReaped(id, (long)idleTimeout.TotalMinutes);
+            }
+        }
     }
 
     /// <summary>Close a managed session: stop its pump and dispose the connection (which
@@ -135,6 +224,10 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
         {
             return;
         }
+        if (reaper is not null)
+        {
+            await reaper.DisposeAsync().ConfigureAwait(false);
+        }
         foreach (var id in sessions.Keys.ToArray())
         {
             if (sessions.TryRemove(id, out var session))
@@ -153,6 +246,10 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Sysop console: session {Id} ended (peer went away).")]
     private partial void LogPeerGone(string id);
 
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Sysop console: reaped idle session {Id} (no subscriber and no input for {Minutes} min).")]
+    private partial void LogReaped(string id, long minutes);
+
     // One adopted connection: its read pump, bounded backlog, and SSE subscribers.
     private sealed class ConsoleSession : IAsyncDisposable
     {
@@ -164,6 +261,9 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
 
         public INodeConnection Connection { get; }
 
+        /// <summary>Whether the idle reaper may close this session (see the type remarks).</summary>
+        public bool ReapWhenIdle { get; }
+
         private readonly StringBuilder backlog = new();
         private readonly object backlogGate = new();
         private readonly ConcurrentDictionary<Guid, ChannelWriter<string>> subscribers = new();
@@ -171,7 +271,34 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
         private Task? pump;
         private int disposed;
 
-        public ConsoleSession(INodeConnection connection) => Connection = connection;
+        // Last activity as UTC ticks (Interlocked so the reaper thread never reads a torn
+        // value): the later of "adopted", "input typed" and "last subscriber left".
+        private long lastActivityTicks;
+
+        public ConsoleSession(INodeConnection connection, bool reapWhenIdle, DateTimeOffset opened)
+        {
+            Connection = connection;
+            ReapWhenIdle = reapWhenIdle;
+            lastActivityTicks = opened.UtcTicks;
+        }
+
+        /// <summary>Stamp activity (typed input, or a subscriber arriving/leaving).</summary>
+        public void MarkActive(DateTimeOffset now) => Interlocked.Exchange(ref lastActivityTicks, now.UtcTicks);
+
+        /// <summary>
+        /// True when this session may be reaped: opted in, nobody watching, and no activity for
+        /// <paramref name="timeout"/>. An attached subscriber is activity in itself, so a quiet
+        /// console someone is watching never goes idle.
+        /// </summary>
+        public bool IsIdle(DateTimeOffset now, TimeSpan timeout)
+        {
+            if (!ReapWhenIdle || !subscribers.IsEmpty)
+            {
+                return false;
+            }
+            var last = new DateTimeOffset(Interlocked.Read(ref lastActivityTicks), TimeSpan.Zero);
+            return now - last >= timeout;
+        }
 
         public void StartPump(Action onPeerGone, ILogger logger)
             => pump = Task.Run(() => PumpAsync(onPeerGone, logger));
@@ -230,7 +357,7 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
             }
         }
 
-        public IDisposable Subscribe(out string backlogSnapshot, out ChannelReader<string>? reader)
+        public IDisposable Subscribe(TimeProvider clock, out string backlogSnapshot, out ChannelReader<string>? reader)
         {
             lock (backlogGate)
             {
@@ -245,7 +372,10 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
             var id = Guid.NewGuid();
             subscribers[id] = channel.Writer;
             reader = channel.Reader;
-            return new Unsubscriber(this, id, channel.Writer);
+            // Subscribing is activity, and so is unsubscribing: the idle countdown starts when
+            // the LAST subscriber goes away, not when the session was opened.
+            MarkActive(clock.GetUtcNow());
+            return new Unsubscriber(this, id, channel.Writer, clock);
         }
 
         private void CompleteSubscribers()
@@ -275,7 +405,8 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
             cts.Dispose();
         }
 
-        private sealed class Unsubscriber(ConsoleSession owner, Guid id, ChannelWriter<string> writer) : IDisposable
+        private sealed class Unsubscriber(ConsoleSession owner, Guid id, ChannelWriter<string> writer, TimeProvider clock)
+            : IDisposable
         {
             private int gone;
             public void Dispose()
@@ -286,6 +417,8 @@ public sealed partial class SysopConsoleManager : IAsyncDisposable
                 }
                 owner.subscribers.TryRemove(id, out _);
                 writer.TryComplete();
+                // Restart the idle countdown from the moment the watcher left.
+                owner.MarkActive(clock.GetUtcNow());
             }
         }
     }

@@ -295,63 +295,14 @@ public static class PdnPortTuningApi
         }
 
         var ct = ctx.RequestAborted;
-        ctx.Response.Headers.ContentType = "text/event-stream";
-        ctx.Response.Headers.CacheControl = "no-cache";
-        ctx.Response.Headers["X-Accel-Buffering"] = "no";
-        ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+        SseWriter.Begin(ctx);
 
         using var sub = session.Subscribe(out var reader);
 
         // Flush headers so the client's onopen fires promptly.
-        await WriteAsync(ctx, ": connected\n\n", ct);
+        await SseWriter.CommentAsync(ctx, "connected", ct);
 
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var waitRead = reader.WaitToReadAsync(ct).AsTask();
-                var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
-                var done = await Task.WhenAny(waitRead, heartbeat);
-
-                if (done == heartbeat)
-                {
-                    await WriteAsync(ctx, ": ping\n\n", ct);
-                    continue;
-                }
-
-                if (!await waitRead)
-                {
-                    // The session ended: its feed completed. Nothing more will arrive.
-                    break;
-                }
-
-                while (reader.TryRead(out var evt))
-                {
-                    var json = JsonSerializer.Serialize(evt, JsonSerializerOptions.Web);
-                    await WriteAsync(ctx, $"event: tuning\ndata: {json}\n\n", ct);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Client went away (RequestAborted) — normal SSE teardown.
-        }
-    }
-
-    private static async Task WriteAsync(HttpContext ctx, string s, CancellationToken ct)
-    {
-        try
-        {
-            await ctx.Response.WriteAsync(s, ct);
-            await ctx.Response.Body.FlushAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client disconnected mid-write — expected.
-        }
-        catch (IOException)
-        {
-            // Broken pipe to a vanished client — expected.
-        }
+        await SseWriter.PumpAsync(ctx, reader, clock, "tuning",
+            evt => JsonSerializer.Serialize(evt, JsonSerializerOptions.Web), ct);
     }
 }

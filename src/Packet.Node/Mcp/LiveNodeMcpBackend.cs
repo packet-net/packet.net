@@ -232,8 +232,14 @@ public sealed class LiveNodeMcpBackend(
                 return new KissParamResult(false, false, $"port '{req.Port}' is not up.");
             }
 
+            // ModemTransport, not Transport: on an RSSI-capable radio-attached port the modem
+            // chain wears an RssiTaggingTransport / InboundRadioTap wrapper that implements
+            // IAx25Transport only - it forwards neither ICsmaChannelParams nor the concrete
+            // modem type, so a Transport-typed write would report "not settable" on exactly the
+            // ports that have a radio (review item C027, #694). Every sibling (the supervisor's
+            // own KISS-param apply, /quality, the metrics collector) targets ModemTransport.
             var r = await Packet.Node.Core.Transports.KissParamWriter
-                .ApplyAsync(port.Transport, req.Param, req.Value, ct).ConfigureAwait(false);
+                .ApplyAsync(port.ModemTransport, req.Param, req.Value, ct).ConfigureAwait(false);
             return new KissParamResult(r.Accepted, r.RequiresRestart, r.Message);
         }, ct).ConfigureAwait(false);
     }

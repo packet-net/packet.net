@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Packet.Node.Core.Hosting;
 
 namespace Packet.Node.Api;
@@ -26,15 +25,14 @@ namespace Packet.Node.Api;
 /// the SPA closed the EventSource).
 /// </para>
 /// <para>
-/// No wall-clock here (repo rule §2.7): the heartbeat cadence comes from the
-/// injected <see cref="TimeProvider"/> via <c>Task.Delay(ts, clock, ct)</c>, so
-/// it is fake-clock-controllable in tests and free of <c>DateTime.Now</c>.
+/// The envelope, the heartbeat/read race and the client-gone write policy come from the
+/// shared <see cref="SseWriter"/>, one loop for all six of the node's SSE feeds (review item
+/// C067, #694). No wall-clock (repo rule §2.7): the cadence rides the injected
+/// <see cref="TimeProvider"/>, so it is fake-clock-controllable in tests.
 /// </para>
 /// </remarks>
 public static class PdnEventsApi
 {
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
-
     /// <summary>
     /// Map the live SSE feed at <c>GET /api/v1/events</c>. Called from the node
     /// composition root after <see cref="PdnReadApi.MapPdnReadApi"/> and before the
@@ -50,83 +48,20 @@ public static class PdnEventsApi
             // (gated `read` below — the gate is a no-op when auth is disabled.)
             var ct = ctx.RequestAborted;
 
-            // SSE wire envelope: keep the stream un-buffered end to end so a frame
-            // reaches the browser the instant it's broadcast, not on a proxy flush.
-            ctx.Response.Headers.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-cache";
-            // nginx-style: tell the reverse proxy not to buffer this response.
-            ctx.Response.Headers["X-Accel-Buffering"] = "no";
-            ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
-
+            SseWriter.Begin(ctx);
             using var sub = host.Telemetry.Subscribe(out var reader);
 
             // An initial comment flushes the headers + body so the client's onopen
             // fires promptly (before the first frame arrives).
-            await WriteAsync(ctx, ": connected\n\n", ct);
+            await SseWriter.CommentAsync(ctx, "connected", ct);
 
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    // Race a frame becoming readable against the heartbeat tick:
-                    // whichever wins, we stay responsive to both.
-                    var waitRead = reader.WaitToReadAsync(ct).AsTask();
-                    var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
-                    var done = await Task.WhenAny(waitRead, heartbeat);
-
-                    if (done == heartbeat)
-                    {
-                        await WriteAsync(ctx, ": ping\n\n", ct);
-                        continue;
-                    }
-
-                    if (!await waitRead)
-                    {
-                        // The telemetry channel completed (subscription disposed) —
-                        // nothing more will arrive.
-                        break;
-                    }
-
-                    while (reader.TryRead(out var evt))
-                    {
-                        // Web defaults camelCase the PascalCase MonitorEvent and emit
-                        // single-line JSON (no indentation) — exactly one SSE data: line.
-                        var json = JsonSerializer.Serialize(evt, JsonSerializerOptions.Web);
-                        await WriteAsync(ctx, $"event: frame\ndata: {json}\n\n", ct);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // The client went away (RequestAborted). Normal SSE teardown — the
-                // using-scoped subscription unsubscribes + completes the channel.
-            }
+            // Web defaults camelCase the PascalCase MonitorEvent and emit single-line JSON
+            // (no indentation): exactly one SSE data: line.
+            await SseWriter.PumpAsync(ctx, reader, clock, "frame",
+                evt => JsonSerializer.Serialize(evt, JsonSerializerOptions.Web), ct);
         }).RequireAuthorization(PdnAuthPolicies.Read)
           // A browser EventSource can't set an Authorization header - this marker is what
           // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
           .WithMetadata(AcceptsQueryAccessToken.Instance);
-    }
-
-    /// <summary>
-    /// Write a UTF-8 SSE chunk and flush it immediately. A mid-write cancellation
-    /// or <see cref="IOException"/> means the client vanished while we were writing
-    /// — that's a normal disconnect, not a server fault, so it's swallowed rather
-    /// than bubbling up as a 500.
-    /// </summary>
-    private static async Task WriteAsync(HttpContext ctx, string s, CancellationToken ct)
-    {
-        try
-        {
-            await ctx.Response.WriteAsync(s, ct);
-            await ctx.Response.Body.FlushAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client disconnected mid-write — expected.
-        }
-        catch (IOException)
-        {
-            // Broken pipe to a vanished client — expected.
-        }
     }
 }

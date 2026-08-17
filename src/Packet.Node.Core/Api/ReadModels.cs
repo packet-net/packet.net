@@ -41,7 +41,26 @@ public sealed record PortStatus(
     long FramesOut,
     bool? ChannelBusy = null);
 
-/// <summary>One active connected-mode circuit.</summary>
+/// <summary>
+/// One <b>live</b> connected-mode circuit: the <c>/sessions</c> family projects only sessions in
+/// an established state (<c>Connected</c> / <c>TimerRecovery</c>), never the listener's cached
+/// Disconnected peers (see <see cref="SessionLiveness"/>).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The last four fields are per-LINK, not per-session.</b> <see cref="UptimeSeconds"/>,
+/// <see cref="BytesIn"/>, <see cref="BytesOut"/> and <see cref="LastActivity"/> are read from the
+/// node's <c>(portId, peer)</c> telemetry link, which spans every circuit this node has had with
+/// that callsign on that port since the port attached, and counts <em>all</em> traffic to and
+/// from it (UI frames and beacons included), not just this circuit's I-frames. So a peer that
+/// reconnects shows the running totals and an uptime measured from when it was first heard, not
+/// from when the current circuit came up. Read them as "this peer on this port", and the
+/// per-circuit truth as <see cref="State"/> / <see cref="Vs"/> / <see cref="Vr"/> /
+/// <see cref="Window"/>, which come from the live session. Deliberate and documented rather than
+/// silently wrong (review item C063, #694): the engine's <c>Ax25Session</c> carries no
+/// per-session byte tally to report instead.
+/// </para>
+/// </remarks>
 public sealed record SessionInfo(
     string Id,
     string PortId,
@@ -51,10 +70,10 @@ public sealed record SessionInfo(
     int Vs,
     int Vr,
     int Window,
-    long UptimeSeconds,
-    long BytesIn,
-    long BytesOut,
-    string LastActivity);
+    long UptimeSeconds,      // link lifetime (this peer on this port), not this circuit's
+    long BytesIn,            // link total, all frame types
+    long BytesOut,           // link total, all frame types
+    string LastActivity);    // last frame on the link, not necessarily on this circuit
 
 /// <summary>Per-link rollup for the monitor stat strip + sessions detail.</summary>
 public sealed record LinkStats(

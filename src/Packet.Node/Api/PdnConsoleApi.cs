@@ -51,10 +51,6 @@ namespace Packet.Node.Api;
 /// </remarks>
 public static class PdnConsoleApi
 {
-    // SSE heartbeat cadence — a `: ping` comment keeps the stream warm through buffering proxies
-    // between (possibly infrequent) output chunks. Mirrors PdnSessionsApi's cadence.
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
-
     /// <summary>
     /// Map the node-command-console endpoints under <c>/api/v1</c>, admin-gated. Called from the
     /// node composition root before the SPA fallback (the specific routes win over the
@@ -97,10 +93,7 @@ public static class PdnConsoleApi
                 return;
             }
 
-            ctx.Response.Headers.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-cache";
-            ctx.Response.Headers["X-Accel-Buffering"] = "no";
-            ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+            SseWriter.Begin(ctx);
 
             // Replay the backlog first (the banner/prompt the browser missed) as one `backlog`
             // event, NOT `output`: the replay is sent on every subscription, so a client that
@@ -110,38 +103,11 @@ public static class PdnConsoleApi
             // deterministic first event and the headers flush.
             await WriteBacklogAsync(ctx, backlog, ct).ConfigureAwait(false);
 
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    var waitRead = reader.WaitToReadAsync(ct).AsTask();
-                    var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
-                    var done = await Task.WhenAny(waitRead, heartbeat).ConfigureAwait(false);
-
-                    if (done == heartbeat)
-                    {
-                        await WriteRawAsync(ctx, ": ping\n\n", ct).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    if (!await waitRead.ConfigureAwait(false))
-                    {
-                        // The manager completed the channel — the console exited (Bye) or was
-                        // closed. Nothing more will arrive; end the response.
-                        break;
-                    }
-
-                    while (reader.TryRead(out var chunk))
-                    {
-                        await WriteOutputAsync(ctx, chunk, ct).ConfigureAwait(false);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // The client went away (RequestAborted). Normal SSE teardown — the using-scoped
-                // subscription unsubscribes + completes its channel.
-            }
+            // Each chunk is JSON-encoded as a string (see WriteChunkAsync) so embedded CR/LF
+            // survive SSE's line framing. The pump ends when the console exits (Bye), the
+            // session is closed, or the client goes away.
+            await SseWriter.PumpAsync(ctx, reader, clock, "output", chunk => JsonSerializer.Serialize(chunk), ct)
+                .ConfigureAwait(false);
         })
           // A browser EventSource can't set an Authorization header - this marker is what
           // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
@@ -199,28 +165,5 @@ public static class PdnConsoleApi
         => WriteChunkAsync(ctx, "backlog", chunk, ct);
 
     private static Task WriteChunkAsync(HttpContext ctx, string eventName, string chunk, CancellationToken ct)
-    {
-        var json = JsonSerializer.Serialize(chunk);
-        return WriteRawAsync(ctx, $"event: {eventName}\ndata: {json}\n\n", ct);
-    }
-
-    // Write a UTF-8 SSE chunk and flush it immediately. A mid-write cancellation or IOException
-    // means the client vanished while we were writing — a normal disconnect, swallowed rather than
-    // bubbling up as a 500.
-    private static async Task WriteRawAsync(HttpContext ctx, string s, CancellationToken ct)
-    {
-        try
-        {
-            await ctx.Response.WriteAsync(s, ct).ConfigureAwait(false);
-            await ctx.Response.Body.FlushAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client disconnected mid-write — expected.
-        }
-        catch (IOException)
-        {
-            // Broken pipe to a vanished client — expected.
-        }
-    }
+        => SseWriter.EventAsync(ctx, eventName, JsonSerializer.Serialize(chunk), ct);
 }

@@ -181,11 +181,11 @@ export function Dashboard() {
       {/* rigs — the station-control (CAT) view for every rig-attached port */}
       <RigsPanel />
 
-      {/* recent activity — journald-style log tail */}
+      {/* recent activity - the node's own recent log lines (GET /log, an in-process ring) */}
       <Card className="mt-4">
         <div className="flex items-center justify-between p-4 pb-2">
           <CardTitle className="flex items-center gap-2"><Icon name="signal" size={15} className="text-muted-foreground" /> Recent activity</CardTitle>
-          <Badge variant="muted">journald tail</Badge>
+          <Badge variant="muted">node log</Badge>
         </div>
         <CardContent>
           <div className="space-y-0.5 font-mono text-xs">

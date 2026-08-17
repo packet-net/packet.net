@@ -61,10 +61,15 @@ paths:
     post:
       tags: [ports]
       summary: Add a port (writes config through the reconcile path)
+      description: >
+        A port edit is a read-modify-write of the whole config document, so it accepts the same
+        optional If-Match compare-and-swap as PUT /config (packet.net#694, C065).
       security: [{ bearerAuth: [admin] }]
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
       responses:
         "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
+        "412": { description: "If-Match did not match the live config version; nothing was changed" }
   /ports/{id}:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     get:
@@ -77,24 +82,35 @@ paths:
       tags: [ports]
       summary: Edit a port — full-object replace (returns the reconcile result)
       security: [{ bearerAuth: [admin] }]
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PortConfig" } } } }
       responses:
         "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
         "404": { description: no such port }
+        "412": { description: "If-Match did not match the live config version; nothing was changed" }
         "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } }
     delete:
       tags: [ports]
       summary: Remove a port
       security: [{ bearerAuth: [admin] }]
-      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } } }
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
+      responses:
+        "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }
+        "412": { description: "If-Match did not match the live config version; nothing was changed" }
   /ports/{id}/lifecycle:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     post:
       tags: [ports]
       summary: Bring a port up / down / restart
+      description: >
+        up/down flip the port's enabled flag through the config seam, so they accept the same
+        optional If-Match as the other config writes; restart changes no config.
       security: [{ bearerAuth: [operate] }]
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string, enum: [up, down, restart] } } } } } }
-      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortStatus" } } } } }
+      responses:
+        "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/PortStatus" } } } }
+        "412": { description: "If-Match did not match the live config version; nothing was changed" }
   /ports/{id}/tune:
     parameters: [{ $ref: "#/components/parameters/PortId" }]
     post:
@@ -108,16 +124,29 @@ paths:
   /sessions:
     get:
       tags: [sessions]
-      summary: Active connected-mode circuits
+      summary: Live connected-mode circuits
+      description: >
+        Only sessions in an established state (Connected / TimerRecovery). The AX.25 listener
+        keeps a disconnected peer in its cache so a returning station resumes the same state
+        machine; that cache is the engine's, not this view's (packet.net#694, C052).
       security: [{ bearerAuth: [read] }]
       responses:
         "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } }
     post:
       tags: [sessions]
       summary: Connect out (sysop interactive connect to a callsign/alias)
+      description: >
+        portId selects the port the dial leaves on and means a DIRECT dial on that port, the
+        same as the console's `C <port> <call>` (never NET/ROM-wrapped); 404 when it does not
+        name a running port. Omit it to use the default connector: the first port by id order,
+        NET/ROM-wrapped when NET/ROM connect is enabled so an alias routes (packet.net#694, C060).
       security: [{ bearerAuth: [operate] }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [target], properties: { target: { type: string, description: callsign or NET/ROM alias }, portId: { type: string } } } } } }
-      responses: { "200": { description: connecting, content: { application/json: { schema: { $ref: "#/components/schemas/SessionInfo" } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [target], properties: { target: { type: string, description: callsign or NET/ROM alias }, portId: { type: string, description: "the port to dial on (direct dial); omitted = the default connector" } } } } } }
+      responses:
+        "200": { description: connecting, content: { application/json: { schema: { $ref: "#/components/schemas/SessionInfo" } } } }
+        "404": { description: no such running port / nothing to dial on }
+        "502": { description: the dial failed (no route, refused) }
+        "504": { description: the dial timed out }
   /sessions/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     delete:
@@ -180,7 +209,14 @@ paths:
   /log:
     get:
       tags: [status]
-      summary: Recent node log tail
+      summary: Recent node log tail (newest first)
+      description: >
+        The node process's own recent log lines from a bounded in-memory ring (500 lines) that
+        a logger provider fills with whatever the configured levels admit. NOT a journald
+        reader: the node behaves the same in a container, a dev run, and under systemd. Empty
+        only on a node that has logged nothing yet (packet.net#694, C008).
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
       security: [{ bearerAuth: [read] }]
       responses:
         "200": { description: ok, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/LogLine" } } } } }
@@ -652,14 +688,27 @@ paths:
     get:
       tags: [config]
       summary: The current NodeConfig
+      description: >
+        The response carries an ETag: the config document's version token. Send it back as
+        If-Match on any config-writing request for compare-and-swap (packet.net#694, C065).
       security: [{ bearerAuth: [read] }]
-      responses: { "200": { description: ok, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } } } }
+      responses:
+        "200":
+          description: ok
+          headers:
+            ETag: { description: the config document version, schema: { type: string } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } }
     put:
       tags: [config]
       summary: Replace the whole config (atomic validate-before-apply)
+      description: >
+        Optional If-Match compare-and-swap: the version is compared inside the provider's write
+        lock, so an edit built on a document another writer has since replaced is refused with
+        412 rather than silently overwriting it. No If-Match = last-writer-wins, as before.
       security: [{ bearerAuth: [admin] }]
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NodeConfig" } } } }
-      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
+      responses: { "200": { description: applied, headers: { ETag: { description: the new config version, schema: { type: string } } }, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "412": { description: "If-Match did not match the live config version; nothing was changed" }, "422": { description: validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
     patch:
       tags: [config]
       summary: Patch a config section (form-driven edits)
@@ -677,13 +726,19 @@ paths:
       tags: [config]
       summary: The raw YAML config text (advanced editor)
       security: [{ bearerAuth: [admin] }]
-      responses: { "200": { description: ok, content: { text/plain: { schema: { type: string } } } } }
+      responses:
+        "200":
+          description: ok
+          headers:
+            ETag: { description: the config document version (send back as If-Match), schema: { type: string } }
+          content: { text/plain: { schema: { type: string } } }
     put:
       tags: [config]
       summary: Replace the raw YAML (validate-before-apply)
       security: [{ bearerAuth: [admin] }]
+      parameters: [{ $ref: "#/components/parameters/IfMatchConfigVersion" }]
       requestBody: { required: true, content: { text/plain: { schema: { type: string } } } }
-      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "422": { description: invalid, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
+      responses: { "200": { description: applied, content: { application/json: { schema: { $ref: "#/components/schemas/ReconcileResult" } } } }, "412": { description: "If-Match did not match the live config version; nothing was changed" }, "422": { description: invalid, content: { application/json: { schema: { $ref: "#/components/schemas/ValidationProblem" } } } } }
   /config/validate:
     post:
       tags: [config]
@@ -785,6 +840,15 @@ components:
       name: id
       in: path
       required: true
+      schema: { type: string }
+    IfMatchConfigVersion:
+      name: If-Match
+      in: header
+      required: false
+      description: >
+        The config document version (the ETag from GET /config or /config/raw), for
+        compare-and-swap. Omit for last-writer-wins. "*" matches any live document.
+        A mismatch is 412 and changes nothing (packet.net#694, C065).
       schema: { type: string }
 
   schemas:
@@ -1116,20 +1180,26 @@ components:
 
     SessionInfo:
       type: object
+      description: >
+        One LIVE connected-mode circuit. NOTE the last four fields are per-LINK, not
+        per-circuit: they come from the node's (port, peer) telemetry link, so they span every
+        circuit with that callsign on that port since the port attached and count all traffic
+        to/from it (UI frames and beacons included). A reconnecting peer therefore shows running
+        totals, not a fresh zero. The per-circuit truth is state/vs/vr/window (packet.net#694, C063).
       required: [id, portId, peer, role, state, vs, vr, window, uptimeSeconds, bytesIn, bytesOut, lastActivity]
       properties:
         id: { type: string }
         portId: { type: string }
         peer: { type: string }
         role: { type: string, enum: [console, interlink, bridge] }
-        state: { type: string, description: "Connected, TimerRecovery, …" }
+        state: { type: string, description: "Connected or TimerRecovery" }
         vs: { type: integer }
         vr: { type: integer }
         window: { type: integer }
-        uptimeSeconds: { type: integer }
-        bytesIn: { type: integer }
-        bytesOut: { type: integer }
-        lastActivity: { type: string }
+        uptimeSeconds: { type: integer, description: "link lifetime (this peer on this port), not this circuit's" }
+        bytesIn: { type: integer, description: "link total, all frame types" }
+        bytesOut: { type: integer, description: "link total, all frame types" }
+        lastActivity: { type: string, description: "last frame on the link, not necessarily on this circuit" }
 
     LinkStats:
       type: object

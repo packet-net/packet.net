@@ -570,11 +570,29 @@ export class PingUnavailable extends Error {
   }
 }
 
-// Pull a server-supplied { error } message off a non-OK JSON response, or fall back.
+// Pull a server-supplied message off a non-OK JSON response, or fall back.
+//
+// The node answers errors in two shapes: most endpoints use { error }, but anything that runs a
+// candidate through the config validator (the app enable/disable + identity 422s, the port and
+// config PUTs) answers a ValidationProblem, { errors: [{ path, message }] }. Reading only
+// `error` meant every validation reason was dropped and the caller showed a bare status-code
+// fallback (review item C029, #694). Try both, in that order.
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
-    const body = (await res.json()) as { error?: string };
-    return body.error ?? fallback;
+    const body = (await res.json()) as {
+      error?: string;
+      errors?: { path?: string; message?: string }[];
+    };
+    if (body.error) return body.error;
+    if (Array.isArray(body.errors) && body.errors.length > 0) {
+      const joined = body.errors
+        .map((e) => (e.path && e.path !== "(none)" ? `${e.path}: ${e.message ?? ""}` : (e.message ?? "")))
+        .map((m) => m.trim())
+        .filter(Boolean)
+        .join("; ");
+      if (joined) return joined;
+    }
+    return fallback;
   } catch {
     return fallback;
   }
@@ -928,7 +946,8 @@ function mockPing(portId: string, count: number): PingResult {
 // Enable/disable/restart an app package. Live mode POSTs the action and returns the
 // server's updated AppPackage entry; any failure (404 unknown id / inline app, 409
 // broken package or no restartable service, 503 no supervisor, 422 validation)
-// surfaces the server's { error } message as an Error so the screen can banner it.
+// surfaces the server's reason as an Error so the screen can banner it - errorMessage()
+// reads { error } AND a 422's ValidationProblem { errors: [...] } (C029, #694).
 // Mock mode mutates the in-memory fixture list in place — a refetch then shows the
 // new state, mirroring the live mutate-then-reload flow.
 async function appPackageAction(
@@ -961,9 +980,11 @@ async function appPackageAction(
 }
 
 // Set a package's packet identity (command verb / callsign pin / NET/ROM advert). Live mode
-// PUTs the identity body and returns the server's updated AppPackage; a 404 (inline/unknown
-// id) or 422 (validation — e.g. a callsign/alias collision) surfaces its { error } as an
-// Error. Mock mode patches the in-memory fixture in place so a refetch shows the new identity.
+// PUTs the identity body and returns the server's updated AppPackage; a 404 (inline/unknown id)
+// or 422 (validation - e.g. a callsign/alias collision) surfaces the server's reason as an
+// Error. The 422 body is a ValidationProblem { errors: [...] }, which errorMessage() now parses
+// (it used to read only { error }, so the reason was dropped - C029, #694). Mock mode patches
+// the in-memory fixture in place so a refetch shows the new identity.
 async function appPackageSetIdentity(id: string, body: AppIdentityRequest): Promise<AppPackage> {
   if (MODE === "mock") {
     await new Promise((r) => setTimeout(r, 120));

@@ -91,9 +91,9 @@ public sealed class NodeOarcStateSource : IOarcStateSource
 
             foreach (var session in port.Listener.ActiveSessions)
             {
-                if (session.CurrentState is not ("Connected" or "TimerRecovery"))
+                if (!Api.SessionLiveness.IsLive(session))
                 {
-                    continue;   // only a live link counts
+                    continue;   // only a live link counts (the shared predicate, C052)
                 }
 
                 var meta = linkMeta.GetValue(session, s => new LinkMeta(

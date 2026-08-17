@@ -137,41 +137,68 @@ public sealed partial class SqliteConfigProvider : IWritableConfigProvider, IDis
     }
 
     /// <inheritdoc/>
+    public string CurrentVersion => ConfigVersion.Of(Current);
+
+    /// <inheritdoc/>
     public bool TryApply(NodeConfig candidate, out IReadOnlyList<ConfigValidationError> errors)
+    {
+        var result = Apply(candidate, expectedVersion: null);
+        errors = result.Errors;
+        return result.Applied;
+    }
+
+    /// <inheritdoc/>
+    public ConfigApplyResult Apply(NodeConfig candidate, string? expectedVersion)
     {
         ArgumentNullException.ThrowIfNull(candidate);
 
         var result = validator.Validate(candidate);
         if (!result.IsValid)
         {
-            errors = ToErrors(result);
-            return false;   // rejected — nothing persisted, Current unchanged, no event
+            // Rejected: nothing persisted, Current unchanged, no event.
+            return new ConfigApplyResult(ConfigApplyOutcome.Invalid, ToErrors(result), CurrentVersion);
         }
-        errors = [];
 
         NodeConfig applied;
+        string version;
         lock (gate)
         {
             if (disposed)
             {
-                return false;
+                // A real reason, not an empty error list: the API used to turn this into a 422
+                // with no errors at all, which told the operator nothing (C065, #694).
+                return new ConfigApplyResult(ConfigApplyOutcome.StoreFailed,
+                    [new ConfigValidationError("(store)",
+                        "the config provider is shutting down; the edit was not persisted.")],
+                    ConfigVersion.Of(current));
+            }
+
+            // Compare-and-swap INSIDE the gate: this is the whole point of the check. A writer
+            // that read Current, edited it, and posted while another writer landed first is
+            // refused here rather than overwriting the whole document with its stale base.
+            var live = ConfigVersion.Of(current);
+            if (expectedVersion is not null && !string.Equals(expectedVersion, live, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ConfigApplyResult(ConfigApplyOutcome.VersionMismatch, [], live);
             }
 
             // Persist-before-advance: a DB write failure must NOT advance Current (the node
             // never runs on un-persisted config). Surface it as a failed apply.
             if (!store.Save(candidate))
             {
-                errors = [new ConfigValidationError("(store)",
-                    "the config could not be persisted to pdn.db; the running config is unchanged.")];
-                return false;
+                return new ConfigApplyResult(ConfigApplyOutcome.StoreFailed,
+                    [new ConfigValidationError("(store)",
+                        "the config could not be persisted to pdn.db; the running config is unchanged.")],
+                    live);
             }
             current = candidate;
             applied = candidate;
+            version = ConfigVersion.Of(candidate);
         }
         LogApplied(candidate.Identity.Callsign, candidate.Ports.Count);
         WarnOnConfigQuirks(applied);
         RaiseOnChange(applied);
-        return true;
+        return new ConfigApplyResult(ConfigApplyOutcome.Applied, [], version);
     }
 
     private static ConfigValidationError[] ToErrors(FluentValidation.Results.ValidationResult result)

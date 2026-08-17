@@ -460,6 +460,12 @@ export interface SoundModemQualitySnapshot {
   recent: SoundModemFrameQuality[];
 }
 export type SessionRole = "console" | "interlink" | "bridge";
+/** One LIVE connected-mode circuit (the node only lists Connected / TimerRecovery sessions).
+ *  Note the last four fields are per-LINK, not per-circuit: uptimeSeconds, bytesIn, bytesOut and
+ *  lastActivity come from the node's (port, peer) telemetry link, so they span every circuit with
+ *  that callsign on that port since the port attached and count all traffic to/from it (UI frames
+ *  and beacons included). A reconnecting peer therefore shows running totals, not a fresh zero.
+ *  The per-circuit truth is state / vs / vr / window. See packet.net#694 (C063). */
 export interface SessionInfo {
   id: string; portId: string; peer: string; role: SessionRole; state: string;
   vs: number; vr: number; window: number;

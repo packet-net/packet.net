@@ -83,7 +83,7 @@ Outbound stays **strict** (the §2 construction-path rule): `send_ui_frame` buil
 ## Auth & audit (reconciling §6)
 
 - **Read tools** require `read`; **write tools** require `operate`. The gate is the same `ScopeRequirementHandler` the REST API uses, so it **passes through when `management.auth.enabled` is off** — the default-unauthenticated loopback behaviour is unchanged, exactly like `/api/v1`.
-- **stdio = local user, no token** (the §6 table row): a process that can exec `pdn mcp` and reach loopback is already trusted at the OS level. When the node has auth on, the stdio bridge carries a local token (config/`PDN_*`), same as any loopback REST client.
+- **stdio = local user, but it still needs a token when auth is on** (correcting the §6 table row): a process that can exec `pdn mcp` and reach loopback is trusted at the OS level, but the node grants it nothing on that basis: `/api/v1` is gated by `ScopeRequirementHandler`, `management.auth.enabled` defaults to **true**, and there is no loopback exemption. So the bridge attaches an `Authorization: Bearer` header, resolved once at start from, in order: `--token <jwt>`, `PDN_NODE_TOKEN`, or the contents of the file named by `PDN_NODE_TOKEN_FILE`. Mint one with `POST /api/v1/mcp/token`. With no token it still starts (an auth-off node needs none) and any 401/403 is reported as `node requires auth: set PDN_NODE_TOKEN ...` rather than a raw `HttpRequestException`. Until #694 (review item C061) it sent no header at all, so every tool call threw on an out-of-the-box node while this doc claimed otherwise.
 - **Every write tool is audit-logged** — actor, transport, scope, payload hash — through the same `AuthLog`/`SystemLog` sink §6 mandates for write endpoints. `McpCaller` carries the actor identity (token subject over SSE; `local-stdio` over stdio).
 
 **§6 correction (recorded in the plan):** the granular `frames:read`/`ports:write`/`sessions:write`/`mcp:invoke` scope list in §6 was aspirational and never shipped; the node runs the hierarchical `read`/`operate`/`admin` model (`AuthScopes.cs`). MCP uses the shipped model. The §6 table's `mcp:invoke` cell and scope list are updated to match.
@@ -105,7 +105,21 @@ mcp:
 The SSE transport is **not** a separate socket/port — it mounts on the node's existing web
 listener (`management.http` / `management.https`), so it inherits that listener's bind, TLS,
 and auth. (The §6 "8051" note is superseded by this piggyback.) The `pdn mcp` subcommand reads
-the node base URL from `--node-url` / `PDN_NODE_URL` (default loopback) + an optional local token.
+the node base URL from `--node-url` / `PDN_NODE_URL` (default loopback) and its bearer token from
+`--token` / `PDN_NODE_TOKEN` / `PDN_NODE_TOKEN_FILE`:
+
+```jsonc
+// ~/.claude.json - the stdio bridge as Claude Code sees it
+{
+  "mcpServers": {
+    "pdn": {
+      "command": "pdn",
+      "args": ["mcp", "--node-url", "http://127.0.0.1:8080"],
+      "env": { "PDN_NODE_TOKEN_FILE": "/etc/packetnet/mcp.token" }
+    }
+  }
+}
+```
 
 ## Deployment & reachability
 

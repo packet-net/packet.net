@@ -31,17 +31,22 @@ namespace Packet.Node.Api;
 /// <em>outside</em> the gate so it doesn't block reconciles for the dial's duration.
 /// </para>
 /// <para>
-/// <b>Connect-out (v1 scope).</b> A web connect-out opens the session via the supervisor's
-/// resolved connector — which already encodes "a callsign dials out over AX.25 on the
-/// local channel, a NET/ROM alias routes across the network" (the same logic the console's
-/// <c>Connect</c> command uses) — and surfaces the new session in <c>/sessions</c>. There
-/// is <b>no</b> console-bridge / received-data streaming in v1: this endpoint does not run
-/// a node-command service over the opened connection, and there is no per-session I/O
-/// stream (the live monitor shows the frames). <c>portId</c> in the request body is
-/// validated (it must name a running port when supplied) but the dial itself goes through
-/// the supervisor's <em>default</em>-resolved connector — a per-<c>portId</c> dial selector
-/// needs a per-port connector factory on the supervisor that is a named later step; v1
-/// dials on the deterministic default port / best NET/ROM route.
+/// <b>Connect-out.</b> A web connect-out opens the session through a supervisor-resolved
+/// connector and surfaces the new session in <c>/sessions</c>. There is <b>no</b>
+/// console-bridge command service over the opened connection: the connection is adopted into
+/// the <see cref="SysopConsoleManager"/> so its output streams to the browser, but the node
+/// runs no command processor over it.
+/// </para>
+/// <para>
+/// <b>Which port a connect-out leaves on.</b> The request body's <c>portId</c> selects it, and
+/// it means the same thing the console's <c>C &lt;port&gt; &lt;call&gt;</c> means: a
+/// <em>direct</em> dial on that port. Naming a port resolves
+/// <c>Supervisor.ResolveConnector(portId)</c> (a plain same-port AX.25 dial, never NET/ROM
+/// wrapped) and 404s when the port is not running; omitting it resolves
+/// <c>ResolveDefaultConnector()</c>, which is the deterministic first port by id order,
+/// NET/ROM-wrapped when NET/ROM connect is enabled so an alias routes across the network.
+/// Until #694 (review item C060) <c>portId</c> was only validated and then ignored, so on a
+/// two-port node the SABM left on the ordinal-first port whatever the operator picked.
 /// </para>
 /// <para>
 /// <b>Ping (<c>POST /ping</c>).</b> A connectionless AX.25 TEST ping ("axping"): it sends N
@@ -69,10 +74,6 @@ public static class PdnSessionsApi
     // SABM/UA exchange can't hold a server thread indefinitely. The listener's own
     // (N2+1)·T1V backstop is usually tighter, but this is a hard outer bound.
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(30);
-
-    // SSE heartbeat cadence for the per-session output stream — a `: ping` comment keeps the
-    // stream warm through buffering proxies between (possibly infrequent) output chunks.
-    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
 
     // Per-probe TEST-echo wait for the connectionless ping. ~5s comfortably covers a
     // round trip over a slow RF / net-sim path; a peer that doesn't answer TEST simply
@@ -116,22 +117,26 @@ public static class PdnSessionsApi
             audit.RecordRest(ctx, clock, "connect_session", target.ToString(), "requested",
                 string.IsNullOrWhiteSpace(body.PortId) ? "port=default" : $"port={body.PortId}");
 
-            // Capture a connector under the gate (a short critical section — no dial here).
-            // The supervisor's resolver encodes callsign→AX.25-dial / alias→NET/ROM-route
-            // AND claims the dialled remote so its SessionAccepted handler doesn't start a
-            // node console against the station we're dialling.
+            // Capture a connector under the gate (a short critical section, no dial here).
+            // Either resolver claims the dialled remote so the supervisor's SessionAccepted
+            // handler doesn't start a node console against the station we're dialling.
             var (connector, portUnknown) = await host.RunExclusiveAsync(() =>
             {
                 if (host.Supervisor is null)
                 {
                     return Task.FromResult<(IOutboundConnector?, bool)>((null, false));
                 }
-                // If a portId was named, it must be a running port (honoured as validation;
-                // see the type remarks for the v1 default-connector dial scope).
-                if (!string.IsNullOrWhiteSpace(body.PortId) && host.Supervisor.GetPort(body.PortId!) is null)
+                if (!string.IsNullOrWhiteSpace(body.PortId))
                 {
-                    return Task.FromResult<(IOutboundConnector?, bool)>((null, true));
+                    // A named port is a DIRECT dial on that port, matching the console's
+                    // `C <port> <call>` (an explicit port is a deliberate "go out this way",
+                    // so it is never NET/ROM-wrapped). Null means the port isn't running,
+                    // which is the same 404 the old existence check produced.
+                    var named = host.Supervisor.ResolveConnector(body.PortId!);
+                    return Task.FromResult<(IOutboundConnector?, bool)>((named, named is null));
                 }
+                // No port named: the deterministic default (first port by id order),
+                // NET/ROM-wrapped when NET/ROM connect is on so an alias routes.
                 return Task.FromResult((host.Supervisor.ResolveDefaultConnector(), false));
             }, ct).ConfigureAwait(false);
 
@@ -279,10 +284,7 @@ public static class PdnSessionsApi
 
             // SSE wire envelope — un-buffered end to end so a chunk reaches the browser the
             // instant the pump broadcasts it, not on a proxy flush.
-            ctx.Response.Headers.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-cache";
-            ctx.Response.Headers["X-Accel-Buffering"] = "no";
-            ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+            SseWriter.Begin(ctx);
 
             // Replay the backlog first (the banner/prompt the browser missed) as one `backlog`
             // event, NOT `output`: the replay is sent on every subscription, so a client that
@@ -292,40 +294,10 @@ public static class PdnSessionsApi
             // deterministic first event and the headers flush.
             await WriteBacklogAsync(ctx, backlog, ct).ConfigureAwait(false);
 
-            try
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    // Race a chunk becoming readable against the heartbeat tick (injected
-                    // TimeProvider — repo rule §2.7, no wall-clock), staying responsive to both.
-                    var waitRead = reader.WaitToReadAsync(ct).AsTask();
-                    var heartbeat = Task.Delay(HeartbeatInterval, clock, ct);
-                    var done = await Task.WhenAny(waitRead, heartbeat).ConfigureAwait(false);
-
-                    if (done == heartbeat)
-                    {
-                        await WriteRawAsync(ctx, ": ping\n\n", ct).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    if (!await waitRead.ConfigureAwait(false))
-                    {
-                        // The manager completed the channel — the peer went away or the
-                        // session was closed. Nothing more will arrive; end the response.
-                        break;
-                    }
-
-                    while (reader.TryRead(out var chunk))
-                    {
-                        await WriteOutputAsync(ctx, chunk, ct).ConfigureAwait(false);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // The client went away (RequestAborted). Normal SSE teardown — the
-                // using-scoped subscription unsubscribes + completes its channel.
-            }
+            // Each chunk is JSON-encoded as a string (see WriteChunkAsync) so embedded CR/LF
+            // survive SSE's line framing.
+            await SseWriter.PumpAsync(ctx, reader, clock, "output", chunk => JsonSerializer.Serialize(chunk), ct)
+                .ConfigureAwait(false);
         })
           // A browser EventSource can't set an Authorization header - this marker is what
           // lets the JWT ride as ?access_token= on THIS route (see AcceptsQueryAccessToken).
@@ -481,28 +453,5 @@ public static class PdnSessionsApi
         => WriteChunkAsync(ctx, "backlog", chunk, ct);
 
     private static Task WriteChunkAsync(HttpContext ctx, string eventName, string chunk, CancellationToken ct)
-    {
-        var json = JsonSerializer.Serialize(chunk);
-        return WriteRawAsync(ctx, $"event: {eventName}\ndata: {json}\n\n", ct);
-    }
-
-    // Write a UTF-8 SSE chunk and flush it immediately. A mid-write cancellation or
-    // IOException means the client vanished while we were writing — a normal disconnect, not
-    // a server fault, so it's swallowed rather than bubbling up as a 500.
-    private static async Task WriteRawAsync(HttpContext ctx, string s, CancellationToken ct)
-    {
-        try
-        {
-            await ctx.Response.WriteAsync(s, ct).ConfigureAwait(false);
-            await ctx.Response.Body.FlushAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client disconnected mid-write — expected.
-        }
-        catch (IOException)
-        {
-            // Broken pipe to a vanished client — expected.
-        }
-    }
+        => SseWriter.EventAsync(ctx, eventName, JsonSerializer.Serialize(chunk), ct);
 }
