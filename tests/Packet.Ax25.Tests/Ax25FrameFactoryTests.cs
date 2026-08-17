@@ -275,4 +275,29 @@ public class Ax25FrameFactoryTests
         parsed.Pid.Should().Be((byte)0xCC);
         parsed.Info.ToArray().Should().Equal(payload);
     }
+
+    // ─── Digipeater-count boundary on the shared assembly path ──────────
+
+    [Fact]
+    public void Non_UI_Factory_Accepts_Exactly_Eight_Digipeaters()
+    {
+        // §3.12.5 caps repeaters at 8; the boundary value must be accepted on
+        // the UFrameAt path (used by every non-UI factory), not just on Ui.
+        var eight = Enumerable.Range(0, 8).Select(i => new Callsign($"D{i}", 0));
+        var frame = Ax25Frame.Sabm(Dest, Src, pollBit: true, digipeaters: eight);
+
+        frame.Digipeaters.Count.Should().Be(8);
+        frame.Digipeaters[7].ExtensionBit.Should().BeTrue("E-bit lands on the last digipeater");
+        frame.Digipeaters.Should().OnlyContain(d => d.CrhBit == false,
+            "has-been-repeated starts clear on every repeater slot");
+    }
+
+    [Fact]
+    public void Non_UI_Factory_Rejects_Nine_Digipeaters()
+    {
+        var nine = Enumerable.Range(0, 9).Select(i => new Callsign($"D{i}", 0));
+        var act = () => Ax25Frame.Sabm(Dest, Src, pollBit: true, digipeaters: nine);
+
+        act.Should().Throw<ArgumentException>();
+    }
 }
