@@ -213,14 +213,12 @@ public sealed class PeerCapabilityCache
     /// there). <see cref="PeerCapabilityRecord.LastRefused"/> is stamped, as for a degrade.
     /// </para>
     /// <para>
-    /// <b>The inference this makes, deliberately.</b> "No answer" is equally explained by "the
-    /// station is off air", so the negative is not a proof that the peer dislikes SABME. It is
-    /// recorded anyway because the ACTION it drives is cheap and safe - the next dial leads with a
-    /// SABM, which every v2.2 peer also answers - while the alternative (re-probing SABME every
-    /// time) costs a full connect budget on every attempt to a silent peer. The cost is bounded by
-    /// <see cref="StaleAfter"/>: a genuinely v2.2 peer that happened to be off air is re-probed
-    /// after ~30 days, and a port that must never degrade sets <c>link.dial: v22</c>, under which
-    /// this is never called.
+    /// <b>When the caller records it.</b> "No answer to a SABME" is equally explained by "the
+    /// station is off air", so the connector records this negative only once the peer has PROVED
+    /// it is on air by answering the mod-8 retry (a UA, or even a DM refusal). Silence to both
+    /// versions teaches nothing and records nothing: leading with a SABM would cost a v2.2-capable
+    /// peer its mod-128 window and SREJ for the whole <see cref="StaleAfter"/> window. A port that
+    /// must never degrade sets <c>link.dial: v22</c>, under which this is never called.
     /// </para>
     /// </remarks>
     public void RecordSilentToExtended(string portId, string peer)

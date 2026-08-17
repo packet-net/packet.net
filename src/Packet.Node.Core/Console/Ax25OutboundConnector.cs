@@ -125,22 +125,33 @@ public sealed class Ax25OutboundConnector : IOutboundConnector
                     // here, at the node's dial-policy layer, where it is a named per-port setting
                     // rather than a hidden library behaviour.
                     //
-                    // Learn it first (so even if this retry also fails, the NEXT dial to this peer
-                    // on this port leads with a SABM), then retry once as v2.0 so the operator's
-                    // FIRST connect still succeeds instead of costing them a stalled attempt.
-                    // Retrying on the SAME cached session is safe: the SDL reaches RC == N2 and
-                    // returns to Disconnected a full T1V before ConnectAsync's (N2+1) x T1V budget
-                    // expires, so a fresh DL-CONNECT-request re-enters figc4.1 Establish Data Link
-                    // and sends a SABM. Proven on the wire by SilentSabmePeerDialTests.
-                    cache?.RecordSilentToExtended(PortId, peer);
-
-                    // The version is settled (mod-8); only the XID probe is still a decision.
+                    // Retry once as v2.0 so the operator's FIRST connect still succeeds instead of
+                    // costing them a stalled attempt. Retrying on the SAME cached session is safe:
+                    // the SDL reaches RC == N2 and returns to Disconnected a full T1V before
+                    // ConnectAsync's (N2+1) x T1V budget expires, so a fresh DL-CONNECT-request
+                    // re-enters figc4.1 Establish Data Link and sends a SABM. Proven on the wire by
+                    // SilentSabmePeerDialTests.
+                    //
+                    // The negative ("silent to SABME") is learned only if the peer then PROVES it is
+                    // on air by answering the mod-8 attempt (a UA, or even a DM refusal). Silence to
+                    // both is "off air", not "v2.0 only", and must not demote a v2.2-capable peer to
+                    // mod-8 for the whole re-probe window.
                     bool retryXid = cache?.PlanPreConnectXid(PortId, peer, link)
                         ?? PeerCapabilityCache.PlanPreConnectXidWithoutCache(link);
 
-                    session = await listener
-                        .ConnectAsync(target, local, extended: false, retryXid, cancellationToken)
-                        .ConfigureAwait(false);
+                    try
+                    {
+                        session = await listener
+                            .ConnectAsync(target, local, extended: false, retryXid, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        if (!heard.PeerSaidNothing)
+                        {
+                            cache?.RecordSilentToExtended(PortId, peer);
+                        }
+                    }
 
                     // The retry RETURNED: record what the mod-8 dial observed. dialedExtended:false
                     // leaves the silent-to-SABME negative we just wrote standing (RecordOutcome only

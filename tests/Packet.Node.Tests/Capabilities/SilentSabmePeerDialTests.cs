@@ -165,6 +165,29 @@ public sealed class SilentSabmePeerDialTests
     }
 
     [Fact]
+    public async Task An_off_air_peer_that_answers_neither_sabme_nor_sabm_records_no_negative()
+    {
+        // Silence to BOTH versions is "off air", not "v2.0 only": learning a silent-to-SABME
+        // negative here would demote a v2.2-capable peer that merely was not listening to
+        // mod-8 for the whole re-probe window.
+        var cache = new PeerCapabilityCache();
+        var (a, _) = InMemoryRadio.CreatePair();   // nobody on the far end at all
+        var caller = CallerListener(a);
+        await caller.StartAsync();
+
+        var connector = new Ax25OutboundConnector(
+            PortId, caller, claim: null, localOverride: null, cache: cache,
+            linkPolicy: () => Link(LinkDialPreference.Auto));
+
+        var dial = async () => { await using var _ = await connector.ConnectAsync(Target); };
+        await dial.Should().ThrowAsync<Exception>("nobody answers either the SABME or the SABM retry");
+
+        cache.All().Should().BeEmpty("silence to both versions teaches nothing about the peer's AX.25 version");
+
+        await caller.DisposeAsync();
+    }
+
+    [Fact]
     public async Task The_learned_negative_makes_the_next_dial_on_that_port_lead_with_a_sabm()
     {
         var cache = new PeerCapabilityCache();
