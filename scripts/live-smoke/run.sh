@@ -117,6 +117,13 @@ app="$scratch/app"
 echo "==> staging the node into $app"
 cp -a "$(dirname "$PDN_BIN")" "$app"
 app_bin="$app/$(basename "$PDN_BIN")"
+# The staged binary is a framework-dependent apphost: it finds the runtime via DOTNET_ROOT or the
+# machine-wide install locations. A runner whose dotnet lives somewhere else (a user-local SDK)
+# builds the app fine but the apphost then fails with "You must install .NET". Point it at the
+# very dotnet that built it unless the environment already says.
+if [[ -z "${DOTNET_ROOT:-}" ]] && command -v dotnet >/dev/null 2>&1; then
+  export DOTNET_ROOT="$(dirname "$(readlink -f "$(command -v dotnet)")")"
+fi
 
 # ---------------------------------------------------------------- build the SPA (live)
 ui="$repo/web/packetnet-ui"
