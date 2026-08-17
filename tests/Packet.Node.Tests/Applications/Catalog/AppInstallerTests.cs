@@ -249,6 +249,73 @@ public class AppInstallerTests
         File.Exists(Path.Combine(apps.Path, "..", "evil")).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("../evil")]         // walks out of appsRoot
+    [InlineData("a/b")]             // not a direct child
+    [InlineData("UPPER")]           // outside the catalog's [a-z0-9-] rule
+    [InlineData("with space")]
+    public async Task An_uploaded_manifest_id_that_is_not_a_plain_package_name_is_refused(string id)
+    {
+        using var apps = new TempDir("apps");
+        using var fix = new TempDir("fix");
+
+        // The id inside the uploaded manifest becomes a directory name under appsRoot. The
+        // tar-entry traversal guard covers entry NAMES only, so an id of `..` walked straight
+        // out of the apps root and overwrote whatever it landed on - pdn.db included (C078).
+        var pdnapp = CatalogTestSupport.BuildPdnapp(fix, "bad-id.pdnapp", new Dictionary<string, string>
+        {
+            ["pdn-app.yaml"] = CatalogTestSupport.ManifestYaml(id, "1.0.0"),
+        });
+
+        var installer = NewInstaller(new FakeArtifactFetcher(), apps.Path);
+        await using var stream = File.OpenRead(pdnapp);
+        var outcome = await installer.InstallFromUploadAsync(stream, default);
+
+        outcome.Ok.Should().BeFalse();
+        outcome.Error.Should().Contain("[a-z0-9-]");
+        Directory.EnumerateFileSystemEntries(apps.Path).Should().BeEmpty("nothing may be committed for a rejected id");
+    }
+
+    [Fact]
+    public async Task An_absolute_uploaded_manifest_id_cannot_escape_the_apps_root()
+    {
+        using var apps = new TempDir("apps");
+        using var fix = new TempDir("fix");
+        using var elsewhere = new TempDir("elsewhere");
+
+        // A ROOTED id discards appsRoot entirely under Path.Combine - the id below would have
+        // written into the other temp dir.
+        var target = Path.Combine(elsewhere.Path, "x");
+        var pdnapp = CatalogTestSupport.BuildPdnapp(fix, "rooted.pdnapp", new Dictionary<string, string>
+        {
+            ["pdn-app.yaml"] = CatalogTestSupport.ManifestYaml(target, "1.0.0"),
+        });
+
+        var installer = NewInstaller(new FakeArtifactFetcher(), apps.Path);
+        await using var stream = File.OpenRead(pdnapp);
+        var outcome = await installer.InstallFromUploadAsync(stream, default);
+
+        outcome.Ok.Should().BeFalse();
+        Directory.Exists(target).Should().BeFalse();
+        Directory.EnumerateFileSystemEntries(elsewhere.Path).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("../evil")]
+    [InlineData("a/b")]
+    public async Task Uninstall_and_lookup_refuse_an_id_that_does_not_resolve_inside_the_apps_root(string id)
+    {
+        using var apps = new TempDir("apps");
+        var installer = NewInstaller(new FakeArtifactFetcher(), apps.Path);
+
+        // Containment is asserted at every site that turns an id into a path, not only at
+        // install: an uninstall of `../evil` must not delete files outside the root either.
+        var outcome = await installer.UninstallAsync(id, default);
+        outcome.Ok.Should().BeFalse();
+
+        installer.GetInstalled(id).Should().BeNull();
+    }
+
     // ---- uninstall -------------------------------------------------------------------------
 
     [Fact]

@@ -45,6 +45,15 @@ if (args.Length > 0 && args[0] == "config")
     return await PdnConfigCli.RunAsync(args);
 }
 
+// `pdn auth rotate-signing-key` - the offline token-revocation verb. A node-minted JWT is
+// stateless, so replacing the signing key in pdn.db is the ONLY way to invalidate one (the
+// long-lived MCP bearer especially). Short-circuits before the web host like the two above:
+// it opens the user store over the resolved pdn.db and nothing else. See PdnAuthCli.
+if (args.Length > 0 && args[0] == "auth")
+{
+    return await PdnAuthCli.RunAsync(args);
+}
+
 var configPath = ResolveConfigPath(args);
 var dbPath = ResolveDbPath(args);
 var seedPath = ResolveSeedPath();
@@ -320,6 +329,15 @@ static bool IsSseFeedPath(PathString path) =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Do NOT rename inbound claims. The default (true) rewrites `sub` to the long
+        // ClaimTypes.NameIdentifier URI BEFORE the identity is built, which defeats the
+        // NameClaimType = "sub" pinned in JwtTokenService.ValidationParameters: Identity.Name
+        // and FindFirstValue("sub") both came back null, so every audited REST write was
+        // attributed to "owner", the MCP mint minted `mcp:owner`, and /system + the MCP-SSE
+        // caller read "anonymous" (review item C011). Off, the token's claims reach the
+        // principal exactly as issued. PrincipalName is the shared reader either way.
+        options.MapInboundClaims = false;
+
         if (tokenService is not null)
         {
             options.TokenValidationParameters = tokenService.ValidationParameters;
@@ -977,7 +995,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
     {
         var urls = string.Join(" ", PanelUrls.For(http.Bind, http.Port, MachineAddresses()));   // local (CA1873)
         PanelLog.PanelUp(logger, urls);
-        if (app.Services.GetRequiredService<IUserStore>().Count() == 0)
+        if (app.Services.GetRequiredService<IUserStore>().TryCount() == 0)
         {
             PanelLog.SetupPending(logger);
         }

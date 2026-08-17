@@ -222,6 +222,24 @@ public sealed partial class SqliteWebAuthnCredentialStore : IWebAuthnCredentialS
         }
     }
 
+    /// <inheritdoc/>
+    public int DeleteByUser(string username)
+    {
+        ArgumentNullException.ThrowIfNull(username);
+        try
+        {
+            using var conn = Open();
+            return conn.Execute(
+                "DELETE FROM webauthn_credential WHERE username = @u;",
+                new { u = username });
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return 0;
+        }
+    }
+
     private static List<WebAuthnCredentialRecord> Project(List<CredentialRow> rows)
     {
         var list = new List<WebAuthnCredentialRecord>(rows.Count);

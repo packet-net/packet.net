@@ -36,7 +36,13 @@ const TABS: { id: FormTab; label: string }[] = [
 export function Config() {
   const navigate = useNavigate();
   const { has } = useAuth();
-  const canApply = has("admin"); // config write is admin-scoped (server is the real gate)
+  // A config write is `operate` on the server (plan.md §5.4 - PUT /config + /config/raw are
+  // both operate-gated), so gating Review-and-apply on admin locked operators out of the
+  // editor they are entitled to use (review item C020). The two panels below stay `admin`:
+  // both drive changes the server itself now requires admin for (the passkey hostname is part
+  // of management.auth) or has always required admin for (the self-update).
+  const canApply = has("operate");
+  const canAdmin = has("admin");
   const { data, reload } = useQuery(api.config, []);
 
   const [tab, setTab] = useState<FormTab>("identity");
@@ -129,7 +135,7 @@ export function Config() {
           <div className="flex items-center gap-2">
             <Tabs active={mode} onChange={(m) => setMode(m as "forms" | "raw")} tabs={[{ id: "forms", label: "Forms" }, { id: "raw", label: "Raw YAML" }]} />
             <Button size="sm" disabled={!canApply || (mode === "forms" && dirty.length === 0)} onClick={openReview}
-              title={canApply ? undefined : "Config changes require the admin scope"}>
+              title={canApply ? undefined : "Config changes require the operate scope"}>
               <Icon name="check" size={14} /> Review &amp; apply
               {dirty.length > 0 && <Badge variant="secondary" className="ml-1">{dirty.length}</Badge>}
             </Button>
@@ -234,8 +240,8 @@ export function Config() {
                     <Field label="Port"><Input type="number" value={cfg.management.telnet.port} onChange={(e) => set("management.telnet.port", +e.target.value, "port-restart")} className="font-mono" /></Field>
                   </div>
                 </div>
-                <RemoteAccessSection cfg={cfg} canAdmin={canApply} onAdopted={reload} />
-                <SystemPanel canAdmin={canApply} />
+                <RemoteAccessSection cfg={cfg} canAdmin={canAdmin} onAdopted={reload} />
+                <SystemPanel canAdmin={canAdmin} />
               </section>
             )}
 

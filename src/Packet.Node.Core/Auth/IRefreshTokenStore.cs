@@ -43,6 +43,14 @@ public interface IRefreshTokenStore
     /// fault / empty family).</summary>
     int RevokeFamily(string family);
 
+    /// <summary>Revoke every token belonging to <paramref name="username"/>, across every
+    /// family - the account-lifecycle kill (delete, and any future password reset). Like
+    /// <see cref="RevokeFamily"/> this is a hard kill with no leeway stamp. Without it a
+    /// deleted account's refresh families survived in the table and a recreated same-name
+    /// account revived them (review item C055). Returns the number of rows revoked (0 on
+    /// fault / nothing live).</summary>
+    int RevokeAllForUser(string username);
+
     /// <summary>Whether <paramref name="family"/> still has at least one non-revoked
     /// token — i.e. the session is alive. Guards the reuse-leeway grace path so it can
     /// only extend a live session, never resurrect a logged-out / theft-burned family.

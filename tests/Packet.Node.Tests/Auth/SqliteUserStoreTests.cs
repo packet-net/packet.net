@@ -29,7 +29,7 @@ public sealed class SqliteUserStoreTests : IDisposable
     public void Empty_store_counts_zero()
     {
         var store = Open();
-        store.Count().Should().Be(0);
+        store.TryCount().Should().Be(0);
         store.FindByUsername("nobody").Should().BeNull();
     }
 
@@ -40,7 +40,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         var user = NewUser("alice", AuthScopes.Admin);
         store.Create(user).Should().BeTrue();
 
-        store.Count().Should().Be(1);
+        store.TryCount().Should().Be(1);
         var found = store.FindByUsername("alice");
         found.Should().NotBeNull();
         found!.Username.Should().Be("alice");
@@ -55,7 +55,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         var store = Open();
         store.Create(NewUser("bob")).Should().BeTrue();
         store.Create(NewUser("bob", AuthScopes.Admin)).Should().BeFalse();
-        store.Count().Should().Be(1);
+        store.TryCount().Should().Be(1);
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         var store = Open();
         store.Create(NewUser("carol")).Should().BeTrue();
         store.Delete("carol").Should().BeTrue();
-        store.Count().Should().Be(0);
+        store.TryCount().Should().Be(0);
         store.Delete("carol").Should().BeFalse();   // already gone
     }
 
@@ -109,7 +109,7 @@ public sealed class SqliteUserStoreTests : IDisposable
         Open().Create(NewUser("ed", AuthScopes.Operate)).Should().BeTrue();
 
         var reopened = Open();
-        reopened.Count().Should().Be(1);
+        reopened.TryCount().Should().Be(1);
         reopened.FindByUsername("ed")!.Scope.Should().Be(AuthScopes.Operate);
     }
 
@@ -256,6 +256,54 @@ public sealed class SqliteUserStoreTests : IDisposable
 
         // Re-opening (re-running the migration) is a no-op and preserves the data.
         Open().FindByUsername("legacy")!.TotpSecret.Should().Be("JBSWY3DPEHPK3PXP");
+    }
+
+    // --- the one-shot bootstrap + key rotation (review items C026 / C056) --------
+
+    [Fact]
+    public void Try_count_reads_a_number_and_a_broken_store_reads_as_unknown()
+    {
+        var store = Open();
+        store.TryCount().Should().Be(0);
+        store.Create(NewUser("gina")).Should().BeTrue();
+        store.TryCount().Should().Be(1);
+
+        // A store that cannot be read must NOT read as zero: zero is the open gate for the
+        // unauthenticated POST /setup bootstrap, so a fault that looked like "no users" handed
+        // an unauthenticated caller a node that already had an owner (C026).
+        var broken = new SqliteUserStore(Path.Combine(dir, "not-a-directory", "pdn.db"));
+        broken.TryCount().Should().BeNull();
+    }
+
+    [Fact]
+    public void Create_first_only_lands_while_the_store_is_empty()
+    {
+        var store = Open();
+
+        store.CreateFirst(NewUser("first", AuthScopes.Admin)).Should().BeTrue();
+
+        // The one-shot is in the SQL, so it holds even for a DIFFERENT username - which is
+        // exactly the race a read-then-write check cannot close.
+        store.CreateFirst(NewUser("second", AuthScopes.Admin)).Should().BeFalse();
+        store.CreateFirst(NewUser("first", AuthScopes.Admin)).Should().BeFalse();
+        store.TryCount().Should().Be(1);
+        store.FindByUsername("second").Should().BeNull();
+    }
+
+    [Fact]
+    public void Rotating_the_signing_key_replaces_it_and_persists()
+    {
+        var store = Open();
+        var original = store.GetOrCreateSigningKey();
+        original.Should().NotBeNull();
+
+        var rotated = store.RotateSigningKey();
+        rotated.Should().NotBeNull();
+        rotated!.Length.Should().Be(32);
+        rotated.Should().NotEqual(original!);   // every token signed with the old key is dead
+
+        // The new key is what a restarted node reads.
+        Open().GetOrCreateSigningKey().Should().Equal(rotated);
     }
 
     public void Dispose()

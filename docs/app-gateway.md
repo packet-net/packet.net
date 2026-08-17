@@ -47,7 +47,12 @@ For `GET|POST|… /apps/{id}/<path>?<query>`:
     otherwise a form posted from the proxied page escapes to pdn's root and breaks.
 
   Read these to know who is viewing. (v1 does not cryptographically sign them — see Trust.)
-- **Forward.** Method, headers (minus hop-by-hop), query, and the request/response bodies are streamed through unchanged (so SSE / chunked responses work).
+- **Credential stripping.** pdn removes the viewer's `Authorization` header and the `pdn_at`
+  cookie before forwarding (the app's own cookies are re-emitted untouched). The app is told
+  *who* is viewing; it is never handed the credential that proves it - so a compromised or
+  merely chatty upstream can't replay a panel token against `/api/v1`, and pdn's session token
+  can't end up in the app's request log.
+- **Forward.** Method, the remaining headers (minus hop-by-hop), query, and the request/response bodies are streamed through unchanged (so SSE / chunked responses work).
 
 ## Trust (read this)
 

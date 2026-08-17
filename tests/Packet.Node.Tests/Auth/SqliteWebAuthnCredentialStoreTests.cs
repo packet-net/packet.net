@@ -131,6 +131,25 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void Delete_by_user_drops_only_that_users_credentials()
+    {
+        var store = Open();
+        store.Add(NewCred([1, 1], "alice")).Should().BeTrue();
+        store.Add(NewCred([2, 2], "alice")).Should().BeTrue();
+        store.Add(NewCred([3, 3], "bob")).Should().BeTrue();
+
+        // Credentials are keyed by username with no foreign key, so deleting the user left
+        // them behind - and a recreated same-name account inherited them (C055).
+        store.DeleteByUser("alice").Should().Be(2);
+
+        store.GetByUser("alice").Should().BeEmpty();
+        store.GetByCredentialId([1, 1]).Should().BeNull();
+        store.GetByUser("bob").Should().HaveCount(1);
+
+        store.DeleteByUser("alice").Should().Be(0);   // idempotent
+    }
+
+    [Fact]
     public void A_broken_store_degrades_and_never_throws()
     {
         // A db path under a non-existent directory can't be opened → the schema init
@@ -142,6 +161,7 @@ public sealed class SqliteWebAuthnCredentialStoreTests : IDisposable
         broken.GetByCredentialId(new byte[] { 1 }).Should().BeNull();
         broken.GetAllCredentialIds().Should().BeEmpty();
         broken.Delete(new byte[] { 1 }, "alice").Should().BeFalse();
+        broken.DeleteByUser("alice").Should().Be(0);
         // UpdateSignCount swallows the fault (best-effort) — must not throw.
         broken.Invoking(b => b.UpdateSignCount(new byte[] { 1 }, 2, DateTimeOffset.UnixEpoch))
             .Should().NotThrow();

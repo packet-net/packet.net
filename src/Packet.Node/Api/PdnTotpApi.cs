@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Packet.Core;
+using Packet.Node.Core.Audit;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
 
@@ -119,6 +120,7 @@ public static class PdnTotpApi
             IUserStore users,
             TotpEnrollmentCache? pending,
             ILoggerFactory logs,
+            IAuditLog auditLog,
             TimeProvider clock) =>
         {
             var audit = logs.CreateLogger(AuditCategory);
@@ -188,6 +190,9 @@ public static class PdnTotpApi
             }
 
             AuthLog.TotpEnrolled(audit, username, ip, callsign);
+            // An over-RF credential now exists for this callsign - an owner-visible event
+            // (C058). The callsign is the binding, never the secret.
+            AuthAudit.Record(auditLog, http, clock, "totp_enrolled", username, "ok", $"callsign={callsign}");
             return Results.Ok(new EnrollCompleteResponse(true, callsign));
         });
 
@@ -207,7 +212,7 @@ public static class PdnTotpApi
 
         // Remove the signed-in user's over-RF credential. Idempotent (204 even if there was
         // nothing to clear — there is nothing to leak).
-        group.MapDelete("/enroll", (HttpContext http, IUserStore users, ILoggerFactory logs) =>
+        group.MapDelete("/enroll", (HttpContext http, IUserStore users, ILoggerFactory logs, IAuditLog auditLog, TimeProvider clock) =>
         {
             var username = PrincipalUsername(http);
             if (username is null)
@@ -219,6 +224,7 @@ public static class PdnTotpApi
             var ip = ClientIp(http);
             users.ClearTotp(username);   // best-effort; a no-op clear is still a 204
             AuthLog.TotpCleared(audit, username, ip);
+            AuthAudit.Record(auditLog, http, clock, "totp_cleared", username, "ok", "");
             return Results.NoContent();
         });
 
@@ -243,18 +249,7 @@ public static class PdnTotpApi
     // — never from the request body — so a user can only act on themselves. (Same resolution
     // as PdnWebAuthnApi: the JWT carries the username in `sub`, which can surface as
     // Identity.Name, the raw `sub` claim, or the mapped NameIdentifier.)
-    private static string? PrincipalUsername(HttpContext http)
-    {
-        var user = http.User;
-        if (user?.Identity?.IsAuthenticated != true)
-        {
-            return null;
-        }
-        var name = user.Identity!.Name
-            ?? user.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
-            ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        return string.IsNullOrWhiteSpace(name) ? null : name;
-    }
+    private static string? PrincipalUsername(HttpContext http) => PrincipalName.Resolve(http.User);
 
     private static string ClientIp(HttpContext http) =>
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown";

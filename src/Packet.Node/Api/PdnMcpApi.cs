@@ -17,11 +17,14 @@ namespace Packet.Node.Api;
 /// middleware unchanged. Admin-gated + audited. See docs/mcp-design.md § Deployment.
 /// </summary>
 /// <remarks>
-/// The minted token is a stateless JWT, so it cannot be individually revoked — to
-/// invalidate one, rotate the node's signing key (which invalidates ALL tokens).
-/// That's the tradeoff of a static header credential; the <c>read</c> default + a
-/// bounded lifetime keep the blast radius small. Fine-grained (per-token) revocation
-/// would need a jti denylist store — a hardening follow-up.
+/// The minted token is a stateless JWT, so it cannot be individually revoked. What DOES
+/// revoke it: setting <c>mcp.enabled</c> (or <c>mcp.sse.enabled</c>) false, which unmaps
+/// <c>/mcp</c> and leaves every MCP token inert; letting it expire; or
+/// <c>pdn auth rotate-signing-key</c> + a restart, which replaces the node's signing key and
+/// invalidates ALL tokens (see <c>Cli.PdnAuthCli</c> - the verb the docs promised and nothing
+/// implemented until review item C056). That's the tradeoff of a static header credential;
+/// the <c>read</c> default + a bounded lifetime keep the blast radius small. Fine-grained
+/// (per-token) revocation would need a jti denylist store - a hardening follow-up.
 /// </remarks>
 public static class PdnMcpApi
 {
@@ -62,7 +65,10 @@ public static class PdnMcpApi
             }
 
             int days = Math.Clamp(config.Current.Mcp.TokenLifetimeDays, 1, 3650);
-            string actor = ctx.User.Identity?.Name ?? "owner";
+            // The token's subject is the MINTING user (mcp:<username>), so it must be the real
+            // one: with inbound claim mapping on, this read "owner" for every authenticated
+            // admin and every node's tokens were indistinguishable (C011).
+            string actor = PrincipalName.Or(ctx.User, "owner");
             // MCP audience: this token reaches /mcp only, never the wider control API.
             var (token, expires) = tokens.Issue($"mcp:{actor}", scope, TimeSpan.FromDays(days), JwtTokenService.McpAudience);
 

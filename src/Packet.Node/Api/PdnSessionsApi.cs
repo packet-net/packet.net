@@ -8,6 +8,8 @@ using Packet.Ax25.Session;
 using Packet.Core;
 using Packet.Node.Core.Api;
 using Packet.Node.Core.Audit;
+using Packet.Node.Core.Auth;
+using Packet.Node.Core.Configuration;
 using Packet.Node.Core.Console;
 using Packet.Node.Core.Hosting;
 
@@ -84,6 +86,29 @@ public static class PdnSessionsApi
     // tie the link up indefinitely (worst case MaxPingCount × PerPingTimeout sequentially).
     private const int MinPingCount = 1;
     private const int MaxPingCount = 20;
+
+    // The SysopConsoleManager holds BOTH adopted AX.25 connect-outs and node-console
+    // sessions in one dictionary, and a console session's id is "console:"+guid
+    // (NodeHostedService). These /sessions routes are `operate`; the node console has its own
+    // admin-gated routes (PdnConsoleApi) precisely because a command shell is the most
+    // privileged surface on the node - so an operate caller passing a console: id here reached
+    // it through the wrong gate (review item C064). Such an id is NOT FOUND for anyone below
+    // admin; auth off passes through like every other gate.
+    private static bool IsForeignConsoleId(string id, HttpContext ctx, IConfigProvider config)
+    {
+        if (!id.StartsWith(ConsoleIdPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        if (!config.Current.Management.Auth.Enabled)
+        {
+            return false;
+        }
+        return !AuthScopes.Satisfies(ctx.User.FindFirst(AuthScopes.ScopeClaim)?.Value, AuthScopes.Admin);
+    }
+
+    /// <summary>The id prefix <c>NodeHostedService</c> stamps on a node-console session.</summary>
+    private const string ConsoleIdPrefix = "console:";
 
     /// <summary>
     /// Map the session-action + ping endpoints under <c>/api/v1</c>. Called from the node
@@ -200,8 +225,13 @@ public static class PdnSessionsApi
         // disposes the connection (posts DISC), and completes any open SSE subscribers. Else
         // fall back to posting DL-DISCONNECT on a live AX.25 session under the gate. Absent in
         // both → 404, else 204.
-        v1.MapDelete("/sessions/{id}", async (string id, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
+        v1.MapDelete("/sessions/{id}", async (string id, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IConfigProvider config, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
+            if (IsForeignConsoleId(id, ctx, config))
+            {
+                return Results.NotFound();
+            }
+
             // A disconnect transmits DISC/DL-DISCONNECT — audit the teardown request.
             audit.RecordRest(ctx, clock, "disconnect_session", id, "requested", "");
 
@@ -226,8 +256,12 @@ public static class PdnSessionsApi
         // owns the session (an adopted connect-out), type the line into the peer through the
         // manager's write path; else fall back to the live AX.25 session's SendData under the
         // gate. Absent in both → 404, else 202 (queued).
-        v1.MapPost("/sessions/{id}/send", async (string id, SendRequest body, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
+        v1.MapPost("/sessions/{id}/send", async (string id, SendRequest body, HttpContext ctx, NodeHostedService host, SysopConsoleManager console, IConfigProvider config, IAuditLog audit, TimeProvider clock, CancellationToken ct) =>
         {
+            if (IsForeignConsoleId(id, ctx, config))
+            {
+                return Results.NotFound();
+            }
             if (body is null || body.Line is null)
             {
                 return Results.BadRequest(new { error = "A 'line' is required." });
@@ -269,9 +303,15 @@ public static class PdnSessionsApi
         // chunks; a `: ping` heartbeat keeps the stream warm. If the id is not managed → 404
         // (checked BEFORE writing any bytes, since once the response body has started we can
         // no longer return a result).
-        v1.MapGet("/sessions/{id}/stream", async (string id, HttpContext ctx, SysopConsoleManager console, TimeProvider clock) =>
+        v1.MapGet("/sessions/{id}/stream", async (string id, HttpContext ctx, SysopConsoleManager console, IConfigProvider config, TimeProvider clock) =>
         {
             var ct = ctx.RequestAborted;
+
+            if (IsForeignConsoleId(id, ctx, config))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
 
             // Subscribe (and thus 404-check) BEFORE writing any bytes: a null subscription
             // means the id isn't managed, and we can still set a 404 status here.

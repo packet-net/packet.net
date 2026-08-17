@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.IdentityModel.JsonWebTokens;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
@@ -229,17 +228,8 @@ public static class PdnAppGateway
     /// raw <c>sub</c> claim, or the mapped <c>NameIdentifier</c> (the same fallback the auth APIs
     /// use). Empty when the principal is unauthenticated (anonymous / auth-off).
     /// </summary>
-    internal static string AuthenticatedUsername(ClaimsPrincipal? principal)
-    {
-        if (principal?.Identity?.IsAuthenticated != true)
-        {
-            return string.Empty;
-        }
-        return principal.Identity!.Name
-            ?? principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? string.Empty;
-    }
+    internal static string AuthenticatedUsername(ClaimsPrincipal? principal) =>
+        PrincipalName.Resolve(principal) ?? string.Empty;
 
     // Rebases the path (strips /apps/{id}), strips any client-supplied identity headers, and
     // injects the authenticated identity. A singleton — all per-request state is on the context.
@@ -268,6 +258,15 @@ public static class PdnAppGateway
             proxyRequest.Headers.Remove(GatewayHeader);
             proxyRequest.Headers.Remove(ForwardedPrefixHeader);
 
+            // The app is told WHO is viewing (the X-Pdn-* headers below) and never given the
+            // credential that proves it. YARP's default copy forwards every non-hop-by-hop
+            // header, which handed each app upstream the viewer's Authorization bearer and the
+            // pdn_at cookie carrying the same access JWT - replayable against /api/v1 with the
+            // viewer's scope, and liable to land in the app's own request log (C054). Neither
+            // is anything an app needs from pdn's session.
+            proxyRequest.Headers.Remove("Authorization");
+            StripGatewayCookie(proxyRequest);
+
             var user = AuthenticatedUsername(context.User);
             var scope = context.User?.FindFirst(AuthScopes.ScopeClaim)?.Value ?? string.Empty;
 
@@ -280,6 +279,37 @@ public static class PdnAppGateway
             if (context.Request.RouteValues["id"] is string appId && appId.Length > 0)
             {
                 proxyRequest.Headers.TryAddWithoutValidation(ForwardedPrefixHeader, $"/apps/{appId}");
+            }
+        }
+
+        // Re-emit Cookie without the pdn_at pair - the app keeps its OWN cookies (session,
+        // preferences, CSRF) and loses only pdn's access token. Dropping the whole header
+        // would break any app that sets cookies of its own.
+        private static void StripGatewayCookie(HttpRequestMessage proxyRequest)
+        {
+            if (!proxyRequest.Headers.TryGetValues("Cookie", out var values))
+            {
+                return;
+            }
+
+            var kept = new List<string>();
+            foreach (var header in values)
+            {
+                foreach (var pair in header.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    int eq = pair.IndexOf('=', StringComparison.Ordinal);
+                    var name = eq < 0 ? pair : pair[..eq];
+                    if (!string.Equals(name, CookieName, StringComparison.Ordinal))
+                    {
+                        kept.Add(pair);
+                    }
+                }
+            }
+
+            proxyRequest.Headers.Remove("Cookie");
+            if (kept.Count > 0)
+            {
+                proxyRequest.Headers.TryAddWithoutValidation("Cookie", string.Join("; ", kept));
             }
         }
     }

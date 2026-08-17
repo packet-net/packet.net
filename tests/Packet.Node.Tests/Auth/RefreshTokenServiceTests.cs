@@ -301,6 +301,21 @@ public sealed class RefreshTokenServiceTests
             return n;
         }
 
+        public int RevokeAllForUser(string username)
+        {
+            int n = 0;
+            foreach (var key in rows.Keys.ToList())
+            {
+                var r = rows[key];
+                if (r.Username == username && !r.Revoked)
+                {
+                    rows[key] = r with { Revoked = true };   // hard kill: no leeway stamp
+                    n++;
+                }
+            }
+            return n;
+        }
+
         public bool HasLiveToken(string family) =>
             rows.Values.Any(r => r.Family == family && !r.Revoked);
 
@@ -326,6 +341,7 @@ public sealed class RefreshTokenServiceTests
         public RefreshTokenRecord? FindByHash(string tokenHash) => null;
         public bool Revoke(string tokenHash, DateTimeOffset? consumedAtUtc) => false;
         public int RevokeFamily(string family) => 0;
+        public int RevokeAllForUser(string username) => 0;
         public bool HasLiveToken(string family) => false;
         public int PruneExpired(DateTimeOffset olderThanUtc) => 0;
     }

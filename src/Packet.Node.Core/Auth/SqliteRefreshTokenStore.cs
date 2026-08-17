@@ -201,6 +201,26 @@ public sealed partial class SqliteRefreshTokenStore : IRefreshTokenStore
     }
 
     /// <inheritdoc/>
+    public int RevokeAllForUser(string username)
+    {
+        ArgumentNullException.ThrowIfNull(username);
+        try
+        {
+            using var conn = Open();
+            // Hard kill across every family the user owns, exactly like RevokeFamily: no
+            // revoked_utc stamp, so none of them is leeway-eligible afterwards.
+            return conn.Execute(
+                "UPDATE refresh_token SET revoked = 1 WHERE username = @u AND revoked = 0;",
+                new { u = username });
+        }
+        catch (SqliteException ex)
+        {
+            LogWriteFailed(ex, connectionString);
+            return 0;
+        }
+    }
+
+    /// <inheritdoc/>
     public int PruneExpired(DateTimeOffset olderThanUtc)
     {
         try

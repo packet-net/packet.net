@@ -93,8 +93,10 @@ public static class PdnAuthApi
 
         // Whether first-run setup is still required (zero users). Unauthenticated —
         // it is the probe the setup wizard hits before any account exists.
+        // A store fault reads as "setup is over", never as "zero users": zero is the open
+        // gate for POST /setup below (C026).
         v1.MapGet("/setup/state", (IUserStore users) =>
-            Results.Ok(new SetupStateResponse(NeedsSetup: users.Count() == 0)));
+            Results.Ok(new SetupStateResponse(NeedsSetup: users.TryCount() == 0)));
 
         // Password login → access JWT + opaque refresh token. Generic 401 on any
         // failure; same timing for unknown-user vs bad-password (see the type remarks).
@@ -111,6 +113,7 @@ public static class PdnAuthApi
             [Microsoft.AspNetCore.Mvc.FromServices] RefreshTokenService? refresh,
             [Microsoft.AspNetCore.Mvc.FromServices] LoginThrottle? throttle,
             ILoggerFactory logs,
+            IAuditLog auditLog,
             TimeProvider clock) =>
         {
             var audit = logs.CreateLogger("Packet.Node.Auth");
@@ -135,6 +138,7 @@ public static class PdnAuthApi
             if (throttle is not null && (throttle.IsLocked(userKey) || throttle.IsLocked(ipKey)))
             {
                 AuthLog.LoginLockedOut(audit, auditUser, ip);
+                AuthAudit.Record(auditLog, http, clock, "login_lockout", auditUser, "denied", "");
                 return TooManyRequests();
             }
 
@@ -142,6 +146,7 @@ public static class PdnAuthApi
             {
                 RecordFailure(throttle, userKey, ipKey);
                 AuthLog.LoginFailed(audit, auditUser, ip);
+                AuthAudit.Record(auditLog, http, clock, "login_failed", auditUser, "denied", "");
                 return Unauthorized();
             }
 
@@ -157,6 +162,7 @@ public static class PdnAuthApi
             {
                 RecordFailure(throttle, userKey, ipKey);
                 AuthLog.LoginFailed(audit, auditUser, ip);
+                AuthAudit.Record(auditLog, http, clock, "login_failed", auditUser, "denied", "");
                 return Unauthorized();
             }
 
@@ -186,7 +192,9 @@ public static class PdnAuthApi
             IUserStore users,
             [Microsoft.AspNetCore.Mvc.FromServices] JwtTokenService? tokens,
             [Microsoft.AspNetCore.Mvc.FromServices] RefreshTokenService? refresh,
-            ILoggerFactory logs) =>
+            ILoggerFactory logs,
+            IAuditLog auditLog,
+            TimeProvider clock) =>
         {
             var audit = logs.CreateLogger("Packet.Node.Auth");
             var ip = ClientIp(http);
@@ -209,6 +217,10 @@ public static class PdnAuthApi
                 {
                     var auditUser = Redact(result.Username);
                     AuthLog.RefreshReuseDetected(audit, auditUser, ip);
+                    // Token theft response: the family is burned. That belongs in the persisted
+                    // record an owner reads, not only in the journal (C058).
+                    AuthAudit.Record(auditLog, http, clock, "refresh_reuse_detected", auditUser, "denied",
+                        "the refresh family was revoked");
                 }
                 else
                 {
@@ -264,11 +276,29 @@ public static class PdnAuthApi
         });
 
         // First-run bootstrap: create the admin + apply identity/firstPort. One-shot.
-        v1.MapPost("/setup", (SetupRequest body, IUserStore users, IWritableConfigProvider cfg, TimeProvider clock) =>
+        v1.MapPost("/setup", (SetupRequest body, HttpContext http, IUserStore users, IWritableConfigProvider cfg, IAuditLog auditLog, TimeProvider clock) =>
         {
-            // One-shot: refuse once any user exists (403 — the bootstrap is over).
-            if (users.Count() > 0)
+            // Claiming an unowned node is THE privileged action, and it was the one action
+            // that left no record anywhere - not even the journal (C058). Every outcome below
+            // is audited with the caller's IP.
+            var claimant = body?.Admin?.Username ?? "(unknown)";
+
+            // A store fault is NOT "zero users": reading a broken store as zero re-opened this
+            // unauthenticated bootstrap on a node that already had an owner (C026). Unknown
+            // fails closed, and loudly (503), rather than handing over the node.
+            var existing = users.TryCount();
+            if (existing is null)
             {
+                AuthAudit.Record(auditLog, http, clock, "setup", claimant, "error", "the user store could not be read");
+                return Results.Problem(
+                    "The user store is unavailable; setup cannot proceed.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            // One-shot: refuse once any user exists (403 — the bootstrap is over).
+            if (existing > 0)
+            {
+                AuthAudit.Record(auditLog, http, clock, "setup", claimant, "denied", "the node is already claimed");
                 return Results.Problem("Setup has already been completed.", statusCode: StatusCodes.Status403Forbidden);
             }
             if (body is null || body.Identity is null || body.Admin is null)
@@ -322,11 +352,16 @@ public static class PdnAuthApi
                 AuthScopes.Admin,
                 now,
                 LastLoginUtc: null);
-            if (!users.Create(admin))
+            // CreateFirst is the one-shot in SQL (INSERT ... WHERE NOT EXISTS): a second setup
+            // racing this one inserts nothing and gets the 409, whatever the count above read.
+            if (!users.CreateFirst(admin))
             {
+                AuthAudit.Record(auditLog, http, clock, "setup", admin.Username, "denied", "an administrator already exists");
                 return Results.Conflict(new { error = "An administrator already exists." });
             }
 
+            AuthAudit.Record(auditLog, http, clock, "setup", admin.Username, "ok",
+                $"callsign={body.Identity.Callsign} scope={admin.Scope}");
             return Results.Ok(new SetupResponse(admin.Username, admin.Scope));
         });
 
@@ -367,7 +402,10 @@ public static class PdnAuthApi
             return Results.Created($"/api/v1/users/{user.Username}", UserSummary.From(user));
         });
 
-        usersGroup.MapDelete("/{username}", (string username, HttpContext ctx, IUserStore users, IAuditLog audit, TimeProvider clock) =>
+        usersGroup.MapDelete("/{username}", (
+            string username, HttpContext ctx, IUserStore users, IAuditLog audit, TimeProvider clock,
+            [Microsoft.AspNetCore.Mvc.FromServices] RefreshTokenService? refresh,
+            [Microsoft.AspNetCore.Mvc.FromServices] IWebAuthnCredentialStore? credentials) =>
         {
             // Don't let the last admin delete themselves into a locked-out node.
             var all = users.List();
@@ -384,7 +422,17 @@ public static class PdnAuthApi
             {
                 return Results.NotFound();
             }
-            audit.RecordRest(ctx, clock, "delete_user", username, "ok", "");
+
+            // Deleting the row is not deleting the account. refresh_token and
+            // webauthn_credential are keyed by username with no foreign key, so both outlived
+            // the user - and because /auth/refresh and the passkey assert only check that a
+            // user with that name exists NOW, recreating the same username revived the old
+            // session and the old passkeys (review item C055). Burn both here.
+            int families = refresh?.RevokeAllForUser(username) ?? 0;
+            int passkeys = credentials?.DeleteByUser(username) ?? 0;
+
+            audit.RecordRest(ctx, clock, "delete_user", username, "ok",
+                $"refreshTokensRevoked={families} passkeysDeleted={passkeys}");
             return Results.NoContent();
         });
 

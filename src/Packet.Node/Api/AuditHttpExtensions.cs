@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Packet.Node.Core.Audit;
 
@@ -15,9 +14,9 @@ namespace Packet.Node.Api;
 /// </summary>
 /// <remarks>
 /// Source is always <c>rest</c> (mirrors <c>mcp:stdio</c>/<c>mcp:sse</c> on the MCP
-/// side). Actor derivation matches <see cref="Mcp.HttpContextMcpCallerAccessor"/>:
-/// the principal's name, else its <c>sub</c> claim, else <c>owner</c> when auth is off
-/// (no principal — the local operator). Best-effort: <see cref="IAuditLog.Record"/>
+/// side). The actor comes from <see cref="PrincipalName"/> - the one resolver every
+/// identity-reading site shares - falling back to <c>owner</c> only when there is no
+/// authenticated subject (auth off: the local operator). Best-effort: <see cref="IAuditLog.Record"/>
 /// never throws, so a wrapped call can't take an action path down. No secrets in
 /// <paramref name="detail"/> — payloads are summarised (lengths, ids), never logged raw.
 /// </remarks>
@@ -29,10 +28,9 @@ internal static class AuditHttpExtensions
         this IAuditLog audit, HttpContext ctx, TimeProvider clock,
         string action, string target, string outcome, string detail = "")
     {
-        var user = ctx.User;
-        string actor = user.Identity?.Name
-            ?? user.FindFirstValue("sub")
-            ?? "owner";
+        // "owner" ONLY when there is no authenticated subject at all (auth off - the local
+        // operator). A subject that resolves is always named: see PrincipalName (C011).
+        string actor = PrincipalName.Or(ctx.User, "owner");
 
         audit.Record(AuditEntry.New(
             clock.GetUtcNow(), actor, "rest", action, target, outcome, detail,

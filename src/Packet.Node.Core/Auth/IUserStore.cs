@@ -12,11 +12,18 @@ namespace Packet.Node.Core.Auth;
 /// </remarks>
 public interface IUserStore
 {
-    /// <summary>The number of users. <c>0</c> means first-run setup is still
-    /// required. Returns <c>0</c> on a store fault (so a broken store reads as
-    /// "needs setup" rather than locking everyone out — see the implementation
-    /// note).</summary>
-    int Count();
+    /// <summary>
+    /// The number of users, or <c>null</c> when the store could not be read. <c>0</c>
+    /// means first-run setup is still required.
+    /// </summary>
+    /// <remarks>
+    /// The fault is deliberately <b>distinguishable</b> from "zero users": zero is the
+    /// open gate for the unauthenticated <c>POST /setup</c> bootstrap, so a store fault
+    /// that read as zero re-opened node-claiming on a node that already has an owner
+    /// (review item C026). Callers treat <c>null</c> as "setup is over" (fail closed)
+    /// and, where they can, surface it as a 503.
+    /// </remarks>
+    int? TryCount();
 
     /// <summary>Look up a user by exact username, or null if absent / on fault.</summary>
     UserRecord? FindByUsername(string username);
@@ -65,6 +72,15 @@ public interface IUserStore
     /// </summary>
     bool Create(UserRecord user);
 
+    /// <summary>
+    /// Create a user <b>only while no user exists</b> - the first-run bootstrap's
+    /// one-shot, enforced in SQL (<c>INSERT ... WHERE NOT EXISTS</c>) rather than by a
+    /// read-then-write check, so two concurrent <c>POST /setup</c> calls (or one racing a
+    /// store fault) cannot both claim the node. Returns <c>false</c> if any user already
+    /// exists, on a UNIQUE violation, or on a store fault.
+    /// </summary>
+    bool CreateFirst(UserRecord user);
+
     /// <summary>Delete a user by username. Returns <c>true</c> if a row was
     /// removed, <c>false</c> if absent or on fault.</summary>
     bool Delete(string username);
@@ -80,4 +96,14 @@ public interface IUserStore
     /// safely — the host treats a null key as "auth unavailable"). Never logged.
     /// </summary>
     byte[]? GetOrCreateSigningKey();
+
+    /// <summary>
+    /// Replace the persisted signing key with a fresh 256-bit one, returning it (null on
+    /// a store fault). <b>Every JWT this node ever issued stops validating</b> - panel
+    /// access tokens and the long-lived MCP bearer tokens alike - which is the only
+    /// revocation a stateless token has. The running process keeps validating with the
+    /// key it read at startup, so a rotation takes effect on restart; the
+    /// <c>pdn auth rotate-signing-key</c> CLI is therefore the offline verb. Never logged.
+    /// </summary>
+    byte[]? RotateSigningKey();
 }
