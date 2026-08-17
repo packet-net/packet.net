@@ -185,6 +185,35 @@ public sealed class RefreshTokenServiceTests
     }
 
     [Fact]
+    public void Losing_the_consume_race_during_the_winner_mint_gap_grants_grace_not_a_spurious_logout()
+    {
+        // Regression guard (2026-08-17 adversarial review): the lost-consume-race branch
+        // must NOT re-derive family liveness via HasLiveToken. Here the winner has revoked
+        // the presented token but has NOT yet committed its successor insert
+        // (SkipWinnerInsert), so the family transiently has zero live tokens and
+        // HasLiveToken would return false. A benign self-race in that gap must still get a
+        // grace successor within the leeway - never a family burn / spurious logout, which
+        // is what a HasLiveToken false-negative here would have produced.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 6, 9, 0, 0, 0, TimeSpan.Zero));
+        var inner = new InMemoryRefreshStore();
+        var store = new RaceLosingRefreshStore(inner) { SkipWinnerInsert = true };
+        var svc = new RefreshTokenService(store, TimeSpan.FromDays(7), clock);
+
+        var first = svc.Issue("tom")!;
+        _ = inner.Rows.Single().Family;
+
+        store.WinnerStamp = clock.GetUtcNow();
+        var loser = svc.Rotate(first);
+
+        // Grace (a live successor), not the ReuseDetected/burn a HasLiveToken false-negative
+        // in the mint gap would have produced.
+        loser.IsSuccess.Should().BeTrue();
+        loser.Outcome.Should().Be(RefreshOutcome.Rotated);
+        loser.NewToken.Should().NotBeNullOrEmpty();
+        inner.FindByHash(RefreshTokenService.HashToken(loser.NewToken!))!.Revoked.Should().BeFalse();
+    }
+
+    [Fact]
     public void The_leeway_grace_cannot_resurrect_a_logged_out_family()
     {
         var (svc, store, clock) = Make();
@@ -416,6 +445,11 @@ public sealed class RefreshTokenServiceTests
     {
         public DateTimeOffset? WinnerStamp { get; set; }
 
+        // When set, the simulated winner revokes the presented token but does NOT insert
+        // its successor - reproducing the consume->mint GAP, where the family transiently
+        // has zero live tokens. This is the interleaving the atomic winner above hides.
+        public bool SkipWinnerInsert { get; set; }
+
         public bool Insert(RefreshTokenRecord token) => inner.Insert(token);
 
         public RefreshTokenRecord? FindByHash(string tokenHash) => inner.FindByHash(tokenHash);
@@ -429,9 +463,12 @@ public sealed class RefreshTokenServiceTests
                 if (rec is { Revoked: false })
                 {
                     inner.Revoke(tokenHash, stamp);
-                    inner.Insert(new RefreshTokenRecord(
-                        "winner-successor", rec.Username, rec.Family,
-                        stamp, stamp + TimeSpan.FromDays(7), Revoked: false));
+                    if (!SkipWinnerInsert)
+                    {
+                        inner.Insert(new RefreshTokenRecord(
+                            "winner-successor", rec.Username, rec.Family,
+                            stamp, stamp + TimeSpan.FromDays(7), Revoked: false));
+                    }
                     return false;
                 }
             }

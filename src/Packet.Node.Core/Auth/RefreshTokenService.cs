@@ -157,16 +157,34 @@ public sealed class RefreshTokenService
         // false here instead of all minting their own successor.
         if (!store.Revoke(hash, consumedAtUtc: now))
         {
-            // Consumed 0 rows: a concurrent caller revoked it between our read and our
-            // consume. Re-read and apply the SAME replay semantics as the
-            // already-revoked branch above - within the leeway with a live family the
-            // loser gets the same grace successor a sequential retry would; otherwise
-            // the family burns as reuse. Either way the race resolves to exactly the
-            // sequential outcome, never a second independent successor.
+            // Consumed 0 rows: a concurrent rotation of this SAME live token won the
+            // consume race and is minting the family's successor right now. Resolve the
+            // loser WITHOUT re-deriving family liveness (deliberately NOT HandleReplay,
+            // which reads HasLiveToken): that read races the winner's not-yet-committed
+            // insert and can transiently observe zero live tokens, which would wrongly
+            // steer a benign self-race into a family burn (spurious logout) or a burn
+            // that races the winner's fresh successor. We already established at the top
+            // of Rotate that the token was live, so within the leeway this is the same
+            // benign near-simultaneous use a sequential double-submit is: mint a grace
+            // successor. Outside the leeway (strict one-time-use) a concurrent double-use
+            // is treated as reuse and burns the family.
             var reread = store.FindByHash(hash);
-            return reread is null
-                ? RefreshResult.Failure(RefreshOutcome.Invalid)   // pruned mid-flight
-                : HandleReplay(reread, now);
+            if (reread is null)
+            {
+                return RefreshResult.Failure(RefreshOutcome.Invalid);   // pruned mid-flight
+            }
+            bool withinLeeway = reuseLeeway > TimeSpan.Zero
+                && reread.RevokedUtc is { } revokedAt
+                && now - revokedAt <= reuseLeeway;
+            if (withinLeeway)
+            {
+                var graceNext = MintInFamily(reread.Username, reread.Family);
+                return graceNext is null
+                    ? RefreshResult.Failure(RefreshOutcome.Invalid, reread.Username, reread.Family)
+                    : RefreshResult.Success(graceNext, reread.Username, reread.Family);
+            }
+            store.RevokeFamily(reread.Family);
+            return RefreshResult.Failure(RefreshOutcome.ReuseDetected, reread.Username, reread.Family);
         }
 
         var next = MintInFamily(record.Username, record.Family);

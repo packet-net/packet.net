@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace Packet.Node.Core.Auth.Oauth;
@@ -33,16 +34,29 @@ public sealed class OauthCsrfCache
     /// window a stolen or leaked token stays usable tightly bounded.</summary>
     public static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(15);
 
+    /// <summary>Default hard ceiling on live tokens. GET /oauth/authorize is
+    /// unauthenticated and unthrottled, so without a cap a flood would grow this map
+    /// without bound for a whole TTL window (the entries only expire, they are never
+    /// evicted); the cap keeps worst-case memory bounded (~a few MB).</summary>
+    public const int DefaultMaxEntries = 16384;
+
     private readonly ConcurrentDictionary<string, DateTimeOffset> pending = new(StringComparer.Ordinal);
     private readonly TimeProvider clock;
     private readonly TimeSpan ttl;
+    private readonly int maxEntries;
+    // Only sweep once the map is non-trivially large, so the common (small) case pays
+    // nothing per Mint - avoids the O(n^2) of pruning the whole map on every mint.
+    private readonly int pruneThreshold;
 
     /// <summary>Construct over the injected clock and (optional) token lifetime.</summary>
     /// <param name="clock">The clock all expiry rides (no wall-clock - testable on
     /// <c>FakeTimeProvider</c>).</param>
     /// <param name="ttl">How long a minted token lives. Null = <see cref="DefaultTtl"/>.
     /// Must be positive.</param>
-    public OauthCsrfCache(TimeProvider clock, TimeSpan? ttl = null)
+    /// <param name="maxEntries">Hard ceiling on live tokens (default
+    /// <see cref="DefaultMaxEntries"/>); a flood past it evicts the nearest-expiry
+    /// tokens. Must be positive. (Overridable for tests.)</param>
+    public OauthCsrfCache(TimeProvider clock, TimeSpan? ttl = null, int maxEntries = DefaultMaxEntries)
     {
         ArgumentNullException.ThrowIfNull(clock);
         var span = ttl ?? DefaultTtl;
@@ -50,18 +64,50 @@ public sealed class OauthCsrfCache
         {
             throw new ArgumentOutOfRangeException(nameof(ttl), "CSRF token TTL must be positive.");
         }
+        if (maxEntries <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxEntries), "maxEntries must be positive.");
+        }
         this.clock = clock;
         this.ttl = span;
+        this.maxEntries = maxEntries;
+        this.pruneThreshold = Math.Max(1, maxEntries / 4);
     }
+
+    /// <summary>The number of currently-pending tokens (test/diagnostic hook).</summary>
+    public int Count => pending.Count;
 
     /// <summary>Mint a fresh token, stash its expiry, and return it for embedding in
     /// the consent form.</summary>
     public string Mint()
     {
-        PruneExpired();
+        MaybeSweep();
         var token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
         pending[token] = clock.GetUtcNow() + ttl;
         return token;
+    }
+
+    /// <summary>Keep the map bounded without paying on every mint. Below the prune
+    /// threshold: do nothing. Above it: drop expired tokens; if a flood has still left
+    /// the map at or over the hard cap (nothing expired yet), evict the nearest-expiry
+    /// entries (the oldest mints - most likely already submitted or abandoned) down to
+    /// half the cap. Bounds worst-case memory under an unauthenticated GET flood.</summary>
+    private void MaybeSweep()
+    {
+        if (pending.Count <= pruneThreshold)
+        {
+            return;
+        }
+        PruneExpired();
+        if (pending.Count < maxEntries)
+        {
+            return;
+        }
+        int evict = pending.Count - (maxEntries / 2);
+        foreach (var kvp in pending.OrderBy(e => e.Value).Take(evict))
+        {
+            pending.TryRemove(kvp.Key, out _);
+        }
     }
 
     /// <summary>
