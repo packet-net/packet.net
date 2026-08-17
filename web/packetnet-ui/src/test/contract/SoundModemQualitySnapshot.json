@@ -1,0 +1,26 @@
+{
+  "frames": 1842,
+  "cumulativeCorrectedBytes": 271,
+  "framesWithCorrections": 63,
+  "lastFrameCorrectedBytes": 2,
+  "recent": [
+    {
+      "receivedAt": "2026-08-17T11:59:59+00:00",
+      "mode": "qpsk2400-il2pc",
+      "frameBytes": 128,
+      "correctedBytes": 2,
+      "crcValid": true,
+      "frequencyOffsetHz": 12,
+      "emphasisDb": 3
+    },
+    {
+      "receivedAt": "2026-08-17T11:59:51+00:00",
+      "mode": "afsk1200",
+      "frameBytes": 47,
+      "correctedBytes": null,
+      "crcValid": null,
+      "frequencyOffsetHz": null,
+      "emphasisDb": null
+    }
+  ]
+}

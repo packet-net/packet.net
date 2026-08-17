@@ -1,0 +1,18 @@
+{
+  "replies": [
+    {
+      "seq": 1,
+      "rttMs": 612,
+      "timeout": false
+    },
+    {
+      "seq": 2,
+      "rttMs": null,
+      "timeout": true
+    }
+  ],
+  "minMs": 612,
+  "avgMs": 612,
+  "maxMs": 612,
+  "lossPct": 50
+}

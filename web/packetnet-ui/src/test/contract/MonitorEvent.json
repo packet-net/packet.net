@@ -1,0 +1,90 @@
+[
+  {
+    "seq": 1,
+    "timestamp": "2026-08-17T12:00:00+00:00",
+    "portId": "vhf-1",
+    "direction": "in",
+    "source": "M0LTE",
+    "dest": "GB7RDG",
+    "type": "I",
+    "classKind": "I",
+    "pid": "0xF0",
+    "pidName": "No layer 3",
+    "ns": 3,
+    "nr": 5,
+    "pf": 1,
+    "command": true,
+    "length": 37,
+    "summary": "I N(S)=3 N(R)=5 P=1 pid=0xF0 len=20",
+    "raw": [
+      150,
+      142,
+      110
+    ],
+    "path": [
+      "GB7BNS"
+    ],
+    "control": 118,
+    "infoLength": 20,
+    "rssiDbm": -78.5,
+    "snrDb": 24,
+    "noiseFloorDbm": -102.5,
+    "bootId": "0123456789abcdef"
+  },
+  {
+    "seq": 2,
+    "timestamp": "2026-08-17T12:00:01+00:00",
+    "portId": "vhf-1",
+    "direction": "out",
+    "source": "GB7RDG",
+    "dest": "M0LTE",
+    "type": "RR",
+    "classKind": "S",
+    "pid": null,
+    "pidName": null,
+    "ns": null,
+    "nr": 6,
+    "pf": 0,
+    "command": false,
+    "length": 15,
+    "summary": "RR N(R)=6",
+    "raw": [
+      150
+    ],
+    "path": [],
+    "control": 193,
+    "infoLength": 0,
+    "rssiDbm": null,
+    "snrDb": null,
+    "noiseFloorDbm": null,
+    "bootId": "0123456789abcdef"
+  },
+  {
+    "seq": 3,
+    "timestamp": "2026-08-17T12:00:02+00:00",
+    "portId": "vhf-1",
+    "direction": "out",
+    "source": "GB7RDG",
+    "dest": "M0LTE",
+    "type": "TEST",
+    "classKind": "U",
+    "pid": null,
+    "pidName": null,
+    "ns": null,
+    "nr": null,
+    "pf": 1,
+    "command": true,
+    "length": 21,
+    "summary": "TEST (loopback)",
+    "raw": [
+      150
+    ],
+    "path": [],
+    "control": 243,
+    "infoLength": 6,
+    "rssiDbm": null,
+    "snrDb": null,
+    "noiseFloorDbm": null,
+    "bootId": "0123456789abcdef"
+  }
+]

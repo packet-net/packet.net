@@ -1,0 +1,18 @@
+[
+  {
+    "portId": "vhf-1",
+    "peer": "M0LTE",
+    "supportsExtended": true,
+    "supportsSrejViaXid": true,
+    "lastProbed": "0:02:14",
+    "lastRefused": null
+  },
+  {
+    "portId": "uhf-2",
+    "peer": "G4APL-1",
+    "supportsExtended": null,
+    "supportsSrejViaXid": null,
+    "lastProbed": "5:09:52",
+    "lastRefused": "1:41:08"
+  }
+]

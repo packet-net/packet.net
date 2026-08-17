@@ -1,0 +1,24 @@
+{
+  "devices": [
+    {
+      "devicePath": "/dev/ttyUSB3",
+      "byIdPath": "/dev/serial/by-id/usb-Icom_Inc._IC-7300-if00-port0",
+      "descriptor": "usb-Icom_Inc._IC-7300-if00-port0",
+      "claimedBy": null,
+      "suggestion": {
+        "manufacturer": "Icom",
+        "model": "IC-7300",
+        "modelNumber": 3073,
+        "source": "by-id"
+      }
+    },
+    {
+      "devicePath": "/dev/ttyUSB1",
+      "byIdPath": null,
+      "descriptor": null,
+      "claimedBy": "port \u0027hf-300\u0027 transport (serial-kiss)",
+      "suggestion": null
+    }
+  ],
+  "catalogueAvailable": true
+}

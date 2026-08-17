@@ -1,0 +1,30 @@
+[
+  {
+    "id": "vhf-1:M0LTE",
+    "portId": "vhf-1",
+    "peer": "M0LTE",
+    "role": "console",
+    "state": "Connected",
+    "vs": 12,
+    "vr": 11,
+    "window": 4,
+    "uptimeSeconds": 842,
+    "bytesIn": 4821,
+    "bytesOut": 19233,
+    "lastActivity": "0:00:02"
+  },
+  {
+    "id": "link-dn:G8PZT-7",
+    "portId": "link-dn",
+    "peer": "G8PZT-7",
+    "role": "interlink",
+    "state": "TimerRecovery",
+    "vs": 401,
+    "vr": 398,
+    "window": 7,
+    "uptimeSeconds": 91244,
+    "bytesIn": 2104882,
+    "bytesOut": 1988401,
+    "lastActivity": "0:00:00"
+  }
+]

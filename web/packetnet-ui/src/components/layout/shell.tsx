@@ -213,7 +213,14 @@ export function Shell() {
             <div className="flex items-center gap-2">
               <span className="inline-block h-2 w-2 rounded-full bg-success live-dot" />
               <span className="font-mono text-sm font-semibold">{callsign}</span>
-              {status && <span className="hidden text-xs text-muted-foreground sm:inline">· {status.alias} · {status.grid}</span>}
+              {/* alias + grid are OPTIONAL station identity: a node that set neither sends null
+                  for both, and joining them unconditionally printed a bare "· ·" in the header.
+                  Only the parts the operator actually configured appear. */}
+              {status && [status.alias, status.grid].some(Boolean) && (
+                <span className="hidden text-xs text-muted-foreground sm:inline">
+                  {[status.alias, status.grid].filter(Boolean).map((part) => ` · ${part}`).join("")}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1">

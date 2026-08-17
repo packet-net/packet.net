@@ -4,10 +4,11 @@
 // type-check can't — the verification gate in lieu of headless-browser screenshots
 // (the host LXC blocks Chrome's network sockets, so visual screenshotting isn't
 // possible in CI here).
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within, type RenderResult } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, waitFor, fireEvent, within, act, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/app/auth";
+import { api } from "@/lib/api";
 import type { ReactElement } from "react";
 
 import { Dashboard } from "@/screens/dashboard";
@@ -45,18 +46,21 @@ function seedScope(scope: "read" | "operate" | "admin") {
   );
 }
 
-afterEach(() => localStorage.clear());
+afterEach(() => {
+  localStorage.clear();
+  vi.restoreAllMocks();
+  // A test that faked time hands it back here, so a later mount never inherits a frozen clock.
+  vi.useRealTimers();
+});
 
 describe("screens render without crashing", () => {
   it("Dashboard surfaces node status", async () => {
-    const { container } = mount(<Dashboard />);
-    expect(container.firstChild).toBeTruthy();
+    mount(<Dashboard />);
     await waitFor(() => expect(screen.getAllByText(/GB7RDG/).length).toBeGreaterThan(0));
   });
 
   it("Monitor shows the live monitor", async () => {
-    const { container } = mount(<Monitor />);
-    expect(container.firstChild).toBeTruthy();
+    mount(<Monitor />);
     await waitFor(() => expect(screen.getByText(/Live monitor/i)).toBeInTheDocument());
   });
 
@@ -125,10 +129,17 @@ describe("screens render without crashing", () => {
     }
   });
 
-  it("Sessions renders", async () => {
-    const { container } = mount(<Sessions />);
-    expect(container.firstChild).toBeTruthy();
+  it("Sessions lists the live circuits, not just the page heading", async () => {
+    mount(<Sessions />);
     await waitFor(() => expect(screen.getAllByText(/Sessions/i).length).toBeGreaterThan(0));
+    // The payload is the circuit table: a seeded peer with its port, role and AX.25 state.
+    await waitFor(() => expect(screen.getByText("M0LTE")).toBeInTheDocument());
+    const row = screen.getByText("M0LTE").closest("tr")!;
+    expect(within(row).getByText("vhf-1")).toBeInTheDocument();
+    expect(within(row).getByText("console")).toBeInTheDocument();
+    expect(within(row).getByText("Connected")).toBeInTheDocument();
+    // A peer in timer recovery renders its own state, so the column is per-row, not a constant.
+    expect(screen.getByText("TimerRecovery")).toBeInTheDocument();
   });
 
   it("Console renders the node command console terminal", async () => {
@@ -139,8 +150,7 @@ describe("screens render without crashing", () => {
       JSON.stringify({ token: "test.jwt", refreshToken: null, username: "tom", scope: "admin" }),
     );
     try {
-      const { container } = mount(<Console />, "/console");
-      expect(container.firstChild).toBeTruthy();
+      mount(<Console />, "/console");
       await waitFor(() => expect(screen.getByTestId("console-terminal")).toBeInTheDocument());
       // The dense layout dropped the page title; the status strip is the stable key copy.
       expect(screen.getByText(/connecting|connected|closed|unavailable/i)).toBeInTheDocument();
@@ -150,8 +160,7 @@ describe("screens render without crashing", () => {
   });
 
   it("Apps renders the management surface (no launcher grid — apps live in the nav now)", async () => {
-    const { container } = mount(<Apps />);
-    expect(container.firstChild).toBeTruthy();
+    mount(<Apps />);
     // The Apps page is pure management now: "Available apps" (install) + "Manage apps". The
     // launcher grid moved to the left-nav (see shell.nav.test.tsx), so WALL appears here only
     // as a management row, never as an /apps/wall/ launcher anchor.
@@ -162,15 +171,27 @@ describe("screens render without crashing", () => {
   });
 
   it("Routes renders the destinations/neighbours view", async () => {
-    const { container } = mount(<Routes />);
-    expect(container.firstChild).toBeTruthy();
+    mount(<Routes />);
     await waitFor(() => expect(screen.getByText(/Destinations/i)).toBeInTheDocument());
+    // The default tab is the destinations table, and a learned destination is a whole row:
+    // its alias and the neighbour its best route goes through. A heading renders over an
+    // empty snapshot too, which is what this test used to settle for.
+    await waitFor(() => expect(screen.getByText("G1MNW-2")).toBeInTheDocument());
+    const row = screen.getByText("G1MNW-2").closest("tr")!;
+    expect(within(row).getByText("READNG")).toBeInTheDocument();
+    expect(within(row).getByText("G8PZT-7")).toBeInTheDocument();
   });
 
-  it("Ports renders", async () => {
-    const { container } = mount(<Ports />);
-    expect(container.firstChild).toBeTruthy();
+  it("Ports lists the configured ports, not just the page heading", async () => {
+    mount(<Ports />);
     await waitFor(() => expect(screen.getAllByText(/Ports/i).length).toBeGreaterThan(0));
+    // Every mock port gets a card, each with its own Edit affordance - an empty shell would
+    // still render the heading, so the port ids are the assertion that matters here.
+    await waitFor(() => expect(screen.getByText("vhf-1")).toBeInTheDocument());
+    for (const id of ["uhf-2", "link-dn", "mp-net"]) {
+      expect(screen.getByText(id)).toBeInTheDocument();
+    }
+    expect(screen.getAllByRole("button", { name: "Edit" }).length).toBeGreaterThanOrEqual(4);
   });
 
   it("Ports editor surfaces the per-port PACLEN (N1) and NET/ROM quality fields", async () => {
@@ -222,6 +243,37 @@ describe("screens render without crashing", () => {
     // The new per-port NET/ROM fields both render.
     expect(screen.getByText(/NET\/ROM min quality/i)).toBeInTheDocument();
     expect(screen.getByText(/NODES PACLEN/i)).toBeInTheDocument();
+  });
+
+  it("a panel-created port POSTs TX delay in 10 ms wire units, not milliseconds", async () => {
+    // #692 C032: the ms->units conversion was pinned against the catalogue helper only, so
+    // nothing proved the Add-port POST body actually carries it. A stock 300 ms TX delay must
+    // reach the server as the byte 30; sending 300 is not even representable in a KISS byte.
+    seedScope("operate");
+    const addPort = vi.spyOn(api, "addPort").mockResolvedValue({
+      valid: true, live: [], portRestart: [], nodeReset: [], applied: true,
+    });
+    mount(<Ports />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Add port/i }));
+    fireEvent.change(screen.getByPlaceholderText("vhf-1"), { target: { value: "new-1" } });
+
+    // A stock new port is untuned, so the advanced section starts closed; open it to reach the
+    // modem keying knobs, then walk from the field's label to its input.
+    fireEvent.click(screen.getByText(/Advanced parameters/i));
+    const txDelayField = screen.getByText("TX delay").closest("div")!.parentElement!;
+    const txDelay = within(txDelayField).getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.change(txDelay, { target: { value: "300" } });
+    fireEvent.blur(txDelay);
+    // The operator's units stay on screen; only the wire is in 10 ms steps.
+    expect(txDelay.value).toBe("300");
+
+    fireEvent.click(screen.getByRole("button", { name: /Save changes/i }));
+    await screen.findByText("Apply changes?");
+    fireEvent.click(screen.getByRole("button", { name: /^Apply( anyway)?$/i }));
+
+    await waitFor(() => expect(addPort).toHaveBeenCalledTimes(1));
+    expect(addPort.mock.calls[0][0].kiss).toMatchObject({ txDelay: 30 });
   });
 
   it("Ports editor surfaces the Radio control section + Scan for radios (serial-modem ports)", async () => {
@@ -302,18 +354,21 @@ describe("screens render without crashing", () => {
   });
 
   it("Capabilities renders the per-peer capability cache", async () => {
-    const { container } = mount(<Capabilities />);
-    expect(container.firstChild).toBeTruthy();
+    mount(<Capabilities />);
     // The mock fixtures seed three peers; the title renders immediately and a learned
     // peer row arrives once the (mock-async) query resolves — wait for the row.
     expect(screen.getAllByText(/Capabilities/i).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText("M0LTE")).toBeInTheDocument());
   });
 
-  it("Config renders the editor", async () => {
-    const { container } = mount(<Config />);
-    expect(container.firstChild).toBeTruthy();
+  it("Config renders the editor seeded from the loaded config", async () => {
+    mount(<Config />);
     await waitFor(() => expect(screen.getAllByText(/Identity/i).length).toBeGreaterThan(0));
+    // The draft is seeded from GET /config, so the station identity is on screen in editable
+    // fields - an editor that rendered its tabs over an empty draft would pass a heading check.
+    expect((screen.getByDisplayValue("GB7RDG") as HTMLInputElement).value).toBe("GB7RDG");
+    expect(screen.getByDisplayValue("RDGGW")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("IO91nl")).toBeInTheDocument();
   });
 
   it("Config Services tab surfaces the ARDOP + POCSAG audio-service forms", async () => {
@@ -328,6 +383,35 @@ describe("screens render without crashing", () => {
     expect(screen.getByText("Baud")).toBeInTheDocument();
   });
 
+  it("toggling NET/ROM compression PUTs netRom.compress on the wire", async () => {
+    // #692 C032: the GB7RDG migration's L4Compress leg was "tested" by JSON.stringify/parse of
+    // the mock, which is true of any JSON-safe object. What actually has to hold is that the
+    // Forms editor's save body carries the toggled flag - the Raw-YAML tab already did.
+    seedScope("operate");
+    const putConfig = vi.spyOn(api, "putConfig").mockResolvedValue({
+      valid: true, live: [], portRestart: [], nodeReset: [], applied: false,
+    });
+    mount(<Config />);
+    await waitFor(() => expect(screen.getAllByText(/Identity/i).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "NET/ROM + INP3" }));
+    await waitFor(() => expect(screen.getByText("Compress circuit data")).toBeInTheDocument());
+
+    const row = screen.getByText("Compress circuit data").closest("div")!.parentElement!;
+    const toggle = within(row).getByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");   // off in the mock config
+    fireEvent.click(toggle);
+
+    // Review & apply sends the draft to the server's dry run first - that body is the save body.
+    fireEvent.click(screen.getByRole("button", { name: /Review & apply/i }));
+    await waitFor(() => expect(putConfig).toHaveBeenCalled());
+    const [body, opts] = putConfig.mock.calls[0];
+    expect(opts).toEqual({ dryRun: true });
+    expect(body.netRom.compress).toBe(true);
+    // The rest of the block rides along untouched (the editor sends the whole document).
+    expect(body.netRom.routing).toBe("Transit");
+    expect(body.identity.callsign).toBe("GB7RDG");
+  });
+
   it("Waterfall surfaces the FrameQuality (FEC/CRC) readout for the selected port", async () => {
     // The soundmodem tuning waterfall polls GET /ports/{id}/quality (#635); the mock snapshot decodes
     // frames, so the FEC-corrected counters render (not the empty "no frames yet" state).
@@ -336,10 +420,18 @@ describe("screens render without crashing", () => {
     await waitFor(() => expect(screen.getByText(/FEC-corrected/i)).toBeInTheDocument());
   });
 
-  it("Users renders", async () => {
-    const { container } = mount(<Users />);
-    expect(container.firstChild).toBeTruthy();
+  it("Users lists each operator with their scope and auth methods", async () => {
+    mount(<Users />);
     await waitFor(() => expect(screen.getAllByText(/Users/i).length).toBeGreaterThan(0));
+    // One card per operator from GET /users, each carrying the scope badge and the auth-method
+    // rows (the screen's actual content - the heading renders even with an empty list).
+    await waitFor(() => expect(screen.getByText("tom")).toBeInTheDocument());
+    expect(screen.getAllByText("admin").length).toBeGreaterThan(0);
+    // (the two auth headings appear on the user's card and again in the explanatory footer)
+    expect(screen.getAllByText("Web login").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("On-air auth").length).toBeGreaterThan(0);
+    expect(screen.getByText("Password")).toBeInTheDocument();
+    expect(screen.getByText("Passkeys")).toBeInTheDocument();
   });
 
   it("Login is passkey-first in a secure context", () => {
@@ -369,14 +461,35 @@ describe("screens render without crashing", () => {
     expect(screen.getByText(/Password/i)).toBeInTheDocument();
   });
 
-  it("Setup wizard renders", () => {
-    const { container } = mount(<Setup />, "/setup");
-    expect(container.firstChild).toBeTruthy();
+  it("Setup wizard renders its three steps, starting on station identity", () => {
+    mount(<Setup />, "/setup");
+    // The stepper names all three steps up front (an operator can see what first run involves).
+    for (const step of ["Station identity", "Create admin", "First port"]) {
+      expect(screen.getByText(step)).toBeInTheDocument();
+    }
+    // Step one is the callsign, and it gates Continue - the wizard cannot be walked past an
+    // empty identity, which is the only thing the node genuinely cannot default.
+    expect(screen.getByText(/Callsign \(required\)/i)).toBeInTheDocument();
+    const callsign = screen.getByPlaceholderText("GB7RDG") as HTMLInputElement;
+    expect(callsign.value).toBe("");
+    expect(screen.getByRole("button", { name: /Continue/i })).toBeDisabled();
+    fireEvent.change(callsign, { target: { value: "m0lte" } });
+    // Callsigns are upper-cased as typed, and Continue unlocks.
+    expect(callsign.value).toBe("M0LTE");
+    expect(screen.getByRole("button", { name: /Continue/i })).not.toBeDisabled();
   });
 
-  it("LinkTuner renders for a port", () => {
-    const { container } = mount(<LinkTuner />, "/tools/tuner?port=vhf-1");
-    expect(container.firstChild).toBeTruthy();
+  it("LinkTuner renders the deviation-tuning setup for a port", async () => {
+    mount(<LinkTuner />, "/tools/tuner?port=vhf-1");
+    expect(screen.getByText(/Deviation tuning/i)).toBeInTheDocument();
+    // The peer SDM id is the one thing the operator must supply before a session can be armed,
+    // and Start stays disabled until it is 8 characters long.
+    const peer = screen.getByPlaceholderText(/8 chars/i) as HTMLInputElement;
+    expect(peer.value).toBe("");
+    expect(screen.getByRole("button", { name: /Start tuning/i })).toBeDisabled();
+    // ?port= selects that port out of the loaded config rather than defaulting to the first.
+    // (The Port picker is the first of the form's two selects; the second is the role.)
+    await waitFor(() => expect((screen.getAllByRole("combobox")[0] as HTMLSelectElement).value).toBe("vhf-1"));
   });
 
   it("LinkTuner starts a deviation session and streams live rounds gated by 'Next round'", async () => {
@@ -389,24 +502,44 @@ describe("screens render without crashing", () => {
     // Start button — gated on a selected port + a valid peer id — is enabled).
     fireEvent.change(screen.getByPlaceholderText(/8 chars/i), { target: { value: "12345678" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /Start tuning/i })).not.toBeDisabled());
+
+    // From here the test drives the mock feed's clock instead of waiting on it: lib/mock.ts
+    // driveTuneStream schedules peer-connected at 500 ms, the first round at 1200 ms and the
+    // awaiting-adjustment that unlocks "Next round" 400 ms after each round, and this test used
+    // to spend all ~1.9 s of that for real under 3 s waitFors. The timers are faked only now, so
+    // the ones being faked are the session's; and no waitFor may be used past this point, since
+    // vitest defines no `jest` global and testing-library therefore cannot auto-advance them.
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole("button", { name: /Start tuning/i }));
 
-    // The paused/transmitting banner appears and the first round lands in the trend table.
-    await waitFor(() => expect(screen.getByText(/paused for tuning/i)).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText("0/5")).toBeInTheDocument(), { timeout: 3000 });
+    // api.startTune's mock sleeps 200 ms before the session comes back, then the SSE attaches.
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    expect(screen.getByText(/paused for tuning/i)).toBeInTheDocument();
 
-    // Once the round is awaiting the operator, "Next round" enables and advances the trend.
-    await waitFor(
-      () => expect(screen.getByRole("button", { name: /Next round/i })).not.toBeDisabled(),
-      { timeout: 3000 },
-    );
+    // 1200 ms in, the first measurement round lands in the trend table (0 of 5 decoded).
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(screen.getByText("0/5")).toBeInTheDocument();
+    // ... and it is NOT yet the operator's turn: the pot has not been measured as settled.
+    expect(screen.getByRole("button", { name: /Next round/i })).toBeDisabled();
+
+    // 400 ms later the round reports awaiting-adjustment and "Next round" unlocks.
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(screen.getByRole("button", { name: /Next round/i })).not.toBeDisabled();
+
+    // The gate is the whole point: rounds are operator-driven, so no amount of elapsed time
+    // advances the trend on its own. Ten seconds of the session's clock, still one round.
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(screen.queryByText("2/5")).toBeNull();
+    expect(screen.getAllByText("0/5")).toHaveLength(1);
+
+    // Only the click advances it.
     fireEvent.click(screen.getByRole("button", { name: /Next round/i }));
-    await waitFor(() => expect(screen.getByText("2/5")).toBeInTheDocument(), { timeout: 3000 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText("2/5")).toBeInTheDocument();
   });
 
   it("LinkTroubleshoot renders per-link T1/T3/SRTT/retries", async () => {
-    const { container } = mount(<LinkTroubleshoot />, "/links");
-    expect(container.firstChild).toBeTruthy();
+    mount(<LinkTroubleshoot />, "/links");
     await waitFor(() => expect(screen.getByText(/Link troubleshoot/i)).toBeInTheDocument());
     // The mock /links fixtures seed live links — wait for a peer row + the SRTT/retries columns.
     await waitFor(() => expect(screen.getAllByText("M0LTE").length).toBeGreaterThan(0));

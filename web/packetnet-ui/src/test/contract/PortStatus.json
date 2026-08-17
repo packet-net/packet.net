@@ -1,0 +1,32 @@
+[
+  {
+    "id": "vhf-1",
+    "enabled": true,
+    "state": "up",
+    "sessionCount": 2,
+    "lastError": null,
+    "framesIn": 184213,
+    "framesOut": 95120,
+    "channelBusy": false
+  },
+  {
+    "id": "uhf-2",
+    "enabled": true,
+    "state": "faulted",
+    "sessionCount": 0,
+    "lastError": "serial: /dev/ttyUSB1 not present",
+    "framesIn": 0,
+    "framesOut": 0,
+    "channelBusy": null
+  },
+  {
+    "id": "link-dn",
+    "enabled": false,
+    "state": "down",
+    "sessionCount": 0,
+    "lastError": null,
+    "framesIn": 0,
+    "framesOut": 0,
+    "channelBusy": true
+  }
+]

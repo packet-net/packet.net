@@ -1,0 +1,24 @@
+{
+  "portId": "vhf-1",
+  "probes": [
+    {
+      "name": "tnc-present",
+      "status": "pass",
+      "detail": "GETVER answered: firmware 3.44",
+      "remedy": null
+    },
+    {
+      "name": "dip-software-control",
+      "status": "fail",
+      "detail": "DIPs 0110 - mode pinned by switches",
+      "remedy": "set all four DIP switches up (1111)"
+    },
+    {
+      "name": "sdm",
+      "status": "unknown",
+      "detail": "requires a brief transmit",
+      "remedy": null
+    }
+  ],
+  "ranAt": "2026-08-17T12:00:00+00:00"
+}

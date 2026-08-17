@@ -1,0 +1,25 @@
+{
+  "instanceId": "garage-pi",
+  "reachable": true,
+  "error": null,
+  "pairs": [
+    {
+      "tncDeviceId": "acm-0",
+      "radioDeviceId": "usb-1"
+    }
+  ],
+  "unpairedTncs": [
+    "ttyACM1"
+  ],
+  "unpairedRadios": [],
+  "ambiguous": [
+    {
+      "tncDeviceId": "ttyACM1",
+      "radioDeviceIds": [
+        "usb-0",
+        "usb-1"
+      ]
+    }
+  ],
+  "caveat": "RF WARNING: this action briefly keyed (transmitted through) each free NinoTNC on the head-end to discover its physically-cabled radio by the PTT it asserts. It emits on-air and must only be run by an operator on frequencies they are licensed and clear to key. It is never part of the passive head-end scan."
+}

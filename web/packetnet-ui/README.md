@@ -68,9 +68,9 @@ fresh node's first load is the setup wizard, then the login form.
 npm run lint         # eslint, --max-warnings 0 (incl. the no-mock-in-screens rule)
 npm run typecheck    # tsc --noEmit on its own
 npm run build        # tsc --noEmit + vite production build
-npm test             # vitest run (jsdom)
+npm test             # vitest: the contract, api, screen-behaviour and smoke suites (jsdom)
 npm run preview      # serve the built dist/ locally
-npm run screenshot   # bash scripts/screenshot.sh, see § Screenshots
+npm run screenshot   # bash scripts/screenshot.sh, see the Screenshots section
 ```
 
 CI's `web-ui` job runs lint, build and test.
@@ -127,6 +127,56 @@ CI does not screenshot (the `web-ui` job runs lint + build + test only): the ren
 smoke test (`src/test/screens.smoke.test.tsx`) is the runtime gate there, mounting every
 screen against the mock backend and asserting it renders without crashing.
 
+> Note: headless-browser screenshot verification is **not** possible on the current dev
+> LXC (the sandbox blocks Chrome's network sockets), so a *browser* runs only inside
+> Docker; see the live smoke below and `scripts/screenshot.sh`.
+
+### The client/server contract
+
+`src/test/contract/*.json` are **generated**, never hand-edited. A test in the .NET suite
+(`tests/Packet.Node.Tests/Contract/ClientContractFixtureTests.cs`) serialises a representative
+instance of every DTO this panel consumes, with the node's *real* wire options (the same
+`NodeConfigJson.ApplyTo` over `JsonSerializerDefaults.Web` that `Program.cs` gives the HTTP
+layer), and fails if a fixture no longer matches. `src/test/contract.test.ts` reads those files
+back, reads `src/lib/types.ts` with the TypeScript compiler API, and fails on:
+
+- a wire field `types.ts` does not model,
+- a `types.ts`-required field the server never sends,
+- a value whose kind or union member is wrong,
+- a closed set (`TransportKind`, `FrameType`, `AppPackageState`, …) that has drifted,
+- and the same three, run over `src/lib/mock.ts`: the fake node may not describe a node the
+  real server could not be.
+
+`src/test/contract/fixtures.ts` is the compile-time half, so `npm run build` catches the
+required-field case without running vitest.
+
+**When the server changes shape,** regenerate rather than editing the JSON:
+
+```sh
+cd ../..                                                # repo root
+PDN_UPDATE_CONTRACT=1 dotnet test tests/Packet.Node.Tests --filter "FullyQualifiedName~Contract"
+cd web/packetnet-ui && npx vitest run src/test/contract.test.ts
+```
+
+then fix `types.ts` and `mock.ts` until that is green. Do not relax a check to make it pass;
+that is the hole this closes ([#692](https://github.com/packet-net/packet.net/issues/692)).
+
+### Live smoke against a real node
+
+```sh
+../../scripts/live-smoke/run.sh          # from anywhere; ~70 s warm
+```
+
+Boots `pdn` on free ports with a scratch YAML (auth ON, one kiss-tcp port to a throwaway TCP
+sink) and a temp db, completes first-run setup + login over the API, serves *this* SPA's
+live-mode build from the node, then drives it with Playwright chromium in a Docker container on
+`--network host` (the LXC reason above). It walks Dashboard, Ports (add with the panel's own
+defaults; edit-save-unchanged compared field-by-field against the `GET /config` it loaded),
+Config's dry run, Sessions connect-out, Console, Monitor, Users, and opens every SSE feed with
+`?access_token=`. It fails on any console error, any 4xx/5xx from the SPA's own requests, or
+visible `undefined` / `NaN` / `[object Object]` text, and keeps its screenshots. CI runs it from
+`.github/workflows/live-smoke.yml` on pushes to `main`.
+
 ## Layout
 
 ```
@@ -140,7 +190,9 @@ src/
   screens/    dashboard · monitor · sessions · console · apps · app-frame · routes ·
               capabilities · ports · headends · config · users · link-troubleshoot ·
               link-tuner · waterfall · login · setup
-  test/       24 suites + setup.ts (see § The test suite)
+  test/       the suites listed under The test suite + setup.ts
+              contract.test.ts + contract/ (generated server fixtures, see The client/server contract)
+              api.live.test.ts (every api.* member against a stubbed fetch) + helpers/
 public/       fonts/ (self-hosted Inter + JetBrains Mono woff2; the panel loads nothing
               off-box, see the @font-face block at the top of src/index.css)
 ```

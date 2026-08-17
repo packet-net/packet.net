@@ -1,0 +1,60 @@
+name: live-smoke
+
+# The UI/node contract check: boot a REAL node with auth ON, serve the REAL live-mode
+# SPA off it, and drive that SPA with a real chromium.
+#
+# WHAT IT CATCHES that nothing else does. Packet.Node.Tests exercises the API with no
+# browser; the vitest suite exercises the SPA against the mock data layer with no node.
+# A break BETWEEN them is invisible to both, and the UI review found several: the Ports
+# editor's own "Add port" defaults 422ing against the live validator, the editor
+# dropping tuned ax25/kiss blocks on a save the operator thought was a no-op, a
+# dashboard rendering the mock's callsign at a real operator, a Connect modal offering a
+# port id this node has never had. Every one of those shipped with a green build. This
+# leg fails on any of them, plus any page console error, any 4xx/5xx from a request the
+# SPA itself made, and any visible "undefined" / "NaN" / "[object Object]".
+#
+# main-only by design, like ci.yml and deb-smoke.yml: PRs merge on green local runs, and
+# the push-to-main run is the signal. Use workflow_dispatch for an on-demand branch run.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: live-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, Linux, X64]
+    # Self-hosted Linux runners - zero GitHub Actions minutes consumed.
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: live smoke
+        # Exclusive box-wide flock. This is a HEAVY workflow, not a reader: it builds the
+        # node, builds the SPA, boots a node with live ports and timers, and runs a
+        # chromium. Overlapping it with `ci`'s test legs oversubscribes the physical CPU
+        # and starves the real-time AX.25 pumps - the same reason interop / fuzz /
+        # deb-smoke take the exclusive lock. See docs/plan.md 7.2.2.
+        run: flock -x /tmp/pdn-ci-heavy.lock scripts/live-smoke/run.sh
+        env:
+          # Keep the artifacts after the run so the upload step below can find them
+          # (run.sh deletes its scratch dir on exit unless it is told where to write).
+          LIVE_SMOKE_OUT: ${{ github.workspace }}/live-smoke-out
+
+      - name: upload screenshots, report and node log
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-smoke-evidence
+          path: live-smoke-out/
+          retention-days: 3

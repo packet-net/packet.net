@@ -165,9 +165,20 @@ public static class MonitorEventFactory
     /// discriminator bits live in the first octet under both modulo-8 and extended
     /// modulo-128, so this is modulo-independent.
     /// </summary>
-    internal static (string Type, string ClassKind) Classify(Ax25Frame frame)
+    internal static (string Type, string ClassKind) Classify(Ax25Frame frame) => Classify(frame.Control);
+
+    /// <inheritdoc cref="Classify(Ax25Frame)"/>
+    /// <remarks>
+    /// The control-octet overload is public because this classifier IS the monitor's frame
+    /// taxonomy: the SSE wire values of <see cref="MonitorEvent.Type"/> and
+    /// <see cref="MonitorEvent.ClassKind"/>, which the web client mirrors as the
+    /// <c>FrameType</c> / <c>FrameClass</c> unions in <c>types.ts</c>. The client-contract
+    /// fixture test sweeps all 256 octets through here to DERIVE that closed set rather than
+    /// transcribe it, so a new arm added below fails the contract build (review item C018).
+    /// </remarks>
+    public static (string Type, string ClassKind) Classify(byte control)
     {
-        byte ctrl = frame.Control;
+        byte ctrl = control;
 
         // I-frame: bit 0 = 0.
         if ((ctrl & 0x01) == 0)

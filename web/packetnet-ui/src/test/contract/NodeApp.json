@@ -1,0 +1,18 @@
+[
+  {
+    "id": "wall",
+    "name": "WALL",
+    "icon": "message-square",
+    "url": "/apps/wall/",
+    "uiMode": "standalone",
+    "state": "Running"
+  },
+  {
+    "id": "lobby",
+    "name": "LOBBY",
+    "icon": null,
+    "url": "/apps/lobby/",
+    "uiMode": "slot",
+    "state": null
+  }
+]

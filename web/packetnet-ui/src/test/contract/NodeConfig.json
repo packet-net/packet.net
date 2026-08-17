@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 2,
+  "identity": {
+    "callsign": "M0LTE-1",
+    "alias": "LONDON",
+    "grid": "IO91nl"
+  },
+  "ports": [
+    {
+      "id": "vhf-1",
+      "enabled": true,
+      "transport": {
+        "kind": "nino-tnc",
+        "device": "/dev/ttyACM0",
+        "baud": 57600,
+        "mode": 4,
+        "endpointKey": "nino-tnc:/dev/ttyACM0"
+      },
+      "profile": "slow-afsk1200",
+      "ax25": {
+        "t1Ms": 3000,
+        "t2Ms": 300,
+        "t3Ms": 180000,
+        "n2": 8,
+        "windowSize": 4,
+        "n1": 256,
+        "maxCachedPeers": 64
+      },
+      "kiss": {
+        "txDelay": 30,
+        "persistence": 63,
+        "slotTime": 10,
+        "txTail": 5,
+        "ackMode": true,
+        "t1FromTxComplete": true
+      },
+      "radio": {
+        "kind": "tait-ccdi",
+        "port": "",
+        "serial": "19925328",
+        "headEndId": "",
+        "deviceId": "",
+        "isHeadEndBound": false,
+        "baud": 28800,
+        "healthIntervalSeconds": 10,
+        "hailResponder": true,
+        "hailResponderPeer": "M0LTE-2"
+      },
+      "rig": {
+        "kind": "hamlib",
+        "host": "127.0.0.1",
+        "port": null,
+        "device": "/dev/serial/by-id/usb-Icom_Inc._IC-7300-if00-port0",
+        "model": 3073,
+        "serialSpeed": 115200,
+        "isNodeManaged": true,
+        "pollIntervalSeconds": 5,
+        "meterIntervalSeconds": 1
+      },
+      "compat": {
+        "preset": "lenient",
+        "allowEmptyCallsignBase": true,
+        "allowInfoOnSupervisoryFrames": false,
+        "allowCommandFrameAsResponse": null,
+        "quirks": "default"
+      },
+      "beacon": {
+        "enabled": true,
+        "intervalMinutes": 15,
+        "text": "{node}:{call} 2m"
+      },
+      "netRomQuality": 192,
+      "netRomMinQuality": 100,
+      "nodesPaclen": 160,
+      "mqttInstance": "2m"
+    },
+    {
+      "id": "uhf-2",
+      "enabled": true,
+      "transport": {
+        "kind": "kiss-tcp",
+        "host": "127.0.0.1",
+        "port": 8001,
+        "endpointKey": "kiss-tcp:127.0.0.1:8001"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "hf-300",
+      "enabled": false,
+      "transport": {
+        "kind": "serial-kiss",
+        "device": "/dev/ttyUSB1",
+        "baud": 38400,
+        "endpointKey": "serial-kiss:/dev/ttyUSB1"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "2m-headend",
+      "enabled": true,
+      "transport": {
+        "kind": "nino-tnc-tcp",
+        "headEndId": "shack-pi",
+        "deviceId": "nino-0",
+        "mode": 4,
+        "endpointKey": "nino-tnc-tcp:shack-pi/nino-0"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": {
+        "kind": "tait-ccdi",
+        "port": "",
+        "serial": "",
+        "headEndId": "shack-pi",
+        "deviceId": "tait-0",
+        "isHeadEndBound": true,
+        "baud": 28800,
+        "healthIntervalSeconds": null,
+        "hailResponder": false,
+        "hailResponderPeer": ""
+      },
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "link-dn",
+      "enabled": true,
+      "transport": {
+        "kind": "axudp",
+        "host": "44.131.91.2",
+        "port": 10093,
+        "localPort": 10093,
+        "endpointKey": "axudp:44.131.91.2:10093(local:10093)"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "mp-net",
+      "enabled": true,
+      "transport": {
+        "kind": "axudp-multipoint",
+        "localPort": 10094,
+        "peers": [
+          {
+            "call": "N0CALL-1",
+            "host": "44.131.10.1",
+            "port": 10093,
+            "broadcast": true
+          },
+          {
+            "call": "N0CALL-7",
+            "host": "44.131.10.2",
+            "port": 10094,
+            "broadcast": false
+          }
+        ],
+        "endpointKey": "axudp-multipoint:local:10094(2 peers)"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "tait-tp",
+      "enabled": true,
+      "transport": {
+        "kind": "tait-transparent",
+        "device": "/dev/ttyUSB3",
+        "serial": "",
+        "headEndId": "",
+        "deviceId": "",
+        "isHeadEndBound": false,
+        "baud": 28800,
+        "transparentBaud": 28800,
+        "ffskBaud": 2400,
+        "leadInMs": 100,
+        "endpointKey": "tait-transparent:/dev/ttyUSB3"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    },
+    {
+      "id": "sm-1",
+      "enabled": true,
+      "transport": {
+        "kind": "soundmodem",
+        "device": "flex:0",
+        "captureRate": 48000,
+        "mode": "qpsk2400-il2pc",
+        "frequency": 1700,
+        "offsetPairs": 2,
+        "offsetStepHz": 12.5,
+        "pskDetector": "coherent",
+        "ptt": "",
+        "flex": {
+          "frequency": "14.100000",
+          "antenna": "ANT1",
+          "mode": "DIGU",
+          "daxChannel": "1"
+        },
+        "endpointKey": "soundmodem:flex:0/dax1"
+      },
+      "profile": null,
+      "ax25": null,
+      "kiss": null,
+      "radio": null,
+      "rig": null,
+      "compat": null,
+      "beacon": null,
+      "netRomQuality": null,
+      "netRomMinQuality": null,
+      "nodesPaclen": null,
+      "mqttInstance": null
+    }
+  ],
+  "services": {
+    "banner": "Welcome to {node} ({call})",
+    "prompt": "{call}\u003E "
+  },
+  "management": {
+    "telnet": {
+      "enabled": true,
+      "bind": "127.0.0.1",
+      "port": 8011
+    },
+    "http": {
+      "bind": "0.0.0.0",
+      "port": 8080
+    },
+    "https": {
+      "enabled": false,
+      "bind": "0.0.0.0",
+      "port": 8443,
+      "certificatePath": null,
+      "certificatePassword": null,
+      "generateSelfSignedOnMissing": true
+    },
+    "auth": {
+      "enabled": true,
+      "accessTokenMinutes": 60,
+      "refreshTokenMinutes": 43200,
+      "webAuthn": {
+        "relyingPartyId": "pdn.m0lte.uk",
+        "relyingPartyName": "pdn node",
+        "allowedOrigins": [
+          "https://pdn.m0lte.uk"
+        ]
+      },
+      "sysopElevationMinutes": 30
+    },
+    "mdns": {
+      "enabled": true,
+      "instanceName": "london"
+    },
+    "console": {
+      "idleTimeoutMinutes": 30
+    }
+  },
+  "netRom": {
+    "enabled": true,
+    "broadcast": true,
+    "routing": "Transit",
+    "connect": null,
+    "forward": null,
+    "forwardMode": "PerFlow",
+    "defaultNeighbourQuality": 192,
+    "minQuality": 40,
+    "obsoleteInitial": 6,
+    "obsoleteMinimum": 4,
+    "sweepIntervalSeconds": 300,
+    "window": 4,
+    "transportTimeoutSeconds": 60,
+    "transportRetries": 3,
+    "timeToLive": 25,
+    "compress": false,
+    "inp3": {
+      "l3RttInterval": 60,
+      "l3RttResetWindow": 180,
+      "snttGainShift": 3,
+      "probeUnknownCapability": true,
+      "advertiseIpAccept": null,
+      "capabilityTextWidth": 8,
+      "preferInp3Routes": true,
+      "enabled": true,
+      "hopLimit": 30,
+      "rifInterval": 300,
+      "positiveDebounce": 5,
+      "worsenThresholdMs": 1000
+    },
+    "effectiveRouting": "Transit"
+  },
+  "beacon": {
+    "enabled": true,
+    "intervalMinutes": 30,
+    "text": "{node} pdn node"
+  },
+  "rhp": {
+    "enabled": false,
+    "bind": "127.0.0.1",
+    "port": 9000,
+    "requireAuth": false,
+    "maxConnections": 64,
+    "maxHandlesPerClient": 256,
+    "inFrameTimeoutSeconds": 30
+  },
+  "mcp": {
+    "enabled": false,
+    "sse": {
+      "enabled": false,
+      "path": "/mcp"
+    },
+    "tokenLifetimeDays": 90,
+    "oauth": {
+      "enabled": false,
+      "accessTokenLifetimeMinutes": 60
+    }
+  },
+  "applications": [],
+  "apps": [
+    {
+      "id": "wall",
+      "enabled": true,
+      "command": "WALL",
+      "callsign": "M0LTE-3",
+      "netrom": {
+        "alias": "RDGWAL",
+        "quality": 255
+      },
+      "environment": {}
+    }
+  ],
+  "appPackageRoots": [
+    "/var/lib/packetnet/apps"
+  ],
+  "traffic": {
+    "enabled": true,
+    "path": null,
+    "retentionDays": 14,
+    "maxMb": 512
+  },
+  "tailscale": {
+    "enabled": false,
+    "authKey": null,
+    "authKeyFile": null,
+    "hostname": "pdn",
+    "tags": [
+      "tag:pdn"
+    ],
+    "stateDir": "/var/lib/packetnet/tsnet",
+    "target": "127.0.0.1:8080",
+    "funnel": false
+  },
+  "oarc": {
+    "enabled": false,
+    "baseUrl": "https://node-api.packet.oarc.uk/",
+    "reportNodeStatus": true,
+    "reportLinks": true,
+    "reportCircuits": true,
+    "reportTraces": false,
+    "tracesRfOnly": true,
+    "publishExactPosition": false,
+    "statusIntervalSecs": 300,
+    "sessionStatusIntervalSecs": 60
+  },
+  "mqtt": {
+    "enabled": false,
+    "brokerHost": "",
+    "brokerPort": 1883,
+    "useTls": false,
+    "username": null,
+    "password": null,
+    "topicPrefix": "",
+    "nodeName": null,
+    "base64": false,
+    "qos": 2,
+    "rfOnly": false
+  },
+  "paging": {
+    "enabled": false,
+    "device": "default",
+    "captureRate": 48000,
+    "bind": "127.0.0.1",
+    "port": 8106,
+    "baud": 1200,
+    "invertPolarity": false,
+    "ptt": "",
+    "flex": null
+  },
+  "ardop": {
+    "enabled": false,
+    "device": "default",
+    "captureRate": 48000,
+    "bind": "127.0.0.1",
+    "port": 8515,
+    "ptt": "",
+    "flex": null
+  },
+  "headEnds": [
+    {
+      "id": "shack-pi",
+      "address": "192.168.1.44:8080"
+    }
+  ]
+}

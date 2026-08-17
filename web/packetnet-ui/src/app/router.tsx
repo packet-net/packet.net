@@ -34,8 +34,9 @@ import { LinkTroubleshoot } from "@/screens/link-troubleshoot";
 // for the api.ts "unauthorized" event). Mock mode skips the probe and enters
 // directly (no real auth → every screen renders for the vitest smoke test).
 // ============================================================
-// Exported for the gate test (src/test/router.gate.test.tsx), which drives the probe path
-// directly rather than standing the whole browser router up.
+// Exported for the gate tests (src/test/router.gate.test.tsx drives the stored-token probe
+// path; src/test/require-auth.test.tsx drives the three outcomes), which mount it directly
+// rather than standing the whole browser router up.
 export function RequireAuth() {
   const auth = useAuth();
   const [phase, setPhase] = useState<"probing" | "app" | "login" | "setup">(

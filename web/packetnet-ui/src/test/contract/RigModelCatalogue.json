@@ -1,0 +1,17 @@
+{
+  "available": true,
+  "models": [
+    {
+      "number": 1,
+      "manufacturer": "Hamlib",
+      "model": "Dummy",
+      "status": "Stable"
+    },
+    {
+      "number": 3073,
+      "manufacturer": "Icom",
+      "model": "IC-7300",
+      "status": null
+    }
+  ]
+}

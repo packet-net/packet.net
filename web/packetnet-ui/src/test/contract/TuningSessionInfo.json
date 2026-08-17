@@ -1,0 +1,9 @@
+{
+  "sessionId": "tune-1",
+  "portId": "vhf-1",
+  "role": "tuned",
+  "peerSdmId": "12345678",
+  "state": "armed",
+  "burstFrames": 5,
+  "startedAt": "2026-08-17T12:00:00+00:00"
+}
