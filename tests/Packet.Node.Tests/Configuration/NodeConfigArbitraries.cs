@@ -47,7 +47,7 @@ public static class NodeConfigArbitraries
             Gen.Constant<Ax25PortParams?>(null),
             from t1 in Gen.Choose(1, 60000)
             from n2 in Gen.Choose(1, 20)
-            from k in Gen.Choose(1, 7)
+            from k in Gen.Choose(1, 127)
             select (Ax25PortParams?)new Ax25PortParams { T1Ms = t1, N2 = n2, WindowSize = k });
 
     private static Gen<KissParams?> KissGen() =>
