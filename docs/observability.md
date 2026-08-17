@@ -66,7 +66,9 @@ All metrics use the `pdn_` namespace. Counters are monotonic over the process li
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `pdn_port_up` | gauge | `port` | Port up (1) / not up (0). |
+| `pdn_port_up` | gauge | `port` | Port **serving** (1) / not serving (0). `1` covers both `up` and `degraded` - a degraded port is on the air with a non-data-path piece missing, so calling it down would be the opposite lie. See `pdn_port_state` for the exact state and `pdn_port_degraded` for what is missing. |
+| `pdn_port_state` | gauge | `port`, `state` | The port's lifecycle state: `1` on the state the port is in, `0` on the others. One series per (port, state) over the closed set `configured` / `disabled` / `starting` / `up` / `degraded` / `faulted` / `retrying` / `stopping`. This is what distinguishes a port that is retrying from one that is switched off from one that is mid-restart - all of which the up/not-up gauge alone flattens to `0`. |
+| `pdn_port_degraded` | gauge | `port`, `component` | `1` for each component a serving port is running **without** (`radio` / `rig` / `rigctld` / `transport`). Absent for a healthy port, so the series appearing at all is the alert. |
 | `pdn_port_sessions` | gauge | `port` | Active sessions on the port. |
 | `pdn_port_channel_busy` | gauge | `port` | Port carrier sense: channel busy (1) / clear (0). Emitted only for a port that has a carrier-sense source (radio hardware DCD, or a channel-sensing transport such as the in-process soundmodem); absent otherwise, never a misleading `0`. |
 | `pdn_port_frames_received_total` | counter | `port` | AX.25 frames received on the port. |

@@ -104,7 +104,6 @@ public sealed class ModemTransportSelectionTests
         return new RunningPort
         {
             Id = "vhf",
-            Config = new PortConfig { Id = "vhf", Enabled = true, Transport = new KissTcpTransport { Host = "mem", Port = 1 } },
             Transport = decorated,
             InnerTransport = modem,
             Listener = new Ax25Listener(
@@ -145,7 +144,6 @@ public sealed class ModemTransportSelectionTests
         var port = new RunningPort
         {
             Id = "vhf",
-            Config = new PortConfig { Id = "vhf", Enabled = true, Transport = new KissTcpTransport { Host = "mem", Port = 1 } },
             Transport = decorated,
             InnerTransport = modem,
             Listener = new Ax25Listener(

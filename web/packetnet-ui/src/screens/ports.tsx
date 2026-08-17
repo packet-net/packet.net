@@ -25,7 +25,7 @@ import {
   LINK_DIAL_OPTIONS, LINK_DIAL_HELP, LINK_XID_OPTIONS, LINK_XID_HELP,
   KIND_LABEL, KIND_USES_KISS, persistPct, pctToPersist, tenMsToMs, msToTenMs,
 } from "@/lib/catalogue";
-import { portHealth } from "@/lib/health";
+import { portDotState, portHealth, portIsServing } from "@/lib/health";
 import { api, apiMode, useQuery, ConfigRejected, PortLifecycleUnavailable } from "@/lib/api";
 import { useAuth } from "@/app/auth";
 
@@ -447,12 +447,12 @@ export function Ports() {
           const st = statusById[p.id];
           const h = portHealth(st, links ?? []);
           const accent = h.level === "faulted" ? "border-danger/40" : h.level === "degraded" ? "border-warning/40" : "border-border";
-          const up = st?.state === "up";
+          const serving = portIsServing(st?.state);
           return (
             <Card key={p.id} className={cn("p-4", accent)}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
-                  <StatusDot state={st?.state ?? "down"} live={up} />
+                  <StatusDot state={portDotState(st?.state)} live={st?.state === "up"} />
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm font-semibold">{p.id}</span>
@@ -473,7 +473,7 @@ export function Ports() {
                   <Icon name="alert" size={13} /> {h.reason}
                 </div>
               )}
-              {st?.lastError && (
+              {!serving && st?.lastError && (
                 <div className="mt-3 flex items-center gap-2 rounded-md bg-danger/10 px-2.5 py-1.5 text-xs text-danger">
                   <Icon name="alert" size={13} /> {st.lastError}
                 </div>
@@ -516,12 +516,12 @@ export function Ports() {
                 )}
                 <DoctorButton portId={p.id} />
                 {/* Restart drives the supervisor's serialized RestartPortAsync via
-                    lifecycle(); only offered while the port is up (a 409 surfaces as a
-                    warning banner). */}
-                {up
+                    lifecycle(); only offered while the port is SERVING - up or degraded (a
+                    409 surfaces as a warning banner). */}
+                {serving
                   ? <Button variant="ghost" size="sm" title="Restart port (teardown + bring-up)" onClick={() => lifecycle(p.id, "restart")}><Icon name="restart" size={14} /> Restart</Button>
                   : <Button variant="ghost" size="sm" title="Bring up" onClick={() => lifecycle(p.id, "up")}><Icon name="power" size={14} /> Bring up</Button>}
-                {up && (
+                {serving && (
                   <Button variant="ghost" size="sm" className="text-muted-foreground" title="Take down" onClick={() => lifecycle(p.id, "down")}>
                     <Icon name="power" size={14} /> Down
                   </Button>

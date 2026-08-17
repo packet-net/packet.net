@@ -270,7 +270,7 @@ public sealed class SupervisorApplyBranchTests
         newA.Radio.Should().BeSameAs(radioA2, "a restart re-opens the radio control channel");
         newA.RigStatus.Should().NotBeNull();
         newA.RadioStatus.Should().NotBeNull();
-        newA.Config.Transport.Should().Be(new SerialKissTransport { Device = "/dev/pty-a2" });
+        supervisor.GetPortConfig("a")!.Transport.Should().Be(new SerialKissTransport { Device = "/dev/pty-a2" });
         listenerA.IsRunning.Should().BeFalse();
         transportA1.Disposed.Should().BeTrue();
         rigA1.Disposed.Should().BeTrue();
@@ -291,6 +291,50 @@ public sealed class SupervisorApplyBranchTests
         await app.ConnectAsync(AppCall);
         await Wait.ForAsync(() => Volatile.Read(ref appHandled),
             "the restarted port's fresh listener still answers for the registered app callsign");
+    }
+
+    // ---- two-phase apply: all teardowns, THEN all bring-ups ------------------------
+
+    [Fact]
+    public async Task Swapping_one_device_between_two_ports_works_because_every_teardown_precedes_every_bring_up()
+    {
+        // The hazard (#722): restart used to be per port, down-then-up, in CONFIG order. An
+        // operator moving one serial device from port a to port b writes a legal, validated
+        // edit (uniqueness is checked on the TARGET config only) - and a's bring-up then dialled
+        // the device b was still holding. The failure landed as a per-port fault with no retry,
+        // so a valid edit left a port permanently down.
+        var busA = new SharedRadioBus();
+        var busB = new SharedRadioBus();
+        var before = Config(OldCall, Port("a", "/dev/pty-a"), Port("b", "/dev/pty-b"));
+        var config = new TestConfigProvider(before);
+        var transports = new FakeTransportFactory()
+            // Both devices are exclusive: the second opener gets "already open", exactly like a
+            // real serial port.
+            .Exclusive(Endpoint("/dev/pty-a"))
+            .Exclusive(Endpoint("/dev/pty-b"))
+            .Provide(Endpoint("/dev/pty-a"), busA.Attach(), busA.Attach())
+            .Provide(Endpoint("/dev/pty-b"), busB.Attach(), busB.Attach());
+
+        await using var supervisor = new PortSupervisor(
+            config, transports, TimeProvider.System, NullLoggerFactory.Instance);
+        await supervisor.StartAsync();
+        await Wait.ForAsync(() => supervisor.RunningPortIds.Count == 2, "both ports up");
+
+        // The swap: a takes b's device and b takes a's.
+        var after = Config(OldCall, Port("a", "/dev/pty-b"), Port("b", "/dev/pty-a"));
+        var plan = ReconcilePlanner.Plan(before, after);
+        // Both ports are restart-class, in config order - which is what used to collide.
+        plan.ToRestart.Select(p => p.Id).Should().Equal(["a", "b"]);
+
+        config.Apply(after);
+        await supervisor.ApplyAsync(plan, after);
+
+        supervisor.RunningPortIds.Should().BeEquivalentTo(["a", "b"],
+            "with all teardowns before any bring-up, neither port dials a device the other still holds");
+        supervisor.GetHealth("a")!.State.Should().Be(PortState.Up);
+        supervisor.GetHealth("b")!.State.Should().Be(PortState.Up);
+        supervisor.GetPortConfig("a")!.Transport.Should().Be(new SerialKissTransport { Device = "/dev/pty-b" });
+        supervisor.GetPortConfig("b")!.Transport.Should().Be(new SerialKissTransport { Device = "/dev/pty-a" });
     }
 
     /// <summary>

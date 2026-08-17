@@ -474,7 +474,9 @@ public sealed partial class NodeHostedService : BackgroundService
         // one, deterministically). If no port is up, Connect reports "not available".
         var connector = supervisor?.ResolveDefaultConnector();
         var router = supervisor?.CreateConnectRouter(connector);
-        var env = new NodeConsoleEnvironment(config, connector, netRom, sysopContext, applicationHost, router, capabilityCache, heardLog);
+        var env = new NodeConsoleEnvironment(
+            config, connector, netRom, sysopContext, applicationHost, router, capabilityCache, heardLog,
+            portHealth: supervisor);
         return new NodeCommandService(env, loggerFactory.CreateLogger<NodeCommandService>(), timeProvider);
     }
 
@@ -598,6 +600,25 @@ public sealed partial class NodeHostedService : BackgroundService
         if (p.CompatChanged.Count > 0)
         {
             parts.Add($"{p.CompatChanged.Count} compat-live");
+        }
+
+        // The reconcile log is the node's forensic record of what it did to itself, so every
+        // arm the plan carries has to be named here. NET/ROM quality was missing: a
+        // quality/minQuality/nodesPaclen edit really did change route advertisement on a port
+        // and was logged as "(no-op)", leaving a later routing investigation no trace (#722).
+        if (p.NetRomQualityChanged.Count > 0)
+        {
+            parts.Add($"{p.NetRomQualityChanged.Count} netrom-live");
+        }
+
+        if (p.BeaconChanged.Count > 0)
+        {
+            parts.Add($"{p.BeaconChanged.Count} beacon-live");
+        }
+
+        if (p.MqttInstanceChanged.Count > 0)
+        {
+            parts.Add($"{p.MqttInstanceChanged.Count} mqtt-live");
         }
 
         if (p.LinkChanged.Count > 0)

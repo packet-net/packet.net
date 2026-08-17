@@ -33,6 +33,11 @@ public sealed class EchoStation : IAsyncDisposable
     /// <summary>True once a peer has connected to this station.</summary>
     public bool SawConnect => sawConnect;
 
+    /// <summary>True when every session this station holds is back in <c>Disconnected</c>: the
+    /// settle point a test must wait for before re-dialling, so the peer's own release traffic
+    /// (its DISC/UA/DM tail) cannot land on the next SABM and read as a refusal.</summary>
+    public bool IsIdle => listener.ActiveSessions.All(s => s.CurrentState == "Disconnected");
+
     public async Task StartAsync()
     {
         await listener.StartAsync().ConfigureAwait(false);

@@ -76,7 +76,16 @@ internal sealed class RunningPortHandle : ITuningPortHandle
     /// <inheritdoc/>
     public Task PauseAsync(CancellationToken cancellationToken) =>
         host.RunExclusiveAsync(
-            async () => await running.Listener.StopAsync().ConfigureAwait(false),
+            async () =>
+            {
+                // Tell the supervisor this stop is DELIBERATE before making it: the
+                // running-state watchdog would otherwise read the stopped listener as a port
+                // that died on the air and restart it underneath the tuning session (#722).
+                // The suspension clears on the next teardown / bring-up, which is exactly what
+                // restore does (RestartPortAsync).
+                host.Supervisor?.SuspendSupervision(running.Id);
+                await running.Listener.StopAsync().ConfigureAwait(false);
+            },
             cancellationToken);
 }
 

@@ -84,6 +84,8 @@ public static class ReconcilePlanner
         var compatChanged = new List<PortConfig>();
         var linkChanged = new List<PortConfig>();
         var netRomQualityChanged = new List<PortConfig>();
+        var beaconChanged = new List<PortConfig>();
+        var mqttInstanceChanged = new List<PortConfig>();
 
         // Removed ports.
         foreach (var oldPort in from.Ports)
@@ -189,6 +191,20 @@ public static class ReconcilePlanner
             {
                 netRomQualityChanged.Add(newPort);
             }
+            // The per-port ID-beacon override: hot (the beacon service re-arms its timers from
+            // the live config), but it MUST appear in the plan. Without an arm a beacon-only
+            // edit was a genuine no-op, so the pre-apply preview told the operator "nothing will
+            // change" and the node then started keying up on a timer (#722).
+            if (!Equals(oldPort.Beacon, newPort.Beacon))
+            {
+                beaconChanged.Add(newPort);
+            }
+            // The kissproxy MQTT topic label: read live per frame by MqttFrameEmitter, so
+            // nothing restarts - the arm exists so the edit is not invisible to IsNoOp.
+            if (!string.Equals(oldPort.MqttInstance, newPort.MqttInstance, StringComparison.Ordinal))
+            {
+                mqttInstanceChanged.Add(newPort);
+            }
         }
 
         return new ReconcilePlan
@@ -203,10 +219,68 @@ public static class ReconcilePlanner
             CompatChanged = compatChanged,
             LinkChanged = linkChanged,
             NetRomQualityChanged = netRomQualityChanged,
+            BeaconChanged = beaconChanged,
+            MqttInstanceChanged = mqttInstanceChanged,
             TelnetChanged = telnetChanged,
             ServicesChanged = servicesChanged,
         };
     }
+
+    /// <summary>
+    /// How a single <see cref="PortConfig"/> field is reconciled. Every public property of
+    /// <see cref="PortConfig"/> is claimed by exactly one of these in
+    /// <see cref="FieldClasses"/>, and a reflection test fails when a newly added field is not
+    /// - so <see cref="ReconcilePlan.IsNoOp"/> genuinely means "nothing happens" rather than
+    /// "nothing I remembered to compare" (packet-net/packet.net#722).
+    /// </summary>
+    public enum PortFieldClass
+    {
+        /// <summary>The reconcile key itself: old and new ports are matched by it, so a change
+        /// reads as remove-the-old + add-the-new rather than a field diff.</summary>
+        Key,
+
+        /// <summary>Decides whether the port runs at all (bring up / tear down).</summary>
+        Lifecycle,
+
+        /// <summary>Construction-time: a change restarts the port.</summary>
+        Restart,
+
+        /// <summary>Applied to the running port (or read live) with no restart.</summary>
+        Live,
+
+        /// <summary>Part restart-class, part live - see the field's entry for the split.</summary>
+        Mixed,
+    }
+
+    /// <summary>
+    /// Which reconcile class each <see cref="PortConfig"/> field belongs to, by property name.
+    /// The table is the planner's own contract with itself: <see cref="Plan"/> compares every
+    /// field here that is not <see cref="PortFieldClass.Key"/>, and the exhaustiveness test
+    /// asserts the key set matches <see cref="PortConfig"/>'s public properties exactly.
+    /// </summary>
+    public static IReadOnlyDictionary<string, PortFieldClass> FieldClasses { get; } =
+        new Dictionary<string, PortFieldClass>(StringComparer.Ordinal)
+        {
+            [nameof(PortConfig.Id)] = PortFieldClass.Key,
+            [nameof(PortConfig.Enabled)] = PortFieldClass.Lifecycle,
+            [nameof(PortConfig.Transport)] = PortFieldClass.Restart,
+            [nameof(PortConfig.Profile)] = PortFieldClass.Restart,
+            [nameof(PortConfig.Radio)] = PortFieldClass.Restart,
+            [nameof(PortConfig.Rig)] = PortFieldClass.Restart,
+            // ackMode / t1FromTxComplete decide how the modem chain is BUILT (the pacing
+            // decorator, the TX-complete T1 restart) so they restart the port; TXDELAY /
+            // PERSIST / SLOTTIME / TXTAIL are re-sent to the running modem.
+            [nameof(PortConfig.Kiss)] = PortFieldClass.Mixed,
+            [nameof(PortConfig.Ax25)] = PortFieldClass.Live,
+            [nameof(PortConfig.Compat)] = PortFieldClass.Live,
+            [nameof(PortConfig.Beacon)] = PortFieldClass.Live,
+            [nameof(PortConfig.NetRomQuality)] = PortFieldClass.Live,
+            [nameof(PortConfig.NetRomMinQuality)] = PortFieldClass.Live,
+            [nameof(PortConfig.NodesPaclen)] = PortFieldClass.Live,
+            [nameof(PortConfig.MqttInstance)] = PortFieldClass.Live,
+            // Dial policy affects new dials only; it live-reseeds through the same path as Ax25.
+            [nameof(PortConfig.Link)] = PortFieldClass.Live,
+        };
 
     // Did the ACKMODE-pacing flag flip between two ports' KISS settings? A null Kiss
     // block means ackMode defaults to false, so a present-but-false block compares

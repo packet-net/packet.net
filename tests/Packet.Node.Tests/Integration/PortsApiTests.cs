@@ -329,11 +329,18 @@ public sealed class PortsApiTests : IDisposable
         var afterDown = await down.Content.ReadFromJsonAsync<PortStatus>(Web);
         afterDown.Should().NotBeNull();
         afterDown!.Enabled.Should().BeFalse();
-        afterDown.State.Should().Be("down");
 
         ConfiguredEnabled(await client.GetStringAsync("/api/v1/config"), "vhf").Should().BeFalse();
 
-        // up → enabled flips back true (the live state may still read down/faulted while
+        // The live state follows once the async reconcile has run. It is deliberately NOT
+        // back-derived from the enabled flag: the projection reports what the port is doing
+        // (this one is retrying its dead endpoint until the reconcile disables it), so the
+        // instant after the flip it may still read `retrying` - honest, and #722's whole point.
+        await Wait.ForAsync(
+            () => PortState(client, "vhf") == "disabled",
+            "the reconcile takes the port down and the state model says so");
+
+        // up → enabled flips back true (the live state may still read configured/starting while
         // the async reconcile runs — we assert the persisted enabled flag).
         var up = await client.PostAsJsonAsync("/api/v1/ports/vhf/lifecycle", new { action = "up" });
         up.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -392,6 +399,15 @@ public sealed class PortsApiTests : IDisposable
         status.Should().NotBeNull();
         status!.Id.Should().Be("vhf");
         status.Enabled.Should().BeTrue();
+    }
+
+    // The port's live state as GET /ports serves it (the one derivation every surface uses).
+    private static string? PortState(HttpClient client, string id)
+    {
+        using var doc = JsonDocument.Parse(client.GetStringAsync("/api/v1/ports").GetAwaiter().GetResult());
+        return doc.RootElement.EnumerateArray()
+            .SingleOrDefault(p => p.GetProperty("id").GetString() == id)
+            .GetProperty("state").GetString();
     }
 
     private static bool ConfiguredEnabled(string configJson, string id)

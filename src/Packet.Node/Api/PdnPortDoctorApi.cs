@@ -44,15 +44,18 @@ public static class PdnPortDoctorApi
             CancellationToken ct) =>
         {
             var running = host.Supervisor?.GetPort(id);
-            if (running is null)
+            // The port's config baseline lives on the supervisor's port owner, not on the
+            // RunningPort - one answer to "what is this port running on" (#722).
+            var portConfig = host.Supervisor?.GetPortConfig(id);
+            if (running is null || portConfig is null)
             {
                 return Results.NotFound();
             }
 
             var report = await runner.RunAsync(
-                id, running.NinoTnc, running.Radio, running.Config.Radio?.Kind,
+                id, running.NinoTnc, running.Radio, portConfig.Radio?.Kind,
                 includeTransmitting: false, config.Current.Identity.Callsign,
-                running.Config.Transport.Kind, ct).ConfigureAwait(false);
+                portConfig.Transport.Kind, ct).ConfigureAwait(false);
             return Results.Ok(report);
         });
 
@@ -70,7 +73,8 @@ public static class PdnPortDoctorApi
             bool interrupt = false) =>
         {
             var running = host.Supervisor?.GetPort(id);
-            if (running is null)
+            var portConfig = host.Supervisor?.GetPortConfig(id);
+            if (running is null || portConfig is null)
             {
                 return Results.NotFound();
             }
@@ -79,9 +83,9 @@ public static class PdnPortDoctorApi
             audit.RecordRest(ctx, clock, "port_doctor", id, "requested", $"interrupt={interrupt}");
 
             var report = await runner.RunAsync(
-                id, running.NinoTnc, running.Radio, running.Config.Radio?.Kind,
+                id, running.NinoTnc, running.Radio, portConfig.Radio?.Kind,
                 includeTransmitting: interrupt, config.Current.Identity.Callsign,
-                running.Config.Transport.Kind, ct).ConfigureAwait(false);
+                portConfig.Transport.Kind, ct).ConfigureAwait(false);
             return Results.Ok(report);
         });
     }

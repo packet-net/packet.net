@@ -144,11 +144,15 @@ export const NODE_STATUS: NodeStatus = {
 };
 
 // 6.4 port status -------------------------------------------
+// Shapes the SERVER can actually produce (the contract fixtures pin them): a disabled port is
+// `disabled`, never `faulted`, and a faulted one is enabled-but-not-serving with a reason.
+const SINCE = "2026-08-17T11:52:00+00:00";
 export const PORT_STATUS: Record<string, PortStatus> = {
-  "vhf-1": { id: "vhf-1", enabled: true, state: "up", sessionCount: 2, lastError: null, framesIn: 184213, framesOut: 95120, channelBusy: false },
-  "uhf-2": { id: "uhf-2", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 52109, framesOut: 30877, channelBusy: true },
-  "link-dn": { id: "link-dn", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 421882, framesOut: 410337, channelBusy: null },
-  "hf-300": { id: "hf-300", enabled: false, state: "faulted", sessionCount: 0, lastError: "serial: /dev/ttyUSB1 not present", framesIn: 0, framesOut: 0, channelBusy: null },
+  "vhf-1": { id: "vhf-1", enabled: true, state: "up", sessionCount: 2, lastError: null, framesIn: 184213, framesOut: 95120, degraded: [], since: SINCE, channelBusy: false },
+  "uhf-2": { id: "uhf-2", enabled: true, state: "up", sessionCount: 1, lastError: null, framesIn: 52109, framesOut: 30877, degraded: [], since: SINCE, channelBusy: true },
+  // Serving with its radio missing - the state the API could not express before #722.
+  "link-dn": { id: "link-dn", enabled: true, state: "degraded", sessionCount: 1, lastError: "radio (tait-ccdi on /dev/ttyUSB2): open failed", framesIn: 421882, framesOut: 410337, degraded: ["radio"], since: SINCE, channelBusy: null },
+  "hf-300": { id: "hf-300", enabled: true, state: "retrying", sessionCount: 0, lastError: "serial: /dev/ttyUSB1 not present", framesIn: 0, framesOut: 0, degraded: [], since: SINCE, channelBusy: null },
 };
 
 // 6.4 sessions ----------------------------------------------

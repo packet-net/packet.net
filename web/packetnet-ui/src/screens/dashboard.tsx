@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { api, useQuery, subscribeFrames, subscribeRigs } from "@/lib/api";
 import { useAuth } from "@/app/auth";
-import { portHealth } from "@/lib/health";
+import { portDotState, portHealth, portIsServing } from "@/lib/health";
 import { KIND_LABEL, fmtUptime, fmtRigFrequency } from "@/lib/catalogue";
 import type { RadioStatus, RigStatus } from "@/lib/types";
 
@@ -58,7 +58,9 @@ export function Dashboard() {
 
   const s = status;
   const ports = portStatus ?? [];
-  const faulted = ports.filter((p) => p.state === "faulted").length;
+  // Enabled but not carrying traffic: faulted, retrying, or stuck mid-lifecycle. The node's
+  // own state model decides (#722), rather than the browser inferring it.
+  const faulted = ports.filter((p) => p.enabled && !portIsServing(p.state)).length;
 
   // The Status card told every operator "Operational" with a green live dot regardless of
   // what the node said - it was a literal (#691 C024). It now reads the node: unreachable
@@ -142,7 +144,7 @@ export function Dashboard() {
                   className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                 >
                   <span className="flex items-center gap-2">
-                    <StatusDot state={h.level === "degraded" ? "faulted" : p.state} live={p.state === "up" && h.level === "good"} />
+                    <StatusDot state={h.level === "degraded" ? "faulted" : portDotState(p.state)} live={p.state === "up" && h.level === "good"} />
                     <span className="font-mono">{p.id}</span>
                   </span>
                   <span className="flex items-center gap-2 text-xs text-muted-foreground">

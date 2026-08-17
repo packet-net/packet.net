@@ -296,6 +296,7 @@ const CLOSED_SETS: Record<string, string> = {
   netRomRouting: "NetRomRouting",
   netRomForwardMode: "NetRomForwardMode",
   appPackageStates: "AppPackageState",
+  portStates: "PortState",
   appUiModes: "AppUiMode",
   frameTypes: "FrameType",
   frameClasses: "FrameClass",

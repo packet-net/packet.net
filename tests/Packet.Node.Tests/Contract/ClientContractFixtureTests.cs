@@ -6,6 +6,7 @@ using Packet.Node.Core.Api;
 using Packet.Node.Core.Applications.Packages;
 using Packet.Node.Core.Auth;
 using Packet.Node.Core.Configuration;
+using Packet.Node.Core.Hosting;
 using Packet.Node.Core.Transports;
 using Packet.NetRom;
 using Packet.NetRom.Wire;
@@ -135,9 +136,13 @@ public sealed class ClientContractFixtureTests
             Traffic: new TrafficLogStatus(Enabled: true, Dropped: 0)),
         ["PortStatus.json"] = new[]
         {
-            new PortStatus("vhf-1", true, "up", 2, null, 184_213, 95_120, ChannelBusy: false),
-            new PortStatus("uhf-2", true, "faulted", 0, "serial: /dev/ttyUSB1 not present", 0, 0, ChannelBusy: null),
-            new PortStatus("link-dn", false, "down", 0, null, 0, 0, ChannelBusy: true),
+            new PortStatus("vhf-1", true, PortStates.Up, 2, null, 184_213, 95_120, [], At, ChannelBusy: false),
+            new PortStatus("uhf-2", true, PortStates.Faulted, 0, "serial: /dev/ttyUSB1 not present", 0, 0, [], At, ChannelBusy: null),
+            new PortStatus("link-dn", false, PortStates.Disabled, 0, null, 0, 0, [], At, ChannelBusy: true),
+            // A serving port with a piece missing - the state the API could not express at all
+            // before #722 (it read identical to a healthy port).
+            new PortStatus("hf-300", true, PortStates.Degraded, 1, "radio (tait-ccdi on /dev/ttyUSB2): open failed",
+                12, 8, [PortComponents.Radio], At, ChannelBusy: null),
         },
         ["SessionInfo.json"] = new[]
         {
@@ -510,6 +515,7 @@ public sealed class ClientContractFixtureTests
         linkPreConnectXid = Enum.GetNames<LinkPreConnectXid>(),
         headEndDeviceKinds = ConstStringsOf(typeof(HeadEndDeviceKind)),
         appPackageStates = Enum.GetNames<AppServiceState>(),
+        portStates = PortStates.All,
         netRomRouting = Enum.GetNames<NetRomRouting>(),
         netRomForwardMode = Enum.GetNames<NetRomForwardMode>(),
         appUiModes = Enum.GetNames<AppUiMode>().Select(n => n.ToLowerInvariant()).ToArray(),

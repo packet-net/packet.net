@@ -8,29 +8,46 @@ using Packet.Radio;
 namespace Packet.Node.Core.Hosting;
 
 /// <summary>
-/// A live AX.25 port the <see cref="PortSupervisor"/> owns: its transport, its
-/// single <see cref="Ax25Listener"/>, and the <see cref="PortConfig"/> it was
-/// built from (so the next reconcile can field-diff against it). One per
-/// configured, enabled, successfully-started port.
+/// The <b>runtime half</b> of a live AX.25 port: its transport chain, its single
+/// <see cref="Ax25Listener"/>, and the radio / rig handles that came up with it. One per
+/// serving port, referenced from the port owner the <see cref="PortSupervisor"/> keeps for
+/// every configured port (see <see cref="PortState"/> / <see cref="PortHealth"/>).
 /// </summary>
+/// <remarks>
+/// <para>
+/// It deliberately carries <b>no config</b>: the port's config baseline lives once, on the
+/// owner (<c>PortSupervisor.GetPortConfig</c>), so "what is this port running on" has exactly
+/// one answer (packet-net/packet.net#722 - it used to have two, maintained separately).
+/// </para>
+/// <para>
+/// <b>Lifetime.</b> A consumer that got one from <c>PortSupervisor.GetPort</c> holds a
+/// borrowed reference, not a lease: a reconcile, a restart or the running-state watchdog can
+/// tear this port down while the reference is live. Teardown flips <see cref="IsAlive"/>
+/// false <em>before</em> disposing anything, so a holder can re-check across an await instead
+/// of writing into a disposed listener; <see cref="DisposeAsync"/> is idempotent. A full
+/// borrow protocol is a follow-up (packet-net/packet.net#726).
+/// </para>
+/// </remarks>
 public sealed class RunningPort : IAsyncDisposable
 {
+    private const int Alive = 0;
+    private const int TearingDown = 1;
+    private const int Disposed = 2;
+
+    private int lifecycle;
+
     public required string Id { get; init; }
 
-    private PortConfig config = null!;
+    /// <summary>
+    /// False from the moment this port's teardown begins - set BEFORE the listener, transport,
+    /// radio or rig are disposed. A consumer holding this port across an await re-checks it and
+    /// gives up loudly rather than touching a half-disposed object.
+    /// </summary>
+    public bool IsAlive => Volatile.Read(ref lifecycle) == Alive;
 
-    /// <summary>The config snapshot this port was brought up from - the baseline
-    /// the next reconcile diffs against to classify the change. Settable (not
-    /// init-only) so a hot apply can rebaseline this ONE member in place: the
-    /// supervisor used to rebuild the whole RunningPort and silently dropped every
-    /// member the copy forgot (the rig trio), detaching a rig-attached port's rig on
-    /// a KISS-only apply. Volatile because reconcile writes it under the ports lock
-    /// while readers (read models, SSE projections) take no lock.</summary>
-    public required PortConfig Config
-    {
-        get => Volatile.Read(ref config);
-        set => Volatile.Write(ref config, value);
-    }
+    /// <summary>Mark this port as no longer usable (the supervisor calls it at the start of
+    /// every teardown, before any disposal). Idempotent.</summary>
+    internal void BeginTeardown() => Interlocked.CompareExchange(ref lifecycle, TearingDown, Alive);
 
     /// <summary>The neutral AX.25 transport this port runs over (a native KISS transport,
     /// optionally wrapped in the reconnect / pacing decorators; an AXUDP modem via the
@@ -117,14 +134,17 @@ public sealed class RunningPort : IAsyncDisposable
     /// </summary>
     public Transports.ITransportLinkState? LinkState { get; init; }
 
-    /// <summary>Whether the port reached a started state. A port whose transport
-    /// failed to open is recorded as faulted (not started) so the reconcile can
-    /// retry it on the next config change without disrupting healthy ports.</summary>
-    public bool Started { get; init; }
-
     /// <inheritdoc/>
+    /// <remarks>Idempotent: the first call tears the port down, later ones are no-ops (the
+    /// supervisor disposes exactly once, but a stale holder must not be able to double-dispose
+    /// a listener out from under a reconcile).</remarks>
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref lifecycle, Disposed) == Disposed)
+        {
+            return;
+        }
+
         // Order matters: listener first (it consumes the outermost transport), then the
         // outermost transport (when radio-tagged, disposing the node tap cascades into the
         // RSSI-tagging wrapper and stops its sampler), then the modem chain the wrapper didn't

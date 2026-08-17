@@ -89,7 +89,10 @@ public sealed class PortRigIntegrationTests
         await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up despite the rig fault");
 
         var port = supervisor.GetPort("hf")!;
-        port.Started.Should().BeTrue("an unreachable rig daemon must never take the packet channel down");
+        port.IsAlive.Should().BeTrue("an unreachable rig daemon must never take the packet channel down");
+        supervisor.GetHealth("hf")!.State.Should().Be(PortState.Degraded,
+            "the port serves without its rig - degraded, not up and not faulted");
+        supervisor.GetHealth("hf")!.Degraded.Should().Contain(PortComponents.Rig);
         port.Rig.Should().BeNull();
         port.RigStatus.Should().BeNull();
 
@@ -183,7 +186,8 @@ public sealed class PortRigIntegrationTests
 
         var rebaselined = supervisor.GetPort("hf")!;
         rebaselined.Should().BeSameAs(running, "rebaselining mutates the live port, it does not clone it");
-        rebaselined.Config.Kiss!.TxDelay.Should().Be(40, "the baseline must carry the applied value");
+        supervisor.GetPortConfig("hf")!.Kiss!.TxDelay.Should().Be(40,
+            "the port owner's baseline must carry the applied value");
         rebaselined.Rig.Should().BeSameAs(rig, "a hot apply must not detach the rig");
         rebaselined.RigStatus.Should().BeSameAs(monitor, "a hot apply must not drop the status poller");
         rebaselined.RigDaemon.Should().BeNull("this port dials a BYO daemon; there is none to keep");
@@ -234,7 +238,9 @@ public sealed class PortRigIntegrationTests
             await Wait.ForAsync(() => supervisor.RunningPortIds.Contains("hf"), "port hf up despite the daemon fault");
 
             var port = supervisor.GetPort("hf")!;
-            port.Started.Should().BeTrue("a rigctld that can't start must never take the packet channel down");
+            port.IsAlive.Should().BeTrue("a rigctld that can't start must never take the packet channel down");
+            supervisor.GetHealth("hf")!.Degraded.Should().Contain(PortComponents.Rigctld,
+                "the node-managed daemon never came up, so the port names it as the missing component");
             port.Rig.Should().BeNull();
             port.RigStatus.Should().BeNull();
             port.RigDaemon.Should().BeNull("a daemon that never came up is disposed, not tracked");

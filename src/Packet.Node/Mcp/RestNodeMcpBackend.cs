@@ -47,7 +47,8 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
     {
         var ports = await GetAsync<List<RestPort>>("api/v1/ports", ct).ConfigureAwait(false) ?? [];
         return ports.Select(p => new McpPortStatus(
-            p.Id, p.Enabled, p.State ?? "?", p.SessionCount, p.FramesIn, p.FramesOut)).ToList();
+            p.Id, p.Enabled, p.State ?? "?", p.SessionCount, p.FramesIn, p.FramesOut,
+            p.LastError, p.Degraded)).ToList();
     }
 
     public async Task<IReadOnlyList<McpSessionInfo>> ListSessionsAsync(CancellationToken ct = default)
@@ -283,7 +284,9 @@ public sealed class RestNodeMcpBackend(HttpClient http, TimeProvider clock) : IN
 
     // ---- REST wire shapes (camelCase via the node's STJ web defaults) ----
 
-    private sealed record RestPort(string Id, bool Enabled, string? State, int SessionCount, long FramesIn, long FramesOut);
+    private sealed record RestPort(
+        string Id, bool Enabled, string? State, int SessionCount, long FramesIn, long FramesOut,
+        string? LastError = null, IReadOnlyList<string>? Degraded = null);
 
     private sealed record RestSession(
         string Id, string PortId, string Peer, string? Role, string? State,

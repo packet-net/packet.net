@@ -356,6 +356,52 @@ public class ReconcilePlannerTests
     }
 
     [Fact]
+    public void Every_PortConfig_field_is_claimed_by_exactly_one_reconcile_class()
+    {
+        // The exhaustiveness guard (#722). `Beacon` and `MqttInstance` had no arm at all: a
+        // beacon-only edit produced a genuinely empty plan, so IsNoOp was true, the operator's
+        // pre-apply preview said "no changes" - and the node then started keying up on a timer.
+        // A field added to PortConfig without a decision about how it reconciles now fails HERE,
+        // rather than silently becoming a no-op nobody notices.
+        var fields = typeof(PortConfig)
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0)
+            .Select(p => p.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        ReconcilePlanner.FieldClasses.Keys.Order(StringComparer.Ordinal).Should().Equal(fields,
+            "every PortConfig field must be claimed by exactly one reconcile class in ReconcilePlanner.FieldClasses");
+    }
+
+    [Fact]
+    public void A_beacon_only_edit_is_a_live_change_not_a_no_op()
+    {
+        var before = Config("M0LTE-1", Tcp("a"));
+        var to = Config("M0LTE-1", Tcp("a") with
+        {
+            Beacon = new PortBeaconConfig { Enabled = true, IntervalMinutes = 30, Text = "{node}" },
+        });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.IsNoOp.Should().BeFalse("a beacon edit arms a periodic transmitter - it is not nothing");
+        plan.BeaconChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty("the beacon service re-arms from live config; nothing restarts");
+    }
+
+    [Fact]
+    public void An_mqtt_instance_only_edit_is_a_live_change_not_a_no_op()
+    {
+        var before = Config("M0LTE-1", Tcp("a"));
+        var to = Config("M0LTE-1", Tcp("a") with { MqttInstance = "70cm" });
+        var plan = ReconcilePlanner.Plan(before, to);
+
+        plan.IsNoOp.Should().BeFalse();
+        plan.MqttInstanceChanged.Select(p => p.Id).Should().Equal("a");
+        plan.ToRestart.Should().BeEmpty("the emitter reads the label live, per frame");
+    }
+
+    [Fact]
     public void Transport_change_subsumes_a_simultaneous_kiss_change_no_double_action()
     {
         // A port that changes BOTH transport and kiss params restarts (which

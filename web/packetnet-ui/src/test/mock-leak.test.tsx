@@ -45,11 +45,11 @@ const LIVE_CONFIG: NodeConfig = { ...NODE_CONFIG, ports: LIVE_PORTS };
 const LIVE_PORT_STATUS: PortStatus[] = [
   {
     id: "radio-a", enabled: true, state: "up", sessionCount: 0, lastError: null,
-    framesIn: 12, framesOut: 9, channelBusy: false,
+    framesIn: 12, framesOut: 9, degraded: [], since: "2026-08-17T11:52:00+00:00", channelBusy: false,
   },
   {
     id: "radio-b", enabled: true, state: "up", sessionCount: 0, lastError: null,
-    framesIn: 0, framesOut: 0, channelBusy: null,
+    framesIn: 0, framesOut: 0, degraded: [], since: "2026-08-17T11:52:00+00:00", channelBusy: null,
   },
 ];
 

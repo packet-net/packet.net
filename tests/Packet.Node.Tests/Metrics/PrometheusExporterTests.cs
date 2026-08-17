@@ -42,7 +42,7 @@ public sealed class PrometheusExporterTests
             Ports = [new PortConfig { Id = Port, Enabled = false, Transport = new KissTcpTransport { Host = "x", Port = 1 } }],
         });
         // Supervisor is null until ExecuteAsync — fine: the projections null-tolerate it and the
-        // configured-but-disabled port reports state "down" with live frame totals from the tap.
+        // configured-but-disabled port reports state "disabled" with live frame totals from the tap.
         var host = new NodeHostedService(config, null, clock, NullLoggerFactory.Instance);
         return (host, config, clock);
     }

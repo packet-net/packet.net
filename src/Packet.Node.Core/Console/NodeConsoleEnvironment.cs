@@ -72,6 +72,15 @@ public sealed class NodeConsoleEnvironment
     /// </summary>
     public Heard.HeardLog? Heard { get; }
 
+    /// <summary>
+    /// The live port state model (<c>PortSupervisor</c>), read by the <c>PORTS</c> verb so the
+    /// listing shows what the ports are actually doing rather than what config asks for -
+    /// the same derivation <c>/api/v1/ports</c> and the metrics project
+    /// (packet-net/packet.net#722). Null when no supervisor is wired (older call sites /
+    /// tests): <c>PORTS</c> then falls back to the config's enabled flag.
+    /// </summary>
+    public Hosting.IPortHealthView? PortHealth { get; }
+
     public NodeConsoleEnvironment(
         IConfigProvider config,
         IOutboundConnector? outboundConnector,
@@ -80,7 +89,8 @@ public sealed class NodeConsoleEnvironment
         IApplicationHost? applications = null,
         IConnectRouter? connectRouter = null,
         PeerCapabilityCache? capabilities = null,
-        Heard.HeardLog? heard = null)
+        Heard.HeardLog? heard = null,
+        Hosting.IPortHealthView? portHealth = null)
     {
         this.config = config ?? throw new ArgumentNullException(nameof(config));
         OutboundConnector = outboundConnector;
@@ -90,6 +100,7 @@ public sealed class NodeConsoleEnvironment
         ConnectRouter = connectRouter;
         Capabilities = capabilities;
         Heard = heard;
+        PortHealth = portHealth;
     }
 
     /// <summary>The default over-RF elevation lifetime when the config leaves it unset.</summary>

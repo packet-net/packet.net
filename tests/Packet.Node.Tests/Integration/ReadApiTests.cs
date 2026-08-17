@@ -112,8 +112,11 @@ public sealed class ReadApiTests : IDisposable
         ports.Should().NotBeNull();
         ports!.Should().HaveCount(1);
         ports[0].GetProperty("id").GetString().Should().Be("vhf");
-        // A configured-but-disabled port reports "down" (not running by design).
-        ports[0].GetProperty("state").GetString().Should().Be("down");
+        // A configured-but-disabled port reports "disabled" (not running by design) - the
+        // supervisor's own state model, projected once for every surface (#722).
+        ports[0].GetProperty("state").GetString().Should().Be("disabled");
+        ports[0].GetProperty("degraded").EnumerateArray().Should().BeEmpty();
+        ports[0].GetProperty("lastError").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

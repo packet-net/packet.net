@@ -44,10 +44,11 @@ namespace Packet.Node.Api;
 /// An unknown id is caught by the config-existence check (404); a disabled port can't be
 /// restarted (409 — bring it up first). Reconcile is asynchronous (the <c>OnChange</c>
 /// handler hands off to a serialized worker), so the <see cref="PortStatus"/> returned
-/// right after an up/down apply is best-effort: the port may still read
-/// <c>down</c>/<c>faulted</c> for an instant before the worker brings it up. That is
-/// honest, not a bug. (A restart, by contrast, completes synchronously inside the gate,
-/// so its projection reflects the just-restarted state.)
+/// right after an up/down apply is best-effort: the port may still read <c>configured</c> or
+/// <c>starting</c> for an instant before the worker brings it up. That is honest, not a bug -
+/// and it is no longer reported as <c>faulted</c>, which is what the old duplicate derivation
+/// did to every successful bring-up request (#722). (A restart, by contrast, completes
+/// synchronously inside the gate, so its projection reflects the just-restarted state.)
 /// </para>
 /// <para>
 /// <b>Optimistic concurrency.</b> Every mutating route accepts the optional <c>If-Match</c>
@@ -252,57 +253,19 @@ public static class PdnPortsApi
     }
 
     /// <summary>
-    /// Project the live <see cref="PortStatus"/> for one configured port — the same
-    /// per-port shape <c>PdnReadApi.BuildPorts</c> projects, narrowed to a single id. The
-    /// live state comes from the supervisor's <see cref="RunningPort"/> (if it is running)
-    /// plus the per-port telemetry counters; the enabled flag + existence come from the
-    /// (just-applied) config. Returns a synthetic <c>down</c> status if the id has already
-    /// vanished from config (shouldn't happen on an up/down flip, but stay total).
+    /// Project the live <see cref="PortStatus"/> for one configured port through the SAME
+    /// derivation <c>GET /ports</c>, the metrics endpoint and the MCP backend use
+    /// (<see cref="PortStatusProjector"/>) - this used to be a verbatim second copy that
+    /// called every not-yet-reconciled port "faulted", so the response to a successful
+    /// <c>lifecycle up</c> reported failure (#722). Returns a synthetic disabled status if the
+    /// id has already vanished from config (shouldn't happen on an up/down flip, but stay
+    /// total).
     /// </summary>
     private static PortStatus ProjectPort(NodeHostedService host, IWritableConfigProvider cfg, string id)
     {
         var port = cfg.Current.Ports.FirstOrDefault(p => p.Id == id);
-        if (port is null)
-        {
-            return new PortStatus(id, Enabled: false, State: "down", SessionCount: 0,
-                LastError: null, FramesIn: 0, FramesOut: 0);
-        }
-
-        var running = host.Supervisor?.GetPort(port.Id);
-        string state;
-        int sessions = 0;
-
-        if (!port.Enabled)
-        {
-            // Configured but switched off — not running by design.
-            state = "down";
-        }
-        else if (running is { Started: true })
-        {
-            state = "up";
-            // Live sessions only: ActiveSessions is the listener's peer cache and keeps
-            // Disconnected entries until LRU eviction (review item C052, #694). Mirrors
-            // PdnReadApi.BuildPorts through the shared SessionLiveness predicate.
-            sessions = running.Listener.ActiveSessions.Count(SessionLiveness.IsLive);
-        }
-        else
-        {
-            // Enabled but either not (yet) running — the async reconcile may not have
-            // brought it up — or running in a faulted-bring-up state. Either way it's not
-            // serving yet. Best-effort + honest (see the type remarks).
-            state = "faulted";
-        }
-
-        var (framesIn, framesOut) = host.Telemetry.PortFrames(port.Id);
-
-        return new PortStatus(
-            Id: port.Id,
-            Enabled: port.Enabled,
-            State: state,
-            SessionCount: sessions,
-            LastError: null,        // per-port last-error not surfaced yet (mirrors PdnReadApi).
-            FramesIn: framesIn,
-            FramesOut: framesOut,
-            ChannelBusy: running is { Started: true } ? running.CarrierSense?.ChannelBusy : null);
+        return port is null
+            ? PortStatusProjector.Unknown(id)
+            : PortStatusProjector.Project(host.Supervisor, port, host.Telemetry);
     }
 }

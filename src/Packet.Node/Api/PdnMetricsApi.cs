@@ -231,11 +231,43 @@ public static class PdnMetricsApi
             }
         }
 
-        w.Help(Ns + "port_up", "Port up (1) / not up (0).");
+        // Serving (1) means up OR degraded: a port running without its radio or rig still
+        // carries packet traffic, so reporting it as down would be a lie in the other
+        // direction. Which components it is missing is the port_degraded series below, and
+        // pdn_port_state carries the full state (#722).
+        w.Help(Ns + "port_up", "Port serving (1) / not serving (0). 1 covers both `up` and `degraded` - a degraded port still carries traffic; see pdn_port_state for the exact state.");
         w.Type(Ns + "port_up", "gauge");
         foreach (var p in ports)
         {
-            w.Sample(Ns + "port_up", string.Equals(p.State, "up", StringComparison.Ordinal) ? 1 : 0, ("port", p.Id));
+            w.Sample(Ns + "port_up", IsServingState(p.State) ? 1 : 0, ("port", p.Id));
+        }
+
+        // The full state as a labelled gauge: one series per (port, state) with a 1 on the
+        // state the port is actually in. This is what tells a dashboard apart a port that is
+        // retrying from one that is disabled from one that is mid-restart - all of which the
+        // old single up/not-up gauge flattened to 0.
+        w.Help(Ns + "port_state", "Port lifecycle state: 1 on the state the port is in, 0 on the others (configured|disabled|starting|up|degraded|faulted|retrying|stopping).");
+        w.Type(Ns + "port_state", "gauge");
+        foreach (var p in ports)
+        {
+            foreach (var state in PortStates.All)
+            {
+                w.Sample(Ns + "port_state", string.Equals(p.State, state, StringComparison.Ordinal) ? 1 : 0,
+                    ("port", p.Id), ("state", state));
+            }
+        }
+
+        // One series per (port, component) a degraded port is running without. Absent for a
+        // healthy port, so the series appearing at all is the alert.
+        var degraded = ports.SelectMany(p => p.Degraded.Select(c => (Port: p.Id, Component: c))).ToList();
+        if (degraded.Count > 0)
+        {
+            w.Help(Ns + "port_degraded", "A component the port is running WITHOUT (radio|rig|rigctld|transport). Absent for a healthy port.");
+            w.Type(Ns + "port_degraded", "gauge");
+            foreach (var (port, component) in degraded)
+            {
+                w.Sample(Ns + "port_degraded", 1, ("port", port), ("component", component));
+            }
         }
 
         w.Help(Ns + "port_sessions", "Active connected-mode sessions on the port.");
@@ -732,6 +764,12 @@ public static class PdnMetricsApi
 
     private static SessionRollup SessionRoll(Dictionary<string, SessionRollup> map, string portId)
         => map.TryGetValue(portId, out var r) ? r : new SessionRollup();
+
+    // The two serving states (see PortStates): a degraded port is on the air with a piece
+    // missing, so it counts as up for pdn_port_up.
+    private static bool IsServingState(string state)
+        => string.Equals(state, PortStates.Up, StringComparison.Ordinal)
+        || string.Equals(state, PortStates.Degraded, StringComparison.Ordinal);
 
     private sealed class LinkRollup
     {

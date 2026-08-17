@@ -31,9 +31,10 @@ namespace Packet.Node.Api;
 /// Auth is a later step — these are read-only and the node binds 127.0.0.1 by
 /// default. As of step 1b the frame/byte/REJ/SREJ counters that back the port,
 /// link, and session projections are live (read from <see cref="NodeHostedService.Telemetry"/>);
-/// the live SSE feed lives next door in <see cref="PdnEventsApi"/>. A handful of
-/// fields can't be read from the frame tap alone (per-port last-error, per-link
-/// SRTT/retries, the log tail) and stay placeholders behind a named <c>// TODO</c>.
+/// the live SSE feed lives next door in <see cref="PdnEventsApi"/>. The per-port state,
+/// last-error and degraded components come from the supervisor's port state model through
+/// <see cref="PortStatusProjector"/> (packet-net/packet.net#722), which every other port
+/// surface projects from too.
 /// </para>
 /// </remarks>
 public static class PdnReadApi
@@ -143,7 +144,9 @@ public static class PdnReadApi
         var supervisor = host.Supervisor;
         var running = RunningPorts(supervisor);
 
-        int portsUp = running.Count(p => p.Started);
+        // Serving ports: up OR degraded (a port running without its radio still carries
+        // traffic). The supervisor's state model is the authority (#722).
+        int portsUp = supervisor?.Snapshot().Count(p => p.IsServing) ?? 0;
         // Live sessions only: ActiveSessions is the listener's LRU peer CACHE, which keeps a
         // Disconnected session object until eviction, so summing it made "Active sessions" climb
         // forever (review item C052, #694). SessionLiveness is the shared predicate.
@@ -170,48 +173,11 @@ public static class PdnReadApi
                 Dropped: traffic?.DroppedFrames ?? 0));
     }
 
+    // One derivation, shared with GET /ports/{id}, the metrics endpoint, the MCP backend and
+    // (through PortHealth) the console PORTS verb - see PortStatusProjector for what the four
+    // divergent copies used to get wrong (#722).
     internal static PortStatus[] BuildPorts(NodeHostedService host, IConfigProvider config)
-    {
-        var supervisor = host.Supervisor;
-        var current = config.Current;
-
-        return current.Ports.Select(port =>
-        {
-            var running = supervisor?.GetPort(port.Id);
-            string state;
-            int sessions = 0;
-
-            if (!port.Enabled)
-            {
-                // Configured but switched off — not running by design.
-                state = "down";
-            }
-            else if (running is { Started: true })
-            {
-                state = "up";
-                // Live sessions only, same reason as BuildStatus (C052).
-                sessions = running.Listener.ActiveSessions.Count(SessionLiveness.IsLive);
-            }
-            else
-            {
-                // Enabled in config but either not (yet) running, or running in a
-                // not-started (faulted-bring-up) state — either way it's not serving.
-                state = "faulted";
-            }
-
-            var (framesIn, framesOut) = host.Telemetry.PortFrames(port.Id);
-
-            return new PortStatus(
-                Id: port.Id,
-                Enabled: port.Enabled,
-                State: state,
-                SessionCount: sessions,
-                LastError: null,        // TODO: surface the last bring-up fault per port (later step).
-                FramesIn: framesIn,     // Live per-port frame totals from the telemetry tap.
-                FramesOut: framesOut,
-                ChannelBusy: running is { Started: true } ? running.CarrierSense?.ChannelBusy : null);
-        }).ToArray();
-    }
+        => PortStatusProjector.ProjectAll(host.Supervisor, config.Current.Ports, host.Telemetry);
 
     internal static SessionInfo[] BuildSessions(NodeHostedService host, TimeProvider clock)
     {
