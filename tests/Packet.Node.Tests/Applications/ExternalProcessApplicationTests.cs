@@ -30,13 +30,10 @@ public sealed class ExternalProcessApplicationTests
         Args = args,
     };
 
-    [Fact]
+    [SkippableFact]
     public async Task Writes_the_connect_header_then_echoes_user_lines_with_transport_newline()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;   // Linux-only: relies on /bin/cat
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture relies on /bin/cat");
 
         var conn = new DriveableConnection("M0LTE-7", NodeTransportKind.Ax25);
         var app = CatApp();
@@ -51,42 +48,36 @@ public sealed class ExternalProcessApplicationTests
         conn.Inject("hello world\r");
         await Wait.ForAsync(() => conn.Output.Contains("hello world"), "user line echoed back");
 
-        Assert.Contains("callsign: M0LTE-7", conn.Output, StringComparison.Ordinal);
-        Assert.Contains("transport: ax25", conn.Output, StringComparison.Ordinal);
-        Assert.Contains("port: gb7rdg", conn.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain('\n', conn.Output);   // every \n translated to CR for AX.25
-        Assert.Contains('\r', conn.Output);
+        conn.Output.Should().Contain("callsign: M0LTE-7");
+        conn.Output.Should().Contain("transport: ax25");
+        conn.Output.Should().Contain("port: gb7rdg");
+        conn.Output.Should().NotContain("\n");      // every \n translated to CR for AX.25
+        conn.Output.Should().Contain("\r");
 
         conn.Drop();                                 // user disconnects → bridge closes cat's stdin → cat exits
         await run.WaitAsync(Timeout);                // RunAsync returns (no hang, no kill needed)
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Telnet_gets_crlf_newlines()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture relies on /bin/cat");
 
         var conn = new DriveableConnection("127.0.0.1:5000", NodeTransportKind.Telnet);
         var app = CatApp();
         var run = app.RunAsync(conn, Ctx(NodeTransportKind.Telnet));
 
         await Wait.ForAsync(() => conn.Output.Contains("transport: telnet"), "header for telnet");
-        Assert.Contains("\r\n", conn.Output);        // CR-LF for telnet
+        conn.Output.Should().Contain("\r\n");        // CR-LF for telnet
 
         conn.Drop();
         await run.WaitAsync(Timeout);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task An_app_that_exits_on_its_own_returns_control_to_the_console()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture relies on /bin/cat");
 
         // /bin/echo writes a line then exits immediately — stdout EOF — even though the session
         // stays open. RunAsync must return (the user is dropped back to the node prompt).
@@ -97,8 +88,8 @@ public sealed class ExternalProcessApplicationTests
 
         await app.RunAsync(conn, Ctx()).WaitAsync(Timeout);   // returns without us dropping the session
 
-        Assert.Contains("hi there", conn.Output, StringComparison.Ordinal);
-        Assert.False(conn.Completion.IsCompleted);            // we never dropped the user
+        conn.Output.Should().Contain("hi there");
+        conn.Completion.IsCompleted.Should().BeFalse();       // we never dropped the user
     }
 
     [Fact]
@@ -109,13 +100,15 @@ public sealed class ExternalProcessApplicationTests
             new ApplicationConfig { Id = "ghost", Command = "GHOST", Executable = "/no/such/binary-xyzzy" },
             NullLogger.Instance);
 
-        await Assert.ThrowsAsync<ApplicationStartException>(() => app.RunAsync(conn, Ctx()));
+        var act = () => app.RunAsync(conn, Ctx());
+        await act.Should().ThrowAsync<ApplicationStartException>();
     }
 
     [Fact]
     public void Constructing_without_a_command_throws()
     {
-        Assert.Throws<ArgumentException>(() =>
-            new ExternalProcessApplication(new ApplicationConfig { Id = "x", Command = "X", Executable = null }));
+        var act = () =>
+            new ExternalProcessApplication(new ApplicationConfig { Id = "x", Command = "X", Executable = null });
+        act.Should().Throw<ArgumentException>();
     }
 }

@@ -58,11 +58,11 @@ public sealed class RhpUiDatagramIntegrationTests
         await gateway.SendUiAsync(portLabel: "p1", local: AppCall.ToString(), remote: "APRS", info, pid: 0xCC);
 
         var frame = await remote.WaitForUiAsync(TimeSpan.FromSeconds(10));
-        Assert.True(frame.IsUi);
-        Assert.Equal(AppCall, frame.Source.Callsign);           // the explicit source, not the node callsign
-        Assert.Equal(new Callsign("APRS", 0), frame.Destination.Callsign);
-        Assert.Equal((byte)0xCC, frame.Pid);
-        Assert.Equal(info, frame.Info.ToArray());
+        frame.IsUi.Should().BeTrue();
+        frame.Source.Callsign.Should().Be(AppCall);           // the explicit source, not the node callsign
+        frame.Destination.Callsign.Should().Be(new Callsign("APRS", 0));
+        frame.Pid.Should().Be((byte)0xCC);
+        frame.Info.ToArray().Should().Equal(info);
     }
 
     [Fact]
@@ -87,11 +87,11 @@ public sealed class RhpUiDatagramIntegrationTests
         await remote.SendUiAsync(new Callsign("APRS", 0), "!beacon"u8.ToArray(), pid: 0xF0);
 
         var dg = await heard.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(RemoteCall.ToString(), dg.Source);   // the frame's true source → recv.remote
-        Assert.Equal("APRS", dg.Dest);                    // the frame's destination → recv.local
-        Assert.Equal((byte)0xF0, dg.Pid);
-        Assert.Equal("p1", dg.PortLabel);                 // the arrival port id
-        Assert.Equal("!beacon"u8.ToArray(), dg.Info.ToArray());
+        dg.Source.Should().Be(RemoteCall.ToString());   // the frame's true source → recv.remote
+        dg.Dest.Should().Be("APRS");                    // the frame's destination → recv.local
+        dg.Pid.Should().Be((byte)0xF0);
+        dg.PortLabel.Should().Be("p1");                 // the arrival port id
+        dg.Info.ToArray().Should().Equal("!beacon"u8.ToArray());
     }
 
     // A bare Ax25Listener endpoint on the bus: sends UI frames and captures received ones, for

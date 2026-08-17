@@ -17,6 +17,29 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <!-- AwesomeAssertions: license-friendly FluentAssertions fork. See §2.8. -->
     <PackageReference Include="AwesomeAssertions" />
+    <!-- Xunit.SkippableFact: xUnit 2 has no native Skip API, and a test that cannot run
+         must report Skipped, never a silent green Pass (#700 C028). Referenced for every
+         test project so any suite can gate on a missing tool, OS or device. -->
+    <PackageReference Include="Xunit.SkippableFact" />
+    <!-- Banned-symbol analyzer: BannedSymbols.txt bans Xunit.Assert, so 2.8's
+         "AwesomeAssertions is the sole assertion library" is a build error (RS0030, and
+         warnings are errors here) rather than an aspiration. 718 Assert.* calls had drifted
+         back into 35 files with nothing enforcing it (#700 C012). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers"
+                      PrivateAssets="all"
+                      IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared test-support source, compiled into every test project. One file rather than a
+         tests/Packet.TestSupport project on purpose: a project under tests/ would have to be
+         hand-excluded from the ci.yml matrix guard (scripts/check-ci-test-matrix.sh), and the
+         helpers here are source-only anyway. See #700 C115. -->
+    <Compile Include="$(MSBuildThisFileDirectory)Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

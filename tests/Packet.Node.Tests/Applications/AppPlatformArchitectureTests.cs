@@ -28,10 +28,10 @@ public sealed class AppPlatformArchitectureTests
             foreach (Match m in rx.Matches(text))
             {
                 var inc = m.Groups[1].Value.Replace('\\', '/').ToLowerInvariant();
-                Assert.False(
-                    inc.Contains("/examples/") || inc.Contains("/apps/") || inc.Contains("wall"),
-                    $"{rel} must not reference an application project, but references '{m.Groups[1].Value}'. " +
-                    "Apps run out-of-process; the node never links app code.");
+                (inc.Contains("/examples/") || inc.Contains("/apps/") || inc.Contains("wall"))
+                    .Should().BeFalse(
+                        $"{rel} must not reference an application project, but references '{m.Groups[1].Value}'. " +
+                        "Apps run out-of-process; the node never links app code.");
             }
         }
     }
@@ -66,7 +66,7 @@ public sealed class AppPlatformArchitectureTests
             }
         }
 
-        Assert.True(offenders.Count == 0,
+        (offenders.Count == 0).Should().BeTrue(
             "The node must not hardcode the WALL app — it's an external, separately-deployed " +
             "program discovered only via the applications: config. Offenders: " + string.Join("; ", offenders));
     }

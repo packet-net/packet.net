@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Packet.Node.Core.Applications.Packages;
+using Packet.Node.Tests.Support;
 
 namespace Packet.Node.Tests.Integration;
 
@@ -34,7 +35,7 @@ public sealed class AppPackagesGatewayTests : IDisposable
         upstream.Start();
         upstreamLoop = Task.Run(EchoUpstreamAsync);
 
-        dir = Path.Combine(Path.GetTempPath(), "pdn-pkggw-" + Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-pkggw");
         packagesRoot = Path.Combine(dir, "apps");
         Directory.CreateDirectory(packagesRoot);
 
@@ -226,7 +227,9 @@ public sealed class AppPackagesGatewayTests : IDisposable
 
         var resp = await client.GetAsync("/apps/pkgui/hello?x=1");
         var body = await resp.Content.ReadAsStringAsync();
-        Assert.True(HttpStatusCode.OK == resp.StatusCode, $"status={resp.StatusCode} body=<<{body}>>");
+        // The body is passed as a because-ARG, not interpolated: it is arbitrary upstream text and
+        // AwesomeAssertions treats the because string itself as a format string.
+        (HttpStatusCode.OK == resp.StatusCode).Should().BeTrue("status={0} body=<<{1}>>", resp.StatusCode, body);
 
         body.Should().Contain("path=/hello?x=1");   // /apps/pkgui prefix stripped
         body.Should().Contain("gateway=[1]");        // gateway marker injected

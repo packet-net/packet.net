@@ -88,7 +88,7 @@ public class NinoTncAirTestFrameTests
         // Easier: build a valid AX.25 frame with wrong control via raw bytes.
         // Skipping for simplicity — the IsUi check is exercised by the
         // other "wrong shape" tests already.
-        Assert.True(true);
+        true.Should().BeTrue();
     }
 
     [Fact]

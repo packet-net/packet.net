@@ -58,18 +58,18 @@ public sealed class ApplicationHostPackageUnionTests
 
         var resolved = host.Resolve("lobby");   // case-insensitive, like inline verbs
 
-        Assert.NotNull(resolved);
-        Assert.Equal("lobby", resolved!.Id);
-        Assert.Equal("LOBBY", resolved.Command);
-        Assert.True(resolved.Enabled);
-        Assert.Equal(ApplicationKind.Process, resolved.Kind);
-        Assert.Equal("/usr/bin/python3", resolved.Executable);   // absolute → untouched
-        Assert.Equal(script, resolved.Args[0]);               // names a package file → absolute
-        Assert.Equal("--flag", resolved.Args[1]);             // a flag passes through
-        Assert.Equal(pkg.StateDir, resolved.WorkingDirectory);
-        Assert.True(Directory.Exists(pkg.StateDir), "the state dir is created on first use");
-        Assert.Equal("session", Assert.Single(resolved.Capabilities));
-        Assert.Null(resolved.Ui);   // tiles are the gateway's concern
+        resolved.Should().NotBeNull();
+        resolved!.Id.Should().Be("lobby");
+        resolved.Command.Should().Be("LOBBY");
+        resolved.Enabled.Should().BeTrue();
+        resolved.Kind.Should().Be(ApplicationKind.Process);
+        resolved.Executable.Should().Be("/usr/bin/python3");   // absolute → untouched
+        resolved.Args[0].Should().Be(script);                  // names a package file → absolute
+        resolved.Args[1].Should().Be("--flag");                // a flag passes through
+        resolved.WorkingDirectory.Should().Be(pkg.StateDir);
+        Directory.Exists(pkg.StateDir).Should().BeTrue("the state dir is created on first use");
+        resolved.Capabilities.Should().ContainSingle().Which.Should().Be("session");
+        resolved.Ui.Should().BeNull();   // tiles are the gateway's concern
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public sealed class ApplicationHostPackageUnionTests
         catalog.Set(pkg.Discovered(SessionManifest("script", match: "RUN", command: "run.sh")));
         var host = Host(catalog);
 
-        Assert.Equal(script, host.Resolve("RUN")!.Executable);
+        host.Resolve("RUN")!.Executable.Should().Be(script);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class ApplicationHostPackageUnionTests
         var catalog = new FakeAppPackageCatalog();
         catalog.Set(pkg.Discovered(SessionManifest("lobby"), enabled: false));
 
-        Assert.Null(Host(catalog).Resolve("LOBBY"));
+        Host(catalog).Resolve("LOBBY").Should().BeNull();
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public sealed class ApplicationHostPackageUnionTests
         var catalog = new FakeAppPackageCatalog();
         catalog.Set(pkg.Discovered(SessionManifest("lobby"), error: "manifest invalid: id mismatch"));
 
-        Assert.Null(Host(catalog).Resolve("LOBBY"));
+        Host(catalog).Resolve("LOBBY").Should().BeNull();
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public sealed class ApplicationHostPackageUnionTests
         var catalog = new FakeAppPackageCatalog();
         catalog.Set(pkg.Service("run.sh"));   // service-only manifest — no console verb
 
-        Assert.Null(Host(catalog).Resolve("DAEMON"));
+        Host(catalog).Resolve("DAEMON").Should().BeNull();
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class ApplicationHostPackageUnionTests
         var inline = new ApplicationConfig { Id = "inline-lobby", Command = "LOBBY", Executable = "/bin/cat" };
         var host = Host(catalog, inline);
 
-        Assert.Equal("inline-lobby", host.Resolve("LOBBY")!.Id);
+        host.Resolve("LOBBY")!.Id.Should().Be("inline-lobby");
     }
 
     [Fact]
@@ -137,9 +137,9 @@ public sealed class ApplicationHostPackageUnionTests
             @override: new AppOverrideConfig { Id = "lobby", Enabled = true, Command = "FOYER" }));
         var host = Host(catalog);
 
-        Assert.Equal("lobby", host.Resolve("FOYER")!.Id);
-        Assert.Equal("FOYER", host.Resolve("foyer")!.Command);
-        Assert.Null(host.Resolve("LOBBY"));   // the overridden verb is gone
+        host.Resolve("FOYER")!.Id.Should().Be("lobby");
+        host.Resolve("foyer")!.Command.Should().Be("FOYER");
+        host.Resolve("LOBBY").Should().BeNull();   // the overridden verb is gone
     }
 
     [Fact]
@@ -152,10 +152,10 @@ public sealed class ApplicationHostPackageUnionTests
         var host = Host(catalog);
 
         var resolved = host.Resolve("LOBBY");
-        Assert.NotNull(resolved);
-        Assert.Equal(ApplicationKind.Socket, resolved!.Kind);
-        Assert.Equal("/run/packetnet/lobby.sock", resolved.SocketPath);
-        Assert.Null(resolved.Executable);
+        resolved.Should().NotBeNull();
+        resolved!.Kind.Should().Be(ApplicationKind.Socket);
+        resolved.SocketPath.Should().Be("/run/packetnet/lobby.sock");
+        resolved.Executable.Should().BeNull();
     }
 
     [Fact]
@@ -165,9 +165,9 @@ public sealed class ApplicationHostPackageUnionTests
         var catalog = new FakeAppPackageCatalog();
         catalog.Set(pkg.Discovered(SessionManifest("lobby"), enabled: false));
         var host = Host(catalog);
-        Assert.Null(host.Resolve("LOBBY"));
+        host.Resolve("LOBBY").Should().BeNull();
 
         catalog.Set(pkg.Discovered(SessionManifest("lobby"), enabled: true));   // the owner enables it
-        Assert.Equal("lobby", host.Resolve("LOBBY")!.Id);
+        host.Resolve("LOBBY")!.Id.Should().Be("lobby");
     }
 }

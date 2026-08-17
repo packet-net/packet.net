@@ -22,7 +22,7 @@ public sealed class LobbyAppIntegrationTests : IDisposable
     private Process? daemon;
 
     public LobbyAppIntegrationTests()
-        => socketPath = Path.Combine(Path.GetTempPath(), "pdn-lobby-" + Guid.NewGuid().ToString("N") + ".sock");
+        => socketPath = TestPaths.NewPath("pdn-lobby", ".sock");
 
     public void Dispose()
     {
@@ -31,17 +31,15 @@ public sealed class LobbyAppIntegrationTests : IDisposable
         try { File.Delete(socketPath); } catch { }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Two_users_share_state_a_broadcast_from_one_reaches_the_other()
     {
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app fixture is a Linux python3 script");
         var python = FindPython();
-        if (python is null || !OperatingSystem.IsLinux())
-        {
-            return;   // Linux + python3 only
-        }
+        Skip.If(python is null, "python3 not installed");
 
         var lobbyPy = Path.Combine(RepoRoot(), "examples", "lobby", "lobby.py");
-        Assert.True(File.Exists(lobbyPy), $"LOBBY daemon not found at {lobbyPy}");
+        File.Exists(lobbyPy).Should().BeTrue("LOBBY daemon not found at {0}", lobbyPy);
 
         // Start the long-running daemon and wait for it to bind the socket.
         daemon = Process.Start(new ProcessStartInfo(python, $"\"{lobbyPy}\" \"{socketPath}\"")
@@ -67,7 +65,7 @@ public sealed class LobbyAppIntegrationTests : IDisposable
         // because the daemon holds both connections and shares state across them.
         alice.Inject("SAY hello from alice\r");
         await Wait.ForAsync(() => bob.Output.Contains("hello from alice"), "bob received alice's broadcast");
-        Assert.Contains("M0LTE-7", bob.Output, StringComparison.Ordinal);   // attributed to alice
+        bob.Output.Should().Contain("M0LTE-7");   // attributed to alice
 
         // Alice's WHO sees both users (shared presence).
         alice.Inject("WHO\r");

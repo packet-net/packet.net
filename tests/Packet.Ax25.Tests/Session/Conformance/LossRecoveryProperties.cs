@@ -234,7 +234,7 @@ public class LossRecoveryProperties
             h.AdvanceT1();
         }
 
-        Assert.Equal(Enumerable.Range(1, 8), h.B.Delivered.Select(p => (int)p[0]));
+        h.B.Delivered.Select(p => (int)p[0]).Should().Equal(Enumerable.Range(1, 8));
         h.AssertConverged();
     }
 
@@ -289,7 +289,7 @@ public class LossRecoveryProperties
             h.AdvanceT1();
         }
 
-        Assert.Equal(Enumerable.Range(1, 8), h.B.Delivered.Select(p => (int)p[0]));
+        h.B.Delivered.Select(p => (int)p[0]).Should().Equal(Enumerable.Range(1, 8));
         h.AssertConverged();
     }
 

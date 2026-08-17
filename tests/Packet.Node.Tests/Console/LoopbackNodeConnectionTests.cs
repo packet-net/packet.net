@@ -42,7 +42,7 @@ public sealed class LoopbackNodeConnectionTests
 
         var got = await ReadAllAsciiAsync(userEnd, 1);
         // The line advances (CR-LF), and the unterminated prompt keeps the cursor in place.
-        Assert.Equal("Welcome to GB7XYZ\r\nEnter your call: ", got);
+        got.Should().Be("Welcome to GB7XYZ\r\nEnter your call: ");
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class LoopbackNodeConnectionTests
         // The node's own replies are already CR-LF — they must not become CR-CR-LF.
         await appEnd.WriteAsync(Encoding.ASCII.GetBytes("ports\r\n"), CancellationToken.None);
 
-        Assert.Equal("ports\r\n", await ReadAllAsciiAsync(userEnd, 1));
+        (await ReadAllAsciiAsync(userEnd, 1)).Should().Be("ports\r\n");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class LoopbackNodeConnectionTests
         // owns inbound line splitting. Normalising input here would be wrong.
         await userEnd.WriteAsync(Encoding.ASCII.GetBytes("ports\r"), CancellationToken.None);
 
-        Assert.Equal("ports\r", await ReadAllAsciiAsync(appEnd, 1));
+        (await ReadAllAsciiAsync(appEnd, 1)).Should().Be("ports\r");
     }
 
     [Fact]
@@ -79,6 +79,6 @@ public sealed class LoopbackNodeConnectionTests
             "a", NodeTransportKind.Ax25, "b", NodeTransportKind.Ax25);
 
         await appEnd.WriteAsync(Encoding.ASCII.GetBytes("x\ry\r"), CancellationToken.None);
-        Assert.Equal("x\ry\r", await ReadAllAsciiAsync(userEnd, 1));
+        (await ReadAllAsciiAsync(userEnd, 1)).Should().Be("x\ry\r");
     }
 }

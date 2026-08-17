@@ -28,7 +28,7 @@ public class NinoTncEnumeration
             $"Hardware-loop probe: expected ≥2 NinoTNC-class serial devices, " +
             $"found {devices.Count}. Connect both TNCs over USB and re-run.");
 
-        Assert.True(devices.Count >= 2);
+        (devices.Count >= 2).Should().BeTrue();
     }
 
     [SkippableFact]
@@ -45,7 +45,7 @@ public class NinoTncEnumeration
         {
             using var port = new SerialPort(portName, 57600, Parity.None, 8, StopBits.One);
             port.Open();
-            Assert.True(port.IsOpen, $"port {portName} should be open");
+            port.IsOpen.Should().BeTrue($"port {portName} should be open");
         }
     }
 

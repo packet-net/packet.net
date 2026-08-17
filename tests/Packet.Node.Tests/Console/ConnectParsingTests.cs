@@ -26,9 +26,9 @@ public sealed class ConnectParsingTests
     [InlineData("C M0LTE VIA RELAY", "M0LTE", null)]
     public void Connect_parses_optional_leading_port(string line, string expectedCall, int? expectedPort)
     {
-        var cmd = Assert.IsType<ConnectCommand>(NodeCommandParser.Parse(line));
-        Assert.Equal(Callsign.Parse(expectedCall), cmd.Target);
-        Assert.Equal(expectedPort, cmd.Port);
+        var cmd = NodeCommandParser.Parse(line).Should().BeOfType<ConnectCommand>().Subject;
+        cmd.Target.Should().Be(Callsign.Parse(expectedCall));
+        cmd.Port.Should().Be(expectedPort);
     }
 
     [Theory]
@@ -37,7 +37,7 @@ public sealed class ConnectParsingTests
     [InlineData("C @@@")]              // single bad token
     public void Connect_with_no_valid_target_is_malformed(string line)
     {
-        Assert.IsType<MalformedConnect>(NodeCommandParser.Parse(line));
+        NodeCommandParser.Parse(line).Should().BeOfType<MalformedConnect>();
     }
 
     [Fact]
@@ -48,18 +48,18 @@ public sealed class ConnectParsingTests
             userPeerId: "GB7RDG-4", userKind: NodeTransportKind.Ax25);
 
         // The app end is labelled with the caller; the user end with the app SSID.
-        Assert.Equal("G0AAA", appEnd.PeerId);
-        Assert.Equal("GB7RDG-4", userEnd.PeerId);
+        appEnd.PeerId.Should().Be("G0AAA");
+        userEnd.PeerId.Should().Be("GB7RDG-4");
 
         // user → app
         await userEnd.WriteAsync("hi app"u8.ToArray());
         var atApp = await appEnd.ReadAsync();
-        Assert.Equal("hi app", Encoding.UTF8.GetString(atApp.Span));
+        Encoding.UTF8.GetString(atApp.Span).Should().Be("hi app");
 
         // app → user
         await appEnd.WriteAsync("hi caller"u8.ToArray());
         var atUser = await userEnd.ReadAsync();
-        Assert.Equal("hi caller", Encoding.UTF8.GetString(atUser.Span));
+        Encoding.UTF8.GetString(atUser.Span).Should().Be("hi caller");
     }
 
     [Fact]
@@ -71,8 +71,8 @@ public sealed class ConnectParsingTests
 
         // Shared completion fires for both ends, and the app end reads EOF.
         await appEnd.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(userEnd.Completion.IsCompleted);
+        userEnd.Completion.IsCompleted.Should().BeTrue();
         var eof = await appEnd.ReadAsync();
-        Assert.True(eof.IsEmpty);
+        eof.IsEmpty.Should().BeTrue();
     }
 }

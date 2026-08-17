@@ -21,7 +21,7 @@ public sealed class SocketApplicationTests : IDisposable
     private readonly string socketPath;
 
     public SocketApplicationTests()
-        => socketPath = Path.Combine(Path.GetTempPath(), "pdn-sock-" + Guid.NewGuid().ToString("N") + ".sock");
+        => socketPath = TestPaths.NewPath("pdn-sock", ".sock");
 
     public void Dispose()
     {
@@ -65,13 +65,10 @@ public sealed class SocketApplicationTests : IDisposable
         Args = ["hi"],
     };
 
-    [Fact]
+    [SkippableFact]
     public async Task Writes_the_connect_header_then_bridges_user_lines_over_the_socket()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app bridge needs a Unix domain socket");
 
         var (listener, serve) = StartEchoDaemon();
         using (listener)
@@ -85,8 +82,8 @@ public sealed class SocketApplicationTests : IDisposable
 
             conn.Inject("hello lobby\r");
             await Wait.ForAsync(() => conn.Output.Contains("hello lobby"), "user line echoed back");
-            Assert.DoesNotContain('\n', conn.Output);   // every \n translated to CR for AX.25
-            Assert.Contains('\r', conn.Output);
+            conn.Output.Should().NotContain("\n");      // every \n translated to CR for AX.25
+            conn.Output.Should().Contain("\r");
 
             conn.Drop();                  // user disconnects → bridge closes the socket → daemon EOF
             await run.WaitAsync(Timeout); // RunAsync returns
@@ -94,23 +91,22 @@ public sealed class SocketApplicationTests : IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_daemon_that_is_not_listening_throws_ApplicationStartException()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the app bridge needs a Unix domain socket");
 
         // No daemon bound at socketPath → connect refused.
         var conn = new DriveableConnection("M0LTE-7", NodeTransportKind.Ax25);
-        await Assert.ThrowsAsync<ApplicationStartException>(() => App().RunAsync(conn, Ctx()));
+        var act = () => App().RunAsync(conn, Ctx());
+        await act.Should().ThrowAsync<ApplicationStartException>();
     }
 
     [Fact]
     public void Constructing_without_a_socket_path_throws()
     {
-        Assert.Throws<ArgumentException>(() =>
-            new SocketApplication(new ApplicationConfig { Id = "x", Command = "X", Kind = ApplicationKind.Socket, SocketPath = null }));
+        var act = () =>
+            new SocketApplication(new ApplicationConfig { Id = "x", Command = "X", Kind = ApplicationKind.Socket, SocketPath = null });
+        act.Should().Throw<ArgumentException>();
     }
 }

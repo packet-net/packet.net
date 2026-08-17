@@ -125,8 +125,8 @@ public class BidirectionalSrejRecoveryTests
             h.AdvanceT1();
         }
 
-        Assert.Equal(new[] { 0x80, 0x81 }, h.A.Delivered.Select(p => (int)p[0]));
-        Assert.Equal(new[] { 0x01 }, h.B.Delivered.Select(p => (int)p[0]));
+        h.A.Delivered.Select(p => (int)p[0]).Should().Equal(new[] { 0x80, 0x81 });
+        h.B.Delivered.Select(p => (int)p[0]).Should().Equal(new[] { 0x01 });
         h.AssertConverged();
     }
 
@@ -157,8 +157,8 @@ public class BidirectionalSrejRecoveryTests
 
         // The faithful-decrement defect: B's two payloads delivered to A twice, and
         // the link never reconverges (V(R) was left under-advanced).
-        Assert.Equal(new[] { 0x80, 0x81, 0x80, 0x81 }, h.A.Delivered.Select(p => (int)p[0]));
-        Assert.False(Converged(h));
+        h.A.Delivered.Select(p => (int)p[0]).Should().Equal(new[] { 0x80, 0x81, 0x80, 0x81 });
+        Converged(h).Should().BeFalse();
     }
 
     /// <summary>Generative sweep of the simultaneous-bidirectional low-n SREJ regime
@@ -226,8 +226,8 @@ public class BidirectionalSrejRecoveryTests
         }
 
         h.AssertConverged();
-        Assert.Equal(a.Select(x => (int)x), h.B.Delivered.Select(p => (int)p[0]));
-        Assert.Equal(b.Select(x => (int)x), h.A.Delivered.Select(p => (int)p[0]));
+        h.B.Delivered.Select(p => (int)p[0]).Should().Equal(a.Select(x => (int)x));
+        h.A.Delivered.Select(p => (int)p[0]).Should().Equal(b.Select(x => (int)x));
     }
 
     /// <summary>Non-negative modulo, overflow-safe for int.MinValue.</summary>

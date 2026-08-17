@@ -47,12 +47,12 @@ public sealed class ConsoleAppDispatchTests
 
         await RunWith(svc, conn, "WALL last 5", "B");
 
-        Assert.Equal(1, host.RunCalls);
-        Assert.Same(wall, host.RanApp);
-        Assert.Equal("M0LTE-7", host.RanContext!.Callsign);
-        Assert.Equal(NodeTransportKind.Ax25, host.RanContext.Transport);
-        Assert.Equal(["last", "5"], host.RanContext.Args);
-        Assert.DoesNotContain("Unknown command", conn.Output, StringComparison.Ordinal);
+        host.RunCalls.Should().Be(1);
+        host.RanApp.Should().BeSameAs(wall);
+        host.RanContext!.Callsign.Should().Be("M0LTE-7");
+        host.RanContext.Transport.Should().Be(NodeTransportKind.Ax25);
+        host.RanContext.Args.Should().Equal(["last", "5"]);
+        conn.Output.Should().NotContain("Unknown command");
     }
 
     [Fact]
@@ -66,8 +66,8 @@ public sealed class ConsoleAppDispatchTests
 
         await RunWith(svc, conn, "BYE");
 
-        Assert.Equal(0, host.RunCalls);
-        Assert.Contains("73", conn.Output, StringComparison.Ordinal);
+        host.RunCalls.Should().Be(0);
+        conn.Output.Should().Contain("73");
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public sealed class ConsoleAppDispatchTests
 
         await RunWith(svc, conn, "ZZZ", "B");
 
-        Assert.Equal(0, host.RunCalls);
-        Assert.Contains("Unknown command", conn.Output, StringComparison.Ordinal);
+        host.RunCalls.Should().Be(0);
+        conn.Output.Should().Contain("Unknown command");
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public sealed class ConsoleAppDispatchTests
 
         await RunWith(svc, conn, "WALL", "B");
 
-        Assert.Contains("Unknown command", conn.Output, StringComparison.Ordinal);
+        conn.Output.Should().Contain("Unknown command");
     }
 
     // Records what the console asked of the launcher; resolves the one configured app by an

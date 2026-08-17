@@ -22,7 +22,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
 
     public TailscaleSidecarHostedServiceTests()
     {
-        dir = Path.Combine(Path.GetTempPath(), "pdn-tsnet-tests", Guid.NewGuid().ToString("N"));
+        dir = TestPaths.NewPath("pdn-tsnet");
         Directory.CreateDirectory(dir);
     }
 
@@ -146,13 +146,10 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
             Apps = apps,
         };
 
-    [Fact]
+    [SkippableFact]
     public async Task Enabled_launches_the_child_and_status_transitions_to_running_with_the_fqdn()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var bin = WriteFakeSidecar("ts-ok", [
             "{\"state\":\"starting\"}",
@@ -165,20 +162,17 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(() => status.Current.State == "running", "status running");
 
-        Assert.True(status.Current.Enabled);
-        Assert.Equal("pdn.test.ts.net", status.Current.Fqdn);
-        Assert.Null(status.Current.AuthUrl);
+        status.Current.Enabled.Should().BeTrue();
+        status.Current.Fqdn.Should().Be("pdn.test.ts.net");
+        status.Current.AuthUrl.Should().BeNull();
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Needs_login_status_surfaces_the_auth_url()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var bin = WriteFakeSidecar("ts-login", [
             "{\"state\":\"starting\"}",
@@ -190,18 +184,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
 
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(() => status.Current.State == "needs-login", "status needs-login");
-        Assert.Equal("https://login.tailscale.com/a/abc123", status.Current.AuthUrl);
+        status.Current.AuthUrl.Should().Be("https://login.tailscale.com/a/abc123");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Disabled_config_runs_nothing_and_status_stays_disabled()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // Point at a path that does not exist — if the service tried to launch it'd error;
         // because the config is disabled it must never launch, so status stays disabled.
         var bin = Path.Combine(dir, "does-not-exist");
@@ -211,19 +202,16 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
 
         await svc.StartAsync(CancellationToken.None);
         await Task.Delay(150);   // bounded observation window for a (forbidden) launch
-        Assert.False(status.Current.Enabled);
-        Assert.Equal("disabled", status.Current.State);
+        status.Current.Enabled.Should().BeFalse();
+        status.Current.State.Should().Be("disabled");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_child_that_exits_triggers_a_backoff_restart()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // The fake records each launch, emits running, then exits 1 — so each respawn appends a
         // line. Two-plus launches proves the supervisor restarted on the unexpected exit.
         var runsFile = Path.Combine(dir, "runs.txt");
@@ -242,13 +230,10 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Disabling_via_config_change_stops_the_running_child()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var bin = WriteFakeSidecar("ts-toggle", [
             "{\"state\":\"running\",\"fqdn\":\"pdn.test.ts.net\"}",
@@ -263,18 +248,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         // Flip the config to disabled and raise OnChange (the SqliteConfigProvider web-edit seam).
         config.Apply(Node(new TailscaleConfig { Enabled = false }));
         await Wait.ForAsync(() => status.Current.State == "disabled", "disabled after the config change");
-        Assert.False(status.Current.Enabled);
+        status.Current.Enabled.Should().BeFalse();
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_relevant_field_change_restarts_the_child()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var runsFile = Path.Combine(dir, "runs.txt");
         var bin = WriteFakeSidecar("ts-reconf", [
@@ -292,18 +274,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         config.Apply(Node(cfg with { Hostname = "pdn2" }));
         await Wait.ForAsync(() => File.ReadAllLines(runsFile).Length >= 2, "relaunched on the hostname change");
         // The new launch carries the new hostname.
-        Assert.Contains(File.ReadAllLines(runsFile), l => l.Contains("--hostname pdn2", StringComparison.Ordinal));
+        File.ReadAllLines(runsFile).Should().Contain(l => l.Contains("--hostname pdn2", StringComparison.Ordinal));
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task The_child_is_launched_with_the_pinned_flag_contract()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var runsFile = Path.Combine(dir, "args.txt");
         var bin = WriteFakeSidecar("ts-flags", [
@@ -328,22 +307,19 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(() => File.Exists(runsFile) && File.ReadAllLines(runsFile).Length >= 1, "launched");
         var argv = File.ReadAllLines(runsFile)[0];
-        Assert.Contains("--hostname pdn", argv, StringComparison.Ordinal);
-        Assert.Contains($"--state-dir {stateDir}", argv, StringComparison.Ordinal);
-        Assert.Contains("--target 127.0.0.1:9090", argv, StringComparison.Ordinal);
-        Assert.Contains($"--authkey-file {keyFile}", argv, StringComparison.Ordinal);
-        Assert.Contains("--funnel", argv, StringComparison.Ordinal);
+        argv.Should().Contain("--hostname pdn");
+        argv.Should().Contain($"--state-dir {stateDir}");
+        argv.Should().Contain("--target 127.0.0.1:9090");
+        argv.Should().Contain($"--authkey-file {keyFile}");
+        argv.Should().Contain("--funnel");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task An_inline_auth_key_is_passed_via_a_private_temp_file_not_the_command_line()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var runsFile = Path.Combine(dir, "args.txt");
         var bin = WriteFakeSidecar("ts-inlinekey", [
@@ -365,19 +341,16 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await Wait.ForAsync(() => File.Exists(runsFile) && File.ReadAllLines(runsFile).Length >= 1, "launched");
         var argv = File.ReadAllLines(runsFile)[0];
         // The secret must not appear on the command line; a --authkey-file path must.
-        Assert.DoesNotContain("tskey-secret-value", argv, StringComparison.Ordinal);
-        Assert.Contains("--authkey-file", argv, StringComparison.Ordinal);
+        argv.Should().NotContain("tskey-secret-value");
+        argv.Should().Contain("--authkey-file");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_missing_binary_when_enabled_yields_error_status_and_no_crash()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var status = new TailscaleStatusHolder();
         var config = new TestConfigProvider(Node(Enabled(Path.Combine(dir, "state"))));
@@ -387,19 +360,16 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
 
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(() => status.Current.State == "error", "error status on a missing binary");
-        Assert.True(status.Current.Enabled);
-        Assert.NotNull(status.Current.Error);
+        status.Current.Enabled.Should().BeTrue();
+        status.Current.Error.Should().NotBeNull();
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Stop_sigterms_the_child()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // The fake traps TERM and records it before exiting — proving a graceful SIGTERM stop.
         var path = Path.Combine(dir, "ts-polite");
         var marker = Path.Combine(dir, "term.marker");
@@ -422,18 +392,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await Wait.ForAsync(() => File.Exists(ready), "trap installed");
 
         await svc.StopAsync(CancellationToken.None);
-        Assert.True(File.Exists(marker), "the child must see SIGTERM before any kill");
+        File.Exists(marker).Should().BeTrue("the child must see SIGTERM before any kill");
     }
 
     // ---- app-declared tailnet forwards (docs/network-access.md) ----------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task An_enabled_package_forward_writes_the_forwards_file_and_passes_the_flag()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var bin = WriteFakeSidecar("ts-fwd", [
@@ -457,22 +424,19 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         // The flag points at the forwards file in the state dir, and the file holds the pinned JSON.
         var forwardsFile = Path.Combine(stateDir, TailscaleSidecarHostedService.ForwardsFileName);
         var argv = File.ReadAllLines(argsLog)[0];
-        Assert.Contains($"--forwards-file {forwardsFile}", argv, StringComparison.Ordinal);
-        Assert.True(File.Exists(forwardsFile));
+        argv.Should().Contain($"--forwards-file {forwardsFile}");
+        File.Exists(forwardsFile).Should().BeTrue();
         var json = File.ReadAllText(forwardsFile);
-        Assert.Equal(
-            "[{\"listen\":993,\"target\":\"127.0.0.1:1430\",\"tls\":\"terminate\"}]", json);
+        json.Should().Be(
+            "[{\"listen\":993,\"target\":\"127.0.0.1:1430\",\"tls\":\"terminate\"}]");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_disabled_forward_package_contributes_no_forwards_and_no_flag()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var bin = WriteFakeSidecar("ts-nofwd", [
@@ -494,18 +458,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
             () => File.Exists(argsLog) && File.ReadAllLines(argsLog).Length >= 1, "launched");
 
         var argv = File.ReadAllLines(argsLog)[0];
-        Assert.DoesNotContain("--forwards-file", argv, StringComparison.Ordinal);
+        argv.Should().NotContain("--forwards-file");
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Enabling_a_forward_package_live_reloads_via_sighup_without_restarting_the_sidecar()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // The whole point of the fix: a forwards-only change must NOT tear down + rejoin the tailnet
         // (which would drop the operator's control-panel session). It rewrites forwards.json and
         // SIGHUPs the SAME child — proved by exactly one launch line plus a recorded HUP.
@@ -528,7 +489,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(
             () => File.Exists(argsLog) && File.ReadAllLines(argsLog).Length >= 1, "first launch");
-        Assert.DoesNotContain("--forwards-file", File.ReadAllLines(argsLog)[0], StringComparison.Ordinal);
+        File.ReadAllLines(argsLog)[0].Should().NotContain("--forwards-file");
 
         // Enable the forward-declaring app → forwards-only change: rewrite forwards.json + SIGHUP.
         config.Apply(NodeWithApps(
@@ -541,22 +502,18 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         // … and forwards.json was (re)written with the now-enabled forward …
         var forwardsFile = Path.Combine(stateDir, TailscaleSidecarHostedService.ForwardsFileName);
         await Wait.ForAsync(() => File.Exists(forwardsFile), "forwards.json rewritten before the SIGHUP");
-        Assert.Equal(
-            "[{\"listen\":993,\"target\":\"127.0.0.1:1430\",\"tls\":\"terminate\"}]",
-            File.ReadAllText(forwardsFile));
+        File.ReadAllText(forwardsFile).Should().Be(
+            "[{\"listen\":993,\"target\":\"127.0.0.1:1430\",\"tls\":\"terminate\"}]");
         // … and crucially the child was NOT respawned (still exactly one launch line).
-        Assert.Single(File.ReadAllLines(argsLog));
+        File.ReadAllLines(argsLog).Should().ContainSingle();
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Changing_a_forward_target_live_reloads_via_sighup_without_restarting()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var hupLog = Path.Combine(dir, "hup.txt");
@@ -578,7 +535,7 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await svc.StartAsync(CancellationToken.None);
         await Wait.ForAsync(
             () => File.Exists(argsLog) && File.ReadAllLines(argsLog).Length >= 1, "first launch");
-        Assert.Contains("--forwards-file", File.ReadAllLines(argsLog)[0], StringComparison.Ordinal);
+        File.ReadAllLines(argsLog)[0].Should().Contain("--forwards-file");
 
         // Change the forward's target → still a forwards-only change → SIGHUP, no restart.
         WritePackageWithForward(appRoot, "mail", 993, "127.0.0.1:9999");
@@ -592,18 +549,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
         await Wait.ForAsync(
             () => File.ReadAllText(forwardsFile).Contains("127.0.0.1:9999", StringComparison.Ordinal),
             "forwards.json holds the new target");
-        Assert.Single(File.ReadAllLines(argsLog));   // never respawned
+        File.ReadAllLines(argsLog).Should().ContainSingle();   // never respawned
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Disabling_a_forward_package_live_reloads_to_zero_forwards_via_sighup()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
 
         var argsLog = Path.Combine(dir, "args.txt");
         var hupLog = Path.Combine(dir, "hup.txt");
@@ -632,18 +586,15 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
             () => File.Exists(hupLog) && File.ReadAllLines(hupLog).Length >= 1,
             "the child was SIGHUPed for the drop-to-zero reload");
         await Wait.ForAsync(() => !File.Exists(forwardsFile), "forwards.json removed on the drop to zero");
-        Assert.Single(File.ReadAllLines(argsLog));   // never respawned
+        File.ReadAllLines(argsLog).Should().ContainSingle();   // never respawned
 
         await svc.StopAsync(CancellationToken.None);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task A_node_level_change_still_restarts_the_sidecar_even_with_forwards()
     {
-        if (!OperatingSystem.IsLinux())
-        {
-            return;
-        }
+        Skip.IfNot(OperatingSystem.IsLinux(), "the fake tsnet sidecar is a POSIX shell script");
         // A node-level field (hostname → a fresh tsnet node) must still restart, never SIGHUP — the
         // forwards split must not regress the restart-on-node-change behaviour.
         var argsLog = Path.Combine(dir, "args.txt");
@@ -672,10 +623,10 @@ public sealed class TailscaleSidecarHostedServiceTests : IDisposable
             cfg with { Hostname = "pdn2" }, appRoot, new AppOverrideConfig { Id = "mail", Enabled = true }));
         await Wait.ForAsync(
             () => File.ReadAllLines(argsLog).Length >= 2, "relaunched on the hostname change");
-        Assert.Contains(File.ReadAllLines(argsLog), l => l.Contains("--hostname pdn2", StringComparison.Ordinal));
+        File.ReadAllLines(argsLog).Should().Contain(l => l.Contains("--hostname pdn2", StringComparison.Ordinal));
         // The relaunch carries the forwards (still --forwards-file), and no SIGHUP was used.
-        Assert.Contains("--forwards-file", File.ReadAllLines(argsLog)[1], StringComparison.Ordinal);
-        Assert.False(File.Exists(hupLog), "a node-level change must restart, never SIGHUP");
+        File.ReadAllLines(argsLog)[1].Should().Contain("--forwards-file");
+        File.Exists(hupLog).Should().BeFalse("a node-level change must restart, never SIGHUP");
 
         await svc.StopAsync(CancellationToken.None);
     }

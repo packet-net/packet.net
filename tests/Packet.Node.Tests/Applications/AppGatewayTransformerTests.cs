@@ -31,14 +31,14 @@ public sealed class AppGatewayTransformerTests
         };
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test"));
 
-        Assert.Equal("tom", PdnAppGateway.AuthenticatedUsername(principal));
+        PdnAppGateway.AuthenticatedUsername(principal).Should().Be("tom");
     }
 
     [Fact]
     public void AuthenticatedUsername_is_empty_for_an_unauthenticated_principal()
     {
-        Assert.Equal(string.Empty, PdnAppGateway.AuthenticatedUsername(new ClaimsPrincipal(new ClaimsIdentity())));
-        Assert.Equal(string.Empty, PdnAppGateway.AuthenticatedUsername(null));
+        PdnAppGateway.AuthenticatedUsername(new ClaimsPrincipal(new ClaimsIdentity())).Should().Be(string.Empty);
+        PdnAppGateway.AuthenticatedUsername(null).Should().Be(string.Empty);
     }
 
     [Fact]
@@ -60,10 +60,10 @@ public sealed class AppGatewayTransformerTests
         using var proxyRequest = new HttpRequestMessage(HttpMethod.Get, "http://placeholder/");
         await transformer.TransformRequestAsync(ctx, proxyRequest, "http://127.0.0.1:9090", default);
 
-        Assert.Equal("http://127.0.0.1:9090/page?x=1", proxyRequest.RequestUri!.ToString());   // prefix stripped
-        Assert.Equal("tom", Single(proxyRequest, "X-Pdn-User"));                                // real identity, not "attacker"
-        Assert.Equal("admin", Single(proxyRequest, "X-Pdn-Scope"));
-        Assert.Equal("1", Single(proxyRequest, "X-Pdn-Gateway"));
+        proxyRequest.RequestUri!.ToString().Should().Be("http://127.0.0.1:9090/page?x=1");   // prefix stripped
+        Single(proxyRequest, "X-Pdn-User").Should().Be("tom");                              // real identity, not "attacker"
+        Single(proxyRequest, "X-Pdn-Scope").Should().Be("admin");
+        Single(proxyRequest, "X-Pdn-Gateway").Should().Be("1");
     }
 
     [Fact]

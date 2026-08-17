@@ -36,15 +36,15 @@ public sealed class ApplicationConfigTests
 
         var cfg = NodeConfigYaml.Parse(yaml);
 
-        var app = Assert.Single(cfg.Applications);
-        Assert.Equal("wall", app.Id);
-        Assert.Equal("WALL", app.Command);
-        Assert.True(app.Enabled);                       // defaults true
-        Assert.Equal(ApplicationKind.Process, app.Kind); // defaults Process when kind: omitted
-        Assert.Equal("/usr/bin/python3", app.Executable);
-        Assert.Equal(["/usr/share/packetnet/apps/wall/wall.py"], app.Args);
-        Assert.Equal("/var/lib/packetnet/apps/wall", app.WorkingDirectory);
-        Assert.Equal(["session"], app.Capabilities);
+        var app = cfg.Applications.Should().ContainSingle().Subject;
+        app.Id.Should().Be("wall");
+        app.Command.Should().Be("WALL");
+        app.Enabled.Should().BeTrue();                  // defaults true
+        app.Kind.Should().Be(ApplicationKind.Process);  // defaults Process when kind: omitted
+        app.Executable.Should().Be("/usr/bin/python3");
+        app.Args.Should().Equal(["/usr/share/packetnet/apps/wall/wall.py"]);
+        app.WorkingDirectory.Should().Be("/var/lib/packetnet/apps/wall");
+        app.Capabilities.Should().Equal(["session"]);
     }
 
     [Fact]
@@ -59,9 +59,9 @@ public sealed class ApplicationConfigTests
                 executable: /bin/cat
             """;
 
-        var app = Assert.Single(NodeConfigYaml.Parse(yaml).Applications);
-        Assert.False(app.Enabled);
-        Assert.Equal(ApplicationKind.Process, app.Kind);
+        var app = NodeConfigYaml.Parse(yaml).Applications.Should().ContainSingle().Subject;
+        app.Enabled.Should().BeFalse();
+        app.Kind.Should().Be(ApplicationKind.Process);
     }
 
     [Fact]
@@ -78,26 +78,26 @@ public sealed class ApplicationConfigTests
 
         var round = NodeConfigYaml.Parse(NodeConfigYaml.Serialize(cfg));
 
-        var app = Assert.Single(round.Applications);
-        Assert.Equal("wall", app.Id);
-        Assert.Equal("WALL", app.Command);
-        Assert.Equal("/usr/bin/python3", app.Executable);
-        Assert.Equal(["wall.py"], app.Args);
+        var app = round.Applications.Should().ContainSingle().Subject;
+        app.Id.Should().Be("wall");
+        app.Command.Should().Be("WALL");
+        app.Executable.Should().Be("/usr/bin/python3");
+        app.Args.Should().Equal(["wall.py"]);
     }
 
     [Fact]
     public void Empty_applications_is_the_default_and_valid()
     {
         var cfg = Valid();
-        Assert.Empty(cfg.Applications);
-        Assert.True(Validate(cfg).IsValid);
+        cfg.Applications.Should().BeEmpty();
+        Validate(cfg).IsValid.Should().BeTrue();
     }
 
     [Fact]
     public void A_well_formed_process_app_validates()
     {
         var cfg = Valid(new ApplicationConfig { Id = "wall", Command = "WALL", Executable = "/usr/bin/python3" });
-        Assert.True(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeTrue();
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class ApplicationConfigTests
         var cfg = Valid(
             new ApplicationConfig { Id = "wall", Command = "WALL", Executable = "/bin/cat" },
             new ApplicationConfig { Id = "wall", Command = "GUEST", Executable = "/bin/cat" });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public sealed class ApplicationConfigTests
         var cfg = Valid(
             new ApplicationConfig { Id = "a", Command = a, Executable = "/bin/cat" },
             new ApplicationConfig { Id = "b", Command = b, Executable = "/bin/cat" });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     [Theory]
@@ -130,21 +130,21 @@ public sealed class ApplicationConfigTests
     public void A_match_that_collides_with_a_builtin_verb_is_rejected(string match)
     {
         var cfg = Valid(new ApplicationConfig { Id = "x", Command = match, Executable = "/bin/cat" });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     [Fact]
     public void A_process_app_without_a_command_is_rejected()
     {
         var cfg = Valid(new ApplicationConfig { Id = "wall", Command = "WALL", Executable = null });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     [Fact]
     public void A_blank_match_is_rejected()
     {
         var cfg = Valid(new ApplicationConfig { Id = "wall", Command = "", Executable = "/bin/cat" });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     // ── The human-plane ui block (Slice 3) ──────────────────────────────
@@ -163,11 +163,11 @@ public sealed class ApplicationConfigTests
                   icon: message-square
             """;
 
-        var app = Assert.Single(NodeConfigYaml.Parse(yaml).Applications);
-        Assert.NotNull(app.Ui);
-        Assert.Equal("http://127.0.0.1:9090", app.Ui!.Upstream);
-        Assert.Equal("WALL", app.Ui.Name);
-        Assert.Equal("message-square", app.Ui.Icon);
+        var app = NodeConfigYaml.Parse(yaml).Applications.Should().ContainSingle().Subject;
+        app.Ui.Should().NotBeNull();
+        app.Ui!.Upstream.Should().Be("http://127.0.0.1:9090");
+        app.Ui.Name.Should().Be("WALL");
+        app.Ui.Icon.Should().Be("message-square");
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public sealed class ApplicationConfigTests
             Executable = "/bin/cat",
             Ui = new AppUiConfig { Upstream = "http://127.0.0.1:9090", Name = "WALL" },
         });
-        Assert.True(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeTrue();
     }
 
     // ── The socket rung (Slice 2) ───────────────────────────────────────
@@ -196,21 +196,21 @@ public sealed class ApplicationConfigTests
                 socketPath: /run/packetnet/lobby.sock
             """;
 
-        var app = Assert.Single(NodeConfigYaml.Parse(yaml).Applications);
-        Assert.Equal(ApplicationKind.Socket, app.Kind);
-        Assert.Equal("/run/packetnet/lobby.sock", app.SocketPath);
-        Assert.True(Validate(new NodeConfig
+        var app = NodeConfigYaml.Parse(yaml).Applications.Should().ContainSingle().Subject;
+        app.Kind.Should().Be(ApplicationKind.Socket);
+        app.SocketPath.Should().Be("/run/packetnet/lobby.sock");
+        Validate(new NodeConfig
         {
             Identity = new Identity { Callsign = "M0LTE-1" },
             Applications = [app],
-        }).IsValid);
+        }).IsValid.Should().BeTrue();
     }
 
     [Fact]
     public void A_socket_app_without_a_socket_path_is_rejected()
     {
         var cfg = Valid(new ApplicationConfig { Id = "lobby", Command = "LOBBY", Kind = ApplicationKind.Socket, SocketPath = null });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 
     [Theory]
@@ -227,6 +227,6 @@ public sealed class ApplicationConfigTests
             Executable = "/bin/cat",
             Ui = new AppUiConfig { Upstream = upstream },
         });
-        Assert.False(Validate(cfg).IsValid);
+        Validate(cfg).IsValid.Should().BeFalse();
     }
 }

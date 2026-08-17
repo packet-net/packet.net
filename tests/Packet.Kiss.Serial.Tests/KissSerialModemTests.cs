@@ -8,13 +8,17 @@ public class KissSerialModemTests
     [Fact]
     public void Open_Rejects_Null_Port_Name()
     {
-        Assert.Throws<ArgumentNullException>(() => KissSerialModem.Open(null!));
+        var act = () => KissSerialModem.Open(null!);
+
+        act.Should().Throw<ArgumentNullException>();
     }
 
     [Fact]
     public void Open_Rejects_Empty_Port_Name()
     {
-        Assert.Throws<ArgumentException>(() => KissSerialModem.Open(""));
+        var act = () => KissSerialModem.Open("");
+
+        act.Should().Throw<ArgumentException>();
     }
 
     [Fact]

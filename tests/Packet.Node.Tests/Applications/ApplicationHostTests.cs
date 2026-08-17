@@ -28,20 +28,20 @@ public sealed class ApplicationHostTests
         var cfg = new TestConfigProvider(WithApps(App("wall", "WALL")));
         var host = new ApplicationHost(cfg);
 
-        Assert.Equal("wall", host.Resolve("WALL")?.Id);
-        Assert.Equal("wall", host.Resolve("wall")?.Id);   // case-insensitive
-        Assert.Equal("wall", host.Resolve(" WALL ")?.Id);  // trimmed
-        Assert.Null(host.Resolve("WAL"));                  // exact, not a prefix
-        Assert.Null(host.Resolve("WALLY"));
-        Assert.Null(host.Resolve("nope"));
-        Assert.Null(host.Resolve(""));
+        (host.Resolve("WALL")?.Id).Should().Be("wall");
+        (host.Resolve("wall")?.Id).Should().Be("wall");     // case-insensitive
+        (host.Resolve(" WALL ")?.Id).Should().Be("wall");   // trimmed
+        host.Resolve("WAL").Should().BeNull();              // exact, not a prefix
+        host.Resolve("WALLY").Should().BeNull();
+        host.Resolve("nope").Should().BeNull();
+        host.Resolve("").Should().BeNull();
     }
 
     [Fact]
     public void Resolve_ignores_a_disabled_app()
     {
         var host = new ApplicationHost(new TestConfigProvider(WithApps(App("wall", "WALL", enabled: false))));
-        Assert.Null(host.Resolve("WALL"));
+        host.Resolve("WALL").Should().BeNull();
     }
 
     [Fact]
@@ -49,12 +49,12 @@ public sealed class ApplicationHostTests
     {
         var cfg = new TestConfigProvider(WithApps(App("wall", "WALL")));
         var host = new ApplicationHost(cfg);
-        Assert.NotNull(host.Resolve("WALL"));
+        host.Resolve("WALL").Should().NotBeNull();
 
         // Hot edit: disable wall, add guest. The next resolve reflects it — no reconcile needed.
         cfg.Apply(WithApps(App("wall", "WALL", enabled: false), App("guest", "GUEST")));
-        Assert.Null(host.Resolve("WALL"));
-        Assert.Equal("guest", host.Resolve("GUEST")?.Id);
+        host.Resolve("WALL").Should().BeNull();
+        (host.Resolve("GUEST")?.Id).Should().Be("guest");
     }
 
     [Fact]
@@ -67,6 +67,6 @@ public sealed class ApplicationHostTests
         var ctx = new NodeAppContext { Callsign = "M0LTE-7", Transport = NodeTransportKind.Ax25 };
         await host.RunAsync(bad, conn, ctx);   // must not throw
 
-        Assert.Contains("unavailable", conn.Output, StringComparison.OrdinalIgnoreCase);
+        conn.Output.Should().ContainEquivalentOf("unavailable");
     }
 }
