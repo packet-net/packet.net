@@ -7,7 +7,7 @@
 **Legend:** `C` Conformant · `P` Partial · `S` Stub · `-` Absent · `?` Undetermined (see TODO below)
 
 **Runtimes covered:** C# (`src/Packet.Ax25/`) · TS (`packet-net/ax25-ts`).
-Future columns (Go, Rust, Python, …) appear here when those runtimes gain session-walker code; the codegen-only `go-spec/` / `rust-spec/` / `python-spec/` packages don't qualify as runtimes for matrix purposes (they're spec data, not behaviour).
+Future columns (Go, Rust, Python, …) appear here when those runtimes gain session-walker code; the codegen-only spec packages published by [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) don't qualify as runtimes for matrix purposes (they're spec data, not behaviour).
 
 ---
 

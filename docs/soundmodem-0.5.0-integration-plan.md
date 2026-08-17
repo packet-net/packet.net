@@ -495,7 +495,7 @@ them as config-file features first and add UI later.
 
 - Ship a worked `kind: soundmodem` example config (none exists today — grep of `examples/`,
   `guide/`, `operating/` finds nothing).
-- Update `docs/node-api.yaml` for any new fields/endpoints.
+- Update `docs/node-api.md` for any new fields/endpoints.
 - Node guide: the new modes (FreeDV/MS110D), the BPSK bank behaviour change, Flex device strings,
   and the ARDOP/POCSAG services.
 

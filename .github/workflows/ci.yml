@@ -115,6 +115,11 @@ jobs:
         # https://evil.example/x.github.com/p.deb passed it, and that helper runs as root.
         run: scripts/github-update-url-test.sh
 
+      - name: doc links resolve
+        # C107: the 2026-05-17 repo split and the config-in-DB move left links to files
+        # that had moved to a sibling repo or been deleted, and nothing noticed for months.
+        run: scripts/check-doc-links.sh
+
       - name: no node_modules is git-tracked
         # C102: web/ax25/node_modules (3058 files, 19 MB) stayed tracked long after the
         # directory it belonged to was extracted to packet-net/ax25-ts.

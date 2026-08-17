@@ -3,7 +3,7 @@ using Packet.Node.Core.Configuration;
 namespace Packet.Node.Core.Api;
 
 // The config-write DTOs the control API (Slice 3) returns from PUT /config and its
-// dry-run preview. Field names match docs/node-api.yaml + the web UI's types
+// dry-run preview. Field names match docs/node-api.md + the web UI's types
 // (System.Text.Json web defaults camel-case the PascalCase properties).
 
 /// <summary>

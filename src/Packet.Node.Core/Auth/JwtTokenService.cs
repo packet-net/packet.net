@@ -31,8 +31,14 @@ namespace Packet.Node.Core.Auth;
 /// clock so expiry checks are deterministic + testable.
 /// </para>
 /// <para>
-/// <b>No refresh tokens in v1</b> (documented deferral): the access token is the
-/// whole session; when it expires the user logs in again.
+/// <b>Session model: short access token + rotating refresh token.</b> The access JWT
+/// is deliberately short-lived (default 60 minutes); the session is carried by an
+/// opaque refresh token minted alongside it by <see cref="RefreshTokenService"/>. The
+/// client exchanges that token at <c>/auth/refresh</c> for a fresh pair (one-time use,
+/// rotated on every exchange); replaying a consumed token outside the reuse-leeway
+/// window revokes the whole family (the theft response), and <c>/auth/logout</c>
+/// revokes it explicitly. Refresh tokens are stored only as a SHA-256 hash in
+/// <c>pdn.db</c>, so a database read never yields a usable token.
 /// </para>
 /// </remarks>
 public sealed class JwtTokenService

@@ -1,19 +1,22 @@
-# pdn node — container default config (baked into the ghcr.io/packet-net/packet.net image).
+# pdn node - container default config, FIRST-BOOT SEED (baked into the
+# ghcr.io/packet-net/packet.net image).
 #
-# Differs from the .deb's template in ONE way that matters for a container: the HTTP
-# management UI binds 0.0.0.0 (not loopback), so `docker run -p 8080:8080` actually
-# reaches it. THAT MEANS THE PANEL IS EXPOSED on whatever you publish the port to.
+# This is not the container's live config. The node imports it into `pdn.db` on its
+# first start - in the image that is the `pdn-state` volume - and never reads it again
+# (docs/config-in-db.md). So editing it in the /etc/packetnet volume, or bind-mounting
+# your own over it, only takes effect on a node whose state volume is still empty.
+# After that: the control panel, `PUT /api/v1/config[/raw]`, or `pdn config import`.
 #
-#   >>> Before exposing this beyond a trusted LAN, enable auth (management.auth.enabled:
-#   >>> true, then bootstrap an admin via /setup) or front it with an authenticating
-#   >>> reverse proxy. On an untrusted network, an unauthenticated panel is a liability.
-#
-# Override the whole file by bind-mounting your own at /etc/packetnet/packetnet.yaml,
-# or edit it in the /etc/packetnet volume. Add your real callsign + ports there.
-schemaVersion: 1
+# It differs from the .deb's template in what a container needs rather than in posture:
+# telnet is off (nothing publishes 8011), and the commented examples are dropped. Both
+# templates bind the HTTP panel on 0.0.0.0 with auth ON, so the panel is reachable
+# wherever `docker run -p` publishes it and a login is what stands between the network
+# and a session that can rewrite config, add ports, and transmit. Seed your real
+# callsign and ports below before the first start.
+schemaVersion: 2
 
 identity:
-  callsign: N0CALL          # CHANGE THIS — your licensed callsign
+  callsign: N0CALL          # CHANGE THIS - your licensed callsign
   alias: PDN
 
 ports: []                   # add your KISS-TCP / serial / AXUDP ports here
@@ -22,10 +25,8 @@ management:
   telnet:
     enabled: false
   http:
-    bind: 0.0.0.0           # container: reachable via -p (see the warning above)
+    bind: 0.0.0.0           # container: reachable via -p (see the header)
     port: 8080
   auth:
-    enabled: true           # the panel binds 0.0.0.0 here, so it is published wherever -p
-                            # puts it: a login is what stands between the network and a
-                            # session that can rewrite config, add ports, and transmit.
-                            # First run lands on the setup wizard (never gated at zero users).
+    enabled: true           # first run lands on the setup wizard (never gated at zero
+                            # users); everything after that needs a login.

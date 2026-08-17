@@ -91,11 +91,13 @@ Mail clients have no "secure context" notion — they care about **cert trust**:
 
 ## pdn code changes
 
-1. **ForwardedHeaders** (`UseForwardedHeaders` for X-Forwarded-Proto/Host) on pdn's own pipeline — today only the app-gateway reads forwarded headers. Behind the sidecar's TLS, pdn sees HTTP; honoring the headers makes `pdn_at`'s `Secure` flag (`= Request.IsHttps`) correct and the request-derived WebAuthn origin `https://`. (WebAuthn already passes if `allowedOrigins` lists the `https://` origin — Fido2 checks the browser-reported origin — but this makes it clean.) Trust the headers only from the loopback sidecar.
-2. **`isSecureContext` UI gate** — the passkey register/enroll UI is currently offered unconditionally; gate it on `window.isSecureContext` so plain-HTTP LAN hides passkeys and presents password (+TOTP) instead, degrading gracefully rather than erroring.
-3. **`tailscale:` config** — the block above, parsed/validated; the `TailscaleSidecarHostedService` consuming it.
-4. **Status surfacing** — control-panel: Tailscale connection state, the assigned FQDN, any pending login URL, and a "use this as your passkey hostname" RP-ID suggestion.
-5. **Retire** the acme.sh/Cloudflare/DNS-01 recipe from docs + the config template; keep the optional self-signed/BYO HTTPS unchanged.
+Written as future work; **all five are now built**. Kept as the record of what the posture required, with where each landed.
+
+1. **ForwardedHeaders** (`UseForwardedHeaders` for X-Forwarded-Proto/Host) on pdn's own pipeline. **Shipped:** it is the *first* middleware in pdn's own pipeline (`Program.cs`), not just the app-gateway's, and is trusted from loopback only (the default known proxies/networks are cleared, then the two loopback addresses added), so a remote client cannot spoof its scheme/host. Behind the sidecar's TLS pdn sees HTTP; honouring the headers makes `pdn_at`'s `Secure` flag (`= Request.IsHttps`) correct and the request-derived WebAuthn origin `https://`. (WebAuthn already passes if `allowedOrigins` lists the `https://` origin, since Fido2 checks the browser-reported origin, but this makes it clean.)
+2. **`isSecureContext` UI gate.** **Shipped:** `web/packetnet-ui/src/lib/secureContext.ts` is the single "could a ceremony run here?" probe the panel consults, so plain-HTTP LAN hides passkeys and presents password (+TOTP) instead, degrading gracefully rather than erroring.
+3. **`tailscale:` config.** **Shipped:** the block above is parsed/validated, and `TailscaleSidecarHostedService` consumes it (registered in `Program.cs`).
+4. **Status surfacing.** **Shipped:** the panel's Tailscale card (config screen) shows connection state, the assigned FQDN, any pending login URL, and an admin-gated "Use `<fqdn>` for passkeys" action that writes `relyingPartyId` + adds `https://<fqdn>` to `allowedOrigins`. Regression-covered by `web/packetnet-ui/src/test/tailscale.panel.test.tsx`.
+5. **Retire** the acme.sh/Cloudflare/DNS-01 recipe from docs + the config template. **Shipped:** the config template records that there is no built-in ACME/DNS-01 (a public no-VPN cert is the operator's own edge's job) and [`passkeys-lan-trust-pattern.md`](passkeys-lan-trust-pattern.md) carries a SUPERSEDED banner; the optional self-signed/BYO HTTPS is unchanged.
 
 ## Slice plan
 

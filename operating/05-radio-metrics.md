@@ -57,18 +57,20 @@ Null readings are **omitted** (never a misleading `0`).
 There is deliberately **no** `pdn_radio_snr_db` or `pdn_radio_noise_floor_dbm`. SNR
 and noise floor are *per-frame* concepts; the radio's *health* projection doesn't
 carry a port-level SNR, so rather than fabricate one, SNR is surfaced **per link
-partner** instead:
+partner** instead, alongside that partner's TXDELAY as heard:
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
 | `pdn_link_snr_db` | gauge | `port`, `peer` | SNR (dB) of the newest frame heard from a link partner, by port + remote callsign. |
+| `pdn_link_predata_carrier_ms` | gauge | `port`, `peer` | Rolling median carrier-rise-to-data lead (ms) of frames heard from a link partner, its effective TXDELAY as heard, by port + remote callsign. Includes a small constant rig overhead, so trend it rather than reading it as the peer's configured TXDELAY. |
 
 > [!NOTE]
-> `pdn_link_snr_db` is the **one** series that carries a per-callsign (`peer`) label.
-> It is emitted for **every** station heard with a measured SNR — no cap, no
-> bounding — on the reasoning that a node hears a naturally small, slowly-changing
-> set of stations. (If your deployment ever disproves that, drop or relabel it
-> Prometheus-side with `metric_relabel_configs`.)
+> `pdn_link_snr_db` and `pdn_link_predata_carrier_ms` are the **two** series that
+> carry a per-callsign (`peer`) label. Both are emitted for **every** station
+> heard with a measurement, no cap and no bounding, on the reasoning that a node
+> hears a naturally small, slowly-changing set of stations. (If your deployment
+> ever disproves that, drop or relabel them Prometheus-side with
+> `metric_relabel_configs`.)
 
 ## A couple of alerts worth having
 

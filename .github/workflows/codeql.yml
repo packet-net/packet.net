@@ -6,8 +6,10 @@ name: codeql
 # [self-hosted, Linux, X64], same discipline as ci/fuzz/interop).
 #
 # Scope = the two SHIPPED codebases: the .NET product (csharp) and the served
-# control-panel SPA (web/packetnet-ui, javascript-typescript). The python/rust/c
-# spec directories are reference artifacts, not product, so they're not scanned.
+# control-panel SPA (web/packetnet-ui, javascript-typescript). That is the whole
+# tree now: the generated python/rust/c/json spec packages moved to
+# packet-net/ax25sdl in the 2026-05-17 split and the leftover copies here were
+# deleted 2026-08-17 (review item C107).
 #
 # Both languages use build-mode: none (buildless extraction). C# buildless skips
 # the full Release compile entirely — far lighter on the shared self-hosted box

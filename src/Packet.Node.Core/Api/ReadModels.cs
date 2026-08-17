@@ -1,7 +1,7 @@
 namespace Packet.Node.Core.Api;
 
 // The read-side DTOs the control API (Slice 3) projects from the live node and
-// serves under /api/v1. Field names match docs/node-api.yaml + the web UI's
+// serves under /api/v1. Field names match docs/node-api.md + the web UI's
 // src/lib/types.ts (System.Text.Json's web defaults camel-case the PascalCase
 // properties, so NodeStatus.Callsign → "callsign"). These are pure value shapes
 // — the projection logic lives in the API endpoint layer.

@@ -74,12 +74,19 @@ public interface IRhpGateway
 
 /// <summary>
 /// One inbound AX.25 UI datagram surfaced to the RHP dgram <c>recv</c> path: the frame's true
-/// source / destination (surfaced verbatim — the tap is promiscuous), its Layer-3 PID, its
-/// information field, and the id of the port it arrived on.
+/// source / destination (surfaced verbatim, because the tap is promiscuous), its Layer-3 PID,
+/// its information field, and the id of the port it arrived on. The PID reaches the wire folded
+/// into <c>recv.data</c> or not at all, never as a field of its own; see <paramref name="Pid"/>.
 /// </summary>
 /// <param name="Source">The frame's source callsign (→ <c>recv.remote</c>).</param>
 /// <param name="Dest">The frame's destination callsign (→ <c>recv.local</c>).</param>
-/// <param name="Pid">The frame's Layer-3 PID (→ <c>recv.pid</c>).</param>
+/// <param name="Pid">The frame's Layer-3 PID. No <c>recv.pid</c> field is ever emitted:
+/// <c>RhpServer.OnUiReceivedAsync</c> prepends it as the first octet of <c>recv.data</c> on a
+/// <c>custom</c> socket (data = [pid] ++ info), and drops it on a plain <c>dgram</c> socket,
+/// whose PID is the implicit no-Layer-3 <c>0xF0</c> of a pure datagram. That is the
+/// packet.net#647 resolution: PID carriage adds no pdn-specific wire field (see
+/// <c>docs/rhp2-server.md</c> R-7). The <c>pid</c> member in <c>spec/rhp2.cddl</c> is
+/// TRACE/RAW metadata only.</param>
 /// <param name="Info">The frame's information field (→ <c>recv.data</c>).</param>
 /// <param name="PortLabel">The arrival port id (→ <c>recv.port</c>).</param>
 public sealed record UiDatagram(

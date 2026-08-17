@@ -1,4 +1,0 @@
-# Generated *.g.json / schema.json / index.json are tracked in git — the
-# no-drift CI job depends on them being present. This file is intentionally
-# empty (no build artefacts get dropped here today); kept so future tooling
-# additions have an obvious place to declare ignores.

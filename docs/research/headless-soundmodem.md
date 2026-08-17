@@ -360,7 +360,7 @@ constants, and the audio capture period (~10 ms achievable with raw ALSA) sets t
   rate. Follow the design doc: **SSE, not WebSocket**, per-port endpoint modeled on
   `PdnPortTuningApi` (e.g. `/api/v1/ports/{id}/spectrum/events`), palette applied client-side on a
   canvas. Overlay the per-modem centre/shift brackets like QtSM's header rows — that's the tuning
-  value. Must be added to `docs/node-api.yaml` and to the SSE `?access_token=` allowlist in
+  value. Must carry the `AcceptsQueryAccessToken` marker (the SSE `?access_token=` permission) in
   `Program.cs` — where, incidentally, `/api/v1/ports/{id}/tuning/events` is **missing today**
   (verified `Program.cs:334–336` lists only events/sessions/console): apparent pre-existing
   auth-on bug worth checking/fixing independently.

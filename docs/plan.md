@@ -5,7 +5,8 @@
 > If you are reading this for the first time: start with [Why Packet.NET?](#1-why-packetnet) and [Working agreements](#2-working-agreements). If you are looking for *what to build next*, jump to [Roadmap](#5-phased-roadmap). If you are an agent: read [Working agreements](#2-working-agreements) carefully — those are the operating instructions that take precedence over your defaults.
 
 **As of:** 2026-08-17
-**Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](docs/node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Current phase:** Phases 0-5 complete; on the Phase 6/7 horizon. The AX.25 v2.2 Data-Link engine (Phase 2) is conformance-complete - mod-8 **and mod-128** connected-mode data transfer, REJ/SREJ recovery, segmentation, Timer Recovery, all green against the conformance + property harnesses (the on-air 10 kB lossy bench loop, #214, is the one residual, gated on TNC hardware not code). KISS hardening (Phase 3), the node host (Phase 4 - `Packet.Node`/`Packet.Node.Core`, deployable `.deb`), and the React web control panel (Phase 5) are all shipped and **live on the lab** (`pdn.m0lte.uk`): NET/ROM L3+L4 + INP3 routing, beacons, and a complete auth story (TLS · refresh-token rotation · WebAuthn passkeys · over-RF sysop TOTP) reachable over a real trusted cert with passkeys working on phone + laptop. A 2026-06-10 correctness sweep reconciled the issue tracker (it had drifted well behind the code) - see §17. **Next:** Phase 6 (AGW/RHPv2 external app surfaces); Phase 7's channel-aware in-app self-update is shipped for the two channels that remain - the apt repo is maintainer-owned and out of scope, and the self-contained installer + distribution feed were withdrawn 2026-08-05, leaving a `.deb` and a `.tar.gz` as the whole of what pdn distributes ([`docs/node-self-update-design.md`](node-self-update-design.md)); the `/tools/tuner` link-tuner now hosts SDM-coordinated **deviation tuning** in PDN (2026-07-04, §17), with internet-peer/PIN-relay + mode-coordination UI still parked in Phase 8; per-frame RSSI/SNR (Tait 8100/8200, #363) is the Phase 10 adaptive-RF seed.
+**Latest amendment:** [§17 entry 2026-08-17 - **The docs stop describing a node this repo does not ship** - review WP14 ([#701](https://github.com/packet-net/packet.net/issues/701), umbrella [#703](https://github.com/packet-net/packet.net/issues/703)): `docs/node-api.yaml` is deleted rather than hand-regenerated (ten documented routes had no code behind them, about forty real ones were missing, and a fifth hand-maintained mirror of the server was the root cause the review named), replaced by [`docs/node-api.md`](node-api.md) whose route inventory is generated from the node's own `EndpointDataSource` and guarded by a test; `SECURITY.md` and §10 rewritten from a posture the node never had (TLS by default, ACME, cosign, an AGW server, MCP on 8051, audit in `config.db`) to the one it ships; the 57 generated `*-spec` files the 2026-05-17 split left behind deleted and every dead SDL link repointed at `ax25sdl`, with a link check now in the CI guards; §4.1 and §7 rewritten to the tree and the pipeline that exist (and `stryker-config.json` deleted with the mutation-score exit criterion withdrawn); plus the config-seed headers, the UI README and screenshot script, five stale security comments, nine missing metrics, the `UiDatagram.Pid` doc and the MCP tool table. The review record is [`docs/code-review-2026-08-16.md`](code-review-2026-08-16.md)](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-08-17 - **Panel miscellany (WP15 of [#702](https://github.com/packet-net/packet.net/issues/702), umbrella [#703](https://github.com/packet-net/packet.net/issues/703))** - the auth gate stops re-saving the token pair it loaded at mount, so a reload whose probe silently rotated no longer replays a consumed one-time-use refresh token; the Apps identity editor seeds from a new `pinnedCallsign` projection instead of sending `callsign: null`, so editing an app's verb no longer unpins its callsign; passkey + over-RF enrolment moves into a "Your account" card rendered from the session, because the only enrolment path used to live inside the admin-gated user list (and that list's load errors were swallowed); the Tailscale RP-id adopt merges into the config draft rather than reloading over unsaved edits; the tuner's Start/Next/Stop are gated on admin like the endpoints behind them; connect-out is single-flight and the session Disconnect/Send carry the operate gate; and the monitor's scroll preservation is measured from an anchor row keyed on frame identity, so it survives the 500-frame ring filling up](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-08-17 - **WP6: the auth and security half of the code-review remediation** - the audit log named `owner` for every authenticated write and the MCP mint minted `mcp:owner` (JwtBearer renamed `sub` before the identity was built); deleting a user left their refresh families and passkeys in `pdn.db` for a recreated same-name account to inherit; the read-scoped `GET /config` served the tailnet key, the MQTT password and the PKCS#12 password verbatim; the app gateway handed every app upstream the viewer's bearer and `pdn_at` cookie; an uploaded app manifest id was used as a path unvalidated; a user-store fault re-opened the unauthenticated `/setup` bootstrap; and `pdn auth rotate-signing-key` now exists, so the revocation the MCP docs promised is real. Plus the config write scope reconciled at `operate` with an `admin` carve-out for `management.auth`, `/setup` + the auth events in the persisted audit log, console ids off the operate-scoped session routes, and the aud-segregation / mutating-route / endpoint-sweep tests that were missing ([#693](https://github.com/packet-net/packet.net/issues/693), umbrella [#703](https://github.com/packet-net/packet.net/issues/703))](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-08-16 - **RHPv2, rig, radio and tuning review fixes (WP11 of #698)** - an RHP client that vanished during an in-flight `open` left the resolved AX.25 session undisposed and its handle unswept, because the read loop's teardown snapshots the handle table before the late insert (a `Dead` flag on the client, re-checked either side of that insert, now tears it down); all four PTT drivers latched "we keyed it" only after the key command returned, so a mid-key timeout left the rig keyed while dispose skipped the unkey (latch first, clear only after a confirmed unkey, plus a redial on rigctld, whose fault path drops the socket the unkey needs); and `RssiTaggingTransport` handed a late-delivered frame the next station's carrier window (closed windows are scanned first now, with the frame's own airtime settling the ambiguous case). Plus a bounded CCDI SIZE, a clamped flrig relative power meter, the `openReply` handle shape the CDDL always specified, a bounded unknown-`type` echo, 10 ms units in the MCP KISS schema, and `Packet.Tune.Core` on a `TimeProvider`](#17-amendment-log)
@@ -63,25 +64,25 @@
 
 **Latest amendment:** [§17 entry 2026-06-18 — **Self-contained update channel completed: OARC feed host + install.sh (#470)** — stood up the self-contained channel's feed host (OARC static hosting `pdn-dist`, folder 4858, `https://pdn-dist.m0lte.compute.oarc.uk/`) + wrote `packaging/install.sh` (the `curl … | sudo sh` first-install: arch-detect → `latest.json` → sha256-verified app tarball → `/opt/packetnet/releases/<ver>`+`current` symlink → units/helper/polkit/template from a support bundle → user/dirs → `update.conf`+`PDN_UPDATE_FEED_URL` → enable/start). `scripts/build-selfcontained-support.sh` single-sources the support bundle from `packaging/` (ExecStart retargeted to `current/`); `publish-node.yml` auto-uploads the feed on each `node-v*` tag (gated on an `OARC_TOKEN` secret); `scripts/install-smoke.sh` (in `deb-smoke.yml`) proves install.sh + a real live-feed run verified by hand. The apply-helper/API/banner already existed — **no C# change**. Remaining to close #470: set the `OARC_TOKEN` secret + a real-systemd confirm. Shell + CI + docs only — zero `Packet.Ax25`/parity change](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-18 — **Node-alias unification + OARC log-volume fix (node-v0.18.1)** — unified the two divergent alias fields into one (the BPQ NODEALIAS model): `identity.alias` is now THE node alias — display name AND the NODES-broadcast alias — validated ≤6 (the on-air field is 6 octets; `netRom.alias` was unvalidated and silently truncated). Dropped `netRom.alias`; `NetRomService` takes its alias from `identity.alias`. **First production use of the #488 migration seam**: a v1→v2 migration folds `netRom.alias`→`identity.alias` (caps to ≤6 so no node fails to boot on a legacy over-long alias), `CurrentSchemaVersion`→2. UI: one alias input (`maxLength=6`, uppercased); setup wizard too. Plus quieted the OARC ingest HttpClient request logging (appsettings → Warning) that was spamming the journal at the status cadence. Node-host only — zero `Packet.Ax25`/parity change. 1395 node tests green. Ships as node-v0.18.1](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-06-18 — **OARC network-map reporting (#459)** — pdn nodes can now report themselves onto the [OARC packet map](https://node-api.packet.oarc.uk/) (outbound only, default-off, per-category UI toggles). Wire format validated live (`Q0PDN`) + against the collector source (`M0LTE/node-api`): open ingest, async `202`, epoch time, `direction`=incoming/outgoing, required 6-char Maidenhead locator, the BPQ L2-trace dialect. New `NodeConfig.Oarc` + `Packet.Node.Core/Oarc/*` (10 typed DTOs, never-throws ingest client, `OarcReporter` poll-diff `BackgroundService` with a drop-oldest queue + backoff sender + trace mapping + hot-reload, the `NodeOarcStateSource` adapter, a Maidenhead helper) + a web toggle panel + 61 deterministic tests + an env-gated live round-trip. Node-host only — zero `Packet.Ax25`/parity change. Design in [`docs/oarc-reporting-design.md`](docs/oarc-reporting-design.md). Closes #459](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-06-18 — **OARC network-map reporting (#459)** — pdn nodes can now report themselves onto the [OARC packet map](https://node-api.packet.oarc.uk/) (outbound only, default-off, per-category UI toggles). Wire format validated live (`Q0PDN`) + against the collector source (`M0LTE/node-api`): open ingest, async `202`, epoch time, `direction`=incoming/outgoing, required 6-char Maidenhead locator, the BPQ L2-trace dialect. New `NodeConfig.Oarc` + `Packet.Node.Core/Oarc/*` (10 typed DTOs, never-throws ingest client, `OarcReporter` poll-diff `BackgroundService` with a drop-oldest queue + backoff sender + trace mapping + hot-reload, the `NodeOarcStateSource` adapter, a Maidenhead helper) + a web toggle panel + 61 deterministic tests + an env-gated live round-trip. Node-host only — zero `Packet.Ax25`/parity change. Design in [`docs/oarc-reporting-design.md`](oarc-reporting-design.md). Closes #459](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-18 — **Config-schema forward-migration seam (#488)** — the load-bearing follow-up to config-in-DB #473: a new `NodeConfigSchemaMigrations` forward-only registry of JSON transforms (keyed by from-version, `Registry[N]` rewrites v`N`→v`N+1` as a `JsonObject` mutation *before* deserialisation) + dispatch (`Migrate`: equal→no-op/idempotent, less→walk N→…→target stamping `schemaVersion` each step, greater→`NodeConfigSchemaException` fail-safe so a rolled-back binary never runs on/clobbers a future schema, gap→throw). `NodeConfig.CurrentSchemaVersion` is now the single source of truth. `SqliteConfigStore.Load` branches: at-target deserialise as-is; below-target ParseObject→Migrate→Deserialize + log the rendered `v{from}→v{to}` line + report current (lazy re-stamp on next write); above-target propagate. A corrupt blob still degrades to null (re-seed) — distinct from a schema mismatch (throw), so the exception deliberately isn't a `JsonException`. An `internal` ctor drives the migrate-and-log path with a synthetic v1→v2 so the seam is proven (not stubbed) while the production registry is still empty at SchemaVersion=1. Plus `packaging/postrm` drops the dead `…packetnet.yaml.migrated` line (the real marker is `.config-migrated`). Node-host only — zero `Packet.Ax25`/parity change. 1324 node tests green. Closes #488](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-18 — **App-catalog ops (#475): regen script + de-brittled catalog test** — `scripts/regen-catalog.sh` (+ `.py`) rewrites `catalog/apps.yaml`'s version/url/sha256 pins in place from each app's latest GitHub release (sha from GitHub's per-asset digest; comments preserved; idempotent; `--check` drift guard, `--print` paste mode) so a bump is one command not six hand-copied hashes; the `AppCatalogYamlTests` parse test now asserts pin validity+structure (semver-ish version, 64-hex sha, https/well-formed url embedding id+version, all 3 RIDs, the vetted set, both real kinds) instead of exact values, so a routine bump no longer breaks CI (it broke twice this session). O3 ✅ (regen) + O4 ✅ (manifest drift gone — every app's in-repo `pdn-app.yaml` version now equals its release tag) resolved; O2 (apt-as-store CLI channel) stays **blocked on the OARC apt repo + a discovery/trust design decision** and is flagged with scoped questions in `docs/app-catalog.md` O2 + on #475 (left open for O2). Node-host + scripts + docs only — zero `Packet.Ax25`/parity change](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-18 — **Release train: node-v0.16.0 + lib-v0.11.0 + node-v0.17.0 (+ pdn-bbs v0.2.35, bpqchat v0.2.1, downstream Packet.* 0.11.0)** — the consolidated `docs/releasing.md` Step-5 ledger for this session's whole cascade. **node-v0.16.0 + lib-v0.11.0** (one merge train): the §5.G backlog burn — Prometheus `/metrics` (#457), `MH` verb + persisted heard log (#454), kiss-tcp half-open auto-reconnect (#464 — `Packet.Kiss` read-idle liveness), per-port NET/ROM QUALITY + PACLEN/N1 (#455/#458 — `NetRom` per-port quality), implicit-0 TxTail (#465), `set_kiss_param` write (#466), UI-build-on-publish (#468), T1/T3 link-troubleshoot view (#467), Radix a11y pass (#478), self-deriving-app verb (#476), `Packet.Rhp2` standalone shared codec (#474), standard-port mail defaults (#469); 6 NuGet packages at 0.11.0 + 3-arch `.deb`s + GHCR `0.16.0`. **node-v0.17.0**: config-in-DB (#473 — see its dedicated entry below) + catalog refresh (bbs 0.2.35 / bpqchat 0.2.1 now installable); 3-arch `.deb`s + GHCR `0.17.0`. **App side:** **pdn-bbs v0.2.35** (WP-consume #36, restart-granting #38, per-class housekeeping #39, FBBPORT #40, SMTP DSN + standard ports #48, sign-off/webmail/CI-auto-release #49) + **bpqchat v0.2.1** (the decoupled pdn-UI arc: slot-mode SPA, multi-user claim, scope-gated writes/settings, persisted allow-list + admin editor, federation panel, DMs). **ax25-ts**: mod-128 end-to-end interop coverage merged (PR #70) — interop-only, no npm/`packet-term-web` leg this cycle. **Downstream .NET cascade** (being cut in parallel): `axcall` + `packet-term-tui` to `Packet.*` 0.11.0, next `v0.2.12` patch each. Infra: a 5th CI runner (studybox) provisioned. Complements (does not duplicate) the #473 config-in-DB entry + the 2026-06-17 tracker-reconciliation/downstream-ledger entry (which covered the *previous* libs-0.10.0 / node-0.15.0 cascade). Docs-only ledger](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-17 — **Backlog burn batch: set_kiss_param write (#466) + self-deriving-app verb (#476) + UI-build-on-publish (#468) + Packet.Rhp2 shared codec (#474)** — four node-host/build issues landed together: the `set_kiss_param` MCP tool now actually writes TXDELAY/PERSIST/SLOTTIME/TXTAIL to the modem (validated, via `KissParamWriter`) (#466); a service app's bare verb reaches it even when it bound a self-derived non-`PDN_APP_CALLSIGN` SSID, via a read-only `ILocalAppRegistry` seam (#476); the web-UI (wwwroot SPA) builds on `dotnet publish` so deploys stop shipping a stale/wrong-mode UI (#468); `Packet.Rhp2` is now a standalone publishable shared codec with convergence tests (#474 — the WhatsPac-server-conformance-test half was dropped as a mis-filed gap, WhatsPac being delivered by the separate-repo `whatspacd` client over the existing server). Node-host/build/MCP only — zero `Packet.Ax25`/parity change. Closes #466/#476/#468/#474](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-17 — **KISS TXTAIL: implicit-0 default, sent on the config cadence + on change (#465)** — `kiss.txTail`'s default moves from unset/null to an IMPLICIT 0, sent to the modem UNCONDITIONALLY (drop the `if (kiss.TxTail is { } tail)` skip) on bring-up, the regular KISS-param cadence, and a hot reload — so the modem always gets a deterministic tail (0 for most). The per-port non-zero OVERRIDE is preserved (software modem / NinoTNC-into-latency-path). Taxonomy: a non-zero tail is a modem + radio-audio-path-latency property, NOT a channel/baud one — documented in the config template. `ChannelProfiles.OverlayKiss` resolves `?? 0` (the slow-afsk1200 regression now expects 0, not null); composes with #483's reconnect replay (the replayed set now carries the explicit 0). Node-host/transport only — zero `Packet.Ax25`/parity change. Closes #465](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-17 — **Fix: kiss-tcp self-heals a half-open TNC/modem reboot (#464)** — the #50 reconnect machinery only fired on a graceful FIN; a half-open drop (reboot/cable-yank, no FIN) hung `KissTcpClient.ReadAsync` forever and the port silently died until a manual restart. `KissTcpClient` gains a read-idle liveness timeout (5 min default, `TimeProvider`-driven) that ends the stream → drives the existing re-dial, plus OS TCP keepalive as a faster backstop; in-flight AX.25 sessions reset by design and the port recovers to a working listening state. Node-host/transport only — zero `Packet.Ax25`/parity change](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-06-13 — **Design: pdn-whatspac-client** — a persistent WhatsPac client as a separate-repo, DAPPS-shaped pdn app ([`docs/whatspac-client-design.md`](docs/whatspac-client-design.md)): holds the WPS link over the shipped RHPv2 server, runs the connect-script, speaks the (reverse-engineered) WPS application protocol, persists to SQLite, and presents a LAN/phone UI + a `C WHATSPAC` RF terminal. Fixes WhatsPac's no-persistence flaw; single-user v1; multiplexing deferred to dapps federation; the RHP WebSocket leg (PWP-0245) is now confirmed unneeded. Design only — no code here, no parity leg](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-06-13 — **Design: pdn-whatspac-client** — a persistent WhatsPac client as a separate-repo, DAPPS-shaped pdn app ([`docs/whatspac-client-design.md`](whatspac-client-design.md)): holds the WPS link over the shipped RHPv2 server, runs the connect-script, speaks the (reverse-engineered) WPS application protocol, persists to SQLite, and presents a LAN/phone UI + a `C WHATSPAC` RF terminal. Fixes WhatsPac's no-persistence flaw; single-user v1; multiplexing deferred to dapps federation; the RHP WebSocket leg (PWP-0245) is now confirmed unneeded. Design only — no code here, no parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 10** — **OAuth/MCP security-review remediation**: closed the step-9 audience follow-up (MCP tokens minted on a dedicated `packet.net-mcp` audience, gated by a new `pdn-mcp` policy, so an MCP token can't drive the REST control API — H1), refused `mcp.oauth.enabled` without `management.auth.enabled` (H2), equalised the authorize login timing against username enumeration (L1), and added RFC 9207 `iss` to the authorize redirect (L4); +5 tests, still all behind the default-off flag](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 9** — **OAuth 2.1 authorization server** for the hosted claude.ai connector, **all behind default-off `mcp.oauth.enabled`** (master unaffected): discovery (RFC 9728/8414) + `WWW-Authenticate` hint, DCR (RFC 7591 + persisted client store), interactive authorize/consent (server-rendered login, single-use PKCE-S256 codes), token (code→JWT). Access-token-only + control-API audience are documented follow-ups (refresh + audience segregation). +8 integration tests. **Security-critical: merged dormant; review before enabling**](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 8** — **REST write-audit completed**: a new `AuditHttpExtensions.RecordRest` records every operational REST write to the persisted `IAuditLog` (pdn.db) the MCP writes use — network/transmit actions first-class (`connect_session`/`send_session`/`ping_station`/`disconnect_session`/`port_lifecycle`) so MCP-driven RF stays transparent to the owner, plus config/ports-CRUD/system-update/app-packages/user-CRUD; +1 integration test. Closes step 5's §6 follow-up — both MCP and REST writes are now attributable](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 7** — scope narrowed to **Claude Code (bearer) over LAN/Tailscale** (claude.ai/OAuth parked); built the durable **MCP bearer token** (`JwtTokenService` lifetime overload + `mcp.tokenLifetimeDays` + admin-gated audited `POST /api/v1/mcp/token`, read-default), with the blessed-path recipe + the stateless-token revocation caveat documented; +2 tests](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 6 (OAuth design)** — design for the hosted claude.ai connector ([`docs/mcp-oauth-design.md`](docs/mcp-oauth-design.md)): the node as its own OAuth 2.1 AS+RS reusing the existing users/passkeys/JWT/refresh, audience-segregated MCP tokens, sliced discovery→DCR→authorize→token→revoke; the authorize/token core wants Tom's security review before merge. Design + review gate, no code yet](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 5** — a **persisted audit log** on pdn.db (`IAuditLog`/`SqliteAuditLog`, resilient, row-capped) wired into the MCP write tools + an admin-gated `GET /api/v1/audit`; +4 tests. Plus the **MCP deployment model** decided ([`docs/mcp-design.md` §Deployment](docs/mcp-design.md)): SSE `/mcp` piggybacks the web listener so reachability == web-panel reachability (LAN/Tailscale/public, bearer auth, no hard Tailscale dep); the hosted claude.ai connector needs an OAuth 2.1 build — the next unit](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 6 (OAuth design)** — design for the hosted claude.ai connector ([`docs/mcp-oauth-design.md`](mcp-oauth-design.md)): the node as its own OAuth 2.1 AS+RS reusing the existing users/passkeys/JWT/refresh, audience-segregated MCP tokens, sliced discovery→DCR→authorize→token→revoke; the authorize/token core wants Tom's security review before merge. Design + review gate, no code yet](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 5** — a **persisted audit log** on pdn.db (`IAuditLog`/`SqliteAuditLog`, resilient, row-capped) wired into the MCP write tools + an admin-gated `GET /api/v1/audit`; +4 tests. Plus the **MCP deployment model** decided ([`docs/mcp-design.md` §Deployment](mcp-design.md)): SSE `/mcp` piggybacks the web listener so reachability == web-panel reachability (LAN/Tailscale/public, bearer auth, no hard Tailscale dep); the hosted claude.ai connector needs an OAuth 2.1 build — the next unit](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 4 (monitor-v2)** — retired the `/links` + `link_quality` hard-coded zeros: `PdnReadApi.SessionTimers` reads live **SRT + retry count** off the connected session's context (pull, not push — no AX.25 hot-path perturbation), feeding both the REST projection and the MCP tool; verified against a real connected AXUDP link (+ de-flaked that marquee test's eager-banner race). 798 Node + 26 Mcp green. Remaining: the T1/T3 web link-troubleshoot view (frontend) + the parked link-tuner](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 3** — the `pdn mcp` **stdio** subcommand: an MCP server for local clients (Claude Code) that bridges to the running node's loopback REST API via `RestNodeMcpBackend` (read tools + reset/disconnect map to `/api/v1`; send_ui/set_kiss are SSE-only over the bridge; `decode_frame` pure). Verified end-to-end (initialize→tools/list→decode_frame round-trip); +5 bridge tests. Remaining: AuthLog write-audit + monitor-v2 instrumentation](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 2** — the MCP server now runs **in-process** in the node host: `LiveNodeMcpBackend` over `NodeHostedService` (reusing `PdnReadApi` projections), write actions through the exclusive gate + audit-logged, `/mcp` Streamable-HTTP transport piggybacking the web listener (new default-off `mcp:` config block), read-gated endpoint + per-tool `operate` enforcement that passes through when auth is off; `set_kiss_param` honest-not-yet-wired; 793 Node + 26 Mcp tests green. Next: the `pdn mcp` stdio bridge + monitor-v2](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 MCP build step 1** — `Packet.Mcp` is now the transport-agnostic tool surface (the `INodeMcpBackend` seam + DTOs + the four `[McpServerToolType]` classes); **`decode_frame` fully built + golden-tested** (hex → KISS-unwrap → `Ax25Frame` decode with full I/S/U type classification); official `ModelContextProtocol.Core` 1.4.0 pinned (forced a `Logging.Abstractions` 10.0.0→10.0.7 bump under CPM); new `tests/Packet.Mcp.Tests` 24 green; solution builds clean. Next: the live backend + SSE mount + the `pdn mcp` stdio bridge + write wiring + monitor-v2](#17-amendment-log)
-**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 (MCP) kickoff** — design agreed ([`docs/mcp-design.md`](docs/mcp-design.md)), Phase 8 flipped 🟡: in-process server (`Packet.Mcp` tool surface behind an `INodeMcpBackend` seam — live in-proc backend for SSE, loopback-REST backend for the `pdn mcp` stdio bridge), auth on the **shipped `read`/`operate`/`admin`** model (§6's never-built `mcp:invoke`/granular scheme corrected), full §5.8 surface in one slice with monitor-v2 (per-session T1-SRTT/retries/T3) instrumentation landing last to retire the `/links` stubbed zeros; no ax25-ts parity leg](#17-amendment-log)
+**Latest amendment:** [§17 entry 2026-06-13 — **Phase 8 (MCP) kickoff** — design agreed ([`docs/mcp-design.md`](mcp-design.md)), Phase 8 flipped 🟡: in-process server (`Packet.Mcp` tool surface behind an `INodeMcpBackend` seam — live in-proc backend for SSE, loopback-REST backend for the `pdn mcp` stdio bridge), auth on the **shipped `read`/`operate`/`admin`** model (§6's never-built `mcp:invoke`/granular scheme corrected), full §5.8 surface in one slice with monitor-v2 (per-session T1-SRTT/retries/T3) instrumentation landing last to retire the `/links` stubbed zeros; no ax25-ts parity leg](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-11 — **KISS ACKMODE host-side pacing** — a kiss-tcp port with the new per-port `kiss.ackMode` flag (default-off) serialises its outbound frames onto the half-duplex channel: `PacingKissModem` decorates the modem so each frame is sent in ACKMODE (`SendFrameWithAckAsync`) and the next is held until the prior frame's TX-completion echo arrives (or a 5 s timeout), replacing the fire-and-forget blast that collides on the shared medium; a single background pump preserves the SDL sinks' fire-and-forget send contract, one frame can't wedge it, and a toggle restarts the port (it's a construction-time wrap, not a live KISS setting). Host/transport + config only — parity surfaces untouched](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-14 — **Network-access S4: app-declared tailnet port forwarding (the IMAP path)** — an app's `pdn-app.yaml` can declare `forward: [{listen, target(loopback), tls: terminate|raw}]`; pdn validates (loopback-only target, `443` reserved, cross-app listen-uniqueness) + shows it as a capability at enable, and `TailscaleSidecarHostedService` writes the enabled apps' forwards to `forwards.json` → the sidecar's new `--forwards-file` opens each on the tsnet node (`terminate`=`ListenTLS` w/ the node cert → plaintext loopback; `raw`=`Listen`). So an app serves **plaintext IMAP/SMTP on loopback** and pdn adds the real-cert TLS edge on the tailnet — iPhone Mail connects cleanly. pdn-bbs adapted (plaintext-loopback under PDN_APP_ID + forward 993/465; v0.2.0). 957 .NET + 40 web + Go tests](#17-amendment-log)
 **Latest amendment:** [§17 entry 2026-06-14 — **Network-access S3 + Release node-v0.11.0** — the lab moved to Tailscale: the embedded sidecar runs under pdn's hardened unit (the `AF_NETLINK` fix, #443), the node joined as **`m9yyy-pdn.tailef2e8.ts.net`** (hostname now defaults to `<callsign>-pdn`, #443), passkey RP-ID/origins repointed there, **DNS-01/Cloudflare fully retired** (acme.sh cron + cert removed; LAN `:8443` self-signs). **Passkeys verified over Tailscale** from an on-tailnet iPhone with the real LE cert — the headline. Shipped as **node-v0.11.0** (3-arch debs incl. the go-built sidecar). The MagicDNS host is tailnet-private by design (Funnel = the opt-in public mode; kept off for the sysop panel)](#17-amendment-log)
@@ -225,7 +226,7 @@ Concrete rules:
 - If you're uncertain, add a `verification_pending:` note that captures what surprised you and the alternative reading you considered. PR review can confirm.
 - Never silently deviate.
 
-Reference: [§17 entry 2026-05-11 trust-the-figure discipline](#17-amendment-log), [docs/sdl-primer.md](sdl-primer.md), [docs/adr/0001-sdl-dsl.md](adr/0001-sdl-dsl.md).
+Reference: [§17 entry 2026-05-11 trust-the-figure discipline](#17-amendment-log), [the SDL primer](https://github.com/packet-net/ax25sdl/blob/main/docs/sdl-primer.md) and [ADR-0001](https://github.com/packet-net/ax25sdl/blob/main/docs/adr/0001-sdl-dsl.md) (both in `packet-net/ax25sdl`).
 
 ### 2.2 Encode-then-verify, not infer-then-encode
 
@@ -289,7 +290,7 @@ These were settled during the initial planning round and have not been revisited
 | Auth | Local users (Argon2id) + WebAuthn/passkeys + JWT scopes; OIDC pluggable | Works on a fresh install; passkey-first |
 | Persistence | SQLite via raw SQL + Dapper (no EF Core). One consolidated `pdn.db` (the learned NET/ROM routing table now; config + operational state join it later), with rolling packet capture kept in a separate `packets.db` if/when built | Single binary, zero ops; one store avoids DB sprawl while keeping the hot-path capture isolated |
 | License | AGPL-3.0 (repo + all published packages; was MIT until 2026-06-14, metadata reconciled 2026-07-14 — §17) | Copyleft incl. network use; keeps derivatives of the node + libraries open |
-| SDL handling | YAML DSL in `/spec-sdl/`, codegen → C# + conformance tests; per-SDL PR review | [ADR-0001](adr/0001-sdl-dsl.md) |
+| SDL handling | YAML DSL in `/spec-sdl/`, codegen → C# + conformance tests; per-SDL PR review | [ADR-0001](https://github.com/packet-net/ax25sdl/blob/main/docs/adr/0001-sdl-dsl.md) |
 | NET/ROM | The **full vanilla L3+L4 stack** now lives in `Packet.NetRom` + the node host: read-only NODES ingest, NODES origination, the L4 virtual-circuit transport (`CircuitManager`), interlinks, and `connect <alias>` routing. Hand-written, **not** via ax25sdl (no SDL, no normative standard — BPQ is the de-facto reference). INP3 + real-BPQ-L4 interop deferred. | Focus v1 on rock-solid AX.25; de-risk the divergence-prone L3 model early, then build the L4 transport behind named knobs |
 | MCP scope | Ops + diagnostics + network exploration; read-mostly with explicit write tools | Useful without being scary |
 | Telemetry | **None by default.** Opt-in OpenTelemetry endpoint configurable by operator | Amateur radio privacy norms |
@@ -312,47 +313,61 @@ These were settled during the initial planning round and have not been revisited
 /src/
   Packet.Core/                        primitives: Callsign, AX25Address, BitIO, Crc16Ccitt
   Packet.Ax25/                        frames, FCS, segmentation, XID; SDL orchestration
-  Packet.Ax25.Sdl/                    GENERATED state machine code (regenerated from /spec-sdl/)
+  Packet.Ax25.Transport.Abstractions/ IAx25Transport - the seam KISS/AXUDP/Tait plug into
   Packet.Kiss/                        KISS SLIP, commands, ACKMODE, multi-drop, port-nibble
+  Packet.Kiss.Serial/                 KISS over a serial port
   Packet.Kiss.NinoTnc/                NinoTNC mode catalog 0-15, SETHW byte, TX-test parsing
-  Packet.Axudp/                       AXUDP transport
-  Packet.NetRom/                      NET/ROM L3 wire + routing table (read-only slice; Phase 9 home). Replaced the empty Packet.L3 stub.
+  Packet.Axudp/                       AXUDP transport (unicast + multipoint)
+  Packet.Aprs/                        APRS encode/decode (incl. Mic-E), APRS-IS client
+  Packet.NetRom/                      NET/ROM L3 + L4 wire, routing table, INP3
+  Packet.Radio/                       radio-control abstractions (PTT, carrier sense, RSSI)
+  Packet.Radio.Tait/                  Tait CCDI driver: control channel + transparent-mode transport
+  Packet.Rig/                         CAT rig-control abstractions
+  Packet.Rig.Hamlib/                  rigctld network protocol
+  Packet.Rig.Flrig/                   flrig XML-RPC
+  Packet.Tune.Core/                   TXDELAY minimisation, deviation tuning, port doctor probes
   Packet.Rhp2/                        RHPv2 framing + messages (shared)
-  Packet.Rhp2.Server/                 TCP + WebSocket listener, auth gate
-  Packet.Agw/                         AGW server (loopback-only by default)
-  Packet.Mcp/                         MCP server (stdio + SSE)
-  Packet.Node/                        ASP.NET Core host: REST + WS + static SPA
-  Packet.Node.Core/                   node logic: config, ports, sessions, NET/ROM, apps, self-update
+  Packet.Rhp2.Server/                 RHPv2 TCP listener, handle table, auth gate
+  Packet.Agw/                         AGW client (talks to LinBPQ/direwolf/XRouter; no server)
+  Packet.Mcp/                         MCP tools + stdio bridge
+  Packet.Node/                        ASP.NET Core host: REST + SSE + static SPA + app gateway
+  Packet.Node.Core/                   node logic: config, ports, sessions, NET/ROM, auth, apps, self-update
 
-/tests/                               Unit / Property / Conformance / Component / Interop / E2E / Fuzz
-  Directory.Build.props               centralises xunit + test SDK + Shouldly + globals
-  Packet.*.Tests/                     one per library
+/tests/                               one Packet.*.Tests per library, plus:
+  Directory.Build.props               centralises xunit + test SDK + AwesomeAssertions + globals
   Packet.Ax25.Properties/             FsCheck invariants
-  Packet.Interop.Tests/               Testcontainers + hardware-loop tests
+  Packet.Interop.Tests/               interop + hardware-loop tests (docker compose stack)
+  conformance/                        YAML scenario fixtures
 
-/spec-sdl/                            YAML DSL — one file per state; schema/ has the JSON Schema
-  schema/sdl-machine.schema.json
-  events.yaml                         canonical event catalog
-  data-link/connected.sdl.yaml        (partial, in progress)
-  ... (26 more SDL pages pending)
-
-/tools/
-  Packet.Sdl.CodeGen/                 console codegen, emits *.g.cs + *.g.Tests.cs
-  Packet.Sdl.Lint/                    placeholder for schema + exhaustiveness validator
-
-/web/packetnet-ui/                    Vite + React SPA (not yet created — Phase 5)
+/tools/                               Packet.Fuzz (parser fuzzer), Packet.LinkBench, Packet.Tune,
+                                      and the AprsIs / Mqtt / NinoTnc / Tait spikes
+/web/packetnet-ui/                    Vite + React SPA - the node's control panel
+/headend/                             split-station RF head-end daemon (Go)
+/sidecar/tsnet/                       embedded Tailscale node (Go)
+/packaging/                           .deb control files, systemd units, config seed, update helpers
+/scripts/                             build-deb, deb smoke, interop stack, docs generators
+/spec/                                RHPv2 CDDL grammar + wire vectors
+/catalog/                             the app catalog index the panel installs from
+/docs/ /guide/ /operating/            plan + design docs / library guide / operator guide
+/examples/                            small runnable samples
 
 /docker/
-  compose.interop.yml                 LinBPQ + Xrouter + net-sim, host-loopback ports
-  linbpq/bpq32.cfg
-  xrouter/XROUTER.CFG
-  netsim/network.yaml
+  compose.interop.yml                 LinBPQ + XRouter + rax25 + net-sim + direwolf
+  linbpq/ xrouter/ rax25/ netsim/ direwolf/ inp3lab/    peer fixtures
+  node/                               the pdn container image + its config seed
 
-/installers/                          (not yet created — Phase 7)
 /.github/workflows/
-  ci.yml                              build + test matrix + SDL codegen discipline guard
-  interop.yml                         compose-up + interop tests
+  ci.yml                              per-project test matrix + guards + web-ui + dependency scan
+  interop.yml                         compose-up, three interop phases, cross-stack parity guard
+  fuzz.yml codeql.yml deb-smoke.yml plan-check.yml
+  publish-libs / publish-node / publish-docker / publish-headend
 ```
+
+The SDL transcriptions, the YAML DSL, the codegen and its generated C/Rust/Python/JSON
+artefacts left this repo in the 2026-05-17 split and live in
+[`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl); the state machines arrive
+as the `Packet.Ax25.Sdl` NuGet package. The stale copies of the generated trees were
+deleted 2026-08-17 (§17).
 
 ### 4.2 Data flow
 
@@ -368,27 +383,26 @@ These were settled during the initial planning round and have not been revisited
                                   └────────────────┬────────────────────┘
                                                    ▼
                                   ┌─────────────────────────────────────┐
-                                  │ Packet.NetRom (NET/ROM L3 wire +    │
-                                  │ routing table; read-only consumer   │
-                                  │ of the FrameTraced tap today)        │
-                                  └──┬──────────────────┬───────────────┘
-                                     ▼                  ▼
-                          Packet.Rhp2.Server      Packet.Agw
-                          (auth required)         (loopback only)
-                                     │                  │
-                                     ▼                  ▼
+                                  │ Packet.NetRom (NET/ROM L3 + L4 wire,│
+                                  │ routing table, INP3)                │
+                                  └──┬──────────────────────────────────┘
+                                     ▼
+                          Packet.Rhp2.Server
+                          (off by default; loopback)
+                                     │
+                                     ▼
                           ┌─────────────────────────────────────────────┐
-                          │ Packet.Node (ASP.NET Core: REST + WS + SPA) │
+                          │ Packet.Node (ASP.NET Core: REST + SSE + SPA)│
                           │   Auth: Argon2id + WebAuthn + JWT           │
-                          │   Persistence: config.db + packets.db       │
-                          │   MCP server (stdio + SSE)                  │
+                          │   Persistence: pdn.db (+ traffic.db)        │
+                          │   MCP server (stdio + /mcp)                 │
                           └────┬────────────┬──────────────┬─────────────┘
                                ▼            ▼              ▼
-                          Web UI       packets.db    MCP clients
+                          Web UI       traffic.db    MCP clients
                           (React SPA)  (rolling)     (Claude Code, etc.)
 ```
 
-Plugins attach at the L3 seam (`Packet.NetRom` / the node's routing service, for AX.25 sessions) and at ASP.NET Core (for REST + UI + MCP tools).
+Plugins attach at the L3 seam (`Packet.NetRom` / the node's routing service, for AX.25 sessions) and at ASP.NET Core (for REST + UI + MCP tools). `Packet.Agw` is not in this picture: it is an AGW **client** for dialling someone else's LinBPQ / direwolf / XRouter, and the node hosts no AGW listener.
 
 ---
 
@@ -431,7 +445,7 @@ Goal: prove out the dev environment and the SDL DSL pipeline end-to-end on a sin
 - ✅ SDL DSL: schema at `/spec-sdl/schema/sdl-machine.schema.json`, event catalog at `/spec-sdl/events.yaml`, first transcription at `/spec-sdl/data-link/connected.sdl.yaml` (partial — figc4.4a cols 5 & 6, 5 transitions).
 - ✅ Codegen tool `tools/Packet.Sdl.CodeGen` (console, YamlDotNet, idempotent, emits `*.g.cs` + `*.g.Tests.cs`). 7 generated conformance tests pass.
 - ✅ Hardware-loop probe: `tests/Packet.Interop.Tests/Hardware/NinoTncEnumeration.cs` with `[Trait("Category","HardwareLoop")]` and `SkippableFact`. Skips cleanly when no TNCs attached.
-- ✅ Docs: [`docs/adr/0001-sdl-dsl.md`](adr/0001-sdl-dsl.md), [`docs/sdl-primer.md`](sdl-primer.md), this plan.
+- ✅ Docs: [ADR-0001](https://github.com/packet-net/ax25sdl/blob/main/docs/adr/0001-sdl-dsl.md) and [the SDL primer](https://github.com/packet-net/ax25sdl/blob/main/docs/sdl-primer.md) (both moved to `packet-net/ax25sdl` in the 2026-05-17 split), this plan.
 
 **Exit criteria — all met**
 
@@ -467,7 +481,7 @@ Goal: send and receive AX.25 UI frames over KISS-over-TCP and AXUDP. No state ma
 - ⬜ UI frame round-trip across back-to-back NinoTNCs (afsk1200 + gfsk9600) — gated on hardware availability.
 - ⬜ UI frame round-trip via net-sim on `localhost:8100` — Phase 2 interop expansion.
 - ✅ FsCheck property `encode → decode = id` green on KISS framing (caught the command-byte FEND collision) and AX.25 UI framing (100 random cases per run).
-- ⬜ Mutation score ≥ 70 % on framing (Stryker.NET) — not yet measured; not blocking.
+- ~~Mutation score ≥ 70 % on framing (Stryker.NET)~~ - withdrawn 2026-08-17: never measured beyond the 2026-05-12 baseline, no job ever ran it, and the config went stale enough to be misleading (§7, review item C114).
 
 **Phase 1 notes**
 
@@ -525,7 +539,7 @@ The full phase target: ASP.NET Core 10 minimal-API host. `Konscious.Security.Cry
 **Tentative roadmap — slices 2–5 (shape only; sequencing + scope live in [#167](https://github.com/packet-net/packet.net/issues/167)):**
 
 - **Slice 2 — SQLite persistence (`pdn.db`), behind the same seams.** **Done — routing table:** the learned NET/ROM routing table is persisted to a consolidated `pdn.db` (raw SQL + Dapper, no EF) so a restart restores the topology instead of going blind until the next NODES broadcast — hydrate-on-start with downtime-aged obsolescence, save on the sweep tick / after a debounced ingest / on graceful shutdown, behind an `INetRomRoutingStore` seam; resilient (a store fault degrades to in-memory) — see [§17](#17-amendment-log). **Done — config-in-DB (#473):** `SqliteConfigProvider` now stores the live config as a single versioned JSON-blob row (`node_config`) in the same `pdn.db`, behind the unchanged `IConfigProvider`/`IWritableConfigProvider`/`NodeConfig` seam — so the reconcile path + every consumer are byte-for-byte the same; only *where config lives* changed. First boot migrates the legacy `/etc` YAML (else a seed/template) into the row, idempotently (the row gates re-import); writes (`PUT /config`, port CRUD) persist to the DB and raise the same `OnChange`; the `FileSystemWatcher`/debounce/echo machinery is gone (the DB is the single writer). The YAML conffile is **dropped from packaging** so dpkg stops prompting on upgrade; the vestigial `/etc` YAML is read once then ignored, edited now via the web UI / API / `pdn config export|import`. See [`docs/config-in-db.md`](config-in-db.md) + [§17](#17-amendment-log). **Deferred:** `packets.db` rolling capture (its own DB when built — keeping the hot path isolated, no sprawl).
-- **Slice 3 — REST API + auth. 🟡 contract LOCKED + UI built; the read half + live feed SHIPPED, writes/auth pending.** The §7 API is locked as OpenAPI 3.1 in [`docs/node-api.yaml`](node-api.yaml) (derived from the built UI's typed client + the design handoff). The endpoints/SSE/auth shape: minimal-API endpoints (status, ports + lifecycle, sessions + connect/disconnect/send, netrom/routes, config + schema/raw/validate, links, log) + the `/events` SSE feed + Argon2id local users + WebAuthn/passkeys + JWT `read`/`operate`/`admin` scopes; first-start admin bootstrap + one-time `/setup?token=…`; the web server serves the SPA + stops being inert. **Done (read + live feed + config-write):** static-serve of the SPA + the read `/api/v1` endpoints (step 1), every screen rewired to the API client (step 1a), the live `/events` SSE feed + frame/byte telemetry making the monitor/frames-per-sec/link-stats live (step 1b), and config-write through the reconcile path — `PUT /config` (+ `/config/raw`) with validate-before-apply + a server-authoritative reconcile preview, wired into the editor's "Review & apply" (step 2). Port management — add/edit/remove + enable/disable over the same config-write path — landed too (step 3). The serialized direct-supervisor actions landed in step 4: sessions connect/disconnect/send + the port `restart` lifecycle, each run under the host's exclusive gate (the connect dial bounded outside it) so a web action never races a reconcile; the Sessions screen + Ports restart button are wired live. Step 5 added the **interactive sysop console**: a connect-out's live output is streamed to the web Sessions drawer over `GET /sessions/{id}/stream` (SSE) with type-in via the send endpoint. **Verified live against the real GB7RDG/LinBPQ node** (connect → banner + the `N` nodes-list streamed into the drawer; restart/send/disconnect exercised). Step 6 added connectionless **TEST ping** (`POST /ping` → `PingResult`, via a new `Ax25Listener.SendTestAsync` + the `AxPinger` correlation core) + the web ping tool — verified live (LinBPQ doesn't answer TEST → honest 100% loss). The **auth foundation** is now BUILT (default-OFF behind `management.auth.enabled`): Argon2id local users + a persisted-in-`pdn.db` HS256 JWT, `read`/`operate`/`admin` scope gates that pass through when the flag is off (so no regression) and enforce when on, login + the one-shot `/setup` bootstrap + admin-gated `/users`; backend only, pending the human's security review before it's ever enabled. **Still ahead:** wiring the UI's login/setup/users screens to the new endpoints (they stay on their mock gate today); WebAuthn/passkeys + TOTP/2FA + refresh tokens (named deferrals — the LAN-trust/naming problem passkeys hit on a node distributed to strangers, a candidate `B + mDNS` distribution pattern, and the simpler `localhost` flow to use for passkey dev *now*, are worked out in [`docs/passkeys-lan-trust-pattern.md`](passkeys-lan-trust-pattern.md)); a TEST *responder* (we DM an inbound TEST today — answering it is spec-compliance + enables pdn↔pdn ping), the per-`portId` connect dial (needs a per-port connector factory on the supervisor), the link-tuner/`tune` flow (held for a design pass on net-sim tuneables), beacons, then a self-hosted web-UI CI job + ship. See §17 (2026-06-09 auth-foundation / step-6 / step-5 / step-4 / step-3 / step-2 / step-1b / step-1 + 2026-06-08 Phase-5-UI entries).
+- **Slice 3: REST API + auth. ✅ shipped.** The API surface is documented in [`docs/node-api.md`](node-api.md), whose route inventory is generated from the node's own `EndpointDataSource` and guarded by a test. It replaced a hand-written `node-api.yaml` that had been derived from the UI's typed client rather than from the server, and had drifted into documenting ten routes that did not exist while missing about forty that did (2026-08-17, review item C019). The endpoints/SSE/auth shape: minimal-API endpoints (status, ports + lifecycle, sessions + connect/disconnect/send, netrom/routes, config + schema/raw/validate, links, log) + the `/events` SSE feed + Argon2id local users + WebAuthn/passkeys + JWT `read`/`operate`/`admin` scopes; first-start admin bootstrap + one-time `/setup?token=…`; the web server serves the SPA + stops being inert. **Done (read + live feed + config-write):** static-serve of the SPA + the read `/api/v1` endpoints (step 1), every screen rewired to the API client (step 1a), the live `/events` SSE feed + frame/byte telemetry making the monitor/frames-per-sec/link-stats live (step 1b), and config-write through the reconcile path — `PUT /config` (+ `/config/raw`) with validate-before-apply + a server-authoritative reconcile preview, wired into the editor's "Review & apply" (step 2). Port management — add/edit/remove + enable/disable over the same config-write path — landed too (step 3). The serialized direct-supervisor actions landed in step 4: sessions connect/disconnect/send + the port `restart` lifecycle, each run under the host's exclusive gate (the connect dial bounded outside it) so a web action never races a reconcile; the Sessions screen + Ports restart button are wired live. Step 5 added the **interactive sysop console**: a connect-out's live output is streamed to the web Sessions drawer over `GET /sessions/{id}/stream` (SSE) with type-in via the send endpoint. **Verified live against the real GB7RDG/LinBPQ node** (connect → banner + the `N` nodes-list streamed into the drawer; restart/send/disconnect exercised). Step 6 added connectionless **TEST ping** (`POST /ping` → `PingResult`, via a new `Ax25Listener.SendTestAsync` + the `AxPinger` correlation core) + the web ping tool — verified live (LinBPQ doesn't answer TEST → honest 100% loss). The **auth foundation** is now BUILT (default-OFF behind `management.auth.enabled`): Argon2id local users + a persisted-in-`pdn.db` HS256 JWT, `read`/`operate`/`admin` scope gates that pass through when the flag is off (so no regression) and enforce when on, login + the one-shot `/setup` bootstrap + admin-gated `/users`; backend only, pending the human's security review before it's ever enabled. **Still ahead:** wiring the UI's login/setup/users screens to the new endpoints (they stay on their mock gate today); WebAuthn/passkeys + TOTP/2FA + refresh tokens (named deferrals — the LAN-trust/naming problem passkeys hit on a node distributed to strangers, a candidate `B + mDNS` distribution pattern, and the simpler `localhost` flow to use for passkey dev *now*, are worked out in [`docs/passkeys-lan-trust-pattern.md`](passkeys-lan-trust-pattern.md)); a TEST *responder* (we DM an inbound TEST today — answering it is spec-compliance + enables pdn↔pdn ping), the per-`portId` connect dial (needs a per-port connector factory on the supervisor), the link-tuner/`tune` flow (held for a design pass on net-sim tuneables), beacons, then a self-hosted web-UI CI job + ship. See §17 (2026-06-09 auth-foundation / step-6 / step-5 / step-4 / step-3 / step-2 / step-1b / step-1 + 2026-06-08 Phase-5-UI entries).
 - **Slice 4 — MCP + monitoring.** `Packet.Mcp` over stdio + SSE (read-mostly ops/diagnostics/network-exploration tools, write tools behind a separate scope); live packet monitor v2 + link troubleshooting beyond plain frame tracing (per-link RTT/retries/REJ-SREJ counts).
 - **Slice 5 — React web UI.** Vite + React + TS + Tailwind + shadcn/ui (Decision §3); the routes in §5.5; zero-file-editing config.
 
@@ -535,7 +549,7 @@ The full phase target: ASP.NET Core 10 minimal-API host. `Konscious.Security.Cry
 
 ### 5.5 Phase 5 — Web UI ✅ ([#170](https://github.com/packet-net/packet.net/issues/170))
 
-Vite + React + TS + Tailwind + shadcn/ui. **Built at [`web/packetnet-ui/`](../web/packetnet-ui) (2026-06-08)** — all ten screens (login, setup, dashboard, live monitor, sessions, routes, ports, config, users + link-tuner/ping tools) recreated from the converged Claude Design handoff, running against a typed mock backend (flip `VITE_API_MODE=live` to talk to the real Slice-3 API). `tsc`+`vite build` clean; a `vitest` render smoke test covers every screen (10/10). Awaiting the Slice-3 backend (`docs/node-api.yaml`) to go live against the node. See §17 (2026-06-08 Phase-5-UI entry).
+Vite + React + TS + Tailwind + shadcn/ui. **Built at [`web/packetnet-ui/`](../web/packetnet-ui) (2026-06-08)** — all ten screens (login, setup, dashboard, live monitor, sessions, routes, ports, config, users + link-tuner/ping tools) recreated from the converged Claude Design handoff, running against a typed mock backend (flip `VITE_API_MODE=live` to talk to the real Slice-3 API). `tsc`+`vite build` clean; a `vitest` render smoke test covers every screen. The Slice-3 backend it was waiting for shipped, and production builds run in live mode against the node ([`docs/node-api.md`](node-api.md)). See §17 (2026-06-08 Phase-5-UI entry).
 
 ### 5.6 Phase 6 — RHPv2 + AGW ⬜ ([#171](https://github.com/packet-net/packet.net/issues/171))
 
@@ -852,7 +866,7 @@ A **GitHub issue sweep** to file/triage the CONSIDER items against the org's tra
 
 ## 6. SDL transcription discipline
 
-Critical to the project. Read [§2.1](#21-trust-the-figure), [§2.2](#22-encode-then-verify-not-infer-then-encode), [§2.3](#23-pin-implementation-evidence) and [docs/sdl-primer.md](sdl-primer.md) before touching any `*.sdl.yaml`.
+Critical to the project. Read [§2.1](#21-trust-the-figure), [§2.2](#22-encode-then-verify-not-infer-then-encode), [§2.3](#23-pin-implementation-evidence) and [the SDL primer](https://github.com/packet-net/ax25sdl/blob/main/docs/sdl-primer.md) before touching any `*.sdl.yaml`.
 
 ### 6.1 The pipeline
 
@@ -868,9 +882,9 @@ CI in `packet-net/ax25sdl` runs the codegen and `git diff --exit-code`. Drift fa
 
 ### 6.2 The DSL
 
-Schema: [`/spec-sdl/schema/sdl-machine.schema.json`](../spec-sdl/schema/sdl-machine.schema.json). Event catalog: [`/spec-sdl/events.yaml`](../spec-sdl/events.yaml).
+Schema: [`spec-sdl/schema/sdl-machine.schema.json`](https://github.com/packet-net/ax25sdl/blob/main/spec-sdl/schema/sdl-machine.schema.json). Event catalog: [`spec-sdl/events.yaml`](https://github.com/packet-net/ax25sdl/blob/main/spec-sdl/events.yaml). Both live in `packet-net/ax25sdl`.
 
-Worked example: [`/spec-sdl/data-link/connected.sdl.yaml`](../spec-sdl/data-link/connected.sdl.yaml) — see especially the header comment which documents variable definitions and implementation cross-references.
+Worked example: [`spec-sdl/data-link/connected.sdl.yaml`](https://github.com/packet-net/ax25sdl/blob/main/spec-sdl/data-link/connected.sdl.yaml) (in `packet-net/ax25sdl`) - see especially the header comment which documents variable definitions and implementation cross-references.
 
 A transition entry looks like:
 
@@ -918,20 +932,33 @@ Phase 0 covered ~2 columns of one page.
 
 ## 7. Test pyramid + interop CI
 
-| Layer | Tooling | When it runs |
-|---|---|---|
-| Unit | xUnit | every PR (CI) |
-| Property | FsCheck.Xunit v3 | every PR |
-| Mutation | Stryker.NET | nightly + release branches |
-| Conformance (SDL) | xUnit, generated | every PR; `git diff --exit-code` guard |
-| Component | xUnit + `WebApplicationFactory<Program>` + mock KISS | every PR |
-| Interop | xUnit + Testcontainers.NET (LinBPQ, Xrouter, net-sim, test-net) | subset on PR, full on nightly |
-| Hardware loop | xUnit + USB-attached NinoTNC pair (`[Trait("Category","HardwareLoop")]` + `SkippableFact`) | self-hosted runner job, every PR touching `Packet.Kiss*` or `Packet.Ax25` |
-| E2E UI | Playwright (.NET) | every PR (once UI exists) |
-| Fuzz | SharpFuzz | nightly, 1 h per target |
-| Soak | bespoke harness | nightly, 72 h on tagged release |
+This table is what runs, on this repo's self-hosted runners. **There is no `pull_request`
+trigger anywhere**: PRs merge on a green *local* run and the push-to-main workflow is the CI
+signal (main-only by design since 2026-07-14, `ci.yml` header). Every job targets
+`[self-hosted, Linux, X64]`; there is no hosted-runner budget.
 
-CI filter convention: default jobs run with `--filter "Category!=HardwareLoop&Category!=Interop"`. Hardware-loop and interop jobs use the opposite filter.
+| Layer | Tooling | Where | When it runs |
+|---|---|---|---|
+| Unit / property / component | xUnit, FsCheck.Xunit v3, `WebApplicationFactory<Program>` | `ci.yml` `test` job, one matrix leg per test project (`max-parallel: 4`) | push to `main`, `workflow_dispatch` |
+| Repo guards | `check-ci-test-matrix.sh` (the matrix cannot silently drop a project), `github-update-url-test.sh`, a tracked-`node_modules` check | `ci.yml` `guards` job | same |
+| Web UI | `npm run lint && npm run build && npm run test` (eslint, `tsc --noEmit` + vite, vitest) | `ci.yml` `web-ui` job | same |
+| Dependency scan | `dotnet list package --vulnerable --include-transitive`, one allow-listed advisory | `ci.yml` `dependency-scan` job | same |
+| Interop | xUnit against the docker compose stack (LinBPQ, XRouter, rax25, net-sim, direwolf), three clean-stack-fenced phases, plus the ax25-ts + pico-node parity guard | `interop.yml` | push to `main`, nightly `17 2 * * *`, dispatch |
+| Fuzz | `tools/Packet.Fuzz --smoke` (in-process, fixed seed, 1M iterations) | `fuzz.yml` | nightly, plus a push to `main` touching the parsers |
+| Package smoke | build the amd64 `.deb`, install it on pristine Debian-stable and Ubuntu-LTS containers | `deb-smoke.yml` | push to `main` touching `packaging/` or the build scripts, dispatch |
+| Static analysis | CodeQL (`csharp`, `javascript-typescript`, build-mode `none`) | `codeql.yml` | weekly `37 3 * * 1`, dispatch |
+| Plan discipline | fails the run when a plan-relevant path moved without `docs/plan.md` | `plan-check.yml` | push to `main` |
+| Hardware loop | xUnit + a USB-attached NinoTNC pair (`[Trait("Category","HardwareLoop")]` + `SkippableFact`) | run by hand on the bench box | no workflow runs it |
+| Browser E2E | Playwright in a Docker container: `scripts/passkey-e2e.sh` (WebAuthn register then sign-in) and `web/packetnet-ui/scripts/screenshot.sh` | run by hand | no workflow runs it |
+
+CI filter convention: default jobs run with `--filter "Category!=HardwareLoop&Category!=Interop"`. The interop job uses the opposite filter. The heavy jobs serialise on `/tmp/pdn-ci-heavy.lock` (§7.2.2).
+
+**Not built, and no longer claimed here (2026-08-17, review item C114):** mutation testing
+(`stryker-config.json` and the `dotnet-stryker` manifest were three months stale, unscoped,
+`break: 0`, and referenced by no workflow; both deleted, and the phase-2 exit criterion that
+asked for a mutation score is withdrawn), a soak harness, a Playwright job, and the SDL
+conformance job (the codegen it guarded left in the 2026-05-17 split). Interop uses docker
+compose, not Testcontainers (§7.2.1).
 
 ### 7.0 Interop tiers — where each kind of interop test lives, and why
 
@@ -1069,20 +1096,38 @@ Targets: linux-x64, linux-arm64, linux-arm (v7), win-x64, osx-arm64, osx-x64. Se
 
 ## 10. Security threat model
 
-| Surface | Default bind | Auth | Notes |
-|---|---|---|---|
-| Web UI (HTTPS) | `0.0.0.0:8443` | session cookie + passkey | TLS by default; SameSite=strict; CSRF token |
-| REST API | same | JWT scopes | rate-limited |
-| WS monitor/console/update | same | JWT in cookie | scope-gated |
-| RHPv2 TCP | `127.0.0.1:8050` | auth msg required | `--listen-public` opt-in |
-| RHPv2 WS | piggyback web port `/rhp` | auth msg (or relaxed under `--linbpq-compat`) | |
-| AGW TCP | `127.0.0.1:8000` | none (legacy) | non-loopback requires `--listen-public --i-understand-agw-is-unauthenticated` |
-| MCP stdio | n/a | local user | `pdn mcp` subcommand; bridges to loopback |
-| MCP SSE | `127.0.0.1:8051` | bearer; `read` (read tools) / `operate` (write tools) | in-process; pass-through when auth off |
-| KISS-TCP outbound | n/a | n/a | TLS not in scope (TNC vendors don't speak it) |
-| AXUDP | configurable | none | startup banner warning |
+This table is the shipped posture as of 2026-08-17 (it was rewritten from an aspirational
+one under review item C103; [`SECURITY.md`](../SECURITY.md) says the same thing for a reader
+who arrives at the repo root).
 
-All write endpoints audit-logged (actor, IP, scope, payload hash) into `pdn.db`, alongside the security-relevant authentication events (node claim, failed login, lockout, refresh-token reuse, passkey/TOTP enrol + delete) - see the 2026-08-17 amendment-log entry.
+| Surface | Default | Auth | Notes |
+|---|---|---|---|
+| Web panel + REST API | `0.0.0.0:8080`, **HTTP** | on by default: Argon2id login, access JWT + rotating refresh token, optional passkey; one `read` / `operate` / `admin` scope per user | the LAN bind and the login requirement were flipped together (2026-08-03) and must stay together |
+| HTTPS listener | **off**; `127.0.0.1:8443` when enabled | as above | self-signed on first start, or bring your own PKCS#12. **No built-in ACME.** TLS is the edge's job |
+| Tailscale sidecar | **off** | tailnet identity, then the panel login | the blessed remote path: a real browser-trusted cert with no public DNS or port-forward. Funnel is a separate opt-in |
+| SSE feeds | with the panel | scope-gated; the six SSE routes also accept `?access_token=` because `EventSource` has no header API, carried as endpoint metadata rather than a path list | |
+| `/metrics` | with the panel | **always anonymous**, deliberately | carries heard callsigns, per-peer SNR, port/radio health and the version. Front it if that matters ([`docs/observability.md`](observability.md)) |
+| `/mcp` | **off**; the web listener, path `/mcp` | bearer on a separate MCP JWT audience, `read` (write tools step up to `operate`) | not a second socket. OAuth 2.1 DCR for hosted connectors is a further opt-in and is refused unless panel auth is on |
+| MCP stdio | n/a | local user + `PDN_NODE_TOKEN` | `pdn mcp`; bridges to the loopback REST API |
+| RHPv2 TCP | **off**; `127.0.0.1:9000` | `requireAuth: false` by default | resource-bounded against a hostile peer: 64 connections, 256 handles per client, a 30 s in-frame timeout, and the panel's login throttle on the auth message |
+| Telnet console | `127.0.0.1:8011` | node command set; `SYSOP <totp>` elevates | |
+| App gateway `/apps/*` | with the panel | `read`, via an HttpOnly `SameSite=Strict` cookie scoped to `/apps/` | |
+| KISS-TCP / serial / AXUDP | n/a | none | RF and the links to it are cleartext by law; TLS is not in scope |
+
+Not present, despite what earlier revisions of this table said: there is **no AGW server**
+(`Packet.Agw` is a client library and the node maps no AGW listener; one is still on the
+Phase 6 roadmap at [§5.6](#56-phase-6--rhpv2--agw--171), which is where the row belongs
+until it exists), no RHPv2 WebSocket mount, no HTTP rate limiter beyond the login throttle (5 failures per 5 minutes, keyed by
+username *and* source IP), and no antiforgery machinery (the API is bearer-header, not
+ambient-cookie, so it is not CSRF-shaped).
+
+Forwarded headers (`X-Forwarded-Proto/Host/For`) are honoured **only** from loopback: the
+known-proxy list is cleared and then set to the two loopback addresses, so a remote client
+cannot spoof its scheme or host.
+
+All write endpoints are audit-logged (actor, IP, scope, a summarised detail, never secrets)
+into `pdn.db`, bounded at 20,000 rows, alongside the security-relevant authentication events
+(node claim, failed login, lockout, refresh-token reuse, passkey and TOTP enrol or delete).
 
 The RHPv2 TCP front-end is resource-bounded against a hostile/buggy peer (defaults, all configurable in the `rhp:` block): a concurrent-connection cap (`maxConnections`, 64), a per-client live-handle cap (`maxHandlesPerClient`, 256 — refused with errCode 4), and an in-frame read timeout (`inFrameTimeoutSeconds`, 30 — drops a peer that stalls part-way through a frame, while leaving idle-between-frames unbounded). See the 2026-06-13 amendment-log entry.
 
@@ -1128,7 +1173,7 @@ Pinned in [`Directory.Packages.props`](../Directory.Packages.props). Versions so
 | WebAuthn | `Fido2.AspNet` | 4.0.0-beta.16 |
 | JWT | `Microsoft.IdentityModel.JsonWebTokens` | 8.5.0 |
 | Property tests | `FsCheck.Xunit` v3 | 3.1.0 |
-| Mutation | `dotnet-stryker` | (tool, not pkg) |
+| ~~Mutation~~ | ~~`dotnet-stryker`~~ | Dropped 2026-08-17 (§7): the manifest and config were unused and unreferenced by any workflow |
 | Fuzzing | `SharpFuzz` | (TBD when added) |
 | Containers in tests | `Testcontainers` | 4.1.0 |
 | Conditional skips | `Xunit.SkippableFact` | 1.5.23 |
@@ -1219,7 +1264,7 @@ Domain shorthand collected here as we hit it. Keep current.
 | **P/F bit** | Poll/Final bit in the AX.25 control field. Set in commands (poll), echoed in responses (final). |
 | **PID** | Protocol ID byte in the AX.25 header; identifies the encapsulated L3 protocol (`0xCF` = NET/ROM, `0xF0` = "none", `0x08` = segmented frame). |
 | **RHPv2** | Routing Hub Protocol v2 — a JSON-over-TCP/WS API for external apps to use a node's data-link. Spec: [rhp2lib.pages.dev](https://rhp2lib.pages.dev/). |
-| **SDL** | Specification and Description Language (ITU-T Z.100). The diagram language the AX.25 v2.2 spec uses for its state machines. See [docs/sdl-primer.md](sdl-primer.md). |
+| **SDL** | Specification and Description Language (ITU-T Z.100). The diagram language the AX.25 v2.2 spec uses for its state machines. See [the SDL primer](https://github.com/packet-net/ax25sdl/blob/main/docs/sdl-primer.md). |
 | **SREJ** | Selective Reject — supervisory frame requesting retransmission of a single I-frame by `N(R)`. v2.2 only. |
 | **SSID** | Secondary Station Identifier — 4-bit suffix in an AX.25 callsign (e.g. `G7XYZ-7`). |
 | **T1 / T2 / T3** | Acknowledge / response-delay / inactivity timers. T1 ≈ 3000 ms default; T3 is a keep-alive. |
@@ -1273,6 +1318,18 @@ Most recent first. Format:
 What changed, why, where to look for details.
 ```
 
+### 2026-08-17 - The docs stop describing a node this repo does not ship (review WP14)
+
+Review WP14 ([#701](https://github.com/packet-net/packet.net/issues/701), umbrella [#703](https://github.com/packet-net/packet.net/issues/703)): the documentation half of the 2026-08-16 review. The review's own root-cause finding was that the 2026-05-17 repo split and the config-in-DB move (#473) updated code and this log but left `SECURITY.md`, `node-api.yaml`, the packaging template header, the UI README, `observability.md` and §§4.1/7/10 describing a different system.
+
+- **`docs/node-api.yaml` is deleted, not regenerated (C019).** It documented ten operations with no route behind them and omitted about forty that existed, including the whole OAuth, app-platform, console, audit and system surfaces, and every schema spot-checked was wrong (`/setup/state` was documented as `{setupComplete}` against a server that returns `{needsSetup}`: opposite polarity, different name). **The decision was delete rather than hand-regenerate**, because the review's root cause was that the server model already had four unenforced hand-maintained mirrors and a fifth copy of every schema would have re-created the same failure. In its place [`docs/node-api.md`](node-api.md) says where the truth lives (the C# records, the WP5 contract fixtures, the typed client as a consumer) and carries a route inventory **generated from the node's own `EndpointDataSource`**, with `RouteInventoryTests` failing the build on any drift and `scripts/update-node-api.sh` regenerating it. A second test asserts every `/api/v1` route is scope-gated or is one of seven named bootstrap endpoints.
+- **`SECURITY.md` and §10 now describe the shipped posture (C103).** The old text promised TLS by default, ACME, cosign-signed updates, an AGW server on 8000, MCP on its own 8051 and an audit log in `config.db`; the node is HTTP-first on 8080 with auth on, TLS and Tailscale opt-in with no built-in ACME, checksum-verified GitHub updates (cosign is a deferral, #188), no AGW listener at all, `/mcp` on the web listener, and audit rows in `pdn.db`. §10's table was rewritten row by row rather than annotated, and the parts that are genuinely absent (rate limiting, CSRF machinery, the RHPv2 WebSocket mount) are now named as absent.
+- **The post-split leftovers are gone (C107).** The 57 tracked files under `c-spec/`, `rust-spec/`, `python-spec/` and `json-spec/` were generated artefacts whose own READMEs pointed at a `spec-sdl/` tree and codegen tools that left in the split; nothing in `scripts/`, the workflows or the build referenced them. Deleted. The dead `docs/sdl-primer.md` / `docs/adr/` links now point into `packet-net/ax25sdl`, CONTRIBUTING's SDL workflow says "not here" and explains where it went, §4.1 is rewritten to the tree that exists (21 `src/` projects, the Go head-end and sidecar, `spec/`, `catalog/`, all ten workflows), and a new `scripts/check-doc-links.sh` in the `guards` job resolves every relative markdown link in the living docs. It exempts §17 below, because an entry citing a path that has since moved is history, not a broken doc.
+- **§7 lists the pipeline that runs (C114).** The old test-pyramid table promised per-PR CI, nightly Stryker, a Playwright job and a 72 h soak; there is no `pull_request` trigger anywhere in the repo, no workflow mentions Stryker, and Playwright lives only in two hand-run scripts. The table is now the ten real jobs with their real triggers. `stryker-config.json` and `dotnet-tools.json` are deleted (three months stale, unscoped, `break: 0`, referenced by nothing, and the manifest was not even in `.config/` where `dotnet tool restore` would find it), and the phase-2 mutation-score exit criterion is withdrawn rather than left as an unmeasured tick-box.
+- **Six smaller drifts, each fixed at the file that lied.** The first-boot config templates stopped claiming they are watched and hot-applied (C104: they seed `pdn.db` once and are inert afterwards) and the container template gained the schema-version and posture parity tests the other two already had; the UI README and `screenshot.mjs` caught up with mock-mode auto-entry, 17 routes, 19 test suites and a session key that had changed (C034); the `/metrics` comment stopped claiming a scope gate the endpoint does not have and four API comments stopped claiming auth was "a later step" (C059); `observability.md` gained the nine metrics it never listed and now names both peer-labelled series instead of insisting there is one (C105); `IRhpGateway`'s `UiDatagram.Pid` doc stopped promising a `recv.pid` the server never emits (RM-11, doc corrected rather than field added: the CDDL scopes `pid` to TRACE metadata and R-7 deliberately removed it); and the MCP tool table gained `decode_frame`'s `extended` argument, renamed `since` to `sinceSeconds`, and dropped a phantom APRS hint (RM-13).
+- **§18's front-matter rule now matches what the file does.** It said to update *the* "Latest amendment" line; the front matter has carried a newest-first stack of them for months, which every recent entry follows, so the rule says stack rather than replace.
+- **The review itself is recorded** in [`docs/code-review-2026-08-16.md`](code-review-2026-08-16.md): scope, the three-phase method (14 reviewers, 167 raw findings, 129 distinct issues, every one handed to an independent verifier told to refute it; 114 confirmed, 15 partially, 0 refuted), the root-cause themes, the work-package map, and where the evidence set lives.
+
 ### 2026-08-17 - Panel miscellany: a gate that replayed a consumed refresh token, an editor that unpinned callsigns, and no enrolment path for a non-admin
 
 Work package WP15 of the 2026-08-16 in-depth code review ([#702](https://github.com/packet-net/packet.net/issues/702), umbrella [#703](https://github.com/packet-net/packet.net/issues/703)): seven verified findings in `web/packetnet-ui`, each fixed at the root, with a vitest spec per item that jsdom can actually observe.
@@ -1282,6 +1339,7 @@ Work package WP15 of the 2026-08-16 in-depth code review ([#702](https://github.
 - **A read/operate operator had no way to enrol a passkey (C044, medium).** `/users` is Admin-gated as a whole while WebAuthn register/credentials and TOTP enroll are Read-gated ("any authenticated user may add a passkey") - but the panel only rendered those controls inside a per-user card built from the admin-only list, and swallowed that list's error, so a non-admin got an empty list and no self-service at all. Enrolment now lives in a "Your account" card rendered from the session for every scope; the list rows keep a static indicator, and a failed list load says so.
 - **Three surfaces that offered actions the server would refuse (C047/C048, low).** The link tuner's Start / Next round / Stop rendered ungated though `/tuning/session|next|stop` are Admin-only (403 on click, unexplained); the session table's row Disconnect, the drawer Disconnect and Send rendered ungated though `/sessions` is Operate end to end. All now disable with the explaining `title` the rest of the panel uses. Connect-out also became single-flight: `POST /sessions` awaits a 30 s dial with no per-target de-dup and the modal only closes on success, so a second impatient click started a second outbound dial.
 - **Two stale-state bugs (C039 + C049, low).** "Use `<fqdn>` for passkeys" called `reload()`, which re-seeded the config draft from the refetched `/config` and silently discarded every unsaved edit while the dirty badge still claimed they were pending; the adopted RP id is merged into the draft instead (the write itself already happened server-side). And the monitor's scroll-position preservation stopped working once the 500-frame ring filled - the effect was keyed on `filtered.length` (constant at the cap) and measured a `scrollHeight` delta (~0 when one row is evicted per row prepended); it now keys on the newest frame's `(bootId, seq)` identity and measures how far an anchor row moved.
+
 ### 2026-08-17 - The control API stops lying about which port it dialled, what is connected, and what it logged (review WP7)
 
 ### 2026-08-16 - RHPv2, rig, radio and tuning review fixes (WP11): an orphaned AX.25 session, four PTT latches, and a stolen carrier window
@@ -10639,7 +10697,7 @@ You **must** add an amendment-log entry and update the relevant section(s) when 
 - A phase exit criterion is met (mark the checkbox, update the phase status, update the top-of-file "Current phase" header).
 - A locked decision changes (update [§3](#3-locked-decisions), add to the amendment log explaining why).
 - A working agreement is added or revised (update [§2](#2-working-agreements), add to log).
-- A new ADR is created in `docs/adr/` (cross-reference from the relevant section).
+- A new ADR is written (this repo keeps none of its own today; the SDL ones live in [`packet-net/ax25sdl`](https://github.com/packet-net/ax25sdl) since the 2026-05-17 split, and a decision taken here is recorded in [§3](#3-locked-decisions) plus a log entry). Cross-reference it from the relevant section.
 - An open question is resolved (move it out of [§15](#15-open-questions), update affected section, add to log).
 - A new risk surfaces (add to [§16](#16-risks)).
 - A new external dependency is taken (update [§12](#12-locked-external-dependencies) and `Directory.Packages.props`).
@@ -10656,7 +10714,10 @@ You **should** also update when:
 
 1. Edit `docs/plan.md` in the same PR as the work that triggers the update. Plan changes do not get their own PR.
 2. Add an amendment-log entry at the **top** of [§17](#17-amendment-log) (most recent first). Date in `YYYY-MM-DD` format. Short title. 2–6 bullets explaining what changed and where to look for detail.
-3. Update the front-matter "As of", "Current phase", "Latest amendment" lines.
+3. Update the front-matter "As of" and "Current phase" lines, and add a **new** "Latest amendment" line
+   directly under "Current phase". This section once said there was one such line; in practice they have
+   accumulated into a newest-first stack, which is the convention every recent entry follows, so keep
+   adding to the top rather than replacing (noted 2026-08-17, [§17](#17-amendment-log)).
 4. Cross-link aggressively. If an amendment references a section, link to it; if a section references an amendment, link to it.
 5. If your PR introduces or modifies a working agreement, mention it in the PR description under "Plan changes".
 

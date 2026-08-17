@@ -1,8 +1,9 @@
 // ============================================================
-// Client auth state — the JWT from POST /auth/login (Argon2id password; passkey
-// deferred) gates the app. A user is granted exactly ONE scope (read/operate/
-// admin) and the implication admin⊃operate⊃read is resolved here by `has()`,
-// mirroring the server's AuthScopes.Satisfies rank model.
+// Client auth state: the access JWT gates the app. It comes from POST /auth/login
+// (Argon2id password) or from the passkey ceremony (POST /auth/webauthn/assert/begin
+// then /complete, which returns the same token pair). A user is granted exactly ONE
+// scope (read/operate/admin) and the implication admin⊃operate⊃read is resolved
+// here by `has()`, mirroring the server's AuthScopes.Satisfies rank model.
 //
 // Persistence: localStorage - the session survives browser restarts and is shared across
 // tabs; the refresh-token rotation (+ family revocation on reuse) is what bounds the blast
