@@ -8,7 +8,7 @@ namespace Packet.Node.Tests.Console;
 /// The idle reaper on <see cref="SysopConsoleManager"/> (review item C062, #694): a browser that
 /// closes, crashes, or loses the network never sends <c>DELETE /api/v1/console/{id}</c>, so an
 /// abandoned node command console used to keep its command service running until host shutdown.
-/// Driven by <see cref="FakeTimeProvider"/> — no sleeping, no wall clock.
+/// Driven by <see cref="FakeTimeProvider"/> - no sleeping, no wall clock.
 /// </summary>
 [Trait("Category", "Node")]
 public sealed class SysopConsoleReaperTests

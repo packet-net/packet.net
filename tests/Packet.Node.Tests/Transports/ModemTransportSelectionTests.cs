@@ -13,7 +13,7 @@ namespace Packet.Node.Tests.Transports;
 /// Which transport the KISS-param write and the spectrum feed must look at (review item C027,
 /// #694): on an RSSI-capable radio-attached port the modem chain is wrapped in an
 /// <c>RssiTaggingTransport</c> / <c>InboundRadioTap</c> that implements <see cref="IAx25Transport"/>
-/// only — it forwards neither <see cref="ICsmaChannelParams"/> nor the concrete modem type. Both
+/// only - it forwards neither <see cref="ICsmaChannelParams"/> nor the concrete modem type. Both
 /// call sites type-tested <c>RunningPort.Transport</c>, so <c>set_kiss_param</c> reported "not
 /// settable" and the waterfall 404'd on exactly the ports that have a radio, while
 /// <c>/quality</c> (already on <c>ModemTransport</c>) worked. These pin the seam with a
@@ -25,7 +25,7 @@ public sealed class ModemTransportSelectionTests
     private const int DspRate = 12000;
 
     /// <summary>A pass-through decorator that implements <see cref="IAx25Transport"/> and
-    /// NOTHING else — exactly what the RSSI-tagging wrapper looks like from outside.</summary>
+    /// NOTHING else - exactly what the RSSI-tagging wrapper looks like from outside.</summary>
     private sealed class PassThroughTransport(IAx25Transport inner) : IAx25Transport
     {
         public Task SendAsync(ReadOnlyMemory<byte> ax25, CancellationToken cancellationToken = default)

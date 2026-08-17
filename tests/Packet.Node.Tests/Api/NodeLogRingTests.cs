@@ -7,7 +7,7 @@ namespace Packet.Node.Tests.Api;
 
 /// <summary>
 /// The in-memory log tail behind <c>GET /api/v1/log</c> (review item C008, #694). The endpoint
-/// was a permanent empty array — nothing in the node ever produced a <see cref="LogLine"/> —
+/// was a permanent empty array - nothing in the node ever produced a <see cref="LogLine"/>  - 
 /// while the OpenAPI doc and the dashboard's "Recent activity" card presented it as live.
 /// </summary>
 [Trait("Category", "Node")]

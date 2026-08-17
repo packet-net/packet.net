@@ -127,11 +127,11 @@ internal static class SseWriter
         }
         catch (OperationCanceledException)
         {
-            // Client disconnected mid-write — expected.
+            // Client disconnected mid-write - expected.
         }
         catch (IOException)
         {
-            // Broken pipe to a vanished client — expected.
+            // Broken pipe to a vanished client - expected.
         }
     }
 }
